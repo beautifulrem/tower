@@ -125,6 +125,25 @@ test("with a decision card on a ready-to-accept goal, the card's first option is
   await expect(primaries).toHaveText(/Send the failures to the agent/);
 });
 
+test("the title bar's runs gauge fills the ring by the slots in use, and silence beats once", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      F.settings = { ...F.settings, max_concurrent: 4 };
+      // One goal has been silent for twenty minutes: the hollow square shows, and beats once as it appears.
+      for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now() - 20 * 60_000;
+    },
+  });
+  const gauge = page.locator(".gauge-runs");
+  await expect(gauge).toBeVisible();
+  // One of four running: a quarter wedge, counter-clockwise from the top to the left.
+  await expect(gauge.locator("path")).toHaveAttribute("d", "M5 5 L5 1 A4 4 0 0 0 1 5 Z");
+  await expect(page.locator(".gauge-active")).toContainText("1/4");
+  const hollow = page.locator(".gauge-dot.hollow");
+  await expect(hollow).toBeVisible();
+  expect(await hollow.evaluate((el) => getComputedStyle(el).animationName)).toBe("beat");
+  expect(await hollow.evaluate((el) => getComputedStyle(el).animationIterationCount)).toBe("1");
+});
+
 test("the title bar's bell is a 22pt target, and a half-screen window drops a healthy engine's label rather than hanging it empty", async ({ page }) => {
   await openTower(page, "overview");
   const bell = page.locator(".gauge-quiet");

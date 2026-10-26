@@ -4,6 +4,7 @@ import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 import { api } from "../lib/api";
 import { clock, duration, usd } from "../lib/format";
 import { type Match, fuzzy, matchText, segments } from "../lib/fuzzy";
+import { wedgePath } from "../lib/gauge";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { back, canGoBack, go, route } from "../lib/nav";
@@ -75,6 +76,21 @@ export function Heartbeat(props: { running: number }) {
 }
 
 /**
+ * The runs gauge: the running glyph's ring, filled by how many of the slots
+ * are in use — one of four a quarter, two of four the glyph's own half-disc,
+ * all of them a full disc. A reading, not an icon: it says "1/4" before the
+ * numbers do.
+ */
+export function RunsGauge(props: { n: number; max: number }) {
+  return (
+    <svg class="glyph gauge-runs" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" aria-hidden="true">
+      <circle cx="5" cy="5" r="4" />
+      <path d={wedgePath(props.max > 0 ? props.n / props.max : 0)} fill="var(--st-active)" stroke="none" />
+    </svg>
+  );
+}
+
+/**
  * Left: where you are. On a goal that is the breadcrumb `project › G-0003`
  * (the title belongs to the H1 below); elsewhere the page name. Right: the
  * gauge cluster — errors, runs, heartbeat, spend, quiet, engine — in one strip.
@@ -115,7 +131,7 @@ export function TitleBar(props: { title: string }) {
         </Show>
         <Show when={running() > 0}>
           <span class="gauge gauge-active" title={t("chrome.running", { n: running(), max: max() })}>
-            <LifecycleGlyph goal={{ state: "running", progress: { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 }, verified_pin: null }} />
+            <RunsGauge n={running()} max={max()} />
             {t("chrome.runningShort", { n: running(), max: max() })}
           </span>
         </Show>

@@ -408,6 +408,13 @@ impl Git {
         }
     }
 
+    /// Switches a verification checkout to `rev`, keeping untracked and
+    /// ignored files (installed dependencies, build caches).
+    pub fn checkout_detached(&self, dir: &Path, rev: &str) -> Result<()> {
+        self.run(dir, &["checkout", "--quiet", "--force", "--detach", rev])?;
+        Ok(())
+    }
+
     /// Points `refname` at `commit`, so the snapshot outlives garbage collection.
     pub fn keep(&self, ws: &Path, refname: &str, commit: &str) -> Result<()> {
         self.run(ws, &["update-ref", refname, commit])?;

@@ -83,7 +83,12 @@ fn toolchains_under(path: &str, home: &Path, closed: &[&Path]) -> Vec<PathBuf> {
 /// `/Library/Application Support`, not package managers' configuration.
 const SYSTEM_READ: &[&str] = &[
     "/System",
-    "/usr",
+    "/usr/bin",
+    "/usr/lib",
+    "/usr/libexec",
+    "/usr/sbin",
+    "/usr/share",
+    "/usr/standalone",
     "/bin",
     "/sbin",
     "/dev",
@@ -100,12 +105,18 @@ const SYSTEM_READ: &[&str] = &[
     "/Library/Perl",
     "/Library/Python",
     "/Library/Ruby",
-    "/Library/Preferences",
-    "/opt/homebrew",
-    "/opt/local",
-    "/usr/local",
+    // System-wide defaults some runtimes read; not other apps' preferences.
+    "/Library/Preferences/.GlobalPreferences.plist",
+    "/Library/Preferences/SystemConfiguration",
     "/nix",
 ];
+
+/// Package-manager prefixes (Homebrew, MacPorts, /usr/local): only their
+/// toolchain parts are readable — not `var` (databases, logs of services
+/// the user runs) and not most of `etc` (see below).
+const PREFIXES: &[&str] = &["/opt/homebrew", "/usr/local", "/opt/local"];
+const PREFIX_PARTS: &[&str] =
+    &["bin", "sbin", "Cellar", "Caskroom", "Frameworks", "include", "lib", "libexec", "opt", "share"];
 
 /// Inside the package managers' trees above, their configuration directories
 /// may hold tokens (registry or proxy configs); only what TLS and compilers
@@ -217,9 +228,10 @@ pub fn profile(spec: &Spec) -> String {
     for p in SYSTEM_READ {
         s.push_str(&format!("  (subpath \"{p}\")\n"));
     }
-    s.push_str(")\n(deny file-read*\n");
-    for p in PREFIX_ETC {
-        s.push_str(&format!("  (subpath \"{p}\")\n"));
+    for prefix in PREFIXES {
+        for part in PREFIX_PARTS {
+            s.push_str(&format!("  (subpath \"{prefix}/{part}\")\n"));
+        }
     }
     s.push_str(")\n(allow file-read*\n");
     for p in PREFIX_ETC {
@@ -242,7 +254,11 @@ pub fn profile(spec: &Spec) -> String {
     // usual symlinks at the root resolvable.
     s.push_str("(allow file-read-metadata\n  (literal \"/Users\")\n  (literal \"/Volumes\")\n");
     s.push_str("  (literal \"/private\")\n  (literal \"/private/var\")\n  (literal \"/etc\")\n  (literal \"/tmp\")\n  (literal \"/var\")\n");
-    s.push_str("  (literal \"/Library\")\n  (literal \"/Applications\")\n  (literal \"/opt\")\n");
+    s.push_str("  (literal \"/Library\")\n  (literal \"/Applications\")\n  (literal \"/opt\")\n  (literal \"/usr\")\n");
+    s.push_str("  (literal \"/Library/Preferences\")\n");
+    for prefix in PREFIXES {
+        s.push_str(&format!("  (literal \"{prefix}\")\n  (literal \"{prefix}/etc\")\n"));
+    }
     s.push_str(&format!("  (literal {})\n", q(home)));
     for p in rw.iter().copied().chain(spec.read.iter()) {
         for a in p.ancestors().skip(1) {
@@ -427,6 +443,15 @@ mod tests {
         }
         if Path::new("/opt/homebrew/etc").is_dir() {
             assert!(!run("ls /opt/homebrew/etc >/dev/null"), "package manager configuration is unreadable");
+        }
+        if Path::new("/opt/homebrew/var").is_dir() {
+            assert!(!run("ls /opt/homebrew/var >/dev/null"), "services' data under the prefix is unreadable");
+        }
+        if Path::new("/Library/Preferences/com.apple.dock.plist").exists() {
+            assert!(
+                !run("cat /Library/Preferences/com.apple.dock.plist >/dev/null"),
+                "other apps' preferences are closed"
+            );
         }
         assert!(run("/bin/ls / >/dev/null && /usr/bin/env true"), "the system still works");
     }

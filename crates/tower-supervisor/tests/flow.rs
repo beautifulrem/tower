@@ -339,7 +339,8 @@ async fn verification_does_not_see_the_agents_cache() {
 async fn changed_dependencies_need_the_human_before_setup_goes_online() {
     let h = harness("deps").await;
     let mut c = contract();
-    c.setup = "exit 1".into();
+    // Passes on the base (your content), fails on the agent's snapshot.
+    c.setup = "if [ -f done.txt ]; then exit 1; fi".into();
     let id = create_with(&h, c).await;
     let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
     assert_eq!(g.pause_reason, Some(PauseReason::DependenciesChanged));
@@ -410,4 +411,28 @@ async fn an_acp_agent_runs_through_the_bridge() {
             .any(|e| matches!(&e.event, EventKind::AssistantMessage { text } if text.contains("escape: refused"))),
         "the scope gate refused a write outside the workspace"
     );
+}
+
+/// A test edited to pass (here: a check script made to exit 0) passes the
+/// criterion, but the same criterion fails with the original test restored:
+/// the goal is held for the human before it reaches review, and the
+/// criterion does not count as red → green evidence.
+#[tokio::test(flavor = "multi_thread")]
+async fn passing_only_with_edited_tests_holds_the_goal() {
+    let h = harness("weaken_test").await;
+    std::fs::create_dir_all(h.repo.join("test")).unwrap();
+    std::fs::write(h.repo.join("test/check.sh"), "exit 1\n").unwrap();
+    git(&h.repo, &["add", "."]);
+    git(&h.repo, &["commit", "--quiet", "-m", "a failing check"]);
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec { command: "sh test/check.sh".into(), timeout_secs: 30 };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::SentinelHigh)));
+    let d = h.sup.goal(&id).unwrap();
+    let crit = &d.criteria[0];
+    assert!(crit.verified.as_ref().unwrap().passed, "the edited test passes");
+    assert_eq!(crit.passed_on_base, Some(false), "it failed on the base");
+    assert_eq!(crit.passes_with_original_tests, Some(false), "and fails with the original test");
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "passes_only_with_edited_tests"));
 }

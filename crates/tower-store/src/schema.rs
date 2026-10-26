@@ -177,6 +177,16 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE runs ADD COLUMN start_pin TEXT;
     "#,
+    // 10: criteria re-run with the agent's edits to existing tests undone
+    r#"
+    CREATE TABLE original_results (
+        goal_id    TEXT NOT NULL,
+        criterion  TEXT NOT NULL,
+        pin        TEXT NOT NULL,
+        passed     INTEGER NOT NULL,
+        PRIMARY KEY (goal_id, criterion)
+    );
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

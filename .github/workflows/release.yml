@@ -22,13 +22,33 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v0
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            printf '\n\n> This build is not signed or notarized: on first launch, right-click Tower.app and choose Open.\n' >> notes.md
+          fi
+          { echo "body<<NOTES"; cat notes.md; echo "NOTES"; } >> "$GITHUB_OUTPUT"
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      # Signing and notarization happen when the secrets exist (see
+      # RELEASING.md); without them the build is unsigned and says so.
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: Tower ${{ github.ref_name }}
-          releaseBody: See CHANGELOG.md. The build is not notarized yet; on first launch, right-click Tower.app and choose Open.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           args: --target universal-apple-darwin

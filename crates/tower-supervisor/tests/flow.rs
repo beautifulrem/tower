@@ -102,7 +102,7 @@ async fn sentinels_hold_a_passing_but_suspicious_snapshot() {
     assert!(d.criteria[0].verified.as_ref().unwrap().passed, "the criteria themselves passed");
 
     // The human looks and decides it is fine.
-    let item = h.sup.inbox().unwrap().into_iter().find(|i| i.goal_id == id && i.kind == InboxKind::Paused).unwrap();
+    let item = wait_inbox(&h, &id, InboxKind::Paused).await;
     h.sup.answer(&item.id, "我已确认，进入评审").await.unwrap();
     wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
 }
@@ -147,6 +147,17 @@ async fn local_files_reach_the_workspace_and_the_verifier() {
     assert_eq!(d.local_files, [".env"]);
     // Ignored, so never part of a snapshot or the review.
     assert!(h.sup.review(&id).await.unwrap().files.iter().all(|f| f.path != ".env"));
+}
+
+/// The pause and its Needs-You item are written one after the other.
+async fn wait_inbox(h: &Harness, id: &str, kind: InboxKind) -> tower_core::view::InboxItem {
+    for _ in 0..200 {
+        if let Some(i) = h.sup.inbox().unwrap().into_iter().find(|i| i.goal_id == id && i.kind == kind) {
+            return i;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("no {kind:?} item for {id}");
 }
 
 async fn wait_for(h: &Harness, id: &str, pred: impl Fn(&GoalSummary) -> bool) -> GoalSummary {

@@ -52,6 +52,9 @@ impl Source {
     }
 }
 
+// Events are serialized as soon as they are created, so the size of the
+// largest variant (a whole contract) costs nothing worth boxing for.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 #[ts(export)]

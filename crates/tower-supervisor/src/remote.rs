@@ -44,12 +44,12 @@ pub fn new_token() -> String {
 /// local network's.
 pub fn addresses(env: &crate::shell_env::ShellEnv) -> Vec<String> {
     let mut out = Vec::new();
-    if let Some(ts) = env.which("tailscale") {
-        if let Ok(o) = std::process::Command::new(ts).args(["ip", "-4"]).output() {
-            let ip = String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or_default().trim().to_string();
-            if !ip.is_empty() {
-                out.push(ip);
-            }
+    if let Some(ts) = env.which("tailscale")
+        && let Ok(o) = std::process::Command::new(ts).args(["ip", "-4"]).output()
+    {
+        let ip = String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or_default().trim().to_string();
+        if !ip.is_empty() {
+            out.push(ip);
         }
     }
     // The address the system would use to reach the outside (no packet is sent).

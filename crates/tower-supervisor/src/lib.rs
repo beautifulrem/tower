@@ -8,6 +8,7 @@
 mod actions;
 pub mod api;
 mod caches;
+mod demo;
 pub mod paths;
 pub mod prompts;
 mod run;
@@ -74,6 +75,9 @@ pub struct Config {
     pub extension_source: PathBuf,
     /// Captured login-shell environment; `None` captures it now.
     pub env: Option<ShellEnv>,
+    /// The demo engine script (`tools/demo-engine/demo_pi.py`) to install,
+    /// enabling the in-app demo. `None` disables it.
+    pub demo_engine: Option<PathBuf>,
 }
 
 /// Cheap to clone; all clones share one supervisor.
@@ -199,6 +203,15 @@ impl Inner {
         self.settings().lang()
     }
 
+    /// The engine for a goal: the demo engine for demo projects, Pi otherwise.
+    pub fn engine_program(&self, project_root: &str) -> Option<PathBuf> {
+        if Path::new(project_root).starts_with(paths::real(&self.paths.demo_projects())) {
+            let demo = self.paths.demo_engine();
+            return demo.is_file().then_some(demo);
+        }
+        self.pi_program()
+    }
+
     pub fn pi_program(&self) -> Option<PathBuf> {
         let configured = self.settings().pi_path;
         if !configured.trim().is_empty() {
@@ -287,6 +300,9 @@ impl Supervisor {
     pub async fn start(config: Config, sink: Arc<dyn UiSink>) -> Result<Self> {
         config.paths.ensure()?;
         install_extension(&config.extension_source, &config.paths.extension_dir())?;
+        if let Some(src) = config.demo_engine.as_deref().filter(|p| p.is_file()) {
+            install_demo_engine(src, &config.paths.demo_engine())?;
+        }
         let env = match config.env {
             Some(e) => e,
             None => tokio::task::spawn_blocking(ShellEnv::capture).await.map_err(|e| invalid(e.to_string()))?,
@@ -615,6 +631,35 @@ impl Supervisor {
 
     // ---- projects -----------------------------------------------------------
 
+    /// Starts the in-app demo: creates the demo repository (once), adds it
+    /// as a project and starts one goal on the demo engine. Returns the goal.
+    pub async fn start_demo(&self) -> Result<GoalSummary> {
+        let lang = self.inner.lang();
+        if !self.inner.paths.demo_engine().is_file() {
+            return Err(invalid(tr!(lang, "这个版本没有附带演示引擎", "This build does not include the demo engine")));
+        }
+        if self.inner.env.which("node").is_none() {
+            return Err(invalid(tr!(
+                lang,
+                "演示项目的测试需要 Node.js，请先安装 Node",
+                "The demo project's tests need Node.js; install Node first"
+            )));
+        }
+        let dir = self.inner.paths.demo_projects().join("shop");
+        let inner = self.inner.clone();
+        let d = dir.clone();
+        tokio::task::spawn_blocking(move || demo::ensure_repo(&inner, &d))
+            .await
+            .map_err(|e| invalid(e.to_string()))??;
+        let root = paths::real(&dir).display().to_string();
+        let project = match self.inner.store(|s| s.project_by_root(&root))? {
+            Some(p) => p,
+            None => self.add_project(&root).await?,
+        };
+        let (title, contract) = demo::goal(lang);
+        self.create_goal(NewGoalInput { project_id: project.id, title, contract, ratify: true }).await
+    }
+
     pub async fn add_project(&self, path: &str) -> Result<ProjectView> {
         let git = self.inner.git.clone();
         let p = PathBuf::from(path);
@@ -937,6 +982,13 @@ impl Supervisor {
     fn no_workspace(&self) -> Error {
         invalid(tr!(self.inner.lang(), "这个目标还没有工作区", "This goal has no workspace yet"))
     }
+}
+
+fn install_demo_engine(src: &Path, dst: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir_all(dst.parent().unwrap_or(Path::new("/")))?;
+    std::fs::copy(src, dst)?;
+    std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o755))
 }
 
 /// Copies the bundled extension into Tower's data directory, so runs never

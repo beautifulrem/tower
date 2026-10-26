@@ -55,7 +55,7 @@ async fn harness(scenario: &str) -> Harness {
     let ext = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal");
     let sink = Arc::new(Collect::default());
     let sup = Supervisor::start(
-        Config { paths: Paths::new(root.join("tower")), extension_source: ext, env: Some(env) },
+        Config { paths: Paths::new(root.join("tower")), extension_source: ext, env: Some(env), demo_engine: None },
         sink.clone(),
     )
     .await

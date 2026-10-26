@@ -87,6 +87,7 @@ async fn a_goal_runs_through_the_real_pi() {
             paths: Paths::new(root.join("tower")),
             extension_source: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal"),
             env: Some(env),
+            demo_engine: None,
         },
         Arc::new(NullSink),
     )

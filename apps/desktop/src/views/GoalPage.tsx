@@ -19,9 +19,11 @@ import { popupActions } from "../lib/native";
 import { clock, count, duration, short, usd, usdLimit } from "../lib/format";
 import { useKeys } from "../lib/keys";
 import { useMenu } from "../lib/menu";
+import { t } from "../lib/i18n";
 import { pauseLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, onTrace, state, toast } from "../lib/store";
+import { isSandboxProblem } from "./Welcome";
 
 export function GoalPage(props: { id: string }) {
   const [detail, { refetch, mutate }] = createResource(() => props.id, api.goal);
@@ -81,17 +83,17 @@ export function GoalPage(props: { id: string }) {
               <div class="goal-sub meta halt">
                 <span class="code-val t3">{g().id}</span>
                 <span class="sep">·</span>
-                <span class="t1">{stateLabel[g().state]}</span>
+                <span class="t1">{stateLabel(g().state)}</span>
                 <Show when={g().pause_reason && g().state === "paused"}>
                   <span class="sep">·</span>
-                  <span>{pauseLabel[g().pause_reason!]}</span>
+                  <span>{pauseLabel(g().pause_reason!)}</span>
                 </Show>
                 <Show when={g().run_no > 0}>
                   <span class="sep">·</span>
                   <span>
-                    第 {g().run_no} 次运行
+                    {t("goal.runN", { n: g().run_no })}
                     <Show when={g().rework_cycles > 0}>
-                      （返工 {g().rework_cycles} / {g().max_rework}）
+                      {t("goal.reworkParen", { n: g().rework_cycles, max: g().max_rework })}
                     </Show>
                   </span>
                 </Show>
@@ -99,12 +101,12 @@ export function GoalPage(props: { id: string }) {
                 <span>{g().project_name}</span>
                 <Show when={detail()?.contract}>
                   <span class="sep">·</span>
-                  <span>合同 v{detail()!.contract.version}</span>
+                  <span>{t("goal.contractV", { v: detail()!.contract.version })}</span>
                 </Show>
                 <Show when={g().verified_pin}>
                   <span class="sep">·</span>
                   <FactChip pin={g().verified_pin}>
-                    <span>已验证</span>
+                    <span>{t("goal.verified")}</span>
                   </FactChip>
                 </Show>
               </div>
@@ -116,9 +118,7 @@ export function GoalPage(props: { id: string }) {
 
           <Show when={detail()?.briefing.length}>
             <div class="briefing">
-              <span class="briefing-title">
-                自你 {clock(g().last_viewed_at ?? 0)} 上次查看
-              </span>
+              <span class="briefing-title">{t("goal.since", { time: clock(g().last_viewed_at ?? 0) })}</span>
               <For each={detail()!.briefing.slice(-6)}>
                 {(b) => (
                   <span class="briefing-item" classList={{ "briefing-claim": b.source === "claim" }}>
@@ -171,39 +171,38 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
   const s = () => props.goal.state;
   const id = () => props.goal.id;
   const confirmPush = (pr: boolean) => {
-    const what = pr ? "推送到 origin 并创建 PR" : "推送到 origin";
-    if (confirm(`把 ${props.goal.branch} ${what}？推送无法撤回。`)) void act(() => api.push(id(), pr));
+    if (confirm(t("goal.confirmPush", { branch: props.goal.branch ?? "", pr }))) void act(() => api.push(id(), pr));
   };
   const more = () =>
     popupActions([
-      { label: props.watching ? "回到状态视图" : "观察（实时轨迹）", run: props.onWatch },
-      { label: "修订合同…", run: () => go({ name: "new", amendId: id() }), enabled: !["draft", "archived", "abandoned", "accepted", "integrated"].includes(s()) },
-      { label: "重新验证", run: () => void act(() => api.retryVerify(id())), enabled: ["in_review", "paused"].includes(s()) },
-      { label: "在编辑器中打开工作区", run: () => void act(() => api.openWorkspace(id(), "editor")), separatorBefore: true, enabled: !["draft", "ready"].includes(s()) },
-      { label: "在终端中打开工作区", run: () => void act(() => api.openWorkspace(id(), "terminal")), enabled: !["draft", "ready"].includes(s()) },
-      { label: "在 Finder 中显示工作区", run: () => void act(() => api.openWorkspace(id(), "finder")), enabled: !["draft", "ready"].includes(s()) },
-      { label: "只推送分支", run: () => confirmPush(false), separatorBefore: true, enabled: ["accepted", "integrated"].includes(s()) && !!props.goal.branch },
+      { label: props.watching ? t("goal.backToStatus") : t("goal.watch"), run: props.onWatch },
+      { label: t("goal.amend"), run: () => go({ name: "new", amendId: id() }), enabled: !["draft", "archived", "abandoned", "accepted", "integrated"].includes(s()) },
+      { label: t("goal.reverify"), run: () => void act(() => api.retryVerify(id())), enabled: ["in_review", "paused"].includes(s()) },
+      { label: t("goal.openEditor"), run: () => void act(() => api.openWorkspace(id(), "editor")), separatorBefore: true, enabled: !["draft", "ready"].includes(s()) },
+      { label: t("goal.openTerminal"), run: () => void act(() => api.openWorkspace(id(), "terminal")), enabled: !["draft", "ready"].includes(s()) },
+      { label: t("goal.showFinder"), run: () => void act(() => api.openWorkspace(id(), "finder")), enabled: !["draft", "ready"].includes(s()) },
+      { label: t("goal.pushOnly"), run: () => confirmPush(false), separatorBefore: true, enabled: ["accepted", "integrated"].includes(s()) && !!props.goal.branch },
       {
-        label: "复制推送命令",
+        label: t("goal.copyPush"),
         run: () => {
           void navigator.clipboard.writeText(`git push -u origin ${props.goal.branch}`);
-          toast("info", "已复制：在你的终端中运行即可推送");
+          toast("info", t("goal.copiedPush"));
         },
         enabled: !!props.goal.branch,
       },
-      { label: "归档", run: () => void act(() => api.archive(id()), "已归档"), enabled: ["accepted", "integrated", "in_review"].includes(s()) },
+      { label: t("goal.archive"), run: () => void act(() => api.archive(id()), t("goal.archived")), enabled: ["accepted", "integrated", "in_review"].includes(s()) },
       {
-        label: "删除工作区…",
+        label: t("goal.removeWorkspace"),
         run: () => {
-          if (confirm(`删除 ${id()} 的工作区？轨迹与记录保留；你的仓库不受影响。`)) void act(() => api.removeWorkspace(id()), "工作区已删除");
+          if (confirm(t("goal.removeWorkspaceConfirm", { id: id() }))) void act(() => api.removeWorkspace(id()), t("goal.workspaceRemoved"));
         },
         enabled: ["archived", "abandoned"].includes(s()),
       },
       {
-        label: "放弃这个目标…",
+        label: t("goal.abandon"),
         separatorBefore: true,
         run: () => {
-          if (confirm(`放弃 ${id()}？Agent 会停止，工作区保留在磁盘上。`)) void act(() => api.abandon(id()));
+          if (confirm(t("goal.abandonConfirm", { id: id() }))) void act(() => api.abandon(id()));
         },
         enabled: !["archived", "abandoned"].includes(s()),
       },
@@ -214,36 +213,36 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
       <Switch>
         <Match when={s() === "in_review"}>
           <Button size="s" variant="primary" kbd="r" onClick={() => go({ name: "review", id: id() })}>
-            评审
+            {t("goal.review")}
           </Button>
         </Match>
         <Match when={s() === "paused"}>
           <Button size="s" variant="primary" kbd="p" onClick={props.onPause}>
-            继续
+            {t("goal.resume")}
           </Button>
         </Match>
         <Match when={s() === "draft"}>
           <Button size="s" variant="primary" onClick={() => go({ name: "new", draftId: id() })}>
-            编辑合同
+            {t("goal.editContract")}
           </Button>
         </Match>
         <Match when={["accepted", "integrated"].includes(s()) && props.goal.branch}>
           <Button size="s" variant="primary" onClick={() => confirmPush(true)}>
-            推送并开 PR
+            {t("goal.pushPr")}
           </Button>
         </Match>
       </Switch>
       <Show when={["running", "verifying", "ready", "claimed"].includes(s())}>
         <Button size="s" kbd="p" onClick={props.onPause}>
-          暂停
+          {t("goal.pause")}
         </Button>
       </Show>
       <Show when={s() !== "in_review" && (props.goal.diffstat !== null || s() === "running")}>
         <Button size="s" kbd="r" onClick={() => go({ name: "review", id: id() })}>
-          改动
+          {t("goal.changes")}
         </Button>
       </Show>
-      <Button size="s" variant="ghost" aria-label="更多操作" onClick={() => void more()}>
+      <Button size="s" variant="ghost" aria-label={t("goal.moreActions")} onClick={() => void more()}>
         ⋯
       </Button>
     </>
@@ -263,27 +262,25 @@ function GoalBlocks(props: { d: GoalDetail }) {
   return (
     <>
       <Show when={causes().length || failing().length}>
-        <Section title="原因">
+        <Section title={t("goal.cause")}>
           <For each={failing()}>
             {(c) => (
               <div class="fact-row">
                 <span class="result result-fail">✕</span>
-                <span class="t1">
-                  {c.criterion.id} {c.criterion.title} 失败
-                </span>
+                <span class="t1">{t("goal.criterionFailed", { id: c.criterion.id, title: c.criterion.title })}</span>
                 <span class="grow" />
                 <FactChip pin={c.verified!.pin} at={c.verified!.at}>
-                  <span>退出码 {c.verified!.exit_code ?? "—"}</span>
+                  <span>{t("common.exitCode", { code: c.verified!.exit_code ?? "—" })}</span>
                 </FactChip>
               </div>
             )}
           </For>
-          <For each={causes()}>{(c) => <Claim kind="原因">{c.text}</Claim>}</For>
+          <For each={causes()}>{(c) => <Claim kind={t("claimKind.cause")}>{c.text}</Claim>}</For>
         </Section>
       </Show>
 
       <Show when={d().sentinels.length}>
-        <Section title="哨兵">
+        <Section title={t("goal.sentinels")}>
           <For each={d().sentinels}>
             {(h) => (
               <div class="sentinel">
@@ -291,7 +288,7 @@ function GoalBlocks(props: { d: GoalDetail }) {
                   <span class={h.severity >= 3 ? "mark-danger" : "t1"}>{h.severity >= 3 ? "■" : "◇"}</span>
                   <span class="t1">{h.title}</span>
                   <span class="grow" />
-                  <span class="meta">{h.severity >= 3 ? "需要你确认" : "评审时留意"}</span>
+                  <span class="meta">{h.severity >= 3 ? t("goal.needsConfirm") : t("goal.noteInReview")}</span>
                 </div>
                 <pre class="sentinel-detail mono">{h.detail}</pre>
               </div>
@@ -301,68 +298,68 @@ function GoalBlocks(props: { d: GoalDetail }) {
       </Show>
 
       <Section
-        title="验收标准"
+        title={t("goal.criteria")}
         aside={<CriteriaBar progress={g().progress} />}
       >
         <For each={d().criteria}>{(c) => <CriterionRow goalId={g().id} c={c} state={g().state} />}</For>
         <Show when={d().criteria.length === 0}>
-          <p class="meta">合同没有验收标准：结果由你人工判断。</p>
+          <p class="meta">{t("goal.noCriteria")}</p>
         </Show>
       </Section>
 
       <Section
-        title="改动"
+        title={t("goal.changes")}
         aside={
           <Show when={g().diffstat}>
             <Button size="s" variant="ghost" onClick={() => go({ name: "review", id: g().id })}>
-              打开改动视图
+              {t("goal.openChanges")}
             </Button>
           </Show>
         }
       >
-        <Show when={g().diffstat} fallback={<p class="meta">还没有快照。Agent 提交后 Tower 会对工作区拍快照并验证。</p>}>
+        <Show when={g().diffstat} fallback={<p class="meta">{t("goal.noSnapshot")}</p>}>
           <div class="fact-row num">
             <span class="diff-add">+{count(g().diffstat!.additions)}</span>
             <span class="diff-del">−{count(g().diffstat!.deletions)}</span>
             <span class="sep">·</span>
-            <span>{g().diffstat!.files} 个文件</span>
+            <span>{t("common.files", { n: g().diffstat!.files })}</span>
             <span class="sep">·</span>
-            <span class="t2">相对 base @{short(d().base_commit)}</span>
+            <span class="t2">{t("goal.relativeToBase", { sha: short(d().base_commit) })}</span>
             <span class="grow" />
             <FactChip pin={d().pin} />
           </div>
         </Show>
         <Show when={d().submit_summary}>
-          <Claim kind="提交说明">{d().submit_summary}</Claim>
+          <Claim kind={t("goal.submitSummary")}>{d().submit_summary}</Claim>
         </Show>
       </Section>
 
-      <Section title="接下来">
-        <Show when={next()} fallback={<p class="meta">Agent 还没有说明下一步。</p>}>
-          <Claim kind="下一步">{next()!.text}</Claim>
+      <Section title={t("goal.next")}>
+        <Show when={next()} fallback={<p class="meta">{t("goal.noNext")}</p>}>
+          <Claim kind={t("goal.nextStep")}>{next()!.text}</Claim>
         </Show>
         <BudgetMeter g={g()} />
       </Section>
 
       <Show when={ledger().length}>
-        <Section title="账本：说法 ↔ 事实">
+        <Section title={t("goal.ledger")}>
           <For each={ledger()}>{(c) => <LedgerRow c={c} />}</For>
         </Section>
       </Show>
 
       <Show when={assumptions().length || decisions().length}>
-        <Section title="决定与假设">
+        <Section title={t("goal.decisions")}>
           <For each={[...assumptions(), ...decisions()]}>{(c) => <DecisionClaim goalId={g().id} c={c} />}</For>
         </Section>
       </Show>
 
       <Show when={d().runs.length}>
-        <Section title="运行">
+        <Section title={t("goal.runs")}>
           <For each={[...d().runs].reverse()}>
             {(r) => (
               <div class="run-row meta">
                 <span class="num t1">R-{String(r.run_no).padStart(2, "0")}</span>
-                <span>{({ initial: "首次", rework: "返工", resume: "继续", request_changes: "按评审修改" } as Record<string, string>)[r.purpose] ?? r.purpose}</span>
+                <span>{runPurpose(r.purpose)}</span>
                 <span class="sep">·</span>
                 <span class="num">{clock(r.started_at)}</span>
                 <Show when={r.ended_at}>
@@ -370,7 +367,7 @@ function GoalBlocks(props: { d: GoalDetail }) {
                   <span class="num">{duration(r.ended_at! - r.started_at)}</span>
                 </Show>
                 <span class="grow" />
-                <span>{({ submitted: "自称完成", paused: "已暂停", crashed: "引擎退出", abandoned: "已放弃", interrupted: "被中断" } as Record<string, string>)[r.outcome ?? ""] ?? (r.ended_at ? r.outcome : "进行中")}</span>
+                <span>{runOutcome(r.outcome) ?? (r.ended_at ? r.outcome : t("goal.inProgress"))}</span>
               </div>
             )}
           </For>
@@ -378,6 +375,26 @@ function GoalBlocks(props: { d: GoalDetail }) {
       </Show>
     </>
   );
+}
+
+function runPurpose(purpose: string): string {
+  const key = ({ initial: "purposeInitial", rework: "purposeRework", resume: "purposeResume", request_changes: "purposeRequestChanges" } as const)[
+    purpose as "initial"
+  ];
+  return key ? t(`goal.${key}`) : purpose;
+}
+
+function runOutcome(outcome: string | null): string | null {
+  const key = (
+    {
+      submitted: "outcomeSubmitted",
+      paused: "outcomePaused",
+      crashed: "outcomeCrashed",
+      abandoned: "outcomeAbandoned",
+      interrupted: "outcomeInterrupted",
+    } as const
+  )[(outcome ?? "") as "submitted"];
+  return key ? t(`goal.${key}`) : null;
 }
 
 function CriterionRow(props: { goalId: string; c: CriterionView; state: string }) {
@@ -402,7 +419,7 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
               checked={c().human_checked}
               disabled={!["in_review", "verifying", "running", "paused", "claimed"].includes(props.state)}
               onChange={(e) => void act(() => api.humanCheck(props.goalId, c().criterion.id, e.currentTarget.checked))}
-              title="人工标准：由你勾选，不计入已验证"
+              title={t("goal.humanCriterionTitle")}
             />
           }
         >
@@ -419,28 +436,28 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
         </Show>
         <span class="grow" />
         <Show when={v()}>
-          <button class="chip-button" onClick={() => setOpen((o) => !o)} title="查看输出">
+          <button class="chip-button" onClick={() => setOpen((o) => !o)} title={t("goal.viewOutput")}>
             <FactChip pin={v()!.pin} at={v()!.at}>
-              <span>{v()!.passed ? "通过" : "失败"}</span>
+              <span>{v()!.passed ? t("common.passed") : t("common.failed")}</span>
               <span class="sep">·</span>
               <span>{duration(v()!.duration_ms)}</span>
             </FactChip>
           </button>
         </Show>
         <Show when={c().criterion.kind.type === "human"}>
-          <span class="meta">{c().human_checked ? "你已勾选" : "待你勾选"}</span>
+          <span class="meta">{c().human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")}</span>
         </Show>
       </div>
       <Show when={c().observed}>
         <div class="criterion-obs">
           <span class="result">{c().observed!.passed ? "○✓" : "○✕"}</span>
           <ObsChip at={c().observed!.at}>
-            <span>{c().observed!.passed ? "通过" : "失败"}（Agent 环境，未计入已验证）</span>
+            <span>{t("goal.observedNote", { result: c().observed!.passed ? t("common.passed") : t("common.failed") })}</span>
           </ObsChip>
         </div>
       </Show>
       <Show when={open() && v()}>
-        <pre class="output-tail">{v()!.output_tail || "（没有输出）"}</pre>
+        <pre class="output-tail">{v()!.output_tail || t("common.noOutput")}</pre>
       </Show>
     </div>
   );
@@ -461,7 +478,7 @@ function LedgerRow(props: { c: ClaimView }) {
 }
 
 function DecisionClaim(props: { goalId: string; c: ClaimView }) {
-  const label = () => (props.c.kind === "assumption" ? "假设" : "决定");
+  const label = () => (props.c.kind === "assumption" ? t("claimKind.assumption") : t("claimKind.decision"));
   return (
     <Claim
       kind={label()}
@@ -470,11 +487,11 @@ function DecisionClaim(props: { goalId: string; c: ClaimView }) {
           when={props.c.approved !== null}
           fallback={
             <Show when={props.c.kind === "assumption"}>
-              <span class="meta">待你确认</span>
+              <span class="meta">{t("goal.awaitingConfirm")}</span>
             </Show>
           }
         >
-          <HumanStamp at={props.c.at}> {props.c.approved ? "已批准" : "已驳回"}</HumanStamp>
+          <HumanStamp at={props.c.at}> {props.c.approved ? t("goal.approved") : t("goal.rejected")}</HumanStamp>
         </Show>
       }
     >
@@ -493,9 +510,17 @@ function BudgetMeter(props: { g: GoalDetail["summary"] }) {
         <span class="budget-soft" style={{ left: `${softPct()}%` }} />
       </div>
       <div class="meta num">
-        预算 {usd(props.g.cost_usd)} / 软 {usdLimit(props.g.budget.soft_usd)} · 硬 {usdLimit(props.g.budget.hard_usd)}
+        {t("goal.budgetLine", {
+          cost: usd(props.g.cost_usd),
+          soft: usdLimit(props.g.budget.soft_usd),
+          hard: usdLimit(props.g.budget.hard_usd),
+        })}
         <Show when={props.g.run_started_at}>
-          <span class="sep">·</span>墙钟 {duration(state.now - props.g.run_started_at!, false)} / 软 {props.g.budget.wall_minutes} 分
+          <span class="sep">·</span>
+          {t("goal.wallLine", {
+            elapsed: duration(state.now - props.g.run_started_at!, false),
+            minutes: props.g.budget.wall_minutes,
+          })}
         </Show>
       </div>
     </div>
@@ -505,24 +530,28 @@ function BudgetMeter(props: { g: GoalDetail["summary"] }) {
 function ContractRail(props: { d: GoalDetail }) {
   const c = () => props.d.contract;
   const autonomy = () =>
-    ({ cautious: "谨慎：非只读命令都先问", standard: "标准：范围内直接做，依赖与 CI 先问", autonomous: "自主：只有单向门先问" })[c().autonomy];
+    ({
+      cautious: t("goal.autonomyCautious"),
+      standard: t("goal.autonomyStandard"),
+      autonomous: t("goal.autonomyAutonomous"),
+    })[c().autonomy];
   return (
     <div class="rail">
       <div class="rail-block">
         <div class="rail-head">
-          <span>合同 v{c().version} 摘要</span>
+          <span>{t("goal.contractSummary", { v: c().version })}</span>
           <span class="grow" />
           <Kbd k="shift+e" />
         </div>
         <dl class="rail-dl">
-          <dt>目的</dt>
+          <dt>{t("goal.intent")}</dt>
           <dd class="reading">{c().intent}</dd>
           <Show when={c().done_when}>
-            <dt>终态</dt>
+            <dt>{t("goal.doneWhen")}</dt>
             <dd>{c().done_when}</dd>
           </Show>
           <Show when={c().constraints.length}>
-            <dt>约束</dt>
+            <dt>{t("goal.constraints")}</dt>
             <dd>
               <For each={c().constraints}>{(k) => <div>{k}</div>}</For>
             </dd>
@@ -530,41 +559,43 @@ function ContractRail(props: { d: GoalDetail }) {
         </dl>
       </div>
       <div class="rail-block">
-        <div class="rail-head">范围围栏</div>
+        <div class="rail-head">{t("goal.scope")}</div>
         <dl class="rail-dl mono">
-          <dt>包含</dt>
-          <dd>{c().scope.include.length ? c().scope.include.join("  ") : "整个仓库"}</dd>
+          <dt>{t("goal.include")}</dt>
+          <dd>{c().scope.include.length ? c().scope.include.join("  ") : t("goal.wholeRepo")}</dd>
           <Show when={c().scope.exclude.length}>
-            <dt>排除</dt>
+            <dt>{t("goal.exclude")}</dt>
             <dd>{c().scope.exclude.join("  ")}</dd>
           </Show>
           <Show when={c().scope.readonly.length}>
-            <dt>只读</dt>
+            <dt>{t("goal.readonly")}</dt>
             <dd>{c().scope.readonly.join("  ")}</dd>
           </Show>
         </dl>
       </div>
       <div class="rail-block">
-        <div class="rail-head">自主度</div>
+        <div class="rail-head">{t("goal.autonomy")}</div>
         <p class="meta">{autonomy()}</p>
-        <p class="meta">单向门（push、发布、改历史）一律先问</p>
-        <p class="meta">沙箱：{state.env?.problems.some((p) => p.includes("沙箱")) ? "无（S0）" : "S2 · Seatbelt"}</p>
+        <p class="meta">{t("goal.oneWayDoors")}</p>
+        <p class="meta">
+          {t("goal.sandbox", { value: state.env?.problems.some(isSandboxProblem) ? t("goal.noSandbox") : "S2 · Seatbelt" })}
+        </p>
       </div>
       <div class="rail-block">
-        <div class="rail-head">引擎</div>
+        <div class="rail-head">{t("goal.engine")}</div>
         <dl class="rail-dl">
-          <dt>模型</dt>
-          <dd class="mono">{c().model || state.settings?.default_model || "Pi 默认"}</dd>
+          <dt>{t("goal.model")}</dt>
+          <dd class="mono">{c().model || state.settings?.default_model || t("common.piDefault")}</dd>
           <Show when={props.d.local_files.length}>
-            <dt>本地文件</dt>
+            <dt>{t("goal.localFiles")}</dt>
             <dd class="mono">{props.d.local_files.join("  ")}</dd>
           </Show>
           <Show when={props.d.workspace}>
-            <dt>工作区</dt>
+            <dt>{t("goal.workspace")}</dt>
             <dd class="mono t2 break">{props.d.workspace}</dd>
           </Show>
           <Show when={props.d.summary.branch}>
-            <dt>分支</dt>
+            <dt>{t("goal.branch")}</dt>
             <dd class="mono">{props.d.summary.branch}</dd>
           </Show>
         </dl>
@@ -579,7 +610,7 @@ function WatchPanel(props: { id: string }) {
     <div class="watch">
       <Show when={stream()}>
         <div class="watch-stream">
-          <span class="claim-label">Agent 正在写</span>
+          <span class="claim-label">{t("goal.agentWriting")}</span>
           <p class="watch-stream-text">{stream()}</p>
         </div>
       </Show>
@@ -592,16 +623,20 @@ function SteerBox(props: { id: string; running: boolean }) {
   const [text, setText] = createSignal("");
   const [receipt, setReceipt] = createSignal<string | null>(null);
   const send = async () => {
-    const t = text().trim();
-    if (!t) return;
-    const r = await act(() => api.steer(props.id, t));
+    const body = text().trim();
+    if (!body) return;
+    const r = await act(() => api.steer(props.id, body));
     if (r) {
       setText("");
-      setReceipt(r === "queued_for_next_run" ? "已记下：下次运行开始时带给 Agent" : `已送达 · ${r === "queued" ? "排在当前步骤之后" : r}`);
+      setReceipt(
+        r === "queued_for_next_run"
+          ? t("goal.queuedNextRun")
+          : t("goal.delivered", { what: r === "queued" ? t("goal.afterCurrentStep") : r }),
+      );
       setTimeout(() => setReceipt(null), 5000);
     }
   };
-  const hint = createMemo(() => (props.running ? "给 Agent 的转向…（它会在当前步骤后读到）" : "写一条批注，继续时带给 Agent…"));
+  const hint = createMemo(() => (props.running ? t("goal.steerRunning") : t("goal.steerPaused")));
   return (
     <div class="steer">
       <textarea
@@ -617,7 +652,7 @@ function SteerBox(props: { id: string; running: boolean }) {
         <span class="meta">{receipt()}</span>
       </Show>
       <Button size="s" disabled={!text().trim()} onClick={send}>
-        发送 <Kbd k="mod+enter" />
+        {t("common.send")} <Kbd k="mod+enter" />
       </Button>
     </div>
   );

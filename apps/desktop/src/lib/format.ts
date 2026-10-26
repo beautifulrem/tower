@@ -1,21 +1,25 @@
-/** Coarse, quiet time and number formats (docs/12 §12.6.4). */
+/** Coarse, quiet time and number formats (docs/12 §12.6.4), in the interface locale. */
+import { locale, t } from "./i18n";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
-/** "刚刚", "5 分钟前", "3 小时前", "昨天", "3 天前" — a glanceable age. */
+/** A glanceable age: "刚刚" / "just now", "5 分钟前" / "5 min ago", "昨天" / "yesterday", "3 天前" / "3 days ago". */
 export function ago(at: number | null | undefined, now = Date.now()): string {
   if (!at) return "—";
   const d = Math.max(0, now - at);
-  if (d < 45_000) return "刚刚";
-  if (d < HOUR) return `${Math.round(d / MIN)} 分钟前`;
-  if (d < DAY) return `${Math.round(d / HOUR)} 小时前`;
-  if (d < 2 * DAY) return "昨天";
-  return `${Math.round(d / DAY)} 天前`;
+  if (d < 45_000) return t("format.justNow");
+  if (d < HOUR) return t("format.minutesAgo", { n: Math.max(1, Math.round(d / MIN)) });
+  if (d < DAY) return t("format.hoursAgo", { n: Math.round(d / HOUR) });
+  if (d < 2 * DAY) return t("format.yesterday");
+  return t("format.daysAgo", { n: Math.round(d / DAY) });
 }
 
-/** Elapsed duration as "42s", "3m", "1h 20m"; sub-second only when `precise`. */
+/**
+ * Elapsed duration as "42s", "3m", "1h 20m"; sub-second only when `precise`.
+ * The unit letters read the same in both interface languages.
+ */
 export function duration(ms: number, precise = true): string {
   if (ms < 1_000) return precise ? `${ms}ms` : "<1s";
   const s = Math.round(ms / 1_000);
@@ -25,6 +29,7 @@ export function duration(ms: number, precise = true): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+/** 24-hour "HH:MM" in both languages. */
 export function clock(at: number): string {
   const d = new Date(at);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -45,6 +50,7 @@ export function short(sha: string | null | undefined): string {
   return sha ? sha.slice(0, 7) : "—";
 }
 
+/** Grouped digits in the interface locale (1,234 in both, but follows the locale). */
 export function count(n: number): string {
-  return n.toLocaleString("en-US");
+  return n.toLocaleString(locale());
 }

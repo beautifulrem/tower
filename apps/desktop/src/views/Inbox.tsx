@@ -7,6 +7,7 @@ import { For, Show, createSignal } from "solid-js";
 import { DecisionCard } from "../components/DecisionCard";
 import { Empty } from "../components/ui";
 import { api } from "../lib/api";
+import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { act, state } from "../lib/store";
 
@@ -31,10 +32,10 @@ export function Inbox() {
       <Show
         when={items().length > 0}
         fallback={
-          <Empty title="没有需要你决定的事">问题、审批、假设与暂停会出现在这里</Empty>
+          <Empty title={t("inbox.emptyTitle")}>{t("inbox.emptyBody")}</Empty>
         }
       >
-        <p class="inbox-lede meta">按紧急程度排序：阻塞运行的问题与审批在前，待验收在后 · J / K 移动 · 1–9 选择</p>
+        <p class="inbox-lede meta">{t("inbox.lede")}</p>
         <For each={items()}>
           {(it, i) => (
             <div onMouseEnter={() => setFocus(i())}>

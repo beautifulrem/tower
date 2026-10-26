@@ -3,6 +3,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { api } from "../lib/api";
 import { usd } from "../lib/format";
+import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { back, canGoBack, go, route } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
@@ -16,7 +17,7 @@ export function TitleBar(props: { title: string; actions?: unknown }) {
   return (
     <header class="titlebar" data-tauri-drag-region>
       <Show when={canGoBack()}>
-        <button class="titlebar-back" onClick={back} title="返回 (Esc)">
+        <button class="titlebar-back" onClick={back} title={t("common.back")}>
           ←
         </button>
       </Show>
@@ -25,20 +26,18 @@ export function TitleBar(props: { title: string; actions?: unknown }) {
       </h1>
       <span class="grow" data-tauri-drag-region />
       <div class="titlebar-status meta num" data-tauri-drag-region>
-        <span>
-          运行 {running()}/{max()}
-        </span>
+        <span>{t("chrome.running", { n: running(), max: max() })}</span>
         <span class="sep">·</span>
-        <span>累计 {usd(spent())}</span>
+        <span>{t("chrome.spent", { usd: usd(spent()) })}</span>
         <Show when={state.env && !state.env.pi_version}>
           <span class="sep">·</span>
           <button class="link" onClick={() => go({ name: "settings" })}>
-            Pi 未就绪
+            {t("chrome.piNotReady")}
           </button>
         </Show>
       </div>
       <button class="titlebar-palette" onClick={() => openPalette()}>
-        <span class="t3">搜索目标与命令</span>
+        <span class="t3">{t("chrome.search")}</span>
         <Kbd k="mod+k" />
       </button>
     </header>
@@ -70,19 +69,19 @@ export function CommandPalette() {
 
   const commands = createMemo<Command[]>(() => {
     const base: Command[] = [
-      { id: "new", title: "新目标", hint: "n", run: () => go({ name: "new" }) },
-      { id: "overview", title: "打开概览", hint: "mod+1", run: () => go({ name: "overview" }) },
-      { id: "inbox", title: "打开需要你", hint: "mod+2", run: () => go({ name: "inbox" }) },
-      { id: "settings", title: "打开设置", hint: "mod+,", run: () => go({ name: "settings" }) },
-      { id: "integration", title: "检查已验收目标是否已合入", run: () => void act(api.checkIntegration, "已检查") },
+      { id: "new", title: t("app.newGoal"), hint: "n", run: () => go({ name: "new" }) },
+      { id: "overview", title: t("chrome.openOverview"), hint: "mod+1", run: () => go({ name: "overview" }) },
+      { id: "inbox", title: t("chrome.openInbox"), hint: "mod+2", run: () => go({ name: "inbox" }) },
+      { id: "settings", title: t("chrome.openSettings"), hint: "mod+,", run: () => go({ name: "settings" }) },
+      { id: "integration", title: t("chrome.checkIntegration"), run: () => void act(api.checkIntegration, t("chrome.checked")) },
     ];
     const r = route();
     if (r.name === "goal") {
       const g = state.goals[r.id];
-      if (g?.state === "running") base.unshift({ id: "pause", title: `暂停 ${g.id}`, hint: "p", run: () => void act(() => api.pause(g.id)) });
-      if (g?.state === "paused") base.unshift({ id: "resume", title: `继续 ${g.id}`, hint: "p", run: () => void act(() => api.resume(g.id)) });
+      if (g?.state === "running") base.unshift({ id: "pause", title: t("chrome.pause", { id: g.id }), hint: "p", run: () => void act(() => api.pause(g.id)) });
+      if (g?.state === "paused") base.unshift({ id: "resume", title: t("chrome.resume", { id: g.id }), hint: "p", run: () => void act(() => api.resume(g.id)) });
       if (g && ["in_review", "running", "accepted", "verifying"].includes(g.state))
-        base.unshift({ id: "review", title: `评审 ${g.id}`, hint: "r", run: () => go({ name: "review", id: g.id }) });
+        base.unshift({ id: "review", title: t("chrome.review", { id: g.id }), hint: "r", run: () => go({ name: "review", id: g.id }) });
     }
     const goals = goalList().map<Command>((g) => ({
       id: `goal-${g.id}`,
@@ -119,7 +118,7 @@ export function CommandPalette() {
           <input
             ref={(el) => setTimeout(() => el.focus())}
             class="palette-input"
-            placeholder="搜索目标与命令…"
+            placeholder={t("chrome.searchPlaceholder")}
             value={q()}
             onInput={(e) => {
               setQ(e.currentTarget.value);
@@ -133,7 +132,7 @@ export function CommandPalette() {
             }}
           />
           <div class="palette-list">
-            <For each={filtered()} fallback={<div class="palette-empty t3">没有匹配的结果</div>}>
+            <For each={filtered()} fallback={<div class="palette-empty t3">{t("chrome.noMatches")}</div>}>
               {(c, i) => (
                 <button class="palette-item" classList={{ selected: i() === sel() }} onMouseEnter={() => setSel(i())} onClick={() => run(c)}>
                   <Show when={c.goalId} fallback={<span class="palette-icon t3">›</span>}>

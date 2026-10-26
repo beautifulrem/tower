@@ -1,24 +1,19 @@
 /**
  * Trace (docs/04 §4.7): lossless and time-indexed, reachable in one key.
- * Tower's own injections are shown verbatim and labelled "Tower 注入".
+ * Tower's own injections are shown verbatim and labelled as injected by Tower.
  */
 import { For, Match, Show, Switch, createSignal, onCleanup, onMount } from "solid-js";
 
 import type { TraceEntry } from "../gen/TraceEntry";
 import { api } from "../lib/api";
 import { clock, duration, short } from "../lib/format";
+import { t } from "../lib/i18n";
 import { Claim } from "./Honesty";
 import { act, onTrace, refreshProjects, state } from "../lib/store";
 
 type Filter = "all" | "tools" | "words" | "facts" | "errors";
 
-const filters: [Filter, string][] = [
-  ["all", "全部"],
-  ["tools", "工具"],
-  ["words", "Agent 的话"],
-  ["facts", "事实"],
-  ["errors", "错误"],
-];
+const filters: Filter[] = ["all", "tools", "words", "facts", "errors"];
 
 function matches(e: TraceEntry, f: Filter): boolean {
   const k = e.event.kind;
@@ -51,7 +46,7 @@ async function remember(goalId: string, text: string) {
         memory,
         setup_command: p.setup_command,
       }),
-    "已存为项目记忆，之后的目标都会看到它",
+    t("trace.savedToMemory"),
   );
   await refreshProjects();
 }
@@ -84,21 +79,21 @@ export function Trace(props: { id: string; live?: boolean }) {
     <div class="trace">
       <div class="trace-filters">
         <For each={filters}>
-          {([f, label]) => (
+          {(f) => (
             <button class="pill" classList={{ active: filter() === f }} onClick={() => setFilter(f)}>
-              {label}
+              {t(`trace.${f}`)}
             </button>
           )}
         </For>
         <span class="grow" />
         <Show when={props.live}>
-          <span class="meta">实时</span>
+          <span class="meta">{t("trace.live")}</span>
         </Show>
       </div>
       <div class="trace-scroll" ref={scroller}>
         <Show when={more()}>
           <button class="trace-more link" onClick={load}>
-            载入更早的记录
+            {t("trace.loadEarlier")}
           </button>
         </Show>
         <For each={entries().filter((e) => matches(e, filter()))}>{(e) => <TraceRow e={e} />}</For>
@@ -116,8 +111,8 @@ function TraceRow(props: { e: TraceEntry }) {
       <div class="trace-content">
         <Switch fallback={<span class="t2">{ev().kind}</span>}>
           <Match when={ev().kind === "tool_ended" && ev()}>
-            {(t) => {
-              const e = t() as Extract<TraceEntry["event"], { kind: "tool_ended" }>;
+            {(x) => {
+              const e = x() as Extract<TraceEntry["event"], { kind: "tool_ended" }>;
               return (
                 <div class="row">
                   <span class="mono trace-tool" classList={{ "trace-error": e.is_error }}>
@@ -130,26 +125,25 @@ function TraceRow(props: { e: TraceEntry }) {
             }}
           </Match>
           <Match when={ev().kind === "assistant_message" && ev()}>
-            {(t) => (
+            {(x) => (
               <Claim>
-                <span class="pre">{(t() as { text: string }).text}</span>
+                <span class="pre">{(x() as { text: string }).text}</span>
               </Claim>
             )}
           </Match>
           <Match when={ev().kind === "claim" && ev()}>
-            {(t) => {
-              const c = t() as Extract<TraceEntry["event"], { kind: "claim" }>;
-              const label = { cause: "原因", decision: "决定", assumption: "假设", next: "下一步", progress: "进展", criterion_met: "标准已满足", done: "完成" }[c.claim];
-              return <Claim kind={label}>{c.text}</Claim>;
+            {(x) => {
+              const c = x() as Extract<TraceEntry["event"], { kind: "claim" }>;
+              return <Claim kind={t(`claimKind.${c.claim}`)}>{c.text}</Claim>;
             }}
           </Match>
           <Match when={ev().kind === "injected" && ev()}>
-            {(t) => {
-              const c = t() as Extract<TraceEntry["event"], { kind: "injected" }>;
+            {(x) => {
+              const c = x() as Extract<TraceEntry["event"], { kind: "injected" }>;
               return (
                 <div class="injected">
                   <button class="chip chip-fact" onClick={() => setOpen((o) => !o)}>
-                    ⚙ Tower 注入 · {c.channel === "steer" ? "转向" : "消息"} {open() ? "▾" : "▸"}
+                    {t("trace.injected")} · {c.channel === "steer" ? t("trace.steer") : t("trace.message")} {open() ? "▾" : "▸"}
                   </button>
                   <Show when={open()} fallback={<span class="t2 ellipsis">{c.text.split("\n")[0]}</span>}>
                     <pre class="output-tail">{c.text}</pre>
@@ -159,32 +153,32 @@ function TraceRow(props: { e: TraceEntry }) {
             }}
           </Match>
           <Match when={ev().kind === "criterion_result" && ev()}>
-            {(t) => {
-              const c = t() as Extract<TraceEntry["event"], { kind: "criterion_result" }>;
+            {(x) => {
+              const c = x() as Extract<TraceEntry["event"], { kind: "criterion_result" }>;
               return (
                 <div class="col">
                   <div class="row">
                     <span class={`result result-${c.passed ? "pass" : "fail"}`}>{c.passed ? "✓" : "✕"}</span>
                     <span>
-                      验证器 · {c.criterion} {c.passed ? "通过" : "失败"}
+                      {t("trace.verifier", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
                     </span>
                     <span class="meta num">
-                      退出码 {c.exit_code ?? "—"} · {duration(c.duration_ms)} · @{short(c.pin)}
+                      {t("common.exitCode", { code: c.exit_code ?? "—" })} · {duration(c.duration_ms)} · @{short(c.pin)}
                     </span>
                     <button class="link meta" onClick={() => setOpen((o) => !o)}>
-                      {open() ? "收起输出" : "输出"}
+                      {open() ? t("trace.hideOutput") : t("trace.output")}
                     </button>
                   </div>
                   <Show when={open()}>
-                    <pre class="output-tail">{c.output_tail || "（没有输出）"}</pre>
+                    <pre class="output-tail">{c.output_tail || t("common.noOutput")}</pre>
                   </Show>
                 </div>
               );
             }}
           </Match>
           <Match when={ev().kind === "state_changed" && ev()}>
-            {(t) => {
-              const c = t() as Extract<TraceEntry["event"], { kind: "state_changed" }>;
+            {(x) => {
+              const c = x() as Extract<TraceEntry["event"], { kind: "state_changed" }>;
               return (
                 <span class="t1">
                   {c.from} → {c.to}
@@ -196,26 +190,26 @@ function TraceRow(props: { e: TraceEntry }) {
             }}
           </Match>
           <Match when={ev().kind === "engine_error" && ev()}>
-            {(t) => <span class="trace-error pre">{(t() as { message: string }).message}</span>}
+            {(x) => <span class="trace-error pre">{(x() as { message: string }).message}</span>}
           </Match>
           <Match when={ev().kind === "steered" && ev()}>
-            {(t) => (
+            {(x) => (
               <div class="human-line row">
-                <span class="human-stamp">你</span>
-                <span class="grow pre">{(t() as { text: string }).text}</span>
-                <button class="link meta" onClick={() => void remember(props.e.goal_id, (t() as { text: string }).text)}>
-                  存为项目记忆
+                <span class="human-stamp">{t("common.you")}</span>
+                <span class="grow pre">{(x() as { text: string }).text}</span>
+                <button class="link meta" onClick={() => void remember(props.e.goal_id, (x() as { text: string }).text)}>
+                  {t("trace.remember")}
                 </button>
               </div>
             )}
           </Match>
           <Match when={ev().kind === "sentinel_hit" && ev()}>
-            {(t) => {
-              const c = t() as Extract<TraceEntry["event"], { kind: "sentinel_hit" }>;
+            {(x) => {
+              const c = x() as Extract<TraceEntry["event"], { kind: "sentinel_hit" }>;
               return (
                 <div class="col">
                   <span class="t1">
-                    <span class={c.severity >= 3 ? "mark-danger" : ""}>{c.severity >= 3 ? "■" : "◇"}</span> 哨兵 · {c.title}
+                    <span class={c.severity >= 3 ? "mark-danger" : ""}>{c.severity >= 3 ? "■" : "◇"}</span> {t("trace.sentinel")} · {c.title}
                   </span>
                   <span class="meta mono pre">{c.detail}</span>
                 </div>
@@ -223,24 +217,24 @@ function TraceRow(props: { e: TraceEntry }) {
             }}
           </Match>
           <Match when={ev().kind === "stalled" && ev()}>
-            {(t) => <span class="t1">◇ 可能卡住 · {(t() as { detail: string }).detail}</span>}
+            {(x) => <span class="t1">◇ {t("trace.stalled")} · {(x() as { detail: string }).detail}</span>}
           </Match>
           <Match when={ev().kind === "human_edited" && ev()}>
-            {(t) => (
+            {(x) => (
               <div class="human-line">
-                <span class="human-stamp">你改了</span> <span class="mono t2">{(t() as { files: string[] }).files.join("  ")}</span>
+                <span class="human-stamp">{t("trace.youEdited")}</span> <span class="mono t2">{(x() as { files: string[] }).files.join("  ")}</span>
               </div>
             )}
           </Match>
           <Match when={ev().kind === "local_files_copied" && ev()}>
-            {(t) => <span class="t2">复制本地文件 · <span class="mono">{(t() as { files: string[] }).files.join("  ")}</span></span>}
+            {(x) => <span class="t2">{t("trace.localCopied")} · <span class="mono">{(x() as { files: string[] }).files.join("  ")}</span></span>}
           </Match>
           <Match when={ev().kind === "branch_pushed" && ev()}>
-            {(t) => {
-              const c = t() as Extract<TraceEntry["event"], { kind: "branch_pushed" }>;
+            {(x) => {
+              const c = x() as Extract<TraceEntry["event"], { kind: "branch_pushed" }>;
               return (
                 <span class="t1">
-                  已推送 <span class="mono">{c.branch}</span>
+                  {t("trace.pushed")} <span class="mono">{c.branch}</span>
                   <Show when={c.pr_url}>
                     <span class="sep">·</span>
                     <span class="mono t2">{c.pr_url}</span>
@@ -250,29 +244,29 @@ function TraceRow(props: { e: TraceEntry }) {
             }}
           </Match>
           <Match when={ev().kind === "inbox_resolved" && ev()}>
-            {(t) => (
+            {(x) => (
               <div class="human-line">
-                <span class="human-stamp">你的回答</span> {(t() as { response: string }).response}
+                <span class="human-stamp">{t("trace.yourAnswer")}</span> {(x() as { response: string }).response}
               </div>
             )}
           </Match>
           <Match when={ev().kind === "pinned" && ev()}>
-            {(t) => {
-              const c = t() as Extract<TraceEntry["event"], { kind: "pinned" }>;
+            {(x) => {
+              const c = x() as Extract<TraceEntry["event"], { kind: "pinned" }>;
               return (
                 <span class="t2 num">
-                  快照 @{short(c.pin)} · +{c.additions} −{c.deletions} · {c.files} 文件
+                  {t("trace.snapshot", { pin: short(c.pin), a: c.additions, d: c.deletions, n: c.files })}
                 </span>
               );
             }}
           </Match>
           <Match when={ev().kind === "run_started" && ev()}>
-            {(t) => <span class="trace-divider">第 {(t() as { run_no: number }).run_no} 次运行开始</span>}
+            {(x) => <span class="trace-divider">{t("trace.runStarted", { n: (x() as { run_no: number }).run_no })}</span>}
           </Match>
-          <Match when={ev().kind === "note" && ev()}>{(t) => <span class="t2">{(t() as { text: string }).text}</span>}</Match>
+          <Match when={ev().kind === "note" && ev()}>{(x) => <span class="t2">{(x() as { text: string }).text}</span>}</Match>
           <Match when={ev().kind === "submitted" && ev()}>
-            {(t) => (
-              <Claim kind="已完成">{(t() as { summary: string }).summary}</Claim>
+            {(x) => (
+              <Claim kind={t("trace.done")}>{(x() as { summary: string }).summary}</Claim>
             )}
           </Match>
         </Switch>

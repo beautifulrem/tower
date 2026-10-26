@@ -7,11 +7,13 @@ import "./styles/app.css";
 import { render } from "solid-js/web";
 
 import { App } from "./App";
+import { syncDocumentLang } from "./lib/i18n";
 import { init } from "./lib/store";
 
 import { watchTheme } from "./lib/theme";
 
 watchTheme();
+syncDocumentLang();
 
 // Every textarea grows with its content (no web-style drag handles).
 const fit = (el: HTMLTextAreaElement) => {

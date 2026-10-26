@@ -7,6 +7,7 @@ import { For, Show, createMemo } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import { type Group, groupLabel, groupOf } from "../lib/labels";
+import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
 import { LifecycleGlyph, NeedsYouMark } from "./Glyph";
@@ -32,14 +33,14 @@ export function Sidebar() {
   const engineOk = () => !!state.env?.pi_version;
 
   return (
-    <nav class="sidebar" aria-label="目标">
+    <nav class="sidebar" aria-label={t("sidebar.label")}>
       <div class="sidebar-drag" data-tauri-drag-region />
       <div class="side-top">
         <button class="side-row" classList={{ active: route().name === "new" }} onClick={() => go({ name: "new" })}>
           <span class="side-icon" aria-hidden="true">
             ＋
           </span>
-          <span class="grow">新目标</span>
+          <span class="grow">{t("app.newGoal")}</span>
           <Kbd k="mod+n" />
         </button>
         <button class="side-row" classList={{ active: route().name === "inbox" }} onClick={() => go({ name: "inbox" })}>
@@ -48,7 +49,7 @@ export function Sidebar() {
               <NeedsYouMark />
             </Show>
           </span>
-          <span class="grow">需要你</span>
+          <span class="grow">{t("common.needsYou")}</span>
           <span class="num side-count" classList={{ t1: state.inbox.length > 0 }}>
             {state.inbox.length || ""}
           </span>
@@ -61,7 +62,7 @@ export function Sidebar() {
           <span class="side-icon" aria-hidden="true">
             ▦
           </span>
-          <span class="grow">概览</span>
+          <span class="grow">{t("app.overview")}</span>
           <Kbd k="mod+1" />
         </button>
       </div>
@@ -71,7 +72,7 @@ export function Sidebar() {
           {(grp) => (
             <div class="side-group">
               <div class="side-group-title halt">
-                <span>{groupLabel[grp.key]}</span>
+                <span>{groupLabel(grp.key)}</span>
                 <span class="num">{grp.goals.length}</span>
               </div>
               <For each={grp.goals}>
@@ -97,7 +98,7 @@ export function Sidebar() {
         </For>
         <Show when={ended() > 0}>
           <div class="side-group-title">
-            <span>已结束</span>
+            <span>{t("sidebar.ended")}</span>
             <span class="num">{ended()}</span>
           </div>
         </Show>
@@ -109,12 +110,12 @@ export function Sidebar() {
           fallback={
             <>
               <span class="mark-danger">■</span>
-              <span class="t1">引擎未就绪</span>
+              <span class="t1">{t("sidebar.engineDown")}</span>
             </>
           }
         >
           <span class="pulse" aria-hidden="true" />
-          <span>引擎正常</span>
+          <span>{t("sidebar.engineOk")}</span>
           <span class="sep">·</span>
           <span class="ellipsis">Pi {state.env!.pi_version!.split(" ")[0]}</span>
         </Show>

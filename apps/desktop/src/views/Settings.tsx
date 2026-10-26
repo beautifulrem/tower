@@ -5,14 +5,17 @@ import { Button, Field, Select } from "../components/ui";
 import type { ProjectView } from "../gen/ProjectView";
 import type { Settings as SettingsT } from "../gen/Settings";
 import { api } from "../lib/api";
+import { t } from "../lib/i18n";
 import { act, refreshEnvironment, refreshProjects, state } from "../lib/store";
 import { type ThemeChoice, setThemeChoice, themeChoice } from "../lib/theme";
 import { pickProject } from "./Welcome";
 
-export const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh"].map((t) => ({
-  value: t,
-  label: t || "Pi 默认",
-}));
+/** Thinking levels; call inside a reactive scope so "Pi default" follows the locale. */
+export const thinkingOptions = () =>
+  ["", "off", "minimal", "low", "medium", "high", "xhigh"].map((level) => ({
+    value: level,
+    label: level || t("common.piDefault"),
+  }));
 
 const lines = (s: string) =>
   s
@@ -29,25 +32,39 @@ export function Settings() {
   const save = async () => {
     const v = s();
     if (!v) return;
-    await act(() => api.saveSettings(v), "设置已保存");
+    await act(() => api.saveSettings(v), t("settings.saved"));
     await refreshEnvironment();
+  };
+  /**
+   * The language applies at once: only the language is saved (other unsaved
+   * edits stay in the form), and reloading the settings re-renders the
+   * interface in the new language.
+   */
+  const setLanguage = async (language: string) => {
+    patch({ language });
+    const saved = state.settings ?? (await api.settings());
+    await act(() => api.saveSettings({ ...saved, language }));
+    // Reloads `state.settings`: on success the interface switches; on
+    // failure it stays in the saved language.
+    await refreshEnvironment();
+    patch({ language: state.settings?.language ?? language });
   };
   const patch = (p: Partial<SettingsT>) => setS((cur) => (cur ? { ...cur, ...p } : cur));
 
   return (
     <div class="settings">
       <section class="settings-block">
-        <h2 class="section-title">环境</h2>
+        <h2 class="section-title">{t("settings.environment")}</h2>
         <dl class="kv">
           <dt>Pi</dt>
           <dd class="mono">
-            <Show when={state.env?.pi_path} fallback={<span class="t2">没有找到</span>}>
-              {state.env!.pi_path} <span class="t2">{state.env?.pi_version ?? "（无法运行）"}</span>
+            <Show when={state.env?.pi_path} fallback={<span class="t2">{t("settings.notFound")}</span>}>
+              {state.env!.pi_path} <span class="t2">{state.env?.pi_version ?? t("settings.cannotRun")}</span>
             </Show>
           </dd>
           <dt>git</dt>
-          <dd class="mono">{state.env?.git_version ?? "没有找到"}</dd>
-          <dt>数据目录</dt>
+          <dd class="mono">{state.env?.git_version ?? t("settings.notFound")}</dd>
+          <dt>{t("settings.dataDir")}</dt>
           <dd class="mono">{state.env?.data_dir}</dd>
         </dl>
         <For each={state.env?.problems ?? []}>{(p) => <p class="meta">◇ {p}</p>}</For>
@@ -55,40 +72,40 @@ export function Settings() {
 
       <Show when={s()}>
         <section class="settings-block">
-          <h2 class="section-title">引擎与默认值</h2>
-          <Field label="pi 可执行文件" hint="留空则在你登录 shell 的 PATH 中查找。">
+          <h2 class="section-title">{t("settings.engineDefaults")}</h2>
+          <Field label={t("settings.piPath")} hint={t("settings.piPathHint")}>
             <input class="mono" value={s()!.pi_path} onInput={(e) => patch({ pi_path: e.currentTarget.value })} placeholder="/opt/homebrew/bin/pi" />
           </Field>
           <div class="editor-grid2">
-            <Field label="默认模型">
+            <Field label={t("settings.defaultModel")}>
               <Select
                 value={s()!.default_model}
-                options={[{ value: "", label: "Pi 默认" }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
+                options={[{ value: "", label: t("common.piDefault") }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
                 onChange={(v) => patch({ default_model: v })}
               />
             </Field>
-            <Field label="默认思考强度">
+            <Field label={t("settings.defaultThinking")}>
               <Select
                 value={s()!.default_thinking}
-                options={THINKING}
+                options={thinkingOptions()}
                 onChange={(v) => patch({ default_thinking: v })}
               />
             </Field>
-            <Field label="同时运行的目标上限" hint="超出的目标排队等待。">
+            <Field label={t("settings.maxConcurrent")} hint={t("settings.maxConcurrentHint")}>
               <input class="num" type="number" min="1" max="10" value={s()!.max_concurrent} onInput={(e) => patch({ max_concurrent: Number(e.currentTarget.value) || 1 })} />
             </Field>
-            <Field label="Agent 写给你的语言">
+            <Field label={t("settings.language")} hint={t("settings.languageHint")}>
               <Select
                 value={s()!.language}
                 options={[
                   { value: "zh-CN", label: "简体中文" },
                   { value: "en", label: "English" },
                 ]}
-                onChange={(v) => patch({ language: v })}
+                onChange={(v) => void setLanguage(v)}
               />
             </Field>
           </div>
-          <Field label="额外加载的 Pi 扩展（每行一个文件）" hint="只加载这里列出的扩展，例如提供模型的扩展包。它们在沙箱之外运行。">
+          <Field label={t("settings.extraExtensions")} hint={t("settings.extraExtensionsHint")}>
             <textarea
               class="mono"
               rows={2}
@@ -100,61 +117,61 @@ export function Settings() {
           <label class="check">
             <input type="checkbox" checked={s()!.load_user_extensions} onChange={(e) => patch({ load_user_extensions: e.currentTarget.checked })} />
             <span>
-              加载我全部的 Pi 扩展
-              <span class="meta"> 扩展在沙箱之外以你的权限运行；只在你信任它们时打开。</span>
+              {t("settings.loadAll")}
+              <span class="meta">{t("settings.loadAllHint")}</span>
             </span>
           </label>
-          <Field label="编辑器命令" hint="“打开 → 在编辑器中打开”使用它。留空则依次尝试 cursor、code、zed。">
+          <Field label={t("settings.editor")} hint={t("settings.editorHint")}>
             <input class="mono" value={s()!.editor} onInput={(e) => patch({ editor: e.currentTarget.value })} placeholder="code" />
           </Field>
         </section>
 
         <section class="settings-block">
-          <h2 class="section-title">你的记忆</h2>
-          <p class="field-hint">写给每个目标的 Agent 的长期偏好，例如代码风格、不能碰的东西。会原样出现在它的系统提示里（最多约 800 字）。</p>
+          <h2 class="section-title">{t("settings.memory")}</h2>
+          <p class="field-hint">{t("settings.memoryHint")}</p>
           <textarea
             rows={4}
             value={s()!.user_memory}
             onInput={(e) => patch({ user_memory: e.currentTarget.value })}
-            placeholder={"提交前先跑类型检查\n不要引入新的运行时依赖"}
+            placeholder={t("settings.memoryPlaceholder")}
           />
         </section>
 
         <div class="settings-save">
           <Button variant="primary" onClick={save}>
-            保存设置
+            {t("settings.saveSettings")}
           </Button>
         </div>
       </Show>
 
       <section class="settings-block">
         <div class="row">
-          <h2 class="section-title grow">项目</h2>
+          <h2 class="section-title grow">{t("settings.projects")}</h2>
           <Button size="s" onClick={pickProject}>
-            添加仓库
+            {t("settings.addRepo")}
           </Button>
         </div>
-        <For each={state.projects} fallback={<p class="meta">还没有项目。</p>}>
+        <For each={state.projects} fallback={<p class="meta">{t("settings.noProjects")}</p>}>
           {(p) => <ProjectRow p={p} />}
         </For>
       </section>
 
       <section class="settings-block">
-        <h2 class="section-title">外观</h2>
+        <h2 class="section-title">{t("settings.appearance")}</h2>
         <div class="row">
           <For each={["system", "light", "dark"] as ThemeChoice[]}>
-            {(t) => (
+            {(choice) => (
               <label class="radio">
                 <input
                   type="radio"
                   name="theme"
-                  checked={theme() === t}
+                  checked={theme() === choice}
                   onChange={() => {
-                    setThemeChoice(t);
-                    setTheme(t);
+                    setThemeChoice(choice);
+                    setTheme(choice);
                   }}
                 />
-                <span>{{ system: "跟随系统", light: "浅色", dark: "深色" }[t]}</span>
+                <span>{{ system: t("settings.themeSystem"), light: t("settings.themeLight"), dark: t("settings.themeDark") }[choice]}</span>
               </label>
             )}
           </For>
@@ -186,7 +203,7 @@ function ProjectRow(props: { p: ProjectView }) {
           memory: memory(),
           setup_command: setup(),
         }),
-      "项目已保存",
+      t("settings.projectSaved"),
     );
     await refreshProjects();
   };
@@ -199,37 +216,37 @@ function ProjectRow(props: { p: ProjectView }) {
         </div>
         <Show when={dirty()}>
           <Button size="s" variant="primary" onClick={save}>
-            保存
+            {t("common.save")}
           </Button>
         </Show>
         <Button
           size="s"
           variant="ghost"
           onClick={async () => {
-            if (confirm(`移除项目 ${props.p.name}？不会删除你的仓库。`)) {
-              await act(() => api.removeProject(props.p.id), "已移除");
+            if (confirm(t("settings.removeConfirm", { name: props.p.name }))) {
+              await act(() => api.removeProject(props.p.id), t("settings.removed"));
               await refreshProjects();
             }
           }}
         >
-          移除
+          {t("common.remove")}
         </Button>
       </div>
       <div class="editor-grid2">
-        <Field label="基线分支" hint="Agent 从这个分支开始；验收后的分支也以它为基础。">
+        <Field label={t("settings.baseBranch")} hint={t("settings.baseBranchHint")}>
           <input class="mono" value={branch()} onInput={(e) => setBranch(e.currentTarget.value)} />
         </Field>
-        <Field label="测试命令" hint="快速开始的目标用它作为验收标准。">
+        <Field label={t("settings.testCommand")} hint={t("settings.testCommandHint")}>
           <input class="mono" value={test()} onInput={(e) => setTest(e.currentTarget.value)} placeholder="pnpm test" />
         </Field>
-        <Field label="工作区准备命令" hint="每个新工作区先运行一次（在沙箱中），例如安装依赖。验证时也会用它。">
+        <Field label={t("settings.setupCommand")} hint={t("settings.setupCommandHint")}>
           <input class="mono" value={setup()} onInput={(e) => setSetup(e.currentTarget.value)} placeholder="pnpm install --frozen-lockfile" />
         </Field>
-        <Field label="本地文件（每行一个模式）" hint="被 git 忽略、但测试需要的文件，如 .env。会复制进工作区与验证检出，对 Agent 可见。">
+        <Field label={t("settings.localFiles")} hint={t("settings.localFilesHint")}>
           <textarea class="mono" rows={3} value={local()} onInput={(e) => setLocal(e.currentTarget.value)} placeholder={".env\nconfig/*.local.json"} />
         </Field>
-        <Field label="项目记忆" hint="这个项目的约定，注入给它的每个目标。">
-          <textarea rows={3} value={memory()} onInput={(e) => setMemory(e.currentTarget.value)} placeholder="金额一律用 Money 类型，不用 number" />
+        <Field label={t("settings.projectMemory")} hint={t("settings.projectMemoryHint")}>
+          <textarea rows={3} value={memory()} onInput={(e) => setMemory(e.currentTarget.value)} placeholder={t("settings.projectMemoryPlaceholder")} />
         </Field>
       </div>
     </div>

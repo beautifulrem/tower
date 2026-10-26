@@ -11,10 +11,11 @@ import type { Contract } from "../gen/Contract";
 import type { ContractIssue } from "../gen/ContractIssue";
 import type { Criterion } from "../gen/Criterion";
 import { api } from "../lib/api";
+import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { back, go } from "../lib/nav";
 import { act, state } from "../lib/store";
-import { THINKING } from "./Settings";
+import { thinkingOptions } from "./Settings";
 
 function blank(intent = "", testCommand: string | null = null): Contract {
   return {
@@ -23,7 +24,7 @@ function blank(intent = "", testCommand: string | null = null): Contract {
     done_when: "",
     constraints: [],
     criteria: testCommand
-      ? [{ id: "C1", title: "现有测试全部通过", kind: { type: "exec", command: testCommand, timeout_secs: 600 } }]
+      ? [{ id: "C1", title: t("contract.defaultCriterion"), kind: { type: "exec", command: testCommand, timeout_secs: 600 } }]
       : [],
     scope: { include: [], exclude: [], readonly: [] },
     budget: { soft_usd: 5, hard_usd: 8, wall_minutes: 90 },
@@ -99,11 +100,11 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
     setBusy(true);
     try {
       if (props.amendId) {
-        const ok = await act(() => api.amendContract(props.amendId!, contract), "合同已修订，下次运行生效");
+        const ok = await act(() => api.amendContract(props.amendId!, contract), t("contract.amended"));
         if (ok !== undefined) back();
       } else if (props.draftId) {
         await act(() => api.updateDraft(props.draftId!, title(), contract));
-        if (ratify) await act(() => api.ratify(props.draftId!), "合同已批准");
+        if (ratify) await act(() => api.ratify(props.draftId!), t("contract.ratified"));
         go({ name: "goal", id: props.draftId });
       } else {
         const g = await act(() =>
@@ -122,49 +123,49 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
     <div class="editor">
       <div class="editor-main">
         <Show when={!editingId && state.projects.length > 1}>
-          <Field label="项目">
+          <Field label={t("contract.project")}>
             <Select value={projectId()} options={state.projects.map((p) => ({ value: p.id, label: p.name }))} onChange={setProjectId} />
           </Field>
         </Show>
-        <Field label="标题">
-          <input value={title()} onInput={(e) => setTitle(e.currentTarget.value)} placeholder="修复结账重复扣款" disabled={!!props.amendId} />
+        <Field label={t("contract.title")}>
+          <input value={title()} onInput={(e) => setTitle(e.currentTarget.value)} placeholder={t("contract.titlePlaceholder")} disabled={!!props.amendId} />
         </Field>
-        <Field label="目的" hint="用你的话说清楚为什么要做、要达到什么结果。Agent 会把它当作首要依据。" error={issueFor("intent")}>
-          <textarea rows={3} class="reading" value={c.intent} onInput={(e) => setC("intent", e.currentTarget.value)} placeholder="同一订单在任何重试路径下只扣款一次" />
+        <Field label={t("contract.intent")} hint={t("contract.intentHint")} error={issueFor("intent")}>
+          <textarea rows={3} class="reading" value={c.intent} onInput={(e) => setC("intent", e.currentTarget.value)} placeholder={t("contract.intentPlaceholder")} />
         </Field>
-        <Field label="终态（可选）" hint="验收标准之外，“完成”还意味着什么。">
+        <Field label={t("contract.doneWhen")} hint={t("contract.doneWhenHint")}>
           <textarea rows={2} value={c.done_when} onInput={(e) => setC("done_when", e.currentTarget.value)} />
         </Field>
-        <Field label="停止条件（每行一条，可选）" hint="遇到这些情况时，Agent 必须停下来问你，而不是自己决定。">
+        <Field label={t("contract.stopConditions")} hint={t("contract.stopConditionsHint")}>
           <textarea
             rows={2}
             value={c.stop_conditions.join("\n")}
             onInput={(e) => setC("stop_conditions", lines(e.currentTarget.value))}
-            placeholder={"需要改数据库结构时\n需要删除公开接口时"}
+            placeholder={t("contract.stopConditionsPlaceholder")}
           />
         </Field>
-        <Field label="约束（每行一条）">
-          <textarea rows={2} value={c.constraints.join("\n")} onInput={(e) => setC("constraints", lines(e.currentTarget.value))} placeholder={"不改公共 API\n不加新依赖"} />
+        <Field label={t("contract.constraints")}>
+          <textarea rows={2} value={c.constraints.join("\n")} onInput={(e) => setC("constraints", lines(e.currentTarget.value))} placeholder={t("contract.constraintsPlaceholder")} />
         </Field>
 
         <div class="editor-block">
           <div class="editor-block-head">
-            <h2 class="section-title">验收标准</h2>
+            <h2 class="section-title">{t("contract.criteria")}</h2>
             <span class="grow" />
             <Button size="s" onClick={() => addCriterion("exec")}>
-              + 命令
+              {t("contract.addCommand")}
             </Button>
             <Button size="s" variant="ghost" onClick={() => addCriterion("human")}>
-              + 人工
+              {t("contract.addHuman")}
             </Button>
           </div>
-          <p class="field-hint">命令标准由 Tower 在干净环境中执行，退出码为 0 即通过——这是“已验证”的唯一来源。人工标准由你勾选，不计入已验证。</p>
+          <p class="field-hint">{t("contract.criteriaHint")}</p>
           <For each={c.criteria}>
             {(cr, i) => (
               <div class="criterion-edit">
                 <span class="num t3">{cr.id}</span>
-                <input class="grow" value={cr.title} placeholder="说明" onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)} />
-                <Show when={cr.kind.type === "exec"} fallback={<span class="meta">人工勾选</span>}>
+                <input class="grow" value={cr.title} placeholder={t("contract.criterionTitle")} onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)} />
+                <Show when={cr.kind.type === "exec"} fallback={<span class="meta">{t("contract.humanCheck")}</span>}>
                   <input
                     class="mono grow"
                     value={(cr.kind as { command: string }).command}
@@ -176,12 +177,12 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                     type="number"
                     min="1"
                     value={(cr.kind as { timeout_secs: number }).timeout_secs}
-                    title="超时（秒）"
+                    title={t("contract.timeout")}
                     onInput={(e) => setC("criteria", i(), "kind", produce((k: Criterion["kind"]) => { if (k.type === "exec") k.timeout_secs = Number(e.currentTarget.value) || 1; }))}
                   />
                 </Show>
                 <button class="link meta" onClick={() => setC("criteria", (l) => l.filter((_, j) => j !== i()))}>
-                  删除
+                  {t("common.delete")}
                 </button>
               </div>
             )}
@@ -189,22 +190,22 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <Show when={issueFor("criteria")}>
             <p class="field-warn">{issueFor("criteria")}</p>
           </Show>
-          <Field label="验证前的准备命令（可选）" hint="在干净检出中先运行一次，例如安装依赖。留空则按锁文件自动判断。">
+          <Field label={t("contract.setup")} hint={t("contract.setupHint")}>
             <input class="mono" value={c.setup} onInput={(e) => setC("setup", e.currentTarget.value)} placeholder="pnpm install --frozen-lockfile" />
           </Field>
         </div>
 
         <div class="editor-block">
-          <h2 class="section-title">范围围栏</h2>
-          <p class="field-hint">每行一个路径模式（如 src/**）。Agent 写围栏之外的文件需要你批准；评审时围栏外的改动排在最前。</p>
+          <h2 class="section-title">{t("contract.scope")}</h2>
+          <p class="field-hint">{t("contract.scopeHint")}</p>
           <div class="editor-grid3">
-            <Field label="可以改">
-              <textarea class="mono" rows={3} value={c.scope.include.join("\n")} onInput={(e) => setC("scope", "include", lines(e.currentTarget.value))} placeholder="留空 = 整个仓库" />
+            <Field label={t("contract.include")}>
+              <textarea class="mono" rows={3} value={c.scope.include.join("\n")} onInput={(e) => setC("scope", "include", lines(e.currentTarget.value))} placeholder={t("contract.includePlaceholder")} />
             </Field>
-            <Field label="不能改">
+            <Field label={t("contract.exclude")}>
               <textarea class="mono" rows={3} value={c.scope.exclude.join("\n")} onInput={(e) => setC("scope", "exclude", lines(e.currentTarget.value))} />
             </Field>
-            <Field label="只读">
+            <Field label={t("contract.readonly")}>
               <textarea class="mono" rows={3} value={c.scope.readonly.join("\n")} onInput={(e) => setC("scope", "readonly", lines(e.currentTarget.value))} placeholder="**/__snapshots__/**" />
             </Field>
           </div>
@@ -216,48 +217,48 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
 
       <aside class="editor-side">
         <div class="editor-block">
-          <h2 class="section-title">自主度</h2>
-          <For each={[["cautious", "谨慎", "非只读命令都先问你"], ["standard", "标准", "范围内编辑、跑测试直接做；加依赖、改 CI、递归删除先问"], ["autonomous", "自主", "只有单向门先问"]] as const}>
-            {([v, name, desc]) => (
+          <h2 class="section-title">{t("contract.autonomy")}</h2>
+          <For each={["cautious", "standard", "autonomous"] as const}>
+            {(v) => (
               <label class="radio">
                 <input type="radio" name="autonomy" checked={c.autonomy === v} onChange={() => setC("autonomy", v)} />
                 <span>
-                  <b>{name}</b>
-                  <span class="meta"> {desc}</span>
+                  <b>{t(`contract.${v}`)}</b>
+                  <span class="meta"> {t(`contract.${v}Desc`)}</span>
                 </span>
               </label>
             )}
           </For>
-          <p class="meta">推送、发布、改写历史在任何档位都先问你。</p>
+          <p class="meta">{t("contract.oneWayNote")}</p>
         </div>
         <div class="editor-block">
-          <h2 class="section-title">预算</h2>
+          <h2 class="section-title">{t("contract.budget")}</h2>
           <div class="editor-grid2">
-            <Field label="软上限 $" error={issueFor("budget")}>
+            <Field label={t("contract.softCap")} error={issueFor("budget")}>
               <input class="num" type="number" step="0.5" min="0" value={c.budget.soft_usd} onInput={(e) => setC("budget", "soft_usd", Number(e.currentTarget.value))} />
             </Field>
-            <Field label="硬上限 $">
+            <Field label={t("contract.hardCap")}>
               <input class="num" type="number" step="0.5" min="0" value={c.budget.hard_usd} onInput={(e) => setC("budget", "hard_usd", Number(e.currentTarget.value))} />
             </Field>
-            <Field label="单次运行墙钟（分）">
+            <Field label={t("contract.wallClock")}>
               <input class="num" type="number" min="1" value={c.budget.wall_minutes} onInput={(e) => setC("budget", "wall_minutes", Number(e.currentTarget.value) || 1)} />
             </Field>
-            <Field label="自动返工上限">
+            <Field label={t("contract.maxRework")}>
               <input class="num" type="number" min="0" max="10" value={c.max_rework} onInput={(e) => setC("max_rework", Number(e.currentTarget.value) || 0)} />
             </Field>
           </div>
         </div>
         <div class="editor-block">
-          <h2 class="section-title">引擎</h2>
-          <Field label="模型" hint="来自你的 Pi 配置。">
+          <h2 class="section-title">{t("contract.engine")}</h2>
+          <Field label={t("contract.model")} hint={t("contract.modelHint")}>
             <Select
               value={c.model}
-              options={[{ value: "", label: "Pi 默认" }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
+              options={[{ value: "", label: t("common.piDefault") }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
               onChange={(v) => setC("model", v)}
             />
           </Field>
-          <Field label="思考强度">
-            <Select value={c.thinking} options={THINKING} onChange={(v) => setC("thinking", v)} />
+          <Field label={t("contract.thinking")}>
+            <Select value={c.thinking} options={thinkingOptions()} onChange={(v) => setC("thinking", v)} />
           </Field>
         </div>
         <div class="editor-actions">
@@ -267,23 +268,23 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             </div>
           </Show>
           <Button variant="ghost" onClick={back}>
-            取消
+            {t("common.cancel")}
           </Button>
           <Show
             when={props.amendId}
             fallback={
               <>
                 <Button busy={busy()} onClick={() => save(false)}>
-                  保存为草稿
+                  {t("contract.saveDraft")}
                 </Button>
                 <Button variant="primary" busy={busy()} disabled={errors().length > 0} onClick={() => save(true)}>
-                  批准并开始 <Kbd k="mod+enter" />
+                  {t("contract.ratifyStart")} <Kbd k="mod+enter" />
                 </Button>
               </>
             }
           >
             <Button variant="primary" busy={busy()} disabled={errors().length > 0} onClick={() => save(true)}>
-              批准修订 <Kbd k="mod+enter" />
+              {t("contract.ratifyAmend")} <Kbd k="mod+enter" />
             </Button>
           </Show>
         </div>

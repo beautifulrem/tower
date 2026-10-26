@@ -1,6 +1,7 @@
 /** Small building blocks shared by every view. */
 import { type JSX, Show, splitProps } from "solid-js";
 
+import { t } from "../lib/i18n";
 import { keyHint } from "../lib/keys";
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -105,5 +106,5 @@ export function Select<T extends string>(props: {
 
 /** Waiting is stated, not animated (docs/12 §12.7: motion is a signal). */
 export function Loading(props: { text?: string }) {
-  return <p class="loading">{props.text ?? "载入中…"}</p>;
+  return <p class="loading">{props.text ?? t("common.loading")}</p>;
 }

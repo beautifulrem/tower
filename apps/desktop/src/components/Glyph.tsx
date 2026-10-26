@@ -6,6 +6,7 @@ import { type JSX, Match, Switch } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { LifecycleState } from "../gen/LifecycleState";
+import { t } from "../lib/i18n";
 import { machineVerified } from "../lib/labels";
 
 type Tone = "neutral" | "active" | "verified" | "faint";
@@ -133,7 +134,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
 /** ◆: something needs your decision. The only attention mark. */
 export function NeedsYouMark(props: { title?: string }) {
   return (
-    <svg class="glyph mark-attention" width="9" height="9" viewBox="0 0 10 10" aria-label={props.title ?? "需要你"}>
+    <svg class="glyph mark-attention" width="9" height="9" viewBox="0 0 10 10" aria-label={props.title ?? t("common.needsYou")}>
       <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
     </svg>
   );

@@ -229,6 +229,8 @@ pub enum InboxKind {
     /// The run may be stuck (repeated failures, no progress). It keeps
     /// running; the human decides whether to wait, steer or pause.
     Stalled,
+    /// The pull request's CI failed after the goal was accepted and pushed.
+    CiFailed,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

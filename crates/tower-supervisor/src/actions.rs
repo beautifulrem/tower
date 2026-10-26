@@ -10,7 +10,7 @@ use tower_core::lifecycle::Transition;
 use tower_core::view::{InboxKind, ModelInfo};
 use tower_core::{EventKind, LifecycleState, PauseReason, tr};
 use tower_pi::{Engine, EngineConfig};
-use tower_store::GoalRecord;
+use tower_store::{GoalRecord, NewInboxItem};
 
 use crate::api::{ReviewComment, ToastLevel};
 use crate::{Inner, Result, invalid, prompts, run, verify};
@@ -108,6 +108,11 @@ pub async fn answer(inner: &Arc<Inner>, inbox_id: &str, response: &str) -> Resul
             }
         },
         InboxKind::ReviewReady => {}
+        InboxKind::CiFailed => {
+            if Choice::parse(response) == Some(Choice::SendCiFailures) {
+                send_ci_failures(inner, goal).await?;
+            }
+        }
     }
     Ok(())
 }
@@ -314,10 +319,20 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
     let message = seal_message(&rec, &pin, has_machine);
     let git = inner.git.clone();
     let root = PathBuf::from(&rec.project_root);
-    let (written, commit) =
-        tokio::task::spawn_blocking(move || git.seal(&root, Path::new(&ws), &base, &pin, &branch, &message))
-            .await
-            .map_err(|e| invalid(e.to_string()))??;
+    // Accepted before (and sent back, e.g. after CI failed): one more
+    // commit on the same branch, so a pushed PR updates.
+    let previous = match inner.store(|s| s.last_event(goal, "branch_written"))?.map(|e| e.event) {
+        Some(EventKind::BranchWritten { branch, commit }) => Some((branch, commit)),
+        _ => None,
+    };
+    let (written, commit) = tokio::task::spawn_blocking(move || match previous {
+        Some((branch, previous)) => {
+            git.seal_update(&root, Path::new(&ws), &previous, &pin, &branch, &message).map(|commit| (branch, commit))
+        }
+        None => git.seal(&root, Path::new(&ws), &base, &pin, &branch, &message),
+    })
+    .await
+    .map_err(|e| invalid(e.to_string()))??;
     inner.append(goal, EventKind::BranchWritten { branch: written.clone(), commit })?;
     // Say what acceptance leaves unresolved instead of dropping it silently.
     let open: Vec<&str> = detail
@@ -562,15 +577,75 @@ async fn check_pr(inner: &Arc<Inner>, gh: &Path, goal: &str) -> Result<()> {
         let note = tr!(lang, "PR 已在 GitHub 上合并", "The PR was merged on GitHub");
         inner.transition(goal, Transition::Integrated, None, &note)?;
     } else if newly_failing {
-        let title = inner.store(|s| s.goal(goal))?.title;
         let names = status.failing.join(", ");
-        inner.toast(
-            goal,
-            ToastLevel::Warning,
-            tr!(lang, "{title} 的 CI 未通过：{names}", "CI failed for {title}: {names}"),
-        );
+        inner.withdraw(goal, &[InboxKind::CiFailed], &tr!(lang, "有新的检查结果", "Newer check results"));
+        inner.open_inbox(NewInboxItem {
+            goal_id: goal.into(),
+            kind: InboxKind::CiFailed,
+            title: tr!(lang, "CI 未通过：{names}", "CI failed: {names}"),
+            subject: names.clone(),
+            body: tr!(
+                lang,
+                "可以把失败的检查和日志发给 Agent：它会在同一个工作区里修复，验证通过后由你再次验收，并推送到同一个 PR。",
+                "You can send the failing checks and their logs to the agent: it fixes them in the same workspace; once verified, you accept again and push to the same PR."
+            ),
+            options: Choice::labels(&[Choice::SendCiFailures, Choice::Dismiss], lang),
+            allow_text: true,
+            urgency: 2,
+            engine_ref: None,
+        })?;
     }
     Ok(())
+}
+
+/// Sends the PR's failing checks (names, links and the tail of their logs)
+/// back to the agent: the accepted goal runs again, and its next
+/// acceptance updates the same branch.
+async fn send_ci_failures(inner: &Arc<Inner>, goal: &str) -> Result<()> {
+    let lang = inner.lang();
+    let pr = inner.store(|s| s.summary(goal))?.pr.ok_or_else(|| invalid(tr!(lang, "没有 PR", "There is no PR")))?;
+    let gh = inner.env.which("gh").ok_or_else(|| invalid(tr!(lang, "没有找到 gh", "gh was not found")))?;
+    let out = tokio::process::Command::new(&gh)
+        .args(["pr", "view", &pr.url, "--json", "statusCheckRollup"])
+        .env_clear()
+        .envs(inner.env.pairs())
+        .output()
+        .await?;
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    let mut report = String::new();
+    for c in json.get("statusCheckRollup").and_then(|r| r.as_array()).into_iter().flatten() {
+        let s = |k: &str| c.get(k).and_then(|x| x.as_str()).unwrap_or_default().to_string();
+        let failed = matches!(s("conclusion").as_str(), "FAILURE" | "TIMED_OUT" | "CANCELLED" | "STARTUP_FAILURE")
+            || matches!(s("state").as_str(), "FAILURE" | "ERROR");
+        if !failed {
+            continue;
+        }
+        let name = if s("name").is_empty() { s("context") } else { s("name") };
+        let link = if s("detailsUrl").is_empty() { s("targetUrl") } else { s("detailsUrl") };
+        report.push_str(&format!("\n### {name}\n{link}\n"));
+        // GitHub Actions: the failed steps' log, when gh can fetch it.
+        if let Some(run_id) = link.split("/runs/").nth(1).and_then(|r| r.split('/').next()) {
+            let log = tokio::process::Command::new(&gh)
+                .args(["run", "view", run_id, "--log-failed"])
+                .env_clear()
+                .envs(inner.env.pairs())
+                .output()
+                .await;
+            if let Ok(log) = log {
+                let text = String::from_utf8_lossy(&log.stdout);
+                let lines: Vec<&str> = text.lines().collect();
+                let tail = lines[lines.len().saturating_sub(120)..].join("\n");
+                report.push_str(&format!("```\n{}\n```\n", tower_verify::redact(&tail)));
+            }
+        }
+    }
+    if report.len() > 16_000 {
+        let cut = report.char_indices().nth(16_000).map_or(report.len(), |(i, _)| i);
+        report.truncate(cut);
+    }
+    let note = tr!(lang, "把 CI 失败发给了 Agent", "Sent the CI failures to the agent");
+    inner.transition(goal, Transition::RequestChanges, None, &note)?;
+    run::start_run(inner, goal, "ci-fix", prompts::ci_failures(&pr.url, &report)).await
 }
 
 /// Summarises `gh pr view --json state,statusCheckRollup`.

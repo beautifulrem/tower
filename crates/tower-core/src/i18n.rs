@@ -164,10 +164,12 @@ pub enum Choice {
     Allow,
     Deny,
     InstallWithNetwork,
+    SendCiFailures,
+    Dismiss,
 }
 
 impl Choice {
-    pub const ALL: [Choice; 19] = [
+    pub const ALL: [Choice; 21] = [
         Choice::Approve,
         Choice::Reject,
         Choice::Retry,
@@ -187,6 +189,8 @@ impl Choice {
         Choice::Allow,
         Choice::Deny,
         Choice::InstallWithNetwork,
+        Choice::SendCiFailures,
+        Choice::Dismiss,
     ];
 
     pub fn label(self, lang: Lang) -> &'static str {
@@ -211,6 +215,8 @@ impl Choice {
             Allow => lang.pick("允许", "Allow"),
             Deny => lang.pick("拒绝", "Deny"),
             InstallWithNetwork => lang.pick("我看过改动，这次联网安装", "I've checked, install with the network"),
+            SendCiFailures => lang.pick("把失败发给 Agent 修复", "Send the failures to the agent"),
+            Dismiss => lang.pick("先不管", "Leave it"),
         }
     }
 
@@ -226,7 +232,12 @@ impl Choice {
         use crate::view::OptionTone;
         match self {
             Choice::Abandon | Choice::OverrideSentinel => OptionTone::Destructive,
-            Choice::Approve | Choice::Allow | Choice::Continue | Choice::Retry | Choice::Yes => OptionTone::Primary,
+            Choice::Approve
+            | Choice::Allow
+            | Choice::Continue
+            | Choice::Retry
+            | Choice::Yes
+            | Choice::SendCiFailures => OptionTone::Primary,
             _ => OptionTone::Neutral,
         }
     }

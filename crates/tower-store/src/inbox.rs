@@ -53,6 +53,7 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
         InboxKind::Stalled if !subject.is_empty() => {
             (tr!(lang, "可能卡住：{subject}", "May be stuck: {subject}"), subject)
         }
+        InboxKind::CiFailed => (tr!(lang, "CI 未通过：{subject}", "CI failed: {subject}"), subject),
         InboxKind::Approval if !subject.is_empty() => {
             (tr!(lang, "需要你批准：{subject}", "Approval needed: {subject}"), subject)
         }

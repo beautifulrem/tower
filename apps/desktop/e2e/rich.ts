@@ -135,6 +135,37 @@ export function enrichPhone(F: F) {
   };
 }
 
+/** The held-out output the supervisor puts on a card: its sentence, then `C2 · title` and the runner's lines, for the human only. */
+export const HELD_OUT_BODY = [
+  "Every visible criterion passed; the held-out tests did not. The agent does not know these tests and has not seen the output below.",
+  "",
+  "C2 · Rounding edge cases",
+  "✖ total rounds half-cents up (0.4ms)",
+  "  AssertionError: expected 10.01 to equal 10.02",
+  "ℹ fail 1",
+].join("\n");
+
+/**
+ * G-0004 is paused because the held-out tests failed (the card offers a hint, showing the agent, or abandoning), and G-0001's
+ * second criterion was verified with the held-out tests present.
+ */
+export function enrichHeldOut(F: F) {
+  for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "held_out_failed";
+  if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "held_out_failed";
+  const card = F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused");
+  if (card)
+    Object.assign(card, {
+      title: "Paused: Held-out tests failed (the agent cannot see them)",
+      subject: "Held-out tests failed (the agent cannot see them)",
+      body: HELD_OUT_BODY,
+      options: ["Show the agent the failure (it will see the held-out tests)", "Abandon this goal"],
+      tones: ["neutral", "destructive"],
+      allow_text: true,
+    });
+  const c2 = F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C2");
+  if (c2?.verified) c2.verified.held_out = true;
+}
+
 /** The phone page is switched on but Tailscale is disconnected: the supervisor keeps the reason, and serves nothing. */
 export function enrichPhoneProblem(F: F) {
   F.settings = { ...F.settings, remote_enabled: true, remote_local_network: false };

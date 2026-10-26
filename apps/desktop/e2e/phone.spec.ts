@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { HELD_OUT_BODY } from "./rich";
 import { fixtures } from "./tauri";
 
 const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../crates/tower-supervisor/src/remote.html"), "utf8");
@@ -107,6 +108,24 @@ test("the phone card is drawn with the desk's pen: a 32px strip with an amber ed
   const b = await cards.nth(1).boundingBox();
   expect(Math.round(b!.y - (a!.y + a!.height))).toBe(12);
   await expect(page.locator(".row .live .elapsed")).toHaveText("running 1h 49m");
+});
+
+test("a held-out failure on the phone keeps the sentence as prose and the runner's output as one machine block", async ({ page }) => {
+  await openPhone(page, {
+    state: {
+      goals: [{ id: "G-0004", title: "Find out why checkout is slow", state: "paused", mode: "idle", run_started_at: null, live_line: null, pause_reason: "held_out_failed", verified_pin: null }],
+      inbox: [
+        { id: "h", goal_id: "G-0004", goal_title: "Find out why checkout is slow", kind: "paused", title: "", subject: "Held-out tests failed (the agent cannot see them)", body: HELD_OUT_BODY, options: ["Show the agent the failure (it will see the held-out tests)", "Abandon this goal"], tones: ["neutral", "destructive"], allow_text: true, created_at: Date.now() },
+      ],
+      lang: "en",
+    },
+  });
+  const card = page.locator(".card").first();
+  await expect(card.locator(".body")).toContainText("Every visible criterion passed");
+  await expect(card.locator(".body")).not.toContainText("AssertionError");
+  await expect(card.locator(".tail")).toContainText("C2 · Rounding edge cases");
+  await expect(card.locator(".tail")).toContainText("AssertionError");
+  await expect(card.locator("textarea")).toBeVisible();
 });
 
 // Preview screens of the phone page, with the desktop's (SHOTS=<dir>).

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichCi, enrichEngines, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
+import { enrichCi, enrichEngines, enrichHeldOut, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -349,6 +349,10 @@ test("quiet hours are a daily window with two edges, and the last push's failure
   await from.fill("23:30");
   await from.blur();
   await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { quiet_hours: { start: number } | null } }).settings.quiet_hours?.start === 23 * 60 + 30)).toBe(true);
+  // Not a time: the field goes back to the saved edge.
+  await from.fill("late");
+  await from.blur();
+  await expect(from).toHaveValue("23:30");
   await expect(page.getByLabel("Also push when a goal is ready to accept")).toBeChecked();
   const status = page.locator(".push-status");
   await expect(status).toContainText("Last push failed · 21:03");
@@ -361,6 +365,44 @@ test("quiet hours are a daily window with two edges, and the last push's failure
   // Switching the window off saves null.
   await page.getByLabel("Quiet hours every day").uncheck();
   await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { quiet_hours: unknown } }).settings.quiet_hours === null)).toBe(true);
+});
+
+test("a held-out failure's card keeps the output for you, makes the hint the one primary path, and sends it as a note", async ({ page }) => {
+  await openTower(page, "goal/G-0004", { enrich: enrichHeldOut });
+  const card = page.locator(".decision-heldout");
+  await expect(card).toBeVisible();
+  await expect(card.locator(".heldout-label")).toHaveText("For you only");
+  await expect(card.locator(".heldout .output-tail")).toContainText("AssertionError");
+  // One primary action on the page, and it is the hint; showing the agent the failure is a plain button, abandoning asks twice.
+  const primaries = page.locator(".goal-page .btn-primary");
+  await expect(primaries).toHaveCount(1);
+  await expect(primaries).toHaveText(/Send the hint and resume/);
+  await expect(card.getByRole("button", { name: /Show the agent the failure/ })).toHaveClass(/btn-default/);
+  await expect(card.getByRole("button", { name: "Abandon this goal" })).toHaveClass(/btn-danger/);
+  // The output stands above the field, the field above the agent-facing choices.
+  const tops = await Promise.all([".heldout", ".decision-text", ".decision-actions"].map(async (sel) => (await card.locator(sel).boundingBox())!.y));
+  expect(tops[0]).toBeLessThan(tops[1]);
+  expect(tops[1]).toBeLessThan(tops[2]);
+  // The page's steer box steps aside: the card owns the only text field.
+  await expect(page.locator(".goal-page textarea")).toHaveCount(1);
+  await card.locator("textarea").fill("Half-cents round up, not down");
+  await page.keyboard.press("Meta+Enter");
+  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "answer")?.[1]).toEqual({ inboxId: expect.any(String), response: "Half-cents round up, not down" });
+});
+
+test("a result produced with the held-out tests present is marked for you only, on the goal page and in the verification sheet", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichHeldOut });
+  const chips = page.locator(".chip-you");
+  await expect(chips).toHaveCount(1);
+  await expect(chips).toHaveText("held-out tests · for you only");
+  await expect(chips).toHaveAttribute("title", /never saw this output/);
+  // The chip sits under C2's row, not C1's.
+  const c2 = page.locator(".criterion").filter({ hasText: "C2" });
+  await expect(c2.locator(".chip-you")).toHaveCount(1);
+  await page.keyboard.press("r");
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("e");
+  await expect(page.getByRole("dialog").locator(".chip-you")).toHaveCount(1);
 });
 
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {

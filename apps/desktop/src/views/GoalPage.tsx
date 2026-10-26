@@ -11,7 +11,7 @@ import { For, Match, Show, Switch, createEffect, createMemo, createResource, cre
 
 import { DecisionCard } from "../components/DecisionCard";
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark, ResultMark, Seal } from "../components/Glyph";
-import { BaselineLine, Claim, ConsistencyBadge, CriteriaBar, HumanStamp, ObsChip } from "../components/Honesty";
+import { BaselineLine, Claim, ConsistencyBadge, CriteriaBar, HeldOutLine, HumanStamp, ObsChip } from "../components/Honesty";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
 import { Button, Empty, IconButton, Kbd, Section, Loading } from "../components/ui";
@@ -753,6 +753,7 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string; 
         </Show>
       </div>
       <BaselineLine c={c()} base={props.base} />
+      <HeldOutLine c={c()} />
       <Show when={c().look}>{(l) => <LookStrip look={l()} title={`${c().criterion.id} ${c().criterion.title}`} />}</Show>
       <Show when={c().observed}>
         <div class="criterion-row criterion-obs">

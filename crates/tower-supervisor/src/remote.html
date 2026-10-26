@@ -196,10 +196,15 @@ const G = {
 const machine = (s) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
 // Prose first, machine lines (an installer's tail, a command, a path) after, as on the desk.
 const MACHINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
-function parts(i) {
+function parts(i, g) {
   const body = (i.body || "").trim();
   if (!body || body === i.subject.trim()) return { prose: "", tail: "" };
   if (i.kind === "approval") return { prose: "", tail: body };
+  // Held-out tests failed: the sentence, then the failures' output (for you; the agent has not seen it) as one machine block.
+  if (i.kind === "paused" && g && g.pause_reason === "held_out_failed") {
+    const cut = body.indexOf("\n\n");
+    return cut < 0 ? { prose: body, tail: "" } : { prose: body.slice(0, cut).trim(), tail: body.slice(cut).trim() };
+  }
   const lines = body.split("\n");
   const first = lines.findIndex((l) => MACHINE.test(l.trim()));
   if (first < 0) return { prose: body, tail: "" };
@@ -260,7 +265,7 @@ function render(s) {
   if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>`;
   for (const i of items) {
     const g = goals.get(i.goal_id);
-    const p = parts(i);
+    const p = parts(i, g);
     const desk = [];
     const opts = i.options.map((o, n) => {
       if (atDeskOnly(i, o)) { desk.push(o); return ""; }

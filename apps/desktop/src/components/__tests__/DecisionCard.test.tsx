@@ -18,6 +18,15 @@ vi.mock("../../lib/store", async () => {
         diffstat: null,
         progress: { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 },
       },
+      "G-0003": {
+        id: "G-0003",
+        state: "paused",
+        pause_reason: "held_out_failed",
+        pr: null,
+        verified_pin: null,
+        diffstat: null,
+        progress: { verified: 1, observed: 0, machine: 1, human: 0, human_done: 0 },
+      },
     } as Record<string, unknown>,
     inbox: [] as InboxItem[],
     now: Date.now(),
@@ -29,7 +38,28 @@ vi.mock("../../lib/store", async () => {
   };
 });
 
-const { DecisionCard, ARM_MS } = await import("../DecisionCard");
+const { DecisionCard, ARM_MS, heldOutParts } = await import("../DecisionCard");
+
+const HELD_OUT_BODY = [
+  "Every visible criterion passed; the held-out tests did not. The agent does not know these tests and has not seen the output below.",
+  "",
+  "C2 · Rounding edge cases",
+  "✖ total rounds half-cents up (0.4ms)",
+  "  AssertionError: expected 10.01 to equal 10.02",
+  "ℹ fail 1",
+].join("\n");
+
+const heldOutItem = (): InboxItem =>
+  item({
+    id: "H-1",
+    goal_id: "G-0003",
+    goal_title: "Clean up cart edge cases",
+    subject: "Held-out tests failed (the agent cannot see them)",
+    body: HELD_OUT_BODY,
+    options: ["Show the agent the failure (it will see the held-out tests)", "Abandon this goal"],
+    tones: ["neutral", "destructive"],
+    allow_text: true,
+  });
 
 const item = (over: Partial<InboxItem> = {}): InboxItem => ({
   id: "I-1",
@@ -147,6 +177,42 @@ describe("DecisionCard", () => {
   it("offers to put a decision aside", async () => {
     render(() => <DecisionCard item={item()} />);
     expect(screen.getByLabelText("Remind me later")).toBeTruthy();
+  });
+
+  it("splits a held-out body into the sentence and one block per failed criterion, output intact", () => {
+    const { prose, failures } = heldOutParts(HELD_OUT_BODY);
+    expect(prose).toMatch(/^Every visible criterion passed/);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({ id: "C2", title: "Rounding edge cases" });
+    expect(failures[0].tail).toContain("AssertionError");
+    // A middle dot inside the output does not start a new block.
+    expect(heldOutParts("Sentence.\n\nC1 · One\nsome · output\n\nC3 · Three\nmore").failures.map((f) => f.id)).toEqual(["C1", "C3"]);
+  });
+
+  it("makes the hint the way out of a held-out failure: the field comes first and sends as a note, the output is marked for you only, and showing the agent is a plain second choice", async () => {
+    const { container } = render(() => <DecisionCard item={heldOutItem()} />);
+    const held = container.querySelector(".heldout")!;
+    expect(held).not.toBeNull();
+    expect(held.textContent).toContain("For you only");
+    expect(held.querySelector(".output-tail")!.textContent).toContain("AssertionError");
+    expect(screen.getByText("Rounding edge cases")).toBeTruthy();
+    // Order: the output, then the hint field, then the agent-facing options.
+    const main = container.querySelector(".decision-main")!;
+    const order = [...main.children].map((el) => el.className.split(" ")[0]);
+    expect(order.indexOf("heldout")).toBeLessThan(order.indexOf("decision-text"));
+    expect(order.indexOf("decision-text")).toBeLessThan(order.indexOf("decision-actions"));
+    const send = screen.getByText("Send the hint and resume").closest("button")!;
+    expect(send.className).toContain("btn-primary");
+    expect(send.disabled).toBe(true);
+    expect(screen.getByText(/Show the agent the failure/).closest("button")!.className).toContain("btn-default");
+    expect(screen.getByText("Abandon this goal").closest("button")!.className).toContain("btn-danger");
+    expect(screen.getByText(/A hint keeps it that way/)).toBeTruthy();
+    const area = screen.getByPlaceholderText(/A hint for the agent/) as HTMLTextAreaElement;
+    fireEvent.input(area, { target: { value: "Half-cents round up" } });
+    fireEvent.click(send);
+    await Promise.resolve();
+    expect(invoked.map((i) => i.cmd)).toEqual(["answer"]);
+    expect(invoked[0].args).toEqual({ inboxId: "H-1", response: "Half-cents round up" });
   });
 
   it("does not repeat the PR reading on the goal's own page", () => {

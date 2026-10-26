@@ -266,6 +266,31 @@ test("with the phone page on, each link is named by its network", async ({ page 
   await expect(page.locator(".phone-links")).not.toContainText("http://");
 });
 
+test("an empty board shows its own grid: column heads and three hollow lines, no pretend data", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      F.goals = [];
+      F.inbox = [];
+    },
+  });
+  await expect(page.getByText("No active goals")).toBeVisible();
+  const ghost = page.locator(".board-ghost");
+  await expect(ghost).toBeVisible();
+  await expect(ghost.locator(".g-row")).toHaveCount(4);
+  await expect(ghost.locator(".board-ghost-head")).toContainText("Goal");
+  await expect(ghost.locator(".board-ghost-row .seg")).toHaveCount(9);
+  // Hollow: no digits, no words in the rows.
+  expect(await ghost.locator(".board-ghost-row").allInnerTexts()).toEqual(["", "", ""]);
+  // The heads sit in the same columns the rows use (the title's and the live line's left edges, the age's right edge).
+  for (const [i, edge] of [[1, "x"], [2, "x"], [6, "right"]] as const) {
+    const h = await ghost.locator(".board-ghost-head > span").nth(i).boundingBox();
+    const r = await ghost.locator(".board-ghost-row").first().locator("> span").nth(i).boundingBox();
+    const at = (b: { x: number; width: number }) => (edge === "x" ? b.x : b.x + b.width);
+    expect(Math.abs(at(h!) - at(r!))).toBeLessThan(1);
+  }
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/overview-empty-ghost.png` });
+});
+
 test("at 1800 wide the decision queue and the board share one centred container", async ({ page }) => {
   await page.setViewportSize({ width: 1800, height: 1100 });
   await openTower(page, "overview");

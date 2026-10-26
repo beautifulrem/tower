@@ -10,7 +10,7 @@ cat > package.json <<'JSON'
   "name": "demo-shop",
   "private": true,
   "type": "commonjs",
-  "scripts": { "test": "node --test test/" }
+  "scripts": { "test": "node --test" }
 }
 JSON
 cat > src/cart.js <<'JS'

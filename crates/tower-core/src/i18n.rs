@@ -213,6 +213,17 @@ impl Choice {
         Self::ALL.into_iter().find(|c| Lang::ALL.iter().any(|&l| c.label(l).eq_ignore_ascii_case(r)))
     }
 
+    /// How an option should be presented: whether it ends or overrides
+    /// something (needs a deliberate second press) or moves the goal on.
+    pub fn tone(self) -> crate::view::OptionTone {
+        use crate::view::OptionTone;
+        match self {
+            Choice::Abandon | Choice::OverrideSentinel => OptionTone::Destructive,
+            Choice::Approve | Choice::Allow | Choice::Continue | Choice::Retry | Choice::Yes => OptionTone::Primary,
+            _ => OptionTone::Neutral,
+        }
+    }
+
     /// Labels for a set of choices, in one language.
     pub fn labels(choices: &[Choice], lang: Lang) -> Vec<String> {
         choices.iter().map(|c| c.label(lang).to_string()).collect()

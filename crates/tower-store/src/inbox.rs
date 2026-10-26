@@ -24,14 +24,20 @@ pub struct NewInboxItem {
 const ITEM_SQL: &str = "SELECT i.*, g.title AS goal_title FROM inbox i JOIN goals g ON g.id = i.goal_id";
 
 fn row_to_item(r: &Row<'_>) -> rusqlite::Result<InboxItem> {
+    let options: Vec<String> = json_col(r, "options")?;
+    let tones = options
+        .iter()
+        .map(|o| tower_core::i18n::Choice::parse(o).map_or(tower_core::view::OptionTone::Neutral, |c| c.tone()))
+        .collect();
     Ok(InboxItem {
+        tones,
         id: r.get("id")?,
         goal_id: r.get("goal_id")?,
         goal_title: r.get("goal_title")?,
         kind: enum_col(r, "kind")?,
         title: r.get("title")?,
         body: r.get("body")?,
-        options: json_col(r, "options")?,
+        options,
         allow_text: r.get("allow_text")?,
         created_at: r.get("created_at")?,
         urgency: r.get("urgency")?,

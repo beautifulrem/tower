@@ -19,7 +19,12 @@ pub struct NewGoalInput {
 #[ts(export)]
 pub struct ReviewComment {
     pub path: String,
+    /// A line of the new file.
     pub line: Option<u32>,
+    /// A deleted line, by its number in the old file.
+    #[serde(default)]
+    #[ts(optional)]
+    pub old_line: Option<u32>,
     pub text: String,
 }
 
@@ -71,6 +76,9 @@ pub enum UiUpdate {
     Toast {
         level: ToastLevel,
         text: String,
+        /// The goal it is about, so the interface can offer to open it (and
+        /// stay quiet when you are already looking at it).
+        goal_id: Option<String>,
     },
 }
 

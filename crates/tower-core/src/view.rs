@@ -246,6 +246,20 @@ pub struct InboxItem {
     pub created_at: Millis,
     /// Lower is more urgent: blocking questions and approvals first.
     pub urgency: u8,
+    /// One per option, in the same order: how to present it.
+    pub tones: Vec<OptionTone>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum OptionTone {
+    /// The way forward (approve, allow, continue, retry).
+    Primary,
+    Neutral,
+    /// Ends or overrides something (abandon, override a sentinel): never on
+    /// a single keypress.
+    Destructive,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

@@ -94,6 +94,14 @@ fn detects_test_and_setup_commands() {
     fs::write(d.join("pnpm-lock.yaml"), "").unwrap();
     assert_eq!(Git::detect_test_command(d).as_deref(), Some("pnpm test"));
     assert_eq!(Git::detect_setup_command(d).as_deref(), Some("pnpm install --frozen-lockfile --prefer-offline"));
+
+    // Nothing to install, nothing to set up.
+    let e = tmp.path().join("plain");
+    fs::create_dir_all(&e).unwrap();
+    fs::write(e.join("package.json"), r#"{"scripts":{"test":"node --test"}}"#).unwrap();
+    assert_eq!(Git::detect_setup_command(&e), None);
+    fs::write(e.join("package.json"), r#"{"devDependencies":{"vitest":"^3"}}"#).unwrap();
+    assert_eq!(Git::detect_setup_command(&e).as_deref(), Some("npm install"));
 }
 
 #[test]

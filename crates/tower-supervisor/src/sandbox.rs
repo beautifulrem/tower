@@ -47,6 +47,37 @@ const HOME_TOOLCHAINS: &[&str] = &[
     ".agents/skills",
 ];
 
+/// Toolchains on `PATH` that live in otherwise unreadable places (user
+/// directories, CI tool caches, other volumes): each `…/bin` entry makes its
+/// install root readable (`node` needs `../lib`), any other entry itself.
+/// Never the home directory or an ancestor of it; credential stores stay
+/// denied regardless.
+pub fn path_toolchains(path: &str, home: &Path) -> Vec<PathBuf> {
+    toolchains_under(path, home, &[Path::new("/Users"), Path::new("/Volumes")])
+}
+
+fn toolchains_under(path: &str, home: &Path, closed: &[&Path]) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for entry in path.split(':').filter(|e| e.starts_with('/')) {
+        let dir = crate::paths::real(Path::new(entry));
+        if !closed.iter().any(|c| dir.starts_with(c)) || !dir.is_dir() {
+            continue;
+        }
+        let parent = dir.parent().unwrap_or(&dir).to_path_buf();
+        // `~/.local/bin` must not open all of `~/.local`: directly under home,
+        // only the bin directory itself.
+        let root =
+            if dir.file_name().is_some_and(|n| n == "bin") && parent.parent() != Some(home) { parent } else { dir };
+        // Not a whole user directory (`/Users/x`) or anything above one.
+        let shallow = closed.iter().any(|c| root.strip_prefix(c).is_ok_and(|r| r.components().count() < 2));
+        if home.starts_with(&root) || shallow || out.contains(&root) {
+            continue;
+        }
+        out.push(root);
+    }
+    out
+}
+
 /// Credential stores: denied even when a parent is allowed.
 const SECRETS: &[&str] = &[
     ".ssh",
@@ -228,6 +259,24 @@ mod tests {
             network,
             proxy_ports: COMMON_PROXY_PORTS.to_vec(),
         }
+    }
+
+    #[test]
+    fn toolchains_on_path_become_readable_but_never_home() {
+        let tmp = tempfile::tempdir().unwrap();
+        let users = crate::paths::real(tmp.path());
+        let home = users.join("me");
+        let nvm = home.join(".nvm/versions/node/v1/bin");
+        let local = home.join(".local/bin");
+        let ci = users.join("runner/hostedtoolcache/node/22/x64/bin");
+        for d in [&nvm, &local, &ci] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let path = format!("/usr/bin:{}:{}:{}:{}", nvm.display(), local.display(), ci.display(), home.display());
+        assert_eq!(
+            toolchains_under(&path, &home, &[&users]),
+            [home.join(".nvm/versions/node/v1"), local.clone(), users.join("runner/hostedtoolcache/node/22/x64")]
+        );
     }
 
     #[test]

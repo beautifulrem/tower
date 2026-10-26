@@ -442,7 +442,13 @@ impl Git {
 
     /// The dependency setup command a clean checkout needs, if any.
     pub fn detect_setup_command(root: &Path) -> Option<String> {
-        if !root.join("package.json").exists() {
+        let manifest: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(root.join("package.json")).ok()?).ok()?;
+        // Nothing to install: no setup (and no network) needed.
+        let has_deps = ["dependencies", "devDependencies", "optionalDependencies"]
+            .iter()
+            .any(|k| manifest.get(k).and_then(|d| d.as_object()).is_some_and(|d| !d.is_empty()));
+        if !has_deps && !root.join("pnpm-lock.yaml").exists() && !root.join("package-lock.json").exists() {
             return None;
         }
         Some(

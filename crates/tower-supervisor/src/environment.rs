@@ -89,6 +89,18 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
             Some("xcode-select --install"),
         );
     }
+    if git_version.is_some() && !inner.git.has_identity(&inner.paths.root) {
+        issue(
+            EnvIssueKind::GitIdentityMissing,
+            false,
+            tr!(
+                lang,
+                "git 没有设置你的名字和邮箱。验收时 Tower 以你的身份写提交，需要先设置它们。",
+                "git has no name and email set. Tower commits accepted work as you, so set them first."
+            ),
+            Some("git config --global user.name \"Your Name\" && git config --global user.email you@example.com"),
+        );
+    }
     if !uses_pi && (inner.env.which("claude").is_none() || inner.env.which("node").is_none()) {
         issue(
             EnvIssueKind::ClaudeMissing,

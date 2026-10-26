@@ -408,6 +408,7 @@ export const zh = {
     git_missing: "没有找到 git",
     no_sandbox: "没有 macOS 沙箱：Agent 的命令将以你的权限运行",
     claude_missing: "引擎设为 Claude Code，但没有找到 claude 或 Node.js：安装并登录 Claude Code，或在设置中把引擎改回 Pi",
+    git_identity_missing: "git 没有设置名字和邮箱：验收时 Tower 以你的身份写提交，需要先设置",
   },
   welcome: {
     pickRepo: "选择一个 git 仓库",

@@ -151,6 +151,7 @@ export function envIssueLabel(issue: EnvIssue, env: EnvironmentStatus | null | u
     case "git_missing":
     case "no_sandbox":
     case "claude_missing":
+    case "git_identity_missing":
       return t(`envIssue.${issue.kind}`);
     case "pi_too_old":
       return t("envIssue.pi_too_old", { v, want: env?.min_pi_version || MIN_PI });

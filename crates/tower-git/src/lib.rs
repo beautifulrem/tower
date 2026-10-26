@@ -121,6 +121,12 @@ impl Git {
         self.run_trim(root, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")])
     }
 
+    /// Whether commits in `root` would carry a configured name and email.
+    pub fn has_identity(&self, root: &Path) -> bool {
+        let get = |k: &str| self.run_trim(root, &["config", "--get", k]).unwrap_or_default();
+        !get("user.name").is_empty() && !get("user.email").is_empty()
+    }
+
     pub fn identity(&self, root: &Path) -> Identity {
         let get = |k: &str| self.run_trim(root, &["config", "--get", k]).unwrap_or_default();
         let name = get("user.name");

@@ -409,6 +409,7 @@ export const en: Dict = {
     git_missing: "git not found",
     no_sandbox: "No macOS sandbox: the agent's commands run with your permissions",
     claude_missing: "The engine is Claude Code, but claude or Node.js was not found: install and log in to Claude Code, or switch the engine back to Pi in Settings",
+    git_identity_missing: "git has no name and email: Tower commits accepted work as you, so set them first",
   },
   welcome: {
     pickRepo: "Choose a git repository",

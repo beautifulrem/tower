@@ -62,6 +62,7 @@ export const api = {
   checkIntegration: () => invoke<void>("check_integration"),
   humanCheck: (id: string, criterion: string, checked: boolean) =>
     invoke<void>("human_check", { id, criterion, checked }),
+  removeWorkspace: (id: string) => invoke<void>("remove_workspace", { id }),
   reviewClaim: (id: string, claimId: string, approved: boolean, note: string) =>
     invoke<void>("review_claim", { id, claimId, approved, note }),
 };

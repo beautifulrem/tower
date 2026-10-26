@@ -882,6 +882,18 @@ input[type="radio"] {
   content: "· ";
   color: var(--text-3);
 }
+.app-briefing {
+  margin: calc(-1 * var(--sp-3)) 0 var(--sp-5);
+}
+.link-plain {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-size: inherit;
+}
+.link-plain:hover {
+  color: var(--text-1);
+}
 .briefing-claim::before {
   content: "┆ ";
 }

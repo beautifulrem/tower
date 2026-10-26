@@ -77,6 +77,8 @@ pub enum EventKind {
     SessionAttached {
         session_file: String,
     },
+    /// The satellite and scratch directories were deleted to free disk space.
+    WorkspaceRemoved,
     RunStarted {
         run_no: u32,
         purpose: String,
@@ -220,6 +222,7 @@ impl EventKind {
             Self::StateChanged { .. } => "state_changed",
             Self::WorkspacePrepared { .. } => "workspace_prepared",
             Self::SessionAttached { .. } => "session_attached",
+            Self::WorkspaceRemoved => "workspace_removed",
             Self::RunStarted { .. } => "run_started",
             Self::RunEnded { .. } => "run_ended",
             Self::ModeChanged { .. } => "mode_changed",

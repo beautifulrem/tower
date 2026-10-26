@@ -3,14 +3,15 @@
  * by how much it needs you. Answers "what needs me, what mode is each goal
  * in, how far along is it" in one glance.
  */
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 
 import { GoalCard } from "../components/GoalCard";
 import { Button, Empty, Kbd } from "../components/ui";
 import type { GoalSummary } from "../gen/GoalSummary";
 import { api } from "../lib/api";
 import { useKeys } from "../lib/keys";
-import { type Group, groupLabel, groupOf } from "../lib/labels";
+import { clock } from "../lib/format";
+import { type Group, groupLabel, groupOf, pauseLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 import { Welcome } from "./Welcome";
@@ -50,6 +51,7 @@ export function Overview() {
     <Show when={state.projects.length > 0} fallback={<Welcome />}>
       <div class="overview">
         <QuickPath />
+        <AppBriefing />
         <Show
           when={live().length > 0}
           fallback={
@@ -78,6 +80,41 @@ export function Overview() {
             )}
           </For>
         </Show>
+      </div>
+    </Show>
+  );
+}
+
+const SEEN_KEY = "tower.overviewSeenAt";
+
+/**
+ * App-level re-entry briefing (docs/04 §4.9.1): what moved since you last
+ * looked at the board, one line per goal, each a link.
+ */
+function AppBriefing() {
+  const since = Number(localStorage.getItem(SEEN_KEY) ?? 0);
+  onCleanup(() => localStorage.setItem(SEEN_KEY, String(Date.now())));
+  const [open, setOpen] = createSignal(true);
+  const changed = createMemo(() =>
+    since ? goalList().filter((g) => g.updated_at > since && g.state !== "archived").slice(0, 8) : [],
+  );
+  const describe = (g: GoalSummary) =>
+    g.state === "paused" && g.pause_reason ? `已暂停（${pauseLabel[g.pause_reason]}）` : g.needs_you > 0 && g.state === "running" ? "等你" : stateLabel[g.state];
+  return (
+    <Show when={open() && changed().length > 0}>
+      <div class="briefing app-briefing">
+        <span class="briefing-title">自 {clock(since)} 起</span>
+        <For each={changed()}>
+          {(g) => (
+            <button class="briefing-item link-plain" onClick={() => go({ name: "goal", id: g.id })}>
+              <span class="num t3">{g.id}</span> {describe(g)}
+            </button>
+          )}
+        </For>
+        <span class="grow" />
+        <button class="link meta" onClick={() => setOpen(false)}>
+          知道了
+        </button>
       </div>
     </Show>
   );

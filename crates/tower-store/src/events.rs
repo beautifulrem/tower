@@ -50,6 +50,9 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
                 params![goal_id, workspace, base_commit],
             )?;
         }
+        EventKind::WorkspaceRemoved => {
+            tx.execute("UPDATE goals SET workspace = NULL WHERE id = ?1", [goal_id])?;
+        }
         EventKind::SessionAttached { session_file } => {
             tx.execute("UPDATE goals SET session_file = ?2 WHERE id = ?1", params![goal_id, session_file])?;
         }

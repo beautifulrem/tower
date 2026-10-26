@@ -4,23 +4,61 @@
 //! a single `tower://update` event. The renderer holds no authoritative
 //! state (`ADR-005`).
 
+use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri_plugin_notification::NotificationExt;
 use tower_core::contract::{Contract, ContractIssue};
 use tower_core::view::{
-    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, ModelInfo, ProjectView, ReviewView, Settings, TraceEntry,
+    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
+    TraceEntry,
 };
 use tower_supervisor::{Config, Error, NewGoalInput, Paths, ReviewComment, Supervisor, UiSink, UiUpdate};
 
 const UPDATE_EVENT: &str = "tower://update";
 
-struct TauriSink(AppHandle);
+struct TauriSink {
+    app: AppHandle,
+    /// Inbox items already announced, so each one notifies at most once.
+    seen: Mutex<HashSet<String>>,
+}
+
+impl TauriSink {
+    /// The attention ladder (docs/08): the Dock badge always counts open
+    /// items; a system notification is sent only for items that block a run
+    /// or need a way out, and only when Tower is not in front.
+    fn on_inbox(&self, items: &[InboxItem]) {
+        if let Some(window) = self.app.get_webview_window("main") {
+            let _ = window.set_badge_count((!items.is_empty()).then_some(items.len() as i64));
+            let focused = window.is_focused().unwrap_or(false);
+            let mut seen = self.seen.lock().expect("seen lock");
+            for item in items {
+                if !seen.insert(item.id.clone()) || focused {
+                    continue;
+                }
+                let urgent = matches!(item.kind, InboxKind::Question | InboxKind::Approval | InboxKind::Paused);
+                if urgent {
+                    let _ = self
+                        .app
+                        .notification()
+                        .builder()
+                        .title(format!("{} 需要你", item.goal_id))
+                        .body(&item.title)
+                        .show();
+                }
+            }
+        }
+    }
+}
 
 impl UiSink for TauriSink {
     fn emit(&self, update: UiUpdate) {
-        let _ = self.0.emit(UPDATE_EVENT, update);
+        if let UiUpdate::Inbox { items } = &update {
+            self.on_inbox(items);
+        }
+        let _ = self.app.emit(UPDATE_EVENT, update);
     }
 }
 
@@ -178,6 +216,11 @@ async fn check_integration(sup: Sup<'_>) -> Res<()> {
 }
 
 #[tauri::command]
+async fn remove_workspace(sup: Sup<'_>, id: String) -> Res<()> {
+    sup.remove_workspace(&id).await
+}
+
+#[tauri::command]
 fn human_check(sup: Sup<'_>, id: String, criterion: String, checked: bool) -> Res<()> {
     sup.human_check(&id, &criterion, checked)
 }
@@ -213,6 +256,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let config = Config {
@@ -220,8 +264,15 @@ pub fn run() {
                 extension_source: extension_source(&handle),
                 env: None,
             };
-            let sink: Arc<dyn UiSink> = Arc::new(TauriSink(handle.clone()));
-            let sup = tauri::async_runtime::block_on(Supervisor::start(config, sink))?;
+            let sink = Arc::new(TauriSink { app: handle.clone(), seen: Mutex::default() });
+            let sup = tauri::async_runtime::block_on(Supervisor::start(config, sink.clone() as Arc<dyn UiSink>))?;
+            // Items already open at launch were announced before: badge them, don't notify again.
+            if let Ok(items) = sup.inbox() {
+                sink.seen.lock().expect("seen lock").extend(items.iter().map(|i| i.id.clone()));
+                if let Some(window) = handle.get_webview_window("main") {
+                    let _ = window.set_badge_count((!items.is_empty()).then_some(items.len() as i64));
+                }
+            }
             app.manage(sup);
             Ok(())
         })
@@ -259,6 +310,7 @@ pub fn run() {
             check_integration,
             human_check,
             review_claim,
+            remove_workspace,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Tower");

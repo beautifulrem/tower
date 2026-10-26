@@ -6,6 +6,7 @@
 import { For, Show, createResource, createSignal, onMount } from "solid-js";
 
 import { pickQuiet } from "../components/Chrome";
+import { GitIdentityForm } from "../components/GitIdentity";
 import { DangerMark, Icon, NeedsYouMark, NoticeMark } from "../components/Glyph";
 import { TestCheckLine } from "../components/TestCheck";
 import { Button, Empty, Field, IconButton, Loading, Select } from "../components/ui";
@@ -154,6 +155,12 @@ export function Settings() {
                 </Show>
               </span>
               <span class="grow meta t1">{envIssueLabel(i, state.env)}</span>
+              {/* A missing git identity is set here, in two fields; the command stays beside them for a terminal. */}
+              <Show when={i.kind === "git_identity_missing"}>
+                <div class="check-action">
+                  <GitIdentityForm />
+                </div>
+              </Show>
               <Show when={i.fix}>
                 <button
                   class="fix code-val"

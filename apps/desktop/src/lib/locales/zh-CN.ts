@@ -569,6 +569,11 @@ export const zh = {
     pushSentAt: "上次推送已发出 · {time}",
     pushFailedAt: "上次推送失败 · {time}",
     pushNone: "Tower 启动以来没有发过推送",
+    gitName: "你的名字",
+    gitEmail: "you@example.com",
+    gitIdentitySave: "写入 git",
+    gitIdentityHint: "写进 git 的全局配置，与下面的命令相同。",
+    gitIdentitySet: "git 现在以 {name} 署名提交",
   },
   contract: {
     defaultCriterion: "现有测试全部通过",

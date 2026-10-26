@@ -457,11 +457,22 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   await expect(fix).toHaveText(/user\.name .* && git config --global user\.email you@example\.com$/);
   // Whole, not clipped: the button shows all of its text.
   expect(await fix.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  // The form stands above the command: a name, an email, one button, disabled until both are there.
+  const save = row.getByRole("button", { name: "Set in git" });
+  await expect(save).toBeDisabled();
+  expect((await row.locator(".identity-form").boundingBox())!.y).toBeLessThan((await fix.boundingBox())!.y);
+  await row.getByLabel("Your name").fill("Ada Lovelace");
+  await row.getByLabel("you@example.com").fill("ada@example.com");
+  await save.click();
+  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "set_git_identity")?.[1]).toEqual({ name: "Ada Lovelace", email: "ada@example.com" });
+  await expect(page.locator(".toast")).toContainText("git now commits as Ada Lovelace");
   // The welcome screen's route: six stations, joined, the last two green.
   await expect(page.locator(".welcome-station")).toHaveCount(6);
   await expect(page.locator(".welcome-station").nth(2)).toContainText("Claimed done");
   await openTower(page, "settings", { enrich: identity });
-  await expect(page.locator(".check-row").filter({ hasText: "git has no name and email" }).locator(".fix")).toBeVisible();
+  const settingsRow = page.locator(".check-row").filter({ hasText: "git has no name and email" });
+  await expect(settingsRow.locator(".fix")).toBeVisible();
+  await expect(settingsRow.getByRole("button", { name: "Set in git" })).toBeVisible();
 });
 
 test("the command palette can put the page's card aside, and H does the same", async ({ page }) => {

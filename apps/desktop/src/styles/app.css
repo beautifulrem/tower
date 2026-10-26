@@ -3170,6 +3170,27 @@ input[type="radio"] {
 .check-mark.pending {
   color: var(--text-4);
 }
+/* git's name and email, set in place: two fields and a button on one line, the hint under them. */
+.identity-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--sp-2);
+  width: 100%;
+}
+.identity-form .identity-name {
+  flex: 1 1 10em;
+  min-width: 8em;
+  max-width: 14em;
+}
+.identity-form .identity-email {
+  flex: 1 1 14em;
+  min-width: 11em;
+  max-width: 20em;
+}
+.identity-form .identity-hint {
+  flex-basis: 100%;
+}
 /* A fix is a command to copy: it wraps rather than hides its tail (git's identity fix is two commands long). */
 .fix {
   flex: 0 1 auto;

@@ -798,6 +798,13 @@ export const en: Dict = {
     withOriginalTests: "passes from the code changes alone",
     heldOut: "held-out tests · for you only",
     heldOutLong: "Run with the held-out tests present. The agent never saw this output and does not know these tests exist.",
+    canaryIntact: "assertions checked",
+    canaryIntactLong: "A test that cannot pass was added in these tests' own style and the command failed as it must: the assertions and the runner are intact.",
+    canaryNotChecked: "assertions not checked",
+    canaryNotCheckedWhy: "a pass proves less here",
+    canaryNotCheckedLong: "No must-fail test could be added here (a language or test style Tower does not know), so this pass alone does not show that the tests assert anything. Check that yourself before accepting.",
+    canaryTampered: "a test that must fail passed",
+    canaryTamperedLong: "A test that cannot pass was added and the command still passed: the assertions or the runner were tampered with. This pass is not evidence.",
   },
   review: {
     units: (p) => `${p.n} review ${plural(p.n, "unit", "units")}`,

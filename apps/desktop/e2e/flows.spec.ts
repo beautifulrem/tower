@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichCi, enrichEngines, enrichHeldOut, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
+import { enrichCanary, enrichCi, enrichEngines, enrichHeldOut, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -403,6 +403,36 @@ test("a result produced with the held-out tests present is marked for you only, 
   await expect(page.locator("table").first()).toBeVisible();
   await page.keyboard.press("e");
   await expect(page.getByRole("dialog").locator(".chip-you")).toHaveCount(1);
+});
+
+test("what the canary saw stands under each criterion, quietly or in the attention register, on the goal page and in the readout; the two newer sentinels read as sentence and list", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCanary });
+  const lines = page.locator(".goal-page .canary-line");
+  await expect(lines).toHaveCount(3);
+  const intact = page.locator('.goal-page .canary-line[data-canary="intact"]');
+  await expect(intact).toHaveText(/assertions checked/);
+  expect(await intact.locator(".mark-attention").count()).toBe(0);
+  const unchecked = page.locator('.goal-page .canary-line[data-canary="not_checked"]');
+  await expect(unchecked).toContainText("assertions not checked");
+  await expect(unchecked).toContainText("a pass proves less here");
+  const tampered = page.locator('.goal-page .canary-line[data-canary="tampered"]');
+  await expect(tampered).toContainText("a test that must fail passed");
+  await expect(tampered.locator(".mark-attention")).toBeVisible();
+  // The sentinels: the high one is a square, the medium one a hollow diamond; the probing detail is a sentence over a list of paths.
+  const sentinels = page.locator(".sentinel");
+  await expect(sentinels).toHaveCount(2);
+  const probing = sentinels.filter({ hasText: "outside its workspace" });
+  await expect(probing.locator(".sentinel-prose")).toHaveCount(1);
+  await expect(probing.locator(".sentinel-machine")).toHaveCount(5);
+  await expect(probing.locator(".sentinel-machine").first()).toHaveText("/Users/you/shop/test/holdout/rounding.test.js");
+  const unchecked2 = sentinels.filter({ hasText: "could not be checked" });
+  await expect(unchecked2.locator(".sentinel-machine")).toHaveCount(0);
+  await expect(unchecked2.locator(".mark-danger")).toBeVisible();
+  // The same three lines in the verification readout.
+  await page.keyboard.press("r");
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("e");
+  await expect(page.getByRole("dialog").locator(".canary-line")).toHaveCount(3);
 });
 
 test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {

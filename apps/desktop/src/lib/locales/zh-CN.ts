@@ -798,6 +798,13 @@ export const zh = {
     withOriginalTests: "只靠源码改动也通过",
     heldOut: "保留测试 · 只给你看",
     heldOutLong: "这次是在保留测试在场时跑的。Agent 没有看到这段输出，也不知道这些测试存在。",
+    canaryIntact: "断言已检查",
+    canaryIntactLong: "按这些测试自己的写法加入了一条必然失败的测试，命令如期失败：断言与测试框架都完好。",
+    canaryNotChecked: "断言未检查",
+    canaryNotCheckedWhy: "这里的通过说明得更少",
+    canaryNotCheckedLong: "没能加入必然失败的测试（测试的语言或写法 Tower 不认识），所以单凭这次通过看不出测试是否真的在断言。验收前请亲自确认。",
+    canaryTampered: "必然失败的测试通过了",
+    canaryTamperedLong: "加入了一条必然失败的测试，命令仍然通过：断言或测试框架被改动了。这次通过不是证据。",
   },
   review: {
     units: (p: { n: number }) => `${p.n} 个评审单元`,

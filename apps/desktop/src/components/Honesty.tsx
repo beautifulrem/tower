@@ -174,6 +174,45 @@ export function HeldOutLine(props: { c: CriterionView }) {
 }
 
 /**
+ * What the must-fail canary showed, under a criterion that proved the change:
+ * a test that cannot pass was added in the tests' own style and the command
+ * run again. Intact is a fact (the scale mark, quietly: the assertions were
+ * checked); not checked is said as quietly, with why it matters one hover
+ * away (a pass alone does not show that the tests assert); tampered is the
+ * attention register — the pass is the opposite of evidence.
+ */
+export function CanaryLine(props: { c: CriterionView }) {
+  const state = () => props.c.canary;
+  return (
+    <Show when={state()}>
+      <div class="criterion-row criterion-obs canary-line" data-canary={state()!}>
+        <span />
+        <span />
+        <span />
+        <span class="col-span" classList={{ t3: state() !== "tampered", "baseline-dependent": state() === "tampered" }}>
+          <Switch>
+            <Match when={state() === "intact"}>
+              <Icon name="harness" size={10} class="t4" label={t("honesty.measured")} />
+              <span title={t("goal.canaryIntactLong")}>{t("goal.canaryIntact")}</span>
+            </Match>
+            <Match when={state() === "not_checked"}>
+              <span title={t("goal.canaryNotCheckedLong")}>
+                {t("goal.canaryNotChecked")}
+                <span class="t4"> · {t("goal.canaryNotCheckedWhy")}</span>
+              </span>
+            </Match>
+            <Match when={state() === "tampered"}>
+              <NeedsYouMark title={t("goal.canaryTamperedLong")} />
+              <span title={t("goal.canaryTamperedLong")}>{t("goal.canaryTampered")}</span>
+            </Match>
+          </Switch>
+        </span>
+      </div>
+    </Show>
+  );
+}
+
+/**
  * The baseline line under a passed criterion: red → green only when the
  * command failed on the base AND still passes with the agent's edits to
  * existing tests undone. A pass that depends on edited tests is said in the

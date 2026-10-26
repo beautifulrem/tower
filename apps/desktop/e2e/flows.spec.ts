@@ -245,6 +245,41 @@ test("⌘P jumps to a file by path", async ({ page }) => {
   await expect(dialog).toBeHidden();
 });
 
+test("A accepts the current hunk as a reading mark: it folds to its header, the review moves on, the count says so, and the mark is kept with the review", async ({ page }) => {
+  await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await expect(page.locator("table").first()).toBeVisible();
+  const heads = page.locator(".hunk-head[data-hunk-index]");
+  const before = await heads.count();
+  expect(before).toBeGreaterThanOrEqual(2);
+  const linesBefore = await page.locator(".dl").count();
+  // Undo and accept stand together on a hunk's header while the workspace is yours.
+  await expect(heads.first().getByRole("button", { name: "Undo this hunk" })).toBeVisible();
+  const accept = heads.first().getByRole("button", { name: "Accept this hunk" });
+  await expect(accept).toHaveAttribute("title", /workspace is unchanged/);
+  await page.keyboard.press("a");
+  const marked = page.locator(".hunk-head.hunk-accepted");
+  await expect(marked).toHaveCount(1);
+  await expect(marked.getByRole("button", { name: /Accepted · \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(marked.getByRole("button", { name: "Undo this hunk" })).toHaveCount(0);
+  expect(await page.locator(".dl").count()).toBeLessThan(linesBefore);
+  // Your register: the solid rule, not green.
+  expect(await marked.locator("td").first().evaluate((el) => getComputedStyle(el).boxShadow)).toMatch(/inset/);
+  const status = page.locator(".review-accepted");
+  await expect(status).toHaveText(/1\/\d+ hunks accepted/);
+  await expect(status).toHaveAttribute("title", /reading mark/);
+  // Kept with the review, for this diff, never sent to the agent.
+  await expect.poll(async () => (await calls(page)).find(([cmd, args]) => cmd === "set_ui_state" && (args as { key: string }).key === "accepted")?.[1]).toMatchObject({ key: "accepted", value: expect.stringMatching(/"range":".+\.\..+"/) });
+  // Taken back by its button: the hunk unfolds.
+  await marked.getByRole("button", { name: /Accepted/ }).click();
+  await expect(page.locator(".hunk-head.hunk-accepted")).toHaveCount(0);
+  expect(await page.locator(".dl").count()).toBe(linesBefore);
+  // Every hunk of a file accepted: the file is viewed.
+  const file = page.locator(".file").first();
+  const fileHunks = await file.locator(".hunk-head[data-hunk-index]").count();
+  for (let i = 0; i < fileHunks; i++) await file.locator(".accept-hunk").nth(i).click();
+  await expect(file.getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("the accept sheet opens with focus on the sheet, not a button, and asks for the human check on its row", async ({ page }) => {
   await openTower(page, "review/G-0001");
   await expect(page.locator("table").first()).toBeVisible();

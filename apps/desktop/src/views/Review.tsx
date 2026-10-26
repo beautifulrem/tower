@@ -100,6 +100,7 @@ export function Review(props: { id: string }) {
     const v = view();
     return !!v && v.files.filter((f) => u.files.includes(f.path)).every(isViewed);
   };
+
   // Draft comments survive a restart until they are sent.
   const updateComments = (fn: (list: Draft[]) => Draft[]) => {
     const next = fn(comments());
@@ -213,6 +214,42 @@ export function Review(props: { id: string }) {
   const allPaths = createMemo(() => view()?.files.map((f) => f.path) ?? []);
   const fileByPath = (path: string) => view()?.files.find((f) => f.path === path);
 
+  // Hunks you accepted: a reading mark of your own, kept per goal for this diff (from..pin) in the review's state, never
+  // a change to the workspace — U is the change. An accepted hunk folds to its header and the review moves on; once every
+  // hunk of a file is accepted the file is viewed. A new snapshot means new hunks: the marks start over with it.
+  const range = () => (view() ? `${view()!.from}..${view()!.pin}` : null);
+  const [accepted, setAccepted] = createSignal<Record<string, number[]>>({});
+  createEffect(
+    on([range, persisted], ([r, p]) => {
+      if (!r || !p) return;
+      setAccepted(p.accepted && p.accepted.range === r ? p.accepted.files : {});
+    }),
+  );
+  const isAccepted = (f: DiffFile, hunk: number) => (accepted()[f.path] ?? []).includes(hunk);
+  // The unit on screen: how many of its hunks carry your mark, of how many.
+  const unitAccepted = createMemo(() => files().reduce((n, f) => n + (accepted()[f.path] ?? []).filter((i) => i < f.hunks.length).length, 0));
+  const unitHunks = createMemo(() => files().reduce((n, f) => n + f.hunks.length, 0));
+  const setHunkAccepted = (f: DiffFile, hunk: number, on: boolean) => {
+    const r = range();
+    if (!r) return;
+    const have = accepted()[f.path] ?? [];
+    const list = on ? [...new Set([...have, hunk])].sort((a, b) => a - b) : have.filter((i) => i !== hunk);
+    const next = { ...accepted() };
+    if (list.length) next[f.path] = list;
+    else delete next[f.path];
+    setAccepted(next);
+    persist.accepted(props.id, { range: r, files: next });
+    // Every hunk accepted is the file read; one taken back is the file open again.
+    if (on && list.length === f.hunks.length) toggleViewed(f, true);
+    if (!on && isViewed(f)) toggleViewed(f, false);
+  };
+  /** A or the header's button: marks the hunk, folds it, and moves to the next one; on an accepted hunk, takes the mark back. */
+  const acceptHunk = (f: DiffFile, hunk: number) => {
+    const on = !isAccepted(f, hunk);
+    setHunkAccepted(f, hunk, on);
+    if (on) requestAnimationFrame(() => jumpHunk(1));
+  };
+
   const selectUnit = (i: number) => {
     setUnitIdx(Math.max(0, Math.min(units().length - 1, i)));
     document.querySelector(".review-diff")?.scrollTo({ top: 0 });
@@ -265,6 +302,14 @@ export function Review(props: { id: string }) {
       },
       { key: "alt+v", run: toggleLayout, desc: () => t("keys.split") },
       { key: "e", run: () => setPanel((p) => (p === "verify" ? null : "verify")), desc: () => t("keys.verification") },
+      {
+        key: "a",
+        run: () => {
+          const h = currentHunk();
+          if (h) acceptHunk(h.f, h.index);
+        },
+        desc: () => t("keys.acceptHunk"),
+      },
       {
         key: "u",
         run: () => {
@@ -500,6 +545,8 @@ export function Review(props: { id: string }) {
                       viewed={isViewed(f)}
                       onViewed={(on) => toggleViewed(f, on)}
                       onOpen={(line) => void act(() => api.openFile(props.id, f.path, line))}
+                      accepted={(hunk) => isAccepted(f, hunk)}
+                      onAccept={(hunk) => acceptHunk(f, hunk)}
                       onUndo={editable() ? (hunk) => void undoHunk(f, hunk) : undefined}
                       editing={editingPath() === f.path}
                       onEditFile={editable() ? () => void editFile(f) : undefined}
@@ -536,6 +583,9 @@ export function Review(props: { id: string }) {
         <span>
           <Kbd k="e" /> {t("review.keyVerification")}
         </span>
+        <span title={t("review.acceptHunkNote")}>
+          <Kbd k="a" /> {t("review.keyAccept")}
+        </span>
         <Show when={editable()}>
           <span>
             <Kbd k="u" /> {t("review.keyUndo")}
@@ -552,6 +602,13 @@ export function Review(props: { id: string }) {
         <span class="grow" />
         <span class="status-mouse t4">{t("review.keyComment")}</span>
         <span class="status-mouse t4">{t("review.keyOpen")}</span>
+        {/* Your reading marks on this unit, counted; the title says what they are not. */}
+        <Show when={unitAccepted() > 0}>
+          <span class="num review-accepted" title={t("review.acceptHunkNote")}>
+            <Icon name="check" size={10} />
+            {t("review.hunksAccepted", { n: unitAccepted(), total: unitHunks() })}
+          </span>
+        </Show>
         <Show when={units().length > 1}>
           <span class="num">{t("review.unitOf", { i: unitIdx() + 1, n: units().length })}</span>
         </Show>

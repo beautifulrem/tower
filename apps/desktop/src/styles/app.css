@@ -3881,6 +3881,27 @@ input[type="radio"] {
   left: 50%;
   transform: translateX(-50%);
 }
+/* An accepted hunk: your reading mark, in your register — the solid 2px rule of a human stamp down the header
+   row that now stands for the folded hunk, and the button's check in text-1. Nothing green: nothing was verified,
+   and nothing in the workspace changed. */
+.hunk-head.hunk-accepted td {
+  box-shadow: inset 2px 0 0 var(--text-1);
+}
+.hunk-head.hunk-accepted .gap-header {
+  color: var(--text-2);
+}
+.accept-hunk .icon {
+  color: var(--text-3);
+}
+.accept-hunk-on,
+.accept-hunk-on .icon {
+  color: var(--text-1);
+}
+.review-accepted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
 /* ======================================================================
    Toast actions and the errors gauge

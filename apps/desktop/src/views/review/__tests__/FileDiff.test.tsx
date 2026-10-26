@@ -104,6 +104,25 @@ describe("FileDiff comment flow", () => {
     expect((document.activeElement as HTMLElement).className).toContain("ln-btn");
   });
 
+  it("accepting a hunk is a mark of your own: the hunk folds to its header, the mark can be taken back, and undo steps aside while it stands", () => {
+    const accepted: number[] = [];
+    const { container, unmount } = mount({ onUndo: () => {}, accepted: (i) => accepted.includes(i), onAccept: (i) => accepted.push(i) });
+    const accept = screen.getByText("Accept this hunk").closest("button")!;
+    expect(accept.getAttribute("aria-pressed")).toBe("false");
+    expect(accept.title).toMatch(/reading mark/);
+    expect(container.querySelectorAll(".dl")).toHaveLength(4);
+    fireEvent.click(accept);
+    expect(accepted).toEqual([0]);
+    unmount();
+    // Rendered with the mark on: no lines, a marked header, the count, no undo.
+    const { container: folded } = mount({ onUndo: () => {}, accepted: () => true, onAccept: () => {} });
+    expect(folded.querySelectorAll(".dl")).toHaveLength(0);
+    expect(folded.querySelector(".hunk-head")!.className).toContain("hunk-accepted");
+    expect(screen.getByText(/Accepted · 4 lines folded/)).toBeTruthy();
+    expect(screen.queryByText("Undo this hunk")).toBeNull();
+    expect(screen.getByText(/Accepted · 4 lines/).closest("button")!.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("offers to undo a hunk only when allowed", () => {
     const undone: number[] = [];
     mount({ onUndo: (i) => undone.push(i) });

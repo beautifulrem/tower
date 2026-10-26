@@ -2858,13 +2858,17 @@ input[type="radio"] {
   gap: 8px;
   justify-items: end;
 }
-/* A toast rises 4px into its corner (it comes from below, not from above like a sheet) and settles back 2px as it goes. */
+/* A toast rises 4px into its corner (it comes from below, not from above like a sheet) and settles back 2px as it goes.
+   It speaks Tower's grammar at its left edge, the way a card's strip and a held-out block do: a 2px rule, inside the
+   corner radius — text-1 for a receipt of your own action (replied, copied, paused, next to accept), amber when
+   something needs you, the danger red for an error. The glyphs stay for those who cannot see the colour. */
 .toast {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   max-width: 380px;
-  padding: 8px 10px 8px 12px;
+  padding: 8px 10px 8px 16px;
   border-radius: var(--radius-l);
   background: var(--bg-overlay);
   box-shadow: var(--shadow-overlay);
@@ -2872,6 +2876,22 @@ input[type="radio"] {
   animation: rise var(--dur-base) var(--ease-out);
   transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
   user-select: text;
+}
+.toast::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--text-1);
+}
+.toast-warning::before {
+  background: var(--st-attention);
+}
+.toast-error::before {
+  background: var(--st-danger);
 }
 @keyframes rise {
   from {
@@ -3218,6 +3238,39 @@ input[type="radio"] {
 :root[data-transition="space"]::view-transition-old(root),
 :root[data-transition="space"]::view-transition-new(root) {
   animation-duration: var(--dur-space);
+}
+/* Entering review is a change of space, and the space has a shape: the file tree slides in from the left
+   edge over the 220ms while the diff crossfades into place — one movement to remember, rather than a whole
+   screen dissolving. Each pane is its own group, so the rest of the window keeps the plain crossfade. Leaving,
+   the tree slides back the way it came. Reduced motion skips view transitions altogether (nav.ts). */
+.review-units {
+  view-transition-name: review-tree;
+}
+.review-diff {
+  view-transition-name: review-diff;
+}
+:root[data-transition="space"]::view-transition-new(review-tree) {
+  animation: tree-in var(--dur-space) var(--ease-out);
+}
+:root[data-transition="space"]::view-transition-old(review-tree) {
+  animation: tree-out var(--dur-space) var(--ease-in);
+}
+:root[data-transition="space"]::view-transition-old(review-diff),
+:root[data-transition="space"]::view-transition-new(review-diff) {
+  animation-duration: var(--dur-space);
+  animation-timing-function: var(--ease-out);
+}
+@keyframes tree-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+@keyframes tree-out {
+  to {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
 }
 
 /* ======================================================================

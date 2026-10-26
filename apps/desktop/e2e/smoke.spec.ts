@@ -63,7 +63,14 @@ test("the command palette is a verb list: review and answer from anywhere, and a
   // Verbs stand first among the commands, before any typing.
   await expect(dialog.getByRole("option").first()).toContainText(/^(Review|Answer) G-\d+/);
   await page.keyboard.type("rev");
-  await expect(dialog.getByRole("option").filter({ hasText: /Review G-\d+ · / }).first()).toBeVisible();
+  const verb = dialog.getByRole("option").filter({ hasText: /Review G-\d+ · / }).first();
+  await expect(verb).toBeVisible();
+  // A verb about a goal wears that goal's glyph, not a generic icon.
+  await expect(verb.locator(".palette-icon svg")).toHaveAttribute("aria-label", /Ready to accept/);
+  // With a query, what you can do and where you can go are two groups.
+  await page.keyboard.press("Meta+a");
+  await page.keyboard.type("cart");
+  await expect(dialog.locator(".palette-group")).toHaveText(["Commands", "Goals"]);
   await page.keyboard.press("Meta+a");
   await page.keyboard.type("qzxv");
   await expect(dialog.getByText(/No matches for/)).toBeVisible();

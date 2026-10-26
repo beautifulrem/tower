@@ -39,6 +39,12 @@ impl LifecycleState {
         matches!(self, Self::Archived | Self::Abandoned)
     }
 
+    /// Started but not yet merged into the base: its changes may still
+    /// collide with another goal's.
+    pub fn is_unmerged_work(self) -> bool {
+        matches!(self, Self::Running | Self::Claimed | Self::Verifying | Self::InReview | Self::Paused | Self::Accepted)
+    }
+
     /// States in which an engine process may be alive.
     pub fn has_live_run(self) -> bool {
         matches!(self, Self::Running)

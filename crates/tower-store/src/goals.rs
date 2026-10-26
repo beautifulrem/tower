@@ -4,7 +4,7 @@ use tower_core::contract::{Contract, CriterionKind};
 use tower_core::honesty::{ClaimKind, Consistency, CriterionFact, Progress, judge_criterion_claim};
 use tower_core::view::{
     BriefingItem, ClaimView, CriterionResultView, CriterionView, DiffStat, GoalDetail, GoalSummary, LiveLine,
-    ObservationView, RunView,
+    ObservationView, Overlap, RunView,
 };
 use tower_core::{EventKind, Lang, LifecycleState, Millis, Mode, PauseReason, tr};
 
@@ -142,6 +142,23 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Goals that are started but not merged yet (see
+    /// [`LifecycleState::is_unmerged_work`]).
+    pub fn unmerged_goals(&self) -> Result<Vec<GoalRecord>> {
+        let mut out = Vec::new();
+        for state in [
+            LifecycleState::Running,
+            LifecycleState::Claimed,
+            LifecycleState::Verifying,
+            LifecycleState::InReview,
+            LifecycleState::Paused,
+            LifecycleState::Accepted,
+        ] {
+            out.extend(self.goals_in_state(state)?);
+        }
+        Ok(out)
+    }
+
     /// Replaces the draft contract (before ratification) or the title.
     pub fn update_draft(&mut self, id: &str, title: &str, contract: &Contract) -> Result<()> {
         let g = self.goal(id)?;
@@ -237,7 +254,9 @@ impl Store {
             [&rec.id],
             |r| r.get(0),
         )?;
+        let overlaps = self.overlaps(&rec)?;
         Ok(GoalSummary {
+            overlaps,
             id: rec.id,
             project_id: rec.project_id,
             project_name,
@@ -261,6 +280,53 @@ impl Store {
             run_started_at: rec.run_started_at,
             last_viewed_at,
         })
+    }
+
+    /// Records the files a goal's workspace changes relative to its base.
+    /// Returns whether the list changed.
+    pub fn set_touched(&mut self, goal: &str, files: &[String]) -> Result<bool> {
+        let json = serde_json::to_string(files)?;
+        let n = self
+            .conn
+            .execute("UPDATE goals SET touched = ?2 WHERE id = ?1 AND touched != ?2", rusqlite::params![goal, json])?;
+        Ok(n > 0)
+    }
+
+    fn overlaps(&self, rec: &GoalRecord) -> Result<Vec<Overlap>> {
+        if !rec.state.is_unmerged_work() {
+            return Ok(Vec::new());
+        }
+        let mine: std::collections::HashSet<String> = serde_json::from_str(&self.conn.query_row(
+            "SELECT touched FROM goals WHERE id = ?1",
+            [&rec.id],
+            |r| r.get::<_, String>(0),
+        )?)?;
+        if mine.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, state, touched FROM goals WHERE project_id = ?1 AND id != ?2 ORDER BY id")?;
+        let rows = stmt.query_map(rusqlite::params![rec.project_id, rec.id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, title, state, touched) = row?;
+            if !LifecycleState::parse(&state).is_some_and(LifecycleState::is_unmerged_work) {
+                continue;
+            }
+            let theirs: Vec<String> = serde_json::from_str(&touched)?;
+            let mut common: Vec<String> = theirs.into_iter().filter(|f| mine.contains(f)).collect();
+            if common.is_empty() {
+                continue;
+            }
+            common.sort();
+            let total = common.len() as u32;
+            common.truncate(5);
+            out.push(Overlap { goal_id: id, title, files: common, total });
+        }
+        Ok(out)
     }
 
     fn progress(&self, rec: &GoalRecord) -> Result<Progress> {
@@ -507,6 +573,29 @@ mod tests {
         let g2 = s.create_goal(NewGoal { project_id: g.project_id, title: "b".into(), contract: g.contract }).unwrap();
         assert_eq!(g2.id, "G-0002");
         assert_eq!(s.summaries().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn unfinished_goals_that_change_the_same_files_overlap() {
+        use tower_core::lifecycle::Transition;
+        let (mut s, _, a) = seeded();
+        let g = s.goal(&a).unwrap();
+        let b =
+            s.create_goal(NewGoal { project_id: g.project_id, title: "b".into(), contract: g.contract }).unwrap().id;
+        for id in [&a, &b] {
+            s.transition(id, Transition::Ratify, None, "").unwrap();
+            s.transition(id, Transition::RunStarted, None, "").unwrap();
+        }
+        s.set_touched(&a, &["src/cart.js".into(), "README.md".into()]).unwrap();
+        assert!(s.summary(&a).unwrap().overlaps.is_empty());
+        assert!(s.set_touched(&b, &["src/cart.js".into()]).unwrap());
+        assert!(!s.set_touched(&b, &["src/cart.js".into()]).unwrap(), "unchanged");
+        let o = s.summary(&a).unwrap().overlaps;
+        assert_eq!(
+            (o[0].goal_id.as_str(), o[0].files.clone(), o[0].total),
+            (b.as_str(), vec!["src/cart.js".to_string()], 1)
+        );
+        assert_eq!(s.summary(&b).unwrap().overlaps[0].goal_id, a);
     }
 
     #[test]

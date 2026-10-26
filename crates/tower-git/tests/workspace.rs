@@ -127,3 +127,26 @@ fn local_files_and_push() {
     assert_eq!(sh(&remote, &["rev-parse", &branch]), commit);
     assert!(git.origin_url(&repo).unwrap().ends_with("remote.git"));
 }
+
+#[test]
+fn touched_files_and_predicted_conflicts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path();
+    user_repo(repo);
+    let git = Git::default();
+    let base = sh(repo, &["rev-parse", "HEAD"]);
+
+    fs::write(repo.join("a.txt"), "one\nTWO\n").unwrap();
+    fs::write(repo.join("new.txt"), "x").unwrap();
+    assert_eq!(git.touched(repo, &base).unwrap(), ["a.txt", "new.txt"]);
+
+    // A branch and main both change the same line.
+    sh(repo, &["checkout", "--quiet", "-b", "feature"]);
+    sh(repo, &["add", "a.txt"]);
+    sh(repo, &["commit", "--quiet", "-m", "feature"]);
+    sh(repo, &["checkout", "--quiet", "main"]);
+    fs::write(repo.join("a.txt"), "one\ndos\n").unwrap();
+    sh(repo, &["commit", "--quiet", "-am", "main"]);
+    assert_eq!(git.merge_conflicts(repo, "main", "feature"), Some(vec!["a.txt".to_string()]));
+    assert_eq!(git.merge_conflicts(repo, "main", "main"), Some(vec![]));
+}

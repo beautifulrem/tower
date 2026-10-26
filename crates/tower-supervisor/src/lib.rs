@@ -256,6 +256,31 @@ impl Inner {
     }
 }
 
+/// Updates the files each unfinished goal changes; when any list changed,
+/// every unfinished goal of that project is re-sent (overlaps are mutual).
+async fn refresh_touched(inner: &Arc<Inner>) -> Result<()> {
+    let goals = inner.store(|s| s.unmerged_goals())?;
+    let mut changed_projects = HashSet::new();
+    for g in &goals {
+        let (Some(ws), Some(base)) = (g.workspace.clone(), g.base_commit.clone()) else { continue };
+        if !Path::new(&ws).is_dir() {
+            continue;
+        }
+        let git = inner.git.clone();
+        let files = match tokio::task::spawn_blocking(move || git.touched(Path::new(&ws), &base)).await {
+            Ok(Ok(f)) => f,
+            _ => continue,
+        };
+        if inner.store(|s| s.set_touched(&g.id, &files))? {
+            changed_projects.insert(g.project_id.clone());
+        }
+    }
+    for g in goals.iter().filter(|g| changed_projects.contains(&g.project_id)) {
+        inner.mark_dirty(&g.id);
+    }
+    Ok(())
+}
+
 impl Supervisor {
     /// Opens the store, installs the extension, recovers goals interrupted
     /// by the last exit and starts the background loops.
@@ -296,6 +321,19 @@ impl Supervisor {
                 tick.tick().await;
                 let Some(inner) = weak.upgrade() else { break };
                 inner.flush_dirty();
+            }
+        });
+        // Overlap radar: which files each unfinished goal changes, so goals
+        // of one project that touch the same files can say so early.
+        let weak = Arc::downgrade(&self.inner);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(15));
+            loop {
+                tick.tick().await;
+                let Some(inner) = weak.upgrade() else { break };
+                if let Err(e) = refresh_touched(&inner).await {
+                    tracing::warn!(error = %e, "overlap radar failed");
+                }
             }
         });
         // Integration watcher: accepted goals whose branch reached the base.

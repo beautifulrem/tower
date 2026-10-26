@@ -78,6 +78,19 @@ pub struct GoalSummary {
     /// When the current run started, for the elapsed clock.
     pub run_started_at: Option<Millis>,
     pub last_viewed_at: Option<Millis>,
+    /// Other unfinished goals of the same project that change some of the
+    /// same files: they will likely conflict when both are merged.
+    pub overlaps: Vec<Overlap>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Overlap {
+    pub goal_id: String,
+    pub title: String,
+    /// The files both goals change (at most a handful).
+    pub files: Vec<String>,
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

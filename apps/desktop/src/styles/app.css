@@ -2573,6 +2573,9 @@ input[type="radio"] {
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
 }
+.palette-empty-action {
+  margin: 6px 0 0 -8px;
+}
 .palette-foot {
   display: flex;
   align-items: center;

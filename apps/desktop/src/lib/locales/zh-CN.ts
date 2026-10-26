@@ -145,6 +145,8 @@ export const zh = {
     searchPlaceholder: "搜索目标与命令…",
     noMatchesFor: "没有与“{q}”匹配的结果",
     noMatchesHint: "可以输入标题的任意片段，或中文的拼音首字母，如 gwc。",
+    reviewGoal: "评审 {id} · {title}",
+    answerCard: "回答 {id} · {kind}",
     groupRecent: "最近",
     groupCommands: "命令",
     groupGoals: "目标",

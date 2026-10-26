@@ -356,6 +356,10 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
     void navigator.clipboard.writeText(link);
     toast("success", t("common.copied"));
   };
+  /** A pairing link as a reading: which network, then host:port; the scheme and the token stay out of sight. */
+  const hostOf = (link: string) => link.replace(/^https?:\/\//, "").replace(/\/?#.*$/, "");
+  const isTailscale = (link: string) => hostOf(link).startsWith("100.");
+  const lan = () => (info()?.links ?? []).some((l) => !isTailscale(l));
   return (
     <section class="settings-block" onFocusOut={() => void props.commit().then((saved) => saved && refetch())}>
       <h2 class="section-title">{t("settings.phone")}</h2>
@@ -368,35 +372,74 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
           <span>{t("settings.phoneEnable")}</span>
           <span class="check-desc">{t("settings.phoneEnableHint")}</span>
         </label>
+        {/* The port and the network are readings of a page that is on; off, they wait. */}
         <Field label={t("settings.phonePort")} class="field-narrow">
-          <input class="num narrow phone-port" type="number" min="1024" max="65535" value={props.s.remote_port} onInput={(e) => props.patch({ remote_port: Number(e.currentTarget.value) || 7317 })} />
+          <input
+            class="num narrow phone-port"
+            type="number"
+            min="1024"
+            max="65535"
+            value={props.s.remote_port}
+            disabled={!props.s.remote_enabled}
+            onInput={(e) => props.patch({ remote_port: Number(e.currentTarget.value) || 7317 })}
+          />
         </Field>
+        <label class="check form-row" classList={{ disabled: !props.s.remote_enabled }}>
+          <input
+            type="checkbox"
+            checked={props.s.remote_local_network}
+            disabled={!props.s.remote_enabled}
+            onChange={(e) => {
+              props.patch({ remote_local_network: e.currentTarget.checked });
+              void props.commit().then(() => refetch());
+            }}
+          />
+          <span>{t("settings.phoneLocalNetwork")}</span>
+          <span class="check-desc">{t("settings.phoneLocalNetworkHint")}</span>
+        </label>
         <Show when={props.s.remote_enabled}>
           <Show when={info()} fallback={<span class="field-hint form-row">{info.loading ? t("common.loading") : t("settings.phoneUnavailable")}</span>}>
             {(i) => (
               <>
-                <div class="form-row phone-pair">
-                  {/* The SVG is the supervisor's own, generated from the first link. */}
-                  <div class="phone-qr" innerHTML={i().qr_svg} aria-label={t("settings.phoneQr")} role="img" />
-                  <div class="phone-links">
-                    <For each={i().links}>
-                      {(link) => (
-                        <div class="phone-link">
-                          <span class="mono t2 ellipsis" title={link}>
-                            {link.replace(/#.*$/, "#…")}
-                          </span>
-                          <IconButton icon="copy" size={22} label={t("settings.phoneCopyLink")} onClick={() => copy(link)} />
-                        </div>
-                      )}
-                    </For>
-                    <p class="field-hint phone-transport">
-                      <Show when={i().tailscale} fallback={<NoticeMark />}>
-                        <Icon name="check" size={10} class="t3" />
-                      </Show>
-                      <span>{i().tailscale ? t("settings.phoneTailscale") : t("settings.phoneLan")}</span>
+                <Show
+                  when={i().links.length > 0}
+                  fallback={
+                    <p class="field-hint form-row phone-transport">
+                      <NoticeMark />
+                      <span>{t("settings.phoneNoLinks")}</span>
                     </p>
+                  }
+                >
+                  <div class="form-row phone-pair">
+                    {/* The SVG is the supervisor's own, generated from the first link. */}
+                    <div class="phone-qr" innerHTML={i().qr_svg} aria-label={t("settings.phoneQr")} role="img" />
+                    <div class="phone-links">
+                      <For each={i().links}>
+                        {(link) => (
+                          <div class="phone-link">
+                            <span class="phone-link-net t3">{isTailscale(link) ? t("settings.phoneLinkTailscale") : t("settings.phoneLinkLan")}</span>
+                            <span class="mono t1 ellipsis" title={link}>
+                              {hostOf(link)}
+                            </span>
+                            <IconButton icon="copy" size={22} label={t("settings.phoneCopyLink")} onClick={() => copy(link)} />
+                          </div>
+                        )}
+                      </For>
+                      <Show when={i().tailscale}>
+                        <p class="field-hint phone-transport">
+                          <Icon name="check" size={10} class="t3" />
+                          <span>{t("settings.phoneTailscale")}</span>
+                        </p>
+                      </Show>
+                      <Show when={lan()}>
+                        <p class="field-hint phone-transport">
+                          <NoticeMark />
+                          <span>{t("settings.phoneLan")}</span>
+                        </p>
+                      </Show>
+                    </div>
                   </div>
-                </div>
+                </Show>
                 <div class="form-row row">
                   <Button size="s" variant="ghost" busy={busy()} onClick={() => void reset()}>
                     {t("settings.phoneReset")}
@@ -407,6 +450,10 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
             )}
           </Show>
         </Show>
+        {/* Pushes go through ntfy; what leaves the machine is said in one line, with where to point it. */}
+        <Field label={t("settings.pushUrl")} hint={t("settings.pushUrlHint")}>
+          <input class="mono" value={props.s.push_url} onInput={(e) => props.patch({ push_url: e.currentTarget.value })} placeholder="https://ntfy.example.net/tower" spellcheck={false} />
+        </Field>
       </div>
     </section>
   );

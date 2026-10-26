@@ -11,7 +11,8 @@
    * Tower on a phone: the same quiet cockpit, one column. Three greys and no
    * more; colour only where a human is needed (the amber strip on a card) or
    * the verifier has spoken (the green seal). Same tokens as the desktop's
-   * tokens.css, in oklch; the system font so nothing is fetched.
+   * tokens.css, in oklch; the system font so nothing is fetched. Every
+   * target is at least 44pt, as iOS asks.
    */
   :root {
     --bg: oklch(0.992 0.002 80); --bg-raised: oklch(1 0 0); --bg-inset: oklch(0.975 0.003 80);
@@ -24,9 +25,9 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: oklch(0.180 0.004 70); --bg-raised: oklch(0.205 0.005 70); --bg-inset: oklch(0.160 0.004 70);
+      --bg: oklch(0.180 0.004 70); --bg-raised: oklch(0.215 0.005 70); --bg-inset: oklch(0.160 0.004 70);
       --bg-hover: oklch(0.235 0.005 70); --bg-selected: oklch(0.265 0.006 70);
-      --border-subtle: oklch(1 0 0 / 0.06); --border: oklch(1 0 0 / 0.10); --border-strong: oklch(1 0 0 / 0.16);
+      --border-subtle: oklch(1 0 0 / 0.06); --border: oklch(1 0 0 / 0.12); --border-strong: oklch(1 0 0 / 0.18);
       --text-1: oklch(0.945 0.003 70); --text-2: oklch(0.860 0.005 70); --text-3: oklch(0.720 0.006 70); --text-4: oklch(0.620 0.006 70);
       --st-attention: oklch(0.800 0.150 75); --attention-bg: oklch(0.225 0.030 75);
       --st-danger: oklch(0.750 0.150 25); --st-verified: oklch(0.770 0.130 155); --st-active: oklch(0.780 0.120 235);
@@ -48,11 +49,12 @@
   button:focus-visible, textarea:focus-visible { outline: 1.5px solid var(--focus); outline-offset: 2px; }
 
   /* The wordmark: a ring with the verifier's check, the name tracked wide — the desktop's, at the same size. */
-  header { display: flex; align-items: center; gap: 8px; height: 32px; margin-bottom: 14px; }
+  header { display: flex; align-items: center; gap: 8px; min-height: 32px; margin-bottom: 14px; }
   .wordmark { display: inline-flex; align-items: center; gap: 8px; font-size: 10px; line-height: 12px; letter-spacing: 0.14em; font-weight: 500; color: var(--text-3); }
   .wordmark svg { display: block; }
-  #status { margin-left: auto; font-size: 12px; color: var(--text-3); display: inline-flex; align-items: center; gap: 6px; }
-  #status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-4); }
+  #status { margin-left: auto; font-size: 12px; color: var(--text-3); display: inline-flex; align-items: center; gap: 6px; text-align: right; }
+  #status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-4); flex: 0 0 auto; }
+  #status.stale { color: var(--text-1); }
   #status.off .dot { border-radius: 1px; background: var(--st-danger); }
 
   /* Scale titles, as on the board: the word, a hairline, the count. */
@@ -61,8 +63,9 @@
   h2 .num { color: var(--text-2); order: 3; }
   .empty { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; color: var(--text-2); font-size: 14px; }
   .empty svg { flex: 0 0 auto; margin-top: 6px; color: var(--text-3); }
-  .error { color: var(--text-1); font-size: 14px; padding: 10px 0; }
-  .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); margin-right: 8px; vertical-align: 1px; }
+  .error { display: flex; align-items: center; gap: 10px; color: var(--text-1); font-size: 14px; padding: 10px 0; }
+  .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); flex: 0 0 auto; }
+  .error .btn { margin-left: auto; }
 
   /* A decision card: amber lives only in its 28px strip. */
   .card { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); margin-bottom: 10px; overflow: hidden; }
@@ -74,18 +77,22 @@
   .main { padding: 10px 12px 12px; display: grid; gap: 8px; }
   .question { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: -0.008em; user-select: text; }
   .question.code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .question.code { font-size: 15px; font-weight: 500; word-break: break-word; }
   .body { color: var(--text-2); font-size: 14px; white-space: pre-wrap; word-break: break-word; user-select: text; }
   .tail { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-inset); border: 1px solid var(--border-subtle); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
   .caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-1); }
   .caution svg { flex: 0 0 auto; margin-top: 3px; }
-  .opts { display: flex; flex-wrap: wrap; gap: 6px; }
-  .btn { height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-1); font-size: 14px; font-weight: 500; white-space: nowrap; }
+  .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn { min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-1); font-size: 15px; font-weight: 500; white-space: nowrap; }
   .btn:active { background: var(--bg-selected); }
   .btn.primary { background: var(--text-1); border-color: var(--text-1); color: var(--bg); }
   .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
   .btn.armed { border-color: var(--text-1); background: var(--bg-selected); }
   .btn:disabled { color: var(--text-3); border-color: var(--border-subtle); }
-  textarea { width: 100%; font: inherit; font-size: 14px; line-height: 20px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text-1); resize: none; min-height: 34px; outline: none; }
+  /* Decisions that widen what the agent may do stay at the desk: named, not offered. */
+  .desk { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12px; line-height: 16px; color: var(--text-3); }
+  .desk b { font-weight: 500; color: var(--text-2); }
+  textarea { width: 100%; font: inherit; font-size: 15px; line-height: 20px; padding: 11px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text-1); resize: none; min-height: 44px; outline: none; }
   textarea:focus { border-color: var(--border-strong); }
   .reply { display: flex; gap: 8px; align-items: flex-end; }
   .reply textarea { flex: 1; }
@@ -94,8 +101,8 @@
   .claim .who::before { content: "┆ "; color: var(--text-4); }
   .claim .what { color: var(--text-2); }
 
-  /* A goal row: glyph, title, badge word · detail, age. */
-  .row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 44px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+  /* A goal row: glyph, title, badge word · detail; the right column is an action or nothing. */
+  .row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 52px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
   .row:first-of-type { border-top: 0; }
   .row .glyph { display: block; }
   .row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -103,9 +110,11 @@
   .row .live .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .live .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .live .detail.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
-  .row .seal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-1); font-weight: 500; }
+  .row .live .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--text-3); flex: 0 0 auto; }
+  .row .live .sep { color: var(--text-4); flex: 0 0 auto; }
+  .row .seal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .seal .pin { color: var(--text-2); font-weight: 400; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
-  .row .btn { height: 30px; padding: 0 10px; font-size: 13px; }
+  .row .btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
   .foot { margin-top: 28px; font-size: 11px; line-height: 16px; color: var(--text-4); text-align: center; }
 </style>
 </head>
@@ -123,17 +132,19 @@
 const T = {
   en: { needs: "Needs you", toAccept: "Ready to accept", running: "Running", none: "Nothing needs you.", noneBody: "Questions, approvals and pauses show up here.",
         noRuns: "No goal is running.", send: "Send", pause: "Pause", confirm: "Press again", unpaired: "Open the pairing link from Tower's Settings on this phone.",
-        updated: "updated", offline: "Can't reach Tower", you: "you", ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
-        acceptOnDesk: "Review and accept on the desk", claim: "Agent says", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
-        foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays on the desk.",
+        updated: "updated", every: "every 5 s", offline: "Can't reach Tower", retry: "Retry", you: "you", atDesk: "At your Mac",
+        ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
+        acceptOnDesk: "Review and accept on your Mac", claim: "Agent says", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
+        foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
         states: { draft: "Draft", ready: "Ready", running: "Running", paused: "Paused", claimed: "Claimed done", verifying: "Verifying", in_review: "Ready to accept", accepted: "Accepted", integrated: "Merged", archived: "Archived", abandoned: "Abandoned" },
         modes: { idle: "Idle", starting: "Starting", thinking: "Thinking", reading: "Working", editing: "Working", executing: "Working", waiting_on_you: "Needs you", retrying: "Retrying", compacting: "Compacting", verifying: "Verifying", settled: "Stopped" },
         kinds: { question: "Question", approval: "Approval", assumption: "Assumption", paused: "Paused", review_ready: "Ready to accept", stalled: "May be stuck", ci_failed: "CI failed" } },
   zh: { needs: "需要你", toAccept: "待验收", running: "运行中", none: "没有需要你决定的事。", noneBody: "问题、审批、假设与暂停会出现在这里。",
         noRuns: "没有正在运行的目标。", send: "发送", pause: "暂停", confirm: "再按一次", unpaired: "在这台手机上打开 Tower 设置里的配对链接。",
-        updated: "更新于", offline: "连不上 Tower", you: "你", ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
+        updated: "更新于", every: "每 5 秒", offline: "连不上 Tower", retry: "重试", you: "你", atDesk: "在电脑上",
+        ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
         acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 称", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
-        foot: "这个页面由你自己的电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
+        foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
         states: { draft: "草稿", ready: "就绪", running: "运行中", paused: "已暂停", claimed: "自称完成", verifying: "验证中", in_review: "待验收", accepted: "已验收", integrated: "已合入", archived: "已归档", abandoned: "已放弃" },
         modes: { idle: "空闲", starting: "准备中", thinking: "思考", reading: "执行", editing: "执行", executing: "执行", waiting_on_you: "等你", retrying: "重试", compacting: "压缩中", verifying: "验证", settled: "已停" },
         kinds: { question: "问题", approval: "审批", assumption: "假设", paused: "已暂停", review_ready: "待验收", stalled: "可能卡住", ci_failed: "CI 失败" } },
@@ -181,6 +192,14 @@ function parts(i) {
   if (first < 0) return { prose: body, tail: "" };
   return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
 }
+// Mirrors the supervisor's `answerable_away`: allowing a gated action, overriding a sentinel and
+// installing changed dependencies with the network widen what the agent may do, so they are
+// decided where the diff is — the page names them instead of offering them.
+const DESK_ONLY = {
+  approval: ["Allow", "Approve", "允许", "批准"],
+  any: ["I've checked, go to review", "我已确认，进入评审", "I've checked, install with the network", "我看过改动，这次联网安装"],
+};
+const atDeskOnly = (i, o) => (i.kind === "approval" ? DESK_ONLY.approval : DESK_ONLY.any).includes(o);
 let armed = null;
 async function answer(id, response, danger) {
   if (danger && armed !== id + response) { armed = id + response; render(last); return; }
@@ -195,7 +214,16 @@ async function pause(goal) {
   load();
 }
 let last = null;
+let lastOk = 0;
 const ago = (at) => t("ago")(Math.round((Date.now() - at) / 60000));
+const clock = (at) => new Date(at).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" });
+// "updated 03:05 · every 5 s"; once a minute has passed without a fresh read, the age is added and the line steps up a register.
+function showStatus() {
+  if (status.className === "off" || !lastOk) return;
+  const stale = Date.now() - lastOk > 60_000;
+  status.className = stale ? "stale" : "";
+  statusText.textContent = `${t("updated")} ${clock(lastOk)} · ${stale ? ago(lastOk) : t("every")}`;
+}
 function render(s) {
   if (!s) return;
   lang = s.lang.startsWith("zh") ? "zh" : "en";
@@ -209,7 +237,9 @@ function render(s) {
   for (const i of items) {
     const g = goals.get(i.goal_id);
     const p = parts(i);
+    const desk = [];
     const opts = i.options.map((o, n) => {
+      if (atDeskOnly(i, o)) { desk.push(o); return ""; }
       const tone = i.tones[n] || (n === 0 ? "primary" : "neutral");
       const danger = tone === "destructive";
       const isArmed = danger && armed === i.id + o;
@@ -224,6 +254,7 @@ function render(s) {
         ${p.tail ? `<pre class="tail">${esc(p.tail)}</pre>` : ""}
         ${security ? `<p class="caution">${G.notice}<span>${t("security")}</span></p>` : ""}
         ${opts ? `<div class="opts">${opts}</div>` : ""}
+        ${desk.length ? `<p class="desk">${G.notice} ${t("atDesk")}: ${desk.map((o) => `<b>${esc(o)}</b>`).join(" · ")}</p>` : ""}
         ${i.allow_text && i.kind !== "assumption" ? `<div class="reply"><textarea id="t-${esc(i.id)}" rows="1" aria-label="${t("send")}"></textarea><button class="btn" data-send="${esc(i.id)}">${t("send")}</button></div>` : ""}
       </div></article>`;
   }
@@ -231,8 +262,9 @@ function render(s) {
     h += `<h2>${t("toAccept")}<span class="num">${ready.length}</span></h2>`;
     for (const i of ready) {
       const g = goals.get(i.goal_id);
-      const seal = g && g.verified_pin ? `<span class="seal">${G.seal}<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span></span>` : "";
-      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="live">${seal}<span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span class="mono" style="color:var(--text-3);font-size:12px">${esc(i.goal_id)}</span></div>`;
+      const seal = g && g.verified_pin ? `<span class="seal">${G.seal}<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span></span><span class="sep">·</span>` : "";
+      // One column, one kind of thing: the id rides in the second line, the right column stays empty — it is the pause button's, on running rows.
+      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="sep">·</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
     }
   }
   const running = s.goals.filter((g) => g.state === "running");
@@ -248,22 +280,29 @@ function render(s) {
   }
   app.innerHTML = h;
   status.className = "";
-  statusText.textContent = `${t("updated")} ${new Date().toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}`;
+  showStatus();
 }
 app.addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
+  if (b.dataset.retry !== undefined) return load();
   if (b.dataset.pause) return pause(b.dataset.pause);
   if (b.dataset.send) { const v = document.getElementById("t-" + b.dataset.send).value.trim(); if (v) answer(b.dataset.send, v, false); return; }
   if (b.dataset.id) answer(b.dataset.id, b.dataset.o, b.dataset.d === "true");
 });
 async function load() {
   if (!token) { app.innerHTML = `<p class="empty">${G.ring}<span>${t("unpaired")}</span></p>`; document.getElementById("foot").textContent = t("foot"); return; }
-  try { last = await api("/api/state"); render(last); }
-  catch (e) { app.innerHTML = `<p class="error">${t("offline")} · ${esc(e.message)}</p>`; status.className = "off"; statusText.textContent = t("offline"); }
+  try { last = await api("/api/state"); lastOk = Date.now(); render(last); }
+  catch (e) {
+    // The sentence is the page's; the browser's own words stay in the tooltip, and the way back is one button.
+    app.innerHTML = `<p class="error" title="${esc(e.message)}"><span>${t("offline")}</span><button class="btn ghost" data-retry>${t("retry")}</button></p>`;
+    status.className = "off"; statusText.textContent = t("offline");
+  }
 }
 load();
 setInterval(() => { if (!document.hidden && !document.activeElement?.matches("textarea")) load(); }, 5000);
+setInterval(showStatus, 15000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
 </script>
 </body>
 </html>

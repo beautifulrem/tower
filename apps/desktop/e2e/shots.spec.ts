@@ -20,7 +20,16 @@ import { openTower } from "./tauri";
 const OUT = process.env.SHOTS;
 test.skip(!OUT, "set SHOTS=<dir> to render the preview screens");
 
-const screens: Array<{ name: string; route: string; width?: number; lang?: "en" | "zh-CN"; theme?: "light" | "dark"; after?: (page: import("@playwright/test").Page) => Promise<void> }> = [
+const screens: Array<{
+  name: string;
+  route: string;
+  width?: number;
+  lang?: "en" | "zh-CN";
+  theme?: "light" | "dark";
+  /** A selector to capture instead of the viewport (a block inside a scrolling view). */
+  element?: string;
+  after?: (page: import("@playwright/test").Page) => Promise<void>;
+}> = [
   { name: "overview-zh-dark", route: "overview", lang: "zh-CN", theme: "dark" },
   { name: "overview-en-light", route: "overview", lang: "en", theme: "light" },
   { name: "overview-zh-dark-1100", route: "overview", lang: "zh-CN", theme: "dark", width: 1100 },
@@ -44,6 +53,8 @@ const screens: Array<{ name: string; route: string; width?: number; lang?: "en" 
   { name: "review-G-0003-en-light", route: "review/G-0003", lang: "en", theme: "light" },
   { name: "settings-zh-dark", route: "settings", lang: "zh-CN", theme: "dark" },
   { name: "settings-en-light", route: "settings", lang: "en", theme: "light" },
+  { name: "settings-phone-zh-dark", route: "settings", lang: "zh-CN", theme: "dark", element: ".settings-block:has(.phone-pair)" },
+  { name: "settings-phone-en-light", route: "settings", lang: "en", theme: "light", element: ".settings-block:has(.phone-pair)" },
   { name: "contract-en-light", route: "new", lang: "en", theme: "light" },
   { name: "contract-zh-dark", route: "new", lang: "zh-CN", theme: "dark" },
 ];
@@ -57,6 +68,7 @@ for (const s of screens) {
     await page.waitForTimeout(700);
     await s.after?.(page);
     await page.waitForTimeout(300);
-    await page.screenshot({ path: join(OUT!, `${s.name}.png`), fullPage: s.name.startsWith("settings") || s.name.startsWith("goal") });
+    if (s.element) await page.locator(s.element).first().screenshot({ path: join(OUT!, `${s.name}.png`) });
+    else await page.screenshot({ path: join(OUT!, `${s.name}.png`), fullPage: s.name.startsWith("goal") });
   });
 }

@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -57,12 +57,19 @@
   #status.stale { color: var(--text-1); }
   #status.off .dot { border-radius: 1px; background: var(--st-danger); }
 
-  /* Scale titles, as on the board: the word, a hairline, the count. */
-  h2 { display: flex; align-items: center; gap: 10px; margin: 22px 0 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-3); letter-spacing: 0; }
+  /* Scale titles, as on the board: the word in the wordmark's small tracked voice, a hairline, the count. CJK is never tracked wide. */
+  h2 { display: flex; align-items: center; gap: 10px; margin: 24px 0 8px; font-size: 10px; line-height: 16px; font-weight: 500; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; }
+  html[lang^="zh"] h2 { font-size: 11px; letter-spacing: 0.04em; text-transform: none; }
   h2::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
-  h2 .num { color: var(--text-2); order: 3; }
+  h2 .num { color: var(--text-2); order: 3; font-size: 12px; letter-spacing: 0; }
   .empty { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; color: var(--text-2); font-size: 14px; }
   .empty svg { flex: 0 0 auto; margin-top: 6px; color: var(--text-3); }
+  /* The empty list is the list's own shape, waiting: two hollow rows — the draft ring and a bar where each reading will land — never pretend data. */
+  .ghost { margin-top: 4px; pointer-events: none; }
+  .ghost .row { min-height: 44px; }
+  .ghost svg { color: var(--text-4); }
+  .ghost .bar { display: block; height: 6px; border-radius: 3px; background: var(--bg-selected); }
+  .ghost .bar + .bar { margin-top: 8px; }
   .error { display: flex; align-items: center; gap: 10px; color: var(--text-1); font-size: 14px; padding: 10px 0; }
   .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); flex: 0 0 auto; }
   .error .btn { margin-left: auto; }
@@ -88,6 +95,16 @@
   .tail { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-inset); border: 1px solid var(--border-subtle); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
   .caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-1); }
   .caution svg { flex: 0 0 auto; margin-top: 3px; }
+  .caution.note { color: var(--text-3); }
+  /* Held-out output: your register — a solid 2px rule in text-1, like a human stamp, with "for you only" where a source would
+     hang; the one block on a card the agent has never seen. The failing tests' names are machine values above the runner's lines. */
+  .heldout { display: grid; gap: 8px; padding: 2px 0 2px 10px; border-left: 2px solid var(--text-1); }
+  .heldout .label { font-size: 10px; line-height: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); font-weight: 500; }
+  .heldout .head { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+  .heldout .head .id { color: var(--text-3); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  .heldout .names { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; font-size: 12px; color: var(--text-3); }
+  .heldout .names code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--text-1); user-select: text; }
+  .heldout .tail { margin: 0; }
   .opts { display: flex; flex-wrap: wrap; gap: 8px; }
   .btn { min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-1); font-size: 15px; font-weight: 500; white-space: nowrap; }
   .btn:active { background: var(--bg-selected); }
@@ -99,9 +116,16 @@
   .desk { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12px; line-height: 16px; color: var(--text-3); }
   .desk b { font-weight: 500; color: var(--text-2); }
   textarea { width: 100%; font: inherit; font-size: 15px; line-height: 20px; padding: 11px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text-1); resize: none; min-height: 44px; outline: none; }
-  textarea:focus { border-color: var(--border-strong); }
+  textarea::placeholder { color: var(--text-3); }
+  /* A field's focus is its edge, and the edge changes for real: text-3, a line the eye finds. */
+  textarea:focus { border-color: var(--text-3); }
+  textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-3); }
   .reply { display: flex; gap: 8px; align-items: flex-end; }
   .reply textarea { flex: 1; }
+  /* The hint on a held-out card is the primary path: the field takes the whole line, the button the next. */
+  .reply.hint { flex-wrap: wrap; }
+  .reply.hint textarea { flex: 1 1 100%; }
+  .reply.hint .btn { flex: 1 1 auto; }
   .claim { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); column-gap: 10px; font-size: 14px; }
   .claim .who { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 3px; }
   .claim .who::before { content: "┆ "; color: var(--text-4); }
@@ -144,6 +168,9 @@ const T = {
         later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00", putAside: "Put aside until",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
         runningFor: (d) => `running ${d}`,
+        answerPlaceholder: "Write your answer…", notePlaceholder: "A note for the agent (optional)…",
+        forYou: "For you only", failing: "failing", hintPlaceholder: "A hint for the agent, in your words — it does not see the output above…", sendHint: "Send the hint and resume",
+        heldOutNote: "The agent does not know these tests exist. A hint, or only the names of what failed, keeps it that way; showing it the failure does not.",
         acceptOnDesk: "Review and accept on your Mac", claim: "Agent says", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
         foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
         states: { draft: "Draft", ready: "Ready", running: "Running", paused: "Paused", claimed: "Claimed done", verifying: "Verifying", in_review: "Ready to accept", accepted: "Accepted", integrated: "Merged", archived: "Archived", abandoned: "Abandoned" },
@@ -155,6 +182,9 @@ const T = {
         later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00", putAside: "已收起，再提醒于",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
         runningFor: (d) => `已运行 ${d}`,
+        answerPlaceholder: "写下你的回答…", notePlaceholder: "写给 Agent 的话（可选）…",
+        forYou: "只给你看", failing: "失败", hintPlaceholder: "用你的话给 Agent 一句提示——它看不到上面的输出…", sendHint: "发送提示并继续",
+        heldOutNote: "Agent 不知道这些测试存在。给它提示，或只告诉它哪些测试失败，都能保住这一点；把失败给它看则不能。",
         acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 称", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
         foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
         states: { draft: "草稿", ready: "就绪", running: "运行中", paused: "已暂停", claimed: "自称完成", verifying: "验证中", in_review: "待验收", accepted: "已验收", integrated: "已合入", archived: "已归档", abandoned: "已放弃" },
@@ -194,22 +224,50 @@ const G = {
   },
 };
 const machine = (s) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
+// Where rows will be: the row grid itself, each with a hollow ring and two bars (title, live line) of the given widths.
+const ghost = (rows) => `<div class="ghost" aria-hidden="true">${rows.map(([a, b]) => `<div class="row">${G.ring}<div><i class="bar" style="width:${a}%"></i><i class="bar" style="width:${b}%"></i></div><span></span></div>`).join("")}</div>`;
 // Prose first, machine lines (an installer's tail, a command, a path) after, as on the desk.
 const MACHINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
-function parts(i, g) {
+function parts(i) {
   const body = (i.body || "").trim();
   if (!body || body === i.subject.trim()) return { prose: "", tail: "" };
   if (i.kind === "approval") return { prose: "", tail: body };
-  // Held-out tests failed: the sentence, then the failures' output (for you; the agent has not seen it) as one machine block.
-  if (i.kind === "paused" && g && g.pause_reason === "held_out_failed") {
-    const cut = body.indexOf("\n\n");
-    return cut < 0 ? { prose: body, tail: "" } : { prose: body.slice(0, cut).trim(), tail: body.slice(cut).trim() };
-  }
   const lines = body.split("\n");
   const first = lines.findIndex((l) => MACHINE.test(l.trim()));
   if (first < 0) return { prose: body, tail: "" };
   return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
 }
+// A held-out card's body, as the desk reads it: the supervisor's sentence; a line per criterion naming its failing tests
+// ("Failing in C2: a, b" / "C2 失败的测试：a、b"); then one block per failed criterion, `C2 · title` over the runner's lines.
+// The output is for you alone, so it never goes through the prose/tail split above.
+const HELD_HEAD = /^(\S{1,12}) · (.+)$/;
+const HELD_NAMES = /^(?:Failing in (\S{1,12}): (.+)|(\S{1,12}) 失败的测试：(.+))$/;
+function heldOut(body) {
+  const lines = (body || "").trim().split("\n");
+  const prose = [], failures = [], names = new Map();
+  let cur = null;
+  lines.forEach((line, i) => {
+    const afterBlank = i === 0 || lines[i - 1].trim() === "";
+    const n = cur ? null : HELD_NAMES.exec(line);
+    if (n && afterBlank) { names.set(n[1] ?? n[3], (n[2] ?? n[4]).split(/, |、/).map((s) => s.trim()).filter(Boolean)); return; }
+    const m = HELD_HEAD.exec(line);
+    if (m && afterBlank) { cur = { id: m[1], title: m[2], tail: "", names: names.get(m[1]) ?? [] }; failures.push(cur); }
+    else if (cur) cur.tail += (cur.tail ? "\n" : "") + line;
+    else prose.push(line);
+  });
+  for (const f of failures) f.tail = f.tail.trim();
+  for (const [id, list] of names) if (!failures.some((f) => f.id === id)) failures.push({ id, title: "", tail: "", names: list });
+  return { prose: prose.join("\n").trim(), failures };
+}
+const heldHtml = (h) => `<div class="heldout"><span class="label">${t("forYou")}</span>${h.failures.map((f) => `
+  <div class="head"><span class="id">${esc(f.id)}</span><span>${esc(f.title)}</span></div>
+  ${f.names.length ? `<div class="names"><span>${t("failing")}</span>${f.names.map((n) => `<code>${esc(n)}</code>`).join("")}</div>` : ""}
+  ${f.tail ? `<pre class="tail">${esc(f.tail)}</pre>` : ""}`).join("")}</div>`;
+// What the reply box asks for: a question wants an answer, a held-out card a hint, anything else a note.
+const replyHtml = (i, held) => {
+  const ph = held ? t("hintPlaceholder") : i.kind === "question" ? t("answerPlaceholder") : t("notePlaceholder");
+  return `<div class="reply ${held ? "hint" : ""}"><textarea id="t-${esc(i.id)}" rows="1" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></textarea><button class="btn ${held ? "primary" : ""}" data-send="${esc(i.id)}">${held ? t("sendHint") : t("send")}</button></div>`;
+};
 // Mirrors the supervisor's `answerable_away`: allowing a gated action, overriding a sentinel and
 // installing changed dependencies with the network widen what the agent may do, so they are
 // decided where the diff is — the page names them instead of offering them.
@@ -263,10 +321,12 @@ function render(s) {
   const items = s.inbox.filter((i) => i.kind !== "review_ready");
   const ready = s.inbox.filter((i) => i.kind === "review_ready");
   let h = `<h2>${t("needs")}<span class="num">${items.length}</span></h2>`;
-  if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>`;
+  if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>${ghost([[62, 40], [44, 58]])}`;
   for (const i of items) {
     const g = goals.get(i.goal_id);
-    const p = parts(i, g);
+    // Held-out tests failed: the output is for you alone, the hint is the way that keeps it so, and the agent-facing choices come after.
+    const held = i.kind === "paused" && g && g.pause_reason === "held_out_failed" ? heldOut(i.body) : null;
+    const p = held ? { prose: held.prose, tail: "" } : parts(i);
     const desk = [];
     const opts = i.options.map((o, n) => {
       if (atDeskOnly(i, o)) { desk.push(o); return ""; }
@@ -284,10 +344,13 @@ function render(s) {
         <p class="question ${i.kind === "ci_failed" ? "code" : ""}">${esc(i.subject)}</p>
         ${p.prose ? `<p class="body">${esc(p.prose)}</p>` : ""}
         ${p.tail ? `<pre class="tail">${esc(p.tail)}</pre>` : ""}
+        ${held && held.failures.length ? heldHtml(held) : ""}
+        ${held && i.allow_text ? replyHtml(i, true) : ""}
         ${security ? `<p class="caution">${G.notice}<span>${t("security")}</span></p>` : ""}
         ${opts ? `<div class="opts">${opts}</div>` : ""}
         ${desk.length ? `<p class="desk">${G.notice} ${t("atDesk")}: ${desk.map((o) => `<b>${esc(o)}</b>`).join(" · ")}</p>` : ""}
-        ${i.allow_text && i.kind !== "assumption" ? `<div class="reply"><textarea id="t-${esc(i.id)}" rows="1" aria-label="${t("send")}"></textarea><button class="btn" data-send="${esc(i.id)}">${t("send")}</button></div>` : ""}
+        ${held ? `<p class="caution note">${G.notice}<span>${t("heldOutNote")}</span></p>` : ""}
+        ${!held && i.allow_text && i.kind !== "assumption" ? replyHtml(i, false) : ""}
       </div></article>`;
   }
   if (ready.length) {
@@ -301,7 +364,7 @@ function render(s) {
   }
   const running = s.goals.filter((g) => g.state === "running");
   h += `<h2>${t("running")}<span class="num">${running.length}</span></h2>`;
-  if (!running.length) h += `<p class="empty">${G.ring}<span>${t("noRuns")}</span></p>`;
+  if (!running.length) h += `<p class="empty">${G.ring}<span>${t("noRuns")}</span></p>${ghost([[54, 36]])}`;
   for (const g of running) {
     const l = g.live_line;
     const badge = t("modes")[g.mode] ?? g.mode;

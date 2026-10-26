@@ -9,13 +9,14 @@
 import { For, type JSX, Show, createResource } from "solid-js";
 
 import { DemoButton, demoMissing, openPiLogin, pickProject } from "../components/Demo";
-import { DangerMark, Icon, NoticeMark, Seal } from "../components/Glyph";
+import { DangerMark, Icon, LifecycleGlyph, NoticeMark, Seal } from "../components/Glyph";
 import { Claim, CriteriaBar } from "../components/Honesty";
 import { Button, Wordmark } from "../components/ui";
 import type { EnvIssue } from "../gen/EnvIssue";
+import type { LifecycleState } from "../gen/LifecycleState";
 import { api } from "../lib/api";
 import { t } from "../lib/i18n";
-import { envIssueLabel, hasIssue, installHint } from "../lib/labels";
+import { envIssueLabel, hasIssue, installHint, stateLabel } from "../lib/labels";
 import { refreshEnvironment, state, toast } from "../lib/store";
 
 /**
@@ -58,6 +59,38 @@ function Check(props: { ok: boolean | null; blocking?: boolean; title: string; d
   );
 }
 
+/** The six stations of a goal's life, in the order the board shows them; the last two are verified, so they are green. */
+const LIFE: Array<{ state: LifecycleState; verified: boolean }> = [
+  { state: "draft", verified: false },
+  { state: "running", verified: false },
+  { state: "claimed", verified: false },
+  { state: "verifying", verified: false },
+  { state: "in_review", verified: true },
+  { state: "accepted", verified: true },
+];
+
+/**
+ * A goal's life in Tower's own glyphs: ring, half-disc, dashed claim, the
+ * verifier filling it in, the check, the seal — each with its word, joined
+ * by hairlines like a route. The one picture that says what Tower does
+ * without a sentence: the agent's "done" is the dashed station in the
+ * middle, and green begins only after the verifier.
+ */
+function LifeLine() {
+  return (
+    <ol class="welcome-life halt" aria-label={t("welcome.life")}>
+      <For each={LIFE}>
+        {(s) => (
+          <li class="welcome-station">
+            <LifecycleGlyph goal={{ state: s.state, progress: { verified: s.verified ? 1 : 0, observed: 0, machine: 1, human: 0, human_done: 0 }, verified_pin: s.verified ? "a4a90b2" : null }} size={14} />
+            <span class="welcome-station-word">{stateLabel(s.state)}</span>
+          </li>
+        )}
+      </For>
+    </ol>
+  );
+}
+
 /** The honesty grammar on one static card: facts, a claim and the seal. */
 function SampleCard() {
   return (
@@ -93,6 +126,7 @@ export function Welcome() {
         <Wordmark />
         <h1 class="welcome-title">{t("welcome.title")}</h1>
         <p class="welcome-lede">{t("welcome.lede")}</p>
+        <LifeLine />
         <SampleCard />
         <div class="welcome-points">
           <div>

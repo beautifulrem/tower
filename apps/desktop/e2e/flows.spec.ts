@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichCi, enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
+import { enrichCi, enrichEngines, enrichHeldOut, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -325,6 +325,154 @@ test("at 1800 wide the decision queue and the board share one centred container"
   const card = page.locator(".board-queue .decision").first();
   const row = page.locator(".g-row").first();
   expect(Math.abs((await card.boundingBox())!.x - (await row.boundingBox())!.x)).toBeLessThan(8);
+});
+
+test("the phone page switched on but not served says why, with its way out, and nothing to scan; the title bar carries the reading", async ({ page }) => {
+  await openTower(page, "settings", { enrich: enrichPhoneProblem });
+  const problem = page.locator(".phone-problem");
+  await expect(problem).toBeVisible();
+  await expect(problem).toContainText("Tailscale is not connected");
+  await expect(problem).toContainText("Open Tailscale, or allow the local network");
+  await expect(page.locator(".phone-qr")).toHaveCount(0);
+  await expect(page.locator(".phone-link")).toHaveCount(0);
+  const gauge = page.locator(".gauge-phone");
+  await expect(gauge).toHaveText(/Phone page off/);
+  await expect(gauge).toHaveAttribute("title", /Tailscale is not connected/);
+});
+
+test("quiet hours are a daily window with two edges, and the last push's failure is a line with its time and reason", async ({ page }) => {
+  await openTower(page, "settings", { enrich: enrichPushes });
+  await expect(page.getByRole("heading", { name: "Notifications and pushes" })).toBeVisible();
+  const from = page.getByLabel("Quiet hours · From");
+  await expect(from).toHaveValue("22:00");
+  await expect(page.getByLabel("Quiet hours · to")).toHaveValue("08:00");
+  await from.fill("23:30");
+  await from.blur();
+  await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { quiet_hours: { start: number } | null } }).settings.quiet_hours?.start === 23 * 60 + 30)).toBe(true);
+  // Not a time: the field goes back to the saved edge.
+  await from.fill("late");
+  await from.blur();
+  await expect(from).toHaveValue("23:30");
+  await expect(page.getByLabel("Also push when a goal is ready to accept")).toBeChecked();
+  const status = page.locator(".push-status");
+  await expect(status).toContainText("Last push failed · 21:03");
+  await expect(status).toContainText("ntfy.example.net could not be reached");
+  // A test push goes where the field points, and the line follows it.
+  await page.getByRole("button", { name: "Send a test push" }).click();
+  await expect.poll(async () => (await calls(page)).some(([cmd]) => cmd === "test_push")).toBe(true);
+  await expect(status).toContainText("Last push sent");
+  await expect(page.locator(".toast")).toContainText("Test push sent");
+  // Switching the window off saves null.
+  await page.getByLabel("Quiet hours every day").uncheck();
+  await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { quiet_hours: unknown } }).settings.quiet_hours === null)).toBe(true);
+});
+
+test("a held-out failure's card keeps the output for you, makes the hint the one primary path, and sends it as a note", async ({ page }) => {
+  await openTower(page, "goal/G-0004", { enrich: enrichHeldOut });
+  const card = page.locator(".decision-heldout");
+  await expect(card).toBeVisible();
+  await expect(card.locator(".heldout-label")).toHaveText("For you only");
+  await expect(card.locator(".heldout .output-tail")).toContainText("AssertionError");
+  // One primary action on the page, and it is the hint; showing the agent the failure is a plain button, abandoning asks twice.
+  const primaries = page.locator(".goal-page .btn-primary");
+  await expect(primaries).toHaveCount(1);
+  await expect(primaries).toHaveText(/Send the hint and resume/);
+  await expect(card.getByRole("button", { name: /Show the agent the failure/ })).toHaveClass(/btn-default/);
+  await expect(card.getByRole("button", { name: "Abandon this goal" })).toHaveClass(/btn-danger/);
+  // The output stands above the field, the field above the agent-facing choices.
+  const tops = await Promise.all([".heldout", ".decision-text", ".decision-actions"].map(async (sel) => (await card.locator(sel).boundingBox())!.y));
+  expect(tops[0]).toBeLessThan(tops[1]);
+  expect(tops[1]).toBeLessThan(tops[2]);
+  // The page's steer box steps aside: the card owns the only text field.
+  await expect(page.locator(".goal-page textarea")).toHaveCount(1);
+  await card.locator("textarea").fill("Half-cents round up, not down");
+  await page.keyboard.press("Meta+Enter");
+  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "answer")?.[1]).toEqual({ inboxId: expect.any(String), response: "Half-cents round up, not down" });
+});
+
+test("a result produced with the held-out tests present is marked for you only, on the goal page and in the verification sheet", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichHeldOut });
+  const chips = page.locator(".chip-you");
+  await expect(chips).toHaveCount(1);
+  await expect(chips).toHaveText("held-out tests · for you only");
+  await expect(chips).toHaveAttribute("title", /never saw this output/);
+  // The chip sits under C2's row, not C1's.
+  const c2 = page.locator(".criterion").filter({ hasText: "C2" });
+  await expect(c2.locator(".chip-you")).toHaveCount(1);
+  await page.keyboard.press("r");
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("e");
+  await expect(page.getByRole("dialog").locator(".chip-you")).toHaveCount(1);
+});
+
+test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {
+  const identity = (F: Record<string, any>) => {
+    // The dumping supervisor may itself lack an identity: one row either way.
+    F.environment.issues = F.environment.issues.filter((i: { kind: string }) => i.kind !== "git_identity_missing");
+    F.environment.issues.push({
+      kind: "git_identity_missing",
+      blocking: false,
+      text: "git has no name and email set.",
+      fix: 'git config --global user.name "Your Name" && git config --global user.email you@example.com',
+    });
+  };
+  await openTower(page, "overview", { enrich: (F) => (identity(F), (F.projects = []), (F.goals = []), (F.inbox = [])) });
+  const row = page.locator(".check-row").filter({ hasText: "git has no name and email" });
+  await expect(row).toBeVisible();
+  const fix = row.locator(".fix");
+  await expect(fix).toHaveText(/user\.name .* && git config --global user\.email you@example\.com$/);
+  // Whole, not clipped: the button shows all of its text.
+  expect(await fix.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  // The welcome screen's route: six stations, joined, the last two green.
+  await expect(page.locator(".welcome-station")).toHaveCount(6);
+  await expect(page.locator(".welcome-station").nth(2)).toContainText("Claimed done");
+  await openTower(page, "settings", { enrich: identity });
+  await expect(page.locator(".check-row").filter({ hasText: "git has no name and email" }).locator(".fix")).toBeVisible();
+});
+
+test("the command palette can put the page's card aside, and H does the same", async ({ page }) => {
+  await openTower(page, "goal/G-0004");
+  await expect(page.locator(".decision")).toBeVisible();
+  await page.keyboard.press("Meta+k");
+  const dialog = page.getByRole("dialog");
+  await page.keyboard.type("put aside");
+  const option = dialog.getByRole("option").filter({ hasText: "Put aside G-0004 · Paused" });
+  await expect(option).toBeVisible();
+  await expect(option.locator("kbd")).toHaveText("H");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press("h");
+  // The native "later" menu is asked for (the shim records the menu plugin's calls).
+  await expect.poll(async () => (await calls(page)).some(([cmd]) => String(cmd).startsWith("plugin:menu|"))).toBe(true);
+});
+
+test("start-up failure is Tower's own strip with the power off: dashes for readings, one error lit, no rules line", async ({ page }) => {
+  await page.addInitScript(() => {
+    // The supervisor does not answer: `goals` throws, like a Tauri command whose state is missing.
+    const orig = (window as any).__TAURI_INTERNALS__;
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      set(v) {
+        const invoke = v.invoke;
+        v.invoke = async (cmd: string, a: unknown) => {
+          if (cmd === "goals") throw "supervisor did not start: database locked";
+          return invoke(cmd, a);
+        };
+        Object.defineProperty(window, "__TAURI_INTERNALS__", { value: v, configurable: true, writable: true });
+      },
+      get() {
+        return orig;
+      },
+    });
+  });
+  await openTower(page, "overview");
+  const failed = page.locator(".boot-failed");
+  await expect(failed).toBeVisible();
+  await expect(failed.locator(".boot-gauges")).toContainText("1 error");
+  await expect(failed.locator(".boot-gauges")).toContainText("—/— running");
+  await expect(failed.locator(".boot-error")).toContainText("database locked");
+  await expect(failed.locator(".empty-rules")).toHaveCount(0);
+  await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible();
 });
 
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {

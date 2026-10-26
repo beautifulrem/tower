@@ -4,13 +4,12 @@ import { Match, Show, Switch, lazy, onCleanup } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
-import { ActivityPanel, openActivity } from "./components/Activity";
-import { CommandPalette, TitleBar, Toasts, openPalette } from "./components/Chrome";
-import { ShortcutSheet, openShortcuts } from "./components/ShortcutSheet";
+import { TitleBar, Toasts } from "./components/Chrome";
 import { Sidebar } from "./components/Sidebar";
-import { Button, Empty, IconButton, Loading, Rules } from "./components/ui";
+import { Button, Empty, IconButton, Loading } from "./components/ui";
 import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
+import { activityOpen, openActivity, openPalette, openShortcuts, paletteOpen, shortcutsOpen, toggleActivity, togglePalette, toggleShortcuts } from "./lib/layers";
 import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
 import { t } from "./lib/i18n";
@@ -25,6 +24,10 @@ import { pickProject } from "./components/Demo";
 const Review = lazy(() => import("./views/Review").then((m) => ({ default: m.Review })));
 const Settings = lazy(() => import("./views/Settings").then((m) => ({ default: m.Settings })));
 const ContractEditor = lazy(() => import("./views/ContractEditor").then((m) => ({ default: m.ContractEditor })));
+// The floating layers too: each opens on a key or a click, so its code comes then. Their keys are bound here.
+const CommandPalette = lazy(() => import("./components/Palette").then((m) => ({ default: m.CommandPalette })));
+const ShortcutSheet = lazy(() => import("./components/ShortcutSheet").then((m) => ({ default: m.ShortcutSheet })));
+const ActivityPanel = lazy(() => import("./components/Activity").then((m) => ({ default: m.ActivityPanel })));
 
 /** The next item that needs you, cycling (Codex ⌘⌥A, Conductor ⌘⌥L). */
 function nextNeedsYou() {
@@ -63,11 +66,28 @@ function titleOf(): string {
   }
 }
 
-/** Start-up failed: say what, offer to try again and to look at the data. */
+/**
+ * Start-up failed: say what, offer to try again and to look at the data.
+ * Above the words, the title bar's gauge strip with the power off — every
+ * reading a dash and the one error lit — so the screen is Tower's own
+ * instrument gone dark, not a dialog; no rules line here, nothing runs.
+ */
 function BootFailed() {
   return (
     <div class="boot">
       <div class="boot-failed">
+        <div class="boot-gauges num halt" aria-hidden="true">
+          <span class="gauge gauge-errors">
+            <span class="gauge-dot down" />
+            {t("chrome.errorsShort", { n: 1 })}
+          </span>
+          <span class="gauge gauge-dead">{t("chrome.runningShort", { n: "—", max: "—" })}</span>
+          <span class="gauge gauge-dead">—</span>
+          <span class="gauge gauge-dead">
+            <span class="gauge-dot" />
+            {t("chrome.engine")} <span class="t3">—</span>
+          </span>
+        </div>
         <Empty title={t("app.bootFailedTitle")} kind="error" poster rules={false}>
           {t("app.bootFailedBody")}
         </Empty>
@@ -99,7 +119,6 @@ function BootFailed() {
             <span class="meta t3 code-val ellipsis">{state.env!.data_dir}</span>
           </Show>
         </div>
-        <Rules />
       </div>
     </div>
   );
@@ -138,6 +157,9 @@ export function App() {
       { key: "mod+,", run: () => go({ name: "settings" }), inInputs: true, desc: () => t("chrome.openSettings") },
       { key: "escape", run: back, desc: () => t("keys.back"), hint: "escape / mod+[" },
       { key: "mod+[", run: back, inInputs: true },
+      { key: "mod+k", run: togglePalette, inInputs: true, desc: () => t("keys.palette") },
+      { key: "?", run: toggleShortcuts, desc: () => t("keys.shortcuts") },
+      { key: "mod+shift+l", run: toggleActivity, inInputs: true, desc: () => t("keys.activity") },
     ],
     () => t("keys.everywhere"),
   );
@@ -175,9 +197,15 @@ export function App() {
             </div>
           </main>
         </div>
-        <CommandPalette />
-        <ShortcutSheet />
-        <ActivityPanel />
+        <Show when={paletteOpen()}>
+          <CommandPalette />
+        </Show>
+        <Show when={shortcutsOpen()}>
+          <ShortcutSheet />
+        </Show>
+        <Show when={activityOpen()}>
+          <ActivityPanel />
+        </Show>
         <Toasts />
       </Show>
     </Show>

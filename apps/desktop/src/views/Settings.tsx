@@ -6,17 +6,19 @@
 import { For, Show, createResource, createSignal, onMount } from "solid-js";
 
 import { pickQuiet } from "../components/Chrome";
-import { DangerMark, Icon, NoticeMark } from "../components/Glyph";
+import { DangerMark, Icon, NeedsYouMark, NoticeMark } from "../components/Glyph";
 import { TestCheckLine } from "../components/TestCheck";
 import { Button, Empty, Field, IconButton, Loading, Select } from "../components/ui";
 import type { ProjectView } from "../gen/ProjectView";
+import type { PushStatus } from "../gen/PushStatus";
+import type { QuietHours } from "../gen/QuietHours";
 import type { Settings as SettingsT } from "../gen/Settings";
-import { api } from "../lib/api";
+import { api, errorText } from "../lib/api";
 import { clock } from "../lib/format";
 import { locale, t } from "../lib/i18n";
 import { engineLabel, envIssueLabel, modelsFor } from "../lib/labels";
 import { ask } from "../lib/native";
-import { act, quietNow, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
+import { act, quietNow, quietUntil, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 import { type SizeChoice, type ThemeChoice, setSizeChoice, setThemeChoice, sizeChoice, themeChoice } from "../lib/theme";
 import { openPiLogin, pickProject } from "../components/Demo";
 
@@ -123,7 +125,7 @@ export function Settings() {
     patch(p);
     return commit();
   };
-  const quietLabel = () => (quietNow() ? t("quiet.until", { time: clock(state.settings!.quiet_until!) }) : t("quiet.on"));
+  const quietLabel = () => (quietNow() ? t("quiet.until", { time: clock(quietUntil()!) }) : t("quiet.on"));
 
   return (
     <div class="settings">
@@ -200,14 +202,6 @@ export function Settings() {
                 onChange={(v) => void setLanguage(v)}
               />
             </Field>
-            <Field label={t("settings.notifications")} hint={t("quiet.hint")}>
-              <button type="button" class="select" aria-haspopup="menu" aria-label={`${t("settings.notifications")}: ${quietLabel()}`} onClick={() => void pickQuiet()}>
-                <span class="ellipsis grow">{quietLabel()}</span>
-                <svg width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
-                  <path d="M1 3.5 L4 1 L7 3.5 M1 6.5 L4 9 L7 6.5" fill="none" stroke="currentColor" stroke-width="1.2" />
-                </svg>
-              </button>
-            </Field>
             {/* The engine: which agent new goals run on. The hint belongs to the chosen engine: Claude Code's trust model, or Pi in one line. */}
             <Field label={t("settings.engine")} hint={engine() === "claude-code" ? t("settings.engineTrust") : t("settings.engineHintPi")}>
               <Select value={engine()} options={engineOptions()} onChange={(v) => void patchNow({ engine: v, default_model: "" })} />
@@ -278,6 +272,7 @@ export function Settings() {
 
       <Show when={s()}>
         <PhoneBlock s={s()!} patch={patch} commit={commit} />
+        <AttentionBlock s={s()!} patch={patch} commit={commit} quietLabel={quietLabel()} />
       </Show>
 
       <section class="settings-block">
@@ -401,13 +396,25 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
           <Show when={info()} fallback={<span class="field-hint form-row">{info.loading ? t("common.loading") : t("settings.phoneUnavailable")}</span>}>
             {(i) => (
               <>
-                <Show
-                  when={i().links.length > 0}
-                  fallback={
-                    <p class="field-hint form-row phone-transport">
-                      <NoticeMark />
-                      <span>{t("settings.phoneNoLinks")}</span>
+                {/* Switched on but not served: the supervisor's sentence names the cause and the way out, in the attention register; no link
+                    or QR is shown for a page nobody can reach. */}
+                <Show when={i().problem}>
+                  {(problem) => (
+                    <p class="form-row phone-problem" role="status">
+                      <NeedsYouMark />
+                      <span>{problem()}</span>
                     </p>
+                  )}
+                </Show>
+                <Show
+                  when={i().links.length > 0 && !i().problem}
+                  fallback={
+                    <Show when={!i().problem}>
+                      <p class="field-hint form-row phone-transport">
+                        <NoticeMark />
+                        <span>{t("settings.phoneNoLinks")}</span>
+                      </p>
+                    </Show>
                   }
                 >
                   <div class="form-row phone-pair">
@@ -450,10 +457,129 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
             )}
           </Show>
         </Show>
+      </div>
+    </section>
+  );
+}
+
+/** "HH:MM" for a minute after midnight, the value a time field takes. */
+export const hhmm = (minute: number) => `${String(Math.floor(minute / 60) % 24).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+
+/** The minute after midnight a time field's "HH:MM" names; null when the field is empty or not a time. */
+export function parseHhmm(value: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h < 24 && min < 60 ? h * 60 + min : null;
+}
+
+/** The window quiet hours start from when switched on: late evening to early morning, across midnight. */
+export const DEFAULT_QUIET_HOURS: QuietHours = { start: 22 * 60, end: 8 * 60 };
+
+/**
+ * Notifications and pushes: when Tower may interrupt you (now, and every
+ * day), where pushes go, and what the last one did. The last push is read
+ * when the block opens and after a test, so a push that fails silently in
+ * the background has a line here.
+ */
+function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => void; commit: () => Promise<boolean>; quietLabel: string }) {
+  const [status, setStatus] = createSignal<PushStatus | null | undefined>(undefined);
+  const [sending, setSending] = createSignal(false);
+  const readStatus = async () => setStatus(await api.pushStatus().catch(() => null));
+  onMount(() => void readStatus());
+  const hours = () => props.s.quiet_hours;
+  const setHours = (q: QuietHours | null) => {
+    props.patch({ quiet_hours: q });
+    void props.commit();
+  };
+  const setEdge = (edge: "start" | "end", value: string) => {
+    const minute = parseHhmm(value);
+    const q = hours();
+    if (!q) return;
+    // Not a time: the field goes back to the saved edge rather than keeping a value that saves nothing.
+    if (minute === null) return setHours({ ...q });
+    setHours({ ...q, [edge]: minute });
+  };
+  const testPush = async () => {
+    setSending(true);
+    // The URL in the field may not be saved yet: commit first, so the test sends where the field points.
+    await props.commit();
+    try {
+      await api.testPush();
+      toast("success", t("settings.pushTestSent"));
+    } catch (e) {
+      toast("error", errorText(e));
+    }
+    await readStatus();
+    setSending(false);
+  };
+  return (
+    <section class="settings-block" onFocusOut={() => void props.commit()}>
+      <h2 class="section-title">{t("settings.attention")}</h2>
+      <div class="settings-form">
+        <Field label={t("settings.notifications")} hint={t("quiet.hint")}>
+          <button type="button" class="select" aria-haspopup="menu" aria-label={`${t("settings.notifications")}: ${props.quietLabel}`} onClick={() => void pickQuiet()}>
+            <span class="ellipsis grow">{props.quietLabel}</span>
+            <svg width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
+              <path d="M1 3.5 L4 1 L7 3.5 M1 6.5 L4 9 L7 6.5" fill="none" stroke="currentColor" stroke-width="1.2" />
+            </svg>
+          </button>
+        </Field>
+        {/* The daily window: a switch, then the two edges in one line, so "from 22:00 to 08:00" reads as a sentence. Plain 24-hour
+            fields, as every clock on the desk: WebKit's native time field follows the system's 12-hour locale and would show 22:00 as 10:00. */}
+        <label class="check form-row">
+          <input type="checkbox" checked={!!hours()} onChange={(e) => setHours(e.currentTarget.checked ? DEFAULT_QUIET_HOURS : null)} />
+          <span>{t("settings.quietHoursEnable")}</span>
+          <span class="check-desc">{t("settings.quietHoursHint")}</span>
+        </label>
+        <Show when={hours()}>
+          {(q) => (
+            <div class="form-row quiet-hours num" role="group" aria-label={t("settings.quietHours")}>
+              <label>
+                <span class="t3">{t("settings.quietFrom")}</span>
+                <input class="quiet-time num" inputmode="numeric" placeholder="22:00" value={hhmm(q().start)} onChange={(e) => setEdge("start", e.currentTarget.value)} aria-label={`${t("settings.quietHours")} · ${t("settings.quietFrom")}`} />
+              </label>
+              <label>
+                <span class="t3">{t("settings.quietTo")}</span>
+                <input class="quiet-time num" inputmode="numeric" placeholder="08:00" value={hhmm(q().end)} onChange={(e) => setEdge("end", e.currentTarget.value)} aria-label={`${t("settings.quietHours")} · ${t("settings.quietTo")}`} />
+              </label>
+            </div>
+          )}
+        </Show>
         {/* Pushes go through ntfy; what leaves the machine is said in one line, with where to point it. */}
         <Field label={t("settings.pushUrl")} hint={t("settings.pushUrlHint")}>
           <input class="mono" value={props.s.push_url} onInput={(e) => props.patch({ push_url: e.currentTarget.value })} placeholder="https://ntfy.example.net/tower" spellcheck={false} />
         </Field>
+        <label class="check form-row">
+          <input type="checkbox" checked={props.s.push_ready} onChange={(e) => (props.patch({ push_ready: e.currentTarget.checked }), void props.commit())} />
+          <span>{t("settings.pushReady")}</span>
+          <span class="check-desc">{t("settings.pushReadyHint")}</span>
+        </label>
+        {/* The test and the last outcome share a line: a failure is a fact with its time and the supervisor's sentence, never a silent one. */}
+        <div class="form-row row push-test">
+          <Button size="s" busy={sending()} disabled={!props.s.push_url.trim()} onClick={() => void testPush()}>
+            {t("settings.testPush")}
+          </Button>
+          <Show when={status() !== undefined}>
+            <span class="meta push-status" classList={{ t1: !!status()?.error }} role="status">
+              <Show when={status()} fallback={<span class="t3">{t("settings.pushNone")}</span>}>
+                {(st) => (
+                  <>
+                    <Show when={st().error} fallback={<Icon name="check" size={10} class="t3" />}>
+                      <DangerMark />
+                    </Show>
+                    <span class="num">{st().error ? t("settings.pushFailedAt", { time: clock(st().at) }) : t("settings.pushSentAt", { time: clock(st().at) })}</span>
+                    <Show when={st().error}>
+                      <span class="sep">·</span>
+                      <span class="t2">{st().error}</span>
+                    </Show>
+                  </>
+                )}
+              </Show>
+            </span>
+          </Show>
+        </div>
       </div>
     </section>
   );

@@ -94,6 +94,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, lang: Lang) -> tauri::Result<Menu<R
     let help = SubmenuBuilder::new(app, l("帮助", "Help"))
         .item(&item("help:docs", l("设计文档", "Design docs"), None)?)
         .item(&item("help:issues", l("报告问题…", "Report an issue…"), None)?)
+        .item(&item("help:diagnostics", l("导出诊断信息…", "Export Diagnostics…"), None)?)
         .build()?;
 
     MenuBuilder::new(app).items(&[&app_menu, &file, &edit, &view, &goal, &window, &help]).build()

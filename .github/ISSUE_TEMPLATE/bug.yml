@@ -10,8 +10,8 @@ body:
       required: true
   - type: textarea
     attributes:
-      label: Goal trace
-      description: For goal problems, the relevant part of the goal's trace (⋯ → 观察), with secrets removed.
+      label: Diagnostics
+      description: Help → Export Diagnostics… writes a zip with versions, the environment check, settings and recent traces (secrets redacted, no pairing token). Attach it here, or paste the relevant part of the goal's trace (Watch, W).
   - type: input
     attributes:
       label: Versions

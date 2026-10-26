@@ -635,6 +635,53 @@ impl Supervisor {
         edits::rollback(&self.inner, id, run_no).await
     }
 
+    /// Writes a diagnostics archive for a bug report: versions, the
+    /// environment check, settings (without the phone pairing token),
+    /// goals, open items and the recent trace of unfinished goals, with
+    /// secrets redacted. Returns the archive's path (in the data folder).
+    pub fn export_diagnostics(&self) -> Result<PathBuf> {
+        let inner = &self.inner;
+        let stamp = tower_store::system_now();
+        let dir = inner.paths.root.join("diagnostics").join(format!("tower-diagnostics-{stamp}"));
+        std::fs::create_dir_all(&dir)?;
+        let write = |name: &str, v: &serde_json::Value| -> Result<()> {
+            let text = tower_verify::redact(&serde_json::to_string_pretty(v).unwrap_or_default());
+            std::fs::write(dir.join(name), text)?;
+            Ok(())
+        };
+        let os = std::process::Command::new("/usr/bin/sw_vers")
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default();
+        write(
+            "about.json",
+            &serde_json::json!({ "tower": env!("CARGO_PKG_VERSION"), "macos": os, "sandbox": sandbox::available() }),
+        )?;
+        write("environment.json", &serde_json::to_value(self.environment()).unwrap_or_default())?;
+        let mut settings = inner.settings();
+        settings.remote_token = String::new();
+        write("settings.json", &serde_json::to_value(settings).unwrap_or_default())?;
+        let goals = inner.store(|s| s.summaries())?;
+        write("goals.json", &serde_json::to_value(&goals).unwrap_or_default())?;
+        write("inbox.json", &serde_json::to_value(inner.store(|s| s.open_inbox_items())?).unwrap_or_default())?;
+        for g in goals.iter().filter(|g| !g.state.is_terminal()) {
+            let trace = inner.store(|s| s.trace(&g.id, None, 300))?;
+            write(&format!("trace-{}.json", g.id), &serde_json::to_value(trace).unwrap_or_default())?;
+        }
+        let zip = dir.with_extension("zip");
+        let ok = std::process::Command::new("/usr/bin/ditto")
+            .args(["-c", "-k", "--keepParent"])
+            .arg(&dir)
+            .arg(&zip)
+            .status()
+            .is_ok_and(|s| s.success());
+        let _ = std::fs::remove_dir_all(&dir);
+        if !ok {
+            return Err(invalid(tr!(self.inner.lang(), "无法打包诊断信息", "Could not package the diagnostics")));
+        }
+        Ok(zip)
+    }
+
     /// A screenshot taken for a `look` criterion, as a data URL.
     pub fn look_image(&self, file: &str) -> Option<String> {
         look::data_url(&self.inner.paths.root.join("evidence"), file)

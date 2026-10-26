@@ -17,22 +17,23 @@ export function route(): Route {
 }
 
 /**
- * Entering or leaving review is a change of space (full screen, no title
- * bar), so it gets the one spatial transition (docs/12 §12.7: 220ms).
- * Everything else switches at once.
+ * A change of view is a short crossfade (120ms) so the eye keeps its place;
+ * entering or leaving review is a change of space (full screen, no title
+ * bar) and gets the longer spatial one (docs/12 §12.7: 220ms). Nothing
+ * animates when the system asks for reduced motion.
  */
-function spatial(from: Route, to: Route, apply: () => void) {
+function transition(from: Route, to: Route, apply: () => void) {
   const crosses = (from.name === "review") !== (to.name === "review");
-  const dvt = document as Document & { startViewTransition?: (cb: () => void) => unknown };
-  if (crosses && dvt.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    dvt.startViewTransition(apply);
-  } else apply();
+  const dvt = document as Document & { startViewTransition?: (cb: () => void) => { finished: Promise<void> } };
+  if (!dvt.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
+  document.documentElement.dataset.transition = crosses ? "space" : "view";
+  dvt.startViewTransition(apply).finished.finally(() => delete document.documentElement.dataset.transition);
 }
 
 export function go(r: Route) {
   const cur = route();
   if (JSON.stringify(cur) === JSON.stringify(r)) return;
-  spatial(cur, r, () => {
+  transition(cur, r, () => {
     // Top-level destinations reset the stack; detail views push onto it.
     if (r.name === "overview") setStack([r]);
     else if (r.name === "inbox" || r.name === "settings") setStack([{ name: "overview" }, r]);
@@ -43,7 +44,7 @@ export function go(r: Route) {
 export function back() {
   const s = stack();
   if (s.length <= 1) return;
-  spatial(s[s.length - 1], s[s.length - 2], () => setStack((st) => st.slice(0, -1)));
+  transition(s[s.length - 1], s[s.length - 2], () => setStack((st) => st.slice(0, -1)));
 }
 
 export function canGoBack(): boolean {

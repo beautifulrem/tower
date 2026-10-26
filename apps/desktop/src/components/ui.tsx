@@ -1,8 +1,8 @@
 /** Small building blocks shared by every view. */
-import { type JSX, Show, onCleanup, onMount, splitProps } from "solid-js";
+import { type JSX, Show, createUniqueId, onCleanup, onMount, splitProps } from "solid-js";
 
 import { t } from "../lib/i18n";
-import { keyHint } from "../lib/keys";
+import { keyHint, useKeys } from "../lib/keys";
 import { Icon, type IconName } from "./Glyph";
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -47,8 +47,18 @@ export function IconButton(
   );
 }
 
+/** A key cap. Several keys ("j k") render as several caps. */
 export function Kbd(props: { k: string }) {
-  return <kbd class="kbd">{keyHint(props.k)}</kbd>;
+  return (
+    <>
+      {props.k.split(" ").map((k, i) => (
+        <>
+          {i > 0 ? " " : ""}
+          <kbd class="kbd">{keyHint(k)}</kbd>
+        </>
+      ))}
+    </>
+  );
 }
 
 export function Section(props: {
@@ -91,7 +101,9 @@ export function Field(props: {
         </span>
       </Show>
       <Show when={props.error}>
-        <span class="field-error">{props.error}</span>
+        <span class="field-error" role="alert">
+          {props.error}
+        </span>
       </Show>
       <Show when={props.hint && !props.error}>
         <span class="field-hint">{props.hint}</span>
@@ -130,15 +142,47 @@ export function Toggle(props: {
   );
 }
 
-/** An empty state is one quiet line where the content would appear. */
-export function Empty(props: { title: string; children?: JSX.Element }) {
+/**
+ * An empty, loading or failed state: one statement where the content would
+ * be, a specific reason underneath, and at most one way forward. `kind`
+ * picks the mark: a hollow ring (nothing here), a dot (waiting), a square
+ * (an error, in the danger colour).
+ */
+export function Empty(props: {
+  title: string;
+  children?: JSX.Element;
+  action?: JSX.Element;
+  kind?: "empty" | "loading" | "error";
+  /** A small block, inside a section, instead of a page-level one. */
+  inline?: boolean;
+}) {
+  const kind = () => props.kind ?? "empty";
   return (
-    <div class="empty">
-      <span class="empty-title">{props.title}</span>
-      <Show when={props.children}>
-        <span class="sep">·</span>
-        <span class="empty-body">{props.children}</span>
-      </Show>
+    <div class={`empty empty-${kind()}`} classList={{ "empty-inline": !!props.inline }} role={kind() === "error" ? "alert" : undefined}>
+      <span class="empty-mark" aria-hidden="true">
+        <Show when={kind() === "empty"}>
+          <svg width="10" height="10" viewBox="0 0 10 10">
+            <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25" />
+          </svg>
+        </Show>
+        <Show when={kind() === "loading"}>
+          <Icon name="dot" size={10} />
+        </Show>
+        <Show when={kind() === "error"}>
+          <svg width="10" height="10" viewBox="0 0 10 10">
+            <rect x="1" y="1" width="8" height="8" fill="var(--st-danger)" />
+          </svg>
+        </Show>
+      </span>
+      <div class="empty-text">
+        <span class="empty-title">{props.title}</span>
+        <Show when={props.children}>
+          <span class="empty-body">{props.children}</span>
+        </Show>
+        <Show when={props.action}>
+          <span class="empty-action">{props.action}</span>
+        </Show>
+      </div>
     </div>
   );
 }
@@ -149,12 +193,15 @@ export function Select<T extends string>(props: {
   options: { value: T; label: string }[];
   onChange: (v: T) => void;
   class?: string;
+  label?: string;
 }) {
   const label = () => props.options.find((o) => o.value === props.value)?.label ?? props.value;
   return (
     <button
       type="button"
       class={`select ${props.class ?? ""}`}
+      aria-haspopup="menu"
+      aria-label={props.label ? `${props.label}: ${label()}` : undefined}
       onClick={async () => {
         const { popupChoice } = await import("../lib/native");
         const v = await popupChoice(props.options, props.value);
@@ -169,29 +216,73 @@ export function Select<T extends string>(props: {
   );
 }
 
+const FOCUSABLE = 'input:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([tabindex="-1"]), [href], [tabindex="0"]';
+
 /**
- * A modal layer: dialog semantics, focus moved in and restored on close.
+ * A modal layer: dialog semantics, focus moved in, kept in (Tab wraps) and
+ * restored on close; Esc closes it before any view binding sees the key.
  * `instant` layers (opened from the keyboard) do not animate (§12.7).
+ * With a `title` the dialog is labelled by its visible heading.
  */
-export function Overlay(props: { onClose: () => void; label: string; instant?: boolean; class?: string; children: JSX.Element }) {
+export function Overlay(props: {
+  onClose: () => void;
+  label: string;
+  title?: string;
+  instant?: boolean;
+  class?: string;
+  /** Floats at the top like the palette; otherwise a little lower, like a sheet. */
+  top?: boolean;
+  children: JSX.Element;
+}) {
   const previous = document.activeElement as HTMLElement | null;
+  const titleId = createUniqueId();
   let panel!: HTMLDivElement;
+  useKeys([{ key: "escape", run: () => props.onClose(), inInputs: true }]);
   onMount(() => {
-    const first = panel.querySelector<HTMLElement>("input, textarea, button:not([disabled])");
-    (first ?? panel).focus();
+    const first = panel.querySelector<HTMLElement>(FOCUSABLE);
+    (first ?? panel).focus({ preventScroll: true });
   });
-  onCleanup(() => previous?.focus?.());
+  onCleanup(() => previous?.focus?.({ preventScroll: true }));
+  const trap = (e: KeyboardEvent) => {
+    if (e.key !== "Tab") return;
+    const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+    if (!items.length) {
+      e.preventDefault();
+      panel.focus();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === panel)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
   return (
-    <div class="overlay" classList={{ instant: !!props.instant }} onClick={props.onClose}>
+    <div
+      class="overlay"
+      classList={{ instant: !!props.instant, "overlay-top": !!props.top }}
+      onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}
+      onKeyDown={trap}
+    >
       <div
         ref={panel}
         class={props.class ?? "panel"}
         role="dialog"
         aria-modal="true"
-        aria-label={props.label}
+        aria-label={props.title ? undefined : props.label}
+        aria-labelledby={props.title ? titleId : undefined}
         tabindex="-1"
-        onClick={(e) => e.stopPropagation()}
       >
+        <Show when={props.title}>
+          <h2 class="panel-title" id={titleId}>
+            {props.title}
+          </h2>
+        </Show>
         {props.children}
       </div>
     </div>
@@ -200,5 +291,9 @@ export function Overlay(props: { onClose: () => void; label: string; instant?: b
 
 /** Waiting is stated, not animated (docs/12 §12.7: motion is a signal). */
 export function Loading(props: { text?: string }) {
-  return <p class="loading">{props.text ?? t("common.loading")}</p>;
+  return (
+    <p class="loading" role="status">
+      <Icon name="dot" size={10} /> {props.text ?? t("common.loading")}
+    </p>
+  );
 }

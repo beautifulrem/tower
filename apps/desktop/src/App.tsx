@@ -1,19 +1,20 @@
 /** Application shell: sidebar, title bar and the current view. */
-import { Match, Show, Switch } from "solid-js";
+import { Match, Show, Switch, onCleanup } from "solid-js";
 
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { onCleanup } from "solid-js";
+import { listen } from "@tauri-apps/api/event";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
+import { ActivityPanel, openActivity } from "./components/Activity";
 import { CommandPalette, TitleBar, Toasts, openPalette } from "./components/Chrome";
+import { ShortcutSheet, openShortcuts } from "./components/ShortcutSheet";
 import { Sidebar } from "./components/Sidebar";
-import { Loading } from "./components/ui";
+import { Button, Empty, Loading } from "./components/ui";
 import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
 import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
 import { t } from "./lib/i18n";
-import { act, state } from "./lib/store";
+import { act, init, state } from "./lib/store";
 import { ContractEditor } from "./views/ContractEditor";
 import { GoalPage } from "./views/GoalPage";
 import { Inbox } from "./views/Inbox";
@@ -59,13 +60,42 @@ function titleOf(): string {
   }
 }
 
+/** Start-up failed: say what, offer to try again and to look at the data. */
+function BootFailed() {
+  return (
+    <div class="boot">
+      <div class="boot-failed">
+        <Empty title={t("app.bootFailedTitle")} kind="error">
+          {t("app.bootFailedBody")}
+        </Empty>
+        <pre class="output-tail boot-error">{state.loadError}</pre>
+        <div class="row">
+          <Button variant="primary" onClick={() => void init()}>
+            {t("common.retry")}
+          </Button>
+          <Show when={state.env?.data_dir}>
+            {(dir) => (
+              <Button variant="ghost" onClick={() => void openPath(dir())}>
+                {t("app.openDataFolder")}
+              </Button>
+            )}
+          </Show>
+          <span class="grow" />
+          <Show when={state.env?.data_dir}>
+            <span class="meta t3 code-val ellipsis">{state.env!.data_dir}</span>
+          </Show>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
-  // Inactive windows dim their chrome (HIG); status colours stay.
-  const win = getCurrentWindow();
-  const unlisten = win.onFocusChanged(({ payload }) => {
-    document.documentElement.dataset.windowActive = payload ? "true" : "false";
-  });
-  onCleanup(() => void unlisten.then((f) => f()));
+  // Inactive windows dim their chrome (HIG); status colours stay. The window
+  // events are enough here, so the window module stays out of the bundle.
+  const active = (on: boolean) => () => (document.documentElement.dataset.windowActive = on ? "true" : "false");
+  const unlisten = Promise.all([listen("tauri://focus", active(true)), listen("tauri://blur", active(false))]);
+  onCleanup(() => void unlisten.then((fs) => fs.forEach((f) => f())));
 
   useMenu({
     "nav:new": () => go({ name: "new" }),
@@ -74,27 +104,32 @@ export function App() {
     "nav:settings": () => go({ name: "settings" }),
     "nav:back": back,
     "app:palette": () => openPalette("keyboard"),
+    "app:shortcuts": () => openShortcuts(),
+    "app:activity": () => openActivity(),
     "project:add": () => void pickProject(),
     "goal:check-integration": () => void act(api.checkIntegration, t("app.integrationChecked")),
     "help:docs": () => void openUrl("https://github.com/beautifulrem/tower/tree/main/docs"),
     "help:issues": () => void openUrl("https://github.com/beautifulrem/tower/issues/new"),
   });
 
-  useKeys([
-    { key: "n", run: () => go({ name: "new" }) },
-    { key: "mod+n", run: () => go({ name: "new" }), inInputs: true },
-    { key: "mod+alt+arrowdown", run: nextNeedsYou, inInputs: true },
-    { key: "g", run: nextNeedsYou },
-    { key: "mod+1", run: () => go({ name: "overview" }), inInputs: true },
-    { key: "mod+2", run: () => go({ name: "inbox" }), inInputs: true },
-    { key: "mod+,", run: () => go({ name: "settings" }), inInputs: true },
-    { key: "escape", run: back },
-    { key: "mod+[", run: back, inInputs: true },
-  ]);
+  useKeys(
+    [
+      { key: "n", run: () => go({ name: "new" }), desc: () => t("app.newGoal"), hint: "n mod+n" },
+      { key: "mod+n", run: () => go({ name: "new" }), inInputs: true },
+      { key: "g", run: nextNeedsYou, desc: () => t("keys.nextNeedsYou"), hint: "g mod+alt+arrowdown" },
+      { key: "mod+alt+arrowdown", run: nextNeedsYou, inInputs: true },
+      { key: "mod+1", run: () => go({ name: "overview" }), inInputs: true, desc: () => t("chrome.openOverview") },
+      { key: "mod+2", run: () => go({ name: "inbox" }), inInputs: true, desc: () => t("chrome.openInbox") },
+      { key: "mod+,", run: () => go({ name: "settings" }), inInputs: true, desc: () => t("chrome.openSettings") },
+      { key: "escape", run: back, desc: () => t("keys.back"), hint: "escape mod+[" },
+      { key: "mod+[", run: back, inInputs: true },
+    ],
+    () => t("keys.everywhere"),
+  );
 
   return (
-    <Show when={state.loaded} fallback={<div class="boot"><Loading /></div>}>
-      <Show when={!state.loadError} fallback={<div class="boot"><p class="meta">{t("app.bootFailed", { error: state.loadError ?? "" })}</p></div>}>
+    <Show when={state.loaded} fallback={<div class="boot"><Loading text={t("app.starting")} /></div>}>
+      <Show when={!state.loadError} fallback={<BootFailed />}>
         <div class="shell">
           <Sidebar />
           <main class="content">
@@ -126,6 +161,8 @@ export function App() {
           </main>
         </div>
         <CommandPalette />
+        <ShortcutSheet />
+        <ActivityPanel />
         <Toasts />
       </Show>
     </Show>

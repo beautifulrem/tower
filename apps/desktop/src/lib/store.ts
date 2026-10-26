@@ -15,13 +15,32 @@ import { api, errorText, onOpen, onUpdate } from "./api";
 import { go, route } from "./nav";
 import { setThemeChoice } from "./theme";
 
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   level: ToastLevel;
   text: string;
+  /** The goal it is about: the toast offers to open it. */
+  goalId?: string | null;
+  action?: ToastAction;
   /** Fading out: removed 100ms later. */
   leaving?: boolean;
 }
+
+/** One line of the activity log: errors and warnings since Tower started. */
+export interface ActivityEntry {
+  id: number;
+  at: number;
+  level: ToastLevel;
+  text: string;
+  goalId: string | null;
+}
+
+export const ACTIVITY_MAX = 200;
 
 interface State {
   loaded: boolean;
@@ -34,6 +53,9 @@ interface State {
   /** Assistant text currently streaming, per goal (Watch mode). */
   streams: Record<string, string>;
   toasts: Toast[];
+  activity: ActivityEntry[];
+  /** Errors and warnings logged since the activity panel was last opened. */
+  unseenActivity: number;
   /** Ticks so relative times stay fresh without per-component timers. */
   now: number;
 }
@@ -48,6 +70,8 @@ const [state, setState] = createStore<State>({
   inbox: [],
   streams: {},
   toasts: [],
+  activity: [],
+  unseenActivity: 0,
   now: Date.now(),
 });
 
@@ -65,10 +89,34 @@ export function onTrace(goalId: string, fn: TraceListener): () => void {
 }
 
 let toastSeq = 0;
+let activitySeq = 0;
+
+/** Errors and warnings are kept (the last 200) so a missed toast is not lost. */
+export function logActivity(level: ToastLevel, text: string, goalId: string | null = null) {
+  if (level !== "error" && level !== "warning") return;
+  setState(
+    produce((s) => {
+      s.activity.push({ id: ++activitySeq, at: Date.now(), level, text, goalId });
+      if (s.activity.length > ACTIVITY_MAX) s.activity.splice(0, s.activity.length - ACTIVITY_MAX);
+      s.unseenActivity++;
+    }),
+  );
+}
+
+export function markActivitySeen() {
+  setState("unseenActivity", 0);
+}
+
+export function clearActivity() {
+  setState({ activity: [], unseenActivity: 0 });
+}
+
 /** At most two toasts; each leaves with a 100ms fade (human-caused removal). */
-export function toast(level: ToastLevel, text: string, ttl = 4200) {
+export function toast(level: ToastLevel, text: string, opts: { ttl?: number; goalId?: string | null; action?: ToastAction } = {}) {
   const id = ++toastSeq;
-  setState("toasts", (t) => [...t.slice(-1), { id, level, text }]);
+  setState("toasts", (t) => [...t.slice(-1), { id, level, text, goalId: opts.goalId, action: opts.action }]);
+  logActivity(level, text, opts.goalId ?? null);
+  const ttl = opts.ttl ?? (level === "error" ? 6000 : opts.action ? 6000 : 4200);
   setTimeout(() => dismissToast(id), ttl);
 }
 export function dismissToast(id: number) {
@@ -83,7 +131,7 @@ export async function act<T>(fn: () => Promise<T>, success?: string): Promise<T 
     if (success) toast("success", success);
     return r;
   } catch (e) {
-    toast("error", errorText(e), 6000);
+    toast("error", errorText(e));
     return undefined;
   }
 }
@@ -97,38 +145,50 @@ export async function refreshProjects() {
   setState("projects", reconcile(await api.projects()));
 }
 
-export async function init() {
-  try {
-    const unlisten = onUpdate((u) => {
-      switch (u.type) {
-        case "goal":
-          setState("goals", u.goal.id, reconcile(u.goal));
-          break;
-        case "inbox":
-          setState("inbox", reconcile(u.items, { key: "id" }));
-          break;
-        case "projects":
-          setState("projects", reconcile(u.projects, { key: "id" }));
-          break;
-        case "stream":
-          setState("streams", u.goal_id, u.text);
-          break;
-        case "traces":
-          for (const entry of u.entries) {
-            traceListeners.get(entry.goal_id)?.forEach((fn) => fn(entry));
-            if (entry.event.kind === "assistant_message") setState("streams", entry.goal_id, "");
-          }
-          break;
-        case "toast": {
-          // A goal's own page already shows its decision card: no toast there.
-          const m = /\b(G-\d{4})\b/.exec(u.text);
-          const r = route();
-          if (m && r.name === "goal" && r.id === m[1]) break;
-          toast(u.level, u.text);
+let subscribed: Promise<unknown> | null = null;
+
+function subscribe() {
+  if (subscribed) return subscribed;
+  subscribed = onUpdate((u) => {
+    switch (u.type) {
+      case "goal":
+        setState("goals", u.goal.id, reconcile(u.goal));
+        break;
+      case "inbox":
+        setState("inbox", reconcile(u.items, { key: "id" }));
+        break;
+      case "projects":
+        setState("projects", reconcile(u.projects, { key: "id" }));
+        break;
+      case "stream":
+        setState("streams", u.goal_id, u.text);
+        break;
+      case "traces":
+        for (const entry of u.entries) {
+          traceListeners.get(entry.goal_id)?.forEach((fn) => fn(entry));
+          if (entry.event.kind === "assistant_message") setState("streams", entry.goal_id, "");
+        }
+        break;
+      case "toast": {
+        // The goal's own page already shows what the toast says: log it, stay quiet.
+        const r = route();
+        if (u.goal_id && (r.name === "goal" || r.name === "review") && r.id === u.goal_id) {
+          logActivity(u.level, u.text, u.goal_id);
           break;
         }
+        toast(u.level, u.text, { goalId: u.goal_id });
+        break;
       }
-    });
+    }
+  });
+  return subscribed;
+}
+
+/** Loads the replica. Safe to call again after a failure (the Retry button). */
+export async function init() {
+  setState({ loadError: null });
+  try {
+    const sub = subscribe();
     const [goals, inbox, projects] = await Promise.all([api.goals(), api.inbox(), api.projects()]);
     await refreshEnvironment();
     setState(
@@ -139,15 +199,21 @@ export async function init() {
         s.loaded = true;
       }),
     );
-    setInterval(() => setState("now", Date.now()), 15_000);
+    if (!ticking) {
+      ticking = true;
+      setInterval(() => setState("now", Date.now()), 15_000);
+      // Tower brought to the front by a notification: open what it was about.
+      void onOpen((r) => openStartupRoute(r));
+    }
     openStartupRoute(await api.startupRoute());
-    // Tower brought to the front by a notification: open what it was about.
-    void onOpen((r) => openStartupRoute(r));
-    await unlisten;
+    await sub;
   } catch (e) {
+    // The data directory is still worth knowing when the rest failed.
+    void api.environment().then((env) => setState({ env })).catch(() => {});
     setState({ loadError: errorText(e), loaded: true });
   }
 }
+let ticking = false;
 
 /**
  * `goal/G-0001`, `review/G-0001`, `inbox`, `settings`, `new`. A trailing

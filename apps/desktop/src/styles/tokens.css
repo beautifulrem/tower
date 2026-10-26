@@ -40,19 +40,29 @@
   /* Component constants */
   --sidebar-w: 232px;
   --titlebar-h: 52px;
-  --card-goal-h: 124px;
-  --card-goal-min-w: 312px;
+  --row-goal-h: 36px;
   --rail-w: 340px;
 
   /* Motion: signal, not decoration (§12.7). Hover arrives instantly and
-     leaves slowly; entering layers ease out, leaving ones ease in. */
+     leaves slowly; entering layers ease out, leaving ones ease in. A view
+     change crossfades briefly so the eye keeps its place; entering review
+     is a change of space and takes longer. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in: cubic-bezier(0.55, 0.055, 0.675, 0.19);
   --dur-hover-out: 150ms;
   --dur-fast: 100ms;
   --dur-base: 160ms;
   --dur-attn: 700ms;
+  --dur-view: 120ms;
   --dur-space: 220ms;
+}
+
+/* Interface size (Settings › Appearance): the whole surface scales together. */
+:root[data-size="compact"] body {
+  zoom: 0.92;
+}
+:root[data-size="large"] body {
+  zoom: 1.1;
 }
 
 :root[data-theme="dark"] {
@@ -71,6 +81,7 @@
   --border: oklch(1 0 0 / 0.10);
   --border-strong: oklch(1 0 0 / 0.16);
 
+  /* Contrast on --bg-app (0.180): text-1 ≈ 16:1, text-2 ≈ 12:1, text-3 ≈ 7.6:1, text-4 ≈ 5.2:1. */
   --text-1: oklch(0.945 0.003 70);
   --text-2: oklch(0.860 0.005 70);
   --text-3: oklch(0.720 0.006 70);
@@ -128,10 +139,13 @@
   --border: oklch(0.20 0.01 70 / 0.14);
   --border-strong: oklch(0.20 0.01 70 / 0.22);
 
+  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.2:1.
+     text-4 (≈ 4.0:1) is for rules, line numbers' idle state and disabled
+     marks only — never for a run of text. */
   --text-1: oklch(0.230 0.006 70);
   --text-2: oklch(0.430 0.006 70);
   --text-3: oklch(0.530 0.006 70);
-  --text-4: oklch(0.640 0.005 70);
+  --text-4: oklch(0.590 0.005 70);
 
   --focus: oklch(0.230 0.006 70 / 0.65);
   --select-edge: oklch(0.20 0.01 70 / 0.30);

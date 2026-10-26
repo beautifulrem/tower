@@ -28,10 +28,14 @@ export function fileHash(f: DiffFile): string {
   return `${f.path}:${h >>> 0}:${f.additions}:${f.deletions}`;
 }
 
+export type Layout = "unified" | "split";
+
 export interface ReviewState {
   viewed: Record<string, string>;
   drafts: Draft[];
   reviewed: string | null;
+  /** Side-by-side or unified, remembered per goal. */
+  layout: Layout;
 }
 
 const parse = <T>(raw: string | undefined | null, fallback: T): T => {
@@ -56,6 +60,7 @@ export async function loadReviewState(goal: string): Promise<ReviewState> {
     viewed: parse(stored.viewed, legacy?.viewed ?? {}),
     drafts: parse(stored.drafts, legacy?.drafts ?? []),
     reviewed: stored.reviewed ?? legacy?.reviewed ?? null,
+    layout: stored.layout === "split" ? "split" : "unified",
   };
   if (legacy) {
     void api.setUiState(goal, "viewed", JSON.stringify(state.viewed)).catch(() => {});
@@ -72,6 +77,7 @@ function migrateLegacy(goal: string): ReviewState | null {
     viewed: parse(localStorage.getItem(keys[0]), {}),
     drafts: parse(localStorage.getItem(keys[1]), []),
     reviewed: localStorage.getItem(keys[2]),
+    layout: "unified",
   };
   keys.forEach((k) => localStorage.removeItem(k));
   return s;
@@ -82,4 +88,5 @@ export const persist = {
   drafts: (goal: string, list: Draft[]) =>
     void api.setUiState(goal, "drafts", list.length ? JSON.stringify(list) : null).catch(() => {}),
   reviewed: (goal: string, pin: string) => void api.setUiState(goal, "reviewed", pin).catch(() => {}),
+  layout: (goal: string, layout: Layout) => void api.setUiState(goal, "layout", layout === "split" ? "split" : null).catch(() => {}),
 };

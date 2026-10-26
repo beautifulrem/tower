@@ -11,13 +11,15 @@ import type { ProjectView } from "../gen/ProjectView";
 import type { Settings } from "../gen/Settings";
 import type { ToastLevel } from "../gen/ToastLevel";
 import type { TraceEntry } from "../gen/TraceEntry";
-import { api, errorText, onUpdate } from "./api";
-import { go } from "./nav";
+import { api, errorText, onOpen, onUpdate } from "./api";
+import { go, route } from "./nav";
 
 export interface Toast {
   id: number;
   level: ToastLevel;
   text: string;
+  /** Fading out: removed 100ms later. */
+  leaving?: boolean;
 }
 
 interface State {
@@ -62,10 +64,15 @@ export function onTrace(goalId: string, fn: TraceListener): () => void {
 }
 
 let toastSeq = 0;
+/** At most two toasts; each leaves with a 100ms fade (human-caused removal). */
 export function toast(level: ToastLevel, text: string, ttl = 4200) {
   const id = ++toastSeq;
-  setState("toasts", (t) => [...t.slice(-3), { id, level, text }]);
-  setTimeout(() => setState("toasts", (t) => t.filter((x) => x.id !== id)), ttl);
+  setState("toasts", (t) => [...t.slice(-1), { id, level, text }]);
+  setTimeout(() => dismissToast(id), ttl);
+}
+export function dismissToast(id: number) {
+  setState("toasts", (t) => t.map((x) => (x.id === id ? { ...x, leaving: true } : x)));
+  setTimeout(() => setState("toasts", (t) => t.filter((x) => x.id !== id)), 110);
 }
 
 /** Runs an action, surfacing failures as an error toast. */
@@ -105,13 +112,20 @@ export async function init() {
         case "stream":
           setState("streams", u.goal_id, u.text);
           break;
-        case "trace":
-          traceListeners.get(u.entry.goal_id)?.forEach((fn) => fn(u.entry));
-          if (u.entry.event.kind === "assistant_message") setState("streams", u.entry.goal_id, "");
+        case "traces":
+          for (const entry of u.entries) {
+            traceListeners.get(entry.goal_id)?.forEach((fn) => fn(entry));
+            if (entry.event.kind === "assistant_message") setState("streams", entry.goal_id, "");
+          }
           break;
-        case "toast":
+        case "toast": {
+          // A goal's own page already shows its decision card: no toast there.
+          const m = /\b(G-\d{4})\b/.exec(u.text);
+          const r = route();
+          if (m && r.name === "goal" && r.id === m[1]) break;
           toast(u.level, u.text);
           break;
+        }
       }
     });
     const [goals, inbox, projects] = await Promise.all([api.goals(), api.inbox(), api.projects()]);
@@ -126,6 +140,8 @@ export async function init() {
     );
     setInterval(() => setState("now", Date.now()), 15_000);
     openStartupRoute(await api.startupRoute());
+    // Tower brought to the front by a notification: open what it was about.
+    void onOpen((r) => openStartupRoute(r));
     await unlisten;
   } catch (e) {
     setState({ loadError: errorText(e), loaded: true });

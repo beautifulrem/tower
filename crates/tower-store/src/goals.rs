@@ -403,10 +403,10 @@ impl Store {
         // Only a baseline of the command the criterion has now counts.
         let mut baseline = std::collections::HashMap::new();
         let mut stmt =
-            self.conn.prepare("SELECT criterion, command, passed FROM baseline_results WHERE goal_id = ?1")?;
-        for row in
-            stmt.query_map([id], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, String>(1)?, r.get::<_, bool>(2)?))))?
-        {
+            self.conn.prepare("SELECT criterion, command, passed, error FROM baseline_results WHERE goal_id = ?1")?;
+        for row in stmt.query_map([id], |r| {
+            Ok((r.get::<_, String>(0)?, (r.get::<_, String>(1)?, r.get::<_, bool>(2)?, r.get::<_, Option<String>>(3)?)))
+        })? {
             let (c, v) = row?;
             baseline.insert(c, v);
         }
@@ -467,8 +467,15 @@ impl Store {
                 passes_with_original_tests: original.get(&c.id).copied(),
                 look: looks.get(&c.id).cloned(),
                 passed_on_base: match &c.kind {
+                    CriterionKind::Exec { command, .. } => baseline
+                        .get(&c.id)
+                        .filter(|(cmd, _, error)| cmd == command && error.is_none())
+                        .map(|(_, passed, _)| *passed),
+                    CriterionKind::Human | CriterionKind::Look { .. } => None,
+                },
+                base_error: match &c.kind {
                     CriterionKind::Exec { command, .. } => {
-                        baseline.get(&c.id).filter(|(cmd, _)| cmd == command).map(|(_, passed)| *passed)
+                        baseline.get(&c.id).filter(|(cmd, _, _)| cmd == command).and_then(|(_, _, error)| error.clone())
                     }
                     CriterionKind::Human | CriterionKind::Look { .. } => None,
                 },

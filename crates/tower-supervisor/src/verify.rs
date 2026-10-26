@@ -499,17 +499,21 @@ impl<'a> Bench<'a> {
             for (c, command, timeout) in criteria.iter().filter(|(c, ..)| missing.contains(&c.id.as_str())) {
                 let r =
                     self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
-                if !r.environment_failure {
-                    inner.append(
-                        goal,
-                        EventKind::BaselineResult {
-                            criterion: c.id.clone(),
-                            command: command.clone(),
-                            base: self.base.clone(),
-                            passed: r.passed,
-                        },
-                    )?;
-                }
+                // Recorded either way: "could not check" is information too.
+                let error = r.environment_failure.then(|| {
+                    let code = r.exit_code.map_or_else(|| "did not start".to_string(), |c| format!("exit code {c}"));
+                    format!("could not run on the base ({code}): {}", tail_lines(&r.output_tail, 3))
+                });
+                inner.append(
+                    goal,
+                    EventKind::BaselineResult {
+                        criterion: c.id.clone(),
+                        command: command.clone(),
+                        base: self.base.clone(),
+                        passed: r.passed && error.is_none(),
+                        error,
+                    },
+                )?;
             }
             self.remove(&copied);
         }

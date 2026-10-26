@@ -3,7 +3,7 @@ use tower_core::briefing;
 use tower_core::contract::{Contract, CriterionKind};
 use tower_core::honesty::{ClaimKind, Consistency, CriterionFact, Progress, judge_criterion_claim};
 use tower_core::view::{
-    BriefingItem, ClaimView, CriterionResultView, CriterionView, DiffStat, GoalDetail, GoalSummary, LiveLine,
+    BriefingItem, ClaimView, CriterionResultView, CriterionView, DiffStat, GoalDetail, GoalSummary, LiveLine, LookView,
     ObservationView, Overlap, RunView,
 };
 use tower_core::{EventKind, Lang, LifecycleState, Millis, Mode, PauseReason, tr};
@@ -409,6 +409,25 @@ impl Store {
             let (c, v) = row?;
             baseline.insert(c, v);
         }
+        let mut looks: std::collections::HashMap<String, LookView> = std::collections::HashMap::new();
+        let mut stmt = self.conn.prepare("SELECT criterion, side, pin, file, error FROM looks WHERE goal_id = ?1")?;
+        for row in stmt.query_map([id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+            ))
+        })? {
+            let (c, side, pin, file, error) = row?;
+            let v = looks.entry(c).or_insert(LookView { base: None, pin: None, base_error: None, pin_error: None });
+            if side == "base" {
+                (v.base, v.base_error) = (file, error);
+            } else if rec.pin.as_deref() == Some(pin.as_str()) {
+                (v.pin, v.pin_error) = (file, error);
+            }
+        }
         let mut original = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare("SELECT criterion, pin, passed FROM original_results WHERE goal_id = ?1")?;
         for row in
@@ -442,14 +461,15 @@ impl Store {
                 criterion: c.clone(),
                 verified: match c.kind {
                     CriterionKind::Exec { .. } => results.get(&c.id).cloned(),
-                    CriterionKind::Human => None,
+                    CriterionKind::Human | CriterionKind::Look { .. } => None,
                 },
                 passes_with_original_tests: original.get(&c.id).copied(),
+                look: looks.get(&c.id).cloned(),
                 passed_on_base: match &c.kind {
                     CriterionKind::Exec { command, .. } => {
                         baseline.get(&c.id).filter(|(cmd, _)| cmd == command).map(|(_, passed)| *passed)
                     }
-                    CriterionKind::Human => None,
+                    CriterionKind::Human | CriterionKind::Look { .. } => None,
                 },
                 observed: observed.get(&c.id).cloned(),
                 human_checked: checks.get(&c.id).copied().unwrap_or(false),

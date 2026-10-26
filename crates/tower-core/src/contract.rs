@@ -74,6 +74,11 @@ pub enum CriterionKind {
     Exec { command: String, timeout_secs: u32 },
     /// Checked off by the human during review. Never counts as verified.
     Human,
+    /// Checked off by the human from screenshots: the verifier starts the
+    /// app with `start` (sandboxed), opens `url` (on this machine) once it
+    /// answers, and captures it on the base and on the agent's snapshot,
+    /// so the review shows before and after.
+    Look { start: String, url: String, timeout_secs: u32 },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -170,7 +175,7 @@ impl Contract {
     }
 
     pub fn human_criteria(&self) -> impl Iterator<Item = &Criterion> {
-        self.criteria.iter().filter(|c| matches!(c.kind, CriterionKind::Human))
+        self.criteria.iter().filter(|c| matches!(c.kind, CriterionKind::Human | CriterionKind::Look { .. }))
     }
 
     /// Problems with the contract, with messages in `lang`.
@@ -190,6 +195,25 @@ impl Contract {
             }
             if c.title.trim().is_empty() {
                 issues.push(err("criteria", tr!(lang, "标准 {id} 缺少说明", "Criterion {id} needs a description")));
+            }
+            if let CriterionKind::Look { start, url, .. } = &c.kind {
+                if start.trim().is_empty() {
+                    issues.push(err(
+                        "criteria",
+                        tr!(lang, "标准 {id} 缺少启动命令", "Criterion {id} needs a command that starts the app"),
+                    ));
+                }
+                let local = ["http://localhost", "http://127.0.0.1"].iter().any(|p| url.starts_with(p));
+                if !local {
+                    issues.push(err(
+                        "criteria",
+                        tr!(
+                            lang,
+                            "标准 {id} 的地址必须在本机（http://localhost:…）",
+                            "Criterion {id} must look at this machine (http://localhost:…)"
+                        ),
+                    ));
+                }
             }
             if let CriterionKind::Exec { command, timeout_secs } = &c.kind {
                 if command.trim().is_empty() {

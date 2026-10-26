@@ -69,6 +69,10 @@ pub fn contract_brief(title: &str, c: &Contract) -> String {
                 s.push_str(&format!("- {} {}: `{}` exits 0\n", cr.id, cr.title, command))
             }
             CriterionKind::Human => s.push_str(&format!("- {} {} (checked by the human)\n", cr.id, cr.title)),
+            CriterionKind::Look { start, url, .. } => s.push_str(&format!(
+                "- {} {} (checked by the human from screenshots of {url} after `{start}`; make sure that starts the app)\n",
+                cr.id, cr.title
+            )),
         }
     }
     let sc = &c.scope;

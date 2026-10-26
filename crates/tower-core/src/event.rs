@@ -168,6 +168,16 @@ pub enum EventKind {
         base: String,
         passed: bool,
     },
+    /// A screenshot for a `look` criterion, taken by the verifier on the
+    /// base (`side` = "base") or on the agent's snapshot ("pin"). `error`
+    /// says why there is none.
+    LookCaptured {
+        criterion: String,
+        side: String,
+        pin: String,
+        file: Option<String>,
+        error: Option<String>,
+    },
     /// The criterion run on the verified snapshot with the agent's edits to
     /// existing tests undone.
     OriginalTestsResult {
@@ -287,6 +297,7 @@ impl EventKind {
             | Self::CriterionResult { .. }
             | Self::BaselineResult { .. }
             | Self::OriginalTestsResult { .. }
+            | Self::LookCaptured { .. }
             | Self::VerifyFinished { .. }
             | Self::CostUpdated { .. }
             | Self::BranchWritten { .. }
@@ -319,6 +330,7 @@ impl EventKind {
             Self::CriterionResult { .. } => "criterion_result",
             Self::BaselineResult { .. } => "baseline_result",
             Self::OriginalTestsResult { .. } => "original_tests_result",
+            Self::LookCaptured { .. } => "look_captured",
             Self::VerifyFinished { .. } => "verify_finished",
             Self::Observed { .. } => "observed",
             Self::InboxOpened { .. } => "inbox_opened",

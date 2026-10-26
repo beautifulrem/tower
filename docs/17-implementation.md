@@ -9,6 +9,7 @@
 | 桌面外壳 | Tauri 2（Rust） | 安装包与内存比 Electron 小一个数量级；后端逻辑可以全部用 Rust 写 |
 | 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；启动时加载的 JS 约 67 KB（gzip），评审、设置、合同编辑器按需加载，语法高亮在 Worker 中；三项预算由 CI 检查（`tools/bundle-budget.sh`），远低于 `13` 的 250 KB 启动包预算 |
 | 状态 | SQLite（rusqlite，WAL） | 单文件、单写者；事件与投影在同一事务中写入 |
+| 视觉证据 | `look` 标准：验证器在沙箱中启动应用，等本机地址可访问后用本机的 Chromium 类浏览器无头截图，基线与 Agent 快照各一张，评审时由你判断 | 需要 Chrome、Chromium、Edge、Brave 或 Arc；只截本机地址 |
 | 引擎 | Pi，RPC 模式 | 每个运行中的 Goal 一个 `pi --mode rpc` 子进程，严格按 LF 分帧 |
 | 沙箱 | macOS Seatbelt（`sandbox-exec`），默认拒绝 | Agent 的 bash、`read`/`edit`/`write` 与验证器命令都在 Tower 为每个 Goal 生成的配置下运行 |
 | 字体 | Inter Variable、JetBrains Mono（随应用打包） | 与 `12` §12.3 一致；中文回落到系统字体 |

@@ -53,7 +53,11 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
                 Some(v) if v.passed && !v.stale => {
                     lang.pick("✅ 已由 Tower 在干净环境中验证", "✅ verified by Tower in a clean checkout")
                 }
-                _ if matches!(c.criterion.kind, tower_core::CriterionKind::Human) && c.human_checked => {
+                _ if matches!(
+                    c.criterion.kind,
+                    tower_core::CriterionKind::Human | tower_core::CriterionKind::Look { .. }
+                ) && c.human_checked =>
+                {
                     lang.pick("☑️ 人工确认", "☑️ checked by a human")
                 }
                 _ => "—",

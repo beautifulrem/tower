@@ -150,7 +150,8 @@ export function FileDiff(props: FileDiffProps) {
             {t("review.wholeFile")}
           </Button>
         </Show>
-        <Button size="s" variant="ghost" aria-pressed={props.viewed} onClick={() => props.onViewed(!props.viewed)}>
+        {/* While you are editing, "viewed" waits: the file is about to change under its own hash. */}
+        <Button size="s" variant="ghost" aria-pressed={props.viewed} disabled={props.editing} onClick={() => props.onViewed(!props.viewed)}>
           <Show when={props.viewed}>
             <Icon name="check" size={10} />
           </Show>

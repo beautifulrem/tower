@@ -13,15 +13,21 @@ export interface TreeNode {
   file: boolean;
 }
 
-export function buildTree(paths: string[]): TreeNode[] {
+/**
+ * `under` is a directory prefix the caller already names (a review unit titled
+ * `src/`): the tree starts below it, while every node keeps its full path.
+ */
+export function buildTree(paths: string[], under = ""): TreeNode[] {
   const root: TreeNode = { name: "", path: "", children: [], file: false };
   for (const p of [...paths].sort()) {
-    const parts = p.split("/");
+    const rel = under && p.startsWith(under) ? p.slice(under.length) : p;
+    const base = rel === p ? "" : under;
+    const parts = rel.split("/");
     let node = root;
     for (let i = 0; i < parts.length; i++) {
       const last = i === parts.length - 1;
       const name = last ? parts[i] : `${parts[i]}/`;
-      const path = parts.slice(0, i + 1).join("/");
+      const path = base + parts.slice(0, i + 1).join("/");
       let child = node.children.find((c) => c.name === name && c.file === last);
       if (!child) {
         child = { name, path, children: [], file: last };

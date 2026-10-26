@@ -80,27 +80,8 @@ export async function snoozeMenu(item: InboxItem) {
   ]);
 }
 
-/**
- * A ready-to-accept card's body is the agent's submit summary — a claim —
- * unless the agent wrote none, in which case the supervisor put its own
- * sentence there. Those sentences are fixed (either language), so a body
- * that is not one of them is the agent's and wears the claim gutter; the
- * supervisor's own sentence repeats what the seal readout says and is not
- * shown twice. (A `body_is_claim` flag from the supervisor would make this
- * a lookup instead of a list.)
- */
-const TOWER_REVIEW_BODIES = new Set([
-  "全部机器标准在干净环境中通过",
-  "Every machine criterion passed in a clean checkout",
-  "没有可执行的标准：请你判断结果",
-  "No executable criteria: judge the result yourself",
-  "全部机器标准通过；哨兵命中已由你确认",
-  "Every machine criterion passed; you confirmed the sentinel hits",
-]);
-const submitClaim = (item: InboxItem): string | null => {
-  const b = item.body.trim();
-  return b && !TOWER_REVIEW_BODIES.has(b) ? b : null;
-};
+/** A ready-to-accept card's body is the agent's submit summary (a claim) or empty; Tower never writes its own sentence there. */
+const submitClaim = (item: InboxItem): string | null => item.body.trim() || null;
 
 /** A line that came out of a machine: an installer, a test runner, a path, a command. */
 const MACHINE_LINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;

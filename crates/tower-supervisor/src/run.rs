@@ -337,12 +337,14 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
 
 fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: String, args: Value) -> Result<()> {
     let g = run.goal_id.as_str();
+    // Engine call ids are unique within a run only.
+    let claim_id = format!("r{}:{}", run.run_no, call_id);
     let s = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
     match tool.as_str() {
         "log" => {
             let kind = ClaimKind::parse(&s("kind")).unwrap_or(ClaimKind::Progress);
             let text = s("text");
-            inner.append(g, EventKind::Claim { claim_id: call_id.clone(), claim: kind, text: text.clone(), criterion: None })?;
+            inner.append(g, EventKind::Claim { claim_id: claim_id.clone(), claim: kind, text: text.clone(), criterion: None })?;
             if kind.needs_approval() {
                 inner.open_inbox(NewInboxItem {
                     goal_id: g.into(),
@@ -352,7 +354,7 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
                     options: vec![actions::APPROVE.into(), actions::REJECT.into()],
                     allow_text: true,
                     urgency: 4,
-                    engine_ref: Some(call_id.clone()),
+                    engine_ref: Some(claim_id.clone()),
                 })?;
             }
         }
@@ -367,7 +369,7 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
                         inner.append(
                             g,
                             EventKind::Claim {
-                                claim_id: format!("{call_id}/{id}"),
+                                claim_id: format!("{claim_id}/{id}"),
                                 claim: ClaimKind::CriterionMet,
                                 text: if evidence.is_empty() { format!("{id} 已满足") } else { evidence.to_string() },
                                 criterion: Some(id.to_string()),

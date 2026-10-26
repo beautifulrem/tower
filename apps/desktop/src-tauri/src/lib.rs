@@ -187,6 +187,13 @@ async fn review_claim(sup: Sup<'_>, id: String, claim_id: String, approved: bool
     sup.review_claim(&id, &claim_id, approved, &note).await
 }
 
+/// A view to open at launch, from `TOWER_OPEN` (e.g. `goal/G-0001`,
+/// `review/G-0001`, `inbox`, `settings`, `new`).
+#[tauri::command]
+fn startup_route() -> Option<String> {
+    std::env::var("TOWER_OPEN").ok().filter(|s| !s.is_empty())
+}
+
 /// The bundled extension in a packaged app, else the repository copy.
 fn extension_source(app: &AppHandle) -> PathBuf {
     if let Ok(dir) = app.path().resource_dir() {
@@ -219,6 +226,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            startup_route,
             environment,
             projects,
             add_project,

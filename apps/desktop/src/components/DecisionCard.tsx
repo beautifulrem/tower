@@ -85,7 +85,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; compac
         <Show when={it().allow_text}>
           <div class="decision-text">
             <textarea
-              rows={2}
+              rows={1}
               placeholder={it().kind === "question" ? "写下你的回答…" : "写给 Agent 的话（可选）…"}
               value={text()}
               onInput={(e) => setText(e.currentTarget.value)}

@@ -522,6 +522,19 @@ mod tests {
     }
 
     #[test]
+    fn claims_with_the_same_engine_id_in_different_goals_do_not_collide() {
+        let (mut s, _, a) = seeded();
+        let g = s.goal(&a).unwrap();
+        let b = s.create_goal(NewGoal { project_id: g.project_id, title: "b".into(), contract: g.contract }).unwrap().id;
+        for (goal, text) in [(&a, "a 的原因"), (&b, "b 的原因")] {
+            s.append(goal, EventKind::Claim { claim_id: "r1:call_1".into(), claim: ClaimKind::Cause, text: text.into(), criterion: None })
+                .unwrap();
+        }
+        assert_eq!(s.detail(&a).unwrap().claims[0].text, "a 的原因");
+        assert_eq!(s.detail(&b).unwrap().claims[0].text, "b 的原因");
+    }
+
+    #[test]
     fn briefing_lists_what_changed_since_last_view() {
         let (mut s, clock, id) = seeded();
         s.mark_viewed(&id).unwrap();

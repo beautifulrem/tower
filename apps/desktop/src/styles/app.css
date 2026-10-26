@@ -498,6 +498,7 @@
 }
 
 .link {
+  white-space: nowrap;
   border: 0;
   padding: 0;
   background: transparent;
@@ -1218,9 +1219,6 @@ input[type="radio"] {
   min-height: 64px;
   border-bottom: 1px solid var(--border-subtle);
 }
-.review-head [data-tauri-drag-region] {
-  flex: 1;
-}
 .review-title {
   font-size: 15px;
   font-weight: 500;
@@ -1315,6 +1313,8 @@ input[type="radio"] {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
+  /* Show code exactly as written: no ligatures in diffs. */
+  font-variant-ligatures: none;
   font-size: var(--fs-code);
   line-height: var(--lh-code);
 }
@@ -1328,8 +1328,10 @@ input[type="radio"] {
   color: var(--text-3);
   font-size: 11.5px;
 }
+.col-ln {
+  width: 52px;
+}
 .ln {
-  width: 48px;
   padding: 0 8px !important;
   text-align: right;
   color: var(--text-4);

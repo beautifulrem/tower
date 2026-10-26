@@ -43,9 +43,14 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const [c, setC] = createStore<Contract>(blank());
   const [issues, setIssues] = createSignal<ContractIssue[]>([]);
   const [busy, setBusy] = createSignal(false);
+  // Field errors appear once the human has started editing, not on arrival.
+  const [touched, setTouched] = createSignal(!!editingId);
   const [models] = createResource(() => api.models().catch(() => []));
 
+  // Changes before the initial values are in place do not count as edits.
+  let loaded = false;
   onMount(async () => {
+    setTimeout(() => (loaded = true), 300);
     if (editingId) {
       const d = await api.goal(editingId);
       setTitle(d.summary.title);
@@ -66,6 +71,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
     on(
       () => JSON.stringify(c),
       () => {
+        if (loaded) setTouched(true);
         clearTimeout(vt);
         vt = window.setTimeout(async () => setIssues(await api.validateContract(unwrap(c)).catch(() => [])), 200);
       },
@@ -73,7 +79,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   );
 
   const errors = () => issues().filter((i) => i.level === "error");
-  const issueFor = (field: string) => issues().find((i) => i.field === field)?.message ?? null;
+  const issueFor = (field: string) => (touched() ? (issues().find((i) => i.field === field)?.message ?? null) : null);
 
   const addCriterion = (kind: "exec" | "human") => {
     const n = c.criteria.length + 1;
@@ -248,7 +254,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           </Field>
         </div>
         <div class="editor-actions">
-          <Show when={errors().length}>
+          <Show when={touched() && errors().length}>
             <div class="panel-blockers">
               <For each={errors()}>{(e) => <div>■ {e.message}</div>}</For>
             </div>

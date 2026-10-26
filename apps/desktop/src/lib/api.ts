@@ -21,6 +21,7 @@ import type { TraceEntry } from "../gen/TraceEntry";
 import type { UiUpdate } from "../gen/UiUpdate";
 
 export const api = {
+  startupRoute: () => invoke<string | null>("startup_route"),
   environment: () => invoke<EnvironmentStatus>("environment"),
   projects: () => invoke<ProjectView[]>("projects"),
   addProject: (path: string) => invoke<ProjectView>("add_project", { path }),

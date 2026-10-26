@@ -63,15 +63,18 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (goal_id, run_no)
     );
 
+    -- Claim ids come from the engine's tool call ids, which are only unique
+    -- within one goal's run; the key is therefore per goal.
     CREATE TABLE claims (
-        id         TEXT PRIMARY KEY,
+        id         TEXT NOT NULL,
         goal_id    TEXT NOT NULL,
         kind       TEXT NOT NULL,
         text       TEXT NOT NULL,
         criterion  TEXT,
         at         INTEGER NOT NULL,
         run_no     INTEGER NOT NULL,
-        approved   INTEGER
+        approved   INTEGER,
+        PRIMARY KEY (goal_id, id)
     );
     CREATE INDEX claims_goal ON claims(goal_id, at);
 

@@ -12,6 +12,7 @@ import type { Settings } from "../gen/Settings";
 import type { ToastLevel } from "../gen/ToastLevel";
 import type { TraceEntry } from "../gen/TraceEntry";
 import { api, errorText, onUpdate } from "./api";
+import { go } from "./nav";
 
 export interface Toast {
   id: number;
@@ -124,10 +125,20 @@ export async function init() {
       }),
     );
     setInterval(() => setState("now", Date.now()), 15_000);
+    openStartupRoute(await api.startupRoute());
     await unlisten;
   } catch (e) {
     setState({ loadError: errorText(e), loaded: true });
   }
+}
+
+/** `goal/G-0001`, `review/G-0001`, `inbox`, `settings`, `new`. */
+function openStartupRoute(r: string | null) {
+  if (!r) return;
+  const [name, id] = r.split("/");
+  if ((name === "goal" || name === "review") && id) go({ name, id });
+  else if (name === "inbox" || name === "settings" || name === "overview") go({ name });
+  else if (name === "new") go({ name: "new" });
 }
 
 export function goalList(): GoalSummary[] {

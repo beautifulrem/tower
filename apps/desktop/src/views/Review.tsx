@@ -60,7 +60,7 @@ export function Review(props: { id: string }) {
 
   return (
     <div class="review">
-      <header class="review-head">
+      <header class="review-head" data-tauri-drag-region>
         <div class="col grow">
           <div class="row">
             <span class="num t3">{props.id}</span>
@@ -203,6 +203,11 @@ function FileDiff(props: {
       <For each={commentAt(null)}>{(c) => <div class="inline-comment">{c.text}</div>}</For>
       <Show when={!props.file.binary} fallback={<div class="meta file-binary">二进制文件，不显示内容</div>}>
         <table class="diff">
+          <colgroup>
+            <col class="col-ln" />
+            <col class="col-ln" />
+            <col />
+          </colgroup>
           <tbody>
             <For each={props.file.hunks}>
               {(h) => (

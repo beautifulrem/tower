@@ -39,6 +39,7 @@
       "../../../extensions/tower-goal/index.ts": "tower-goal/index.ts",
       "../../../extensions/tower-goal/policy.ts": "tower-goal/policy.ts",
       "../../../extensions/tower-goal/sandboxfs.ts": "tower-goal/sandboxfs.ts",
+      "../../../extensions/tower-goal/acp.ts": "tower-goal/acp.ts",
       "../../../tools/demo-engine/demo_pi.py": "demo-engine/demo_pi.py",
       "../../../extensions/tower-goal/package.json": "tower-goal/package.json"
     },

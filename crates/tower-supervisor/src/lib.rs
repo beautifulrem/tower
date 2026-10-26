@@ -757,12 +757,17 @@ fn install_demo_engine(src: &Path, dst: &Path) -> std::io::Result<()> {
 /// Copies the bundled extension into Tower's data directory, so runs never
 /// load code from a location the agent or another tool might change.
 fn install_extension(src: &Path, dst: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
     std::fs::create_dir_all(dst)?;
-    for name in ["index.ts", "policy.ts", "sandboxfs.ts", "package.json"] {
+    for name in ["index.ts", "policy.ts", "sandboxfs.ts", "acp.ts", "package.json"] {
         let from = src.join(name);
         if from.exists() {
             std::fs::copy(&from, dst.join(name))?;
         }
+    }
+    // The ACP bridge is started directly (`#!/usr/bin/env node`).
+    if dst.join("acp.ts").exists() {
+        std::fs::set_permissions(dst.join("acp.ts"), std::fs::Permissions::from_mode(0o755))?;
     }
     if !dst.join("index.ts").exists() {
         return Err(std::io::Error::new(

@@ -12,6 +12,9 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - Red → green: after a pass, each criterion also runs on the base commit; one that already passed there is marked as unable to prove the goal is done.
 - More sentinels: test cases removed from a file that stays, more skip forms across frameworks, assertions that cannot fail, early returns. The contract editor warns about criteria that only check text or a file's existence.
 
+### Engines
+- Claude Code as a second engine, through the Agent Client Protocol: a bridge speaks Pi's RPC to Tower and drives `claude-agent-acp`, which gets no built-in tools, settings, hooks or MCP servers of its own, only Tower's sandboxed tools. Choose it in Settings or per goal.
+
 ### Workflow
 - One-click demo goal on a bundled scripted engine — no Pi or credentials.
 - Overlap radar between unfinished goals of a project; merge-conflict prediction on acceptance; pull request state and checks followed after pushing.

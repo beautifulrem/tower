@@ -45,4 +45,9 @@ stop_conditions: Array<string>,
  * loopback. Off by default: reading the workspace plus sending data out
  * is how code and secrets leak. Setup commands always have the network.
  */
-network: boolean, };
+network: boolean, 
+/**
+ * The agent that does the work: `pi` or `claude-code`. Empty means the
+ * default from the settings.
+ */
+engine: string, };

@@ -377,3 +377,37 @@ async fn hunks_can_be_undone_and_runs_rolled_back() {
     assert!(!ws.join("done.txt").exists() && !ws.join("scratch.txt").exists(), "back to where run 1 started");
     assert!(ws.join("README.md").exists());
 }
+
+/// Claude Code (or any ACP agent) runs behind the ACP bridge: Tower's own
+/// tools are its only tools, the gate still applies, and the goal moves
+/// through the same lifecycle as with Pi. Uses a scripted ACP agent.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_acp_agent_runs_through_the_bridge() {
+    let node = std::env::var("PATH").unwrap().split(':').any(|d| Path::new(d).join("node").is_file());
+    if !node {
+        eprintln!("skipping: node is not installed");
+        return;
+    }
+    let h = harness("pass").await;
+    let fake = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_acp.py");
+    h.sup
+        .save_settings(Settings {
+            engine: "claude-code".into(),
+            claude_acp_command: format!("python3 {}", fake.display()),
+            ..h.sup.settings()
+        })
+        .unwrap();
+    let id = create(&h).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    let trace = h.sup.trace(&id, None, 300).unwrap();
+    assert_eq!(g.state, LifecycleState::InReview, "trace: {trace:#?}");
+    let detail = h.sup.goal(&id).unwrap();
+    assert!(detail.claims.iter().any(|c| c.text == "done.txt is missing"), "log reached Tower as a claim");
+    assert_eq!(detail.submit_summary.as_deref(), Some("created done.txt"));
+    assert!(
+        trace
+            .iter()
+            .any(|e| matches!(&e.event, EventKind::AssistantMessage { text } if text.contains("escape: refused"))),
+        "the scope gate refused a write outside the workspace"
+    );
+}

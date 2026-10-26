@@ -10,7 +10,7 @@ Tower's direction comes from `docs/00` (vision) and `docs/16` (roadmap in the de
 
 ## Next
 
-- **More engines.** Tower's contracts, sandbox, verification and sentinels as a trust layer over other agents: Claude Code and Codex through the Agent Client Protocol, alongside Pi.
+- **More engines.** Claude Code runs through the Agent Client Protocol already; Codex next, through the same bridge.
 - **Away from the desk.** A read-only phone view with approvals over your own network (Tailscale or LAN), so a question does not wait for you to get back.
 - **Visual evidence** for UI work: screenshots of the running app attached to a verification, compared with the base.
 

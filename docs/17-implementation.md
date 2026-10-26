@@ -76,6 +76,7 @@ tools/demo-engine        不调用模型的脚本化 Pi，用来演示与测试
 | 精确的花费与墙钟预算 | 花费取 Pi 的 `get_session_stats`；墙钟上限到达时暂停（`PauseReason::WallClockCap`） | 花费以 Pi 的统计为准 |
 | 哨兵（S1、S5、测试被删等） | 已实现为对 base→pin 差异的文本规则（`tower-core/src/sentinel.rs`）：删测试、`.skip`/`.only`、断言减少、改测试命令或配置、改快照、越界写入；高严重度暂停 Goal 等你决定 | 文本匹配，不是语法分析；换一种写法可能识别不到 |
 | 网络 | 合同中的“允许联网”开关，默认关闭：Agent 与验证只能访问本机回环；本机代理端口与 `*_proxy` 一并屏蔽；准备命令（安装依赖）始终可联网 | 关闭时，需要下载的命令只能放进准备命令 |
+| 引擎 | Pi（RPC）；Claude Code 经 ACP 桥（`extensions/tower-goal/acp.ts`）：对外说 Pi 的 RPC 协议，对内驱动 `claude-agent-acp`；Claude Code 不启用任何内置工具、设置、钩子或用户 MCP，只有 Tower 的 MCP 服务器（沙箱版 read/edit/write/bash 与 ask_user/log/submit） | 设置中的默认引擎或合同中的 `engine`；Codex 尚未接入 |
 | 工具集 | Pi 以 `--tools read,bash,edit,write,ask_user,log,submit --no-mcp --no-approve` 启动 | MCP 工具与仓库自带的 Pi 资源会在沙箱外运行，因此不启用 |
 
 ## 17.5 未实现

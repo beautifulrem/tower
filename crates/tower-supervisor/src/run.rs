@@ -113,7 +113,7 @@ pub(crate) fn human_notes_since_last_run(inner: &Inner, goal: &str) -> Vec<Strin
 }
 
 fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Result<EngineConfig> {
-    let program = inner.engine_program(&goal.project_root).ok_or_else(|| {
+    let program = inner.engine_program(goal).ok_or_else(|| {
         invalid(tr!(inner.lang(), "没有找到 pi，请在设置中指定路径", "Pi was not found; set its path in Settings"))
     })?;
     let settings = inner.settings();
@@ -137,6 +137,8 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
         ("TOWER_LANG".into(), settings.lang().code().into()),
         // Whether the agent's shell keeps proxy variables (off: stripped).
         ("TOWER_NETWORK".into(), if goal.contract.network { "1" } else { "0" }.into()),
+        // The ACP bridge's agent (ignored by Pi).
+        ("TOWER_ACP_AGENT".into(), inner.claude_acp_command()),
         ("PI_OFFLINE".into(), "1".into()),
     ]);
     let jail = agent_jail(inner, goal, ws, &tmp, "agent", goal.contract.network)?;

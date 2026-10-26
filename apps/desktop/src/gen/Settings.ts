@@ -40,4 +40,13 @@ quiet_until: number | null,
 /**
  * Goals whose items never notify.
  */
-muted_goals: Array<string>, };
+muted_goals: Array<string>, 
+/**
+ * The default engine for new goals: `pi` or `claude-code`.
+ */
+engine: string, 
+/**
+ * How to start Claude Code's ACP adapter; empty means
+ * `claude-agent-acp` if installed, else `npx` with a pinned version.
+ */
+claude_acp_command: string, };

@@ -137,12 +137,36 @@ impl Inner {
     }
 
     /// The engine for a goal: the demo engine for demo projects, Pi otherwise.
-    pub fn engine_program(&self, project_root: &str) -> Option<PathBuf> {
-        if Path::new(project_root).starts_with(paths::real(&self.paths.demo_projects())) {
+    /// The engine a goal runs on: its contract's, else the settings default.
+    pub fn engine_of(&self, goal: &tower_store::GoalRecord) -> String {
+        let e = goal.contract.engine.trim();
+        if e.is_empty() { self.settings().engine } else { e.to_string() }
+    }
+
+    /// The program to start for a goal: the demo engine for demo projects,
+    /// the ACP bridge for Claude Code, Pi otherwise.
+    pub fn engine_program(&self, goal: &tower_store::GoalRecord) -> Option<PathBuf> {
+        if Path::new(&goal.project_root).starts_with(paths::real(&self.paths.demo_projects())) {
             let demo = self.paths.demo_engine();
             return demo.is_file().then_some(demo);
         }
+        if self.engine_of(goal) == "claude-code" {
+            let bridge = self.paths.extension_dir().join("acp.ts");
+            return bridge.is_file().then_some(bridge);
+        }
         self.pi_program()
+    }
+
+    /// How to start Claude Code's ACP adapter.
+    pub fn claude_acp_command(&self) -> String {
+        let configured = self.settings().claude_acp_command;
+        if !configured.trim().is_empty() {
+            return configured;
+        }
+        match self.env.which("claude-agent-acp") {
+            Some(p) => p.display().to_string(),
+            None => "npx -y @agentclientprotocol/claude-agent-acp@0.97.0".into(),
+        }
     }
 
     pub fn pi_program(&self) -> Option<PathBuf> {

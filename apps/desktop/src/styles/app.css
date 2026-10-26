@@ -1104,8 +1104,15 @@ input[type="radio"] {
    Overview
    ====================================================================== */
 
-.overview {
-  max-width: 1480px;
+/* One width rule from 1100 to 1800: a page is one 1280px container, centred once the window is wider.
+   What you read (cards, the inbox's column) keeps its reading width at the container's left edge; what
+   you scan (the board's rows, the goal's instrument columns) runs across it — so at 1800 the decision
+   queue and the board below it breathe inside the same frame instead of two. */
+.overview,
+.goal-page,
+.inbox {
+  max-width: 1280px;
+  margin: 0 auto;
 }
 
 /* The today bar: "next" on the left, briefing on the right, one 20px line. */
@@ -1337,7 +1344,6 @@ input[type="radio"] {
    ====================================================================== */
 
 .goal-page {
-  max-width: 1360px;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -1908,9 +1914,11 @@ input[type="radio"] {
 }
 
 .inbox {
-  max-width: var(--reading-w);
   display: grid;
   gap: var(--sp-3);
+}
+.inbox > * {
+  max-width: var(--reading-w);
 }
 .inbox .scale-title {
   margin-top: var(--sp-1);

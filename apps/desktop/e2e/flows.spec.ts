@@ -254,6 +254,23 @@ test("with the phone page on, each link is named by its network", async ({ page 
   await expect(page.locator(".phone-links")).not.toContainText("http://");
 });
 
+test("at 1800 wide the decision queue and the board share one centred container", async ({ page }) => {
+  await page.setViewportSize({ width: 1800, height: 1100 });
+  await openTower(page, "overview");
+  const board = page.locator(".overview");
+  await expect(board).toBeVisible();
+  const r = await board.evaluate((el) => {
+    const b = el.getBoundingClientRect();
+    const v = el.parentElement!.getBoundingClientRect();
+    return { w: b.width, leftGap: b.left - v.left, rightGap: v.right - b.right };
+  });
+  expect(Math.round(r.w)).toBe(1280);
+  expect(Math.abs(r.leftGap - r.rightGap)).toBeLessThan(2);
+  const card = page.locator(".board-queue .decision").first();
+  const row = page.locator(".g-row").first();
+  expect(Math.abs((await card.boundingBox())!.x - (await row.boundingBox())!.x)).toBeLessThan(8);
+});
+
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await openTower(page, "goal/G-0001");

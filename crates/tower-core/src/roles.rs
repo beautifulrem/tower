@@ -110,7 +110,12 @@ const TEST_HARNESS: &[&str] = &[
 /// Whether `path` is part of the test harness.
 pub fn is_test_harness(path: &str) -> bool {
     let name = name_of(path);
+    let lower = name.to_ascii_lowercase();
     TEST_HARNESS.iter().any(|h| name.starts_with(h))
+        // Named after a runner (`setup-jest.js`, `mocha-env.cjs`): its setup.
+        || ["jest", "vitest", "mocha", "karma", "jasmine", "pytest", "cypress", "playwright"]
+            .iter()
+            .any(|r| lower.contains(r))
         || path.contains("__mocks__/")
         || path.starts_with("spec/support/")
         || path.contains("/spec/support/")
@@ -324,12 +329,14 @@ mod tests {
             ("src/cart.js", Role::Source),
             ("src/locales/en.json", Role::Source),
             ("lib/app/models.py", Role::Source),
+            ("src/main/java/shop/Main.java", Role::Source),
             ("crates/x/src/lib.rs", Role::Source),
             ("test/cart.test.js", Role::Test),
             ("tests/test_api.py", Role::Test),
             ("src/cart.spec.ts", Role::Test),
             ("tests/fixtures/order.json", Role::TestData),
             ("vitest.config.ts", Role::TestHarness),
+            ("setup-jest.js", Role::TestHarness),
             ("tests/conftest.py", Role::TestHarness),
             ("package.json", Role::Dependency),
             (".npmrc", Role::Dependency),

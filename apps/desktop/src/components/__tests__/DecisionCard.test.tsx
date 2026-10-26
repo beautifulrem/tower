@@ -106,14 +106,14 @@ describe("DecisionCard", () => {
     }
   });
 
-  it("shows the agent's submit summary on a ready-to-accept card as a claim, never Tower's own sentence twice", () => {
+  it("shows the agent's submit summary on a ready-to-accept card as a claim, and nothing when there is none", () => {
     const ready = (body: string) => item({ id: `R-${body.length}`, kind: "review_ready", subject: "Fix the cart total", options: [], tones: [], allow_text: false, body });
     const { unmount } = render(() => <DecisionCard item={ready("Multiply price by quantity in total()")} />);
     expect(screen.getByText("Multiply price by quantity in total()").closest(".claim")).not.toBeNull();
     expect(screen.getByText("Agent claim:")).toBeTruthy();
     unmount();
-    render(() => <DecisionCard item={ready("Every machine criterion passed in a clean checkout")} />);
-    expect(screen.queryByText(/Every machine criterion passed/)).toBeNull();
+    const { container } = render(() => <DecisionCard item={ready("  ")} />);
+    expect(container.querySelector(".claim")).toBeNull();
   });
 
   it("marks a dependency-network decision as a security decision and sets its machine tail apart from the prose", () => {

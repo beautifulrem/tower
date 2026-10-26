@@ -32,6 +32,7 @@ import { createServer, connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 
 import {
 	type Autonomy,
@@ -504,7 +505,9 @@ async function bridgeMain() {
 	// The agent, speaking ACP (JSON-RPC 2.0) on its stdio.
 	const agent = spawn("/bin/sh", ["-c", agentCommand], {
 		cwd: WORKSPACE,
-		env: process.env,
+		// Not the connectors of your claude.ai account either: Tower's MCP
+		// server is the agent's only way to act.
+		env: { ...process.env, ENABLE_CLAUDEAI_MCP_SERVERS: "false" },
 		stdio: ["pipe", "pipe", "inherit"],
 	});
 	agent.on("exit", (code) => {
@@ -578,7 +581,8 @@ async function bridgeMain() {
 		{
 			name: "tower",
 			command: process.execPath,
-			args: [new URL(import.meta.url).pathname, "--mcp"],
+			// A path, not a URL path: `%20` is not a space.
+			args: [fileURLToPath(import.meta.url), "--mcp"],
 			env: [...towerEnv, { name: "TOWER_BRIDGE_SOCKET", value: socketPath }, { name: "PATH", value: process.env.PATH ?? "" }],
 		},
 	];
@@ -590,6 +594,7 @@ async function bridgeMain() {
 				// action goes through Tower's MCP server.
 				tools: [],
 				settingSources: [],
+				strictMcpConfig: true,
 				...(model && !model.includes("/") ? { model } : {}),
 				...(appendPrompt ? { systemPrompt: { type: "preset", preset: "claude_code", append: appendPrompt } } : {}),
 			},

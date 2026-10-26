@@ -165,11 +165,26 @@ fn handle(inner: &Arc<Inner>, rt: &tokio::runtime::Handle, token: &str, req: &mu
         .find(|h| h.field.equiv("Authorization"))
         .and_then(|h| h.value.as_str().strip_prefix("Bearer "))
         .is_some_and(|t| same(t, token));
+    let lang = inner.lang();
     if !authorized {
-        return json(401, &serde_json::json!({"error": "not paired"}));
+        let text = tower_core::tr!(
+            lang,
+            "这台手机还没有配对：在电脑上打开 Tower 设置里的配对链接或二维码。",
+            "This phone is not paired: open the pairing link or QR code from Tower's Settings."
+        );
+        return json(401, &serde_json::json!({"error": text}));
     }
+    // Errors are sentences in the interface language, like at the desk.
     let sup = |f: &dyn Fn() -> crate::Result<serde_json::Value>| match f() {
         Ok(v) => json(200, &v),
+        Err(crate::Error::Store(tower_store::StoreError::NotFound(_))) => {
+            let text = tower_core::tr!(
+                lang,
+                "这一项已经不在了（可能已在电脑上处理）。",
+                "This is no longer here (it may have been handled at the desk)."
+            );
+            json(404, &serde_json::json!({"error": text}))
+        }
         Err(e) => json(400, &serde_json::json!({"error": e.to_string()})),
     };
     let mut body = String::new();
@@ -208,7 +223,7 @@ fn handle(inner: &Arc<Inner>, rt: &tokio::runtime::Handle, token: &str, req: &mu
             rt.block_on(crate::run::pause(inner, &s("goal"), tower_core::PauseReason::Human, &note))?;
             Ok(serde_json::json!({"ok": true}))
         }),
-        _ => json(404, &serde_json::json!({"error": "not found"})),
+        _ => json(404, &serde_json::json!({"error": tower_core::tr!(lang, "没有这个地址", "No such address")})),
     }
 }
 

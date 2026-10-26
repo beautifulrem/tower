@@ -463,7 +463,7 @@ pub struct Settings {
     #[serde(default = "default_engine")]
     pub engine: String,
     /// How to start Claude Code's ACP adapter; empty means
-    /// `claude-agent-acp` if installed, else `npx` with a pinned version.
+    /// `claude-agent-acp` if installed, else the copy Tower installs from its lockfile.
     #[serde(default)]
     pub claude_acp_command: String,
     /// Serve the phone page (Needs-You and pausing) on your network.

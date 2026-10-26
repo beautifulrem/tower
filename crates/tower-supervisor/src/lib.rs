@@ -291,6 +291,11 @@ impl Supervisor {
         self.inner.store(|s| s.trace(id, before, limit.min(500)))
     }
 
+    /// Open items put aside until later.
+    pub fn snoozed_inbox(&self) -> Result<Vec<InboxItem>> {
+        self.inner.store(|s| s.snoozed_inbox_items())
+    }
+
     pub fn inbox(&self) -> Result<Vec<InboxItem>> {
         self.inner.store(|s| s.open_inbox_items())
     }
@@ -404,7 +409,13 @@ impl Supervisor {
     pub fn remote_info(&self) -> RemoteInfo {
         let s = self.inner.settings();
         if !s.remote_enabled {
-            return RemoteInfo { enabled: false, links: Vec::new(), qr_svg: String::new(), tailscale: false };
+            return RemoteInfo {
+                enabled: false,
+                links: Vec::new(),
+                qr_svg: String::new(),
+                tailscale: false,
+                kinds: Vec::new(),
+            };
         }
         let mut addrs = remote::addresses(&self.inner.env);
         // Only addresses it actually listens on.
@@ -415,8 +426,9 @@ impl Supervisor {
         let tailscale = addrs.first().is_some_and(|a| a.starts_with("100."));
         let links: Vec<String> =
             addrs.iter().map(|a| format!("http://{a}:{}/#{}", s.remote_port, s.remote_token)).collect();
+        let kinds = addrs.iter().map(|a| if a.starts_with("100.") { "tailscale" } else { "lan" }.to_string()).collect();
         let qr_svg = links.first().map(|l| remote::qr_svg(l)).unwrap_or_default();
-        RemoteInfo { enabled: true, links, qr_svg, tailscale }
+        RemoteInfo { enabled: true, links, qr_svg, tailscale, kinds }
     }
 
     /// A new pairing secret: phones paired before must pair again.

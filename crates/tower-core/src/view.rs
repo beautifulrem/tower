@@ -300,6 +300,8 @@ pub struct InboxItem {
     pub urgency: u8,
     /// One per option, in the same order: how to present it.
     pub tones: Vec<OptionTone>,
+    /// Set while the item is put aside ("remind me later"), until when.
+    pub snoozed_until: Option<Millis>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -476,6 +478,8 @@ pub struct RemoteInfo {
     pub qr_svg: String,
     /// Whether a Tailscale address is among the links (encrypted transport).
     pub tailscale: bool,
+    /// One per link: "tailscale" or "lan".
+    pub kinds: Vec<String>,
 }
 
 fn default_engine() -> String {

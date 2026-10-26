@@ -23,4 +23,8 @@ urgency: number,
 /**
  * One per option, in the same order: how to present it.
  */
-tones: Array<OptionTone>, };
+tones: Array<OptionTone>, 
+/**
+ * Set while the item is put aside ("remind me later"), until when.
+ */
+snoozed_until: number | null, };

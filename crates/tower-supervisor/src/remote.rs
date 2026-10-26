@@ -172,6 +172,12 @@ fn handle(inner: &Arc<Inner>, rt: &tokio::runtime::Handle, token: &str, req: &mu
             rt.block_on(crate::actions::answer(inner, &s("inbox_id"), &s("response")))?;
             Ok(serde_json::json!({"ok": true}))
         }),
+        (tiny_http::Method::Post, "/api/snooze") => sup(&|| {
+            let until = arg.get("until").and_then(|v| v.as_i64());
+            inner.store(|st| st.snooze_inbox(&s("inbox_id"), until))?;
+            inner.emit_inbox();
+            Ok(serde_json::json!({"ok": true}))
+        }),
         (tiny_http::Method::Post, "/api/pause") => sup(&|| {
             let note = tower_core::tr!(inner.lang(), "你在手机上暂停了它", "You paused it from your phone");
             rt.block_on(crate::run::pause(inner, &s("goal"), tower_core::PauseReason::Human, &note))?;
@@ -218,6 +224,7 @@ mod tests {
             created_at: 0,
             urgency: 0,
             tones: vec![],
+            snoozed_until: None,
         }
     }
 

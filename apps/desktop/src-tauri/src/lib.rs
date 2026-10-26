@@ -124,7 +124,7 @@ impl TauriSink {
 
 impl UiSink for TauriSink {
     fn emit(&self, update: UiUpdate) {
-        if let UiUpdate::Inbox { items } = &update {
+        if let UiUpdate::Inbox { items, .. } = &update {
             self.on_inbox(items);
         }
         if let Some(app) = &self.app {
@@ -261,6 +261,11 @@ fn look_image(sup: Sup<'_>, file: String) -> Option<String> {
 #[tauri::command]
 fn export_diagnostics(sup: Sup<'_>) -> Res<String> {
     sup.export_diagnostics().map(|p| p.display().to_string())
+}
+
+#[tauri::command]
+fn snoozed_inbox(sup: Sup<'_>) -> Res<Vec<InboxItem>> {
+    sup.snoozed_inbox()
 }
 
 #[tauri::command]
@@ -513,6 +518,7 @@ pub fn run() {
             ui_state,
             set_ui_state,
             start_demo,
+            snoozed_inbox,
             export_diagnostics,
             look_image,
             remote_info,

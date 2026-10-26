@@ -136,8 +136,8 @@ pub(crate) fn jail(
             workspace: real(dir),
             tmp: real(tmp),
             cache,
+            read: sandbox::path_toolchains(inner.env.get("PATH").unwrap_or(""), &home),
             home,
-            read: Vec::new(),
             network,
             proxy_ports: sandbox::proxy_ports(&inner.env.pairs()),
         };

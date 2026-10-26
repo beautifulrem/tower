@@ -415,12 +415,14 @@ mod tests {
         assert!(!run(&format!("cat {}/projects/other/.env", home.display())), "other projects are unreadable");
         assert!(!run(&format!("touch {}/.cargo/registry/poison", home.display())), "shared caches are not writable");
         assert!(!run("echo x >> .git/config"), "git config is read-only");
-        assert!(
-            run(
-                "GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git status >/dev/null 2>&1 || GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --version >/dev/null"
-            ),
-            "git runs"
-        );
+        let git = std::process::Command::new("/usr/bin/sandbox-exec")
+            .arg("-f")
+            .arg(&sb)
+            .args(["/bin/sh", "-c", "GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --version"])
+            .current_dir(root.join("ws"))
+            .output()
+            .unwrap();
+        assert!(git.status.success(), "git runs: {}", String::from_utf8_lossy(&git.stderr));
         assert!(run("/usr/bin/python3 -c 'print(1)' >/dev/null 2>&1 || true"), "interpreters start");
         assert!(!run("/usr/bin/curl -sS -m 5 https://example.com >/dev/null 2>&1"), "no network by default");
         // Even through a local proxy (Clash, Surge, …) listening on loopback.

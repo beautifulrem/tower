@@ -123,7 +123,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
         .machine_criteria()
         .filter_map(|c| match &c.kind {
             CriterionKind::Exec { command, .. } => Some(command.clone()),
-            CriterionKind::Human => None,
+            CriterionKind::Human | CriterionKind::Look { .. } => None,
         })
         .collect();
     let mut hits = tower_core::sentinel::scan_with(&files, &rec.contract.scope, &commands, lang);
@@ -427,9 +427,38 @@ impl<'a> Bench<'a> {
             .machine_criteria()
             .filter_map(|c| match &c.kind {
                 CriterionKind::Exec { command, timeout_secs } => Some((c.clone(), command.clone(), *timeout_secs)),
-                CriterionKind::Human => None,
+                CriterionKind::Human | CriterionKind::Look { .. } => None,
             })
             .collect()
+    }
+
+    /// Screenshots for `look` criteria on the current checkout.
+    async fn capture_looks(&self, ids: &[String], side: &str, rev: &str) -> Result<()> {
+        for c in self.rec.contract.criteria.iter().filter(|c| ids.contains(&c.id)) {
+            let CriterionKind::Look { start, url, timeout_secs } = &c.kind else { continue };
+            let short: String = rev.chars().take(10).collect();
+            let out =
+                self.inner.paths.root.join("evidence").join(self.goal).join(format!("{}-{side}-{short}.png", c.id));
+            let r = crate::look::capture(
+                &self.dir,
+                &self.env,
+                self.criteria.as_deref(),
+                start,
+                url,
+                Duration::from_secs((*timeout_secs).max(5) as u64),
+                &out,
+            )
+            .await;
+            let (file, error) = match r {
+                Ok(p) => (Some(p.display().to_string()), None),
+                Err(e) => (None, Some(e)),
+            };
+            self.inner.append(
+                self.goal,
+                EventKind::LookCaptured { criterion: c.id.clone(), side: side.into(), pin: rev.into(), file, error },
+            )?;
+        }
+        Ok(())
     }
 
     async fn run_all(
@@ -457,6 +486,18 @@ impl<'a> Bench<'a> {
         let detail = inner.store(|s| s.detail(goal))?;
         let missing: Vec<&str> =
             detail.criteria.iter().filter(|c| c.passed_on_base.is_none()).map(|c| c.criterion.id.as_str()).collect();
+        let looks_missing: Vec<String> = detail
+            .criteria
+            .iter()
+            .filter(|c| matches!(c.criterion.kind, CriterionKind::Look { .. }))
+            .filter(|c| c.look.as_ref().is_none_or(|l| l.base.is_none() && l.base_error.is_none()))
+            .map(|c| c.criterion.id.clone())
+            .collect();
+        if !looks_missing.is_empty() {
+            let copied = self.local_files().await?;
+            self.capture_looks(&looks_missing, "base", &self.base.clone()).await?;
+            self.remove(&copied);
+        }
         if criteria.iter().any(|(c, ..)| missing.contains(&c.id.as_str())) {
             let copied = self.local_files().await?;
             for (c, command, timeout) in criteria.iter().filter(|(c, ..)| missing.contains(&c.id.as_str())) {
@@ -548,6 +589,15 @@ impl<'a> Bench<'a> {
                 });
             }
         }
+        let looks: Vec<String> = self
+            .rec
+            .contract
+            .criteria
+            .iter()
+            .filter(|c| matches!(c.kind, CriterionKind::Look { .. }))
+            .map(|c| c.id.clone())
+            .collect();
+        self.capture_looks(&looks, "pin", pin).await?;
         if !failures.is_empty() {
             return Ok((Outcome::Failed(failures), Vec::new()));
         }

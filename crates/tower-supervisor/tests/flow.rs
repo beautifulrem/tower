@@ -516,7 +516,8 @@ async fn the_phone_page_answers_with_the_pairing_token_only() {
     let p = port;
     let (status, _) = tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", None, "")).await.unwrap();
     assert_eq!(status, 401, "no token, no data");
-    let (status, _) = tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", Some("wrong"), "")).await.unwrap();
+    let (status, _) =
+        tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", Some("wrong"), "")).await.unwrap();
     assert_eq!(status, 401);
     let t = token.clone();
     let (status, body) = tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", Some(&t), "")).await.unwrap();
@@ -532,4 +533,42 @@ async fn the_phone_page_answers_with_the_pairing_token_only() {
 
     h.sup.save_settings(Settings { remote_enabled: false, ..h.sup.settings() }).unwrap();
     assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err() || !h.sup.remote_info().enabled);
+}
+
+/// A `look` criterion: the verifier starts the app, waits for its URL and
+/// takes a screenshot before (base) and after (the agent's snapshot), for
+/// the human to judge. Needs a Chromium-based browser and python3.
+#[tokio::test(flavor = "multi_thread")]
+async fn look_criteria_get_before_and_after_screenshots() {
+    if tower_supervisor_test_support_browser().is_none() {
+        eprintln!("skipping: no Chromium-based browser");
+        return;
+    }
+    let h = harness("pass").await;
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let mut c = contract();
+    c.criteria.push(Criterion {
+        id: "C2".into(),
+        title: "done.txt is served".into(),
+        kind: CriterionKind::Look {
+            start: format!("python3 -m http.server {port} --bind 127.0.0.1"),
+            url: format!("http://localhost:{port}/done.txt"),
+            timeout_secs: 8,
+        },
+    });
+    let id = create_with(&h, c).await;
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    let d = h.sup.goal(&id).unwrap();
+    let look = d.criteria[1].look.clone().expect("a look");
+    let after = look.pin.clone().expect("a screenshot of the agent's snapshot");
+    assert!(std::fs::metadata(&after).unwrap().len() > 1000);
+    assert!(h.sup.look_image(&after).unwrap().starts_with("data:image/png;base64,"));
+    assert!(look.base.is_none() && look.base_error.is_some(), "done.txt does not exist on the base: {look:?}");
+    assert!(h.sup.look_image("/etc/hosts").is_none(), "only screenshots can be read");
+}
+
+fn tower_supervisor_test_support_browser() -> Option<&'static str> {
+    ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium"]
+        .into_iter()
+        .find(|b| Path::new(b).is_file())
 }

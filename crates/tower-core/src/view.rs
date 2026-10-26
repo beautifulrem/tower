@@ -106,6 +106,15 @@ pub struct GoalSummary {
     pub pr: Option<PrView>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct LookView {
+    pub base: Option<String>,
+    pub pin: Option<String>,
+    pub base_error: Option<String>,
+    pub pin_error: Option<String>,
+}
+
 /// A pull request as GitHub reports it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -164,6 +173,9 @@ pub struct CriterionView {
     /// Whether the same command already passed on the base commit, when
     /// checked. `Some(true)` means this criterion cannot tell done from not.
     pub passed_on_base: Option<bool>,
+    /// For `look` criteria: the screenshots before (base) and after (the
+    /// current snapshot), or why one is missing.
+    pub look: Option<LookView>,
     /// On the current snapshot, whether it also passes with the agent's
     /// edits to existing tests undone (`None` when no test was edited).
     pub passes_with_original_tests: Option<bool>,

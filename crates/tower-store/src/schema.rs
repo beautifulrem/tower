@@ -195,6 +195,22 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE projects ADD COLUMN holdout_files TEXT NOT NULL DEFAULT '[]';
     "#,
+    // 13: screenshots for `look` criteria
+    r#"
+    CREATE TABLE looks (
+        goal_id    TEXT NOT NULL,
+        criterion  TEXT NOT NULL,
+        side       TEXT NOT NULL,
+        pin        TEXT NOT NULL,
+        file       TEXT,
+        error      TEXT,
+        PRIMARY KEY (goal_id, criterion, side)
+    );
+    "#,
+    // 14: "the latest event of a kind" without scanning a long trace
+    r#"
+    CREATE INDEX events_goal_kind ON events(goal_id, kind, seq);
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

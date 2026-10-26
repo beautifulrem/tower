@@ -254,6 +254,11 @@ fn reset_remote_token(sup: Sup<'_>) -> Res<()> {
 }
 
 #[tauri::command]
+fn look_image(sup: Sup<'_>, file: String) -> Option<String> {
+    sup.look_image(&file)
+}
+
+#[tauri::command]
 async fn start_demo(sup: Sup<'_>) -> Res<GoalSummary> {
     sup.start_demo().await
 }
@@ -488,6 +493,7 @@ pub fn run() {
             ui_state,
             set_ui_state,
             start_demo,
+            look_image,
             remote_info,
             reset_remote_token,
             undo_rollback,

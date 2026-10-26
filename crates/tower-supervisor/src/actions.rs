@@ -278,11 +278,10 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
         )));
     }
     let detail = inner.store(|s| s.detail(goal))?;
-    if let Some(c) = detail
-        .criteria
-        .iter()
-        .find(|c| matches!(c.criterion.kind, tower_core::CriterionKind::Human) && !c.human_checked)
-    {
+    if let Some(c) = detail.criteria.iter().find(|c| {
+        matches!(c.criterion.kind, tower_core::CriterionKind::Human | tower_core::CriterionKind::Look { .. })
+            && !c.human_checked
+    }) {
         let id = &c.criterion.id;
         return Err(invalid(tr!(lang, "人工标准 {id} 还没有勾选", "Human criterion {id} is not checked yet")));
     }

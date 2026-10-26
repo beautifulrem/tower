@@ -14,6 +14,7 @@ mod edits;
 mod environment;
 mod inner;
 mod jail;
+mod look;
 pub mod paths;
 mod pr;
 mod project_check;
@@ -632,6 +633,11 @@ impl Supervisor {
     /// Puts the workspace back to where run `run_no` started.
     pub async fn rollback(&self, id: &str, run_no: u32) -> Result<()> {
         edits::rollback(&self.inner, id, run_no).await
+    }
+
+    /// A screenshot taken for a `look` criterion, as a data URL.
+    pub fn look_image(&self, file: &str) -> Option<String> {
+        look::data_url(&self.inner.paths.root.join("evidence"), file)
     }
 
     /// Undoes the latest rollback.

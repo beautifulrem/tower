@@ -30,7 +30,7 @@ pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<Choice> {
         PauseReason::SentinelHigh => vec![SentinelRework, OverrideSentinel, Abandon],
         PauseReason::WallClockCap => vec![MoreTime, Abandon],
         PauseReason::DependenciesChanged => vec![InstallWithNetwork, Abandon],
-        PauseReason::HeldOutFailed => vec![ShowHeldOutFailure, Abandon],
+        PauseReason::HeldOutFailed => vec![TellFailingNames, ShowHeldOutFailure, Abandon],
         PauseReason::Human | PauseReason::AppQuit => vec![Continue],
     }
 }
@@ -163,6 +163,24 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
                 "Every machine criterion passed; you confirmed the sentinel hits"
             );
             verify::review_ready(inner, goal, &body)
+        }
+        Some(Choice::TellFailingNames) => {
+            let text = tr!(
+                lang,
+                "你只把失败的保留测试名称告诉了 Agent",
+                "You told the agent only the names of the failing held-out tests"
+            );
+            inner.append(goal, EventKind::Note { text })?;
+            let failing: Vec<(String, String, Vec<String>)> = last_failures(inner, &rec, true)?
+                .into_iter()
+                .map(|f| (f.id, f.title, prompts::failing_tests(&f.output_tail)))
+                .collect();
+            let msg = prompts::held_out_names(
+                rec.rework_cycles + 1,
+                rec.contract.max_rework.max(rec.rework_cycles + 1),
+                &failing,
+            );
+            run::start_run(inner, goal, "rework", msg).await
         }
         Some(Choice::ShowHeldOutFailure) => {
             // The human's call: the agent sees the held-out failures, and so

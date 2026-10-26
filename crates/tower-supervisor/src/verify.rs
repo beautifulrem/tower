@@ -274,7 +274,19 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
                 "Every visible criterion passed; the held-out tests did not. The agent does not know these tests and has not seen the output below."
             );
             for f in &failures {
-                let tail = tail_lines(&f.output_tail, 12);
+                let names = prompts::failing_tests(&f.output_tail);
+                if !names.is_empty() {
+                    let list = names.join(lang.pick("、", ", "));
+                    detail.push_str(&tr!(
+                        lang,
+                        "\n\n{id} 失败的测试：{list}",
+                        "\n\nFailing in {id}: {list}",
+                        id = f.id
+                    ));
+                }
+            }
+            for f in &failures {
+                let tail = tail_lines(&f.output_tail, 30);
                 detail.push_str(&format!("\n\n{} · {}\n{tail}", f.id, f.title));
             }
             to_paused(inner, goal, PauseReason::HeldOutFailed, &detail)?;

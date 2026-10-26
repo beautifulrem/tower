@@ -655,6 +655,25 @@ async fn failing_held_out_tests_go_to_the_human() {
         !trace.iter().any(|e| matches!(&e.event, EventKind::Injected { text, .. } if text.contains("holdout"))),
         "the prompts do not mention the held-out criterion"
     );
+    // You tell it only which tests failed: a rework starts, still without
+    // the tests' output.
+    h.sup.answer(&item.id, "Tell the agent only which tests failed").await.unwrap();
+    for _ in 0..50 {
+        let t = h.sup.trace(&id, None, 1000).unwrap();
+        if t.iter().any(|e| matches!(&e.event, EventKind::Injected { text, .. } if text.contains("held-out tests"))) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let trace = h.sup.trace(&id, None, 1000).unwrap();
+    let told = trace
+        .iter()
+        .find_map(|e| match &e.event {
+            EventKind::Injected { text, .. } if text.contains("held-out tests") => Some(text.clone()),
+            _ => None,
+        })
+        .expect("a rework that names the failures");
+    assert!(!told.contains("SECRET-EXPECTATION") && !told.contains("holdout/"), "{told}");
     assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::Steered { text } if text.contains("SECRET"))));
 }
 

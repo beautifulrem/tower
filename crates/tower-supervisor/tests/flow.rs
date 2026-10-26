@@ -113,6 +113,14 @@ async fn sentinels_hold_a_passing_but_suspicious_snapshot() {
     // The human switches the interface to Chinese, looks, and decides it is
     // fine: the Chinese label still picks the option on the English card.
     h.sup.save_settings(Settings { language: "zh-CN".into(), ..h.sup.settings() }).unwrap();
+    // The open card is re-sent in Chinese, without a reload.
+    let resent = h.sink.0.lock().unwrap().iter().rev().find_map(|u| match u {
+        UiUpdate::Inbox { items, .. } => items.iter().find(|i| i.id == item.id).cloned(),
+        _ => None,
+    });
+    let resent = resent.expect("the inbox is re-sent after a language switch");
+    assert!(resent.title.starts_with("已暂停"), "{}", resent.title);
+    assert!(resent.options.contains(&"我已确认，进入评审".to_string()), "{:?}", resent.options);
     h.sup.answer(&item.id, "我已确认，进入评审").await.unwrap();
     wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
 }

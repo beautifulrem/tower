@@ -381,6 +381,16 @@ impl Supervisor {
         if remote_changed {
             self.apply_remote()?;
         }
+        // Read-time text (card titles and Tower's own choices, goal labels)
+        // is re-sent so open screens switch language without a reload.
+        if before.lang() != lang {
+            self.inner.emit_inbox();
+            if let Ok(goals) = self.inner.store(|s| s.summaries()) {
+                for goal in goals {
+                    self.inner.sink.emit(UiUpdate::Goal { goal });
+                }
+            }
+        }
         let inner = self.inner.clone();
         tokio::spawn(async move { run::schedule(&inner).await });
         Ok(())

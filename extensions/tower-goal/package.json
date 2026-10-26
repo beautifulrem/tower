@@ -1,0 +1,11 @@
+{
+  "name": "@tower/tower-goal",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Tower's goal tools (ask_user, log, submit) and scope/autonomy gate as a Pi extension",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "test": "node --test policy.test.ts"
+  }
+}

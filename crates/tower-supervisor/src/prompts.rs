@@ -168,10 +168,8 @@ pub fn failing_tests(output: &str) -> Vec<String> {
             Some(rest.split_whitespace().next().unwrap_or(rest).to_string())
         } else if let Some(rest) = l.strip_prefix("test ").filter(|r| r.ends_with("... FAILED")) {
             Some(rest.trim_end_matches("... FAILED").trim().to_string())
-        } else if let Some(rest) = l.strip_prefix("● ") {
-            Some(rest.trim().to_string())
         } else {
-            None
+            l.strip_prefix("● ").map(|rest| rest.trim().to_string())
         };
         if let Some(n) = name.filter(|n| !n.is_empty() && !n.starts_with("tower canary"))
             && !out.contains(&n)

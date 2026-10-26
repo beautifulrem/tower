@@ -61,7 +61,17 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
                     None,
                 )
             }
-            _ => {}
+            Some(_) => {}
+            None => issue(
+                EnvIssueKind::PiUntested,
+                false,
+                tr!(
+                    lang,
+                    "读不出 Pi 的版本（输出：{v}），无法确认是否兼容。",
+                    "Could not read Pi's version (it printed: {v}), so compatibility is unknown."
+                ),
+                None,
+            ),
         }
     } else {
         issue(
@@ -113,12 +123,26 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
             let (a, b, c) = tower_core::view::PI_MIN;
             format!("{a}.{b}.{c}")
         },
-        demo_missing: ["node", "python3"]
-            .into_iter()
-            .filter(|p| inner.env.which(p).is_none())
-            .map(String::from)
-            .collect(),
+        demo_missing: ["node", "python3"].into_iter().filter(|p| !usable(inner, p)).map(String::from).collect(),
         problems,
         issues,
+    }
+}
+
+/// Whether a program is really there. macOS ships `/usr/bin/python3` as a
+/// stub that offers to install the developer tools (with a dialog) when
+/// they are missing, so that one counts only with the tools installed.
+pub(crate) fn usable(inner: &Inner, program: &str) -> bool {
+    match inner.env.which(program) {
+        None => false,
+        Some(p) if p.starts_with("/usr/bin") && program == "python3" => {
+            std::process::Command::new("/usr/bin/xcode-select")
+                .arg("-p")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        }
+        Some(_) => true,
     }
 }

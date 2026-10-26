@@ -19,6 +19,15 @@ use crate::prompts::{self, Failure};
 use crate::{Inner, Result, invalid, run};
 
 const SETUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const MIN_FREE: u64 = 2_000_000_000;
+
+/// Free space on the volume holding `path`, from `df`.
+fn free_bytes(path: &Path) -> Option<u64> {
+    let out = std::process::Command::new("/bin/df").args(["-Pk"]).arg(path).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let kb: u64 = text.lines().nth(1)?.split_whitespace().nth(3)?.parse().ok()?;
+    Some(kb * 1024)
+}
 
 pub fn spawn(inner: Arc<Inner>, goal: String) {
     let cancel = Cancel::default();
@@ -137,6 +146,22 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
         inner.transition(goal, Transition::VerifyPassed, None, &note)?;
         review_ready(inner, goal, "")?;
         return Ok(());
+    }
+
+    // A checkout plus a cache clone can take gigabytes; a full disk would
+    // fail halfway in confusing ways.
+    if let Some(free) = free_bytes(&inner.paths.root)
+        && free < MIN_FREE
+    {
+        let gb = format!("{:.1}", free as f64 / 1e9);
+        inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
+        inner.set_mode(goal, Mode::Idle)?;
+        let detail = tr!(
+            lang,
+            "磁盘只剩 {gb} GB，验证需要至少 2 GB。腾出空间后点“重新验证”。",
+            "Only {gb} GB of disk space is left; verification needs at least 2 GB. Free some space, then verify again."
+        );
+        return to_paused(inner, goal, PauseReason::VerifyEnvError, &detail);
     }
 
     // 2. One clean checkout and one package cache, used in order of trust:

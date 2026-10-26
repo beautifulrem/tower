@@ -49,14 +49,6 @@ export interface Pulse {
   tool: { name: string; since: number } | null;
 }
 
-/** A decision you put aside this session: where it went and when it comes back. */
-export interface Snoozed {
-  id: string;
-  goalId: string;
-  title: string;
-  until: number;
-}
-
 interface State {
   loaded: boolean;
   loadError: string | null;
@@ -66,11 +58,11 @@ interface State {
   goals: Record<string, GoalSummary>;
   inbox: InboxItem[];
   /**
-   * Decisions put aside with "remind me later", so the inbox can say where
-   * a card went. Kept here for the session; an entry leaves when its item is
-   * back in the inbox (the supervisor keeps the authoritative list).
+   * Decisions put aside with "remind me later" (`snoozed_until` set), so the
+   * inbox can say where a card went. The supervisor's list, sent with every
+   * inbox update, so it survives a restart.
    */
-  snoozed: Snoozed[];
+  snoozed: InboxItem[];
   /** Assistant text currently streaming, per goal (Watch mode). */
   streams: Record<string, string>;
   /**
@@ -169,20 +161,6 @@ export function dedupeInbox(items: InboxItem[]): InboxItem[] {
   return items.filter((i) => newest.get(`${i.goal_id}\u0000${i.kind}\u0000${i.subject.trim()}`) === i);
 }
 
-/** Remembers a decision you put aside, so the inbox can say so. */
-export function rememberSnoozed(item: InboxItem, until: number) {
-  setState("snoozed", (s) => [...s.filter((x) => x.id !== item.id), { id: item.id, goalId: item.goal_id, title: item.subject || item.title, until }]);
-}
-
-export function forgetSnoozed(id: string) {
-  setState("snoozed", (s) => s.filter((x) => x.id !== id));
-}
-
-/** Snoozed entries whose items are back (or long overdue) leave the list. */
-function reconcileSnoozed(open: InboxItem[], now = Date.now()) {
-  setState("snoozed", (s) => s.filter((x) => !open.some((i) => i.id === x.id) && x.until + 5 * 60_000 > now));
-}
-
 /** Runs an action, surfacing failures as an error toast. */
 export async function act<T>(fn: () => Promise<T>, success?: string): Promise<T | undefined> {
   try {
@@ -235,12 +213,10 @@ function subscribe() {
       case "goal":
         setState("goals", u.goal.id, reconcile(u.goal));
         break;
-      case "inbox": {
-        const items = dedupeInbox(u.items);
-        setState("inbox", reconcile(items, { key: "id" }));
-        reconcileSnoozed(items);
+      case "inbox":
+        setState("inbox", reconcile(dedupeInbox(u.items), { key: "id" }));
+        setState("snoozed", reconcile(u.snoozed ?? [], { key: "id" }));
         break;
-      }
       case "projects":
         setState("projects", reconcile(u.projects, { key: "id" }));
         break;
@@ -297,12 +273,13 @@ export async function init() {
   setState({ loadError: null });
   try {
     const sub = subscribe();
-    const [goals, inbox, projects] = await Promise.all([api.goals(), api.inbox(), api.projects()]);
+    const [goals, inbox, projects, snoozed] = await Promise.all([api.goals(), api.inbox(), api.projects(), api.snoozedInbox().catch(() => [] as InboxItem[])]);
     await refreshEnvironment();
     setState(
       produce((s) => {
         s.goals = Object.fromEntries(goals.map((g) => [g.id, g]));
         s.inbox = dedupeInbox(inbox);
+        s.snoozed = snoozed;
         s.projects = projects;
         s.loaded = true;
       }),

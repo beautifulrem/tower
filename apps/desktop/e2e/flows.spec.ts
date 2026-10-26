@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady } from "./rich";
+import { enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -8,6 +8,16 @@ const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (wi
 test("every decision card offers to be put aside", async ({ page }) => {
   const { fixtures } = await openTower(page, "inbox");
   await expect(page.getByRole("button", { name: "Remind me later" })).toHaveCount((fixtures.inbox as unknown[]).length);
+});
+
+test("a put-aside card is still accounted for in the inbox, with its way back", async ({ page }) => {
+  await openTower(page, "inbox", { enrich: enrichSnoozed });
+  const head = page.getByRole("button", { name: /1 put aside \(04:02\)/ });
+  await expect(head).toBeVisible();
+  await head.click();
+  await expect(page.getByText("Which discount applies first?")).toBeVisible();
+  await page.getByRole("button", { name: "Show now" }).click();
+  await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "snooze" && (args as { until: number | null }).until === null)).toBe(true);
 });
 
 test("the review queue steps through every ready goal", async ({ page }) => {

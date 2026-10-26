@@ -24,9 +24,25 @@ async function openPhone(page: Page, opts: { state?: object | null; lang?: strin
     if (/^(Allow|Approve|允许|批准)$/.test(body.response)) return r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "This decision can only be made at the desk" }) });
     return r.fulfill({ status: 200, contentType: "application/json", body: "{\"ok\":true}" });
   });
+  await page.route("http://phone.test/api/snooze", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{\"ok\":true}" }));
   await page.goto("http://phone.test/#token");
   return F;
 }
+
+test("a decision can be put aside from the phone, with two times and a 44pt bell", async ({ page }) => {
+  await openPhone(page);
+  const bell = page.locator(".bell").first();
+  const box = await bell.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  await bell.click();
+  const sent = page.waitForRequest((r) => r.url().endsWith("/api/snooze") && r.method() === "POST");
+  await page.getByRole("button", { name: "In 1 hour" }).click();
+  const body = (await sent).postDataJSON() as { inbox_id: string; until: number };
+  expect(body.inbox_id).toBeTruthy();
+  expect(body.until).toBeGreaterThan(Date.now() + 55 * 60_000);
+}
+);
 
 test("every control on the phone page is at least 44pt tall", async ({ page }) => {
   await openPhone(page);

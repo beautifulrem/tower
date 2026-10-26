@@ -39,6 +39,8 @@ export const api = {
   trace: (id: string, before: number | null, limit: number) =>
     invoke<TraceEntry[]>("trace", { id, before, limit }),
   inbox: () => invoke<InboxItem[]>("inbox"),
+  /** Open items put aside until later, so the inbox can say where they went. */
+  snoozedInbox: () => invoke<InboxItem[]>("snoozed_inbox"),
   review: (id: string, since: string | null = null) => invoke<ReviewView>("review", { id, since }),
   openFile: (id: string, path: string, line: number | null) => invoke<void>("open_file", { id, path, line }),
   /** One whole file on the base side (`old`) or in the reviewed snapshot; null when absent on that side. */

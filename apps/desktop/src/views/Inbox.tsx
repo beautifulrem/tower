@@ -11,6 +11,7 @@ import { For, type JSX, Show, createMemo, createSignal } from "solid-js";
 import { DecisionCard, chooseOption, snoozeMenu, unsnooze } from "../components/DecisionCard";
 import { Icon } from "../components/Glyph";
 import { Button, Empty, Kbd } from "../components/ui";
+import type { InboxItem } from "../gen/InboxItem";
 import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
@@ -133,27 +134,28 @@ export function Inbox() {
   );
 }
 
-/** Where the put-aside cards went: a count with the next return time; open, each one with its way back. */
+/** Where the put-aside cards went (the supervisor's list): a count with the next return time; open, each one with its way back. */
 function SnoozedFooter() {
   const [open, setOpen] = createSignal(false);
-  const list = () => [...state.snoozed].sort((a, b) => a.until - b.until);
+  const until = (i: InboxItem) => i.snoozed_until ?? 0;
+  const list = () => [...state.snoozed].sort((a, b) => until(a) - until(b));
   return (
     <Show when={list().length > 0}>
       <div class="snoozed" classList={{ open: open() }}>
         <button class="snoozed-head link-plain meta t3 halt" aria-expanded={open()} onClick={() => setOpen((o) => !o)} title={t("inbox.snoozedTitle")}>
           <Icon name={open() ? "caret-down" : "caret-right"} size={10} />
           <Icon name="bell" size={10} />
-          <span class="num">{t("inbox.snoozedCount", { n: list().length, time: clock(list()[0].until) })}</span>
+          <span class="num">{t("inbox.snoozedCount", { n: list().length, time: clock(until(list()[0])) })}</span>
         </button>
         <Show when={open()}>
           <ul class="snoozed-list">
             <For each={list()}>
               {(s) => (
                 <li class="snoozed-item meta">
-                  <button class="link-quiet ellipsis" onClick={() => go({ name: "goal", id: s.goalId })} title={s.title}>
-                    <span class="code-val t3">{s.goalId}</span> {s.title}
+                  <button class="link-quiet ellipsis" onClick={() => go({ name: "goal", id: s.goal_id })} title={s.subject || s.title}>
+                    <span class="code-val t3">{s.goal_id}</span> {s.subject || s.title}
                   </button>
-                  <span class="t3 num">{t("inbox.snoozedUntil", { time: clock(s.until) })}</span>
+                  <span class="t3 num">{t("inbox.snoozedUntil", { time: clock(until(s)) })}</span>
                   <Button size="s" variant="ghost" onClick={() => void unsnooze(s.id)}>
                     {t("decision.unsnooze")}
                   </Button>

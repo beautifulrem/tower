@@ -27,6 +27,7 @@ macOS 13+, Rust (pinned by `rust-toolchain.toml`), Node 22+, pnpm, git, and opti
 pnpm install
 pnpm dev        # run the app with hot reload
 pnpm check      # what CI runs: tsc, clippy -D warnings, all tests
+ln -sf ../../tools/pre-push.sh .git/hooks/pre-push   # formatting, lints, types and unit tests before every push
 ```
 
 No model credentials? `tools/demo-engine` is a scripted Pi stand-in; the README shows how to seed a demo.

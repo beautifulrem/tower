@@ -47,7 +47,13 @@ jobs:
       # The real_pi test drives the real Pi (with a scripted model) and is
       # skipped when Pi is missing; install the supported version so it runs.
       - name: Install Pi for the real-engine test
-        run: npm i -g @earendil-works/pi-coding-agent@1.4.0
+        # The registry has had brief outages; retry before failing the run.
+        run: |
+          for i in 1 2 3; do
+            npm i -g @earendil-works/pi-coding-agent@1.4.0 && exit 0
+            sleep 15
+          done
+          exit 1
 
       - name: Rust tests
         run: |

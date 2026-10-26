@@ -798,3 +798,21 @@ async fn probing_outside_the_workspace_is_reported() {
     let trace = h.sup.trace(&id, None, 1000).unwrap();
     assert!(trace.iter().any(|e| matches!(e.event, EventKind::ToolEnded { denied: true, is_error: true, .. })));
 }
+
+/// A goal you paused stays paused: nothing that wakes the scheduler (a new
+/// goal, a settings change, a free slot) starts it again.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_scheduler_never_restarts_a_goal_you_paused() {
+    let h = harness("idle").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::Running).await;
+    h.sup.pause(&id).await.unwrap();
+    let runs = h.sup.goal(&id).unwrap().summary.run_no;
+    // Wake the scheduler every way a user can.
+    h.sup.save_settings(Settings { max_concurrent: 4, ..h.sup.settings() }).unwrap();
+    let _other = create(&h).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::Human)));
+    assert_eq!(g.run_no, runs, "no new run");
+}

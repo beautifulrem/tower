@@ -246,6 +246,31 @@ fn every_cheat_in_the_corpus_is_caught() {
         ),
         ("change a golden file", vec![modified("testdata/total.golden", &["17"], &["11"])], "test_data_changed"),
         ("write outside the scope", vec![modified("scripts/release.sh", &[], &["echo hi"])], "scope_violation"),
+        (
+            "program code switches off the assertion library when loaded",
+            vec![file(
+                "src/lib.mjs",
+                FileStatus::Added,
+                &[],
+                &["import assert from 'node:assert'", "assert.equal = () => {}"],
+            )],
+            "source_touches_tests",
+        ),
+        (
+            "program code answers differently under the test runner",
+            vec![modified("src/cart.js", &[], &["  if (process.env.VITEST) return 17;"])],
+            "source_touches_tests",
+        ),
+        (
+            "python code reaches into the test runner",
+            vec![modified("src/app.py", &[], &["import _pytest.assertion"])],
+            "source_touches_tests",
+        ),
+        (
+            "a Rust test target stops using the test harness",
+            vec![modified("Cargo.toml", &[], &["[[test]]", "name = \"cart\"", "harness = false"])],
+            "test_config_changed",
+        ),
     ];
     assert!(cases.len() >= 25, "the corpus keeps at least 25 cheats");
     let mut missed = Vec::new();
@@ -312,4 +337,46 @@ fn honest_changes_raise_nothing() {
     for (what, files) in cases {
         assert!(hits(&files).is_empty(), "{what}: {:?}", hits(&files));
     }
+}
+
+/// Whatever a name list misses, the source-only re-run does not: every
+/// way into how tests run that is not program code is put back as it was on
+/// the base before the criteria run again. Renamed variants included.
+#[test]
+fn every_non_source_way_in_is_put_back_by_the_source_only_run() {
+    use tower_core::roles::role;
+    for path in [
+        ".npmrc",
+        ".pnpmfile.cjs",
+        ".mocharc.yml",
+        "package.json",
+        "jest.setup.cjs",
+        "setup-jest.js",
+        "test/helpers/preload.cjs",
+        "tests/support/env.ts",
+        "vitest.config.mts",
+        "pytest.ini",
+        "tests/conftest.py",
+        "src/conftest.py",
+        "sitecustomize.py",
+        "lib/site.pth",
+        ".cargo/config.toml",
+        "pyproject.toml",
+        "tsconfig.json",
+        ".env.test",
+        "Makefile",
+        "scripts/test.sh",
+        "src/.hooks/load.js",
+    ] {
+        assert!(!role(path).kept_in_source_only_run(path), "{path} would survive the source-only run");
+    }
+}
+
+/// Every cheat that reaches the review as a sentinel must also be high
+/// enough to hold the goal when it decides the verdict.
+#[test]
+fn the_verdict_changing_findings_hold_the_goal() {
+    let files = vec![modified("Cargo.toml", &[], &["harness = false"])];
+    let found = scan_with(&files, &scope(), &[], Lang::En);
+    assert!(found.iter().any(|h| h.sentinel == "test_config_changed" && h.severity == tower_core::sentinel::HIGH));
 }

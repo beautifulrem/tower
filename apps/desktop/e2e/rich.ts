@@ -179,6 +179,34 @@ export function enrichPhoneProblem(F: F) {
   };
 }
 
+/**
+ * What the canary saw on G-0001: C1's assertions were checked (intact), C2's could not be (a test style Tower does not
+ * know), and C3's canary passed when it must have failed. The goal page then carries the two newer sentinels: program
+ * code reaching into the tests with assertions unchecked (high), and repeated sandbox refusals (medium).
+ */
+export function enrichCanary(F: F) {
+  const d = F["goal-G-0001"];
+  if (!d) return;
+  const by = (id: string) => d.criteria.find((c: any) => c.criterion.id === id);
+  if (by("C1")) by("C1").canary = "intact";
+  if (by("C2")) by("C2").canary = "not_checked";
+  if (by("C3")) by("C3").canary = "tampered";
+  d.sentinels.push(
+    {
+      sentinel: "assertions_unchecked",
+      severity: 3,
+      title: "Program code reaches into the tests, and the assertions could not be checked",
+      detail: "Program code reaches into the assertion library or test runner, and the assertions of C2 could not be checked with the canary (a language or test style Tower does not know). Check yourself that these tests really test.",
+    },
+    {
+      sentinel: "sandbox_probing",
+      severity: 2,
+      title: "The agent repeatedly tried to read outside its workspace",
+      detail: "The sandbox refused 7 accesses outside the workspace; the latest:\n/Users/you/shop/test/holdout/rounding.test.js\n~/.ssh/config\n../other-project/src/index.ts\n/etc/hosts\n/Users/you/shop/.env",
+    },
+  );
+}
+
 /** Pushes are configured to a topic, the last one failed, and quiet hours run 22:00–08:00. */
 export function enrichPushes(F: F) {
   F.settings = { ...F.settings, push_url: "https://ntfy.example.net/tower", push_ready: true, quiet_hours: { start: 22 * 60, end: 8 * 60 } };
@@ -198,5 +226,6 @@ export function enrichRich(F: F) {
   enrichPhone(F);
   enrichSnoozed(F);
   enrichHeldOut(F);
+  enrichCanary(F);
   enrichPushes(F);
 }

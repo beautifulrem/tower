@@ -129,7 +129,7 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
                   <span class="grow" />
                   <span class="meta">{h.severity >= 3 ? t("goal.needsConfirm") : t("goal.noteInReview")}</span>
                 </div>
-                <pre class="sentinel-detail mono">{h.detail}</pre>
+                <SentinelDetail text={h.detail} />
               </div>
             )}
           </For>
@@ -252,6 +252,24 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
         </Section>
       </Show>
     </>
+  );
+}
+
+/** A line of a sentinel's detail that came out of a machine: a path, a command, a runner's indented line. */
+const MACHINE_DETAIL = /^(\s{2,}|[~./]|[\w@.-]+(\/[\w@.-]+)+|\S+\.(js|ts|tsx|jsx|mjs|cjs|py|rs|go|rb|json|ya?ml|toml|lock|sh|txt|snap)\b)/;
+
+/**
+ * A sentinel's detail, line by line in the honesty grammar: the supervisor's
+ * sentences (why repeated refusals matter, which criteria the canary could not
+ * check) in the UI face, wrapping at words; the paths and lines that triggered
+ * it in mono, breaking anywhere. One register per line, never per sentinel.
+ */
+export function SentinelDetail(props: { text: string }) {
+  const lines = () => props.text.split("\n").filter((l, i, all) => l.trim() !== "" || (i > 0 && i < all.length - 1));
+  return (
+    <div class="sentinel-detail">
+      <For each={lines()}>{(line) => <span class={MACHINE_DETAIL.test(line) ? "sentinel-machine code-val" : "sentinel-prose"}>{line || " "}</span>}</For>
+    </div>
   );
 }
 

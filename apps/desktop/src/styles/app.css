@@ -1698,15 +1698,26 @@ input[type="radio"] {
 .sentinel {
   margin-bottom: var(--sp-2);
 }
+/* A sentinel's detail: one register per line — the supervisor's sentence in the UI face, the paths that
+   triggered it in mono — so "the sandbox refused 12 accesses; the latest:" reads as a sentence above its list. */
 .sentinel-detail {
+  display: grid;
+  gap: 1px;
   margin: 2px 0 0 22px;
-  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 18px;
   color: var(--text-2);
+  user-select: text;
+}
+.sentinel-prose {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 72ch;
+}
+.sentinel-machine {
   white-space: pre-wrap;
   word-break: break-all;
-  user-select: text;
+  color: var(--text-2);
 }
 
 /* Budget lives in the rail: a 4px bar with soft and hard tick marks. */

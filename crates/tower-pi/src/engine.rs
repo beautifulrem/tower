@@ -19,6 +19,10 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::protocol::{PiEvent, Record, Response, UiAnswer, parse_record};
 
+/// The only tools the model may call: Pi's four built-ins, which the
+/// tower-goal extension replaces with sandboxed versions, and its three own.
+pub const TOOLS: &[&str] = &["read", "bash", "edit", "write", "ask_user", "log", "submit"];
+
 #[derive(Debug, Clone, Default)]
 pub struct EngineConfig {
     /// The `pi` executable.
@@ -45,6 +49,11 @@ pub struct EngineConfig {
 impl EngineConfig {
     pub fn args(&self) -> Vec<String> {
         let mut a = vec!["--mode".into(), "rpc".into(), "--session-dir".into(), self.session_dir.display().to_string()];
+        // Every tool the model can call must go through the tower-goal gate
+        // and its sandbox. MCP tools and project-local Pi resources (a repo
+        // can ship its own extensions) would run in Pi's own process,
+        // outside both, so they are off; the tool set is an allowlist.
+        a.extend(["--tools".into(), TOOLS.join(","), "--no-mcp".into(), "--no-approve".into()]);
         if let Some(s) = &self.resume_session {
             a.extend(["--session".into(), s.display().to_string()]);
         }

@@ -65,3 +65,12 @@ async fn missing_program_fails_to_spawn() {
     cfg.program = PathBuf::from("/nonexistent/pi");
     assert!(matches!(Engine::spawn(&cfg), Err(EngineError::Spawn(_))));
 }
+
+#[test]
+fn only_gated_tools_are_enabled() {
+    let args = config().args();
+    let at = args.iter().position(|a| a == "--tools").expect("an explicit tool allowlist");
+    assert_eq!(args[at + 1], "read,bash,edit,write,ask_user,log,submit");
+    assert!(args.iter().any(|a| a == "--no-mcp"), "MCP tools would run outside the sandbox");
+    assert!(args.iter().any(|a| a == "--no-approve"), "a repository's own Pi resources are not trusted");
+}

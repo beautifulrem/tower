@@ -18,16 +18,21 @@
  *                          approval reasons and options; the model always
  *                          reads English
  *
+ *   TOWER_NETWORK          "1" when the contract allows the network
+ *
  * Pi's built-in bash is replaced by the same tool with a spawn hook that
- * strips credential-shaped variables and, when a profile is given, runs the
- * command under sandbox-exec (docs/11 §11.6).
+ * strips credential-shaped variables (and proxy settings when the network is
+ * off) and, when a profile is given, runs the command under sandbox-exec
+ * (docs/11 §11.6). read, edit and write are replaced by the same tools whose
+ * file operations run under that profile too (sandboxfs.ts). Tower starts Pi
+ * with exactly these tools enabled.
  */
 
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createBashTool } from "@earendil-works/pi-coding-agent";
+import { createBashTool, createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 import {
@@ -38,9 +43,11 @@ import {
 	checkWrite,
 	isAllow,
 	langOf,
+	checkRead,
 	sandboxed,
 	scrubEnv,
 } from "./policy.ts";
+import { sandboxedOperations } from "./sandboxfs.ts";
 
 interface ContractFile {
 	autonomy: Autonomy;
@@ -52,6 +59,7 @@ const WORKSPACE = realOrSelf(process.env.TOWER_WORKSPACE ?? process.cwd());
 const SANDBOX_PROFILE = process.env.TOWER_SANDBOX_PROFILE;
 const AGENT_TMP = process.env.TOWER_TMP;
 const LANG = langOf(process.env.TOWER_LANG);
+const NETWORK = process.env.TOWER_NETWORK === "1";
 
 function realOrSelf(p: string): string {
 	try {
@@ -104,15 +112,23 @@ export default function towerGoal(pi: ExtensionAPI) {
 
 	const bash = createBashTool(WORKSPACE, {
 		spawnHook: ({ command, cwd, env }) => {
-			const clean = scrubEnv(env);
+			const clean = scrubEnv(env, NETWORK);
 			if (AGENT_TMP) clean.TMPDIR = AGENT_TMP;
 			return { command: SANDBOX_PROFILE ? sandboxed(command, SANDBOX_PROFILE) : command, cwd, env: clean };
 		},
 	});
-	pi.registerTool({
-		...bash,
-		execute: (id, params, signal, onUpdate) => bash.execute(id, params, signal, onUpdate),
-	});
+	const ops = SANDBOX_PROFILE ? sandboxedOperations(SANDBOX_PROFILE) : undefined;
+	const files = [
+		createReadTool(WORKSPACE, { operations: ops?.read }),
+		createEditTool(WORKSPACE, { operations: ops?.edit }),
+		createWriteTool(WORKSPACE, { operations: ops?.write }),
+	];
+	for (const tool of [bash, ...files]) {
+		pi.registerTool({
+			...tool,
+			execute: (id, params, signal, onUpdate) => tool.execute(id, params, signal, onUpdate),
+		});
+	}
 
 	pi.registerTool({
 		name: "ask_user",
@@ -183,6 +199,16 @@ export default function towerGoal(pi: ExtensionAPI) {
 
 	pi.on("tool_call", async (event, ctx) => {
 		const name = event.toolName;
+
+		// Without a sandbox (not macOS), reads are fenced by path instead.
+		if (name === "read" && !SANDBOX_PROFILE) {
+			const raw = String((event.input as { path?: unknown }).path ?? "");
+			const abs = resolveThroughLinks(isAbsolute(raw) ? raw : resolve(WORKSPACE, raw));
+			if (!checkRead([WORKSPACE, ...(AGENT_TMP ? [realOrSelf(AGENT_TMP)] : [])], abs)) {
+				return { block: true, reason: `Tower: ${raw} is outside this goal's workspace and cannot be read.` };
+			}
+			return undefined;
+		}
 
 		if (name === "edit" || name === "write") {
 			const raw = String((event.input as { path?: unknown }).path ?? "");

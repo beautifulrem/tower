@@ -15,10 +15,11 @@
 1. **Goal，而不是 Session。** 侧边栏只有 Goal 与「需要你」收件箱；Session 降级为 Goal 里的轨迹。
 2. **Goal 是一份合同。** 意图、可执行的验收标准、范围围栏、预算和自主度。
 3. **事实与声明分离。** Agent 说“完成”只是声明。Tower 对工作区拍快照，在干净检出里、沙箱中重跑验收标准；只有这些验证器结论能是绿色。Agent 的话以虚线标出、写明“Agent 称”，永远不变绿。
-4. **完成三态。** 自称完成 → 已验证 → 你验收。只有你的验收会写入你的仓库，而且只是新建一个本地分支；Tower 从不推送。
+4. **完成三态。** 自称完成 → 已验证 → 你验收。只有你的验收会写入你的仓库，而且只是新建一个本地分支；推送和开 PR 只在你明确操作时发生。
 5. **例外管理。** 只有问题、审批、待确认的假设和需要你选择出路的暂停会打扰你；其余时间每个 Goal 只有一行实况，说明它在做哪一类事、对象是什么。
 6. **评审即操控。** 大 diff 切成按风险排序、每个不超过约 300 行的评审单元；在某一行写的批注就是给 Agent 的转向指令。
-7. **尊重 Pi。** Tower 通过一个标准 Pi 扩展只给模型加三个工具（`ask_user`、`log`、`submit`）；Tower 注入的每条消息都在轨迹中原样可见。
+7. **默认封闭。** Agent 运行的一切（shell 命令与读、改、写文件的工具）都在每个 Goal 独立生成的 macOS 沙箱中：读不到凭据和其他项目，写不出工作区，除非合同允许，否则不能联网。见 [SECURITY.md](SECURITY.md)。
+8. **尊重 Pi。** Tower 通过一个标准 Pi 扩展只给模型加三个工具（`ask_user`、`log`、`submit`），同时把 Pi 自带的四个工具包进沙箱；Tower 注入的每条消息都在轨迹中原样可见。
 
 | Goal 页 | 评审 |
 |---|---|
@@ -38,7 +39,7 @@
 
 ## 运行
 
-需要：macOS 13+、Rust 1.90+、Node 22+、pnpm、git，以及已登录模型的 [Pi](https://github.com/earendil-works/pi)（`npm i -g @earendil-works/pi-coding-agent`，然后运行 `pi` 并 `/login`）。
+需要：macOS 13+、Rust（版本固定在 `rust-toolchain.toml`）、Node 22+、pnpm、git，以及已登录模型的 [Pi](https://github.com/earendil-works/pi)（`npm i -g @earendil-works/pi-coding-agent`，然后运行 `pi` 并 `/login`）。
 
 ```sh
 pnpm install

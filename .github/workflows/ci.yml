@@ -48,5 +48,5 @@ jobs:
           git config --global user.email "ci@example.com"
           cargo test --workspace
 
-      - name: Extension policy tests
-        run: node --test extensions/tower-goal/policy.test.ts
+      - name: Extension tests
+        run: node --test extensions/tower-goal/policy.test.ts extensions/tower-goal/sandboxfs.test.ts

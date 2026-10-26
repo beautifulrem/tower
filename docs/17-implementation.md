@@ -10,7 +10,7 @@
 | 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；打包后 JS 约 38 KB（gzip），远低于 `13` 的 250 KB 启动包预算 |
 | 状态 | SQLite（rusqlite，WAL） | 单文件、单写者；事件与投影在同一事务中写入 |
 | 引擎 | Pi，RPC 模式 | 每个运行中的 Goal 一个 `pi --mode rpc` 子进程，严格按 LF 分帧 |
-| 沙箱 | macOS Seatbelt（`sandbox-exec`） | Agent 的 bash 与验证器命令都在 Tower 生成的配置下运行 |
+| 沙箱 | macOS Seatbelt（`sandbox-exec`），默认拒绝 | Agent 的 bash、`read`/`edit`/`write` 与验证器命令都在 Tower 为每个 Goal 生成的配置下运行 |
 | 字体 | Inter Variable、JetBrains Mono（随应用打包） | 与 `12` §12.3 一致；中文回落到系统字体 |
 
 ## 17.2 代码结构
@@ -31,7 +31,7 @@ crates/tower-verify      验收命令执行器：进程组、超时、取消、�
 crates/tower-supervisor  Supervisor：把以上部分串成 Goal 的生命周期
 apps/desktop/src-tauri   Tauri 命令（一一对应 Supervisor 方法）与更新事件
 apps/desktop/src         界面：views/、components/、lib/（api、store、nav、keys）、styles/（令牌）
-extensions/tower-goal    Pi 扩展：三个工具、门禁、沙箱版 bash
+extensions/tower-goal    Pi 扩展：三个工具、门禁、沙箱版 bash 与文件工具
 tools/demo-engine        不调用模型的脚本化 Pi，用来演示与测试
 ```
 
@@ -63,17 +63,19 @@ tools/demo-engine        不调用模型的脚本化 Pi，用来演示与测试
 | 设计 | 原型 | 原因 / 影响 |
 |---|---|---|
 | Electron + Pi SDK（进程内），RPC 属 M2 | Tauri + Pi RPC | 后端是 Rust。RPC 模式下 Pi 的扩展 UI 对话框可用，`ask_user` 与审批走这条路 |
-| `read`/`edit`/`write` 也在 S2 沙箱中执行（ADR-220） | 只有 bash 与验证器在沙箱中；文件工具由门禁检查路径（含符号链接解析） | 判定与写入之间路径可能被替换，属已知差距 |
+| `read`/`edit`/`write` 也在 S2 沙箱中执行（ADR-220） | 已实现：三个文件工具的每次读写都是 `sandbox-exec` 下的子进程（`extensions/tower-goal/sandboxfs.ts`），与 bash 同一份配置；门禁仍做范围检查以便给出可读的审批 | 每次文件操作多一个子进程（约 10 ms） |
 | 影子 ref、检查点、bundle 备份 | 一个 `refs/tower/pin`，快照提交内容寻址 | 足以支撑验证与验收；没有回退 UI |
 | 卫星分离 gitdir、git 垫片、`GIT_CEILING_DIRECTORIES` 等 | 普通克隆 + 沙箱中 `.git/config` 与钩子只读 + 钩子路径指向空目录 | 防住了最直接的“Agent 改 git 配置让 Tower 执行”路径，其余未实现 |
 | 用户扩展经静态清单确认 | 设置中一个开关，默认不加载 | 简化 |
-| 依赖缓存与私有依赖存储 | 验证前运行准备命令（按锁文件自动判断，或合同中指定） | 每次验证都要重新安装依赖，慢但干净 |
-| 精确的花费与墙钟预算 | 花费取 Pi 的 `get_session_stats`；墙钟只显示，不触发暂停 | 墙钟上限未执行 |
-| 哨兵（S1、S5、测试被删等） | 未实现；评审单元的风险排序会把删测试、改快照、改 CI、越界写入排到最前 | 只作为评审提示，不阻断 |
+| 依赖缓存与私有依赖存储 | 每个 Goal 一套私有包缓存（npm、pnpm、yarn、cargo、go、pip、uv），首次用 APFS 写时复制从你的缓存克隆，只克隆仓库用到的生态（`caches.rs`）；验证前运行准备命令 | 沙箱进程写不到你自己的 `~/.cargo`、`~/.npm`，不会污染之后在沙箱外的构建 |
+| 精确的花费与墙钟预算 | 花费取 Pi 的 `get_session_stats`；墙钟上限到达时暂停（`PauseReason::WallClockCap`） | 花费以 Pi 的统计为准 |
+| 哨兵（S1、S5、测试被删等） | 已实现为对 base→pin 差异的文本规则（`tower-core/src/sentinel.rs`）：删测试、`.skip`/`.only`、断言减少、改测试命令或配置、改快照、越界写入；高严重度暂停 Goal 等你决定 | 文本匹配，不是语法分析；换一种写法可能识别不到 |
+| 网络 | 合同中的“允许联网”开关，默认关闭：Agent 与验证只能访问本机回环；本机代理端口与 `*_proxy` 一并屏蔽；准备命令（安装依赖）始终可联网 | 关闭时，需要下载的命令只能放进准备命令 |
+| 工具集 | Pi 以 `--tools read,bash,edit,write,ask_user,log,submit --no-mcp --no-approve` 启动 | MCP 工具与仓库自带的 Pi 资源会在沙箱外运行，因此不启用 |
 
 ## 17.5 未实现
 
-塑形（Agent 起草合同）、人工编辑检出与检验检出、本地文件清单、项目迁移与清除、记忆与学习闭环、冲突雷达与合并队列、依赖（Goal 之间）、`serve` 远程模式、多机、磁盘满处理、自适应自主度，以及第 99–112 轮围绕写回中断与可达性的全部机制。
+塑形（Agent 起草合同）、检验检出、项目迁移与清除、学习闭环（项目记忆与个人记忆已实现，但不会自动学习）、冲突雷达与合并队列、依赖（Goal 之间）、`serve` 远程模式、多机、磁盘满处理、自适应自主度，以及第 99–112 轮围绕写回中断与可达性的全部机制。
 
 ## 17.6 已知问题
 
@@ -91,8 +93,9 @@ tools/demo-engine        不调用模型的脚本化 Pi，用来演示与测试
 - `tower-git`：真实临时仓库上的完整隔离链路，包括 squash 合并后的合入判定。
 - `tower-verify`：退出码、环境故障分类、超时杀掉整个进程组、取消、输出上限、脱敏。
 - `tower-supervisor`：真实 Seatbelt 下的配置生效测试；用脚本化引擎与真实 git 跑五条端到端流程（主流程到分支与合入、失败自动返工、提问与回答、停下未提交、暂停继续与放弃）。
-- `tower-supervisor` 的 `real_pi` 测试：驱动真实的 `pi`（RPC 模式），模型是脚本化的 OpenAI 兼容服务（不需要凭据）。验证扩展的 `log`、`ask_user`、`submit` 与审批对话框经 Pi 往返；沙箱版 bash 写工作区之外被拒绝、读 `~/.ssh` 被拒绝；Agent 的 shell 中没有 `*_API_KEY`；单向门命令被拒绝后阻断。没有安装 `pi` 时跳过。
-- `extensions/tower-goal`：路径模式、范围围栏、自主度矩阵、凭据剥除、沙箱命令的引号。
+- `tower-supervisor` 的 `real_pi` 测试：驱动真实的 `pi`（RPC 模式），模型是脚本化的 OpenAI 兼容服务（不需要凭据）。验证扩展的 `log`、`ask_user`、`submit` 与审批对话框经 Pi 往返；沙箱版 bash 写工作区之外被拒绝、读 `~/.ssh` 被拒绝；`read` 工具读 `~/.ssh` 同样被拒绝，`edit`/`read` 在工作区内正常；没有网络；白名单外的工具（如 `grep`）不存在；Agent 的 shell 中没有 `*_API_KEY`；单向门命令被拒绝后阻断。没有安装 `pi` 时跳过。
+- 沙箱配置的生效测试（`sandbox.rs`）：在真实 `sandbox-exec` 下检查凭据目录、其他项目、共享缓存、工作区外写入、直连与经本机代理联网、docker.sock 都被拒绝，git 可用，`.git/config` 只读。
+- `extensions/tower-goal`：路径模式、范围围栏、自主度矩阵、凭据与代理变量剥除、沙箱命令的引号、沙箱内文件操作。
 
 ## 17.8 运行与演示
 

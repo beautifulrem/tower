@@ -825,7 +825,7 @@ impl Supervisor {
 /// load code from a location the agent or another tool might change.
 fn install_extension(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
-    for name in ["index.ts", "policy.ts", "package.json"] {
+    for name in ["index.ts", "policy.ts", "sandboxfs.ts", "package.json"] {
         let from = src.join(name);
         if from.exists() {
             std::fs::copy(&from, dst.join(name))?;

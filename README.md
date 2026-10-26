@@ -16,8 +16,9 @@ Most agent GUIs inherit the editor layout: sessions on the left, a chat stream i
 - **Sentinels for passing-but-wrong work.** Deleted tests, `.skip`/`.only`, a rewritten test command, fewer assertions or writes outside the scope hold the goal until you look, even when every criterion passed.
 - **Only interrupts you when it must.** Questions, approvals, assumptions, stalls and pauses that need a way out go to Needs-You (with a notification if Tower is in the background). Everything else stays quiet: one live line per goal says what kind of thing it is doing, with a concrete detail.
 - **Review is steering.** Large diffs are cut into risk-ordered units of at most ~300 lines; a comment on a line is an instruction to the agent. Viewed marks, draft comments and "since last review" make re-reviews short.
+- **Closed by default.** Everything the agent runs — shell and file tools alike — runs under a per-goal macOS sandbox: no credentials, no other projects, no writes outside its workspace, and no network unless the contract allows it. See [SECURITY.md](SECURITY.md).
 - **Your repository is untouched.** Each goal works in a private clone. Accepting writes one commit, authored by you, to a new local branch. Pushing and opening a PR are explicit actions of yours.
-- **Respects Pi.** Tower adds exactly three tools to the model (`ask_user`, `log`, `submit`) through a standard Pi extension, and every message Tower injects is visible in the trace.
+- **Respects Pi.** Tower adds exactly three tools to the model (`ask_user`, `log`, `submit`) through a standard Pi extension, which also wraps Pi's own four in the sandbox, and every message Tower injects is visible in the trace.
 
 | Goal page | Review |
 |---|---|

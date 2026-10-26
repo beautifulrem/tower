@@ -24,8 +24,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   // One column, one quantity: when the goal last changed. The run's elapsed time lives in the live line.
   const age = () => ago(g().updated_at, state.now);
   const overSoft = () => g().cost_usd >= g().budget.soft_usd;
-  // `GoalSummary.engine` is requested from the supervisor; until it arrives the row says nothing.
-  const engine = () => (g() as GoalSummary & { engine?: string }).engine;
+  const engine = () => g().engine;
   // Arrived in the last few seconds: one short settle, so the eye finds it.
   const fresh = Date.now() - props.goal.created_at < 5000;
   return (
@@ -80,7 +79,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
           <span class="sep">·</span>
           <span class="t3">{t("quiet.muted")}</span>
         </Show>
-        {/* The engine is said only when it is not the default one (once the summary carries it). */}
+        {/* The engine is said only when it is not the default one. */}
         <Show when={engine() && effectiveEngine(engine(), state.settings?.engine) !== effectiveEngine("", state.settings?.engine)}>
           <span class="sep">·</span>
           <span class="t3">{engineLabel(engine()!)}</span>

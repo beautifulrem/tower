@@ -249,7 +249,8 @@ export const zh = {
     hintPlaceholder: "用你的话给 Agent 一句提示——它看不到上面的输出…",
     sendHint: "发送提示并继续",
     heldOutForYou: "只给你看",
-    heldOutNote: "Agent 不知道这些测试存在。给它提示能保住这一点；把失败给它看则不能。",
+    heldOutFailing: "失败",
+    heldOutNote: "Agent 不知道这些测试存在。给它提示，或只告诉它哪些测试失败，都能保住这一点；把失败给它看则不能。",
     putAside: "收起 {id} · {kind}",
   },
   card: {

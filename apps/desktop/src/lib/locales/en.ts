@@ -250,7 +250,8 @@ export const en: Dict = {
     hintPlaceholder: "A hint for the agent, in your words — it does not see the output above…",
     sendHint: "Send the hint and resume",
     heldOutForYou: "For you only",
-    heldOutNote: "The agent does not know these tests exist. A hint keeps it that way; showing it the failure does not.",
+    heldOutFailing: "failing",
+    heldOutNote: "The agent does not know these tests exist. A hint, or only the names of what failed, keeps it that way; showing it the failure does not.",
     putAside: "Put aside {id} · {kind}",
   },
   card: {

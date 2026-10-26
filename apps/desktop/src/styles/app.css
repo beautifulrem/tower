@@ -2052,6 +2052,16 @@ input[type="radio"] {
   gap: var(--sp-2);
   font-size: var(--fs-meta);
 }
+/* The failing tests' names: a label, then each name as a machine value, wrapping as a list. */
+.heldout-names {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+.heldout-names code {
+  user-select: text;
+}
 /* The note reads at the card's own width (the card is already a reading width; a 60ch cap left one word on a
    second line in English), and its ◇ sits on the first line, never between two. */
 .heldout-note {

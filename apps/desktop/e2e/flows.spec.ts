@@ -373,10 +373,14 @@ test("a held-out failure's card keeps the output for you, makes the hint the one
   await expect(card).toBeVisible();
   await expect(card.locator(".heldout-label")).toHaveText("For you only");
   await expect(card.locator(".heldout .output-tail")).toContainText("AssertionError");
-  // One primary action on the page, and it is the hint; showing the agent the failure is a plain button, abandoning asks twice.
+  // The failing tests are named, as machine values, above the output; the sentence does not repeat them.
+  await expect(card.locator(".heldout-names code")).toHaveText(["total rounds half-cents up", "applies tax once"]);
+  await expect(card.locator(".decision-body")).not.toContainText("Failing in");
+  // One primary action on the page, and it is the hint; telling only the names and showing the failure are plain buttons, abandoning asks twice.
   const primaries = page.locator(".goal-page .btn-primary");
   await expect(primaries).toHaveCount(1);
   await expect(primaries).toHaveText(/Send the hint and resume/);
+  await expect(card.getByRole("button", { name: "Tell the agent only which tests failed" })).toHaveClass(/btn-default/);
   await expect(card.getByRole("button", { name: /Show the agent the failure/ })).toHaveClass(/btn-default/);
   await expect(card.getByRole("button", { name: "Abandon this goal" })).toHaveClass(/btn-danger/);
   // The output stands above the field, the field above the agent-facing choices.

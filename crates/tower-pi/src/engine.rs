@@ -99,12 +99,13 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// shut down; call [`Engine::shutdown`] to also wait and escalate.
 #[derive(Debug)]
 pub struct Engine {
-    stdin: mpsc::UnboundedSender<Value>,
+    stdin: Mutex<Option<mpsc::UnboundedSender<Value>>>,
     pending: Pending,
     next_id: AtomicU64,
     pid: Option<u32>,
     kill: Mutex<Option<oneshot::Sender<()>>>,
     exited: Arc<tokio::sync::Notify>,
+    done: Arc<std::sync::atomic::AtomicBool>,
     stderr: Arc<Mutex<String>>,
 }
 
@@ -129,6 +130,7 @@ impl Engine {
         let pending: Pending = Arc::default();
         let stderr = Arc::new(Mutex::new(String::new()));
         let exited = Arc::new(tokio::sync::Notify::new());
+        let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (kill_tx, kill_rx) = oneshot::channel();
 
         tokio::spawn(write_loop(child.stdin.take().expect("piped stdin"), in_rx));
@@ -138,16 +140,27 @@ impl Engine {
             out_tx.clone(),
         ));
         let stderr_task = tokio::spawn(stderr_loop(child.stderr.take().expect("piped stderr"), stderr.clone()));
-        tokio::spawn(wait_loop(child, pid, kill_rx, reader, stderr_task, stderr.clone(), pending.clone(), out_tx, exited.clone()));
+        tokio::spawn(wait_loop(
+            child,
+            pid,
+            kill_rx,
+            reader,
+            stderr_task,
+            stderr.clone(),
+            pending.clone(),
+            out_tx,
+            (exited.clone(), done.clone()),
+        ));
 
         Ok((
             Self {
-                stdin: in_tx,
+                stdin: Mutex::new(Some(in_tx)),
                 pending,
                 next_id: AtomicU64::new(1),
                 pid,
                 kill: Mutex::new(Some(kill_tx)),
                 exited,
+                done,
                 stderr,
             },
             out_rx,
@@ -169,7 +182,7 @@ impl Engine {
         command["id"] = Value::String(id.clone());
         let (tx, rx) = oneshot::channel();
         self.pending.lock().expect("pending lock").insert(id.clone(), tx);
-        if self.stdin.send(command).is_err() {
+        if self.send(command).is_err() {
             self.pending.lock().expect("pending lock").remove(&id);
             return Err(EngineError::Closed);
         }
@@ -218,22 +231,38 @@ impl Engine {
         Ok(self.request(json!({"type": "get_available_models"})).await?.data)
     }
 
+    fn send(&self, record: Value) -> Result<(), EngineError> {
+        let guard = self.stdin.lock().expect("stdin lock");
+        guard.as_ref().ok_or(EngineError::Closed)?.send(record).map_err(|_| EngineError::Closed)
+    }
+
     /// Answers an extension dialog. Not a command: there is no response.
     pub fn answer(&self, ui_request_id: &str, answer: &UiAnswer) -> Result<(), EngineError> {
-        self.stdin.send(answer.to_record(ui_request_id)).map_err(|_| EngineError::Closed)
+        self.send(answer.to_record(ui_request_id))
+    }
+
+    pub fn has_exited(&self) -> bool {
+        self.done.load(Ordering::SeqCst)
     }
 
     /// Asks Pi to exit by closing stdin, waits up to `grace`, then kills the
-    /// whole process group.
-    pub async fn shutdown(self, grace: Duration) {
-        let Self { stdin, kill, exited, .. } = self;
-        drop(stdin);
-        let notified = exited.notified();
-        if tokio::time::timeout(grace, notified).await.is_err() {
-            if let Some(k) = kill.lock().ok().and_then(|mut k| k.take()) {
+    /// whole process group. Safe to call more than once.
+    pub async fn shutdown(&self, grace: Duration) {
+        let notified = self.exited.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        self.stdin.lock().expect("stdin lock").take();
+        if self.has_exited() {
+            return;
+        }
+        if tokio::time::timeout(grace, &mut notified).await.is_err() {
+            if let Some(k) = self.kill.lock().ok().and_then(|mut k| k.take()) {
                 let _ = k.send(());
             }
-            let _ = tokio::time::timeout(Duration::from_secs(5), exited.notified()).await;
+            let again = self.exited.notified();
+            if !self.has_exited() {
+                let _ = tokio::time::timeout(Duration::from_secs(5), again).await;
+            }
         }
     }
 }
@@ -320,7 +349,7 @@ async fn wait_loop(
     stderr: Arc<Mutex<String>>,
     pending: Pending,
     out: mpsc::UnboundedSender<EngineOutput>,
-    exited: Arc<tokio::sync::Notify>,
+    (exited, done): (Arc<tokio::sync::Notify>, Arc<std::sync::atomic::AtomicBool>),
 ) {
     let status = tokio::select! {
         s = child.wait() => s.ok(),
@@ -336,9 +365,9 @@ async fn wait_loop(
     let _ = stderr_task.await;
     pending.lock().map(|mut p| p.clear()).ok();
     let stderr_tail = stderr.lock().map(|s| s.clone()).unwrap_or_default();
+    done.store(true, Ordering::SeqCst);
     let _ = out.send(EngineOutput::Exited { code: status.and_then(|s| s.code()), stderr_tail });
     exited.notify_waiters();
-    exited.notify_one();
 }
 
 #[cfg(unix)]

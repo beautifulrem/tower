@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkBash, checkWrite, globToRegExp, normalize } from "./policy.ts";
+import { checkBash, checkWrite, globToRegExp, normalize, sandboxed, scrubEnv, shellQuote } from "./policy.ts";
 
 test("globs follow the usual conventions", () => {
 	assert.ok(globToRegExp("src/**").test("src/a/b.ts"));
@@ -44,4 +44,14 @@ test("cautious only runs read-only and test commands directly", () => {
 	assert.equal(checkBash("git status && rg foo src", "cautious").action, "allow");
 	assert.equal(checkBash("cargo test", "cautious").action, "allow");
 	assert.equal(checkBash("node scripts/migrate.js", "cautious").action, "ask");
+});
+
+test("credentials are scrubbed from the agent's environment", () => {
+	const env = scrubEnv({ PATH: "/bin", OPENAI_API_KEY: "sk", GITHUB_TOKEN: "t", NODE_ENV: "test", HOME: "/h" });
+	assert.deepEqual(Object.keys(env).sort(), ["HOME", "NODE_ENV", "PATH"]);
+});
+
+test("sandboxed commands survive quoting", () => {
+	assert.equal(shellQuote("it's"), `'it'\\''s'`);
+	assert.equal(sandboxed("echo 'a'", "/p.sb"), `exec /usr/bin/sandbox-exec -f '/p.sb' /bin/bash -c 'echo '\\''a'\\'''`);
 });

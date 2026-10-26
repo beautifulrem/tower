@@ -89,7 +89,7 @@ docs/                    the product design (start at 00) and its adversarial re
 tools/                   demo engine and screenshot helper
 ```
 
-The supervisor owns all state; the interface holds a read-only replica fed by coalesced updates. The code the window loads at start is about 67 KB gzipped; the review, settings and contract editor load on first use, and syntax highlighting in a worker; CI enforces both budgets (`tools/bundle-budget.sh`). The app is about 11 MB.
+The supervisor owns all state; the interface holds a read-only replica fed by coalesced updates. The code the window loads at start is about 67 KB gzipped; the review, settings and contract editor load on first use, and syntax highlighting in a worker; CI enforces a budget for each (`tools/bundle-budget.sh`). The app is about 11 MB.
 
 ## Design
 

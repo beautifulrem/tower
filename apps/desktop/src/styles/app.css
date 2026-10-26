@@ -852,10 +852,15 @@ input:focus,
 textarea:focus {
   border-color: var(--border-strong);
 }
-input:focus-visible,
-textarea:focus-visible {
+input:focus-visible {
   outline: 1.5px solid var(--focus);
   outline-offset: 0;
+}
+/* Focus has two forms: a control wears the 1.5px ring, a field shows it in its border. A text area is a
+   field — the composer's, a sheet's, the steer box's — so a sheet opening onto one does not flash a ring. */
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--border-strong);
 }
 input::placeholder,
 textarea::placeholder {
@@ -2027,6 +2032,13 @@ input[type="radio"] {
   line-height: 20px;
   color: var(--text-3);
 }
+/* The same minute is written once; the rows under it keep their time for the pointer and the screen reader, not the eye. */
+.trace-time.repeat {
+  color: transparent;
+}
+.trace-row:hover .trace-time.repeat {
+  color: var(--text-4);
+}
 .trace-content {
   min-width: 0;
   line-height: 20px;
@@ -2200,11 +2212,6 @@ input[type="radio"] {
 }
 .unit-dir {
   color: var(--text-3);
-}
-.unit-caret {
-  color: var(--text-4);
-  margin-right: 4px;
-  vertical-align: -1px;
 }
 /* A unit's files sit under its group row; the group keeps a breath from the next. */
 .unit-group + .unit-group {

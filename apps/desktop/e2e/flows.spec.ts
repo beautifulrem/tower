@@ -184,6 +184,24 @@ test("a look thumbnail is as tall as its frame and no wider than its page; the v
   await expect(dialog.locator(".panel-more")).not.toHaveClass(/on/);
 });
 
+test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
+  await openTower(page, "goal/G-0002");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.keyboard.press("w");
+  const times = page.locator(".trace-row .trace-time");
+  await expect(times.first()).toBeVisible();
+  expect(await times.count()).toBeGreaterThan(3);
+  // The demo's run lands in one or two minutes: most rows repeat the one above and go quiet.
+  expect(await page.locator(".trace-row .trace-time.repeat").count()).toBeGreaterThan(0);
+  await expect(times.first()).not.toHaveClass(/repeat/);
+  await openTower(page, "review/G-0001");
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("c");
+  const area = page.getByRole("dialog").locator("textarea");
+  await area.focus();
+  expect(await area.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("none");
+});
+
 test("⌘P jumps to a file by path", async ({ page }) => {
   const { fixtures } = await openTower(page, "review/G-0001");
   await expect(page.locator("table").first()).toBeVisible();

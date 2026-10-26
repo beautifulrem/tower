@@ -11,7 +11,7 @@ import { For, Match, Show, Switch, createMemo, createSignal, onCleanup, onMount 
 
 import type { TraceEntry } from "../gen/TraceEntry";
 import { api } from "../lib/api";
-import { clock, duration, short } from "../lib/format";
+import { clock, duration, sameMinute, short } from "../lib/format";
 import { t } from "../lib/i18n";
 import { pauseLabel, runOutcomeLabel, runPurposeLabel, stateLabel } from "../lib/labels";
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark, ResultMark } from "./Glyph";
@@ -111,6 +111,11 @@ export function Trace(props: { id: string; live?: boolean }) {
 
   const filtered = createMemo(() => entries().filter((e) => matches(e, filter())));
   const shown = createMemo(() => filtered().slice(-window_()));
+  // The minute is written on the first row that falls in it; a run boundary starts a fresh count.
+  const repeats = createMemo(() => {
+    const list = shown();
+    return list.map((e, i) => i > 0 && e.event.kind !== "run_started" && list[i - 1].event.kind !== "run_started" && sameMinute(list[i - 1].at, e.at));
+  });
   // What each tool call was asked to do (`tool_started.summary`), by call id, for the `tool_ended` rows.
   const calls = createMemo(() => {
     const m = new Map<string, string>();
@@ -155,7 +160,7 @@ export function Trace(props: { id: string; live?: boolean }) {
             </Empty>
           </div>
         </Show>
-        <For each={shown()}>{(e) => <TraceRow e={e} calls={calls()} />}</For>
+        <For each={shown()}>{(e, i) => <TraceRow e={e} calls={calls()} repeat={repeats()[i()]} />}</For>
       </div>
     </div>
   );
@@ -186,7 +191,7 @@ function plainLabel(kind: TraceEntry["event"]["kind"]): string {
   return key ? t(`trace.${key}`) : kind;
 }
 
-function TraceRow(props: { e: TraceEntry; calls?: Map<string, string> }) {
+function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: boolean }) {
   const ev = () => props.e.event;
   const [open, setOpen] = createSignal(false);
   return (
@@ -202,7 +207,9 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string> }) {
       }
     >
       <div class={`trace-row trace-${props.e.source}`}>
-        <span class="trace-time num">{clock(props.e.at)}</span>
+        <span class="trace-time num" classList={{ repeat: !!props.repeat }}>
+          {clock(props.e.at)}
+        </span>
         <div class="trace-content">
           <Switch fallback={<span class="t2">{plainLabel(ev().kind)}</span>}>
             {/* A tool row reads as what was done (the call: a path, a command, a question), then how it went. */}

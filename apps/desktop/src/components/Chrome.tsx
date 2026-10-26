@@ -9,12 +9,13 @@ import { useKeys } from "../lib/keys";
 import { back, canGoBack, go, route } from "../lib/nav";
 import { popupActions } from "../lib/native";
 import { bumpRecent, recentIds } from "../lib/recent";
+import { startQueue } from "../lib/reviewQueue";
 import { act, dismissToast, goalList, livenessOf, patchSettings, quietNow, state } from "../lib/store";
-import { hasIssue, heartbeatState, stateLabel } from "../lib/labels";
+import { hasIssue, heartbeatState, isBlocking, stateLabel } from "../lib/labels";
 import { openActivity } from "./Activity";
 import { Icon, type IconName, LifecycleGlyph, NeedsYouMark } from "./Glyph";
 import { openShortcuts } from "./ShortcutSheet";
-import { IconButton, Kbd, Overlay } from "./ui";
+import { Button, IconButton, Kbd, Overlay } from "./ui";
 
 const HOUR = 3_600_000;
 
@@ -260,9 +261,30 @@ export function CommandPalette() {
       const g = state.goals[r.id];
       if (g?.state === "running") base.unshift({ id: "pause", title: t("chrome.pause", { id: g.id }), hint: "p", run: () => void act(() => api.pause(g.id)) });
       if (g?.state === "paused") base.unshift({ id: "resume", title: t("chrome.resume", { id: g.id }), hint: "p", run: () => void act(() => api.resume(g.id)) });
-      if (g && ["in_review", "running", "accepted", "verifying"].includes(g.state))
+      // A ready-to-accept goal already has its review verb below, from anywhere.
+      if (g && ["running", "accepted", "verifying"].includes(g.state))
         base.unshift({ id: "review", title: t("chrome.review", { id: g.id }), hint: "r", run: () => go({ name: "review", id: g.id }) });
     }
+    // Verbs first, from any page: review each ready goal, answer each waiting card, review them all in turn.
+    const verbs: Command[] = [];
+    const ready = goalList().filter((g) => g.state === "in_review");
+    for (const g of ready)
+      verbs.push({ id: `review-${g.id}`, title: t("chrome.reviewGoal", { id: g.id, title: g.title }), icon: "ring-check", run: () => go({ name: "review", id: g.id }) });
+    if (ready.length > 1)
+      verbs.push({
+        id: "review-all",
+        title: t("inbox.reviewAll"),
+        hint: "shift+r",
+        icon: "ring-check",
+        run: () => {
+          const first = startQueue(ready.map((g) => g.id));
+          if (first) go({ name: "review", id: first });
+        },
+      });
+    for (const it of state.inbox)
+      if (isBlocking(it))
+        verbs.push({ id: `answer-${it.id}`, title: t("chrome.answerCard", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), icon: "inbox", run: () => go({ name: "goal", id: it.goal_id }) });
+    base.unshift(...verbs);
     const goals = goalList().map<Command>((g) => ({
       id: `goal-${g.id}`,
       title: `${g.id} ${g.title}`,
@@ -360,6 +382,12 @@ export function CommandPalette() {
               <div class="palette-empty">
                 <span class="t2">{t("chrome.noMatchesFor", { q: needle() })}</span>
                 <span class="t3">{t("chrome.noMatchesHint")}</span>
+                {/* No result is still a way out: the one thing you can always start. */}
+                <span class="palette-empty-action">
+                  <Button size="s" variant="ghost" kbd="n" onClick={() => (close(), go({ name: "new" }))}>
+                    {t("app.newGoal")}
+                  </Button>
+                </span>
               </div>
             }
           >

@@ -54,6 +54,23 @@ test("the command palette opens from the keyboard and finds a goal", async ({ pa
   await expect(dialog).toBeHidden();
 });
 
+test("the command palette is a verb list: review and answer from anywhere, and a way out when nothing matches", async ({ page }) => {
+  await openTower(page, "overview");
+  await page.waitForTimeout(300);
+  await page.keyboard.press("Meta+k");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  // Verbs stand first among the commands, before any typing.
+  await expect(dialog.getByRole("option").first()).toContainText(/^(Review|Answer) G-\d+/);
+  await page.keyboard.type("rev");
+  await expect(dialog.getByRole("option").filter({ hasText: /Review G-\d+ · / }).first()).toBeVisible();
+  await page.keyboard.press("Meta+a");
+  await page.keyboard.type("qzxv");
+  await expect(dialog.getByText(/No matches for/)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /New goal/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+});
+
 test("the interface speaks Chinese when set to", async ({ page }) => {
   const { errors } = await openTower(page, "inbox", { lang: "zh-CN" });
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");

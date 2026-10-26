@@ -145,6 +145,8 @@ export const en: Dict = {
     searchPlaceholder: "Search goals and commands…",
     noMatchesFor: "No matches for “{q}”",
     noMatchesHint: "Type any part of a title, or the pinyin initials of a Chinese one, such as gwc.",
+    reviewGoal: "Review {id} · {title}",
+    answerCard: "Answer {id} · {kind}",
     groupRecent: "Recent",
     groupCommands: "Commands",
     groupGoals: "Goals",

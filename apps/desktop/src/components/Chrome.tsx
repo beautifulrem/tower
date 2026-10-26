@@ -4,17 +4,19 @@ import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 import { api } from "../lib/api";
 import { clock, duration, usd } from "../lib/format";
 import { type Match, fuzzy, matchText, segments } from "../lib/fuzzy";
+import { wedgePath } from "../lib/gauge";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { back, canGoBack, go, route } from "../lib/nav";
 import { popupActions } from "../lib/native";
 import { bumpRecent, recentIds } from "../lib/recent";
+import { startQueue } from "../lib/reviewQueue";
 import { act, dismissToast, goalList, livenessOf, patchSettings, quietNow, state } from "../lib/store";
-import { hasIssue, heartbeatState, stateLabel } from "../lib/labels";
+import { hasIssue, heartbeatState, isBlocking, stateLabel } from "../lib/labels";
 import { openActivity } from "./Activity";
 import { Icon, type IconName, LifecycleGlyph, NeedsYouMark } from "./Glyph";
 import { openShortcuts } from "./ShortcutSheet";
-import { IconButton, Kbd, Overlay } from "./ui";
+import { Button, IconButton, Kbd, Overlay } from "./ui";
 
 const HOUR = 3_600_000;
 
@@ -74,6 +76,21 @@ export function Heartbeat(props: { running: number }) {
 }
 
 /**
+ * The runs gauge: the running glyph's ring, filled by how many of the slots
+ * are in use — one of four a quarter, two of four the glyph's own half-disc,
+ * all of them a full disc. A reading, not an icon: it says "1/4" before the
+ * numbers do.
+ */
+export function RunsGauge(props: { n: number; max: number }) {
+  return (
+    <svg class="glyph gauge-runs" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" aria-hidden="true">
+      <circle cx="5" cy="5" r="4" />
+      <path d={wedgePath(props.max > 0 ? props.n / props.max : 0)} fill="var(--st-active)" stroke="none" />
+    </svg>
+  );
+}
+
+/**
  * Left: where you are. On a goal that is the breadcrumb `project › G-0003`
  * (the title belongs to the H1 below); elsewhere the page name. Right: the
  * gauge cluster — errors, runs, heartbeat, spend, quiet, engine — in one strip.
@@ -114,7 +131,7 @@ export function TitleBar(props: { title: string }) {
         </Show>
         <Show when={running() > 0}>
           <span class="gauge gauge-active" title={t("chrome.running", { n: running(), max: max() })}>
-            <LifecycleGlyph goal={{ state: "running", progress: { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 }, verified_pin: null }} />
+            <RunsGauge n={running()} max={max()} />
             {t("chrome.runningShort", { n: running(), max: max() })}
           </span>
         </Show>
@@ -142,7 +159,7 @@ export function TitleBar(props: { title: string }) {
           }
         >
           <span
-            class="gauge"
+            class="gauge gauge-engine"
             title={
               state.settings?.engine === "claude-code"
                 ? `Claude Code · ${state.settings.claude_acp_command || "claude-agent-acp"}`
@@ -260,9 +277,30 @@ export function CommandPalette() {
       const g = state.goals[r.id];
       if (g?.state === "running") base.unshift({ id: "pause", title: t("chrome.pause", { id: g.id }), hint: "p", run: () => void act(() => api.pause(g.id)) });
       if (g?.state === "paused") base.unshift({ id: "resume", title: t("chrome.resume", { id: g.id }), hint: "p", run: () => void act(() => api.resume(g.id)) });
-      if (g && ["in_review", "running", "accepted", "verifying"].includes(g.state))
+      // A ready-to-accept goal already has its review verb below, from anywhere.
+      if (g && ["running", "accepted", "verifying"].includes(g.state))
         base.unshift({ id: "review", title: t("chrome.review", { id: g.id }), hint: "r", run: () => go({ name: "review", id: g.id }) });
     }
+    // Verbs first, from any page: review each ready goal, answer each waiting card, review them all in turn.
+    const verbs: Command[] = [];
+    const ready = goalList().filter((g) => g.state === "in_review");
+    for (const g of ready)
+      verbs.push({ id: `review-${g.id}`, title: t("chrome.reviewGoal", { id: g.id, title: g.title }), icon: "ring-check", run: () => go({ name: "review", id: g.id }) });
+    if (ready.length > 1)
+      verbs.push({
+        id: "review-all",
+        title: t("inbox.reviewAll"),
+        hint: "shift+r",
+        icon: "ring-check",
+        run: () => {
+          const first = startQueue(ready.map((g) => g.id));
+          if (first) go({ name: "review", id: first });
+        },
+      });
+    for (const it of state.inbox)
+      if (isBlocking(it))
+        verbs.push({ id: `answer-${it.id}`, title: t("chrome.answerCard", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), icon: "inbox", run: () => go({ name: "goal", id: it.goal_id }) });
+    base.unshift(...verbs);
     const goals = goalList().map<Command>((g) => ({
       id: `goal-${g.id}`,
       title: `${g.id} ${g.title}`,
@@ -360,6 +398,12 @@ export function CommandPalette() {
               <div class="palette-empty">
                 <span class="t2">{t("chrome.noMatchesFor", { q: needle() })}</span>
                 <span class="t3">{t("chrome.noMatchesHint")}</span>
+                {/* No result is still a way out: the one thing you can always start. */}
+                <span class="palette-empty-action">
+                  <Button size="s" variant="ghost" kbd="n" onClick={() => (close(), go({ name: "new" }))}>
+                    {t("app.newGoal")}
+                  </Button>
+                </span>
               </div>
             }
           >

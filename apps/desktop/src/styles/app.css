@@ -132,12 +132,31 @@
   border-radius: 1px;
   background: var(--st-danger);
 }
-/* Silence is worth a look, not a failure: a hollow square, so the strip never shows two ■. */
+/* Silence is worth a look, not a failure: a hollow square, so the strip never shows two ■. The moment it
+   appears it beats once — 700ms, like a new card's amber — and then holds still; a heartbeat that stopped. */
 .gauge-dot.hollow {
   border-radius: 1px;
   background: transparent;
   box-sizing: border-box;
   border: 1px solid var(--st-danger);
+  animation: beat var(--dur-attn) var(--ease-out) 1;
+}
+@keyframes beat {
+  0% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  35% {
+    transform: scale(1.5);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* The runs gauge fills the running glyph's ring by the slots in use: it is the same family of shape, one reading richer. */
+.gauge-runs {
+  vertical-align: -1px;
 }
 .gauge-busy {
   color: var(--text-2);
@@ -149,14 +168,27 @@
 .gauge-stale {
   color: var(--text-1);
 }
+/* The bell is a 22pt target around a 12px glyph (never the glyph alone), the same square as the ⌕ beside it. */
 .gauge-quiet {
+  justify-content: center;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border-radius: var(--radius-s);
   color: var(--text-2);
+  transition: background-color var(--dur-hover-out) linear;
+}
+.gauge-quiet:hover {
+  background: var(--bg-hover);
+  transition-duration: 0ms;
 }
 .gauge-quiet .icon {
   color: var(--text-3);
 }
+/* A half-screen window: an engine that is fine needs no reading (its label alone would hang there); a problem still shows. */
 @media (max-width: 1200px) {
-  .gauge-version {
+  .gauge-engine {
     display: none;
   }
 }
@@ -675,10 +707,12 @@
   background: var(--text-2);
   border-color: var(--text-2);
 }
+/* A disabled primary keeps the primary's form at less than half strength: "this is the main action, it just cannot be pressed yet" stays readable. */
 .btn-primary:disabled {
-  background: var(--bg-selected);
-  border-color: var(--border);
-  color: var(--text-3);
+  background: var(--text-1);
+  border-color: var(--text-1);
+  color: var(--bg-app);
+  opacity: 0.45;
 }
 .btn-ghost {
   background: transparent;
@@ -779,6 +813,14 @@
   text-decoration-color: var(--link-underline);
   text-underline-offset: 3px;
 }
+/* A text button is still a target: 20pt tall (the Mac's pointer minimum), its words centred in it. */
+.text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 2px 0;
+}
 
 /* Text tabs: a label with a selected ground, 4px radius like every chip. */
 .tab {
@@ -829,10 +871,15 @@ input:focus,
 textarea:focus {
   border-color: var(--border-strong);
 }
-input:focus-visible,
-textarea:focus-visible {
+input:focus-visible {
   outline: 1.5px solid var(--focus);
   outline-offset: 0;
+}
+/* Focus has two forms: a control wears the 1.5px ring, a field shows it in its border. A text area is a
+   field — the composer's, a sheet's, the steer box's — so a sheet opening onto one does not flash a ring. */
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--border-strong);
 }
 input::placeholder,
 textarea::placeholder {
@@ -1076,8 +1123,15 @@ input[type="radio"] {
    Overview
    ====================================================================== */
 
-.overview {
-  max-width: 1480px;
+/* One width rule from 1100 to 1800: a page is one 1280px container, centred once the window is wider.
+   What you read (cards, the inbox's column) keeps its reading width at the container's left edge; what
+   you scan (the board's rows, the goal's instrument columns) runs across it — so at 1800 the decision
+   queue and the board below it breathe inside the same frame instead of two. */
+.overview,
+.goal-page,
+.inbox {
+  max-width: 1280px;
+  margin: 0 auto;
 }
 
 /* The today bar: "next" on the left, briefing on the right, one 20px line. */
@@ -1264,8 +1318,9 @@ input[type="radio"] {
   gap: 6px;
   padding: 10px 12px;
   border-radius: var(--radius-m);
-  border: 1px solid var(--border);
+  border: 1px solid var(--card-edge);
   background: var(--bg-raised);
+  box-shadow: var(--card-lift);
   font-size: var(--fs-meta);
 }
 .welcome-sample .claim {
@@ -1309,7 +1364,6 @@ input[type="radio"] {
    ====================================================================== */
 
 .goal-page {
-  max-width: 1360px;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -1751,17 +1805,28 @@ input[type="radio"] {
 
 .decision {
   border-radius: var(--radius-m);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--card-edge);
   background: var(--bg-raised);
+  box-shadow: var(--card-lift);
   overflow: hidden;
   transition: opacity var(--dur-base) var(--ease-in), transform var(--dur-base) var(--ease-in);
-}
-:root[data-theme="light"] .decision {
-  border-color: var(--border);
 }
 .decision.leaving {
   opacity: 0;
   transform: translateY(-2px);
+}
+/* An answered card's place closes under it: the slot folds from its height to nothing in 160ms, and the list below moves up with it. */
+.decision-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--dur-base) var(--ease-in), opacity var(--dur-base) var(--ease-in);
+}
+.decision-slot > * {
+  min-height: 0;
+}
+.decision-slot.leaving {
+  grid-template-rows: 0fr;
+  opacity: 0;
 }
 .decision-head {
   display: flex;
@@ -1880,9 +1945,11 @@ input[type="radio"] {
 }
 
 .inbox {
-  max-width: var(--reading-w);
   display: grid;
   gap: var(--sp-3);
+}
+.inbox > * {
+  max-width: var(--reading-w);
 }
 .inbox .scale-title {
   margin-top: var(--sp-1);
@@ -1964,9 +2031,10 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--card-edge);
   border-radius: var(--radius-m);
   background: var(--bg-raised);
+  box-shadow: var(--card-lift);
 }
 .trace-filters {
   display: flex;
@@ -2003,6 +2071,13 @@ input[type="radio"] {
   font-size: 11px;
   line-height: 20px;
   color: var(--text-3);
+}
+/* The same minute is written once; the rows under it keep their time for the pointer and the screen reader, not the eye. */
+.trace-time.repeat {
+  color: transparent;
+}
+.trace-row:hover .trace-time.repeat {
+  color: var(--text-4);
 }
 .trace-content {
   min-width: 0;
@@ -2178,11 +2253,6 @@ input[type="radio"] {
 .unit-dir {
   color: var(--text-3);
 }
-.unit-caret {
-  color: var(--text-4);
-  margin-right: 4px;
-  vertical-align: -1px;
-}
 /* A unit's files sit under its group row; the group keeps a breath from the next. */
 .unit-group + .unit-group {
   margin-top: var(--sp-2);
@@ -2266,13 +2336,11 @@ input[type="radio"] {
 
 .file {
   margin-bottom: var(--sp-4);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--card-edge);
   border-radius: var(--radius-m);
   overflow: hidden;
   background: var(--bg-raised);
-}
-:root[data-theme="light"] .file {
-  border-color: var(--border);
+  box-shadow: var(--card-lift);
 }
 .file-head {
   position: sticky;
@@ -2550,6 +2618,9 @@ input[type="radio"] {
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
 }
+.palette-empty-action {
+  margin: 6px 0 0 -8px;
+}
 .palette-foot {
   display: flex;
   align-items: center;
@@ -2614,6 +2685,7 @@ input[type="radio"] {
   gap: 8px;
   justify-items: end;
 }
+/* A toast rises 4px into its corner (it comes from below, not from above like a sheet) and settles back 2px as it goes. */
 .toast {
   display: flex;
   align-items: center;
@@ -2624,12 +2696,19 @@ input[type="radio"] {
   background: var(--bg-overlay);
   box-shadow: var(--shadow-overlay);
   color: var(--text-1);
-  animation: lift var(--dur-base) var(--ease-out);
-  transition: opacity var(--dur-fast) var(--ease-in);
+  animation: rise var(--dur-base) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
   user-select: text;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 .toast.leaving {
   opacity: 0;
+  transform: translateY(2px);
 }
 .toast-text {
   min-width: 0;
@@ -2961,9 +3040,62 @@ input[type="radio"] {
 .overview > .empty {
   margin-top: var(--sp-6);
 }
-.overview > .empty-poster,
 .inbox > .empty-poster {
   margin-top: 24vh;
+}
+/* The empty board: the poster sits higher, and under it the board's own grid waits — heads, then three hollow lines. */
+.overview > .empty-poster {
+  margin-top: clamp(72px, 14vh, 180px);
+}
+.board-ghost {
+  margin-top: var(--sp-10);
+}
+.board-ghost .g-row {
+  pointer-events: none;
+}
+.board-ghost .g-row > span {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.board-ghost .g-diff,
+.board-ghost .g-spend,
+.board-ghost .g-age {
+  justify-content: flex-end;
+  text-align: right;
+}
+/* The heads: the wordmark's voice — small, tracked, the quietest grey — one line above the hairline.
+   The size goes on the cells, not the row: the row's em-sized tracks must stay the rows' own. */
+.board-ghost-head {
+  height: 24px;
+  border-bottom-color: var(--border);
+}
+.board-ghost-head > span {
+  overflow: visible;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+:root[lang="zh-CN"] .board-ghost-head > span {
+  letter-spacing: 0.2em;
+  font-size: 11px;
+}
+.board-ghost-row .g-glyph {
+  color: var(--text-4);
+}
+.board-ghost-row .seg {
+  border-color: var(--border-strong);
+}
+/* Where a reading will be: a 6px rule in the selection grey, never a word. */
+.ghost-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-selected);
 }
 .overview-top .quick {
   flex: 1 1 auto;
@@ -2990,7 +3122,7 @@ input[type="radio"] {
 .g-row {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 5em 11.5em 5em;
+  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 12.5em 5em;
   column-gap: var(--sp-3);
   align-items: center;
   height: var(--row-goal-h);
@@ -3074,7 +3206,9 @@ input[type="radio"] {
 }
 /* Identity: nothing in it is squeezed by the browser's own proportions. The id,
    separators and readings keep their width; the project name may shorten but
-   stays legible (3.5em); the engine mark gives way first, and leaves at 1400. */
+   stays legible (3.5em). The engine mark is two letters or nothing — never a
+   letter and a half: on a crowded row (rework, a mute, an overlap, a PR beside
+   it) it leaves first, below 1560, and lives on in the title's tooltip. */
 .g-id {
   display: flex;
   align-items: center;
@@ -3089,17 +3223,17 @@ input[type="radio"] {
   flex: 0 1 auto;
   min-width: 3.5em;
 }
-.g-id .g-engine {
-  flex: 0 10 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .g-id .sep {
   padding: 0 0.25em;
 }
 .g-engine-narrow {
   display: none;
+}
+@media (max-width: 1560px) {
+  .g-row[data-crowded="true"] .g-engine,
+  .g-row[data-crowded="true"] .g-engine-sep {
+    display: none;
+  }
 }
 @media (max-width: 1400px) {
   .g-id .g-engine,
@@ -3114,15 +3248,18 @@ input[type="radio"] {
 }
 /* The row's own button stays quiet (a ghost) and whole: no opacity, so its words keep 4.5:1 on white. */
 /* Narrower windows: identity folds into the title's tooltip, the live line keeps only
-   its badge and verb (the object is in the tooltip), and the title gets the room. */
+   its badge and verb (the object and the run's elapsed time are in the tooltip — the
+   separators go with their readings, so two words never touch), and the title gets the room. */
 @media (max-width: 1240px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 5em 5em;
+    grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 6.5em 5em;
   }
   .g-id,
   .g-crit .crit-human,
   .g-live .live-target,
-  .g-live .live-detail .sep {
+  .g-live .live-target-sep,
+  .g-live .live-elapsed,
+  .g-live .live-elapsed-sep {
     display: none;
   }
   /* The identity column is gone; the engine mark rides in front of the live line instead. */
@@ -3253,6 +3390,29 @@ input[type="radio"] {
   width: min(760px, 94vw);
   max-height: 80vh;
   overflow: auto;
+}
+/* "There is more below": a functional fade at the sheet's foot, above the actions, gone once the end is in view. */
+.panel-more {
+  position: sticky;
+  bottom: calc(16px + 26px + var(--sp-4));
+  height: 0;
+  margin-top: calc(-1 * var(--sp-4));
+  pointer-events: none;
+  z-index: 1;
+}
+.panel-more::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  right: -18px;
+  bottom: 0;
+  height: 32px;
+  background: linear-gradient(to bottom, transparent, var(--bg-overlay));
+  opacity: 0;
+  transition: opacity var(--dur-fast) linear;
+}
+.panel-more.on::before {
+  opacity: 1;
 }
 .overlay-top {
   padding-top: 14vh;
@@ -3666,12 +3826,12 @@ input[type="radio"] {
   background: transparent;
   line-height: 0;
 }
-/* The whole page, small, on an inset ground: a tall page is not reduced to its header. */
+/* The whole page, small, at its own proportions: a tall page is a tall thumbnail (58×96), a wide one fills 160 — never a page inside a black frame. */
 .look-img {
   display: block;
   height: 96px;
-  width: 160px;
-  max-width: 220px;
+  width: auto;
+  max-width: 160px;
   object-fit: contain;
   object-position: top center;
   border: 1px solid var(--border);
@@ -3684,7 +3844,7 @@ input[type="radio"] {
   height: 72px;
 }
 .verify-item .look-img {
-  width: 120px;
+  max-width: 120px;
 }
 .look-img-btn:hover .look-img {
   border-color: var(--border-strong);
@@ -3741,20 +3901,35 @@ input[type="radio"] {
 .look-side .look-missing {
   height: 120px;
 }
+/* Laid over each other: the stage takes the "before" picture's own size (a phone page stands tall in the
+   middle, a desktop page runs wide), and the "after" is fitted onto exactly that box, so the two align and
+   neither is ever stretched to the column. */
+.look-stage {
+  text-align: center;
+  line-height: 0;
+}
 .look-onion {
   position: relative;
+  display: inline-block;
+  max-width: 100%;
   max-height: 64vh;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
+  vertical-align: top;
 }
 .look-onion img {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 64vh;
 }
 .look-onion img + img {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 /* Difference: what did not move goes black, what did lights up — a one-pixel shift is visible. */
 .look-diff img + img {

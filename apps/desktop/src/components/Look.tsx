@@ -140,9 +140,11 @@ function LookCompare(props: { look: LookView; title: string; onClose: () => void
       <Show
         when={mode() === "side"}
         fallback={
-          <div class="look-onion" classList={{ "look-diff": mode() === "diff" }}>
-            <img src={under()!} alt={swapped() ? t("look.after") : t("look.before")} />
-            <img src={over()!} alt={swapped() ? t("look.before") : t("look.after")} style={{ opacity: overOpacity() }} />
+          <div class="look-stage">
+            <div class="look-onion" classList={{ "look-diff": mode() === "diff" }}>
+              <img src={under()!} alt={swapped() ? t("look.after") : t("look.before")} />
+              <img src={over()!} alt={swapped() ? t("look.before") : t("look.after")} style={{ opacity: overOpacity() }} />
+            </div>
           </div>
         }
       >

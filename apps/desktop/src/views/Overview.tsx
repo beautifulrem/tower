@@ -9,20 +9,23 @@
  * j/k walk one list through both; ↩ opens; r reviews. The same page reads
  * at 0 goals (one statement and a way to start), at 1 and at 12.
  */
-import { For, Show, createMemo, createSignal, lazy, onCleanup } from "solid-js";
+import { For, Show, createComputed, createEffect, createMemo, createSignal, lazy, on, onCleanup } from "solid-js";
 
 import { DecisionCard, chooseOption } from "../components/DecisionCard";
 import { DemoButton } from "../components/Demo";
+import { Icon } from "../components/Glyph";
 import { GoalRow } from "../components/GoalRow";
 import { BaseTestsNotice } from "../components/TestCheck";
 import { Button, Empty, Select } from "../components/ui";
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
+import { type Box, play, snapshot } from "../lib/flip";
 import { useKeys } from "../lib/keys";
 import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
+import { linger } from "../lib/linger";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 
@@ -31,6 +34,8 @@ const Welcome = lazy(() => import("./Welcome").then((m) => ({ default: m.Welcome
 
 const ORDER: Group[] = ["running", "verifying", "review", "ready", "paused", "done"];
 const FILTER_KEY = "tower.overviewProject";
+/** The spatial duration (--dur-space, 220ms), zero under reduced motion. */
+const spaceMs = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220);
 const ALL = "__all__";
 
 type Item = { kind: "decision"; id: string; item: InboxItem } | { kind: "goal"; id: string; goal: GoalSummary };
@@ -45,6 +50,8 @@ export function Overview() {
   const projectOk = (projectId: string) => project() === ALL || project() === projectId || !state.projects.some((p) => p.id === project());
 
   const decisions = createMemo(() => state.inbox.filter((i) => isBlocking(i) && projectOk(state.goals[i.goal_id]?.project_id ?? "")));
+  // An answered card folds away over 160ms instead of vanishing on the next update.
+  const shownDecisions = linger(decisions, (i) => i.id);
   const decided = createMemo(() => new Set(decisions().map((d) => d.goal_id)));
   const live = createMemo(() =>
     goalList().filter((g) => g.state !== "archived" && g.state !== "abandoned" && projectOk(g.project_id) && !decided().has(g.id)),
@@ -64,6 +71,13 @@ export function Overview() {
     ...groups().flatMap((g) => g.goals.map<Item>((goal) => ({ kind: "goal", id: goal.id, goal }))),
   ]);
   const current = () => flat().find((i) => i.id === selected()) ?? null;
+
+  // A row that changes group slides to its new line (220ms) rather than reappearing there: the rows'
+  // places are read in the pure phase, before the DOM changes, and the move is played after it.
+  let board!: HTMLDivElement;
+  let placesBefore = new Map<string, Box>();
+  createComputed(on(groups, () => board && (placesBefore = snapshot(board, "goal")), { defer: true }));
+  createEffect(on(groups, () => board && play(board, "goal", placesBefore, spaceMs(), "cubic-bezier(0.23, 1, 0.32, 1)"), { defer: true }));
 
   const move = (d: number) => {
     const list = flat();
@@ -111,7 +125,7 @@ export function Overview() {
 
   return (
     <Show when={state.projects.length > 0} fallback={<Welcome />}>
-      <div class="overview">
+      <div class="overview" ref={board}>
         <Briefing />
         <div class="overview-top">
           <QuickPath project={project() === ALL ? undefined : project()} />
@@ -128,35 +142,38 @@ export function Overview() {
         <Show
           when={total() > 0}
           fallback={
-            <Empty
-              title={project() === ALL ? t("overview.emptyTitle") : t("overview.emptyProject", { project: state.projects.find((p) => p.id === project())?.name ?? "" })}
-              poster
-              action={
-                <span class="row">
-                  <DemoButton size="s" />
-                  <Button size="s" variant="ghost" kbd="mod+n" onClick={() => go({ name: "new", projectId: project() === ALL ? undefined : project() })}>
-                    {t("overview.writeContract")}
-                  </Button>
-                  <Show when={ended() > 0}>
-                    <span class="meta t3">{t("overview.endedCount", { n: ended() })}</span>
-                  </Show>
-                </span>
-              }
-            >
-              {t("overview.emptyBody")}
-            </Empty>
+            <>
+              <Empty
+                title={project() === ALL ? t("overview.emptyTitle") : t("overview.emptyProject", { project: state.projects.find((p) => p.id === project())?.name ?? "" })}
+                poster
+                action={
+                  <span class="row">
+                    <DemoButton size="s" />
+                    <Button size="s" variant="ghost" kbd="mod+n" onClick={() => go({ name: "new", projectId: project() === ALL ? undefined : project() })}>
+                      {t("overview.writeContract")}
+                    </Button>
+                    <Show when={ended() > 0}>
+                      <span class="meta t3">{t("overview.endedCount", { n: ended() })}</span>
+                    </Show>
+                  </span>
+                }
+              >
+                {t("overview.emptyBody")}
+              </Empty>
+              <BoardGhost />
+            </>
           }
         >
-          <Show when={decisions().length > 0}>
+          <Show when={shownDecisions.list().length > 0}>
             <section class="board-group">
               <h2 class="scale-title halt">
                 {t("group.needs_you")}
                 <span class="num">{decisions().length}</span>
               </h2>
               <div class="board-queue">
-                <For each={decisions()}>
+                <For each={shownDecisions.list()}>
                   {(it) => (
-                    <div data-decision={it.id} onMouseEnter={() => setSelected(it.id)} onFocusIn={() => setSelected(it.id)}>
+                    <div class="decision-slot" classList={{ leaving: shownDecisions.leaving(it.id) }} data-decision={it.id} onMouseEnter={() => setSelected(it.id)} onFocusIn={() => setSelected(it.id)}>
                       <DecisionCard item={it} focused={selected() === it.id} quiet />
                     </div>
                   )}
@@ -186,6 +203,71 @@ export function Overview() {
         </Show>
       </div>
     </Show>
+  );
+}
+
+/** Ghost rows: where each reading will land, as bar widths per column (title, live, change, spend, age, identity). */
+const GHOST_ROWS: number[][] = [
+  [62, 44, 60, 72, 48, 70],
+  [48, 58, 40, 72, 36, 56],
+  [70, 36, 52, 72, 56, 64],
+];
+
+/**
+ * The board before anything stands on it: its column heads and three empty
+ * lines in the real row grid, every hairline where a goal's will be. The
+ * emptiest screen already says what this place is for — a departures board
+ * with no departures yet — and the rows are hollow (the "not yet" segment,
+ * the draft ring), never pretend data.
+ */
+function BoardGhost() {
+  return (
+    <div class="board-ghost" aria-hidden="true">
+      <div class="g-row board-ghost-head halt">
+        <span />
+        <span>{t("overview.colGoal")}</span>
+        <span>{t("overview.colLive")}</span>
+        <span>{t("overview.colCriteria")}</span>
+        <span class="g-diff">{t("overview.colChange")}</span>
+        <span class="g-spend">{t("overview.colSpend")}</span>
+        <span class="g-age">{t("overview.colAge")}</span>
+        <span class="g-id">{t("overview.colIdentity")}</span>
+        <span />
+      </div>
+      <For each={GHOST_ROWS}>
+        {(w) => (
+          <div class="g-row board-ghost-row">
+            <span class="g-glyph">
+              <Icon name="ring" size={10} />
+            </span>
+            <span>
+              <i class="ghost-bar" style={{ width: `${w[0]}%` }} />
+            </span>
+            <span>
+              <i class="ghost-bar" style={{ width: `${w[1]}%` }} />
+            </span>
+            <span class="segs">
+              <i class="seg" />
+              <i class="seg" />
+              <i class="seg" />
+            </span>
+            <span class="g-diff">
+              <i class="ghost-bar" style={{ width: `${w[2]}%` }} />
+            </span>
+            <span class="g-spend">
+              <i class="ghost-bar" style={{ width: `${w[3]}%` }} />
+            </span>
+            <span class="g-age">
+              <i class="ghost-bar" style={{ width: `${w[4]}%` }} />
+            </span>
+            <span class="g-id">
+              <i class="ghost-bar" style={{ width: `${w[5]}%` }} />
+            </span>
+            <span />
+          </div>
+        )}
+      </For>
+    </div>
   );
 }
 

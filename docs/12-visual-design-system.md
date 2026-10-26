@@ -105,7 +105,7 @@
 :root[data-theme="dark"] {
   --bg-sidebar:   oklch(0.155 0.004 70);
   --bg-app:       oklch(0.180 0.004 70);
-  --bg-raised:    oklch(0.205 0.005 70);   /* 卡片、面板 */
+  --bg-raised:    oklch(0.215 0.005 70);   /* 卡片、面板：比页面高 0.035 L，先于发丝线被看见；卡片脚下再加一道 1px 阴影 */
   --bg-hover:     oklch(0.235 0.005 70);
   --bg-selected:  oklch(0.265 0.006 70);
   --bg-overlay:   oklch(0.225 0.005 70 / 0.96);

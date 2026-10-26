@@ -7,7 +7,7 @@
  * Keyboard: the table is one tab stop. Focus lands on the first line number;
  * ↑↓ walk the lines, ↩ opens the comment composer on that line.
  */
-import { For, Match, Show, Switch, createMemo, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Match, Show, Switch, createMemo, createResource, createSignal, createUniqueId, onCleanup } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
 import { Button, IconButton } from "../../components/ui";
@@ -20,6 +20,7 @@ import type { Tokens } from "../../lib/highlight.worker";
 import { t } from "../../lib/i18n";
 import { popupActions } from "../../lib/native";
 import type { Draft } from "../../lib/reviewState";
+import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
 import { type Range, hunkWordRanges, segment } from "../../lib/worddiff";
 import { type Anchor, type Block, type Composing, type Reveals, sameAnchor } from "./types";
 
@@ -39,6 +40,13 @@ export interface FileDiffProps {
   onOpen: (line: number | null) => void;
   /** Undoing a hunk in the workspace; absent while the agent may be writing. */
   onUndo?: (hunk: number) => void;
+  /** Editing the whole file in place (paused or in review only); the text arrives through `lines`. */
+  editing?: boolean;
+  onEditFile?: () => void;
+  onSaveFile?: (text: string) => void;
+  onCancelEdit?: () => void;
+  /** Applying a comment's suggestion block to the line it hangs on. */
+  onApplySuggestion?: (line: number, suggestion: string) => void;
   comments: Draft[];
   composer: Composing;
   onAnchor: (a: Anchor) => void;
@@ -111,11 +119,13 @@ export function FileDiff(props: FileDiffProps) {
     popupActions([
       { label: t("review.comment"), run: () => props.onAnchor(fileAnchor()) },
       { label: t("review.openInEditor"), run: () => props.onOpen(null) },
+      ...(props.onEditFile && props.file.status !== "deleted" ? [{ label: t("review.editFile"), run: () => props.onEditFile!(), separatorBefore: true }] : []),
     ]);
+  const helpId = createUniqueId();
 
   const cols = 4;
   return (
-    <section class="file" aria-label={props.file.path}>
+    <section class="file" aria-label={props.file.path} data-file-path={props.file.path}>
       <header class="file-head">
         <span class="file-status meta">{statusLabel(props.file.status)}</span>
         <span class="mono ellipsis grow" title={props.file.path}>
@@ -130,8 +140,11 @@ export function FileDiff(props: FileDiffProps) {
         <span class="num meta">
           <span class="diff-add">+{props.file.additions}</span> <span class="diff-del">−{props.file.deletions}</span>
         </span>
-        {/* Two toggles and a menu: the header has a shape, not five equal words. */}
-        <Show when={expandable()}>
+        {/* Two toggles and a menu: the header has a shape, not five equal words. Editing is in the menu until it is on. */}
+        <Show when={props.editing}>
+          <span class="meta t3">{t("review.editing")}</span>
+        </Show>
+        <Show when={expandable() && !props.editing}>
           <Button size="s" variant="ghost" aria-pressed={props.whole} onClick={props.onWhole} title={t("review.wholeFileTitle")}>
             <Icon name="expand" size={10} />
             {t("review.wholeFile")}
@@ -151,13 +164,20 @@ export function FileDiff(props: FileDiffProps) {
       <For each={commentsAt(fileAnchor())}>
         {(x) => <CommentRow draft={x.c} onEdit={() => props.onEdit(x.index)} onRemove={() => props.onRemove(x.index)} />}
       </For>
-      <Show when={!props.file.binary} fallback={<div class="meta file-binary">{t("review.binary")}</div>}>
+      <Show when={props.editing && props.lines}>
+        <FileEditor lines={props.lines!} onSave={(text) => props.onSaveFile?.(text)} onCancel={() => props.onCancelEdit?.()} />
+      </Show>
+      <Show when={!props.file.binary && !props.editing} fallback={<Show when={!props.editing}><div class="meta file-binary">{t("review.binary")}</div></Show>}>
+        <span id={helpId} class="sr-only">
+          {t("review.diffHelp")}
+        </span>
         <table
           ref={table}
           class="diff"
           classList={{ "diff-split": props.split }}
           tabindex="0"
           aria-label={t("review.diffLabel", { path: props.file.path })}
+          aria-describedby={helpId}
           onFocus={onTableFocus}
           onKeyDown={onTableKey}
         >
@@ -185,7 +205,7 @@ export function FileDiff(props: FileDiffProps) {
                 <Switch>
                   <Match when={b.kind === "head" && b}>
                     {(hb) => (
-                      <tr class="hunk-head">
+                      <tr class="hunk-head" data-hunk-path={props.file.path} data-hunk-index={hb().index}>
                         <td colspan={cols}>
                           <div class="gap-controls">
                             <span class="mono gap-header ellipsis">{hb().header}</span>
@@ -202,6 +222,7 @@ export function FileDiff(props: FileDiffProps) {
                       <GapRow
                         block={gb()}
                         cols={cols}
+                        path={props.file.path}
                         known={props.lines !== undefined}
                         onReveal={(how) => props.onReveal(gb().gap, how)}
                         onUndo={props.onUndo && gb().index !== null ? () => props.onUndo!(gb().index!) : undefined}
@@ -223,6 +244,7 @@ export function FileDiff(props: FileDiffProps) {
                         onCancel={props.onCancel}
                         onEdit={props.onEdit}
                         onRemove={props.onRemove}
+                        onApplySuggestion={props.onApplySuggestion}
                       />
                     )}
                   </Match>
@@ -238,10 +260,48 @@ export function FileDiff(props: FileDiffProps) {
 
 function UndoButton(props: { onClick: () => void }) {
   return (
-    <Button size="s" variant="ghost" class="gap-all" onClick={props.onClick} title={t("review.undoHunkTitle")}>
+    <Button size="s" variant="ghost" class="gap-all undo-hunk" onClick={props.onClick} title={`${t("review.undoHunkTitle")} · U`}>
       <Icon name="undo" size={10} />
       {t("review.undoHunk")}
     </Button>
+  );
+}
+
+/**
+ * The whole file as plain text, for a small change you would rather make
+ * than describe. Saving writes the file in the workspace as your edit; the
+ * snapshot then changes and the review reloads.
+ */
+export function FileEditor(props: { lines: string[]; onSave: (text: string) => void; onCancel: () => void }) {
+  const initial = props.lines.join("\n") + "\n";
+  const [text, setText] = createSignal(initial);
+  const dirty = () => text() !== initial;
+  return (
+    <div class="file-editor">
+      <textarea
+        class="file-editor-text mono"
+        ref={(el) => setTimeout(() => el.focus())}
+        rows={Math.min(40, Math.max(6, props.lines.length + 1))}
+        spellcheck={false}
+        aria-label={t("review.editFile")}
+        value={text()}
+        onInput={(e) => setText(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && dirty()) (e.preventDefault(), props.onSave(text()));
+          if (e.key === "Escape") (e.stopPropagation(), props.onCancel());
+        }}
+      />
+      <div class="row file-editor-foot">
+        <span class="meta t3">{t("review.editFileNote")}</span>
+        <span class="grow" />
+        <Button size="s" variant="ghost" onClick={props.onCancel}>
+          {t("common.cancel")}
+        </Button>
+        <Button size="s" variant="primary" disabled={!dirty()} onClick={() => props.onSave(text())} kbd="mod+enter">
+          {t("review.saveFile")}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -252,6 +312,7 @@ function UndoButton(props: { onClick: () => void }) {
 export function GapRow(props: {
   block: Extract<Block, { kind: "gap" }>;
   cols: number;
+  path?: string;
   known: boolean;
   onReveal: (how: "top" | "bottom" | "all") => void;
   onUndo?: () => void;
@@ -262,7 +323,7 @@ export function GapRow(props: {
   const hidden = () => props.block.hidden;
   const step = () => (hidden() === null ? STEP : Math.min(STEP, hidden()!));
   return (
-    <tr class="hunk-head gap-row">
+    <tr class="hunk-head gap-row" data-hunk-path={props.block.index !== null ? props.path : undefined} data-hunk-index={props.block.index ?? undefined}>
       <td colspan={props.cols}>
         <div class="gap-controls">
           <span class="gap-buttons">
@@ -295,13 +356,31 @@ export function GapRow(props: {
   );
 }
 
-export function CommentRow(props: { draft: Draft; onEdit: () => void; onRemove: () => void }) {
+/**
+ * A draft comment. One with a ```suggestion block shows the proposed lines
+ * as code and, while the workspace is editable and the comment hangs on a
+ * line of the new file, offers to apply them in one click.
+ */
+export function CommentRow(props: { draft: Draft; onEdit: () => void; onRemove: () => void; onApply?: (line: number, suggestion: string) => void }) {
+  const suggestion = () => suggestionOf(props.draft.text);
+  const canApply = () => suggestion() !== null && !!props.onApply && !!props.draft.line && !props.draft.old;
   return (
-    <div class="inline-comment">
+    <div class="inline-comment" classList={{ "has-suggestion": suggestion() !== null }}>
       <Show when={props.draft.old}>
         <span class="anchor">{t("review.oldLine", { n: props.draft.old! })}</span>
       </Show>
-      <span class="inline-comment-text">{props.draft.text}</span>
+      <span class="inline-comment-text">
+        {suggestion() === null ? props.draft.text : withoutSuggestion(props.draft.text)}
+        <Show when={suggestion() !== null}>
+          <span class="suggestion-label meta t3">{t("review.suggestion")}</span>
+          <pre class="suggestion mono">{suggestion()}</pre>
+        </Show>
+      </span>
+      <Show when={canApply()}>
+        <Button size="s" onClick={() => props.onApply!(props.draft.line!, suggestion()!)} title={t("review.applySuggestionTitle")}>
+          {t("review.applySuggestion")}
+        </Button>
+      </Show>
       <Button size="s" variant="ghost" onClick={props.onEdit}>
         {t("common.edit")}
       </Button>
@@ -367,6 +446,7 @@ export function HunkRows(props: {
   onCancel: () => void;
   onEdit: (index: number) => void;
   onRemove: (index: number) => void;
+  onApplySuggestion?: (line: number, suggestion: string) => void;
 }) {
   const lang = languageOf(props.path);
   const words = createMemo(() => hunkWordRanges(props.hunk.lines));
@@ -413,7 +493,7 @@ export function HunkRows(props: {
               {(x) => (
                 <tr>
                   <td colspan="4">
-                    <CommentRow draft={x.c} onEdit={() => props.onEdit(x.index)} onRemove={() => props.onRemove(x.index)} />
+                    <CommentRow draft={x.c} onEdit={() => props.onEdit(x.index)} onRemove={() => props.onRemove(x.index)} onApply={props.onApplySuggestion} />
                   </td>
                 </tr>
               )}

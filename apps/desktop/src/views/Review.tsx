@@ -6,34 +6,44 @@
  *
  * At ≥1280px the diff can sit side by side (⌥V, remembered per goal). The
  * verification readout (E) shows every criterion's result and output tail
- * without leaving the diff. While the goal is paused or in review a hunk can
- * be undone in the workspace; the snapshot then changes and the review
- * reloads. The pieces live in `review/`: `FileDiff` (the table), `panels`
- * (the three sheets), `types`.
+ * without leaving the diff. While the goal is paused or in review the
+ * workspace is yours to touch: a hunk can be undone (U), a file edited in
+ * place, a comment's suggestion applied; the snapshot then changes and the
+ * review reloads. A file tree on the left and ⌘P jump by path. A review
+ * queue (from Needs you) opens the next goal when this one is done. The
+ * pieces live in `review/`: `FileDiff` (the table), `panels` (the three
+ * sheets), `types`.
  */
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, Seal } from "../components/Glyph";
 import { CriteriaBar } from "../components/Honesty";
-import { Button, Empty, IconButton, Kbd, Loading } from "../components/ui";
+import { Button, Empty, IconButton, Kbd, Loading, Overlay } from "../components/ui";
 import type { DiffFile } from "../gen/DiffFile";
 import type { ReviewUnit } from "../gen/ReviewUnit";
 import { api, errorText } from "../lib/api";
 import { type Gap, splitLines } from "../lib/diffview";
+import { type TreeNode, buildTree } from "../lib/filetree";
 import { count, short } from "../lib/format";
+import { type Match, matchText, segments } from "../lib/fuzzy";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { ask } from "../lib/native";
 import { back, go } from "../lib/nav";
+import { advanceQueue, queuePosition } from "../lib/reviewQueue";
 import { type Draft, type Layout, type ReviewState, fileHash, loadReviewState, persist } from "../lib/reviewState";
 import { act, onTrace, state, toast } from "../lib/store";
+import { applySuggestion } from "../lib/suggest";
 import { FileDiff } from "./review/FileDiff";
 import { AcceptPanel, ChangesPanel, VerifyPanel } from "./review/panels";
 import { type Anchor, type Composing, type Panel, type Reveals } from "./review/types";
 
 /** Trace kinds after which the review or the goal's facts may have changed. */
-const RELOAD_VIEW = new Set(["pinned", "human_edited"]);
-const RELOAD_DETAIL = new Set(["pinned", "human_edited", "sentinel_hit", "verify_finished", "criterion_result", "claim_reviewed", "human_check"]);
+const RELOAD_VIEW = new Set(["pinned", "human_edited", "rolled_back"]);
+const RELOAD_DETAIL = new Set(["pinned", "human_edited", "rolled_back", "sentinel_hit", "verify_finished", "criterion_result", "claim_reviewed", "human_check", "original_tests_result"]);
+
+/** The tree is worth its column from this many files. */
+const TREE_FROM = 2;
 
 export function Review(props: { id: string }) {
   const [persisted] = createResource<ReviewState>(() => loadReviewState(props.id));
@@ -103,14 +113,16 @@ export function Review(props: { id: string }) {
   };
   const [composer, setComposer] = createSignal<Composing>(null);
   const [panel, setPanel] = createSignal<Panel>(null);
+  const [pathJump, setPathJump] = createSignal(false);
   const g = () => state.goals[props.id];
-  // Hunks can be undone only while the agent is not in the workspace.
+  // The workspace is yours to touch only while the agent is not in it.
   const editable = () => g()?.state === "paused" || g()?.state === "in_review";
 
   // Whole-file text per path (new side; old side for deleted files), fetched on first expand.
   const [texts, setTexts] = createSignal<Record<string, string[] | null>>({});
   const [reveals, setReveals] = createSignal<Record<string, Reveals>>({});
   const [whole, setWhole] = createSignal<Record<string, boolean>>({});
+  const [editingPath, setEditingPath] = createSignal<string | null>(null);
   const loading = new Set<string>();
   const ensureText = async (f: DiffFile): Promise<string[] | null> => {
     const have = texts()[f.path];
@@ -146,7 +158,17 @@ export function Review(props: { id: string }) {
     }
     setWhole((m) => ({ ...m, [f.path]: !m[f.path] }));
   };
-  /** Undoes one hunk in the workspace; the snapshot changes, so everything cached about the file goes. */
+  /** The snapshot changed under a file: everything cached about it goes, then the review and the facts reload. */
+  const changed = async (f: DiffFile) => {
+    setTexts((m) => {
+      const n = { ...m };
+      delete n[f.path];
+      return n;
+    });
+    setReveals((m) => ({ ...m, [f.path]: {} }));
+    await Promise.all([refetchView(), refetchDetail()]);
+  };
+  /** Undoes one hunk in the workspace. */
   const undoHunk = async (f: DiffFile, hunk: number) => {
     const ok = await ask(t("review.undoHunkConfirm", { path: f.path }), {
       title: t("review.undoHunkTitle"),
@@ -156,14 +178,28 @@ export function Review(props: { id: string }) {
     });
     if (!ok) return;
     const done = await act(() => api.revertHunk(props.id, f.path, hunk), t("review.hunkUndone"));
+    if (done !== undefined) await changed(f);
+  };
+  /** Opens the in-place editor on a file: the whole text must be here first. */
+  const editFile = async (f: DiffFile) => {
+    const lines = await ensureText(f);
+    if (lines) setEditingPath(f.path);
+  };
+  /** Writes your text to the workspace as your edit. */
+  const saveFile = async (f: DiffFile, text: string) => {
+    const done = await act(() => api.writeFile(props.id, f.path, text), t("review.fileSaved"));
     if (done === undefined) return;
-    setTexts((m) => {
-      const n = { ...m };
-      delete n[f.path];
-      return n;
-    });
-    setReveals((m) => ({ ...m, [f.path]: {} }));
-    await Promise.all([refetchView(), refetchDetail()]);
+    setEditingPath(null);
+    await changed(f);
+  };
+  /** Applies a comment's suggestion: the file with that one line replaced. */
+  const applyTo = async (f: DiffFile, line: number, suggestion: string) => {
+    const lines = await ensureText(f);
+    if (!lines) return;
+    const text = applySuggestion(lines.join("\n") + "\n", line, suggestion);
+    const done = await act(() => api.writeFile(props.id, f.path, text), t("review.suggestionApplied"));
+    if (done === undefined) return;
+    await changed(f);
   };
 
   const units = () => view()?.units ?? [];
@@ -174,10 +210,24 @@ export function Review(props: { id: string }) {
     if (!u || !v) return [];
     return v.files.filter((f) => u.files.includes(f.path));
   });
+  const allPaths = createMemo(() => view()?.files.map((f) => f.path) ?? []);
+  const tree = createMemo(() => buildTree(allPaths()));
+  const fileByPath = (path: string) => view()?.files.find((f) => f.path === path);
 
   const selectUnit = (i: number) => {
     setUnitIdx(Math.max(0, Math.min(units().length - 1, i)));
     document.querySelector(".review-diff")?.scrollTo({ top: 0 });
+  };
+  /** Shows the unit holding `path` and scrolls that file to the top of the pane. */
+  const jumpToFile = (path: string) => {
+    const i = units().findIndex((u) => u.files.includes(path));
+    if (i < 0) return;
+    if (i !== unitIdx()) setUnitIdx(i);
+    requestAnimationFrame(() => {
+      const pane = document.querySelector<HTMLElement>(".review-diff");
+      const el = pane?.querySelector<HTMLElement>(`[data-file-path="${CSS.escape(path)}"]`);
+      if (pane && el) pane.scrollTo({ top: el.offsetTop - 16 });
+    });
   };
 
   /** Scrolls to the next or previous hunk in the diff pane. */
@@ -188,6 +238,16 @@ export function Review(props: { id: string }) {
     const top = pane.scrollTop + 48;
     const target = dir > 0 ? heads.find((h) => h.offsetTop > top + 4) : [...heads].reverse().find((h) => h.offsetTop < top - 4);
     if (target) pane.scrollTo({ top: target.offsetTop - 40 });
+  };
+  /** The hunk whose header is at (or last passed) the top of the pane: what ] and [ land on. */
+  const currentHunk = (): { f: DiffFile; index: number } | null => {
+    const pane = document.querySelector<HTMLElement>(".review-diff");
+    if (!pane) return null;
+    const heads = [...pane.querySelectorAll<HTMLElement>(".hunk-head[data-hunk-index]")];
+    const top = pane.scrollTop + 48;
+    const head = [...heads].reverse().find((h) => h.offsetTop <= top + 4) ?? heads[0];
+    const f = head && fileByPath(head.dataset.hunkPath ?? "");
+    return head && f ? { f, index: Number(head.dataset.hunkIndex) } : null;
   };
 
   useKeys(
@@ -206,9 +266,18 @@ export function Review(props: { id: string }) {
       },
       { key: "alt+v", run: toggleLayout, desc: () => t("keys.split") },
       { key: "e", run: () => setPanel((p) => (p === "verify" ? null : "verify")), desc: () => t("keys.verification") },
+      {
+        key: "u",
+        run: () => {
+          const h = currentHunk();
+          if (editable() && h) void undoHunk(h.f, h.index);
+        },
+        desc: () => t("keys.undoHunk"),
+      },
+      { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("keys.pathJump") },
       { key: "mod+shift+enter", run: () => setPanel("accept"), inInputs: true, desc: () => t("review.accept") },
       { key: "c", run: () => setPanel("changes"), desc: () => t("review.requestChanges") },
-      { key: "escape", run: () => (composer() ? setComposer(null) : back()) },
+      { key: "escape", run: () => (composer() ? setComposer(null) : editingPath() ? setEditingPath(null) : back()) },
     ],
     () => t("app.review", { id: props.id }),
   );
@@ -226,8 +295,19 @@ export function Review(props: { id: string }) {
   };
   const removeComment = (index: number) => updateComments((list) => list.filter((_, i) => i !== index));
 
+  /** Done with this goal: the queue's next review, or back where you came from. */
+  const finish = () => {
+    const next = advanceQueue(props.id);
+    if (next) {
+      toast("info", t("review.queueNext", { id: next }), { ttl: 2500 });
+      go({ name: "review", id: next });
+    } else back();
+  };
+
   const solo = () => units().length === 1;
+  const showTree = () => allPaths().length >= TREE_FROM;
   const viewedUnits = () => units().filter(unitViewed).length;
+  const queue = () => queuePosition(props.id);
 
   return (
     <div class="review">
@@ -237,20 +317,24 @@ export function Review(props: { id: string }) {
           <div class="row">
             <h1 class="review-title ellipsis">{g()?.title}</h1>
             <span class="code-val t2">{props.id}</span>
+            <Show when={queue()}>{(q) => <span class="meta t3 num">{t("review.queuePosition", { i: q().i, n: q().n })}</span>}</Show>
           </div>
           <Show when={view()}>
             <div class="review-stats meta halt">
+              {/* With nothing changed the counts would contradict the page; only the snapshot pair stays. */}
               <span class="review-stat-group num">
-                <span>
-                  <span class="t1">+{count(view()!.stat.additions)}</span> −{count(view()!.stat.deletions)}
-                </span>
-                <span class="sep">·</span>
-                {t("common.files", { n: view()!.stat.files })}
-                <Show when={!solo()}>
+                <Show when={units().length > 0}>
+                  <span>
+                    <span class="t1">+{count(view()!.stat.additions)}</span> −{count(view()!.stat.deletions)}
+                  </span>
                   <span class="sep">·</span>
-                  {t("review.units", { n: units().length })}
+                  {t("common.files", { n: view()!.stat.files })}
+                  <Show when={!solo()}>
+                    <span class="sep">·</span>
+                    {t("review.units", { n: units().length })}
+                  </Show>
+                  <span class="sep">·</span>
                 </Show>
-                <span class="sep">·</span>
                 <span class="review-stat-pins code-val">
                   @{short(view()!.from)}
                   <Icon name="arrow-right" size={10} class="t3" />@{short(view()!.pin)}
@@ -337,12 +421,27 @@ export function Review(props: { id: string }) {
               </div>
             }
           >
-            <div class="review-body" classList={{ solo: solo() }}>
-              <Show when={!solo()}>
+            <div class="review-body" classList={{ solo: solo() && !showTree() }}>
+              <Show when={!solo() || showTree()}>
                 <aside class="review-units" aria-label={t("review.unitsLabel")}>
-                  <For each={units()}>
-                    {(u, i) => <UnitItem u={u} active={i() === unitIdx()} viewed={unitViewed(u)} onClick={() => selectUnit(i())} />}
-                  </For>
+                  <Show when={!solo()}>
+                    <For each={units()}>
+                      {(u, i) => <UnitItem u={u} active={i() === unitIdx()} viewed={unitViewed(u)} onClick={() => selectUnit(i())} />}
+                    </For>
+                  </Show>
+                  <Show when={showTree()}>
+                    <div class="tree-head halt">
+                      <span>{t("review.filesLabel")}</span>
+                      <span class="num">{allPaths().length}</span>
+                      <span class="grow" />
+                      <Kbd k="mod+p" />
+                    </div>
+                    <div class="tree" role="tree" aria-label={t("review.filesLabel")}>
+                      <For each={tree()}>
+                        {(n) => <TreeRow node={n} depth={0} fileOf={fileByPath} viewed={(p) => !!fileByPath(p) && isViewed(fileByPath(p)!)} shown={(p) => files().some((f) => f.path === p)} onOpen={jumpToFile} />}
+                      </For>
+                    </div>
+                  </Show>
                 </aside>
               </Show>
               <div class="review-diff">
@@ -386,6 +485,11 @@ export function Review(props: { id: string }) {
                       onViewed={(on) => toggleViewed(f, on)}
                       onOpen={(line) => void act(() => api.openFile(props.id, f.path, line))}
                       onUndo={editable() ? (hunk) => void undoHunk(f, hunk) : undefined}
+                      editing={editingPath() === f.path}
+                      onEditFile={editable() ? () => void editFile(f) : undefined}
+                      onSaveFile={(text) => void saveFile(f, text)}
+                      onCancelEdit={() => setEditingPath(null)}
+                      onApplySuggestion={editable() ? (line, s) => void applyTo(f, line, s) : undefined}
                       comments={comments()}
                       composer={composer()}
                       onAnchor={(a: Anchor) => setComposer(a)}
@@ -402,6 +506,7 @@ export function Review(props: { id: string }) {
         </Show>
       </Show>
 
+      {/* The status bar: keys on the left, the two mouse hints apart on the right, quieter. */}
       <div class="review-status halt">
         <span>
           <Kbd k="j k" /> {t("review.keyUnits")}
@@ -415,17 +520,22 @@ export function Review(props: { id: string }) {
         <span>
           <Kbd k="e" /> {t("review.keyVerification")}
         </span>
+        <Show when={editable()}>
+          <span>
+            <Kbd k="u" /> {t("review.keyUndo")}
+          </span>
+        </Show>
         <Show when={wide()}>
           <span>
             <Kbd k="alt+v" /> {t("review.keySplit")}
           </span>
         </Show>
-        <span>{t("review.keyComment")}</span>
-        <span>{t("review.keyOpen")}</span>
-        <span class="grow" />
         <span>
           <Kbd k="?" /> {t("keys.shortcuts")}
         </span>
+        <span class="grow" />
+        <span class="status-mouse t4">{t("review.keyComment")}</span>
+        <span class="status-mouse t4">{t("review.keyOpen")}</span>
         <Show when={units().length > 1}>
           <span class="num">{t("review.unitOf", { i: unitIdx() + 1, n: units().length })}</span>
         </Show>
@@ -443,13 +553,17 @@ export function Review(props: { id: string }) {
           }}
           onClose={() => setPanel(null)}
           onDone={markReviewed}
+          onFinish={finish}
         />
       </Show>
       <Show when={panel() === "changes"}>
-        <ChangesPanel id={props.id} comments={comments()} onSent={markReviewed} onClose={() => setPanel(null)} onRemove={removeComment} />
+        <ChangesPanel id={props.id} comments={comments()} onSent={markReviewed} onClose={() => setPanel(null)} onRemove={removeComment} onFinish={finish} />
       </Show>
       <Show when={panel() === "verify"}>
         <VerifyPanel id={props.id} detail={detail()} loading={detail.loading} onClose={() => setPanel(null)} />
+      </Show>
+      <Show when={pathJump()}>
+        <PathPalette paths={allPaths()} onClose={() => setPathJump(false)} onPick={(p) => (setPathJump(false), jumpToFile(p))} />
       </Show>
     </div>
   );
@@ -485,5 +599,120 @@ function UnitItem(props: { u: ReviewUnit; active: boolean; viewed: boolean; onCl
         </Show>
       </span>
     </button>
+  );
+}
+
+/** A row of the file tree: directories fold, files show +/−, viewed files step back. */
+function TreeRow(props: {
+  node: TreeNode;
+  depth: number;
+  fileOf: (path: string) => DiffFile | undefined;
+  viewed: (path: string) => boolean;
+  shown: (path: string) => boolean;
+  onOpen: (path: string) => void;
+}) {
+  const [open, setOpen] = createSignal(true);
+  const f = () => props.fileOf(props.node.path);
+  return (
+    <Show
+      when={props.node.file}
+      fallback={
+        <>
+          <button class="tree-row tree-dir" role="treeitem" aria-expanded={open()} style={{ "--depth": props.depth }} onClick={() => setOpen((o) => !o)}>
+            <Icon name={open() ? "caret-down" : "caret-right"} size={10} />
+            <span class="ellipsis">{props.node.name}</span>
+          </button>
+          <Show when={open()}>
+            <For each={props.node.children}>{(c) => <TreeRow {...props} node={c} depth={props.depth + 1} />}</For>
+          </Show>
+        </>
+      }
+    >
+      <button
+        class="tree-row tree-file"
+        role="treeitem"
+        classList={{ viewed: props.viewed(props.node.path), shown: props.shown(props.node.path) }}
+        aria-current={props.shown(props.node.path) ? "true" : undefined}
+        style={{ "--depth": props.depth }}
+        title={props.node.path}
+        onClick={() => props.onOpen(props.node.path)}
+      >
+        <span class="ellipsis grow">{props.node.name}</span>
+        <Show when={f()}>
+          {(file) => (
+            <span class="num tree-stat">
+              <span class="diff-add">+{file().additions}</span> <span class="diff-del">−{file().deletions}</span>
+            </span>
+          )}
+        </Show>
+        <Show when={props.viewed(props.node.path)}>
+          <Icon name="check" size={10} label={t("review.viewed")} />
+        </Show>
+      </button>
+    </Show>
+  );
+}
+
+/** ⌘P: type part of a path, land on the file. */
+function PathPalette(props: { paths: string[]; onClose: () => void; onPick: (path: string) => void }) {
+  const [q, setQ] = createSignal("");
+  const [sel, setSel] = createSignal(0);
+  const hits = createMemo<{ path: string; m: Match | null }[]>(() => {
+    const n = q().trim();
+    if (!n) return props.paths.map((path) => ({ path, m: null }));
+    return props.paths
+      .map((path) => ({ path, m: matchText(n, path) }))
+      .filter((x): x is { path: string; m: Match } => x.m !== null)
+      .sort((a, b) => b.m.score - a.m.score)
+      .slice(0, 12);
+  });
+  const pick = (i: number) => {
+    const h = hits()[i];
+    if (h) props.onPick(h.path);
+  };
+  return (
+    <Overlay onClose={props.onClose} label={t("review.pathPalette")} instant class="palette" top>
+      <div class="palette-field">
+        <span class="palette-prompt" aria-hidden="true">
+          ›
+        </span>
+        <input
+          class="palette-input"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="path-list"
+          aria-autocomplete="list"
+          aria-label={t("review.pathPalette")}
+          placeholder={t("review.pathPlaceholder")}
+          value={q()}
+          onInput={(e) => (setQ(e.currentTarget.value), setSel(0))}
+          onKeyDown={(e) => {
+            if (e.isComposing) return;
+            if (e.key === "ArrowDown") (e.preventDefault(), setSel((s) => Math.min(s + 1, hits().length - 1)));
+            else if (e.key === "ArrowUp") (e.preventDefault(), setSel((s) => Math.max(s - 1, 0)));
+            else if (e.key === "Enter") pick(sel());
+          }}
+        />
+      </div>
+      <div class="palette-list" id="path-list" role="listbox" aria-label={t("review.filesLabel")}>
+        <For each={hits()} fallback={<div class="palette-empty"><span class="t2">{t("chrome.noMatchesFor", { q: q().trim() })}</span></div>}>
+          {(h, i) => (
+            <div class="palette-item mono" role="option" aria-selected={i() === sel()} classList={{ selected: i() === sel() }} onMouseMove={() => sel() !== i() && setSel(i())} onClick={() => pick(i())}>
+              <span class="palette-icon">
+                <Icon name="chevron-right" />
+              </span>
+              <span class="ellipsis grow">
+                <For each={h.m ? segments(h.path, h.m.positions) : [[h.path, false] as [string, boolean]]}>{([s, hit]) => (hit ? <span class="hl">{s}</span> : s)}</For>
+              </span>
+            </div>
+          )}
+        </For>
+      </div>
+      <div class="palette-foot">
+        <span>{t("chrome.paletteHints")}</span>
+        <span class="grow" />
+        <span class="num">{t("chrome.paletteCount", { n: hits().length })}</span>
+      </div>
+    </Overlay>
   );
 }

@@ -6,7 +6,8 @@
 import { For, Show, createSignal } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
-import { CriteriaBar, ObsChip } from "../../components/Honesty";
+import { BaselineLine, CriteriaBar, ObsChip } from "../../components/Honesty";
+import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay } from "../../components/ui";
 import type { CriterionView } from "../../gen/CriterionView";
 import type { GoalDetail } from "../../gen/GoalDetail";
@@ -15,6 +16,7 @@ import { ago, duration, short } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { back } from "../../lib/nav";
 import type { Draft } from "../../lib/reviewState";
+import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
 import { act, state, toast } from "../../lib/store";
 import { toComment } from "./types";
 
@@ -47,7 +49,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
   const criteria = () => props.detail?.criteria ?? [];
   const mark = (c: CriterionView) => (!c.verified ? "pending" : c.verified.stale ? "stale" : c.verified.passed ? "pass" : "fail");
   return (
-    <Overlay onClose={props.onClose} label={t("review.verifyTitle", { id: props.id })} title={t("review.verifyTitle", { id: props.id })} instant class="panel panel-wide">
+    <Overlay onClose={props.onClose} label={t("review.verifyTitle", { id: props.id })} title={t("review.verifyTitle", { id: props.id })} instant initialFocus="panel" class="panel panel-wide">
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
@@ -66,21 +68,24 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
             {(c) => (
               <div class="verify-item">
                 <div class="criterion-row">
-                  <Show when={c.criterion.kind.type !== "human"} fallback={<ResultMark kind={c.human_checked ? "obs-pass" : "pending"} title={c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")} />}>
+                  <Show when={c.criterion.kind.type === "exec"} fallback={<ResultMark kind={c.human_checked ? "obs-pass" : "pending"} title={c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")} />}>
                     <ResultMark kind={mark(c)} />
                   </Show>
                   <span class="num t3">{c.criterion.id}</span>
                   <span class="criterion-main">
                     <span class="criterion-title">{c.criterion.title}</span>
-                    <Show when={c.criterion.kind.type !== "human"}>
+                    <Show when={c.criterion.kind.type === "exec"}>
                       <code class="criterion-cmd code-val">{(c.criterion.kind as { command: string }).command}</code>
+                    </Show>
+                    <Show when={c.criterion.kind.type === "look"}>
+                      <code class="criterion-cmd code-val">{(c.criterion.kind as { url: string }).url}</code>
                     </Show>
                   </span>
                   <Show
                     when={c.verified}
                     fallback={
                       <span class="col-span t3">
-                        {c.criterion.kind.type === "human" ? (c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")) : t("goal.awaitingVerify")}
+                        {c.criterion.kind.type !== "exec" ? (c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")) : t("goal.awaitingVerify")}
                       </span>
                     }
                   >
@@ -99,6 +104,8 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                     )}
                   </Show>
                 </div>
+                <BaselineLine c={c} />
+                <Show when={c.look}>{(l) => <LookStrip look={l()} title={`${c.criterion.id} ${c.criterion.title}`} />}</Show>
                 <Show when={c.observed}>
                   <div class="criterion-row criterion-obs">
                     <ResultMark kind={c.observed!.passed ? "obs-pass" : "obs-fail"} />
@@ -137,6 +144,8 @@ export interface AcceptPanelProps {
   onHumanCheck: (criterion: string, v: boolean) => void;
   onClose: () => void;
   onDone: () => void;
+  /** Where to go once accepted: the queue's next review, or back. Defaults to back. */
+  onFinish?: () => void;
 }
 
 /**
@@ -146,13 +155,16 @@ export interface AcceptPanelProps {
 export function AcceptPanel(props: AcceptPanelProps) {
   const [busy, setBusy] = createSignal(false);
   const g = () => state.goals[props.id];
-  const humans = () => props.detail?.criteria.filter((c) => c.criterion.kind.type === "human") ?? [];
+  // Human and "look" criteria are both yours to check off; a look one brings its before/after pictures along.
+  const humans = () => props.detail?.criteria.filter((c) => c.criterion.kind.type !== "exec") ?? [];
+  // An unchecked human criterion blocks too, but says so on its own row; only the goal's state needs a sentence.
+  const unchecked = () => humans().filter((h) => !h.human_checked).length;
   const blockers = () => {
     const b: string[] = [];
     if (g()?.state !== "in_review") b.push(t("review.notInReview"));
-    for (const h of humans()) if (!h.human_checked) b.push(t("review.humanUnchecked", { id: h.criterion.id }));
     return b;
   };
+  const blocked = () => blockers().length > 0 || unchecked() > 0;
   /** Still open, not blocking: you may accept, but you see them first. */
   const open = () => {
     const items: { danger?: boolean; text: string }[] = [];
@@ -172,28 +184,38 @@ export function AcceptPanel(props: AcceptPanelProps) {
     if (branch) {
       props.onDone();
       props.onClose();
-      back();
+      (props.onFinish ?? back)();
     }
   };
   return (
-    <Overlay onClose={props.onClose} label={t("review.acceptTitle", { id: props.id })} title={t("review.acceptTitle", { id: props.id })} instant>
+    <Overlay onClose={props.onClose} label={t("review.acceptTitle", { id: props.id })} title={t("review.acceptTitle", { id: props.id })} instant initialFocus="panel">
       <div class="panel-section">
         <div class="fact-row">
           <Show when={g()?.progress.machine} fallback={<span class="meta">{t("review.noMachine")}</span>}>
             <Seal pin={g()!.verified_pin} large />
             <span class="meta">{t("review.allPassed", { n: g()!.progress.machine })}</span>
           </Show>
+          {/* Every unit viewed is said once, here; anything unviewed is listed below as still open. */}
+          <Show when={props.total > 0 && props.viewed === props.total}>
+            <span class="sep">·</span>
+            <span class="meta num">{t("review.viewedAll", { n: props.total })}</span>
+          </Show>
         </div>
         <For each={humans()}>
           {(h) => (
-            <label class="fact-row">
-              <input type="checkbox" checked={h.human_checked} onChange={(e) => props.onHumanCheck(h.criterion.id, e.currentTarget.checked)} />
-              <span class="num t3">{h.criterion.id}</span>
-              <span>{h.criterion.title}</span>
-            </label>
+            <>
+              <label class="fact-row">
+                <input type="checkbox" checked={h.human_checked} onChange={(e) => props.onHumanCheck(h.criterion.id, e.currentTarget.checked)} />
+                <span class="num t3">{h.criterion.id}</span>
+                <span class="grow">{h.criterion.title}</span>
+                <Show when={!h.human_checked}>
+                  <span class="meta t3 panel-awaiting">{t("goal.awaitingCheck")}</span>
+                </Show>
+              </label>
+              <Show when={h.look}>{(l) => <LookStrip look={l()} title={`${h.criterion.id} ${h.criterion.title}`} />}</Show>
+            </>
           )}
         </For>
-        <div class="meta num">{t("review.viewedUnits", { n: props.viewed, total: props.total })}</div>
       </div>
       <Show when={open().length}>
         <div class="panel-section">
@@ -225,7 +247,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
                     label={t("goal.copyBranch")}
                     onClick={() => {
                       void navigator.clipboard.writeText(name());
-                      toast("info", t("common.copied"));
+                      toast("success", t("common.copied"));
                     }}
                   />
                 </>
@@ -243,7 +265,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.cancel")}
         </Button>
-        <Button variant="primary" busy={busy()} disabled={blockers().length > 0} onClick={accept}>
+        <Button variant="primary" busy={busy()} disabled={blocked()} title={unchecked() > 0 ? t("review.humanUnchecked", { id: humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ") }) : undefined} onClick={accept}>
           {updating() ? t("review.acceptUpdate") : t("review.acceptWrite")}
         </Button>
       </div>
@@ -251,7 +273,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
   );
 }
 
-export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: () => void; onSent: () => void; onRemove: (i: number) => void }) {
+export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: () => void; onSent: () => void; onRemove: (i: number) => void; onFinish?: () => void }) {
   const [summary, setSummary] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const send = async () => {
@@ -261,7 +283,7 @@ export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: ()
     if (ok !== undefined) {
       props.onSent();
       props.onClose();
-      back();
+      (props.onFinish ?? back)();
     }
   };
   return (
@@ -275,7 +297,12 @@ export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: ()
                 {c.path}
                 {c.old ? ` ${t("review.oldLine", { n: c.old })}` : c.line ? `:${c.line}` : ""}
               </span>
-              <span class="grow">{c.text}</span>
+              <span class="grow">
+                {withoutSuggestion(c.text) || c.text}
+                <Show when={suggestionOf(c.text) !== null}>
+                  <span class="t3"> · {t("review.suggestion")}</span>
+                </Show>
+              </span>
               <IconButton icon="cross" size={22} label={t("common.delete")} onClick={() => props.onRemove(i())} />
             </div>
           )}

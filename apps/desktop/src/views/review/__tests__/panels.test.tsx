@@ -34,14 +34,22 @@ describe("AcceptPanel", () => {
     expect(screen.getByText(/Unconfirmed assumption: quantities are always 1/)).toBeTruthy();
     expect(screen.getByText(/Sentinel: Changed what a test expects/)).toBeTruthy();
     expect(screen.getByText(/2 review units not marked viewed/)).toBeTruthy();
-    expect(screen.getByText(/Marked viewed 1\/3/)).toBeTruthy();
+    // Said once: the unviewed units are in the open list, not repeated as a count.
+    expect(screen.queryByText(/viewed 1\/3/)).toBeNull();
   });
 
-  it("blocks accepting until every human criterion is checked", () => {
+  it("blocks accepting until every human criterion is checked, saying so on the criterion's own row", () => {
     render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
-    expect(screen.getByText(/Human criterion H1 is not checked yet/)).toBeTruthy();
+    expect(screen.getByText("Waiting for your check")).toBeTruthy();
+    expect(screen.queryByText(/Human criterion H1 is not checked yet/)).toBeNull();
     const accept = screen.getByText("Accept and write branch").closest("button")!;
     expect(accept.disabled).toBe(true);
+    expect(screen.getByText(/viewed 3\/3/)).toBeTruthy();
+  });
+
+  it("does not put a focus ring on a button when it opens", () => {
+    render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    expect(document.activeElement?.getAttribute("role")).toBe("dialog");
   });
 
   it("says the verifier's word with its pin", () => {

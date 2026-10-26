@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
 	checkBash,
+	checkRead,
 	checkWrite,
 	globToRegExp,
 	isAllow,
@@ -71,6 +72,19 @@ test("cautious only runs read-only and test commands directly", () => {
 test("credentials are scrubbed from the agent's environment", () => {
 	const env = scrubEnv({ PATH: "/bin", OPENAI_API_KEY: "sk", GITHUB_TOKEN: "t", NODE_ENV: "test", HOME: "/h" });
 	assert.deepEqual(Object.keys(env).sort(), ["HOME", "NODE_ENV", "PATH"]);
+});
+
+test("proxy settings are dropped unless the network is allowed", () => {
+	const env = { PATH: "/bin", https_proxy: "http://127.0.0.1:7890", ALL_PROXY: "socks5://127.0.0.1:7891" };
+	assert.deepEqual(Object.keys(scrubEnv(env)), ["PATH"]);
+	assert.deepEqual(Object.keys(scrubEnv(env, true)).sort(), ["ALL_PROXY", "PATH", "https_proxy"]);
+});
+
+test("without a sandbox, reads are fenced to the goal's directories", () => {
+	assert.ok(checkRead(["/w/ws"], "/w/ws/src/a.ts"));
+	assert.ok(checkRead(["/w/ws"], "/w/ws"));
+	assert.ok(!checkRead(["/w/ws"], "/w/ws-other/a.ts"));
+	assert.ok(!checkRead(["/w/ws"], "/w/ws/../../Users/me/.ssh/id_ed25519"));
 });
 
 test("sandboxed commands survive quoting", () => {

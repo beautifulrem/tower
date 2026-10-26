@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "pnpm --dir apps/desktop tauri dev",
     "build": "pnpm --dir apps/desktop tauri build",
-    "check": "pnpm --dir apps/desktop check && cargo clippy --workspace --all-targets && cargo test --workspace && node --test extensions/tower-goal/policy.test.ts"
+    "check": "pnpm --dir apps/desktop check && cargo clippy --workspace --all-targets && cargo test --workspace && node --test extensions/tower-goal/policy.test.ts extensions/tower-goal/sandboxfs.test.ts"
   },
   "packageManager": "pnpm@12.6.0"
 }

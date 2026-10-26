@@ -151,12 +151,25 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 const SECRET_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH|COOKIE|SESSION)/i;
 const ALWAYS_KEEP = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "TERM", "TMPDIR", "PWD"]);
 
-export function scrubEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+/** Proxy settings: without the network they only point at a way out. */
+const PROXY_NAME = /^(https?|all|ftp|no)_proxy$/i;
+
+export function scrubEnv(env: Record<string, string | undefined>, network = false): Record<string, string | undefined> {
 	const out: Record<string, string | undefined> = {};
 	for (const [k, v] of Object.entries(env)) {
+		if (!network && PROXY_NAME.test(k)) continue;
 		if (ALWAYS_KEEP.has(k) || !SECRET_NAME.test(k)) out[k] = v;
 	}
 	return out;
+}
+
+/** Whether `absPath` (symlinks already resolved) lies inside one of `roots`. */
+export function checkRead(roots: string[], absPath: string): boolean {
+	const p = normalize(absPath);
+	return roots.some((r) => {
+		const root = normalize(r);
+		return p === root || p.startsWith(`${root}/`);
+	});
 }
 
 /** POSIX single-quote escaping. */

@@ -6,6 +6,6 @@
   "type": "module",
   "main": "index.ts",
   "scripts": {
-    "test": "node --test policy.test.ts"
+    "test": "node --test policy.test.ts sandboxfs.test.ts"
   }
 }

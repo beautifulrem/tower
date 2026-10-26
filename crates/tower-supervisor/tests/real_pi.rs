@@ -180,6 +180,13 @@ async fn a_goal_runs_through_the_real_pi() {
         entries.iter().any(|e| matches!(&e.event, EventKind::ToolEnded { tool, summary, .. } if tool == "bash" && summary.trim() == "0")),
         "no *_API_KEY reaches the agent's shell"
     );
+    let ended = |name: &str, error: bool, needle: &str| {
+        entries.iter().any(|e| matches!(&e.event, EventKind::ToolEnded { tool, is_error, summary, .. } if tool == name && *is_error == error && summary.contains(needle)))
+    };
+    assert!(ended("read", true, "not permitted by Tower's sandbox"), "the read tool is sandboxed too");
+    assert!(ended("read", false, "hello, edited in the sandbox"), "edit and read work inside the workspace");
+    assert!(tool_output("NET_DENIED") && !tool_output("NET_OPEN"), "no network unless the contract allows it");
+    assert!(ended("grep", true, ""), "tools outside the allowlist do not exist");
     let detail = sup.goal(&id).unwrap();
     assert!(detail.claims.iter().any(|c| c.text == "缺少 result.txt"));
     assert!(detail.criteria[0].verified.as_ref().unwrap().passed);

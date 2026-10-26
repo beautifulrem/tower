@@ -10,6 +10,7 @@ import {
 	isAllow,
 	langOf,
 	normalize,
+	permissionOutcome,
 	sandboxed,
 	withDefaultTimeout,
 	scrubEnv,
@@ -97,4 +98,22 @@ test("sandboxed commands survive quoting", () => {
 test("commands get a timeout unless the model chose one", () => {
 	assert.deepEqual(withDefaultTimeout({ command: "ls" }), { command: "ls", timeout: DEFAULT_COMMAND_TIMEOUT_SECS });
 	assert.deepEqual(withDefaultTimeout({ command: "make", timeout: 900 }), { command: "make", timeout: 900 });
+});
+
+test("the ACP bridge allows Tower's tools once and refuses everything else", () => {
+	const options = [
+		{ kind: "allow_always", optionId: "aa" },
+		{ kind: "allow_once", optionId: "a1" },
+		{ kind: "reject_once", optionId: "r1" },
+	];
+	const ask = (toolName: string, title = "") => permissionOutcome({ options, toolCall: { title, _meta: { claudeCode: { toolName } } } });
+	assert.deepEqual(ask("mcp__tower__bash"), { outcome: "selected", optionId: "a1" });
+	assert.deepEqual(ask("Bash"), { outcome: "selected", optionId: "r1" });
+	assert.deepEqual(ask("WebFetch"), { outcome: "selected", optionId: "r1" });
+	// Named only by its title; a lookalike prefix is not Tower's.
+	assert.deepEqual(permissionOutcome({ options, toolCall: { title: "mcp__tower__read" } }), { outcome: "selected", optionId: "a1" });
+	assert.deepEqual(ask("mcp__towerx__bash"), { outcome: "selected", optionId: "r1" });
+	// Nothing to refuse with: cancelled, never allowed.
+	assert.deepEqual(permissionOutcome({ options: [{ kind: "allow_once", optionId: "a1" }], toolCall: { title: "Bash" } }), { outcome: "cancelled" });
+	assert.deepEqual(permissionOutcome({}), { outcome: "cancelled" });
 });

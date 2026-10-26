@@ -1,3 +1,5 @@
 [env]
 # ts-rs writes TypeScript bindings for UI-facing types here (run `cargo test` to refresh).
 TS_RS_EXPORT_DIR = { value = "apps/desktop/src/gen", relative = true }
+# Timestamps are i64 milliseconds; they fit a JS number exactly.
+TS_RS_LARGE_INT = "number"

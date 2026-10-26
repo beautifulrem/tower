@@ -2,4 +2,4 @@
 import type { EventKind } from "./EventKind";
 import type { Source } from "./Source";
 
-export type TraceEntry = { seq: bigint, goal_id: string, at: bigint, source: Source, event: EventKind, };
+export type TraceEntry = { seq: number, goal_id: string, at: number, source: Source, event: EventKind, };

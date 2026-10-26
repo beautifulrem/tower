@@ -1,0 +1,11 @@
+{
+  "name": "tower",
+  "private": true,
+  "description": "A Goal-centric supervision desk for coding agents, powered by Pi",
+  "scripts": {
+    "dev": "pnpm --dir apps/desktop tauri dev",
+    "build": "pnpm --dir apps/desktop tauri build",
+    "check": "pnpm --dir apps/desktop check && cargo clippy --workspace --all-targets && cargo test --workspace && node --test extensions/tower-goal/policy.test.ts"
+  },
+  "packageManager": "pnpm@12.6.0"
+}

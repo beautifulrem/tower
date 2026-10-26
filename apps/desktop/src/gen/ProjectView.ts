@@ -4,4 +4,4 @@ export type ProjectView = { id: string, name: string, root: string, base_branch:
 /**
  * Detected from the repository (package.json scripts, Cargo, ...).
  */
-test_command: string | null, created_at: bigint, };
+test_command: string | null, created_at: number, };

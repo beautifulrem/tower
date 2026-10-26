@@ -11,8 +11,8 @@ export type GoalSummary = { id: string, project_id: string, project_name: string
 /**
  * Open Needs-You items for this goal.
  */
-needs_you: number, verified_pin: string | null, branch: string | null, created_at: bigint, updated_at: bigint, 
+needs_you: number, verified_pin: string | null, branch: string | null, created_at: number, updated_at: number, 
 /**
  * When the current run started, for the elapsed clock.
  */
-run_started_at: bigint | null, last_viewed_at: bigint | null, };
+run_started_at: number | null, last_viewed_at: number | null, };

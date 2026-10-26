@@ -279,6 +279,14 @@ async fn start_run_inner(
     }
     let ws = PathBuf::from(goal.workspace.clone().expect("workspace prepared"));
 
+    // Claude Code's adapter, installed once from the lockfile Tower ships.
+    if inner.engine_of(&goal) == "claude-code"
+        && let Err(e) = crate::acp_adapter::ensure(inner).await
+    {
+        fail_to_start(inner, goal_id, &e.to_string())?;
+        return Err(e);
+    }
+
     let cfg = match engine_config(inner, &goal, &ws) {
         Ok(c) => c,
         Err(e) => {

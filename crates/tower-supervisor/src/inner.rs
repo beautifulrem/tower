@@ -208,9 +208,13 @@ impl Inner {
         if !configured.trim().is_empty() {
             return configured;
         }
-        match self.env.which("claude-agent-acp") {
-            Some(p) => p.display().to_string(),
-            None => "npx -y @agentclientprotocol/claude-agent-acp@0.97.0".into(),
+        if let Some(p) = self.env.which("claude-agent-acp") {
+            return p.display().to_string();
+        }
+        let installed = crate::acp_adapter::entry(&self.paths);
+        match (installed.is_file(), self.env.which("node")) {
+            (true, Some(node)) => format!("{} {}", node.display(), installed.display()),
+            _ => "npx -y @agentclientprotocol/claude-agent-acp@0.97.0".into(),
         }
     }
 

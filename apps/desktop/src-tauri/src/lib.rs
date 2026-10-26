@@ -33,7 +33,7 @@ struct TauriSink {
     /// The goal of the latest notification. Notifications on macOS cannot
     /// carry a click action here, so the next time Tower comes to the front
     /// it opens that goal.
-    pending_open: Mutex<Option<String>>,
+    pending_open: Mutex<Option<(String, std::time::Instant)>>,
 }
 
 /// Items that hold up a goal until the human acts. Review-ready items wait
@@ -71,9 +71,13 @@ impl TauriSink {
         let Some(window) = app.get_webview_window("main") else { return };
         badge(&window, items);
         let focused = window.is_focused().unwrap_or(false);
+        let settings = app.try_state::<Supervisor>().map(|s| s.settings());
+        let now = tower_store::system_now();
+        let quiet = settings.as_ref().and_then(|s| s.quiet_until).is_some_and(|until| until > now);
         let mut seen = self.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         for item in items {
-            if !seen.insert(item.id.clone()) || focused {
+            let muted = settings.as_ref().is_some_and(|s| s.muted_goals.contains(&item.goal_id));
+            if !seen.insert(item.id.clone()) || focused || quiet || muted {
                 continue;
             }
             let urgent =
@@ -93,12 +97,15 @@ impl TauriSink {
             };
             let _ = app.notification().builder().title(title).body(format!("{what} · {}", item.title)).show();
             *self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-                Some(format!("goal/{}", item.goal_id));
+                Some((format!("goal/{}", item.goal_id), std::time::Instant::now()));
         }
     }
 
+    /// Coming to the front within two minutes of a notification is taken as
+    /// answering it; later, it is just switching apps.
     fn on_focus(&self) {
-        let route = self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        let pending = self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        let route = pending.filter(|(_, at)| at.elapsed() < std::time::Duration::from_secs(120)).map(|(r, _)| r);
         if let (Some(app), Some(route)) = (&self.app, route) {
             let _ = app.emit(OPEN_EVENT, route);
         }
@@ -182,6 +189,18 @@ fn set_ui_state(sup: Sup<'_>, id: String, key: String, value: Option<String>) ->
 #[tauri::command]
 async fn file_text(sup: Sup<'_>, id: String, path: String, old: bool, pin: Option<String>) -> Res<Option<String>> {
     sup.file_text(&id, &path, old, pin).await
+}
+
+/// Opens Terminal running Pi, where `/login` connects a model account.
+#[tauri::command]
+fn open_pi_login(sup: Sup<'_>) -> Res<()> {
+    let pi = sup.environment().pi_path.unwrap_or_else(|| "pi".into());
+    let quoted = format!("'{}'", pi.replace('\'', "'\\''"));
+    let script = format!(
+        "tell application \"Terminal\"\n  activate\n  do script \"{}\"\nend tell",
+        quoted.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+    std::process::Command::new("/usr/bin/osascript").args(["-e", &script]).spawn().map(|_| ()).map_err(Error::Io)
 }
 
 #[tauri::command]
@@ -419,6 +438,7 @@ pub fn run() {
             ui_state,
             set_ui_state,
             start_demo,
+            open_pi_login,
             file_text,
             trace,
             inbox,

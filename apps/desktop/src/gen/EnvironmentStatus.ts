@@ -6,6 +6,10 @@ import type { EnvIssue } from "./EnvIssue";
  */
 export type EnvironmentStatus = { pi_path: string | null, pi_version: string | null, git_version: string | null, data_dir: string, 
 /**
+ * Programs the in-app demo needs that are missing (e.g. `node`).
+ */
+demo_missing: Array<string>, 
+/**
  * The same problems as `issues`, as plain sentences.
  */
 problems: Array<string>, issues: Array<EnvIssue>, };

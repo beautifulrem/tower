@@ -398,6 +398,16 @@ impl Store {
             let (c, v) = row?;
             baseline.insert(c, v);
         }
+        let mut original = std::collections::HashMap::new();
+        let mut stmt = self.conn.prepare("SELECT criterion, pin, passed FROM original_results WHERE goal_id = ?1")?;
+        for row in
+            stmt.query_map([id], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, String>(1)?, r.get::<_, bool>(2)?))))?
+        {
+            let (c, (pin, passed)) = row?;
+            if rec.pin.as_deref() == Some(pin.as_str()) {
+                original.insert(c, passed);
+            }
+        }
         let mut observed = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare("SELECT criterion, passed, at FROM observations WHERE goal_id = ?1")?;
         for row in stmt
@@ -423,6 +433,7 @@ impl Store {
                     CriterionKind::Exec { .. } => results.get(&c.id).cloned(),
                     CriterionKind::Human => None,
                 },
+                passes_with_original_tests: original.get(&c.id).copied(),
                 passed_on_base: match &c.kind {
                     CriterionKind::Exec { command, .. } => {
                         baseline.get(&c.id).filter(|(cmd, _)| cmd == command).map(|(_, passed)| *passed)

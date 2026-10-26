@@ -127,9 +127,9 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
             Ok(())
         }
         Some(Choice::InstallWithNetwork) => {
-            // The approval covers exactly these dependency changes: if the
-            // agent changes them again, verification asks again.
-            if let Some(fingerprint) = verify::current_dependency_fingerprint(inner, goal).await? {
+            // The approval covers exactly this snapshot: if the agent changes
+            // anything, verification asks again.
+            if let Some(fingerprint) = inner.store(|s| s.goal(goal))?.pin {
                 inner.append(goal, EventKind::SetupNetworkApproved { fingerprint })?;
             }
             verify::spawn(inner.clone(), goal.into());

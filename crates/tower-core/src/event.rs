@@ -168,6 +168,13 @@ pub enum EventKind {
         base: String,
         passed: bool,
     },
+    /// The criterion run on the verified snapshot with the agent's edits to
+    /// existing tests undone.
+    OriginalTestsResult {
+        criterion: String,
+        pin: String,
+        passed: bool,
+    },
     /// Agent-environment observation: a command matching a criterion ran there.
     Observed {
         criterion: String,
@@ -272,6 +279,7 @@ impl EventKind {
             | Self::SetupFinished { .. }
             | Self::CriterionResult { .. }
             | Self::BaselineResult { .. }
+            | Self::OriginalTestsResult { .. }
             | Self::VerifyFinished { .. }
             | Self::CostUpdated { .. }
             | Self::BranchWritten { .. }
@@ -303,6 +311,7 @@ impl EventKind {
             Self::SetupFinished { .. } => "setup_finished",
             Self::CriterionResult { .. } => "criterion_result",
             Self::BaselineResult { .. } => "baseline_result",
+            Self::OriginalTestsResult { .. } => "original_tests_result",
             Self::VerifyFinished { .. } => "verify_finished",
             Self::Observed { .. } => "observed",
             Self::InboxOpened { .. } => "inbox_opened",

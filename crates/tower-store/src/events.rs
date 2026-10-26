@@ -124,6 +124,12 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
             let pr = PrView { url: url.clone(), status: status.clone() };
             tx.execute("UPDATE goals SET pr = ?2 WHERE id = ?1", params![goal_id, serde_json::to_string(&pr)?])?;
         }
+        EventKind::OriginalTestsResult { criterion, pin, passed } => {
+            tx.execute(
+                "INSERT OR REPLACE INTO original_results (goal_id, criterion, pin, passed) VALUES (?1, ?2, ?3, ?4)",
+                params![goal_id, criterion, pin, passed],
+            )?;
+        }
         EventKind::BaselineResult { criterion, command, base, passed } => {
             tx.execute(
                 "INSERT OR REPLACE INTO baseline_results (goal_id, criterion, command, base, passed, at)

@@ -90,6 +90,10 @@ def run(message):
         open("package.json", "w").write('{"dependencies": {"left-pad": "1.3.0"}}\n')
         open("done.txt", "w").write("ok\n")
         tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
+    elif scenario == "weaken_test":
+        # Make the failing check pass by editing the test, not the code.
+        open("test/check.sh", "w").write("exit 0\n")
+        tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
     elif scenario == "flaky":
         for _ in range(4):
             tool("bash", {"command": "npm run build"}, "error: build failed", error=True)

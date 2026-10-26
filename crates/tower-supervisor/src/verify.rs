@@ -15,7 +15,6 @@ use tower_git::Git;
 use tower_store::NewInboxItem;
 use tower_verify::{Cancel, RunSpec};
 
-use crate::api::ToastLevel;
 use crate::prompts::{self, Failure};
 use crate::{Inner, Result, invalid, run};
 
@@ -110,27 +109,17 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws5), &base5, &pin5))
         .await
         .map_err(|e| invalid(e.to_string()))??;
-    let hits = tower_core::sentinel::scan(&files, &rec.contract.scope, lang);
+    let mut hits = tower_core::sentinel::scan(&files, &rec.contract.scope, lang);
     for h in &hits {
-        inner.append(
-            goal,
-            EventKind::SentinelHit {
-                sentinel: h.sentinel.clone(),
-                severity: h.severity,
-                title: h.title.clone(),
-                detail: h.detail.clone(),
-            },
-        )?;
+        append_hit(inner, goal, h)?;
     }
-    let high: Vec<&str> =
-        hits.iter().filter(|h| h.severity >= tower_core::sentinel::HIGH).map(|h| h.title.as_str()).collect();
 
     let machine: Vec<_> = rec.contract.machine_criteria().cloned().collect();
     if machine.is_empty() {
         inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
         inner.set_mode(goal, Mode::Idle)?;
-        if !high.is_empty() {
-            return to_paused(inner, goal, PauseReason::SentinelHigh, &high.join(lang.pick("；", "; ")));
+        if let Some(high) = high_titles(&hits, lang) {
+            return to_paused(inner, goal, PauseReason::SentinelHigh, &high);
         }
         let note = tr!(
             lang,
@@ -138,47 +127,33 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
             "Not machine-verified: the contract has no executable criteria"
         );
         inner.transition(goal, Transition::VerifyPassed, None, &note)?;
-        review_ready(
-            inner,
-            goal,
-            &tr!(lang, "没有可执行的标准：请你判断结果", "No executable criteria: judge the result yourself"),
-        )?;
+        review_ready(inner, goal, "")?;
         return Ok(());
     }
 
-    // 2. Clean checkout of exactly the pin.
-    let dir = inner.paths.verify(goal);
-    let git = inner.git.clone();
-    let (ws3, pin3, dir3) = (ws.clone(), snap.pin.clone(), dir.clone());
-    tokio::task::spawn_blocking(move || git.add_verify_checkout(Path::new(&ws3), &pin3, &dir3))
-        .await
-        .map_err(|e| invalid(e.to_string()))??;
-    let fingerprint = dependency_fingerprint(&files);
-    let setup_network = setup_may_use_network(inner, &rec, goal, fingerprint.as_deref())?;
-    let outcome = run_criteria(inner, goal, &rec.contract, &dir, Target::Pin(&snap.pin), setup_network, cancel).await;
-    let git = inner.git.clone();
-    let (ws4, dir4) = (ws.clone(), dir.clone());
-    let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws4), &dir4)).await;
-    let outcome = outcome?;
+    // 2. One clean checkout and one package cache, used in order of trust:
+    // the base commit (your content) first, then the agent's snapshot.
+    let bench = Bench::open(inner, goal, &rec, &ws, &base, cancel).await?;
+    let outcome = bench.run_all(&snap.pin, &files).await;
+    bench.close().await;
+    let (outcome, extra) = outcome?;
+    hits.extend(extra);
 
     if cancel.is_cancelled() {
         return Ok(());
     }
     inner.set_mode(goal, Mode::Idle)?;
     match outcome {
-        Outcome::Passed if !high.is_empty() => {
-            spawn_baseline(inner.clone(), goal.to_string());
+        Outcome::Passed if high_titles(&hits, lang).is_some() => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
-            let hits = high.join(lang.pick("；", "; "));
+            let hits = high_titles(&hits, lang).unwrap_or_default();
             let detail = tr!(lang, "机器标准都通过了，但{hits}", "Every machine criterion passed, but: {hits}");
             to_paused(inner, goal, PauseReason::SentinelHigh, &detail)?;
         }
         Outcome::Passed => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
             inner.transition(goal, Transition::VerifyPassed, None, "")?;
-            let body = tr!(lang, "全部机器标准在干净环境中通过", "Every machine criterion passed in a clean checkout");
-            review_ready(inner, goal, &body)?;
-            spawn_baseline(inner.clone(), goal.to_string());
+            review_ready(inner, goal, "")?;
         }
         Outcome::EnvError(detail) => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
@@ -188,12 +163,20 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
             let changed: Vec<&str> =
                 files.iter().filter(|f| is_dependency_file(&f.path)).map(|f| f.path.as_str()).collect();
-            let list = changed.join(", ");
-            let detail = tr!(
-                lang,
-                "Agent 改了 {list}。合同不允许联网，离线准备失败；联网安装会运行这些改动选择的代码。\n{tail}",
-                "The agent changed {list}. The contract keeps the network off and setup failed offline; installing with the network runs code these changes chose.\n{tail}"
-            );
+            let detail = if changed.is_empty() {
+                tr!(
+                    lang,
+                    "合同不允许联网，准备命令在 Agent 的快照上离线运行失败；联网运行会执行 Agent 改过的内容。\n{tail}",
+                    "The contract keeps the network off and setup failed offline on the agent's snapshot; running it with the network would execute content the agent changed.\n{tail}"
+                )
+            } else {
+                let list = changed.join(", ");
+                tr!(
+                    lang,
+                    "Agent 改了 {list}。合同不允许联网，离线准备失败；联网安装会运行这些改动选择的代码。\n{tail}",
+                    "The agent changed {list}. The contract keeps the network off and setup failed offline; installing with the network runs code these changes chose.\n{tail}"
+                )
+            };
             to_paused(inner, goal, PauseReason::DependenciesChanged, &detail)?;
         }
         Outcome::Failed(failures) => {
@@ -225,24 +208,359 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     Ok(())
 }
 
-/// What a criteria run checks.
-#[derive(Clone, Copy)]
-enum Target<'a> {
-    /// The agent's pinned snapshot: the verdict.
-    Pin(&'a str),
-    /// The base commit, before any change (the baseline).
-    Base(&'a str),
-    /// The pinned snapshot with the agent's edits to existing tests undone.
-    OriginalTests,
+fn append_hit(inner: &Inner, goal: &str, h: &tower_core::sentinel::SentinelHit) -> Result<()> {
+    inner.append(
+        goal,
+        EventKind::SentinelHit {
+            sentinel: h.sentinel.clone(),
+            severity: h.severity,
+            title: h.title.clone(),
+            detail: h.detail.clone(),
+        },
+    )?;
+    Ok(())
 }
 
-impl Target<'_> {
-    fn name(self) -> &'static str {
-        match self {
-            Target::Pin(_) => "verify",
-            Target::Base(_) => "base",
-            Target::OriginalTests => "orig",
+/// The titles of high-severity hits, joined, if any.
+fn high_titles(hits: &[tower_core::sentinel::SentinelHit], lang: Lang) -> Option<String> {
+    let high: Vec<&str> =
+        hits.iter().filter(|h| h.severity >= tower_core::sentinel::HIGH).map(|h| h.title.as_str()).collect();
+    (!high.is_empty()).then(|| high.join(lang.pick("；", "; ")))
+}
+
+enum Outcome {
+    Passed,
+    Failed(Vec<Failure>),
+    EnvError(String),
+    /// Setup failed without the network on the agent's snapshot; the
+    /// output tail.
+    SetupNeedsNetwork(String),
+}
+
+/// The result of one command in the verification checkout.
+struct Ran {
+    passed: bool,
+    environment_failure: bool,
+    exit_code: Option<i32>,
+    duration_ms: i64,
+    output_tail: String,
+}
+
+/// One verification's workbench: a clean checkout and a fresh package
+/// cache (seeded from the user's own, thrown away afterwards), used in
+/// order of trust:
+///
+/// 1. checked out at the base commit — your content — setup runs with the
+///    network, and the criteria that have no baseline yet run there
+///    (red → green evidence);
+/// 2. switched to the agent's snapshot — setup runs again, offline unless
+///    the contract allows the network or you approved this snapshot —
+///    then the criteria: the verdict;
+/// 3. if the agent edited existing tests and everything passed, those
+///    tests are put back as they were on the base and the criteria run
+///    once more: passing only with the edits holds the goal.
+///
+/// Nothing the agent wrote influences step 1, and nothing from any step
+/// survives the verification. Local files such as `.env` are present only
+/// while criteria run, never during setup.
+struct Bench<'a> {
+    inner: &'a Arc<Inner>,
+    goal: &'a str,
+    rec: tower_store::GoalRecord,
+    ws: String,
+    base: String,
+    dir: std::path::PathBuf,
+    env: Vec<(String, String)>,
+    online: Option<std::path::PathBuf>,
+    offline: Option<std::path::PathBuf>,
+    criteria: Option<std::path::PathBuf>,
+    setup: Option<String>,
+    cancel: &'a Cancel,
+    _cache: RemoveOnDrop,
+}
+
+impl<'a> Bench<'a> {
+    async fn open(
+        inner: &'a Arc<Inner>,
+        goal: &'a str,
+        rec: &tower_store::GoalRecord,
+        ws: &str,
+        base: &str,
+        cancel: &'a Cancel,
+    ) -> Result<Bench<'a>> {
+        let dir = inner.paths.verify(goal);
+        let git = inner.git.clone();
+        let (ws1, base1, dir1) = (ws.to_string(), base.to_string(), dir.clone());
+        tokio::task::spawn_blocking(move || git.add_verify_checkout(Path::new(&ws1), &base1, &dir1))
+            .await
+            .map_err(|e| invalid(e.to_string()))??;
+        let tmp = inner.paths.tmp(&format!("{goal}-verify"));
+        let cache = inner.paths.root.join("verify-cache").join(goal);
+        let _ = std::fs::remove_dir_all(&cache);
+        let cleanup = RemoveOnDrop(cache.clone());
+        let goal_dir = inner.paths.goal_dir(goal);
+        let online = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify-setup", true)?;
+        let offline = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify-setup-offline", false)?;
+        let criteria = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify", rec.contract.network)?;
+        let mut env = inner.env.without_credentials();
+        env.push(("CI".into(), "1".into()));
+        env.extend(criteria.env);
+        let project_setup = inner.store(|s| s.project(&rec.project_id))?.setup_command;
+        let setup = if !rec.contract.setup.trim().is_empty() {
+            Some(rec.contract.setup.clone())
+        } else if !project_setup.trim().is_empty() {
+            Some(project_setup)
+        } else {
+            Git::detect_setup_command(&dir)
+        };
+        Ok(Bench {
+            inner,
+            goal,
+            rec: rec.clone(),
+            ws: ws.to_string(),
+            base: base.to_string(),
+            dir,
+            env,
+            online: online.profile,
+            offline: offline.profile,
+            criteria: criteria.profile,
+            setup,
+            cancel,
+            _cache: cleanup,
+        })
+    }
+
+    async fn close(&self) {
+        let git = self.inner.git.clone();
+        let (ws, dir) = (self.ws.clone(), self.dir.clone());
+        let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws), &dir)).await;
+    }
+
+    async fn exec(&self, command: &str, profile: Option<&Path>, timeout: Duration) -> Ran {
+        let spec = RunSpec::new(command_for(command, profile), &self.dir, self.env.clone(), timeout);
+        let r = tower_verify::run(&spec, self.cancel).await;
+        Ran {
+            passed: r.passed(),
+            environment_failure: r.is_environment_failure(),
+            exit_code: r.exit_code(),
+            duration_ms: r.duration_ms,
+            output_tail: r.output_tail,
         }
+    }
+
+    /// Runs setup; `Some(result)` when it failed.
+    async fn setup(&self, network: bool) -> Option<Ran> {
+        let setup = self.setup.as_deref()?;
+        let profile = if network { self.online.as_deref() } else { self.offline.as_deref() };
+        let r = self.exec(setup, profile, SETUP_TIMEOUT).await;
+        (!r.passed).then_some(r)
+    }
+
+    async fn checkout(&self, rev: &str) -> Result<()> {
+        let git = self.inner.git.clone();
+        let (dir, rev) = (self.dir.clone(), rev.to_string());
+        tokio::task::spawn_blocking(move || git.checkout_detached(&dir, &rev))
+            .await
+            .map_err(|e| invalid(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Copies the project's local files in for the criteria; returns them
+    /// so they can be removed before the next setup.
+    async fn local_files(&self) -> Result<Vec<String>> {
+        run::copy_local_files(self.inner, &self.rec, &self.dir).await
+    }
+
+    fn remove(&self, files: &[String]) {
+        for f in files {
+            let _ = std::fs::remove_file(self.dir.join(f));
+        }
+    }
+
+    fn criteria_list(&self) -> Vec<(tower_core::contract::Criterion, String, u32)> {
+        self.rec
+            .contract
+            .machine_criteria()
+            .filter_map(|c| match &c.kind {
+                CriterionKind::Exec { command, timeout_secs } => Some((c.clone(), command.clone(), *timeout_secs)),
+                CriterionKind::Human => None,
+            })
+            .collect()
+    }
+
+    async fn run_all(
+        &self,
+        pin: &str,
+        files: &[tower_core::view::DiffFile],
+    ) -> Result<(Outcome, Vec<tower_core::sentinel::SentinelHit>)> {
+        let (inner, goal) = (self.inner, self.goal);
+        let lang = inner.lang();
+        let criteria = self.criteria_list();
+
+        // 1. The base, with your dependencies.
+        if let Some(r) = self.setup(true).await {
+            let tail = tail_lines(&r.output_tail, 20);
+            let setup = self.setup.clone().unwrap_or_default();
+            return Ok((
+                Outcome::EnvError(tr!(
+                    lang,
+                    "准备命令 `{setup}` 在基线提交上就失败了（与 Agent 的改动无关）：\n{tail}",
+                    "The setup command `{setup}` fails on the base commit itself (not because of the agent's changes):\n{tail}"
+                )),
+                Vec::new(),
+            ));
+        }
+        let detail = inner.store(|s| s.detail(goal))?;
+        let missing: Vec<&str> =
+            detail.criteria.iter().filter(|c| c.passed_on_base.is_none()).map(|c| c.criterion.id.as_str()).collect();
+        if criteria.iter().any(|(c, ..)| missing.contains(&c.id.as_str())) {
+            let copied = self.local_files().await?;
+            for (c, command, timeout) in criteria.iter().filter(|(c, ..)| missing.contains(&c.id.as_str())) {
+                let r =
+                    self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
+                if !r.environment_failure {
+                    inner.append(
+                        goal,
+                        EventKind::BaselineResult {
+                            criterion: c.id.clone(),
+                            command: command.clone(),
+                            base: self.base.clone(),
+                            passed: r.passed,
+                        },
+                    )?;
+                }
+            }
+            self.remove(&copied);
+        }
+
+        // 2. The agent's snapshot.
+        self.checkout(pin).await?;
+        let network = setup_may_use_network(inner, &self.rec, goal, Some(pin))?;
+        if let Some(setup) = self.setup.clone() {
+            let failed = self.setup(network).await;
+            inner.append(
+                goal,
+                EventKind::SetupFinished {
+                    command: setup.clone(),
+                    ok: failed.is_none(),
+                    exit_code: failed.as_ref().and_then(|r| r.exit_code),
+                    duration_ms: failed.as_ref().map_or(0, |r| r.duration_ms),
+                },
+            )?;
+            if let Some(r) = failed {
+                let tail = tail_lines(&r.output_tail, 20);
+                if !network {
+                    return Ok((Outcome::SetupNeedsNetwork(tail), Vec::new()));
+                }
+                let detail =
+                    tr!(lang, "准备命令 `{setup}` 失败：\n{tail}", "The setup command `{setup}` failed:\n{tail}");
+                return Ok((Outcome::EnvError(detail), Vec::new()));
+            }
+        }
+        let copied = self.local_files().await?;
+        if !copied.is_empty() {
+            inner.append(goal, EventKind::LocalFilesCopied { files: copied.clone() })?;
+        }
+        let mut failures = Vec::new();
+        for (c, command, timeout) in &criteria {
+            if self.cancel.is_cancelled() {
+                return Ok((Outcome::EnvError(tr!(lang, "验证被取消", "Verification was cancelled")), Vec::new()));
+            }
+            let r = self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
+            if r.environment_failure {
+                let id = &c.id;
+                let how = match r.exit_code {
+                    Some(code) => tr!(lang, "退出码 {code}", "exit code {code}"),
+                    None => tr!(lang, "未启动", "did not start"),
+                };
+                let tail = tail_lines(&r.output_tail, 20);
+                return Ok((
+                    Outcome::EnvError(tr!(
+                        lang,
+                        "{id} 的命令 `{command}` 无法运行（{how}）：\n{tail}",
+                        "The command `{command}` of {id} could not run ({how}):\n{tail}"
+                    )),
+                    Vec::new(),
+                ));
+            }
+            inner.append(
+                goal,
+                EventKind::CriterionResult {
+                    criterion: c.id.clone(),
+                    pin: pin.into(),
+                    passed: r.passed,
+                    exit_code: r.exit_code,
+                    duration_ms: r.duration_ms,
+                    output_tail: r.output_tail.clone(),
+                },
+            )?;
+            if !r.passed {
+                failures.push(Failure {
+                    id: c.id.clone(),
+                    title: c.title.clone(),
+                    command: command.clone(),
+                    exit_code: r.exit_code,
+                    output_tail: r.output_tail,
+                });
+            }
+        }
+        if !failures.is_empty() {
+            return Ok((Outcome::Failed(failures), Vec::new()));
+        }
+
+        // 3. The same snapshot with the agent's edits to existing tests undone.
+        let edited: Vec<&str> = files
+            .iter()
+            .filter(|f| {
+                f.status == tower_core::view::FileStatus::Modified && tower_core::sentinel::is_test_path(&f.path)
+            })
+            .map(|f| f.path.as_str())
+            .collect();
+        if edited.is_empty() {
+            return Ok((Outcome::Passed, Vec::new()));
+        }
+        for path in &edited {
+            let git = inner.git.clone();
+            let (ws, base, p) = (self.ws.clone(), self.base.clone(), path.to_string());
+            let text = tokio::task::spawn_blocking(move || git.file_at(Path::new(&ws), &base, &p))
+                .await
+                .map_err(|e| invalid(e.to_string()))?;
+            if let Some(text) = text {
+                std::fs::write(self.dir.join(path), text)?;
+            }
+        }
+        let mut depends = Vec::new();
+        for (c, command, timeout) in &criteria {
+            let r = self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
+            if r.environment_failure {
+                continue;
+            }
+            inner.append(
+                goal,
+                EventKind::OriginalTestsResult { criterion: c.id.clone(), pin: pin.into(), passed: r.passed },
+            )?;
+            if !r.passed {
+                depends.push(c.id.clone());
+            }
+        }
+        if depends.is_empty() {
+            return Ok((Outcome::Passed, Vec::new()));
+        }
+        let detail = tr!(
+            lang,
+            "{ids} 只有在 Agent 改过的测试下才通过；恢复原来的测试后失败。被改的测试：{files}",
+            "{ids} pass only with the agent's edits to existing tests and fail with the originals. Edited tests: {files}",
+            ids = depends.join(", "),
+            files = edited.join(", ")
+        );
+        let hit = tower_core::sentinel::SentinelHit {
+            sentinel: "passes_only_with_edited_tests".into(),
+            severity: tower_core::sentinel::HIGH,
+            title: tower_core::i18n::sentinel_title("passes_only_with_edited_tests", lang).unwrap_or_default().into(),
+            detail,
+        };
+        append_hit(inner, goal, &hit)?;
+        Ok((Outcome::Passed, vec![hit]))
     }
 }
 
@@ -285,41 +603,9 @@ pub(crate) fn is_dependency_file(path: &str) -> bool {
         || path.contains("/.cargo/config")
 }
 
-/// A fingerprint of the agent's dependency changes (base → pin), or `None`
-/// when it changed none.
-fn dependency_fingerprint(files: &[tower_core::view::DiffFile]) -> Option<String> {
-    use std::hash::{Hash, Hasher};
-    let deps: Vec<_> = files.iter().filter(|f| is_dependency_file(&f.path)).collect();
-    if deps.is_empty() {
-        return None;
-    }
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    for f in deps {
-        f.path.hash(&mut h);
-        for line in f.hunks.iter().flat_map(|h| &h.lines) {
-            (line.kind as u8).hash(&mut h);
-            line.text.hash(&mut h);
-        }
-    }
-    Some(format!("{:016x}", h.finish()))
-}
-
-/// The fingerprint of the goal's current dependency changes, for recording
-/// the human's approval.
-pub(crate) async fn current_dependency_fingerprint(inner: &Arc<Inner>, goal: &str) -> Result<Option<String>> {
-    let rec = inner.store(|s| s.goal(goal))?;
-    let (Some(ws), Some(base), Some(pin)) = (rec.workspace, rec.base_commit, rec.pin) else { return Ok(None) };
-    let git = inner.git.clone();
-    let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws), &base, &pin))
-        .await
-        .map_err(|e| invalid(e.to_string()))??;
-    Ok(dependency_fingerprint(&files))
-}
-
-/// Whether verification's setup may use the network. It runs what the
-/// manifests say; when the agent changed them under a contract without the
-/// network, that would let the agent's choices reach the network, so it
-/// needs the human's approval of exactly these changes.
+/// Whether setup on the agent's snapshot may use the network: when the
+/// contract allows it, or when the human approved this very snapshot.
+/// (Setup on the base, your own content, always may.)
 fn setup_may_use_network(
     inner: &Inner,
     rec: &tower_store::GoalRecord,
@@ -332,271 +618,6 @@ fn setup_may_use_network(
     }
     let approved = inner.store(|s| s.last_event(goal, "setup_network_approved"))?;
     Ok(matches!(approved.map(|e| e.event), Some(EventKind::SetupNetworkApproved { fingerprint }) if fingerprint == fp))
-}
-
-/// Background evidence after a passing verification, neither of which
-/// gates review:
-/// - the baseline: each criterion on a clean checkout of the base commit.
-///   One that already passes before any change proves nothing about the
-///   goal; the interface says so next to its green result;
-/// - original tests: when the agent edited existing tests, the criteria run
-///   again with those edits undone. Passing only with the edits is
-///   reported as a sentinel hit.
-pub(crate) fn spawn_baseline(inner: Arc<Inner>, goal: String) {
-    tokio::spawn(async move {
-        if let Err(e) = baseline(&inner, &goal).await {
-            tracing::info!(goal = %goal, error = %e, "baseline check did not run");
-        }
-        if let Err(e) = original_tests(&inner, &goal).await {
-            tracing::info!(goal = %goal, error = %e, "original-tests check did not run");
-        }
-    });
-}
-
-async fn baseline(inner: &Arc<Inner>, goal: &str) -> Result<()> {
-    let rec = inner.store(|s| s.goal(goal))?;
-    let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else { return Ok(()) };
-    let detail = inner.store(|s| s.detail(goal))?;
-    let missing: Vec<String> = detail
-        .criteria
-        .iter()
-        .filter(|c| matches!(c.criterion.kind, CriterionKind::Exec { .. }) && c.passed_on_base.is_none())
-        .map(|c| c.criterion.id.clone())
-        .collect();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    let mut contract = rec.contract.clone();
-    contract.criteria.retain(|c| missing.contains(&c.id));
-
-    let dir = inner.paths.verify(&format!("{goal}-base"));
-    let git = inner.git.clone();
-    let (ws1, base1, dir1) = (ws.clone(), base.clone(), dir.clone());
-    tokio::task::spawn_blocking(move || git.add_verify_checkout(Path::new(&ws1), &base1, &dir1))
-        .await
-        .map_err(|e| invalid(e.to_string()))??;
-    // The base's dependencies are the user's own: setup may use the network.
-    let outcome = run_criteria(inner, goal, &contract, &dir, Target::Base(&base), true, &Cancel::default()).await;
-    let git = inner.git.clone();
-    let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws), &dir)).await;
-    outcome.map(|_| ())
-}
-
-async fn original_tests(inner: &Arc<Inner>, goal: &str) -> Result<()> {
-    let rec = inner.store(|s| s.goal(goal))?;
-    let (Some(ws), Some(base), Some(pin)) = (rec.workspace.clone(), rec.base_commit.clone(), rec.pin.clone()) else {
-        return Ok(());
-    };
-    if rec.verified_pin.as_deref() != Some(pin.as_str()) {
-        return Ok(());
-    }
-    let git = inner.git.clone();
-    let (ws1, base1, pin1) = (ws.clone(), base.clone(), pin.clone());
-    let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws1), &base1, &pin1))
-        .await
-        .map_err(|e| invalid(e.to_string()))??;
-    let edited: Vec<String> = files
-        .iter()
-        .filter(|f| f.status == tower_core::view::FileStatus::Modified && tower_core::sentinel::is_test_path(&f.path))
-        .map(|f| f.path.clone())
-        .collect();
-    if edited.is_empty() {
-        return Ok(());
-    }
-    let fingerprint = dependency_fingerprint(&files);
-    if !setup_may_use_network(inner, &rec, goal, fingerprint.as_deref())? {
-        return Ok(());
-    }
-    let dir = inner.paths.verify(&format!("{goal}-orig"));
-    let git = inner.git.clone();
-    let (ws1, pin1, dir1, base1, edited1) = (ws.clone(), pin.clone(), dir.clone(), base.clone(), edited.clone());
-    tokio::task::spawn_blocking(move || -> Result<()> {
-        git.add_verify_checkout(Path::new(&ws1), &pin1, &dir1)?;
-        for path in &edited1 {
-            if let Some(text) = git.file_at(Path::new(&ws1), &base1, path) {
-                std::fs::write(dir1.join(path), text)?;
-            }
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|e| invalid(e.to_string()))??;
-    let outcome = run_criteria(inner, goal, &rec.contract, &dir, Target::OriginalTests, true, &Cancel::default()).await;
-    let git = inner.git.clone();
-    let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws), &dir)).await;
-    if let Outcome::Failed(failures) = outcome? {
-        let lang = inner.lang();
-        let ids: Vec<&str> = failures.iter().map(|f| f.id.as_str()).collect();
-        let detail = tr!(
-            lang,
-            "{ids} 在恢复原来的测试后失败；被改的测试：{files}",
-            "{ids} fail with the original tests restored; edited tests: {files}",
-            ids = ids.join(", "),
-            files = edited.join(", ")
-        );
-        let title = tower_core::i18n::sentinel_title("passes_only_with_edited_tests", lang).unwrap_or_default();
-        inner.append(
-            goal,
-            EventKind::SentinelHit {
-                sentinel: "passes_only_with_edited_tests".into(),
-                severity: 2,
-                title: title.into(),
-                detail: detail.clone(),
-            },
-        )?;
-        inner.toast(goal, ToastLevel::Warning, format!("{title}: {detail}"));
-    }
-    Ok(())
-}
-
-enum Outcome {
-    Passed,
-    Failed(Vec<Failure>),
-    EnvError(String),
-    /// Setup failed without the network after the agent changed
-    /// dependencies; the output tail.
-    SetupNeedsNetwork(String),
-}
-
-async fn run_criteria(
-    inner: &Arc<Inner>,
-    goal: &str,
-    contract: &tower_core::Contract,
-    dir: &Path,
-    target: Target<'_>,
-    setup_network: bool,
-    cancel: &Cancel,
-) -> Result<Outcome> {
-    let lang = inner.lang();
-    let rec = inner.store(|s| s.goal(goal))?;
-    let name = target.name();
-    let tmp = inner.paths.tmp(&format!("{goal}-{name}"));
-    // A fresh package cache for every run, seeded from the user's own and
-    // thrown away afterwards: nothing the agent wrote can reach a verdict.
-    let cache = inner.paths.root.join("verify-cache").join(format!("{goal}-{name}"));
-    let _ = std::fs::remove_dir_all(&cache);
-    let _cleanup = RemoveOnDrop(cache.clone());
-    // Setup may download dependencies (see `setup_may_use_network`); the
-    // criteria get the network only when the contract allows it.
-    let goal_dir = inner.paths.goal_dir(goal);
-    let setup_jail = run::verifier_jail(inner, &goal_dir, dir, &tmp, &cache, &format!("{name}-setup"), setup_network)?;
-    let jail = run::verifier_jail(inner, &goal_dir, dir, &tmp, &cache, name, contract.network)?;
-    let profile = jail.profile.clone();
-    let mut env = inner.env.without_credentials();
-    env.push(("CI".into(), "1".into()));
-    env.extend(jail.env);
-
-    let project_setup = inner.store(|s| s.project(&rec.project_id))?.setup_command;
-    let setup = if !contract.setup.trim().is_empty() {
-        Some(contract.setup.clone())
-    } else if !project_setup.trim().is_empty() {
-        Some(project_setup)
-    } else {
-        Git::detect_setup_command(dir)
-    };
-    if let Some(setup) = setup {
-        let spec = RunSpec::new(command_for(&setup, setup_jail.profile.as_deref()), dir, env.clone(), SETUP_TIMEOUT);
-        let r = tower_verify::run(&spec, cancel).await;
-        if let Target::Pin(_) = target {
-            inner.append(
-                goal,
-                EventKind::SetupFinished {
-                    command: setup.clone(),
-                    ok: r.passed(),
-                    exit_code: r.exit_code(),
-                    duration_ms: r.duration_ms,
-                },
-            )?;
-        }
-        if !r.passed() {
-            let tail = tail_lines(&r.output_tail, 20);
-            if !setup_network {
-                return Ok(Outcome::SetupNeedsNetwork(tail));
-            }
-            let detail = tr!(lang, "准备命令 `{setup}` 失败：\n{tail}", "The setup command `{setup}` failed:\n{tail}");
-            return Ok(Outcome::EnvError(detail));
-        }
-    }
-    // Ignored local files (e.g. `.env`) are not in the snapshot; tests may
-    // need them. Copied after setup, so install scripts never see them.
-    let copied = run::copy_local_files(inner, &rec, dir).await?;
-    if let (Target::Pin(_), false) = (target, copied.is_empty()) {
-        inner.append(goal, EventKind::LocalFilesCopied { files: copied })?;
-    }
-
-    let mut failures = Vec::new();
-    for c in contract.machine_criteria() {
-        if cancel.is_cancelled() {
-            return Ok(Outcome::EnvError(tr!(lang, "验证被取消", "Verification was cancelled")));
-        }
-        let CriterionKind::Exec { command, timeout_secs } = &c.kind else { continue };
-        let spec = RunSpec::new(
-            command_for(command, profile.as_deref()),
-            dir,
-            env.clone(),
-            Duration::from_secs((*timeout_secs).max(1) as u64),
-        );
-        let r = tower_verify::run(&spec, cancel).await;
-        if r.is_environment_failure() {
-            let id = &c.id;
-            let how = match r.exit_code() {
-                Some(code) => tr!(lang, "退出码 {code}", "exit code {code}"),
-                None => tr!(lang, "未启动", "did not start"),
-            };
-            let tail = tail_lines(&r.output_tail, 20);
-            return Ok(Outcome::EnvError(tr!(
-                lang,
-                "{id} 的命令 `{command}` 无法运行（{how}）：\n{tail}",
-                "The command `{command}` of {id} could not run ({how}):\n{tail}"
-            )));
-        }
-        let pin = match target {
-            Target::Pin(pin) => pin,
-            Target::OriginalTests => {
-                if !r.passed() {
-                    failures.push(Failure {
-                        id: c.id.clone(),
-                        title: c.title.clone(),
-                        command: command.clone(),
-                        exit_code: r.exit_code(),
-                        output_tail: r.output_tail,
-                    });
-                }
-                continue;
-            }
-            Target::Base(base) => {
-                let event = EventKind::BaselineResult {
-                    criterion: c.id.clone(),
-                    command: command.clone(),
-                    base: base.into(),
-                    passed: r.passed(),
-                };
-                inner.append(goal, event)?;
-                continue;
-            }
-        };
-        inner.append(
-            goal,
-            EventKind::CriterionResult {
-                criterion: c.id.clone(),
-                pin: pin.into(),
-                passed: r.passed(),
-                exit_code: r.exit_code(),
-                duration_ms: r.duration_ms,
-                output_tail: r.output_tail.clone(),
-            },
-        )?;
-        if !r.passed() {
-            failures.push(Failure {
-                id: c.id.clone(),
-                title: c.title.clone(),
-                command: command.clone(),
-                exit_code: r.exit_code(),
-                output_tail: r.output_tail,
-            });
-        }
-    }
-    Ok(if failures.is_empty() { Outcome::Passed } else { Outcome::Failed(failures) })
 }
 
 /// Removes a directory when dropped (best effort).

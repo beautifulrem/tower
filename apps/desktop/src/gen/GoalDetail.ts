@@ -23,4 +23,8 @@ local_files: Array<string>,
 /**
  * The branch acceptance writes (or updates) in the user's repository.
  */
-branch_preview: string, };
+branch_preview: string, 
+/**
+ * The latest rollback can be undone (nothing ran since).
+ */
+can_undo_rollback: boolean, };

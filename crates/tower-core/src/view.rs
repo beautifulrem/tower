@@ -104,6 +104,8 @@ pub struct GoalSummary {
     pub overlaps: Vec<Overlap>,
     /// The pull request opened from Tower, once there is one.
     pub pr: Option<PrView>,
+    /// The goal's engine (`pi` or `claude-code`); empty means the default.
+    pub engine: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -232,6 +234,8 @@ pub struct GoalDetail {
     pub local_files: Vec<String>,
     /// The branch acceptance writes (or updates) in the user's repository.
     pub branch_preview: String,
+    /// The latest rollback can be undone (nothing ran since).
+    pub can_undo_rollback: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

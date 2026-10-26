@@ -50,6 +50,7 @@ fn long_traces_and_busy_boards_read_fast() {
                 is_error: i % 7 == 0,
                 summary: "ok".into(),
                 duration_ms: 12,
+                target: None,
             };
             s.append(busy, e).unwrap();
         }

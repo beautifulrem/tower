@@ -268,6 +268,7 @@ impl Store {
         let overlaps = self.overlaps(&rec)?;
         let pr: Option<String> = self.conn.query_row("SELECT pr FROM goals WHERE id = ?1", [&rec.id], |r| r.get(0))?;
         Ok(GoalSummary {
+            engine: rec.contract.engine.clone(),
             overlaps,
             pr: pr.map(|p| serde_json::from_str(&p)).transpose()?,
             id: rec.id,
@@ -568,6 +569,11 @@ impl Store {
                 .unwrap_or_default(),
             // Written by the supervisor, which knows the naming rule.
             branch_preview: String::new(),
+            can_undo_rollback: {
+                let rolled = self.last_event(id, "rolled_back")?.map(|e| e.seq);
+                let ran = self.last_event(id, "run_started")?.map(|e| e.seq);
+                rolled.is_some_and(|r| ran.is_none_or(|s| r > s))
+            },
         })
     }
 }

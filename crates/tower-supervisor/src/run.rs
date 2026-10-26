@@ -115,7 +115,14 @@ pub(crate) struct Jail {
     pub env: Vec<(String, String)>,
 }
 
-pub(crate) fn jail(
+fn home_of(inner: &Inner) -> PathBuf {
+    real(&inner.env.get("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")))
+}
+
+/// The jail of the agent's own processes (its shell and file tools, and the
+/// workspace setup): the goal's persistent package caches, which the agent
+/// can write.
+pub(crate) fn agent_jail(
     inner: &Inner,
     goal: &tower_store::GoalRecord,
     dir: &Path,
@@ -123,11 +130,41 @@ pub(crate) fn jail(
     purpose: &str,
     network: bool,
 ) -> Result<Jail> {
-    let home = real(&inner.env.get("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")));
+    let goal_dir = inner.paths.goal_dir(&goal.id);
+    std::fs::create_dir_all(&goal_dir)?;
+    let cache = crate::caches::prepare(&goal_dir.join("cache"), &home_of(inner), dir)?;
+    jail(inner, goal, dir, tmp, cache, purpose, network)
+}
+
+/// The jail of verification: nothing the agent could write may influence a
+/// verdict, so it gets `cache`, a directory the caller created empty and
+/// discards afterwards, seeded from the user's own caches (copy-on-write).
+pub(crate) fn verifier_jail(
+    inner: &Inner,
+    goal: &tower_store::GoalRecord,
+    dir: &Path,
+    tmp: &Path,
+    cache: &Path,
+    purpose: &str,
+    network: bool,
+) -> Result<Jail> {
+    let cache = crate::caches::prepare(cache, &home_of(inner), dir)?;
+    jail(inner, goal, dir, tmp, cache, purpose, network)
+}
+
+fn jail(
+    inner: &Inner,
+    goal: &tower_store::GoalRecord,
+    dir: &Path,
+    tmp: &Path,
+    cache: PathBuf,
+    purpose: &str,
+    network: bool,
+) -> Result<Jail> {
+    let home = home_of(inner);
     let goal_dir = inner.paths.goal_dir(&goal.id);
     std::fs::create_dir_all(&goal_dir)?;
     std::fs::create_dir_all(tmp)?;
-    let cache = crate::caches::prepare(&goal_dir.join("cache"), &home, dir)?;
     let mut env = crate::caches::env(&cache);
     env.push(("TMPDIR".into(), real(tmp).display().to_string()));
     // pnpm keeps its store locks here (default /tmp, not writable in the sandbox).
@@ -178,7 +215,7 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
         ("TOWER_NETWORK".into(), if goal.contract.network { "1" } else { "0" }.into()),
         ("PI_OFFLINE".into(), "1".into()),
     ]);
-    let jail = jail(inner, goal, ws, &tmp, "agent", goal.contract.network)?;
+    let jail = agent_jail(inner, goal, ws, &tmp, "agent", goal.contract.network)?;
     // The agent's shell and file tools inherit the private caches.
     env.extend(jail.env.into_iter().filter(|(k, _)| k != "TMPDIR"));
     if let Some(profile) = jail.profile {
@@ -343,7 +380,7 @@ async fn setup_workspace(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, ws:
     inner.set_mode(&goal.id, Mode::Starting)?;
     // Setup installs dependencies, so it has the network; it still cannot
     // read the user's files or write outside the workspace and caches.
-    let jail = jail(inner, goal, ws, &inner.paths.tmp(&goal.id), "setup", true)?;
+    let jail = agent_jail(inner, goal, ws, &inner.paths.tmp(&goal.id), "setup", true)?;
     let shell_command = crate::verify::command_for(&command, jail.profile.as_deref());
     let mut env = inner.env.without_credentials();
     env.extend(jail.env);

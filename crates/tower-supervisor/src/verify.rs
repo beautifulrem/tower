@@ -15,6 +15,7 @@ use tower_git::Git;
 use tower_store::NewInboxItem;
 use tower_verify::{Cancel, RunSpec};
 
+use crate::api::ToastLevel;
 use crate::prompts::{self, Failure};
 use crate::{Inner, Result, invalid, run};
 
@@ -152,12 +153,9 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     tokio::task::spawn_blocking(move || git.add_verify_checkout(Path::new(&ws3), &pin3, &dir3))
         .await
         .map_err(|e| invalid(e.to_string()))??;
-    // Ignored local files (e.g. `.env`) are not in the snapshot; tests may need them.
-    let copied = run::copy_local_files(inner, &rec, &dir).await?;
-    if !copied.is_empty() {
-        inner.append(goal, EventKind::LocalFilesCopied { files: copied })?;
-    }
-    let outcome = run_criteria(inner, goal, &rec.contract, &dir, Target::Pin(&snap.pin), cancel).await;
+    let fingerprint = dependency_fingerprint(&files);
+    let setup_network = setup_may_use_network(inner, &rec, goal, fingerprint.as_deref())?;
+    let outcome = run_criteria(inner, goal, &rec.contract, &dir, Target::Pin(&snap.pin), setup_network, cancel).await;
     let git = inner.git.clone();
     let (ws4, dir4) = (ws.clone(), dir.clone());
     let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws4), &dir4)).await;
@@ -185,6 +183,18 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
         Outcome::EnvError(detail) => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
             to_paused(inner, goal, PauseReason::VerifyEnvError, &detail)?;
+        }
+        Outcome::SetupNeedsNetwork(tail) => {
+            inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
+            let changed: Vec<&str> =
+                files.iter().filter(|f| is_dependency_file(&f.path)).map(|f| f.path.as_str()).collect();
+            let list = changed.join(", ");
+            let detail = tr!(
+                lang,
+                "Agent 改了 {list}。合同不允许联网，离线准备失败；联网安装会运行这些改动选择的代码。\n{tail}",
+                "The agent changed {list}. The contract keeps the network off and setup failed offline; installing with the network runs code these changes chose.\n{tail}"
+            );
+            to_paused(inner, goal, PauseReason::DependenciesChanged, &detail)?;
         }
         Outcome::Failed(failures) => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: false })?;
@@ -215,23 +225,130 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     Ok(())
 }
 
-/// What a criteria run checks: the agent's pinned snapshot, or the base
-/// commit before any change (the baseline).
+/// What a criteria run checks.
 #[derive(Clone, Copy)]
 enum Target<'a> {
+    /// The agent's pinned snapshot: the verdict.
     Pin(&'a str),
+    /// The base commit, before any change (the baseline).
     Base(&'a str),
+    /// The pinned snapshot with the agent's edits to existing tests undone.
+    OriginalTests,
 }
 
-/// Runs the criteria that have no baseline yet on a clean checkout of the
-/// base commit, in the background, after a passing verification. A
-/// criterion that already passes before any change proves nothing about
-/// the goal; the interface says so next to its green result. Failures to
-/// run are not errors: the baseline is extra evidence, not a gate.
+impl Target<'_> {
+    fn name(self) -> &'static str {
+        match self {
+            Target::Pin(_) => "verify",
+            Target::Base(_) => "base",
+            Target::OriginalTests => "orig",
+        }
+    }
+}
+
+/// Manifests, lockfiles and package-manager configuration: what decides
+/// which third-party code an install downloads and runs.
+const DEPENDENCY_FILES: &[&str] = &[
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "yarn.lock",
+    ".yarnrc",
+    ".yarnrc.yml",
+    ".npmrc",
+    "bun.lock",
+    "bun.lockb",
+    "Cargo.toml",
+    "Cargo.lock",
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "Pipfile",
+    "Pipfile.lock",
+    "poetry.lock",
+    "uv.lock",
+    "go.mod",
+    "go.sum",
+    "Gemfile",
+    "Gemfile.lock",
+    "composer.json",
+    "composer.lock",
+];
+
+pub(crate) fn is_dependency_file(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    DEPENDENCY_FILES.contains(&name)
+        || (name.starts_with("requirements") && name.ends_with(".txt"))
+        || path.starts_with(".cargo/config")
+        || path.contains("/.cargo/config")
+}
+
+/// A fingerprint of the agent's dependency changes (base → pin), or `None`
+/// when it changed none.
+fn dependency_fingerprint(files: &[tower_core::view::DiffFile]) -> Option<String> {
+    use std::hash::{Hash, Hasher};
+    let deps: Vec<_> = files.iter().filter(|f| is_dependency_file(&f.path)).collect();
+    if deps.is_empty() {
+        return None;
+    }
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for f in deps {
+        f.path.hash(&mut h);
+        for line in f.hunks.iter().flat_map(|h| &h.lines) {
+            (line.kind as u8).hash(&mut h);
+            line.text.hash(&mut h);
+        }
+    }
+    Some(format!("{:016x}", h.finish()))
+}
+
+/// The fingerprint of the goal's current dependency changes, for recording
+/// the human's approval.
+pub(crate) async fn current_dependency_fingerprint(inner: &Arc<Inner>, goal: &str) -> Result<Option<String>> {
+    let rec = inner.store(|s| s.goal(goal))?;
+    let (Some(ws), Some(base), Some(pin)) = (rec.workspace, rec.base_commit, rec.pin) else { return Ok(None) };
+    let git = inner.git.clone();
+    let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws), &base, &pin))
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+    Ok(dependency_fingerprint(&files))
+}
+
+/// Whether verification's setup may use the network. It runs what the
+/// manifests say; when the agent changed them under a contract without the
+/// network, that would let the agent's choices reach the network, so it
+/// needs the human's approval of exactly these changes.
+fn setup_may_use_network(
+    inner: &Inner,
+    rec: &tower_store::GoalRecord,
+    goal: &str,
+    fingerprint: Option<&str>,
+) -> Result<bool> {
+    let Some(fp) = fingerprint else { return Ok(true) };
+    if rec.contract.network {
+        return Ok(true);
+    }
+    let approved = inner.store(|s| s.last_event(goal, "setup_network_approved"))?;
+    Ok(matches!(approved.map(|e| e.event), Some(EventKind::SetupNetworkApproved { fingerprint }) if fingerprint == fp))
+}
+
+/// Background evidence after a passing verification, neither of which
+/// gates review:
+/// - the baseline: each criterion on a clean checkout of the base commit.
+///   One that already passes before any change proves nothing about the
+///   goal; the interface says so next to its green result;
+/// - original tests: when the agent edited existing tests, the criteria run
+///   again with those edits undone. Passing only with the edits is
+///   reported as a sentinel hit.
 pub(crate) fn spawn_baseline(inner: Arc<Inner>, goal: String) {
     tokio::spawn(async move {
         if let Err(e) = baseline(&inner, &goal).await {
             tracing::info!(goal = %goal, error = %e, "baseline check did not run");
+        }
+        if let Err(e) = original_tests(&inner, &goal).await {
+            tracing::info!(goal = %goal, error = %e, "original-tests check did not run");
         }
     });
 }
@@ -258,17 +375,87 @@ async fn baseline(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     tokio::task::spawn_blocking(move || git.add_verify_checkout(Path::new(&ws1), &base1, &dir1))
         .await
         .map_err(|e| invalid(e.to_string()))??;
-    run::copy_local_files(inner, &rec, &dir).await?;
-    let outcome = run_criteria(inner, goal, &contract, &dir, Target::Base(&base), &Cancel::default()).await;
+    // The base's dependencies are the user's own: setup may use the network.
+    let outcome = run_criteria(inner, goal, &contract, &dir, Target::Base(&base), true, &Cancel::default()).await;
     let git = inner.git.clone();
     let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws), &dir)).await;
     outcome.map(|_| ())
+}
+
+async fn original_tests(inner: &Arc<Inner>, goal: &str) -> Result<()> {
+    let rec = inner.store(|s| s.goal(goal))?;
+    let (Some(ws), Some(base), Some(pin)) = (rec.workspace.clone(), rec.base_commit.clone(), rec.pin.clone()) else {
+        return Ok(());
+    };
+    if rec.verified_pin.as_deref() != Some(pin.as_str()) {
+        return Ok(());
+    }
+    let git = inner.git.clone();
+    let (ws1, base1, pin1) = (ws.clone(), base.clone(), pin.clone());
+    let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws1), &base1, &pin1))
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+    let edited: Vec<String> = files
+        .iter()
+        .filter(|f| f.status == tower_core::view::FileStatus::Modified && tower_core::sentinel::is_test_path(&f.path))
+        .map(|f| f.path.clone())
+        .collect();
+    if edited.is_empty() {
+        return Ok(());
+    }
+    let fingerprint = dependency_fingerprint(&files);
+    if !setup_may_use_network(inner, &rec, goal, fingerprint.as_deref())? {
+        return Ok(());
+    }
+    let dir = inner.paths.verify(&format!("{goal}-orig"));
+    let git = inner.git.clone();
+    let (ws1, pin1, dir1, base1, edited1) = (ws.clone(), pin.clone(), dir.clone(), base.clone(), edited.clone());
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        git.add_verify_checkout(Path::new(&ws1), &pin1, &dir1)?;
+        for path in &edited1 {
+            if let Some(text) = git.file_at(Path::new(&ws1), &base1, path) {
+                std::fs::write(dir1.join(path), text)?;
+            }
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| invalid(e.to_string()))??;
+    let outcome = run_criteria(inner, goal, &rec.contract, &dir, Target::OriginalTests, true, &Cancel::default()).await;
+    let git = inner.git.clone();
+    let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws), &dir)).await;
+    if let Outcome::Failed(failures) = outcome? {
+        let lang = inner.lang();
+        let ids: Vec<&str> = failures.iter().map(|f| f.id.as_str()).collect();
+        let detail = tr!(
+            lang,
+            "{ids} 在恢复原来的测试后失败；被改的测试：{files}",
+            "{ids} fail with the original tests restored; edited tests: {files}",
+            ids = ids.join(", "),
+            files = edited.join(", ")
+        );
+        let title = tower_core::i18n::sentinel_title("passes_only_with_edited_tests", lang).unwrap_or_default();
+        inner.append(
+            goal,
+            EventKind::SentinelHit {
+                sentinel: "passes_only_with_edited_tests".into(),
+                severity: 2,
+                title: title.into(),
+                detail: detail.clone(),
+            },
+        )?;
+        inner.toast(goal, ToastLevel::Warning, format!("{title}: {detail}"));
+    }
+    Ok(())
 }
 
 enum Outcome {
     Passed,
     Failed(Vec<Failure>),
     EnvError(String),
+    /// Setup failed without the network after the agent changed
+    /// dependencies; the output tail.
+    SetupNeedsNetwork(String),
 }
 
 async fn run_criteria(
@@ -277,18 +464,22 @@ async fn run_criteria(
     contract: &tower_core::Contract,
     dir: &Path,
     target: Target<'_>,
+    setup_network: bool,
     cancel: &Cancel,
 ) -> Result<Outcome> {
     let lang = inner.lang();
     let rec = inner.store(|s| s.goal(goal))?;
-    let tmp = inner.paths.tmp(&match target {
-        Target::Pin(_) => format!("{goal}-verify"),
-        Target::Base(_) => format!("{goal}-base"),
-    });
-    // Setup may download dependencies; the criteria get the network only
-    // when the contract allows it.
-    let setup_jail = run::jail(inner, &rec, dir, &tmp, "verify-setup", true)?;
-    let jail = run::jail(inner, &rec, dir, &tmp, "verify", contract.network)?;
+    let name = target.name();
+    let tmp = inner.paths.tmp(&format!("{goal}-{name}"));
+    // A fresh package cache for every run, seeded from the user's own and
+    // thrown away afterwards: nothing the agent wrote can reach a verdict.
+    let cache = inner.paths.root.join("verify-cache").join(format!("{goal}-{name}"));
+    let _ = std::fs::remove_dir_all(&cache);
+    let _cleanup = RemoveOnDrop(cache.clone());
+    // Setup may download dependencies (see `setup_may_use_network`); the
+    // criteria get the network only when the contract allows it.
+    let setup_jail = run::verifier_jail(inner, &rec, dir, &tmp, &cache, &format!("{name}-setup"), setup_network)?;
+    let jail = run::verifier_jail(inner, &rec, dir, &tmp, &cache, name, contract.network)?;
     let profile = jail.profile.clone();
     let mut env = inner.env.without_credentials();
     env.push(("CI".into(), "1".into()));
@@ -318,9 +509,18 @@ async fn run_criteria(
         }
         if !r.passed() {
             let tail = tail_lines(&r.output_tail, 20);
+            if !setup_network {
+                return Ok(Outcome::SetupNeedsNetwork(tail));
+            }
             let detail = tr!(lang, "准备命令 `{setup}` 失败：\n{tail}", "The setup command `{setup}` failed:\n{tail}");
             return Ok(Outcome::EnvError(detail));
         }
+    }
+    // Ignored local files (e.g. `.env`) are not in the snapshot; tests may
+    // need them. Copied after setup, so install scripts never see them.
+    let copied = run::copy_local_files(inner, &rec, dir).await?;
+    if let (Target::Pin(_), false) = (target, copied.is_empty()) {
+        inner.append(goal, EventKind::LocalFilesCopied { files: copied })?;
     }
 
     let mut failures = Vec::new();
@@ -351,6 +551,18 @@ async fn run_criteria(
         }
         let pin = match target {
             Target::Pin(pin) => pin,
+            Target::OriginalTests => {
+                if !r.passed() {
+                    failures.push(Failure {
+                        id: c.id.clone(),
+                        title: c.title.clone(),
+                        command: command.clone(),
+                        exit_code: r.exit_code(),
+                        output_tail: r.output_tail,
+                    });
+                }
+                continue;
+            }
             Target::Base(base) => {
                 let event = EventKind::BaselineResult {
                     criterion: c.id.clone(),
@@ -384,6 +596,15 @@ async fn run_criteria(
         }
     }
     Ok(if failures.is_empty() { Outcome::Passed } else { Outcome::Failed(failures) })
+}
+
+/// Removes a directory when dropped (best effort).
+struct RemoveOnDrop(std::path::PathBuf);
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, body: &str) -> Result<()> {

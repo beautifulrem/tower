@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use tower_core::contract::{Contract, Criterion, CriterionKind};
 use tower_core::view::{GoalSummary, InboxKind, Settings};
-use tower_core::{Lang, LifecycleState, PauseReason};
+use tower_core::{EventKind, Lang, LifecycleState, PauseReason};
 use tower_supervisor::shell_env::ShellEnv;
 use tower_supervisor::{Config, NewGoalInput, Paths, Supervisor, UiSink, UiUpdate};
 
@@ -315,4 +315,41 @@ async fn pausing_stops_the_engine_and_resume_continues() {
     assert!(!Path::new(&ws).exists());
     assert!(h.sup.goal(&id).unwrap().workspace.is_none());
     assert!(!h.sup.trace(&id, None, 10).unwrap().is_empty());
+}
+
+/// Verification never uses anything the agent could write: the agent's
+/// package cache is not the verifier's.
+#[tokio::test(flavor = "multi_thread")]
+async fn verification_does_not_see_the_agents_cache() {
+    let h = harness("poison_cache").await;
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec {
+        command: "test -f done.txt && test ! -e \"$npm_config_cache/poison\"".into(),
+        timeout_secs: 30,
+    };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!(g.state, LifecycleState::InReview, "the verifier's cache is fresh");
+}
+
+/// When the agent changes dependency manifests under a contract without
+/// the network, verification's setup runs offline; if that fails, the goal
+/// asks the human instead of letting the agent's choices reach the network.
+#[tokio::test(flavor = "multi_thread")]
+async fn changed_dependencies_need_the_human_before_setup_goes_online() {
+    let h = harness("deps").await;
+    let mut c = contract();
+    c.setup = "exit 1".into();
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!(g.pause_reason, Some(PauseReason::DependenciesChanged));
+    let card = wait_inbox(&h, &id, InboxKind::Paused).await;
+    assert_eq!(card.options[0], "I've checked, install with the network");
+    h.sup.answer(&card.id, &card.options[0]).await.unwrap();
+    // Approved: setup now runs with the network (and this one still fails,
+    // which is an ordinary environment error).
+    let g = wait_for(&h, &id, |g| g.pause_reason == Some(PauseReason::VerifyEnvError)).await;
+    assert_eq!(g.state, LifecycleState::Paused);
+    let trace = h.sup.trace(&id, None, 200).unwrap();
+    assert!(trace.iter().any(|e| matches!(e.event, EventKind::SetupNetworkApproved { .. })));
 }

@@ -43,6 +43,13 @@ pub fn is_test_path(path: &str) -> bool {
         || name.ends_with("_test.rs")
 }
 
+/// Whether a test file renamed from `old` to `new` is still one the runner
+/// collects: a test path with the same extension (`.test.js.bak` is not).
+fn still_runs(old: &str, new: &str) -> bool {
+    let ext = |p: &str| p.rsplit('/').next().unwrap_or(p).rsplit('.').next().map(str::to_string);
+    is_test_path(new) && ext(old) == ext(new)
+}
+
 /// Markers that disable or narrow a test in common frameworks.
 const SKIP_MARKERS: &[&str] = &[
     ".skip(",
@@ -122,6 +129,89 @@ const TEST_CONFIGS: &[&str] = &[
     "phpunit.xml",
 ];
 
+/// Test configuration inside general manifests: lines that decide which
+/// tests run or how.
+const TEST_CONFIG_KEYS: &[&str] = &[
+    "[tool.pytest",
+    "addopts",
+    "testpaths",
+    "python_files",
+    "[[test]]",
+    "test = false",
+    "harness = false",
+    "doctest = false",
+];
+
+/// A line with its literals (numbers, quoted strings) blanked, to tell an
+/// edit of what a test expects from an edit of how it is written.
+fn shape(line: &str) -> (String, Vec<String>) {
+    let mut shape = String::new();
+    let mut literals = Vec::new();
+    let mut chars = line.trim().chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '"' || c == '\'' || c == '`' {
+            let mut lit = String::new();
+            while let Some(&n) = chars.peek() {
+                chars.next();
+                if n == c {
+                    break;
+                }
+                lit.push(n);
+            }
+            shape.push_str("\"\"");
+            literals.push(lit);
+        } else if c.is_ascii_digit() && !shape.ends_with(|p: char| p.is_alphanumeric() || p == '_') {
+            let mut lit = String::from(c);
+            while let Some(&n) = chars.peek() {
+                if n.is_ascii_digit() || n == '.' || n == '_' {
+                    lit.push(n);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            shape.push('0');
+            literals.push(lit);
+        } else if !c.is_whitespace() {
+            shape.push(c);
+        }
+    }
+    (shape, literals)
+}
+
+/// Pairs each deleted line with the added line in the same position of the
+/// run that follows it (the usual shape of an in-place edit).
+fn edited_pairs(file: &DiffFile) -> Vec<(&str, &str)> {
+    let mut out = Vec::new();
+    for h in &file.hunks {
+        let lines = &h.lines;
+        let mut i = 0;
+        while i < lines.len() {
+            if lines[i].kind != LineKind::Del {
+                i += 1;
+                continue;
+            }
+            let del = i;
+            while i < lines.len() && lines[i].kind == LineKind::Del {
+                i += 1;
+            }
+            let add = i;
+            while i < lines.len() && lines[i].kind == LineKind::Add {
+                i += 1;
+            }
+            for k in 0..(add - del).min(i - add) {
+                out.push((lines[del + k].text.as_str(), lines[add + k].text.as_str()));
+            }
+        }
+    }
+    out
+}
+
+fn is_assertion(line: &str) -> bool {
+    let l = line.trim_start();
+    l.contains("assert") || l.contains("expect(") || l.starts_with("should") || l.contains(".should")
+}
+
 fn added_lines(file: &DiffFile) -> impl Iterator<Item = &str> {
     file.hunks.iter().flat_map(|h| h.lines.iter()).filter(|l| l.kind == LineKind::Add).map(|l| l.text.as_str())
 }
@@ -140,19 +230,37 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
     let mut hits = Vec::new();
     let fence = ScopeFence::compile(scope).ok();
 
+    // Deleted, or renamed out of where the test runner looks.
     let deleted_tests: Vec<&str> = files
         .iter()
-        .filter(|f| f.status == FileStatus::Deleted && is_test_path(&f.path))
-        .map(|f| f.path.as_str())
+        .filter_map(|f| match f.status {
+            FileStatus::Deleted if is_test_path(&f.path) => Some(f.path.as_str()),
+            FileStatus::Renamed
+                if f.old_path.as_deref().is_some_and(|old| is_test_path(old) && !still_runs(old, &f.path)) =>
+            {
+                f.old_path.as_deref()
+            }
+            _ => None,
+        })
         .collect();
     if !deleted_tests.is_empty() {
         hits.push(hit("test_deleted", HIGH, deleted_tests.join("\n"), lang));
     }
 
     let mut skips = Vec::new();
-    for f in files.iter().filter(|f| is_test_path(&f.path)) {
+    for f in files.iter() {
+        // Rust keeps unit tests inside source files.
+        let rust_source = f.path.ends_with(".rs");
+        if !is_test_path(&f.path) && !rust_source {
+            continue;
+        }
         for line in added_lines(f) {
-            if SKIP_MARKERS.iter().any(|m| line.contains(m)) {
+            let hit = if rust_source && !is_test_path(&f.path) {
+                line.contains("#[ignore")
+            } else {
+                SKIP_MARKERS.iter().any(|m| line.contains(m))
+            };
+            if hit {
                 skips.push(format!("{}: {}", f.path, line.trim()));
             }
         }
@@ -207,6 +315,24 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
             }
         }
     }
+    // An assertion kept as it was but expecting a different value: the
+    // classic way to make a failing test pass without fixing the code.
+    let mut expectations = Vec::new();
+    for f in files.iter().filter(|f| is_test_path(&f.path) && f.status != FileStatus::Added) {
+        for (old, new) in edited_pairs(f) {
+            if !is_assertion(old) || !is_assertion(new) {
+                continue;
+            }
+            let ((s1, l1), (s2, l2)) = (shape(old), shape(new));
+            if s1 == s2 && l1 != l2 {
+                expectations.push(format!("{}: {} → {}", f.path, old.trim(), new.trim()));
+            }
+        }
+    }
+    if !expectations.is_empty() {
+        hits.push(hit("expectations_changed", HIGH, expectations.join("\n"), lang));
+    }
+
     if !fewer_tests.is_empty() {
         hits.push(hit("tests_removed", HIGH, fewer_tests.join("\n"), lang));
     }
@@ -232,6 +358,8 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
         .filter(|f| {
             let name = f.path.rsplit('/').next().unwrap_or(&f.path);
             TEST_CONFIGS.iter().any(|c| name.starts_with(c))
+                || (matches!(name, "pyproject.toml" | "Cargo.toml")
+                    && added_lines(f).chain(removed_lines(f)).any(|l| TEST_CONFIG_KEYS.iter().any(|k| l.contains(k))))
         })
         .map(|f| f.path.as_str())
         .collect();

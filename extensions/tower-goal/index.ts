@@ -12,15 +12,22 @@
  *
  * Tower passes the goal through environment variables:
  *   TOWER_GOAL_ID, TOWER_WORKSPACE, TOWER_CONTRACT (path to contract.json)
+ *   TOWER_SANDBOX_PROFILE  macOS Seatbelt profile for the agent's shell (S2)
+ *   TOWER_TMP              the agent's private temporary directory
+ *
+ * Pi's built-in bash is replaced by the same tool with a spawn hook that
+ * strips credential-shaped variables and, when a profile is given, runs the
+ * command under sandbox-exec (docs/11 §11.6).
  */
 
-import { readFileSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { type Autonomy, type Scope, checkBash, checkWrite } from "./policy.ts";
+import { type Autonomy, type Scope, checkBash, checkWrite, sandboxed, scrubEnv } from "./policy.ts";
 
 interface ContractFile {
 	autonomy: Autonomy;
@@ -28,7 +35,31 @@ interface ContractFile {
 	criteria: Array<{ id: string; title: string }>;
 }
 
-const WORKSPACE = process.env.TOWER_WORKSPACE ?? process.cwd();
+const WORKSPACE = realOrSelf(process.env.TOWER_WORKSPACE ?? process.cwd());
+const SANDBOX_PROFILE = process.env.TOWER_SANDBOX_PROFILE;
+const AGENT_TMP = process.env.TOWER_TMP;
+
+function realOrSelf(p: string): string {
+	try {
+		return realpathSync(p);
+	} catch {
+		return p;
+	}
+}
+
+/**
+ * Resolves symlinks in the deepest existing ancestor so a link planted inside
+ * the workspace cannot route a write outside it.
+ */
+function resolveThroughLinks(abs: string): string {
+	let existing = abs;
+	const rest: string[] = [];
+	while (!existsSync(existing) && dirname(existing) !== existing) {
+		rest.unshift(existing.slice(dirname(existing).length + 1));
+		existing = dirname(existing);
+	}
+	return [realOrSelf(existing), ...rest].join("/");
+}
 
 function loadContract(): ContractFile {
 	const path = process.env.TOWER_CONTRACT;
@@ -57,6 +88,18 @@ const DENY = "拒绝";
 export default function towerGoal(pi: ExtensionAPI) {
 	// Read once per run: the contract cannot change under a running agent.
 	const contract = loadContract();
+
+	const bash = createBashTool(WORKSPACE, {
+		spawnHook: ({ command, cwd, env }) => {
+			const clean = scrubEnv(env);
+			if (AGENT_TMP) clean.TMPDIR = AGENT_TMP;
+			return { command: SANDBOX_PROFILE ? sandboxed(command, SANDBOX_PROFILE) : command, cwd, env: clean };
+		},
+	});
+	pi.registerTool({
+		...bash,
+		execute: (id, params, signal, onUpdate) => bash.execute(id, params, signal, onUpdate),
+	});
 
 	pi.registerTool({
 		name: "ask_user",
@@ -130,7 +173,7 @@ export default function towerGoal(pi: ExtensionAPI) {
 
 		if (name === "edit" || name === "write") {
 			const raw = String((event.input as { path?: unknown }).path ?? "");
-			const abs = isAbsolute(raw) ? raw : resolve(WORKSPACE, raw);
+			const abs = resolveThroughLinks(isAbsolute(raw) ? raw : resolve(WORKSPACE, raw));
 			const { verdict, rel } = checkWrite(contract.scope, WORKSPACE, abs);
 			if (verdict === "allowed") return undefined;
 			if (verdict === "outside_workspace") {

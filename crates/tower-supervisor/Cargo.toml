@@ -1,11 +1,28 @@
 [package]
 name = "tower-supervisor"
+description = "Tower's supervisor: the single writer that runs goals through their lifecycle."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+tower-core.workspace = true
+tower-store.workspace = true
+tower-pi.workspace = true
+tower-git.workspace = true
+tower-verify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+ts-rs.workspace = true
+directories.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

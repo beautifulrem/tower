@@ -114,3 +114,25 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 	if (segments.every((s) => READ_ONLY_OR_TEST.test(s))) return { action: "allow" };
 	return { action: "ask", reason: "谨慎模式：运行非只读命令" };
 }
+
+/** Environment variables that look like credentials never reach the agent's shell. */
+const SECRET_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH|COOKIE|SESSION)/i;
+const ALWAYS_KEEP = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "TERM", "TMPDIR", "PWD"]);
+
+export function scrubEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+	const out: Record<string, string | undefined> = {};
+	for (const [k, v] of Object.entries(env)) {
+		if (ALWAYS_KEEP.has(k) || !SECRET_NAME.test(k)) out[k] = v;
+	}
+	return out;
+}
+
+/** POSIX single-quote escaping. */
+export function shellQuote(s: string): string {
+	return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Wraps a command so it runs under the macOS Seatbelt profile Tower wrote. */
+export function sandboxed(command: string, profile: string): string {
+	return `exec /usr/bin/sandbox-exec -f ${shellQuote(profile)} /bin/bash -c ${shellQuote(command)}`;
+}

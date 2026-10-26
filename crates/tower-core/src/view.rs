@@ -188,8 +188,26 @@ pub struct CriterionView {
     /// package settings put back as on the base (`None` when it changed
     /// nothing outside the source).
     pub passes_with_source_only: Option<bool>,
+    /// On the current snapshot, what the must-fail canary showed about the
+    /// assertions (`None` when it was not this criterion's to check).
+    pub canary: Option<CanaryState>,
     pub observed: Option<ObservationView>,
     pub human_checked: bool,
+}
+
+/// What the must-fail canary showed for one criterion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum CanaryState {
+    /// No canary could run with this criterion (another language, a command
+    /// that selects tests by name): the assertions were not checked.
+    NotChecked,
+    /// The canaries ran and failed, as they must.
+    Intact,
+    /// A canary assertion did not throw, or the run passed with failing
+    /// canaries in it.
+    Tampered,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

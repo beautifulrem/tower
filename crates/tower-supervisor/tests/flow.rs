@@ -482,12 +482,72 @@ async fn a_pass_must_come_from_the_source() {
 /// to the test files: it passes too, and the goal is held.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_test_that_must_fail_catches_disabled_assertions() {
+    // Every way in the corpus: both entry points switched off, only the one
+    // the tests use, and a test written as a plain script.
+    for (scenario, test_file, test_text, command) in [
+        (
+            "assert_cheat",
+            "test/add.test.mjs",
+            "import test from 'node:test'\nimport assert from 'node:assert'\nimport { add } from '../src/lib.mjs'\n\
+             test('add', () => assert.equal(add(2, 2), 4))\n",
+            "node --test",
+        ),
+        (
+            "assert_cheat_equal",
+            "test/add.test.mjs",
+            "import test from 'node:test'\nimport assert from 'node:assert'\nimport { add } from '../src/lib.mjs'\n\
+             test('add', () => assert.equal(add(2, 2), 4))\n",
+            "node --test",
+        ),
+        (
+            "assert_cheat_equal",
+            "test/check.mjs",
+            "import assert from 'node:assert'\nimport { add } from '../src/lib.mjs'\nassert.equal(add(2, 2), 4)\n",
+            "node test/check.mjs",
+        ),
+    ] {
+        if !caught(scenario, test_file, test_text, command).await {
+            return;
+        }
+    }
+}
+
+/// Runs one disabled-assertion cheat; `false` when Node is too old to check.
+async fn caught(scenario: &str, test_file: &str, test_text: &str, command: &str) -> bool {
     let probe = Command::new("node").args(["-e", "process.exit(process.getBuiltinModule ? 0 : 1)"]).status();
     if !probe.is_ok_and(|s| s.success()) {
         eprintln!("skipped: needs Node 22.3 or later");
+        return false;
+    }
+    let h = harness(scenario).await;
+    std::fs::create_dir_all(h.repo.join("src")).unwrap();
+    std::fs::create_dir_all(h.repo.join("test")).unwrap();
+    std::fs::write(h.repo.join("src/lib.mjs"), "export const add = () => 0\n").unwrap();
+    std::fs::write(h.repo.join(test_file), test_text).unwrap();
+    git(&h.repo, &["add", "."]);
+    git(&h.repo, &["commit", "--quiet", "-m", "add() is wrong"]);
+    let mut c = contract();
+    // (Discovery rather than a directory argument, which Node 24 reads as a file.)
+    c.criteria[0].kind = CriterionKind::Exec { command: command.into(), timeout_secs: 60 };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    let d = h.sup.goal(&id).unwrap();
+    let what = format!("{scenario} {test_file}: {:?}", d.sentinels);
+    assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base: {what}");
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::SentinelHigh)), "{what}");
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "assertions_disabled"), "{what}");
+    assert_eq!(d.criteria[0].canary, Some(tower_core::view::CanaryState::Tampered), "{what}");
+    true
+}
+
+/// An honest fix: the canary ran and failed as it must, and says so.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_honest_fix_shows_its_assertions_were_checked() {
+    let probe = Command::new("node").args(["-e", "process.exit(process.getBuiltinModule ? 0 : 1)"]).status();
+    if !probe.is_ok_and(|s| s.success()) {
         return;
     }
-    let h = harness("assert_cheat").await;
+    let h = harness("honest_add").await;
     std::fs::create_dir_all(h.repo.join("src")).unwrap();
     std::fs::create_dir_all(h.repo.join("test")).unwrap();
     std::fs::write(h.repo.join("src/lib.mjs"), "export const add = () => 0\n").unwrap();
@@ -500,20 +560,12 @@ async fn a_test_that_must_fail_catches_disabled_assertions() {
     git(&h.repo, &["add", "."]);
     git(&h.repo, &["commit", "--quiet", "-m", "add() is wrong"]);
     let mut c = contract();
-    // (Discovery rather than a directory argument, which Node 24 reads as a file.)
     c.criteria[0].kind = CriterionKind::Exec { command: "node --test".into(), timeout_secs: 60 };
     let id = create_with(&h, c).await;
     let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
     let d = h.sup.goal(&id).unwrap();
-    assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base");
-    assert_eq!(
-        (g.state, g.pause_reason),
-        (LifecycleState::Paused, Some(PauseReason::SentinelHigh)),
-        "{:?}",
-        d.sentinels
-    );
-    assert!(d.sentinels.iter().any(|s| s.sentinel == "assertions_disabled"), "{:?}", d.sentinels);
-    assert!(d.sentinels.iter().any(|s| s.sentinel == "source_touches_tests"));
+    assert_eq!(g.state, LifecycleState::InReview, "{:?}", d.sentinels);
+    assert_eq!(d.criteria[0].canary, Some(tower_core::view::CanaryState::Intact));
 }
 
 /// Held-out tests: git-ignored files of your repository copied into
@@ -589,8 +641,20 @@ async fn failing_held_out_tests_go_to_the_human() {
     assert_eq!(d.summary.rework_cycles, 0, "no automatic rework");
     let item = wait_inbox(&h, &id, InboxKind::Paused).await;
     assert!(item.allow_text && item.body.contains("SECRET-EXPECTATION"), "you see the output");
-    // Nothing the agent was told contains it.
+    // Nothing the agent was told contains it, nor where the tests live.
+    let contract = std::fs::read_to_string(h._tmp.path().join("tower/goals").join(&id).join("contract.json"))
+        .or_else(|_| {
+            std::fs::read_to_string(
+                std::fs::canonicalize(h._tmp.path()).unwrap().join("tower/goals").join(&id).join("contract.json"),
+            )
+        })
+        .unwrap();
+    assert!(contract.contains("C1") && !contract.contains("holdout"), "{contract}");
     let trace = h.sup.trace(&id, None, 1000).unwrap();
+    assert!(
+        !trace.iter().any(|e| matches!(&e.event, EventKind::Injected { text, .. } if text.contains("holdout"))),
+        "the prompts do not mention the held-out criterion"
+    );
     assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::Steered { text } if text.contains("SECRET"))));
 }
 

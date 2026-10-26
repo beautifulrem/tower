@@ -260,8 +260,136 @@ pub fn role(path: &str) -> Role {
         Role::Config
     } else if is_docs(path) && !is_requirements(path) {
         Role::Docs
-    } else {
+    } else if is_source(path) {
         Role::Source
+    } else {
+        // Not recognised: treated as configuration, so the source-only
+        // re-run puts it back. An unknown name costs a false alarm at worst,
+        // never a false pass.
+        Role::Config
+    }
+}
+
+/// Program code and the data and assets it ships with, by extension.
+const SOURCE_EXTENSIONS: &[&str] = &[
+    // code
+    "rs",
+    "js",
+    "mjs",
+    "cjs",
+    "jsx",
+    "ts",
+    "mts",
+    "cts",
+    "tsx",
+    "py",
+    "pyi",
+    "go",
+    "rb",
+    "java",
+    "kt",
+    "kts",
+    "scala",
+    "swift",
+    "m",
+    "mm",
+    "c",
+    "h",
+    "cc",
+    "cpp",
+    "cxx",
+    "hpp",
+    "hh",
+    "cs",
+    "fs",
+    "php",
+    "ex",
+    "exs",
+    "erl",
+    "hrl",
+    "hs",
+    "ml",
+    "mli",
+    "clj",
+    "cljs",
+    "dart",
+    "lua",
+    "r",
+    "jl",
+    "zig",
+    "nim",
+    "v",
+    "sol",
+    "sql",
+    "graphql",
+    "gql",
+    "proto",
+    "vue",
+    "svelte",
+    "astro",
+    "html",
+    "htm",
+    "css",
+    "scss",
+    "sass",
+    "less",
+    "styl",
+    "elm",
+    // data and templates shipped with the code (inside the tree; top-level
+    // settings files are configuration)
+    "json",
+    "jsonc",
+    "json5",
+    "yaml",
+    "yml",
+    "toml",
+    "xml",
+    "csv",
+    "tsv",
+    "ini",
+    "properties",
+    "hbs",
+    "ejs",
+    "njk",
+    "liquid",
+    "jinja",
+    "j2",
+    "tmpl",
+    "tpl",
+    "po",
+    "pot",
+    "ftl",
+    "strings",
+    "plist",
+    // assets
+    "svg",
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "avif",
+    "ico",
+    "bmp",
+    "woff",
+    "woff2",
+    "ttf",
+    "otf",
+    "eot",
+    "mp3",
+    "wav",
+    "ogg",
+    "mp4",
+    "webm",
+    "pdf",
+    "wasm",
+];
+
+fn is_source(path: &str) -> bool {
+    let name = name_of(path);
+    match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => SOURCE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()),
+        _ => false,
     }
 }
 
@@ -354,6 +482,9 @@ mod tests {
             ("deno.json", Role::Config),
             ("README.md", Role::Docs),
             ("requirements-dev.txt", Role::Dependency),
+            ("src/loader.unknownext", Role::Config),
+            ("bin/tool", Role::Config),
+            ("assets/logo.svg", Role::Source),
         ] {
             assert_eq!(role(path), want, "{path}");
         }

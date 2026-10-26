@@ -205,6 +205,12 @@ pub enum EventKind {
         pin: String,
         passed: bool,
     },
+    /// The must-fail canary on a criterion that proved the change.
+    CanaryChecked {
+        criterion: String,
+        pin: String,
+        state: crate::view::CanaryState,
+    },
     /// Agent-environment observation: a command matching a criterion ran there.
     Observed {
         criterion: String,
@@ -317,6 +323,7 @@ impl EventKind {
             | Self::CriterionResult { .. }
             | Self::BaselineResult { .. }
             | Self::OriginalTestsResult { .. }
+            | Self::CanaryChecked { .. }
             | Self::LookCaptured { .. }
             | Self::VerifyFinished { .. }
             | Self::CostUpdated { .. }
@@ -350,6 +357,7 @@ impl EventKind {
             Self::CriterionResult { .. } => "criterion_result",
             Self::BaselineResult { .. } => "baseline_result",
             Self::OriginalTestsResult { .. } => "original_tests_result",
+            Self::CanaryChecked { .. } => "canary_checked",
             Self::LookCaptured { .. } => "look_captured",
             Self::VerifyFinished { .. } => "verify_finished",
             Self::Observed { .. } => "observed",

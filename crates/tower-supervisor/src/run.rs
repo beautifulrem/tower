@@ -87,7 +87,7 @@ pub async fn schedule(inner: &Arc<Inner>) {
             break;
         }
         let (purpose, message) = if g.run_no == 0 {
-            ("initial", prompts::initial(&g.title, &g.contract))
+            ("initial", prompts::initial(&g.title, &agent_contract(inner, &g)))
         } else {
             ("resume", prompts::resume("waiting for a free slot", &human_notes_since_last_run(inner, &g.id), &[]))
         };
@@ -118,6 +118,18 @@ pub(crate) fn human_notes_since_last_run(inner: &Inner, goal: &str) -> Vec<Strin
         .collect()
 }
 
+/// The contract as the agent sees it: without the criteria that run
+/// held-out tests (their commands would say where the tests live).
+pub(crate) fn agent_contract(inner: &Inner, goal: &tower_store::GoalRecord) -> tower_core::Contract {
+    let holdout = inner.store(|s| s.project(&goal.project_id)).map(|p| p.holdout_files).unwrap_or_default();
+    let mut c = goal.contract.clone();
+    c.criteria.retain(|cr| match &cr.kind {
+        tower_core::CriterionKind::Exec { command, .. } => !crate::verify::names_held_out(&holdout, command),
+        _ => true,
+    });
+    c
+}
+
 fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Result<EngineConfig> {
     let program = inner.engine_program(goal).ok_or_else(|| {
         invalid(tr!(inner.lang(), "没有找到 pi，请在设置中指定路径", "Pi was not found; set its path in Settings"))
@@ -129,7 +141,8 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
     std::fs::create_dir_all(&tmp)?;
     std::fs::create_dir_all(inner.paths.sessions(&goal.id))?;
     let contract_path = goal_dir.join("contract.json");
-    std::fs::write(&contract_path, serde_json::to_vec_pretty(&goal.contract).map_err(|e| invalid(e.to_string()))?)?;
+    let visible = agent_contract(inner, goal);
+    std::fs::write(&contract_path, serde_json::to_vec_pretty(&visible).map_err(|e| invalid(e.to_string()))?)?;
 
     let ws_real = real(ws);
     let tmp_real = real(&tmp);

@@ -131,6 +131,12 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
                 params![goal_id, criterion, side, pin, file, error],
             )?;
         }
+        EventKind::CanaryChecked { criterion, pin, state } => {
+            tx.execute(
+                "INSERT OR REPLACE INTO canary_results (goal_id, criterion, pin, state) VALUES (?1, ?2, ?3, ?4)",
+                params![goal_id, criterion, pin, serde_json::to_value(state)?.as_str().unwrap_or_default()],
+            )?;
+        }
         EventKind::OriginalTestsResult { criterion, pin, passed } => {
             tx.execute(
                 "INSERT OR REPLACE INTO original_results (goal_id, criterion, pin, passed) VALUES (?1, ?2, ?3, ?4)",

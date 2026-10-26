@@ -2,9 +2,18 @@
 
 Thanks for helping. Tower is small on purpose; contributions that keep it quiet, honest and fast are the most welcome.
 
+## Your first 30 minutes
+
+1. `pnpm install && pnpm dev` and choose **Try a demo goal** on the welcome screen: one goal runs end to end without Pi or credentials.
+2. Read `docs/17-implementation.md` (one page): what is built, how a goal moves through it, and where the code differs from the design.
+3. Run `pnpm check` (what CI runs). The fastest loops are `cargo test -p tower-core` (pure rules: lifecycle, sentinels, review units) and `pnpm --dir apps/desktop test`.
+4. Pick an issue labelled `good first issue`, or a sentinel case Tower misses: add it to `crates/tower-core/tests/sentinel_corpus.rs` first, then make it pass.
+
+The full design (`docs/00`–`16`, the decision log and 112 review rounds) is there when you need the reasoning behind a rule; you do not need to read it to start.
+
 ## Before you start
 
-- Read `docs/00-vision-and-principles.md`. Most design questions are answered there or in `docs/15-decision-log.md`.
+- Most design questions are answered in `docs/00-vision-and-principles.md` or `docs/15-decision-log.md` (search it; it is long).
 - For anything larger than a bug fix, open an issue first and describe the user problem, not the solution.
 - Two rules are not negotiable, because the product depends on them:
   1. **Facts and claims stay apart.** Nothing the agent says may be shown as verified. Green is only for verifier results on the current snapshot.
@@ -31,7 +40,7 @@ No model credentials? `tools/demo-engine` is a scripted Pi stand-in; the README 
 | Talking to Pi | `crates/tower-pi`, `extensions/tower-goal` |
 | Git isolation, snapshots, sealing | `crates/tower-git` |
 | Running criteria | `crates/tower-verify` |
-| Orchestration | `crates/tower-supervisor` |
+| Orchestration | `crates/tower-supervisor` (`run` engines, `control` pause/resume, `verify`, `jail` sandboxes, `pr` pull requests) |
 | Interface | `apps/desktop/src` (SolidJS), styles in `src/styles` |
 
 ## Standards

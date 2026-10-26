@@ -42,6 +42,13 @@ export interface ActivityEntry {
 
 export const ACTIVITY_MAX = 200;
 
+export interface Pulse {
+  /** When the goal's event stream last moved (ms since the epoch). */
+  at: number;
+  /** The tool call in flight, if one started and has not ended. */
+  tool: { name: string; since: number } | null;
+}
+
 interface State {
   loaded: boolean;
   loadError: string | null;
@@ -52,6 +59,13 @@ interface State {
   inbox: InboxItem[];
   /** Assistant text currently streaming, per goal (Watch mode). */
   streams: Record<string, string>;
+  /**
+   * The engine's pulse per goal: when its event stream last moved (a trace
+   * entry or streamed text) and the tool call still in flight, if any. The
+   * heartbeat reads this, so a long tool run is "a tool running for 3m",
+   * not "unresponsive".
+   */
+  pulse: Record<string, Pulse>;
   toasts: Toast[];
   activity: ActivityEntry[];
   /** Errors and warnings logged since the activity panel was last opened. */
@@ -69,6 +83,7 @@ const [state, setState] = createStore<State>({
   goals: {},
   inbox: [],
   streams: {},
+  pulse: {},
   toasts: [],
   activity: [],
   unseenActivity: 0,
@@ -184,11 +199,13 @@ function subscribe() {
         break;
       case "stream":
         setState("streams", u.goal_id, u.text);
+        beat(u.goal_id, null);
         break;
       case "traces":
         for (const entry of u.entries) {
           traceListeners.get(entry.goal_id)?.forEach((fn) => fn(entry));
           if (entry.event.kind === "assistant_message") setState("streams", entry.goal_id, "");
+          beat(entry.goal_id, entry.event);
         }
         break;
       case "toast": {
@@ -204,6 +221,28 @@ function subscribe() {
     }
   });
   return subscribed;
+}
+
+/** Records that a goal's event stream moved; tool starts and ends keep the in-flight tool. */
+export function beat(goalId: string, event: TraceEntry["event"] | null, now = Date.now()) {
+  setState(
+    produce((s) => {
+      const p = s.pulse[goalId] ?? { at: 0, tool: null };
+      p.at = now;
+      if (event?.kind === "tool_started") p.tool = { name: event.tool, since: now };
+      else if (event?.kind === "tool_ended" || event?.kind === "run_ended" || event?.kind === "engine_error") p.tool = null;
+      s.pulse[goalId] = p;
+    }),
+  );
+}
+
+/**
+ * How alive a running goal's engine is: when it last moved (the newer of
+ * its event stream and its summary) and the tool it is inside, if any.
+ */
+export function livenessOf(g: GoalSummary): { at: number; tool: Pulse["tool"] } {
+  const p = state.pulse[g.id];
+  return { at: Math.max(g.updated_at, p?.at ?? 0), tool: p?.tool ?? null };
 }
 
 /** Loads the replica. Safe to call again after a failure (the Retry button). */

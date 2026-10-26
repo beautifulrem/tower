@@ -26,18 +26,29 @@ export function machineVerified(g: GoalSummary): boolean {
   return g.progress.machine > 0 && g.verified_pin !== null;
 }
 
-/** Sidebar and board groups, in order of how much they need the human. */
-export type Group = "needs_you" | "running" | "review" | "ready" | "paused" | "done";
+/**
+ * Sidebar and board groups, in order of how much they need the human. The
+ * verification line (claimed done, verifying) is its own group: "to accept"
+ * holds only what is actually ready to accept.
+ */
+export type Group = "needs_you" | "running" | "verifying" | "review" | "ready" | "paused" | "done";
 
 export const groupLabel = (g: Group): string => t(`group.${g}`);
 
-export function groupOf(g: GoalSummary): Group {
-  if (g.needs_you > 0 && g.state !== "in_review") return "needs_you";
+/**
+ * `blocked` is the set of goals with an open blocking item (from the inbox,
+ * `isBlocking`): with it, a goal needs you exactly when a card does — the
+ * same source the "Needs you" count uses, so the two numbers agree. Without
+ * it, the summary's own count stands in (minus the ready-to-accept item).
+ */
+export function groupOf(g: GoalSummary, blocked?: Set<string>): Group {
+  if (blocked ? blocked.has(g.id) : g.needs_you > 0 && g.state !== "in_review") return "needs_you";
   switch (g.state) {
     case "running":
       return "running";
     case "claimed":
     case "verifying":
+      return "verifying";
     case "in_review":
       return "review";
     case "draft":
@@ -66,6 +77,37 @@ export function isEngineTool(tool: string): boolean {
  */
 export function isBlocking(item: InboxItem): boolean {
   return item.kind !== "review_ready";
+}
+
+/** The engine's name in words; "" is the default from the settings. */
+export function engineLabel(engine: string): string {
+  return engine === "claude-code" ? "Claude Code" : engine === "pi" ? "Pi" : engine;
+}
+
+/** The engine a goal runs on once the default is applied. */
+export function effectiveEngine(contractEngine: string | undefined, defaultEngine: string | undefined): string {
+  return contractEngine || defaultEngine || "pi";
+}
+
+/** Models belong to one engine: Claude Code's by provider, every other provider is Pi's. */
+export function modelsFor<M extends { provider: string }>(models: M[], engine: string): M[] {
+  return models.filter((m) => (engine === "claude-code") === (m.provider === "claude-code"));
+}
+
+/** The engine is "silent" after this long without any event. */
+export const SILENT_AFTER_MS = 120_000;
+
+/**
+ * How the engine reads right now: `fine` within 30 s, `quiet` up to two
+ * minutes, `silent` after that — unless a tool call is still running, in
+ * which case it is `busy` and never silent (a full test suite can take
+ * five minutes without a word).
+ */
+export function heartbeatState(sinceMs: number, toolRunning: boolean): "fine" | "quiet" | "busy" | "silent" {
+  if (toolRunning) return sinceMs > 30_000 ? "busy" : "fine";
+  if (sinceMs <= 30_000) return "fine";
+  if (sinceMs <= SILENT_AFTER_MS) return "quiet";
+  return "silent";
 }
 
 /**
@@ -100,6 +142,7 @@ export function envIssueLabel(issue: EnvIssue, env: EnvironmentStatus | null | u
     case "pi_broken":
     case "git_missing":
     case "no_sandbox":
+    case "claude_missing":
       return t(`envIssue.${issue.kind}`);
     case "pi_too_old":
       return t("envIssue.pi_too_old", { v, want: env?.min_pi_version || MIN_PI });

@@ -14,23 +14,26 @@ import { goalList, state } from "../lib/store";
 import { Icon, LifecycleGlyph, NeedsYouMark } from "./Glyph";
 import { Kbd } from "./ui";
 
-const ORDER: Group[] = ["needs_you", "running", "review", "ready", "paused", "done"];
+const ORDER: Group[] = ["needs_you", "running", "verifying", "review", "ready", "paused", "done"];
 
 const isEnded = (g: GoalSummary) => g.state === "archived" || g.state === "abandoned";
 
 export function Sidebar() {
   const [endedOpen, setEndedOpen] = createSignal(false);
+  // One source for "needs you": the blocking items. The top row counts them; the group lists their goals and counts them too.
+  const blockingItems = createMemo(() => state.inbox.filter(isBlocking));
+  const blockedGoals = createMemo(() => new Set(blockingItems().map((i) => i.goal_id)));
   const groups = createMemo(() => {
     const by = new Map<Group, GoalSummary[]>();
     for (const g of goalList()) {
       if (isEnded(g)) continue;
-      const k = groupOf(g);
+      const k = groupOf(g, blockedGoals());
       by.set(k, [...(by.get(k) ?? []), g]);
     }
-    return ORDER.filter((k) => by.has(k)).map((k) => ({ key: k, goals: by.get(k)! }));
+    return ORDER.filter((k) => by.has(k)).map((k) => ({ key: k, goals: by.get(k)!, count: k === "needs_you" ? blockingItems().length : by.get(k)!.length }));
   });
   const ended = createMemo(() => goalList().filter(isEnded));
-  const blocking = () => state.inbox.filter(isBlocking).length;
+  const blocking = () => blockingItems().length;
   const toReview = () => state.inbox.length - blocking();
   const activeId = () => {
     const r = route();
@@ -102,7 +105,7 @@ export function Sidebar() {
             <div class="side-group">
               <div class="side-group-title halt">
                 <span>{groupLabel(grp.key)}</span>
-                <span class="num">{grp.goals.length}</span>
+                <span class="num">{grp.count}</span>
               </div>
               <For each={grp.goals}>{(g) => <GoalRow g={g} />}</For>
             </div>

@@ -3,7 +3,7 @@ import { type JSX, Show, createUniqueId, onCleanup, onMount, splitProps } from "
 
 import { t } from "../lib/i18n";
 import { keyHint, useKeys } from "../lib/keys";
-import { Icon, type IconName } from "./Glyph";
+import { DangerMark, Icon, type IconName } from "./Glyph";
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "default" | "ghost" | "danger";
@@ -47,16 +47,27 @@ export function IconButton(
   );
 }
 
-/** A key cap. Several keys ("j k") render as several caps. */
+/**
+ * A key cap. Several keys ("j k") render as several caps — two keys. An
+ * alias ("n / mod+n") puts a slash between its caps, so two caps never
+ * mean "either" and "both" with the same picture.
+ */
 export function Kbd(props: { k: string }) {
+  const parts = () => props.k.split(" ");
   return (
     <>
-      {props.k.split(" ").map((k, i) => (
-        <>
-          {i > 0 ? " " : ""}
-          <kbd class="kbd">{keyHint(k)}</kbd>
-        </>
-      ))}
+      {parts().map((k, i) =>
+        k === "/" && parts().length > 1 ? (
+          <span class="kbd-or" aria-label="/">
+            /
+          </span>
+        ) : (
+          <>
+            {i > 0 ? " " : ""}
+            <kbd class="kbd">{keyHint(k)}</kbd>
+          </>
+        ),
+      )}
     </>
   );
 }
@@ -155,34 +166,72 @@ export function Empty(props: {
   kind?: "empty" | "loading" | "error";
   /** A small block, inside a section, instead of a page-level one. */
   inline?: boolean;
+  /**
+   * A whole-screen empty state: the block sits a third of the way down with
+   * the wordmark above it and Tower's three rules under it, so the emptiest
+   * screens still have Tower's face.
+   */
+  poster?: boolean;
+  /** The poster's rules line; off when the caller places it after its own content. */
+  rules?: boolean;
 }) {
   const kind = () => props.kind ?? "empty";
   return (
-    <div class={`empty empty-${kind()}`} classList={{ "empty-inline": !!props.inline }} role={kind() === "error" ? "alert" : undefined}>
-      <span class="empty-mark" aria-hidden="true">
-        <Show when={kind() === "empty"}>
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25" />
-          </svg>
-        </Show>
-        <Show when={kind() === "loading"}>
-          <Icon name="dot" size={10} />
-        </Show>
-        <Show when={kind() === "error"}>
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            <rect x="1" y="1" width="8" height="8" fill="var(--st-danger)" />
-          </svg>
-        </Show>
-      </span>
-      <div class="empty-text">
-        <span class="empty-title">{props.title}</span>
-        <Show when={props.children}>
-          <span class="empty-body">{props.children}</span>
-        </Show>
-        <Show when={props.action}>
-          <span class="empty-action">{props.action}</span>
-        </Show>
+    <div class={`empty empty-${kind()}`} classList={{ "empty-inline": !!props.inline, "empty-poster": !!props.poster }} role={kind() === "error" ? "alert" : undefined}>
+      <Show when={props.poster}>
+        <Wordmark />
+      </Show>
+      <div class="empty-row">
+        <span class="empty-mark" aria-hidden="true">
+          <Show when={kind() === "empty"}>
+            <Icon name="ring" size={12} />
+          </Show>
+          <Show when={kind() === "loading"}>
+            <Icon name="dot" size={10} />
+          </Show>
+          <Show when={kind() === "error"}>
+            <DangerMark />
+          </Show>
+        </span>
+        <div class="empty-text">
+          <span class="empty-title">{props.title}</span>
+          <Show when={props.children}>
+            <span class="empty-body">{props.children}</span>
+          </Show>
+          <Show when={props.action}>
+            <span class="empty-action">{props.action}</span>
+          </Show>
+        </div>
       </div>
+      <Show when={props.poster && props.rules !== false}>
+        <Rules />
+      </Show>
+    </div>
+  );
+}
+
+/** Tower's three rules in one quiet line, under the emptiest screens. */
+export function Rules() {
+  return (
+    <p class="empty-rules meta t3">
+      {t("welcome.factsTitle")}
+      <span class="sep">·</span>
+      {t("welcome.quietTitle")}
+      <span class="sep">·</span>
+      {t("welcome.repoTitle")}
+    </p>
+  );
+}
+
+/** The mark: a ring with the verifier's check, drawn with the same pen as every glyph, and the name tracked wide. */
+export function Wordmark() {
+  return (
+    <div class="wordmark" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter">
+        <circle cx="5" cy="5" r="4" />
+        <path d="M3.1 5.2 L4.5 6.6 L7 3.7" />
+      </svg>
+      TOWER
     </div>
   );
 }
@@ -232,6 +281,12 @@ export function Overlay(props: {
   class?: string;
   /** Floats at the top like the palette; otherwise a little lower, like a sheet. */
   top?: boolean;
+  /**
+   * Where focus lands on open: the first control (a palette's field), or
+   * the panel itself for sheets you read first — then Tab reaches the first
+   * control, and no focus ring sits on a secondary button mid-panel.
+   */
+  initialFocus?: "first" | "panel";
   children: JSX.Element;
 }) {
   const previous = document.activeElement as HTMLElement | null;
@@ -239,7 +294,7 @@ export function Overlay(props: {
   let panel!: HTMLDivElement;
   useKeys([{ key: "escape", run: () => props.onClose(), inInputs: true }]);
   onMount(() => {
-    const first = panel.querySelector<HTMLElement>(FOCUSABLE);
+    const first = props.initialFocus === "panel" ? null : panel.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? panel).focus({ preventScroll: true });
   });
   onCleanup(() => previous?.focus?.({ preventScroll: true }));

@@ -7,9 +7,9 @@
 import { Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
-import { ago, count, duration, usd, usdLimit } from "../lib/format";
+import { ago, count, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
-import { stateLabel } from "../lib/labels";
+import { effectiveEngine, engineLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { state } from "../lib/store";
 import { Icon, LifecycleGlyph, NeedsYouMark, NoticeMark } from "./Glyph";
@@ -21,9 +21,11 @@ import { Button } from "./ui";
 export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect?: () => void }) {
   const g = () => props.goal;
   const open = () => go({ name: "goal", id: g().id });
-  const age = () =>
-    g().state === "running" && g().run_started_at ? duration(state.now - g().run_started_at!, false) : ago(g().updated_at, state.now);
+  // One column, one quantity: when the goal last changed. The run's elapsed time lives in the live line.
+  const age = () => ago(g().updated_at, state.now);
   const overSoft = () => g().cost_usd >= g().budget.soft_usd;
+  // `GoalSummary.engine` is requested from the supervisor; until it arrives the row says nothing.
+  const engine = () => (g() as GoalSummary & { engine?: string }).engine;
   // Arrived in the last few seconds: one short settle, so the eye finds it.
   const fresh = Date.now() - props.goal.created_at < 5000;
   return (
@@ -77,6 +79,11 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         <Show when={state.settings?.muted_goals.includes(g().id)}>
           <span class="sep">·</span>
           <span class="t3">{t("quiet.muted")}</span>
+        </Show>
+        {/* The engine is said only when it is not the default one (once the summary carries it). */}
+        <Show when={engine() && effectiveEngine(engine(), state.settings?.engine) !== effectiveEngine("", state.settings?.engine)}>
+          <span class="sep">·</span>
+          <span class="t3">{engineLabel(engine()!)}</span>
         </Show>
         <Show when={g().overlaps?.length}>
           <span class="sep">·</span>

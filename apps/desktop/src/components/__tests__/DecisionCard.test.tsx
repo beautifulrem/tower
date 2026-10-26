@@ -116,8 +116,35 @@ describe("DecisionCard", () => {
     expect(screen.queryByText(/Every machine criterion passed/)).toBeNull();
   });
 
-  it("marks a dependency-network decision as a security decision", () => {
-    render(() => <DecisionCard item={item({ kind: "paused", subject: "The agent changed dependencies; verification setup needs the network", body: "package.json\npnpm-lock.yaml" })} />);
-    expect(screen.getByText(/package\.json/).className).toContain("code-val");
+  it("marks a dependency-network decision as a security decision and sets its machine tail apart from the prose", () => {
+    render(() => (
+      <DecisionCard
+        item={item({
+          kind: "paused",
+          subject: "The agent changed dependencies; verification setup needs the network",
+          body: "The agent changed package.json. Setup failed offline.\nnpm ERR! code ENOTFOUND",
+        })}
+      />
+    ));
+    expect(screen.getByText(/Setup failed offline/).className).toContain("decision-body");
+    expect(screen.getByText(/npm ERR!/).className).toContain("output-tail");
+    expect(screen.getByText(/security decision/)).toBeTruthy();
+    expect(screen.getByText("Open changes")).toBeTruthy();
+  });
+
+  it("does not repeat an assumption's subject as its body", () => {
+    render(() => <DecisionCard item={item({ kind: "assumption", subject: "quantities are always 1", body: "quantities are always 1", options: ["Approve", "Reject"], tones: ["primary", "neutral"] })} />);
+    expect(screen.getAllByText("quantities are always 1")).toHaveLength(1);
+  });
+
+  it("sets a failing check's name as a machine value and keeps the explanation as prose", () => {
+    render(() => <DecisionCard item={item({ kind: "ci_failed", subject: "test (ubuntu-latest, node 22)", body: "You can send the failing check to the agent.", options: ["Send to the agent", "Leave it"], tones: ["primary", "neutral"] })} />);
+    expect(screen.getByText("test (ubuntu-latest, node 22)").className).toContain("code-val");
+    expect(screen.getByText(/send the failing check/).className).not.toContain("code-val");
+  });
+
+  it("offers to put a decision aside", async () => {
+    render(() => <DecisionCard item={item()} />);
+    expect(screen.getByLabelText("Remind me later")).toBeTruthy();
   });
 });

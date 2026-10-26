@@ -174,9 +174,10 @@
   --attention-flash: oklch(0.600 0.150 65 / 0.18);
   --danger-bg: oklch(0.965 0.025 25);
 
-  --diff-add-bg: oklch(0.550 0.130 155 / 0.10);
+  /* Diff rows on white need a touch more than on dark, or the line tints vanish. */
+  --diff-add-bg: oklch(0.550 0.130 155 / 0.13);
   --diff-add-word: oklch(0.550 0.130 155 / 0.22);
-  --diff-del-bg: oklch(0.540 0.190 25 / 0.08);
+  --diff-del-bg: oklch(0.540 0.190 25 / 0.11);
   --diff-del-word: oklch(0.540 0.190 25 / 0.20);
 
   --shadow-overlay: 0 16px 48px oklch(0.2 0.01 70 / 0.18), 0 0 0 1px var(--border);

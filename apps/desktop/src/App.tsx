@@ -8,7 +8,7 @@ import { ActivityPanel, openActivity } from "./components/Activity";
 import { CommandPalette, TitleBar, Toasts, openPalette } from "./components/Chrome";
 import { ShortcutSheet, openShortcuts } from "./components/ShortcutSheet";
 import { Sidebar } from "./components/Sidebar";
-import { Button, Empty, IconButton, Loading } from "./components/ui";
+import { Button, Empty, IconButton, Loading, Rules } from "./components/ui";
 import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
 import { useMenu } from "./lib/menu";
@@ -68,7 +68,7 @@ function BootFailed() {
   return (
     <div class="boot">
       <div class="boot-failed">
-        <Empty title={t("app.bootFailedTitle")} kind="error">
+        <Empty title={t("app.bootFailedTitle")} kind="error" poster rules={false}>
           {t("app.bootFailedBody")}
         </Empty>
         <div class="boot-error-wrap">
@@ -79,7 +79,7 @@ function BootFailed() {
             label={t("app.copyError")}
             onClick={() => {
               void navigator.clipboard.writeText(state.loadError ?? "");
-              toast("info", t("common.copied"));
+              toast("success", t("common.copied"));
             }}
           />
         </div>
@@ -99,6 +99,7 @@ function BootFailed() {
             <span class="meta t3 code-val ellipsis">{state.env!.data_dir}</span>
           </Show>
         </div>
+        <Rules />
       </div>
     </div>
   );
@@ -128,14 +129,14 @@ export function App() {
 
   useKeys(
     [
-      { key: "n", run: () => go({ name: "new" }), desc: () => t("app.newGoal"), hint: "n mod+n" },
+      { key: "n", run: () => go({ name: "new" }), desc: () => t("app.newGoal"), hint: "n / mod+n" },
       { key: "mod+n", run: () => go({ name: "new" }), inInputs: true },
-      { key: "g", run: nextNeedsYou, desc: () => t("keys.nextNeedsYou"), hint: "g mod+alt+arrowdown" },
+      { key: "g", run: nextNeedsYou, desc: () => t("keys.nextNeedsYou"), hint: "g / mod+alt+arrowdown" },
       { key: "mod+alt+arrowdown", run: nextNeedsYou, inInputs: true },
       { key: "mod+1", run: () => go({ name: "overview" }), inInputs: true, desc: () => t("chrome.openOverview") },
       { key: "mod+2", run: () => go({ name: "inbox" }), inInputs: true, desc: () => t("chrome.openInbox") },
       { key: "mod+,", run: () => go({ name: "settings" }), inInputs: true, desc: () => t("chrome.openSettings") },
-      { key: "escape", run: back, desc: () => t("keys.back"), hint: "escape mod+[" },
+      { key: "escape", run: back, desc: () => t("keys.back"), hint: "escape / mod+[" },
       { key: "mod+[", run: back, inInputs: true },
     ],
     () => t("keys.everywhere"),

@@ -132,6 +132,16 @@
   border-radius: 1px;
   background: var(--st-danger);
 }
+/* Silence is worth a look, not a failure: a hollow square, so the strip never shows two ■. */
+.gauge-dot.hollow {
+  border-radius: 1px;
+  background: transparent;
+  box-sizing: border-box;
+  border: 1px solid var(--st-danger);
+}
+.gauge-busy {
+  color: var(--text-2);
+}
 .gauge-down {
   color: var(--text-1);
 }
@@ -354,6 +364,14 @@
   margin-left: -6px;
   border-radius: var(--radius-s);
   background: var(--attention-bg);
+}
+/* Two minutes without an event and no tool running: the badge steps back and says so. */
+.mode-silent {
+  color: var(--text-2);
+  font-weight: 400;
+}
+.live-elapsed {
+  white-space: nowrap;
 }
 /* The one signature motion besides amber: a badge word changing settles in 100ms, like a split-flap. */
 .mode-badge.swap {
@@ -627,6 +645,12 @@
   color: var(--text-3);
   border-color: var(--border-subtle);
 }
+/* The label is a row: an icon inside it keeps 5px from the words (never a hand-typed space). */
+.btn-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 .btn-s {
   height: 24px;
   padding: 0 8px;
@@ -689,6 +713,11 @@
   background: transparent;
   opacity: 0.8;
 }
+/* A ghost's words are already text-2: its key hint takes text-3 whole rather than text-2 at 0.7 (which falls under 4.5:1 on white). */
+.btn-ghost .kbd {
+  color: var(--text-3);
+  opacity: 1;
+}
 
 .kbd {
   display: inline-flex;
@@ -702,6 +731,12 @@
   font-weight: 500;
   letter-spacing: 0;
   color: var(--text-3);
+}
+
+.kbd-or {
+  margin: 0 3px;
+  font-size: var(--fs-hint);
+  color: var(--text-4);
 }
 
 .link {
@@ -1228,11 +1263,14 @@ input[type="radio"] {
   padding: 0;
   min-height: 20px;
 }
-/* The side column's first baseline meets the lede's. */
+/* The side column's first line sits on the wordmark's line: both 12px tall, both at the top. */
 .welcome-side {
   display: grid;
   gap: var(--sp-4);
-  padding-top: 6px;
+  padding-top: 0;
+}
+.checks .section-title {
+  line-height: 12px;
 }
 /* The only place a wordmark belongs: small, tracked, above the first sentence. */
 .wordmark {
@@ -1339,21 +1377,11 @@ input[type="radio"] {
   gap: var(--sp-8);
   flex: 1;
 }
-/* A half-screen window: the rail folds under the main column as a two-column summary. */
+/* A half-screen window: the rail folds under the main column (its own rule follows the rail's base rule below). */
 @media (max-width: 1280px) {
   .goal-body {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
-  }
-  .rail {
-    border-left: 0;
-    padding-left: 0;
-    margin-top: var(--sp-5);
-    padding-top: var(--sp-5);
-    border-top: 1px solid var(--border-subtle);
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--sp-5) var(--sp-8);
   }
 }
 /* The change readout: its own grid, so "0 files" never stacks and the pins never overlap. */
@@ -1496,6 +1524,15 @@ input[type="radio"] {
 .human-check {
   margin: 0;
 }
+/* A pass that depends on edited tests: the attention register, never green and never grey. */
+.baseline-dependent {
+  color: var(--text-1);
+}
+.baseline-dependent > span {
+  padding: 0 5px;
+  border-radius: var(--radius-s);
+  background: var(--attention-bg);
+}
 
 .output-tail {
   font-feature-settings: "liga" 0, "calt" 0;
@@ -1574,6 +1611,19 @@ input[type="radio"] {
   flex-wrap: wrap;
   gap: 2px 0;
 }
+.budget-line > span {
+  white-space: nowrap;
+}
+/* Past the wall clock: the reading wears the attention tint, like the badge when it needs you. */
+.over-wall {
+  padding: 0 5px;
+  border-radius: var(--radius-s);
+  background: var(--attention-bg);
+  color: var(--text-1);
+}
+.budget-line .over-wall .sep {
+  padding-left: 0;
+}
 
 .run-row {
   display: grid;
@@ -1611,6 +1661,23 @@ input[type="radio"] {
   gap: var(--sp-5);
   padding-left: var(--sp-5);
   border-left: 1px solid var(--border-subtle);
+}
+/* Folded under the main column: a two-column summary, the contract block across both.
+   This rule must follow the base rule above (same specificity would otherwise lose the cascade). */
+@media (max-width: 1280px) {
+  .goal-rail .rail {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--sp-5) var(--sp-8);
+    border-left: 0;
+    padding-left: 0;
+    margin-top: var(--sp-5);
+    padding-top: var(--sp-5);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .goal-rail .rail .rail-block:first-child {
+    grid-column: 1 / -1;
+  }
 }
 .rail-head {
   display: flex;
@@ -1771,6 +1838,20 @@ input[type="radio"] {
   font-size: var(--fs-hint);
   color: var(--text-3);
 }
+/* Machine text in a card: the same inset block as a verifier's output tail. */
+.decision-tail {
+  margin: 0;
+  max-height: 200px;
+}
+.decision-snooze {
+  color: var(--text-3);
+  margin-right: -4px;
+}
+.decision-caution-open {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: 2px;
+}
 /* A security decision says so, in words, before the buttons. */
 .decision-caution {
   display: flex;
@@ -1793,6 +1874,11 @@ input[type="radio"] {
 }
 .inbox .scale-title:first-child {
   margin-top: 0;
+}
+/* An action on a scale title sits past the hairline, at the right edge. */
+.scale-title .btn {
+  order: 10;
+  margin: -4px 0;
 }
 /* A line of key hints under a list: the review status bar's voice, inline. */
 .key-hints {
@@ -2115,6 +2201,10 @@ input[type="radio"] {
 .review-status .kbd {
   height: 14px;
   font-size: 10px;
+}
+/* The two mouse hints have no key cap: they sit apart on the right, one register quieter. */
+.status-mouse {
+  color: var(--text-4);
 }
 
 .file {
@@ -2805,6 +2895,10 @@ input[type="radio"] {
 .overview > .empty {
   margin-top: var(--sp-6);
 }
+.overview > .empty-poster,
+.inbox > .empty-poster {
+  margin-top: 24vh;
+}
 .overview-top .quick {
   flex: 1 1 auto;
   margin-bottom: 0;
@@ -2927,13 +3021,7 @@ input[type="radio"] {
   justify-content: flex-end;
   min-width: 0;
 }
-.g-act .btn {
-  opacity: 0.75;
-}
-.g-row:hover .g-act .btn,
-.g-row.selected .g-act .btn {
-  opacity: 1;
-}
+/* The row's own button stays quiet (a ghost) and whole: no opacity, so its words keep 4.5:1 on white. */
 /* Narrower windows: identity folds into the title's tooltip, the live line keeps only
    its badge and verb (the object is in the tooltip), and the title gets the room. */
 @media (max-width: 1240px) {
@@ -2963,6 +3051,28 @@ input[type="radio"] {
 }
 .empty-inline {
   padding: var(--sp-2) 0;
+}
+.empty-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+/* The emptiest screens: a third of the way down, the wordmark above, the three rules under. */
+.empty-poster {
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin-top: 24vh;
+  padding-top: 0;
+}
+.empty-poster .wordmark {
+  margin-bottom: 0;
+}
+.empty-rules {
+  margin: 0;
+}
+.empty-rules .sep {
+  padding: 0 0.6em;
 }
 .empty-mark {
   flex: 0 0 14px;
@@ -3010,6 +3120,10 @@ input[type="radio"] {
 }
 .boot-failed .empty {
   padding: 0;
+  margin-top: 0;
+}
+.boot-failed .empty-rules {
+  margin-top: var(--sp-3);
 }
 .boot-error-wrap {
   position: relative;
@@ -3272,6 +3386,15 @@ input[type="radio"] {
 .diff-split .dl.commented .ln:first-child {
   box-shadow: inset 2px 0 0 var(--st-attention);
 }
+/* Side by side, the hunk's undo sits over the seam between the panes: it belongs to neither side. */
+.diff-split .hunk-head .gap-controls {
+  position: relative;
+}
+.diff-split .hunk-head .undo-hunk {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
 
 /* ======================================================================
    Toast actions and the errors gauge
@@ -3295,4 +3418,294 @@ input[type="radio"] {
 }
 .gauge-errors {
   color: var(--text-1);
+}
+
+/* ======================================================================
+   Review: file tree, in-place editing, suggestions
+   ====================================================================== */
+
+.tree-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px 2px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-3);
+}
+.tree-head .kbd {
+  opacity: 0.8;
+}
+.tree {
+  display: grid;
+  gap: 1px;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  padding: 0 8px 0 calc(8px + var(--depth, 0) * 12px);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.tree-row:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+.tree-row:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: -1.5px;
+}
+.tree-dir {
+  color: var(--text-3);
+  font-family: var(--font-ui);
+}
+.tree-dir .icon {
+  color: var(--text-4);
+}
+.tree-file.shown {
+  color: var(--text-1);
+}
+.tree-file.viewed {
+  color: var(--text-3);
+}
+.tree-file .icon {
+  color: var(--text-3);
+}
+.tree-stat {
+  font-size: var(--fs-hint);
+  white-space: nowrap;
+}
+.tree-stat .diff-add,
+.tree-stat .diff-del {
+  color: inherit;
+}
+
+.file-editor {
+  display: grid;
+  gap: 6px;
+  padding: 8px 12px 10px;
+}
+.file-editor-text {
+  min-height: 120px;
+  padding: 8px 10px;
+  font-size: var(--fs-code);
+  line-height: var(--lh-code);
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+.file-editor-foot {
+  gap: var(--sp-2);
+}
+
+.inline-comment.has-suggestion .inline-comment-text {
+  display: grid;
+  gap: 4px;
+}
+.suggestion-label {
+  margin-top: 2px;
+}
+.suggestion {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
+  background: var(--diff-add-bg);
+  font-size: var(--fs-code);
+  line-height: var(--lh-code);
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-1);
+}
+
+/* ======================================================================
+   Look criteria: before and after
+   ====================================================================== */
+
+.look-strip {
+  display: flex;
+  gap: var(--sp-3);
+  margin: 2px 0 8px 22px;
+}
+.look-shot {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.look-img-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 0;
+}
+.look-img {
+  display: block;
+  height: 96px;
+  max-width: 220px;
+  object-fit: cover;
+  object-position: top left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-inset);
+}
+.look-img-btn:hover .look-img {
+  border-color: var(--border-strong);
+}
+.look-img-btn:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-s);
+}
+.look-missing {
+  display: flex;
+  align-items: center;
+  height: 96px;
+  min-width: 140px;
+  max-width: 220px;
+  padding: 0 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-s);
+}
+.look-panel {
+  width: min(1120px, 94vw);
+}
+.look-tools {
+  gap: var(--sp-4);
+}
+.look-mix {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.look-mix input[type="range"] {
+  width: 160px;
+  accent-color: var(--text-1);
+  padding: 0;
+  height: auto;
+  border: 0;
+  background: transparent;
+}
+.look-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+}
+.look-side .look-img,
+.look-side .look-missing {
+  height: auto;
+  max-width: none;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  object-position: top left;
+}
+.look-side .look-missing {
+  height: 120px;
+}
+.look-onion {
+  position: relative;
+  max-height: 64vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+.look-onion img {
+  display: block;
+  width: 100%;
+}
+.look-onion img + img {
+  position: absolute;
+  inset: 0;
+}
+
+/* ======================================================================
+   Settings: the phone page
+   ====================================================================== */
+
+.phone-pair {
+  display: flex;
+  gap: var(--sp-5);
+  align-items: flex-start;
+}
+.phone-qr {
+  flex: 0 0 auto;
+  width: 132px;
+  height: 132px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: #fff;
+  line-height: 0;
+}
+.phone-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.phone-links {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+/* The settings form puts hints in its second column; inside this block there is only one. */
+.settings-form .phone-links > * {
+  grid-column: 1;
+  margin-top: 0;
+}
+.phone-port {
+  width: 8ch !important;
+}
+.phone-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+.phone-transport {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+}
+.phone-transport .glyph,
+.phone-transport .icon {
+  align-self: center;
+}
+.panel-awaiting {
+  white-space: nowrap;
+}
+
+/* The autonomy level's description, as one line under the three choices, only when they are a row. */
+.autonomy-current {
+  display: none;
+}
+@media (max-width: 1280px) {
+  .autonomy-choices .radio-desc {
+    display: none;
+  }
+  .autonomy-choices .radio {
+    margin-bottom: var(--sp-2);
+  }
+  .autonomy-current {
+    display: block;
+    margin-bottom: var(--sp-2);
+  }
+}
+.criterion-edit .look-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
 }

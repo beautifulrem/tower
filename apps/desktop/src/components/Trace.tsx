@@ -111,6 +111,12 @@ export function Trace(props: { id: string; live?: boolean }) {
 
   const filtered = createMemo(() => entries().filter((e) => matches(e, filter())));
   const shown = createMemo(() => filtered().slice(-window_()));
+  // What each tool call was asked to do (`tool_started.summary`), by call id, for the `tool_ended` rows.
+  const calls = createMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of entries()) if (e.event.kind === "tool_started" && e.event.summary) m.set(e.event.call_id, e.event.summary);
+    return m;
+  });
   const hidden = () => filtered().length - shown().length;
 
   /** Reveals earlier rows, keeping the scroll position on the row that was at the top. */
@@ -149,7 +155,7 @@ export function Trace(props: { id: string; live?: boolean }) {
             </Empty>
           </div>
         </Show>
-        <For each={shown()}>{(e) => <TraceRow e={e} />}</For>
+        <For each={shown()}>{(e) => <TraceRow e={e} calls={calls()} />}</For>
       </div>
     </div>
   );
@@ -170,7 +176,6 @@ function plainLabel(kind: TraceEntry["event"]["kind"]): string {
       verify_started: "evVerifyStarted",
       setup_finished: "evSetupFinished",
       verify_finished: "evVerifyFinished",
-      observed: "evObserved",
       inbox_opened: "evInboxOpened",
       human_check: "evHumanCheck",
       claim_reviewed: "evClaimReviewed",
@@ -181,7 +186,7 @@ function plainLabel(kind: TraceEntry["event"]["kind"]): string {
   return key ? t(`trace.${key}`) : kind;
 }
 
-function TraceRow(props: { e: TraceEntry }) {
+function TraceRow(props: { e: TraceEntry; calls?: Map<string, string> }) {
   const ev = () => props.e.event;
   const [open, setOpen] = createSignal(false);
   return (
@@ -200,16 +205,75 @@ function TraceRow(props: { e: TraceEntry }) {
         <span class="trace-time num">{clock(props.e.at)}</span>
         <div class="trace-content">
           <Switch fallback={<span class="t2">{plainLabel(ev().kind)}</span>}>
+            {/* A tool row reads as what was done (the call: a path, a command, a question), then how it went. */}
             <Match when={ev().kind === "tool_ended" && ev()}>
               {(x) => {
                 const e = x() as Extract<TraceEntry["event"], { kind: "tool_ended" }>;
+                const call = () => props.calls?.get(e.call_id);
+                const result = () => (e.is_error || e.tool === "bash" || !call() ? e.summary : "");
                 return (
                   <div class="row">
                     <span class="mono trace-tool" classList={{ "trace-error": e.is_error }}>
                       {e.tool}
                     </span>
-                    <span class="mono t2 ellipsis grow">{e.summary || "—"}</span>
+                    <span class="mono t2 ellipsis grow" title={e.summary || undefined}>
+                      {call() || e.summary || "—"}
+                      <Show when={call() && result()}>
+                        <span class="t3"> · {result()}</span>
+                      </Show>
+                    </span>
                     <span class="meta num">{duration(e.duration_ms)}</span>
+                  </div>
+                );
+              }}
+            </Match>
+            <Match when={ev().kind === "observed" && ev()}>
+              {(x) => {
+                const c = x() as Extract<TraceEntry["event"], { kind: "observed" }>;
+                return (
+                  <span class="t2 row">
+                    <ResultMark kind={c.passed ? "obs-pass" : "obs-fail"} />
+                    {t("trace.observedResult", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
+                  </span>
+                );
+              }}
+            </Match>
+            <Match when={ev().kind === "original_tests_result" && ev()}>
+              {(x) => {
+                const c = x() as Extract<TraceEntry["event"], { kind: "original_tests_result" }>;
+                return (
+                  <div class="trace-cols">
+                    <ResultMark kind={c.passed ? "pass" : "fail"} />
+                    <span class="ellipsis">
+                      {t("trace.originalTests", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
+                      <span class="t3"> · {c.passed ? t("goal.withOriginalTests") : t("goal.dependsOnEditedTests")}</span>
+                    </span>
+                    <span />
+                    <span class="col-pin">
+                      <Icon name="harness" size={10} />@{short(c.pin)}
+                    </span>
+                    <span />
+                  </div>
+                );
+              }}
+            </Match>
+            <Match when={ev().kind === "look_captured" && ev()}>
+              {(x) => {
+                const c = x() as Extract<TraceEntry["event"], { kind: "look_captured" }>;
+                return (
+                  <div class="trace-cols">
+                    <ResultMark kind={c.error ? "fail" : "pass"} title={c.error ?? undefined} />
+                    <span class="ellipsis">
+                      {t("trace.lookCaptured", { criterion: c.criterion, side: c.side === "base" ? t("look.before") : t("look.after") })}
+                      <Show when={c.error}>
+                        <span class="t3"> · {c.error}</span>
+                      </Show>
+                    </span>
+                    <span />
+                    <span class="col-pin">
+                      <Icon name="harness" size={10} />@{short(c.pin)}
+                    </span>
+                    <span />
                   </div>
                 );
               }}
@@ -237,7 +301,8 @@ function TraceRow(props: { e: TraceEntry }) {
                       {t("trace.injected")} · {c.channel === "steer" ? t("trace.steer") : t("trace.message")}
                       <Icon name={open() ? "caret-down" : "caret-right"} size={10} />
                     </button>
-                    <Show when={open()} fallback={<span class="t2 ellipsis">{c.text.split("\n")[0]}</span>}>
+                    {/* The text is for the agent, in its language: the fold says so, so English in a Chinese interface is not a gap. */}
+                    <Show when={open()} fallback={<span class="t3 ellipsis">{c.text.split("\n")[0]} <span class="t4">{t("trace.forAgent")}</span></span>}>
                       <pre class="output-tail">{c.text}</pre>
                     </Show>
                   </div>

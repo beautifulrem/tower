@@ -9,8 +9,8 @@ import { useKeys } from "../lib/keys";
 import { back, canGoBack, go, route } from "../lib/nav";
 import { popupActions } from "../lib/native";
 import { bumpRecent, recentIds } from "../lib/recent";
-import { act, dismissToast, goalList, patchSettings, quietNow, state } from "../lib/store";
-import { stateLabel } from "../lib/labels";
+import { act, dismissToast, goalList, livenessOf, patchSettings, quietNow, state } from "../lib/store";
+import { hasIssue, heartbeatState, stateLabel } from "../lib/labels";
 import { openActivity } from "./Activity";
 import { Icon, type IconName, LifecycleGlyph, NeedsYouMark } from "./Glyph";
 import { openShortcuts } from "./ShortcutSheet";
@@ -34,23 +34,40 @@ export async function pickQuiet() {
 }
 
 /**
- * Engine heartbeat: seconds since the newest update of any running goal. The
- * title bar ticks once a second only while something runs, so "quiet"
- * (nothing to say) and "dead" (nothing said for two minutes) look different.
+ * Engine heartbeat: how long since any running goal's event stream moved
+ * (trace entries, streamed text, the summary). The title bar ticks once a
+ * second only while something runs. A tool call still in flight is "a tool
+ * running for 3m", never silence; silence past two minutes wears a hollow
+ * square — worth a look, not a failure — so it is not a second ■ beside the
+ * error count.
  */
-function Heartbeat(props: { running: number }) {
+export function Heartbeat(props: { running: number }) {
   const [now, setNow] = createSignal(Date.now());
   const timer = window.setInterval(() => props.running > 0 && setNow(Date.now()), 1000);
   onCleanup(() => clearInterval(timer));
-  const last = () => Math.max(0, ...goalList().filter((g) => g.state === "running").map((g) => g.updated_at));
-  const secs = () => Math.max(0, Math.round((now() - last()) / 1000));
+  const live = () => goalList().filter((g) => g.state === "running").map(livenessOf);
+  const last = () => Math.max(0, ...live().map((l) => l.at));
+  const tool = () => live().map((l) => l.tool).filter((x) => x !== null).sort((a, b) => a!.since - b!.since)[0] ?? null;
+  const since = () => Math.max(0, now() - last());
+  const hb = () => heartbeatState(since(), tool() !== null);
+  const text = () => {
+    const d = since() < 120_000 ? `${Math.round(since() / 1000)}s` : duration(since(), false);
+    switch (hb()) {
+      case "fine":
+        return t("chrome.heartbeat", { n: Math.round(since() / 1000) });
+      case "busy":
+        return t("chrome.toolRunning", { tool: tool()!.name, d: duration(now() - tool()!.since, false) });
+      default:
+        return t("chrome.silentFor", { d });
+    }
+  };
   return (
     <Show when={props.running > 0 && last() > 0}>
-      <span class="gauge num" classList={{ "gauge-stale": secs() > 30 }} title={t("chrome.heartbeatTitle")}>
-        <Show when={secs() > 120}>
-          <span class="gauge-dot down" />
+      <span class="gauge num" classList={{ "gauge-stale": hb() === "quiet" || hb() === "silent", "gauge-busy": hb() === "busy" }} title={t("chrome.heartbeatTitle")}>
+        <Show when={hb() === "silent"}>
+          <span class="gauge-dot hollow" />
         </Show>
-        {secs() > 30 ? t("chrome.silentFor", { d: secs() < 120 ? `${secs()}s` : duration(secs() * 1000, false) }) : t("chrome.heartbeat", { n: secs() })}
+        {text()}
       </span>
     </Show>
   );
@@ -65,7 +82,8 @@ export function TitleBar(props: { title: string }) {
   const running = () => goalList().filter((g) => g.state === "running").length;
   const spent = () => goalList().reduce((s, g) => s + g.cost_usd, 0);
   const max = () => state.settings?.max_concurrent ?? 3;
-  const engineOk = () => !!state.env?.pi_version;
+  // Claude Code as the engine needs no Pi; its own problem arrives as an environment issue.
+  const engineOk = () => (state.settings?.engine === "claude-code" ? !hasIssue(state.env, "claude_missing") : !!state.env?.pi_version);
   const crumbs = () => {
     const r = route();
     if (r.name !== "goal") return null;
@@ -119,14 +137,16 @@ export function TitleBar(props: { title: string }) {
           fallback={
             <button class="gauge gauge-down link-plain" onClick={() => go({ name: "settings" })}>
               <span class="gauge-dot down" />
-              {t("chrome.piNotReady")}
+              {state.settings?.engine === "claude-code" ? t("chrome.claudeNotReady") : t("chrome.piNotReady")}
             </button>
           }
         >
           <span class="gauge" title={`Pi ${state.env!.pi_version!} · ${state.env?.pi_path ?? ""}`}>
             <span class="gauge-dot" />
             {t("chrome.engine")}
-            <span class="t3 gauge-version">Pi {state.env!.pi_version!.split(" ")[0]}</span>
+            <span class="t3 gauge-version">
+              {state.settings?.engine === "claude-code" ? "Claude Code" : `Pi ${state.env!.pi_version!.split(" ")[0]}`}
+            </span>
           </span>
         </Show>
       </div>

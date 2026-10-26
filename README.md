@@ -27,7 +27,7 @@ Most agent GUIs inherit the editor layout: sessions on the left, a chat stream i
 |---|---|
 | ![Inbox](assets/screenshots/inbox.png) | ![Contract](assets/screenshots/contract.png) |
 
-The interface is in Simplified Chinese today; the agent can write to you in Chinese or English (Settings). An English interface is planned.
+Tower speaks English and Simplified Chinese. A new install follows your macOS language; Settings → Language switches the interface, the menu bar and the language the agent writes to you, at once.
 
 ## Install
 
@@ -40,7 +40,7 @@ npm i -g @earendil-works/pi-coding-agent
 pi            # then /login
 ```
 
-If your models come from a Pi extension package (for example ClinePass), list its entry file under Settings → "额外加载的 Pi 扩展" and make its key available in your login shell (`export CLINE_API_KEY=…`). Tower passes `*_API_KEY` variables to Pi but never to the agent's shell.
+If your models come from a Pi extension package (for example ClinePass), list its entry file under Settings → "Extra Pi extensions to load" and make its key available in your login shell (`export CLINE_API_KEY=…`). Tower passes `*_API_KEY` variables to Pi but never to the agent's shell.
 
 ## Build from source
 

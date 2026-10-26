@@ -30,6 +30,8 @@
 
 <p align="center"><img src="assets/screenshots/goal-light.png" width="720" alt="浅色主题"></p>
 
+界面支持简体中文与英文。新安装跟随 macOS 的首选语言；在设置的“语言”中切换后，界面、菜单栏以及 Agent 写给你的语言立即一起改变。
+
 ## 状态
 
 设计中 M1 主循环的可运行原型。在 macOS 上以 RPC 模式驱动 Pi，端到端跑通：隔离工作区 → Agent 运行 → 声称完成 → 沙箱中验证 → 自动返工 → 评审 → 写入本地分支 → 识别合入。实现了什么、与设计有何差异、已知缺口见 [`docs/17-implementation.md`](docs/17-implementation.md)。

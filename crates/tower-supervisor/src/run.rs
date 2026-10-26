@@ -951,6 +951,16 @@ fn head(s: &str, n: usize) -> &str {
     }
 }
 
+/// Whether a tool's output shows the sandbox refusing an access (the
+/// kernel's EPERM, as shells and Node print it).
+pub(crate) fn sandbox_denied(text: &str) -> bool {
+    let t = text.to_ascii_lowercase();
+    t.contains("operation not permitted")
+        || t.contains("eperm:")
+        || t.contains("sandbox-exec: ")
+        || t.contains("deny(1)")
+}
+
 #[cfg(test)]
 mod tests {
     use super::same_command;
@@ -963,14 +973,4 @@ mod tests {
         assert!(!same_command("npm test || true", "npm test"));
         assert!(!same_command("npm test -- --grep cart", "npm test"));
     }
-}
-
-/// Whether a tool's output shows the sandbox refusing an access (the
-/// kernel's EPERM, as shells and Node print it).
-pub(crate) fn sandbox_denied(text: &str) -> bool {
-    let t = text.to_ascii_lowercase();
-    t.contains("operation not permitted")
-        || t.contains("eperm:")
-        || t.contains("sandbox-exec: ")
-        || t.contains("deny(1)")
 }

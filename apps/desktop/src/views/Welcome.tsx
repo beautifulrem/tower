@@ -9,6 +9,7 @@
 import { For, type JSX, Show, createResource } from "solid-js";
 
 import { DemoButton, demoMissing, openPiLogin, pickProject } from "../components/Demo";
+import { GitIdentityForm } from "../components/GitIdentity";
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark, Seal } from "../components/Glyph";
 import { Claim, CriteriaBar } from "../components/Honesty";
 import { Button, Wordmark } from "../components/ui";
@@ -40,6 +41,10 @@ function Check(props: { ok: boolean | null; blocking?: boolean; title: string; d
           <span class="meta">{props.detail}</span>
         </Show>
       </div>
+      {/* The action first (a form, a button), the command after it as the way for a terminal. */}
+      <Show when={props.action}>
+        <div class="check-action">{props.action}</div>
+      </Show>
       <Show when={props.fix}>
         <button
           class="fix code-val"
@@ -51,9 +56,6 @@ function Check(props: { ok: boolean | null; blocking?: boolean; title: string; d
         >
           {props.fix}
         </button>
-      </Show>
-      <Show when={props.action}>
-        <div class="check-action">{props.action}</div>
       </Show>
     </div>
   );
@@ -196,7 +198,10 @@ export function Welcome() {
             title={sandbox() ? t("welcome.sandboxOk") : t("welcome.sandboxMissing")}
             detail={sandbox() ? t("welcome.sandboxOkDetail") : t("welcome.sandboxMissingDetail")}
           />
-          <For each={other()}>{(i) => <Check ok={false} blocking={i.blocking} title={envIssueLabel(i, env())} fix={i.fix} />}</For>
+          {/* A missing git identity can be set right here; every other issue keeps its command. */}
+          <For each={other()}>
+            {(i) => <Check ok={false} blocking={i.blocking} title={envIssueLabel(i, env())} fix={i.fix} action={i.kind === "git_identity_missing" ? <GitIdentityForm /> : undefined} />}
+          </For>
           <Show when={demoMissing().length}>
             <Check
               ok={false}

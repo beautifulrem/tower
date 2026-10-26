@@ -570,6 +570,11 @@ export const en: Dict = {
     pushSentAt: "Last push sent · {time}",
     pushFailedAt: "Last push failed · {time}",
     pushNone: "No push sent since Tower started",
+    gitName: "Your name",
+    gitEmail: "you@example.com",
+    gitIdentitySave: "Set in git",
+    gitIdentityHint: "Written to git's global config, as the command below would.",
+    gitIdentitySet: "git now commits as {name}",
   },
   contract: {
     defaultCriterion: "All existing tests pass",

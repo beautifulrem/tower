@@ -15,6 +15,8 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
     let git_version = inner.git.version().ok();
     let lang = inner.lang();
     let mut issues = Vec::new();
+    // Pi problems block only when Pi is the engine.
+    let uses_pi = inner.settings().engine != "claude-code";
     let mut issue = |kind, blocking, text: String, fix: Option<&str>| {
         issues.push(EnvIssue { kind, blocking, text, fix: fix.map(String::from) })
     };
@@ -22,7 +24,7 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
     if pi.is_none() {
         issue(
             EnvIssueKind::PiMissing,
-            true,
+            uses_pi,
             tr!(
                 lang,
                 "没有找到 pi。请先安装 Pi，或在设置中指定路径。",
@@ -37,7 +39,7 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
                 let want = format!("{}.{}.{}", min.0, min.1, min.2);
                 issue(
                     EnvIssueKind::PiTooOld,
-                    true,
+                    uses_pi,
                     tr!(
                         lang,
                         "Pi {v} 太旧，Tower 需要 {want} 或更新的版本。",
@@ -64,7 +66,7 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
     } else {
         issue(
             EnvIssueKind::PiBroken,
-            true,
+            uses_pi,
             tr!(lang, "pi 无法运行。请检查设置中的路径。", "Pi does not run. Check its path in Settings."),
             Some(INSTALL_PI),
         );
@@ -75,6 +77,18 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
             true,
             tr!(lang, "没有找到 git。", "git was not found."),
             Some("xcode-select --install"),
+        );
+    }
+    if !uses_pi && (inner.env.which("claude").is_none() || inner.env.which("node").is_none()) {
+        issue(
+            EnvIssueKind::ClaudeMissing,
+            true,
+            tr!(
+                lang,
+                "引擎设为 Claude Code，但没有找到 claude 或 Node.js。安装并登录 Claude Code，或在设置中把引擎改回 Pi。",
+                "The engine is Claude Code, but claude or Node.js was not found. Install and log in to Claude Code, or switch the engine back to Pi in Settings."
+            ),
+            Some("npm i -g @anthropic-ai/claude-code"),
         );
     }
     if !sandbox::available() {

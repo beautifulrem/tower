@@ -51,6 +51,10 @@ pub struct Contract {
     /// is how code and secrets leak. Setup commands always have the network.
     #[serde(default)]
     pub network: bool,
+    /// The agent that does the work: `pi` or `claude-code`. Empty means the
+    /// default from the settings.
+    #[serde(default)]
+    pub engine: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -157,6 +161,7 @@ impl Contract {
             thinking: String::new(),
             stop_conditions: Vec::new(),
             network: false,
+            engine: String::new(),
         }
     }
 

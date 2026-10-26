@@ -409,7 +409,21 @@ pub struct Settings {
     /// Goals whose items never notify.
     #[serde(default)]
     pub muted_goals: Vec<String>,
+    /// The default engine for new goals: `pi` or `claude-code`.
+    #[serde(default = "default_engine")]
+    pub engine: String,
+    /// How to start Claude Code's ACP adapter; empty means
+    /// `claude-agent-acp` if installed, else `npx` with a pinned version.
+    #[serde(default)]
+    pub claude_acp_command: String,
 }
+
+fn default_engine() -> String {
+    "pi".into()
+}
+
+/// The engines Tower can drive.
+pub const ENGINES: &[&str] = &["pi", "claude-code"];
 
 fn default_language() -> String {
     crate::i18n::system_language().code().into()
@@ -441,6 +455,8 @@ impl Default for Settings {
             language: default_language(),
             quiet_until: None,
             muted_goals: Vec::new(),
+            engine: default_engine(),
+            claude_acp_command: String::new(),
         }
     }
 }
@@ -486,6 +502,9 @@ pub enum EnvIssueKind {
     PiUntested,
     GitMissing,
     NoSandbox,
+    /// Claude Code is the chosen engine but `claude` (or Node.js, which the
+    /// bridge needs) is not installed.
+    ClaudeMissing,
 }
 
 /// The Pi versions Tower supports: at least `PI_MIN`, tested up to the

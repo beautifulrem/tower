@@ -39,7 +39,9 @@ async fn main() {
     .expect("start");
     let env = sup.environment();
     println!("pi {} at {}", env.pi_version.unwrap_or_default(), env.pi_path.unwrap_or_default());
-    sup.save_settings(Settings { extra_extensions: extensions, ..sup.settings() }).expect("settings");
+    // TOWER_ENGINE=claude-code runs the goal on Claude Code through the ACP bridge.
+    let engine = std::env::var("TOWER_ENGINE").unwrap_or_else(|_| "pi".into());
+    sup.save_settings(Settings { extra_extensions: extensions, engine, ..sup.settings() }).expect("settings");
 
     let project = match sup.projects().unwrap().into_iter().find(|p| p.root.ends_with(repo.trim_end_matches('/'))) {
         Some(p) => p,

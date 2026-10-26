@@ -40,6 +40,7 @@ function blank(intent = "", testCommand: string | null = null): Contract {
     thinking: state.settings?.default_thinking ?? "",
     stop_conditions: [],
     network: false,
+    engine: "",
   };
 }
 

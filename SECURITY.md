@@ -15,6 +15,12 @@ Tower runs coding agents that execute commands on your machine. Its safety rests
 
 Please **do not** open a public issue for a vulnerability. Use GitHub's private vulnerability reporting ("Security" → "Report a vulnerability") on this repository. Describe the property that fails and the class of harm; a minimal reproduction helps. We aim to acknowledge within three days.
 
+## Engines
+
+- **Pi**: Tower's extension replaces Pi's four tools with sandboxed ones and adds three; Pi starts with exactly these seven.
+- **Claude Code** (through the ACP bridge, `extensions/tower-goal/acp.ts`): Claude Code is started with no built-in tools, no user or project settings, hooks or MCP servers; its only tools are Tower's MCP server, which applies the same gate and Seatbelt profile as with Pi.
+- In both cases the engine process itself (which holds your model login) runs outside the sandbox; only what the model can cause to happen runs inside it.
+
 ## Known limits
 
 - Pi itself (which holds the model credentials and talks to the provider) runs outside the sandbox; only what the model can cause to happen runs inside it.

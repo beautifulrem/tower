@@ -434,7 +434,29 @@ pub async fn models(inner: &Arc<Inner>) -> Result<Vec<ModelInfo>> {
     {
         return Ok(list.clone());
     }
-    let program = inner.pi_program().ok_or_else(|| invalid(tr!(inner.lang(), "没有找到 pi", "Pi was not found")))?;
+    // Claude Code's models, by the aliases its SDK accepts, when it is installed.
+    let claude: Vec<ModelInfo> = if inner.env.which("claude").is_some() {
+        [("opus", "Claude Opus"), ("sonnet", "Claude Sonnet"), ("haiku", "Claude Haiku")]
+            .into_iter()
+            .map(|(id, name)| ModelInfo {
+                provider: "claude-code".into(),
+                id: id.into(),
+                name: name.into(),
+                reasoning: true,
+                cost_input: 0.0,
+                cost_output: 0.0,
+                context_window: 0,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let Some(program) = inner.pi_program() else {
+        if claude.is_empty() {
+            return Err(invalid(tr!(inner.lang(), "没有找到 pi", "Pi was not found")));
+        }
+        return Ok(claude);
+    };
     let tmp = inner.paths.tmp("_models");
     std::fs::create_dir_all(&tmp)?;
     let cfg = EngineConfig {
@@ -472,6 +494,7 @@ pub async fn models(inner: &Arc<Inner>) -> Result<Vec<ModelInfo>> {
                 .collect()
         })
         .unwrap_or_default();
+    let list: Vec<ModelInfo> = list.into_iter().chain(claude).collect();
     *inner.models.lock().unwrap_or_else(PoisonError::into_inner) = Some((Instant::now(), list.clone()));
     Ok(list)
 }

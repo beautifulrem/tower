@@ -26,6 +26,9 @@ pub(crate) struct Inner {
     pub sink: Arc<dyn UiSink>,
     pub runs: Mutex<HashMap<String, Arc<Run>>>,
     pub verifications: Mutex<HashMap<String, Cancel>>,
+    /// Goals that asked for verification while one was still winding down
+    /// (a quick rework can submit before the last one has cleaned up).
+    pub verify_again: Mutex<HashSet<String>>,
     pub(crate) dirty: Mutex<HashSet<String>>,
     /// Trace entries not yet sent to the interface.
     pub(crate) traces: Mutex<Vec<TraceEntry>>,

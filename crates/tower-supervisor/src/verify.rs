@@ -36,6 +36,8 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
     {
         let mut v = inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if v.contains_key(&goal) {
+            // Run again once this one is done, never twice at once.
+            inner.verify_again.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(goal);
             return;
         }
         v.insert(goal.clone(), cancel.clone());
@@ -43,6 +45,13 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
     tokio::spawn(async move {
         let result = verify(&inner, &goal, &cancel).await;
         inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
+        let again = inner.verify_again.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
+        if again
+            && !cancel.is_cancelled()
+            && inner.store(|s| s.goal(&goal)).is_ok_and(|g| g.state == LifecycleState::Claimed)
+        {
+            spawn(inner.clone(), goal.clone());
+        }
         if let Err(e) = result
             && !cancel.is_cancelled()
         {
@@ -433,11 +442,12 @@ impl<'a> Bench<'a> {
     }
 
     async fn close(&self) {
-        let (dir, tmp) = (self.dir.clone(), self.tmp.clone());
+        let (dir, tmp, cache) = (self.dir.clone(), self.tmp.clone(), self._cache.0.clone());
         let _ = tokio::task::spawn_blocking(move || {
-            stop_survivors(&[dir.clone(), tmp.clone()]);
-            let _ = std::fs::remove_dir_all(&dir);
-            let _ = std::fs::remove_dir_all(&tmp);
+            stop_survivors(&[dir.clone(), tmp.clone(), cache.clone()]);
+            for d in [&dir, &tmp, &cache] {
+                let _ = std::fs::remove_dir_all(d);
+            }
         })
         .await;
     }

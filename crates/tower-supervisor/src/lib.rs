@@ -124,6 +124,7 @@ impl Supervisor {
             sink,
             runs: Mutex::default(),
             verifications: Mutex::default(),
+            verify_again: Mutex::default(),
             dirty: Mutex::default(),
             traces: Mutex::default(),
             models: Mutex::default(),

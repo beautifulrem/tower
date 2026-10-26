@@ -215,7 +215,8 @@ function parts(i, g) {
 // decided where the diff is — the page names them instead of offering them.
 const DESK_ONLY = {
   approval: ["Allow", "Approve", "允许", "批准"],
-  any: ["I've checked, go to review", "我已确认，进入评审", "I've checked, install with the network", "我看过改动，这次联网安装"],
+  any: ["I've checked, go to review", "我已确认，进入评审", "I've checked, install with the network", "我看过改动，这次联网安装",
+    "Show the agent the failure (it will see the held-out tests)", "把失败输出给 Agent 看（它会看到保留测试）"],
 };
 const atDeskOnly = (i, o) => (i.kind === "approval" ? DESK_ONLY.approval : DESK_ONLY.any).includes(o);
 let armed = null;

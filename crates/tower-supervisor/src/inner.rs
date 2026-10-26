@@ -139,11 +139,7 @@ impl Inner {
             return;
         }
         let url = s.push_url.trim().to_string();
-        if url.is_empty()
-            || s.quiet_until.is_some_and(|t| t > tower_store::system_now())
-            || s.muted_goals.contains(&item.goal_id)
-            || s.quiet_hours.is_some_and(|q| local_minute().is_some_and(|m| q.contains(m)))
-        {
+        if url.is_empty() || crate::is_quiet(&s) || s.muted_goals.contains(&item.goal_id) {
             return;
         }
         let lang = s.lang();
@@ -301,7 +297,7 @@ pub(crate) async fn refresh_touched(inner: &Arc<Inner>) -> Result<()> {
 }
 
 /// Minutes after local midnight, now.
-fn local_minute() -> Option<u16> {
+pub(crate) fn local_minute() -> Option<u16> {
     let out = std::process::Command::new("/bin/date").arg("+%H %M").output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let mut it = text.split_whitespace().map(|p| p.parse::<u16>().ok());

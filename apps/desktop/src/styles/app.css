@@ -2148,6 +2148,18 @@ input[type="radio"] {
 .unit-dir {
   color: var(--text-3);
 }
+.unit-caret {
+  color: var(--text-4);
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+/* A unit's files sit under its group row; the group keeps a breath from the next. */
+.unit-group + .unit-group {
+  margin-top: var(--sp-2);
+}
+.unit-group .unit {
+  width: 100%;
+}
 .unit-lines {
   font-size: var(--fs-hint);
   color: var(--text-3);
@@ -3492,7 +3504,7 @@ input[type="radio"] {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 8px 2px;
+  padding: 2px 8px 6px;
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
   color: var(--text-3);
@@ -3713,6 +3725,13 @@ input[type="radio"] {
 .look-onion img + img {
   position: absolute;
   inset: 0;
+}
+/* Difference: what did not move goes black, what did lights up — a one-pixel shift is visible. */
+.look-diff img + img {
+  mix-blend-mode: difference;
+}
+.look-keys {
+  gap: 4px var(--sp-3);
 }
 
 /* ======================================================================

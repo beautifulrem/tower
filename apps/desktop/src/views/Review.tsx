@@ -211,7 +211,6 @@ export function Review(props: { id: string }) {
     return v.files.filter((f) => u.files.includes(f.path));
   });
   const allPaths = createMemo(() => view()?.files.map((f) => f.path) ?? []);
-  const tree = createMemo(() => buildTree(allPaths()));
   const fileByPath = (path: string) => view()?.files.find((f) => f.path === path);
 
   const selectUnit = (i: number) => {
@@ -424,26 +423,39 @@ export function Review(props: { id: string }) {
             }
           >
             <div class="review-body" classList={{ solo: solo() && !showTree() }}>
+              {/* One list of files. With several units each unit is a group in the tree — its title, line count and risk on the group row,
+                  its files folded by directory under it — so a file is named once, and j/k still walk the units. */}
               <Show when={!solo() || showTree()}>
                 <aside class="review-units" aria-label={t("review.unitsLabel")}>
-                  <Show when={!solo()}>
+                  <div class="tree-head halt">
+                    <span>{t("review.filesLabel")}</span>
+                    <span class="num">{allPaths().length}</span>
+                    <span class="grow" />
+                    <Kbd k="mod+p" />
+                  </div>
+                  <div class="tree" role="tree" aria-label={t("review.filesLabel")}>
                     <For each={units()}>
-                      {(u, i) => <UnitItem u={u} active={i() === unitIdx()} viewed={unitViewed(u)} onClick={() => selectUnit(i())} />}
+                      {(u, i) => (
+                        <div class="unit-group" role="group" aria-label={u.title}>
+                          <Show when={!solo()}>
+                            <UnitItem u={u} active={i() === unitIdx()} viewed={unitViewed(u)} onClick={() => selectUnit(i())} />
+                          </Show>
+                          <For each={buildTree(u.files, u.title.endsWith("/") && u.files.every((f) => f.startsWith(u.title)) ? u.title : "")}>
+                            {(n) => (
+                              <TreeRow
+                                node={n}
+                                depth={solo() ? 0 : 1}
+                                fileOf={fileByPath}
+                                viewed={(p) => !!fileByPath(p) && isViewed(fileByPath(p)!)}
+                                shown={(p) => i() === unitIdx() && files().some((f) => f.path === p)}
+                                onOpen={(p) => (selectUnit(i()), jumpToFile(p))}
+                              />
+                            )}
+                          </For>
+                        </div>
+                      )}
                     </For>
-                  </Show>
-                  <Show when={showTree()}>
-                    <div class="tree-head halt">
-                      <span>{t("review.filesLabel")}</span>
-                      <span class="num">{allPaths().length}</span>
-                      <span class="grow" />
-                      <Kbd k="mod+p" />
-                    </div>
-                    <div class="tree" role="tree" aria-label={t("review.filesLabel")}>
-                      <For each={tree()}>
-                        {(n) => <TreeRow node={n} depth={0} fileOf={fileByPath} viewed={(p) => !!fileByPath(p) && isViewed(fileByPath(p)!)} shown={(p) => files().some((f) => f.path === p)} onOpen={jumpToFile} />}
-                      </For>
-                    </div>
-                  </Show>
+                  </div>
                 </aside>
               </Show>
               <div class="review-diff">
@@ -565,26 +577,20 @@ export function Review(props: { id: string }) {
         <VerifyPanel id={props.id} detail={detail()} loading={detail.loading} onClose={() => setPanel(null)} />
       </Show>
       <Show when={pathJump()}>
-        <PathPalette paths={allPaths()} onClose={() => setPathJump(false)} onPick={(p) => (setPathJump(false), jumpToFile(p))} />
+        <PathPalette paths={allPaths()} fileOf={fileByPath} onClose={() => setPathJump(false)} onPick={(p) => (setPathJump(false), jumpToFile(p))} />
       </Show>
     </div>
   );
 }
 
-/** One line: file name, dim directory, line count; risk bars only when present. */
+/** A unit as a group row of the tree: its title, line count; risk bars only when present. Its files are named once, under it. */
 function UnitItem(props: { u: ReviewUnit; active: boolean; viewed: boolean; onClick: () => void }) {
-  const first = () => props.u.files[0] ?? props.u.title;
-  const name = () => first().split("/").pop() ?? first();
-  const dir = () => {
-    const parts = first().split("/");
-    return parts.length > 1 ? parts.slice(0, -1).join("/") + "/" : "";
-  };
-  const more = () => props.u.files.length - 1;
   return (
-    <button class="unit" classList={{ active: props.active }} aria-current={props.active ? "true" : undefined} onClick={props.onClick} title={props.u.files.join("\n")}>
+    <button class="unit" classList={{ active: props.active }} aria-current={props.active ? "true" : undefined} onClick={props.onClick} title={props.u.risk_reasons.join("\n") || props.u.title}>
       <span class="unit-name">
-        {name()}
-        <Show when={more() > 0}> +{more()}</Show> <span class="unit-dir">{dir()}</span>
+        <Icon name={props.active ? "caret-down" : "caret-right"} size={10} class="unit-caret" />
+        {props.u.title}
+        <span class="unit-dir"> {t("common.files", { n: props.u.files.length })}</span>
       </span>
       <span class="unit-lines num">{t("review.lines", { n: props.u.lines })}</span>
       <span class="unit-flags">
@@ -656,7 +662,7 @@ function TreeRow(props: {
 }
 
 /** ⌘P: type part of a path, land on the file. */
-function PathPalette(props: { paths: string[]; onClose: () => void; onPick: (path: string) => void }) {
+function PathPalette(props: { paths: string[]; fileOf: (path: string) => DiffFile | undefined; onClose: () => void; onPick: (path: string) => void }) {
   const [q, setQ] = createSignal("");
   const [sel, setSel] = createSignal(0);
   const hits = createMemo<{ path: string; m: Match | null }[]>(() => {
@@ -706,6 +712,14 @@ function PathPalette(props: { paths: string[]; onClose: () => void; onPick: (pat
               <span class="ellipsis grow">
                 <For each={h.m ? segments(h.path, h.m.positions) : [[h.path, false] as [string, boolean]]}>{([s, hit]) => (hit ? <span class="hl">{s}</span> : s)}</For>
               </span>
+              {/* The same reading the tree shows, so the two places agree. */}
+              <Show when={props.fileOf(h.path)}>
+                {(f) => (
+                  <span class="num tree-stat t3">
+                    <span class="diff-add">+{f().additions}</span> <span class="diff-del">−{f().deletions}</span>
+                  </span>
+                )}
+              </Show>
             </div>
           )}
         </For>

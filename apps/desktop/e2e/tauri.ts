@@ -75,6 +75,8 @@ export async function openTower(
               return F.files[`${a.id}:${a.path}:${a.old ? "old" : "new"}`] ?? null;
             case "ui_state":
               return {};
+            case "accept":
+              return `tower/${a.id}`;
             case "look_image":
               return F.lookImages?.[a.file] ?? null;
             case "remote_info":

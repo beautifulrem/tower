@@ -10,7 +10,8 @@ export default defineConfig({
   build: {
     target: "safari16",
     sourcemap: false,
-    // A desktop app loads from disk: one chunk is fastest to start.
+    // Loaded from disk: the launch path is one chunk; views reached by an
+    // action (review, settings, contract editor) load on first use.
     chunkSizeWarningLimit: 900,
   },
 });

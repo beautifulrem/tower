@@ -1,5 +1,5 @@
 /** Application shell: sidebar, title bar and the current view. */
-import { Match, Show, Switch, onCleanup } from "solid-js";
+import { Match, Show, Switch, lazy, onCleanup } from "solid-js";
 
 import { listen } from "@tauri-apps/api/event";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
@@ -15,13 +15,16 @@ import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
 import { t } from "./lib/i18n";
 import { act, init, state } from "./lib/store";
-import { ContractEditor } from "./views/ContractEditor";
 import { GoalPage } from "./views/GoalPage";
 import { Inbox } from "./views/Inbox";
 import { Overview } from "./views/Overview";
-import { Review } from "./views/Review";
-import { Settings } from "./views/Settings";
 import { pickProject } from "./views/Welcome";
+
+// Views you reach by an action, not at launch, load on first use: start-up
+// stays small and they are local files, so the delay is not perceptible.
+const Review = lazy(() => import("./views/Review").then((m) => ({ default: m.Review })));
+const Settings = lazy(() => import("./views/Settings").then((m) => ({ default: m.Settings })));
+const ContractEditor = lazy(() => import("./views/ContractEditor").then((m) => ({ default: m.ContractEditor })));
 
 /** The next item that needs you, cycling (Codex ⌘⌥A, Conductor ⌘⌥L). */
 function nextNeedsYou() {

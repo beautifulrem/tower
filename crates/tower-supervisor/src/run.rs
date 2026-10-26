@@ -133,15 +133,17 @@ pub(crate) fn agent_jail(
     let goal_dir = inner.paths.goal_dir(&goal.id);
     std::fs::create_dir_all(&goal_dir)?;
     let cache = crate::caches::prepare(&goal_dir.join("cache"), &home_of(inner), dir)?;
-    jail(inner, goal, dir, tmp, cache, purpose, network)
+    jail(inner, &goal_dir, dir, tmp, cache, purpose, network)
 }
 
 /// The jail of verification: nothing the agent could write may influence a
 /// verdict, so it gets `cache`, a directory the caller created empty and
 /// discards afterwards, seeded from the user's own caches (copy-on-write).
+/// `profile_dir` holds the generated profile (the goal's directory, or the
+/// project check's).
 pub(crate) fn verifier_jail(
     inner: &Inner,
-    goal: &tower_store::GoalRecord,
+    profile_dir: &Path,
     dir: &Path,
     tmp: &Path,
     cache: &Path,
@@ -149,12 +151,12 @@ pub(crate) fn verifier_jail(
     network: bool,
 ) -> Result<Jail> {
     let cache = crate::caches::prepare(cache, &home_of(inner), dir)?;
-    jail(inner, goal, dir, tmp, cache, purpose, network)
+    jail(inner, profile_dir, dir, tmp, cache, purpose, network)
 }
 
 fn jail(
     inner: &Inner,
-    goal: &tower_store::GoalRecord,
+    profile_dir: &Path,
     dir: &Path,
     tmp: &Path,
     cache: PathBuf,
@@ -162,8 +164,8 @@ fn jail(
     network: bool,
 ) -> Result<Jail> {
     let home = home_of(inner);
-    let goal_dir = inner.paths.goal_dir(&goal.id);
-    std::fs::create_dir_all(&goal_dir)?;
+    let goal_dir = profile_dir;
+    std::fs::create_dir_all(goal_dir)?;
     std::fs::create_dir_all(tmp)?;
     let mut env = crate::caches::env(&cache);
     env.push(("TMPDIR".into(), real(tmp).display().to_string()));

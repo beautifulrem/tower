@@ -2,7 +2,7 @@
 import type { ClaimKind } from "./ClaimKind";
 import type { Consistency } from "./Consistency";
 
-export type ClaimView = { id: string, kind: ClaimKind, text: string, criterion: string | null, at: bigint, run_no: number, 
+export type ClaimView = { id: string, kind: ClaimKind, text: string, criterion: string | null, at: number, run_no: number, 
 /**
  * `Some(true|false)` once a human reviewed an assumption.
  */

@@ -7,7 +7,7 @@ members = [
     "crates/tower-git",
     "crates/tower-verify",
     "crates/tower-supervisor",
-    # "apps/desktop/src-tauri",
+    "apps/desktop/src-tauri",
 ]
 
 [workspace.package]

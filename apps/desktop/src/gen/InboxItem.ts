@@ -5,7 +5,7 @@ export type InboxItem = { id: string, goal_id: string, goal_title: string, kind:
 /**
  * Fixed choices. Empty means free text only.
  */
-options: Array<string>, allow_text: boolean, created_at: bigint, 
+options: Array<string>, allow_text: boolean, created_at: number, 
 /**
  * Lower is more urgent: blocking questions and approvals first.
  */

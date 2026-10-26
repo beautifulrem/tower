@@ -19,3 +19,4 @@ apps/desktop/src-tauri/gen/schemas/
 .env
 .env.*
 !.env.example
+apps/desktop/dist/

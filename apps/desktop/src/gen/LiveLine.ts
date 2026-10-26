@@ -5,4 +5,4 @@ import type { Mode } from "./Mode";
  * One line telling you the goal is alive and what kind of thing it is doing.
  * Always a steerable detail, never "working…" (`docs/12` §12.6.4).
  */
-export type LiveLine = { mode: Mode, action: string, target: string, at: bigint, };
+export type LiveLine = { mode: Mode, action: string, target: string, at: number, };

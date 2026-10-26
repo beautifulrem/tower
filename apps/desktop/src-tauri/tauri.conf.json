@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tower",
+  "version": "0.1.0",
+  "identifier": "dev.tower.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Tower",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1040,
+        "minHeight": 640,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 16, "y": 20 },
+        "backgroundColor": "#1b1a19"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "category": "DeveloperTool",
+    "shortDescription": "Goal-centric supervision desk for coding agents",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.png"],
+    "resources": {
+      "../../../extensions/tower-goal/index.ts": "tower-goal/index.ts",
+      "../../../extensions/tower-goal/policy.ts": "tower-goal/policy.ts",
+      "../../../extensions/tower-goal/package.json": "tower-goal/package.json"
+    },
+    "macOS": { "minimumSystemVersion": "13.0" }
+  }
+}

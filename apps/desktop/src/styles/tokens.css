@@ -1,0 +1,117 @@
+/*
+ * Design tokens (docs/12-visual-design-system.md §12.2–12.4, §12.11).
+ * Components use semantic tokens only; status colours (--st-*) give glyphs
+ * and tinted backgrounds, never small text.
+ */
+
+:root {
+  --font-ui: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono", "PingFang SC", monospace;
+  --font-features-ui: "liga" 1, "calt" 1, "ss02" 1, "cv11" 1;
+  --font-features-num: "liga" 1, "calt" 1, "tnum" 1, "zero" 1;
+
+  /* Type roles: size / line height */
+  --fs-display: 24px;   --lh-display: 32px;
+  --fs-title: 20px;     --lh-title: 28px;
+  --fs-section: 14px;   --lh-section: 20px;
+  --fs-body: 13px;      --lh-body: 20px;
+  --fs-reading: 14px;   --lh-reading: 22px;
+  --fs-question: 16px;  --lh-question: 24px;
+  --fs-meta: 12px;      --lh-meta: 16px;
+  --fs-hint: 11px;      --lh-hint: 16px;
+  --fs-code: 12.5px;    --lh-code: 20px;
+
+  /* Space: 4px grid */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+
+  --radius-s: 4px;
+  --radius-m: 6px;
+  --radius-l: 10px;
+
+  /* Component constants */
+  --sidebar-w: 264px;
+  --titlebar-h: 44px;
+  --card-goal-h: 132px;
+  --card-goal-min-w: 312px;
+  --rail-w: 340px;
+
+  /* Motion: signal, not decoration (§12.7) */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-sidebar: oklch(0.155 0.004 70);
+  --bg-app: oklch(0.180 0.004 70);
+  --bg-raised: oklch(0.205 0.005 70);
+  --bg-hover: oklch(0.235 0.005 70);
+  --bg-selected: oklch(0.265 0.006 70);
+  --bg-overlay: oklch(0.225 0.005 70 / 0.96);
+  --bg-inset: oklch(0.160 0.004 70);
+  --border-subtle: oklch(1 0 0 / 0.06);
+  --border: oklch(1 0 0 / 0.10);
+  --border-strong: oklch(1 0 0 / 0.16);
+
+  --text-1: oklch(0.945 0.003 70);
+  --text-2: oklch(0.860 0.005 70);
+  --text-3: oklch(0.720 0.006 70);
+  --text-4: oklch(0.580 0.006 70);
+
+  --accent: oklch(0.760 0.120 285);
+  --accent-soft: oklch(0.760 0.120 285 / 0.16);
+
+  --st-attention: oklch(0.800 0.150 75);
+  --st-danger: oklch(0.750 0.150 25);
+  --st-verified: oklch(0.770 0.130 155);
+  --st-active: oklch(0.740 0.060 230);
+  --st-neutral: var(--text-3);
+  --attention-bg: oklch(0.225 0.030 75);
+  --danger-bg: oklch(0.215 0.030 25);
+
+  --diff-add-bg: oklch(0.770 0.130 155 / 0.10);
+  --diff-add-word: oklch(0.770 0.130 155 / 0.26);
+  --diff-del-bg: oklch(0.750 0.150 25 / 0.10);
+  --diff-del-word: oklch(0.750 0.150 25 / 0.26);
+
+  --shadow-overlay: 0 16px 48px oklch(0 0 0 / 0.45), 0 0 0 1px var(--border);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-sidebar: oklch(0.965 0.004 80);
+  --bg-app: oklch(0.992 0.002 80);
+  --bg-raised: oklch(1 0 0);
+  --bg-hover: oklch(0.955 0.004 80);
+  --bg-selected: oklch(0.940 0.006 80);
+  --bg-overlay: oklch(1 0 0 / 0.97);
+  --bg-inset: oklch(0.975 0.003 80);
+  --border-subtle: oklch(0.20 0.01 70 / 0.06);
+  --border: oklch(0.20 0.01 70 / 0.11);
+  --border-strong: oklch(0.20 0.01 70 / 0.18);
+
+  --text-1: oklch(0.230 0.006 70);
+  --text-2: oklch(0.430 0.006 70);
+  --text-3: oklch(0.530 0.006 70);
+  --text-4: oklch(0.720 0.005 70);
+
+  --accent: oklch(0.520 0.160 285);
+  --accent-soft: oklch(0.520 0.160 285 / 0.14);
+
+  --st-attention: oklch(0.600 0.150 65);
+  --st-danger: oklch(0.540 0.190 25);
+  --st-verified: oklch(0.550 0.130 155);
+  --st-active: oklch(0.540 0.070 230);
+  --st-neutral: var(--text-3);
+  --attention-bg: oklch(0.965 0.030 75);
+  --danger-bg: oklch(0.965 0.025 25);
+
+  --diff-add-bg: oklch(0.550 0.130 155 / 0.10);
+  --diff-add-word: oklch(0.550 0.130 155 / 0.22);
+  --diff-del-bg: oklch(0.540 0.190 25 / 0.08);
+  --diff-del-word: oklch(0.540 0.190 25 / 0.20);
+
+  --shadow-overlay: 0 16px 48px oklch(0.2 0.01 70 / 0.18), 0 0 0 1px var(--border);
+}

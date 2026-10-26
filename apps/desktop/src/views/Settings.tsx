@@ -316,6 +316,7 @@ function ProjectRow(props: { p: ProjectView }) {
         base_branch: branch().trim(),
         test_command: test().trim() || null,
         local_files: lines(local()),
+        holdout_files: props.p.holdout_files,
         memory: memory(),
         setup_command: setup(),
       }),

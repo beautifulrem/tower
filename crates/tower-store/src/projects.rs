@@ -16,6 +16,8 @@ pub struct ProjectPatch {
     pub memory: String,
     #[serde(default)]
     pub setup_command: String,
+    #[serde(default)]
+    pub holdout_files: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +36,7 @@ fn row_to_project(r: &Row<'_>) -> rusqlite::Result<ProjectView> {
         base_branch: r.get("base_branch")?,
         test_command: r.get("test_command")?,
         local_files: json_col(r, "local_files")?,
+        holdout_files: json_col(r, "holdout_files")?,
         memory: r.get("memory")?,
         setup_command: r.get("setup_command")?,
         test_check: r.get::<_, Option<String>>("test_check")?.and_then(|j| serde_json::from_str(&j).ok()),
@@ -82,7 +85,8 @@ impl Store {
 
     pub fn update_project(&mut self, id: &str, patch: &ProjectPatch) -> Result<ProjectView> {
         let n = self.conn.execute(
-            "UPDATE projects SET base_branch = ?2, test_command = ?3, local_files = ?4, memory = ?5, setup_command = ?6
+            "UPDATE projects SET base_branch = ?2, test_command = ?3, local_files = ?4, memory = ?5, setup_command = ?6,
+                holdout_files = ?7
              WHERE id = ?1",
             params![
                 id,
@@ -90,7 +94,8 @@ impl Store {
                 patch.test_command.as_deref().filter(|t| !t.trim().is_empty()),
                 serde_json::to_string(&patch.local_files)?,
                 patch.memory,
-                patch.setup_command.trim()
+                patch.setup_command.trim(),
+                serde_json::to_string(&patch.holdout_files)?
             ],
         )?;
         if n == 0 {
@@ -155,9 +160,11 @@ mod tests {
             local_files: vec![".env".into()],
             memory: "金额一律用 Money 类型".into(),
             setup_command: "pnpm install".into(),
+            holdout_files: vec!["holdout/**".into()],
         };
         let updated = s.update_project(&created.id, &patch).unwrap();
         assert_eq!(updated.local_files, [".env"]);
+        assert_eq!(updated.holdout_files, ["holdout/**"]);
         assert_eq!(updated.memory, patch.memory);
     }
 }

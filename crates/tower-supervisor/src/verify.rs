@@ -398,10 +398,21 @@ impl<'a> Bench<'a> {
         Ok(())
     }
 
-    /// Copies the project's local files in for the criteria; returns them
-    /// so they can be removed before the next setup.
+    /// Copies the project's local files, and its held-out tests, in for the
+    /// criteria; returns them so they can be removed before the next setup.
     async fn local_files(&self) -> Result<Vec<String>> {
-        run::copy_local_files(self.inner, &self.rec, &self.dir).await
+        let mut files = run::copy_local_files(self.inner, &self.rec, &self.dir).await?;
+        let project = self.inner.store(|s| s.project(&self.rec.project_id))?;
+        if !project.holdout_files.is_empty() {
+            let git = self.inner.git.clone();
+            let (root, dest, patterns) =
+                (std::path::PathBuf::from(&project.root), self.dir.clone(), project.holdout_files.clone());
+            let held = tokio::task::spawn_blocking(move || git.copy_local_files(&root, &dest, &patterns))
+                .await
+                .map_err(|e| invalid(e.to_string()))??;
+            files.extend(held);
+        }
+        Ok(files)
     }
 
     fn remove(&self, files: &[String]) {

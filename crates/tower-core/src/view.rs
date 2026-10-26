@@ -24,6 +24,10 @@ pub struct ProjectView {
     /// Git-ignored files (globs, relative to the root) copied into each
     /// workspace and verification checkout, e.g. `.env`.
     pub local_files: Vec<String>,
+    /// Held-out tests: git-ignored files (globs, relative to the root) that
+    /// are copied into verification only. The agent never sees them, so it
+    /// cannot write to them; criteria can run them.
+    pub holdout_files: Vec<String>,
     /// Project memory: notes injected into every goal of this project.
     pub memory: String,
     /// Run once in each new workspace (e.g. `pnpm install`), sandboxed, so

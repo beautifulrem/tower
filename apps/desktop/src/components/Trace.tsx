@@ -60,6 +60,7 @@ async function remember(goalId: string, text: string) {
         base_branch: p.base_branch,
         test_command: p.test_command,
         local_files: p.local_files,
+        holdout_files: p.holdout_files,
         memory,
         setup_command: p.setup_command,
       }),

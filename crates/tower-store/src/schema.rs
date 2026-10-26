@@ -191,6 +191,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE inbox ADD COLUMN snoozed_until INTEGER;
     "#,
+    // 12: held-out tests, copied into verification only
+    r#"
+    ALTER TABLE projects ADD COLUMN holdout_files TEXT NOT NULL DEFAULT '[]';
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

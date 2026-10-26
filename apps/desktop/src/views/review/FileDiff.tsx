@@ -7,7 +7,7 @@
  * Keyboard: the table is one tab stop. Focus lands on the first line number;
  * ↑↓ walk the lines, ↩ opens the comment composer on that line.
  */
-import { For, Match, Show, Switch, createMemo, createResource, createSignal, createUniqueId, onCleanup } from "solid-js";
+import { For, type JSX, Match, Show, Switch, createMemo, createResource, createSignal, createUniqueId, onCleanup } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
 import { Button, IconButton } from "../../components/ui";
@@ -40,6 +40,10 @@ export interface FileDiffProps {
   onOpen: (line: number | null) => void;
   /** Undoing a hunk in the workspace; absent while the agent may be writing. */
   onUndo?: (hunk: number) => void;
+  /** Hunks you accepted — a reading mark of your own, nothing in the workspace: the hunk folds to its header. */
+  accepted?: (hunk: number) => boolean;
+  /** Accepting a hunk, or taking the mark back from one already accepted. */
+  onAccept?: (hunk: number) => void;
   /** Editing the whole file in place (paused or in review only); the text arrives through `lines`. */
   editing?: boolean;
   onEditFile?: () => void;
@@ -122,6 +126,18 @@ export function FileDiff(props: FileDiffProps) {
       ...(props.onEditFile && props.file.status !== "deleted" ? [{ label: t("review.editFile"), run: () => props.onEditFile!(), separatorBefore: true }] : []),
     ]);
   const helpId = createUniqueId();
+  const isAccepted = (index: number | null) => index !== null && !!props.accepted?.(index);
+  /** The header row's two verbs for a hunk: accept (your mark) and, while the workspace is yours, undo (a change). */
+  const HunkVerbs = (p: { index: number }) => (
+    <>
+      <Show when={props.onAccept}>
+        <AcceptButton accepted={isAccepted(p.index)} lines={props.file.hunks[p.index]?.lines.length ?? 0} onClick={() => props.onAccept!(p.index)} />
+      </Show>
+      <Show when={props.onUndo && !isAccepted(p.index)}>
+        <UndoButton onClick={() => props.onUndo!(p.index)} />
+      </Show>
+    </>
+  );
 
   const cols = 4;
   return (
@@ -206,13 +222,11 @@ export function FileDiff(props: FileDiffProps) {
                 <Switch>
                   <Match when={b.kind === "head" && b}>
                     {(hb) => (
-                      <tr class="hunk-head" data-hunk-path={props.file.path} data-hunk-index={hb().index}>
+                      <tr class="hunk-head" classList={{ "hunk-accepted": isAccepted(hb().index) }} data-hunk-path={props.file.path} data-hunk-index={hb().index}>
                         <td colspan={cols}>
                           <div class="gap-controls">
                             <span class="mono gap-header ellipsis">{hb().header}</span>
-                            <Show when={props.onUndo}>
-                              <UndoButton onClick={() => props.onUndo!(hb().index)} />
-                            </Show>
+                            <HunkVerbs index={hb().index} />
                           </div>
                         </td>
                       </tr>
@@ -225,12 +239,14 @@ export function FileDiff(props: FileDiffProps) {
                         cols={cols}
                         path={props.file.path}
                         known={props.lines !== undefined}
+                        accepted={isAccepted(gb().index)}
                         onReveal={(how) => props.onReveal(gb().gap, how)}
-                        onUndo={props.onUndo && gb().index !== null ? () => props.onUndo!(gb().index!) : undefined}
+                        verbs={gb().index !== null ? <HunkVerbs index={gb().index!} /> : undefined}
                       />
                     )}
                   </Match>
-                  <Match when={b.kind === "hunk" && b}>
+                  {/* An accepted hunk is folded: its header row stands for it, with the mark and the count. */}
+                  <Match when={b.kind === "hunk" && !isAccepted(b.index) && b}>
                     {(hb) => (
                       <HunkRows
                         hunk={hb().hunk}
@@ -264,6 +280,28 @@ function UndoButton(props: { onClick: () => void }) {
     <Button size="s" variant="ghost" class="gap-all undo-hunk" onClick={props.onClick} title={`${t("review.undoHunkTitle")} · U`}>
       <Icon name="undo" size={10} />
       {t("review.undoHunk")}
+    </Button>
+  );
+}
+
+/**
+ * Accepting a hunk is your reading mark, paired with U: the one folds the hunk
+ * and moves on, the other changes the workspace. Accepted, the button says so
+ * with the folded line count, and a second press takes the mark back.
+ */
+function AcceptButton(props: { accepted: boolean; lines: number; onClick: () => void }) {
+  return (
+    <Button
+      size="s"
+      variant="ghost"
+      class="gap-all accept-hunk"
+      classList={{ "accept-hunk-on": props.accepted }}
+      aria-pressed={props.accepted}
+      onClick={props.onClick}
+      title={`${props.accepted ? t("review.unacceptHunkTitle") : t("review.acceptHunkTitle")} · A — ${t("review.acceptHunkNote")}`}
+    >
+      <Icon name="check" size={10} />
+      {props.accepted ? t("review.hunkAccepted", { n: props.lines }) : t("review.acceptHunk")}
     </Button>
   );
 }
@@ -315,8 +353,11 @@ export function GapRow(props: {
   cols: number;
   path?: string;
   known: boolean;
+  /** The hunk under this fold is accepted (folded to this row). */
+  accepted?: boolean;
   onReveal: (how: "top" | "bottom" | "all") => void;
-  onUndo?: () => void;
+  /** The verbs of the hunk whose header this row carries. */
+  verbs?: JSX.Element;
 }) {
   const gap = () => props.block.gap;
   const hasAbove = () => gap().index > 0;
@@ -324,7 +365,7 @@ export function GapRow(props: {
   const hidden = () => props.block.hidden;
   const step = () => (hidden() === null ? STEP : Math.min(STEP, hidden()!));
   return (
-    <tr class="hunk-head gap-row" data-hunk-path={props.block.index !== null ? props.path : undefined} data-hunk-index={props.block.index ?? undefined}>
+    <tr class="hunk-head gap-row" classList={{ "hunk-accepted": !!props.accepted }} data-hunk-path={props.block.index !== null ? props.path : undefined} data-hunk-index={props.block.index ?? undefined}>
       <td colspan={props.cols}>
         <div class="gap-controls">
           <span class="gap-buttons">
@@ -348,9 +389,7 @@ export function GapRow(props: {
           <Button size="s" variant="ghost" class="gap-all" onClick={() => props.onReveal("all")}>
             {t("review.showAll")}
           </Button>
-          <Show when={props.onUndo}>
-            <UndoButton onClick={() => props.onUndo!()} />
-          </Show>
+          {props.verbs}
         </div>
       </td>
     </tr>

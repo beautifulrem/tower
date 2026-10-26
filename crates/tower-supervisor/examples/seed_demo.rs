@@ -24,6 +24,7 @@ async fn main() {
             paths: Paths::new(Paths::default_root()),
             extension_source: root.join("extensions/tower-goal"),
             env: None,
+            demo_engine: None,
         },
         Arc::new(NullSink),
     )

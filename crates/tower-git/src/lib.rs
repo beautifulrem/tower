@@ -381,6 +381,17 @@ impl Git {
         }
     }
 
+    /// Makes `dir` a repository on `main` with everything in it committed.
+    pub fn init_with_commit(&self, dir: &Path, message: &str) -> Result<()> {
+        self.run(dir, &["init", "--quiet", "--initial-branch=main"])?;
+        self.run(dir, &["add", "."])?;
+        self.run(
+            dir,
+            &["-c", "user.name=Tower", "-c", "user.email=tower@localhost", "commit", "--quiet", "-m", message],
+        )?;
+        Ok(())
+    }
+
     /// The URL of `origin` in the user's repository, if any.
     pub fn origin_url(&self, project_root: &Path) -> Option<String> {
         self.run_trim(project_root, &["remote", "get-url", "origin"]).ok().filter(|u| !u.is_empty())

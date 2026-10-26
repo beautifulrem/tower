@@ -180,6 +180,11 @@ fn set_ui_state(sup: Sup<'_>, id: String, key: String, value: Option<String>) ->
 }
 
 #[tauri::command]
+async fn start_demo(sup: Sup<'_>) -> Res<GoalSummary> {
+    sup.start_demo().await
+}
+
+#[tauri::command]
 fn trace(sup: Sup<'_>, id: String, before: Option<i64>, limit: u32) -> Res<Vec<TraceEntry>> {
     sup.trace(&id, before, limit)
 }
@@ -328,6 +333,16 @@ fn startup_route() -> Option<String> {
 }
 
 /// The bundled extension in a packaged app, else the repository copy.
+fn demo_engine_source(app: &AppHandle) -> PathBuf {
+    if let Ok(dir) = app.path().resource_dir() {
+        let bundled = dir.join("demo-engine/demo_pi.py");
+        if bundled.is_file() {
+            return bundled;
+        }
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../tools/demo-engine/demo_pi.py")
+}
+
 fn extension_source(app: &AppHandle) -> PathBuf {
     if let Ok(dir) = app.path().resource_dir() {
         let bundled = dir.join("tower-goal");
@@ -353,6 +368,7 @@ pub fn run() {
                 paths: Paths::new(Paths::default_root()),
                 extension_source: extension_source(&handle),
                 env: None,
+                demo_engine: Some(demo_engine_source(&handle)),
             };
             let sink = Arc::new(TauriSink { app: Some(handle.clone()), ..TauriSink::default() });
             let sup = tauri::async_runtime::block_on(Supervisor::start(config, sink.clone() as Arc<dyn UiSink>))?;
@@ -392,6 +408,7 @@ pub fn run() {
             mark_viewed,
             ui_state,
             set_ui_state,
+            start_demo,
             trace,
             inbox,
             review,

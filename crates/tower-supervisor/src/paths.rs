@@ -65,6 +65,17 @@ impl Paths {
     pub fn extension_dir(&self) -> PathBuf {
         self.root.join("extensions").join("tower-goal")
     }
+
+    /// The installed demo engine (a scripted stand-in for Pi).
+    pub fn demo_engine(&self) -> PathBuf {
+        self.root.join("engines").join("demo_pi.py")
+    }
+
+    /// Repositories created for the in-app demo. Goals of projects under
+    /// here run on the demo engine instead of Pi.
+    pub fn demo_projects(&self) -> PathBuf {
+        self.root.join("demo")
+    }
 }
 
 /// Real path of `p` (symlinks resolved), or `p` if it does not exist. The

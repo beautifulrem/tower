@@ -59,7 +59,12 @@ def tool(name, args, run=None):
 
 def bash(cmd):
     def run():
-        p = subprocess.run(["/bin/sh", "-c", cmd], capture_output=True, text=True, timeout=120)
+        argv = ["/bin/sh", "-c", cmd]
+        # Same sandbox as the real agent's shell when Tower provides one.
+        profile = os.environ.get("TOWER_SANDBOX_PROFILE")
+        if profile:
+            argv = ["/usr/bin/sandbox-exec", "-f", profile] + argv
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=120)
         return (p.stdout + p.stderr)[-4000:] or "(no output)", p.returncode != 0
     tool("bash", {"command": cmd}, run)
 

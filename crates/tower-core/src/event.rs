@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::contract::Contract;
 use crate::honesty::ClaimKind;
 use crate::lifecycle::{LifecycleState, PauseReason};
 use crate::mode::Mode;
@@ -56,7 +57,7 @@ impl Source {
 #[ts(export)]
 pub enum EventKind {
     GoalCreated { title: String },
-    ContractRatified { version: u32 },
+    ContractRatified { contract: Contract },
     StateChanged {
         from: LifecycleState,
         to: LifecycleState,
@@ -65,7 +66,8 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         note: String,
     },
-    WorkspacePrepared { base_commit: String, branch: String },
+    WorkspacePrepared { workspace: String, base_commit: String },
+    SessionAttached { session_file: String },
     RunStarted { run_no: u32, purpose: String },
     RunEnded { run_no: u32, outcome: String },
     ModeChanged { mode: Mode },
@@ -141,6 +143,7 @@ impl EventKind {
             Self::ContractRatified { .. } => "contract_ratified",
             Self::StateChanged { .. } => "state_changed",
             Self::WorkspacePrepared { .. } => "workspace_prepared",
+            Self::SessionAttached { .. } => "session_attached",
             Self::RunStarted { .. } => "run_started",
             Self::RunEnded { .. } => "run_ended",
             Self::ModeChanged { .. } => "mode_changed",

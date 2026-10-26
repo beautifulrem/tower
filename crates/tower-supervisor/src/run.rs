@@ -133,7 +133,7 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
         cwd: ws.to_path_buf(),
         session_dir: inner.paths.sessions(&goal.id),
         resume_session: goal.session_file.as_ref().map(PathBuf::from).filter(|p| p.exists()),
-        extensions: vec![inner.paths.extension_dir().join("index.ts")],
+        extensions: inner.extensions(&settings),
         load_user_extensions: settings.load_user_extensions,
         model,
         thinking,

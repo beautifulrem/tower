@@ -186,6 +186,21 @@ impl Inner {
         self.env.which("pi")
     }
 
+    /// Extensions every engine loads: tower-goal first, then the ones the
+    /// user listed explicitly (`~` expanded).
+    pub fn extensions(&self, settings: &Settings) -> Vec<PathBuf> {
+        let home = self.env.get("HOME").map(PathBuf::from);
+        let mut list = vec![self.paths.extension_dir().join("index.ts")];
+        for raw in settings.extra_extensions.iter().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            let path = match (raw.strip_prefix("~/"), &home) {
+                (Some(rest), Some(h)) => h.join(rest),
+                _ => PathBuf::from(raw),
+            };
+            list.push(path);
+        }
+        list
+    }
+
     pub fn running_count(&self) -> usize {
         self.runs.lock().expect("runs lock").len()
     }
@@ -389,6 +404,11 @@ impl Supervisor {
     pub fn save_settings(&self, settings: Settings) -> Result<()> {
         if settings.max_concurrent == 0 || settings.max_concurrent > 10 {
             return Err(invalid("并发上限必须在 1 到 10 之间"));
+        }
+        for ext in self.inner.extensions(&settings).iter().skip(1) {
+            if !ext.is_file() {
+                return Err(invalid(format!("找不到扩展文件：{}", ext.display())));
+            }
         }
         self.inner.store(|s| s.save_settings(&settings))?;
         *self.inner.models.lock().expect("models lock") = None;

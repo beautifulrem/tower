@@ -75,6 +75,17 @@ export function Settings() {
               <input class="num" type="number" min="1" max="10" value={s()!.max_concurrent} onInput={(e) => patch({ max_concurrent: Number(e.currentTarget.value) || 1 })} />
             </Field>
           </div>
+          <Field
+            label="额外加载的 Pi 扩展（每行一个文件）"
+            hint="只加载这里列出的扩展，例如提供模型的扩展包：~/.pi/agent/npm/node_modules/pi-clinepass-provider/src/index.ts。它们在沙箱之外运行。"
+          >
+            <textarea
+              class="mono"
+              rows={2}
+              value={s()!.extra_extensions.join("\n")}
+              onInput={(e) => patch({ extra_extensions: e.currentTarget.value.split("\n").map((l) => l.trim()).filter(Boolean) })}
+            />
+          </Field>
           <label class="check">
             <input type="checkbox" checked={s()!.load_user_extensions} onChange={(e) => patch({ load_user_extensions: e.currentTarget.checked })} />
             <span>

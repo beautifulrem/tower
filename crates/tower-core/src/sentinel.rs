@@ -57,9 +57,56 @@ const SKIP_MARKERS: &[&str] = &[
     "pytest.skip(",
     "#[ignore]",
     "t.Skip(",
+    "t.SkipNow(",
+    "t.Skipf(",
     "@Disabled",
     "@Ignore",
+    // node:test and vitest options, mocha's runtime skip
+    "skip: true",
+    "todo: true",
+    ".skipIf(",
+    ".runIf(",
+    "this.skip()",
+    // Python
+    "@pytest.mark.xfail",
+    "pytest.importorskip(",
+    "@unittest.expectedFailure",
+    // Rust
+    "#[ignore =",
 ];
+
+/// Lines that start a test case, across common frameworks.
+fn starts_test(line: &str) -> bool {
+    let l = line.trim_start();
+    ["test(", "it(", "test.each", "it.each", "def test_", "async def test_", "func Test", "#[test]", "#[tokio::test"]
+        .iter()
+        .any(|p| l.starts_with(p))
+}
+
+/// Assertions that cannot fail (compared without whitespace, so Python's
+/// `assert True` reads `assertTrue`).
+fn is_vacuous_assertion(line: &str) -> bool {
+    let l: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+    [
+        "assert(true)",
+        "assert.ok(true)",
+        "assert.equal(1,1)",
+        "assert.strictEqual(1,1)",
+        "expect(true).toBe(true)",
+        "expect(true).toBeTruthy()",
+        "expect(1).toBe(1)",
+        "assertTrue",
+        "self.assertTrue(True)",
+        "assert!(true)",
+    ]
+    .contains(&l.trim_end_matches(';'))
+}
+
+/// Statements that make the rest of a test unreachable or never run.
+fn disables_body(line: &str) -> bool {
+    let l: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+    l == "return;" || l == "return" || l.starts_with("if(false)") || l.starts_with("if(0)") || l == "iffalse:"
+}
 
 const TEST_CONFIGS: &[&str] = &[
     "jest.config",
@@ -123,7 +170,8 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
             l.contains("assert") || l.contains("expect(") || l.starts_with("should")
         };
         let removed = removed_lines(f).filter(|l| is_assert(l)).count();
-        let added = added_lines(f).filter(|l| is_assert(l)).count();
+        // An assertion that cannot fail does not replace one that could.
+        let added = added_lines(f).filter(|l| is_assert(l) && !is_vacuous_assertion(l)).count();
         if removed > 0 && added < removed {
             weakened.push(match lang {
                 Lang::Zh => format!("{}：删去 {removed} 条断言，新增 {added} 条", f.path),
@@ -135,6 +183,35 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
     }
     if !weakened.is_empty() {
         hits.push(hit("assertions_removed", 2, weakened.join("\n"), lang));
+    }
+
+    // Test cases removed from files that still exist, assertions that
+    // cannot fail, and bodies cut short: each lets a failing test pass.
+    let mut fewer_tests = Vec::new();
+    let mut hollow = Vec::new();
+    for f in files.iter().filter(|f| is_test_path(&f.path) && f.status == FileStatus::Modified) {
+        let removed = removed_lines(f).filter(|l| starts_test(l)).count();
+        let added = added_lines(f).filter(|l| starts_test(l)).count();
+        if removed > added {
+            let n = removed - added;
+            fewer_tests.push(match lang {
+                Lang::Zh => format!("{}：少了 {n} 个测试用例", f.path),
+                Lang::En => format!("{}: {} fewer", f.path, plural(n, "test case", "test cases")),
+            });
+        }
+    }
+    for f in files.iter().filter(|f| is_test_path(&f.path)) {
+        for line in added_lines(f) {
+            if is_vacuous_assertion(line) || disables_body(line) {
+                hollow.push(format!("{}: {}", f.path, line.trim()));
+            }
+        }
+    }
+    if !fewer_tests.is_empty() {
+        hits.push(hit("tests_removed", HIGH, fewer_tests.join("\n"), lang));
+    }
+    if !hollow.is_empty() {
+        hits.push(hit("tests_hollowed", 2, hollow.join("\n"), lang));
     }
 
     let mut test_command = Vec::new();
@@ -231,6 +308,31 @@ mod tests {
             file("test/cart.test.js", FileStatus::Modified, &["assert.equal(f(2), 4);"], &[]),
         ];
         assert!(scan(&files, &Scope::default(), Lang::En).is_empty());
+    }
+
+    #[test]
+    fn quieter_ways_of_hiding_a_failure_are_caught() {
+        let files = vec![
+            // A failing case deleted from a file that stays.
+            file(
+                "test/cart.test.js",
+                FileStatus::Modified,
+                &["  assert.ok(true);"],
+                &["test('discount', () => {", "  assert.equal(total([], 5), 0);", "});"],
+            ),
+            file("tests/test_api.py", FileStatus::Modified, &["    assert True", "@pytest.mark.xfail"], &[]),
+            file("src/x_test.go", FileStatus::Modified, &["\tt.SkipNow()"], &[]),
+            file("test/a.test.js", FileStatus::Modified, &["test('a', { skip: true }, () => {", "  return;"], &[]),
+        ];
+        let hits = scan(&files, &Scope::default(), Lang::En);
+        assert_eq!(ids(&hits), ["test_skipped", "assertions_removed", "tests_removed", "tests_hollowed"]);
+        let skipped = &hits[0].detail;
+        assert!(
+            skipped.contains("xfail") && skipped.contains("SkipNow") && skipped.contains("skip: true"),
+            "{skipped}"
+        );
+        assert!(hits[3].detail.contains("assert.ok(true)") && hits[3].detail.contains("assert True"));
+        assert!(hits[3].detail.contains("return;"));
     }
 
     #[test]

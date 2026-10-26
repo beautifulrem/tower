@@ -232,6 +232,10 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
         "test_command_changed" => lang.pick("修改了测试命令", "Changed the test command"),
         "test_config_changed" => lang.pick("修改了测试配置", "Changed the test configuration"),
         "snapshots_changed" => lang.pick("更新了测试快照", "Updated test snapshots"),
+        "tests_removed" => lang.pick("测试用例变少了", "Fewer test cases"),
+        "tests_hollowed" => {
+            lang.pick("新增了不会失败的断言或提前返回", "Added assertions that cannot fail or early returns")
+        }
         "scope_violation" => lang.pick("改动超出了合同的范围", "Changes go beyond the contract's scope"),
         _ => return None,
     })

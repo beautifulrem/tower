@@ -15,9 +15,9 @@ export function ago(at: number | null | undefined, now = Date.now()): string {
   return `${Math.round(d / DAY)}天`;
 }
 
-/** Elapsed duration as "42s", "3m", "1h 20m". */
-export function duration(ms: number): string {
-  if (ms < 1_000) return `${ms}ms`;
+/** Elapsed duration as "42s", "3m", "1h 20m"; sub-second only when `precise`. */
+export function duration(ms: number, precise = true): string {
+  if (ms < 1_000) return precise ? `${ms}ms` : "<1s";
   const s = Math.round(ms / 1_000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);

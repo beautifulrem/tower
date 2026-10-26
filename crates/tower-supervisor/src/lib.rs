@@ -253,6 +253,8 @@ impl Supervisor {
         let inner = &self.inner;
         let running = inner.store(|s| s.goals_in_state(LifecycleState::Running)).unwrap_or_default();
         for g in running {
+            // The process that ran it is gone (crash or forced quit): close the run.
+            let _ = inner.append(&g.id, EventKind::RunEnded { run_no: g.run_no, outcome: "interrupted".into() });
             inner.withdraw(&g.id, &[InboxKind::Question, InboxKind::Approval], "Tower 重新启动");
             let _ = inner.set_mode(&g.id, Mode::Idle);
             let _ =

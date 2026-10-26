@@ -3,4 +3,9 @@ import type { Criterion } from "./Criterion";
 import type { CriterionResultView } from "./CriterionResultView";
 import type { ObservationView } from "./ObservationView";
 
-export type CriterionView = { criterion: Criterion, verified: CriterionResultView | null, observed: ObservationView | null, human_checked: boolean, };
+export type CriterionView = { criterion: Criterion, verified: CriterionResultView | null, 
+/**
+ * Whether the same command already passed on the base commit, when
+ * checked. `Some(true)` means this criterion cannot tell done from not.
+ */
+passed_on_base: boolean | null, observed: ObservationView | null, human_checked: boolean, };

@@ -18,6 +18,7 @@ pub mod lifecycle;
 pub mod mode;
 pub mod review;
 pub mod sentinel;
+pub mod text;
 pub mod view;
 
 pub use contract::{Autonomy, Budget, Contract, ContractIssue, Criterion, CriterionKind, Scope};

@@ -59,3 +59,44 @@ mod tests {
         }
     }
 }
+
+impl Store {
+    /// Per-goal state the interface keeps (viewed files, draft comments, the
+    /// last reviewed snapshot), so it lives with the rest of the goal and not
+    /// in the web view's storage.
+    pub fn ui_state(&self, goal: &str) -> Result<std::collections::BTreeMap<String, String>> {
+        let mut stmt = self.conn.prepare("SELECT key, value FROM goal_ui_state WHERE goal_id = ?1")?;
+        let rows = stmt.query_map([goal], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Sets (or with `None`, removes) one key of a goal's interface state.
+    pub fn set_ui_state(&mut self, goal: &str, key: &str, value: Option<&str>) -> Result<()> {
+        match value {
+            Some(v) => self.conn.execute(
+                "INSERT OR REPLACE INTO goal_ui_state (goal_id, key, value) VALUES (?1, ?2, ?3)",
+                params![goal, key, v],
+            )?,
+            None => {
+                self.conn.execute("DELETE FROM goal_ui_state WHERE goal_id = ?1 AND key = ?2", params![goal, key])?
+            }
+        };
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod ui_state_tests {
+    use crate::Store;
+
+    #[test]
+    fn ui_state_is_per_goal() {
+        let mut s = Store::open_in_memory().unwrap();
+        s.set_ui_state("G-0001", "viewed", Some("{\"a\":\"1\"}")).unwrap();
+        s.set_ui_state("G-0002", "viewed", Some("{}")).unwrap();
+        assert_eq!(s.ui_state("G-0001").unwrap().get("viewed").unwrap(), "{\"a\":\"1\"}");
+        s.set_ui_state("G-0001", "viewed", None).unwrap();
+        assert!(s.ui_state("G-0001").unwrap().is_empty());
+        assert_eq!(s.ui_state("G-0002").unwrap().len(), 1);
+    }
+}

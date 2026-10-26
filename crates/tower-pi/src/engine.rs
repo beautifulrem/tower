@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -190,16 +190,16 @@ impl Engine {
         let name = command.get("type").and_then(Value::as_str).unwrap_or("?").to_string();
         command["id"] = Value::String(id.clone());
         let (tx, rx) = oneshot::channel();
-        self.pending.lock().expect("pending lock").insert(id.clone(), tx);
+        self.pending.lock().unwrap_or_else(PoisonError::into_inner).insert(id.clone(), tx);
         if self.send(command).is_err() {
-            self.pending.lock().expect("pending lock").remove(&id);
+            self.pending.lock().unwrap_or_else(PoisonError::into_inner).remove(&id);
             return Err(EngineError::Closed);
         }
         let resp = match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
             Ok(Ok(r)) => r,
             Ok(Err(_)) => return Err(EngineError::Closed),
             Err(_) => {
-                self.pending.lock().expect("pending lock").remove(&id);
+                self.pending.lock().unwrap_or_else(PoisonError::into_inner).remove(&id);
                 return Err(EngineError::Timeout(name));
             }
         };
@@ -241,7 +241,7 @@ impl Engine {
     }
 
     fn send(&self, record: Value) -> Result<(), EngineError> {
-        let guard = self.stdin.lock().expect("stdin lock");
+        let guard = self.stdin.lock().unwrap_or_else(PoisonError::into_inner);
         guard.as_ref().ok_or(EngineError::Closed)?.send(record).map_err(|_| EngineError::Closed)
     }
 
@@ -260,7 +260,7 @@ impl Engine {
         let notified = self.exited.notified();
         tokio::pin!(notified);
         notified.as_mut().enable();
-        self.stdin.lock().expect("stdin lock").take();
+        self.stdin.lock().unwrap_or_else(PoisonError::into_inner).take();
         if self.has_exited() {
             return;
         }

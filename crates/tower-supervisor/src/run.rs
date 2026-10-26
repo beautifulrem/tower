@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -47,6 +47,8 @@ pub struct Flags {
     last_activity: Option<Instant>,
     submitted: bool,
     nudged: bool,
+    /// A budget pause is already on its way (checked at message and turn end).
+    over_budget: bool,
     last_error: Option<String>,
     tools: HashMap<String, ToolCall>,
     stream: String,
@@ -67,7 +69,7 @@ pub struct Run {
 
 impl Run {
     pub fn flags(&self) -> std::sync::MutexGuard<'_, Flags> {
-        self.flags.lock().expect("flags lock")
+        self.flags.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -291,7 +293,7 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
         workspace: real(&ws).display().to_string(),
         flags: Mutex::default(),
     });
-    inner.runs.lock().expect("runs lock").insert(goal_id.into(), run.clone());
+    inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal_id.into(), run.clone());
     inner.update_keep_awake();
     tokio::spawn(pump(inner.clone(), run.clone(), rx));
     tokio::spawn(watchdog(inner.clone(), run.clone()));
@@ -379,7 +381,8 @@ async fn watchdog(inner: Arc<Inner>, run: Arc<Run>) {
             let minutes = goal.contract.budget.wall_minutes;
             let detail = tr!(inner.lang(), "本次运行已超过 {minutes} 分钟", "This run has passed {minutes} minutes");
             tokio::spawn(async move {
-                let _ = pause(&inner2, &g, PauseReason::WallClockCap, &detail).await;
+                let r = pause(&inner2, &g, PauseReason::WallClockCap, &detail).await;
+                report(&inner2, &g, r).await;
             });
             break;
         }
@@ -481,6 +484,10 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                     run.flags().last_error = Some(msg.clone());
                     inner.append(g, EventKind::EngineError { message: msg })?;
                 }
+                // Cost is known once a message ends; checking here rather than
+                // at the end of the turn stops the run before its tool calls
+                // (and the next request) when a cap is reached.
+                check_budget(inner, run).await?;
             }
         }
         PiEvent::ToolStart { call_id, tool, args } => on_tool_start(inner, run, call_id, tool, args)?,
@@ -543,7 +550,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             )?;
         }
         PiEvent::RetryEnd { .. } => inner.set_mode(g, Mode::Thinking)?,
-        PiEvent::TurnEnd => on_turn_end(inner, run).await?,
+        PiEvent::TurnEnd => check_budget(inner, run).await?,
         PiEvent::UiRequest(req) => on_ui_request(inner, run, req)?,
         PiEvent::ExtensionError { extension, event, error } => {
             let message = tr!(
@@ -648,7 +655,7 @@ fn observe(inner: &Inner, goal: &str, args: &Value, passed: bool) -> Result<()> 
     Ok(())
 }
 
-async fn on_turn_end(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
+async fn check_budget(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     let g = run.goal_id.as_str();
     let Ok(stats) = run.engine.session_stats().await else { return Ok(()) };
     let Some(cost) = stats.get("cost").and_then(Value::as_f64) else { return Ok(()) };
@@ -664,15 +671,19 @@ async fn on_turn_end(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     } else {
         None
     };
+    let first = reason.is_some() && {
+        let mut f = run.flags();
+        f.stopping.is_none() && !f.submitted && !std::mem::replace(&mut f.over_budget, true)
+    };
     if let Some(reason) = reason
-        && run.flags().stopping.is_none()
-        && !run.flags().submitted
+        && first
     {
         let inner = inner.clone();
         let g = g.to_string();
         let detail = tr!(inner.lang(), "已花费 ${cost:.2}", "Spent ${cost:.2}");
         tokio::spawn(async move {
-            let _ = pause(&inner, &g, reason, &detail).await;
+            let r = pause(&inner, &g, reason, &detail).await;
+            report(&inner, &g, r).await;
         });
     }
     Ok(())
@@ -769,14 +780,16 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         let run = run.clone();
         tokio::spawn(async move {
             run.engine.shutdown(Duration::from_secs(5)).await;
-            let _ = finish_submitted(&inner, &run).await;
+            let r = finish_submitted(&inner, &run).await;
+            report(&inner, &run.goal_id, r).await;
         });
         return Ok(());
     }
     if let Some(err) = last_error {
         let inner = inner.clone();
         tokio::spawn(async move {
-            let _ = pause(&inner, &g, PauseReason::ProviderError, &err).await;
+            let r = pause(&inner, &g, PauseReason::ProviderError, &err).await;
+            report(&inner, &g, r).await;
         });
         return Ok(());
     }
@@ -789,7 +802,8 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     let inner = inner.clone();
     let detail = tr!(inner.lang(), "提醒过一次后仍未提交", "Still no submit after one reminder");
     tokio::spawn(async move {
-        let _ = pause(&inner, &g, PauseReason::IdleWithoutSubmit, &detail).await;
+        let r = pause(&inner, &g, PauseReason::IdleWithoutSubmit, &detail).await;
+        report(&inner, &g, r).await;
     });
     Ok(())
 }
@@ -820,15 +834,17 @@ async fn on_exit(inner: &Arc<Inner>, run: &Arc<Run>, code: Option<i32>, stderr_t
     };
     let tail = if tail.is_empty() { String::new() } else { format!("\n{tail}") };
     let detail = tr!(lang, "pi 意外退出（{how}）{tail}", "Pi exited unexpectedly ({how}){tail}");
-    let _ = inner.append(g, EventKind::RunEnded { run_no: run.run_no, outcome: "crashed".into() });
-    let _ = inner.append(g, EventKind::EngineError { message: detail.clone() });
-    let _ = pause_after_stop(inner, g, PauseReason::EngineCrash, &detail);
+    let r = inner
+        .append(g, EventKind::RunEnded { run_no: run.run_no, outcome: "crashed".into() })
+        .and_then(|_| inner.append(g, EventKind::EngineError { message: detail.clone() }))
+        .and_then(|_| pause_after_stop(inner, g, PauseReason::EngineCrash, &detail));
+    report(inner, g, r).await;
     schedule(inner).await;
 }
 
 fn remove_run(inner: &Inner, run: &Run) {
     {
-        let mut runs = inner.runs.lock().expect("runs lock");
+        let mut runs = inner.runs.lock().unwrap_or_else(PoisonError::into_inner);
         if runs.get(&run.goal_id).is_some_and(|r| r.run_no == run.run_no) {
             runs.remove(&run.goal_id);
         }
@@ -913,12 +929,27 @@ pub async fn pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: 
         // The agent's last state, so edits made while paused are the human's.
         let _ = repin(inner, goal).await;
     }
-    if let Some(c) = inner.verifications.lock().expect("verify lock").remove(goal) {
+    if let Some(c) = inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).remove(goal) {
         c.cancel();
     }
     pause_after_stop(inner, goal, reason, detail)?;
     schedule(inner).await;
     Ok(())
+}
+
+/// Background work must never fail silently and leave a goal stuck: the
+/// failure becomes an error in the trace, a toast, and — when the goal can
+/// still be paused — a Needs-You card with a way out.
+pub(crate) async fn report(inner: &Arc<Inner>, goal: &str, result: Result<()>) {
+    let Err(e) = result else { return };
+    let lang = inner.lang();
+    let detail = tr!(lang, "Tower 内部错误：{e}", "Tower internal error: {e}");
+    tracing::error!(goal, error = %e, "background step failed");
+    let _ = inner.append(goal, EventKind::EngineError { message: detail.clone() });
+    inner.toast(ToastLevel::Error, format!("{goal} · {detail}"));
+    if let Err(again) = Box::pin(pause(inner, goal, PauseReason::Internal, &detail)).await {
+        tracing::error!(goal, error = %again, "could not pause after an internal error");
+    }
 }
 
 /// Continues a paused goal. Each pause reason has one way out
@@ -988,7 +1019,7 @@ pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     if let Some(run) = inner.run_of(goal) {
         stop_engine(inner, &run, Stop::Abandon).await;
     }
-    if let Some(c) = inner.verifications.lock().expect("verify lock").remove(goal) {
+    if let Some(c) = inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).remove(goal) {
         c.cancel();
     }
     inner.withdraw(

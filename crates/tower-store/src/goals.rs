@@ -320,6 +320,16 @@ impl Store {
             v.stale = rec.pin.as_deref() != Some(v.pin.as_str());
             results.insert(c, v);
         }
+        // Only a baseline of the command the criterion has now counts.
+        let mut baseline = std::collections::HashMap::new();
+        let mut stmt =
+            self.conn.prepare("SELECT criterion, command, passed FROM baseline_results WHERE goal_id = ?1")?;
+        for row in
+            stmt.query_map([id], |r| Ok((r.get::<_, String>(0)?, (r.get::<_, String>(1)?, r.get::<_, bool>(2)?))))?
+        {
+            let (c, v) = row?;
+            baseline.insert(c, v);
+        }
         let mut observed = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare("SELECT criterion, passed, at FROM observations WHERE goal_id = ?1")?;
         for row in stmt
@@ -343,6 +353,12 @@ impl Store {
                 criterion: c.clone(),
                 verified: match c.kind {
                     CriterionKind::Exec { .. } => results.get(&c.id).cloned(),
+                    CriterionKind::Human => None,
+                },
+                passed_on_base: match &c.kind {
+                    CriterionKind::Exec { command, .. } => {
+                        baseline.get(&c.id).filter(|(cmd, _)| cmd == command).map(|(_, passed)| *passed)
+                    }
                     CriterionKind::Human => None,
                 },
                 observed: observed.get(&c.id).cloned(),

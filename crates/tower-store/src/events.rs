@@ -113,6 +113,13 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
                 params![goal_id, criterion, pin, passed, exit_code, duration_ms, output_tail, at],
             )?;
         }
+        EventKind::BaselineResult { criterion, command, base, passed } => {
+            tx.execute(
+                "INSERT OR REPLACE INTO baseline_results (goal_id, criterion, command, base, passed, at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![goal_id, criterion, command, base, passed, at],
+            )?;
+        }
         EventKind::VerifyFinished { pin, passed, .. } => {
             let verified = passed.then_some(pin.as_str());
             tx.execute("UPDATE goals SET verified_pin = ?2 WHERE id = ?1", params![goal_id, verified])?;

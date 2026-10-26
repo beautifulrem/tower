@@ -107,6 +107,9 @@ pub enum PauseReason {
     SentinelHigh,
     /// The run exceeded the contract's wall-clock cap.
     WallClockCap,
+    /// Tower itself failed while moving the goal along (a bug or a broken
+    /// data directory). Recorded instead of leaving the goal stuck.
+    Internal,
 }
 
 impl PauseReason {

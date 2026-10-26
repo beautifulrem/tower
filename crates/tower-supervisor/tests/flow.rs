@@ -202,6 +202,18 @@ async fn a_goal_goes_from_intent_to_a_branch() {
     let inbox = h.sup.inbox().unwrap();
     assert!(inbox.iter().any(|i| i.kind == InboxKind::ReviewReady));
 
+    // In the background, the criterion also runs on the base commit: it
+    // failed there, so its green result is evidence the change made it pass.
+    let mut on_base = None;
+    for _ in 0..100 {
+        on_base = h.sup.goal(&id).unwrap().criteria[0].passed_on_base;
+        if on_base.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(on_base, Some(false));
+
     let review = h.sup.review(&id, None).await.unwrap();
     assert_eq!(review.files.len(), 1);
     assert_eq!(review.files[0].path, "done.txt");

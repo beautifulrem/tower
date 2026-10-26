@@ -170,10 +170,11 @@ pub enum Choice {
     SendCiFailures,
     Dismiss,
     ShowHeldOutFailure,
+    TellFailingNames,
 }
 
 impl Choice {
-    pub const ALL: [Choice; 22] = [
+    pub const ALL: [Choice; 23] = [
         Choice::Approve,
         Choice::Reject,
         Choice::Retry,
@@ -196,6 +197,7 @@ impl Choice {
         Choice::SendCiFailures,
         Choice::Dismiss,
         Choice::ShowHeldOutFailure,
+        Choice::TellFailingNames,
     ];
 
     pub fn label(self, lang: Lang) -> &'static str {
@@ -222,6 +224,7 @@ impl Choice {
             InstallWithNetwork => lang.pick("我看过改动，这次联网安装", "I've checked, install with the network"),
             SendCiFailures => lang.pick("把失败发给 Agent 修复", "Send the failures to the agent"),
             Dismiss => lang.pick("先不管", "Leave it"),
+            TellFailingNames => lang.pick("只告诉 Agent 哪些测试失败了", "Tell the agent only which tests failed"),
             ShowHeldOutFailure => lang.pick(
                 "把失败输出给 Agent 看（它会看到保留测试）",
                 "Show the agent the failure (it will see the held-out tests)",

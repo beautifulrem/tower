@@ -144,6 +144,67 @@ pub fn rework(cycle: u32, max: u32, failures: &[Failure]) -> String {
     s
 }
 
+/// The names of the tests that failed in a runner's output (node:test,
+/// Jest, Vitest, Mocha, pytest, cargo, go), at most ten.
+pub fn failing_tests(output: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in output.lines() {
+        let l = line.trim();
+        let name = if let Some(rest) = l.strip_prefix("not ok ") {
+            rest.split_once(" - ").map(|(_, n)| n.trim().to_string())
+        } else if let Some(rest) =
+            l.strip_prefix("✖ ").or_else(|| l.strip_prefix("✕ ")).or_else(|| l.strip_prefix("× "))
+        {
+            // Drop a trailing duration: `name (1.2ms)`.
+            Some(
+                rest.rsplit_once(" (")
+                    .map_or(rest, |(n, t)| if t.ends_with("ms)") || t.ends_with("s)") { n } else { rest })
+                    .trim()
+                    .to_string(),
+            )
+        } else if let Some(rest) = l.strip_prefix("FAILED ") {
+            Some(rest.split(" - ").next().unwrap_or(rest).trim().to_string())
+        } else if let Some(rest) = l.strip_prefix("--- FAIL: ") {
+            Some(rest.split_whitespace().next().unwrap_or(rest).to_string())
+        } else if let Some(rest) = l.strip_prefix("test ").filter(|r| r.ends_with("... FAILED")) {
+            Some(rest.trim_end_matches("... FAILED").trim().to_string())
+        } else if let Some(rest) = l.strip_prefix("● ") {
+            Some(rest.trim().to_string())
+        } else {
+            None
+        };
+        if let Some(n) = name.filter(|n| !n.is_empty() && !n.starts_with("tower canary"))
+            && !out.contains(&n)
+        {
+            out.push(n);
+        }
+        if out.len() == 10 {
+            break;
+        }
+    }
+    out
+}
+
+/// What the agent hears when the human tells it only which held-out tests
+/// failed: their names, nothing of their code or output.
+pub fn held_out_names(cycle: u32, max: u32, failing: &[(String, String, Vec<String>)]) -> String {
+    let mut s = format!(
+        "Tower verified your submission against held-out tests you cannot see, and some failed (rework {cycle}/{max}). \
+The human chose to tell you only their names:\n"
+    );
+    for (id, title, names) in failing {
+        s.push_str(&format!("\n### {id} {title}\n"));
+        if names.is_empty() {
+            s.push_str("- (the names could not be read from the output)\n");
+        }
+        for n in names {
+            s.push_str(&format!("- {n}\n"));
+        }
+    }
+    s.push_str("\nThink about what behaviour these names describe, fix the code (not by guessing at the tests), log what was wrong, then submit again.");
+    s
+}
+
 pub fn resume(reason: &str, human_notes: &[String], human_edits: &[String]) -> String {
     let mut s = format!("The goal was paused ({reason}) and the human resumed it. Continue from where you stopped.");
     if !human_edits.is_empty() {
@@ -217,6 +278,21 @@ If you are blocked, ask the human with `ask_user`. Otherwise continue.";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failing_test_names_are_read_from_common_runners() {
+        let out = "not ok 2 - discount never goes below zero\n  ✖ applies tax once (1.2ms)\nFAILED tests/test_cart.py::test_empty - assert 1 == 0\n--- FAIL: TestTotal (0.00s)\ntest cart::tests::rounding ... FAILED\n✖ tower canary abc 0";
+        assert_eq!(
+            failing_tests(out),
+            [
+                "discount never goes below zero",
+                "applies tax once",
+                "tests/test_cart.py::test_empty",
+                "TestTotal",
+                "cart::tests::rounding"
+            ]
+        );
+    }
 
     #[test]
     fn system_section_is_small() {

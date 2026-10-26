@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window: Tower commands, events, folder picker, native confirmation sheets and opening links.",
+  "description": "The main window: Tower commands, events, folder picker, native confirmation sheets and opening links. Opening paths is limited to Tower's own data directory (~/.tower); `TOWER_HOME` overrides used by tooling fall outside the scope on purpose.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -13,7 +13,13 @@
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://github.com/*" }, { "url": "https://*/pull/*" }, { "url": "https://*/merge_requests/*" }]
     },
-    "opener:allow-open-path",
-    "opener:allow-reveal-item-in-dir"
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "$HOME/.tower" }, { "path": "$HOME/.tower/**" }]
+    },
+    {
+      "identifier": "opener:allow-reveal-item-in-dir",
+      "allow": [{ "path": "$HOME/.tower" }, { "path": "$HOME/.tower/**" }]
+    }
   ]
 }

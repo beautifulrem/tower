@@ -160,8 +160,8 @@ const T = {
 let lang = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
 const t = (k) => T[lang][k];
 // The token comes in the link's fragment, which browsers never send.
-if (location.hash.length > 1) { sessionStorage.setItem("tower-token", location.hash.slice(1)); history.replaceState(null, "", "/"); }
-const token = sessionStorage.getItem("tower-token");
+if (location.hash.length > 1) { localStorage.setItem("tower-token", location.hash.slice(1)); history.replaceState(null, "", "/"); }
+const token = localStorage.getItem("tower-token");
 const app = document.getElementById("app");
 const status = document.getElementById("status");
 const statusText = document.getElementById("status-text");

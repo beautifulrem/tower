@@ -485,6 +485,18 @@ pub struct RemoteInfo {
     pub tailscale: bool,
     /// One per link: "tailscale" or "lan".
     pub kinds: Vec<String>,
+    /// Why the page is not being served although it is turned on
+    /// (Tailscale disconnected, the port taken), in the interface language.
+    pub problem: Option<String>,
+}
+
+/// The outcome of the last push.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PushStatus {
+    pub at: Millis,
+    /// Why it failed, if it did.
+    pub error: Option<String>,
 }
 
 fn default_engine() -> String {

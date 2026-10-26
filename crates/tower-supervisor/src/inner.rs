@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use tower_core::lifecycle::Transition;
 use tower_core::view::{InboxItem, InboxKind, ModelInfo, Settings, TraceEntry};
-use tower_core::{EventKind, Lang, Mode, PauseReason};
+use tower_core::{EventKind, Lang, Mode, PauseReason, tr};
 use tower_git::Git;
 use tower_store::{NewInboxItem, Store, StoreError};
 use tower_verify::Cancel;
@@ -36,6 +36,10 @@ pub(crate) struct Inner {
     pub(crate) starting: Mutex<HashSet<String>>,
     /// The phone page's server, when enabled.
     pub(crate) remote: crate::remote::Remote,
+    /// The outcome of the last push.
+    pub(crate) push_status: Arc<Mutex<Option<tower_core::view::PushStatus>>>,
+    /// The port and token the phone page was last started with.
+    pub(crate) remote_applied: Mutex<Option<(u16, String)>>,
 }
 
 impl Inner {
@@ -125,37 +129,38 @@ impl Inner {
     }
 
     /// Sends a push (ntfy) for an item that blocks a goal, when configured.
-    /// Only titles leave the machine; the click opens the phone page.
+    /// Only Tower's own words leave the machine — the goal's id and title
+    /// (yours) and a fixed sentence for the kind of item, never the agent's
+    /// text — and the link opens the phone page without its token (a
+    /// paired phone keeps it).
     fn push(&self, item: &InboxItem) {
         if matches!(item.kind, InboxKind::ReviewReady | InboxKind::Assumption) {
             return;
         }
         let s = self.settings();
         let url = s.push_url.trim().to_string();
-        if !(url.starts_with("https://") || url.starts_with("http://"))
+        if url.is_empty()
             || s.quiet_until.is_some_and(|t| t > tower_store::system_now())
             || s.muted_goals.contains(&item.goal_id)
         {
             return;
         }
+        let lang = s.lang();
         let title = format!("{} · {}", item.goal_id, item.goal_title);
-        let body = item.title.clone();
-        let mut cmd = std::process::Command::new("/usr/bin/curl");
-        cmd.args(["-sS", "-m", "10", "-o", "/dev/null", "-H"])
-            .arg(format!("Title: {title}"))
-            .args(["-H", "Tags: tower", "--data-binary"])
-            .arg(body);
-        if s.remote_enabled
-            && !s.remote_token.is_empty()
-            && let Some(addr) = crate::remote::addresses(&self.env).into_iter().next()
-        {
-            cmd.arg("-H").arg(format!("Click: http://{addr}:{}/#{}", s.remote_port, s.remote_token));
-        }
-        cmd.arg(url)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        let _ = cmd.spawn();
+        let body = push_sentence(item.kind, lang).to_string();
+        let click = self.remote.host().and_then(|h| {
+            let addr = if h == "0.0.0.0" { crate::remote::addresses(&self.env).into_iter().next()? } else { h };
+            Some(format!("http://{addr}:{}/", s.remote_port))
+        });
+        let status = self.push_status.clone();
+        std::thread::spawn(move || {
+            let result = send_push(&url, &title, &body, click.as_deref(), lang);
+            if let Err(e) = &result {
+                tracing::warn!(error = %e, "push failed");
+            }
+            *status.lock().unwrap_or_else(PoisonError::into_inner) =
+                Some(tower_core::view::PushStatus { at: tower_store::system_now(), error: result.err() });
+        });
     }
 
     pub fn withdraw(&self, goal: &str, kinds: &[InboxKind], reason: &str) {
@@ -288,4 +293,92 @@ pub(crate) async fn refresh_touched(inner: &Arc<Inner>) -> Result<()> {
         inner.mark_dirty(&g.id);
     }
     Ok(())
+}
+
+/// The fixed sentence a push carries for each kind of item.
+fn push_sentence(kind: InboxKind, lang: Lang) -> &'static str {
+    match kind {
+        InboxKind::Question => lang.pick("Agent 有一个问题等你回答", "The agent has a question for you"),
+        InboxKind::Approval => lang.pick("有一个操作等你批准", "An action is waiting for your approval"),
+        InboxKind::Paused => lang.pick("目标已暂停，需要你决定", "The goal is paused and needs your decision"),
+        InboxKind::Stalled => lang.pick("目标可能卡住了", "The goal may be stuck"),
+        InboxKind::CiFailed => lang.pick("CI 没有通过", "CI failed"),
+        InboxKind::ReviewReady => lang.pick("可以验收了", "Ready to accept"),
+        InboxKind::Assumption => lang.pick("Agent 做了一个假设", "The agent made an assumption"),
+    }
+}
+
+/// Whether pushes may go to `url`: https, or plain http only to this Mac
+/// or a Tailscale address (encrypted underneath).
+pub(crate) fn push_url_allowed(url: &str) -> bool {
+    if url.starts_with("https://") {
+        return true;
+    }
+    let Some(rest) = url.strip_prefix("http://") else { return false };
+    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = host.rsplit_once(':').map_or(host, |(h, _)| h);
+    host == "localhost"
+        || host.starts_with("127.")
+        || host.ends_with(".ts.net")
+        || host.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| {
+            let [a, b, ..] = ip.octets();
+            a == 100 && (64..128).contains(&b)
+        })
+}
+
+/// One push: the text goes to curl on standard input and the headers lose
+/// any line breaks, so nothing in them can become an option, a file
+/// reference or another header.
+pub(crate) fn send_push(url: &str, title: &str, body: &str, click: Option<&str>, lang: Lang) -> Result<(), String> {
+    use std::io::Write;
+    if !push_url_allowed(url) {
+        return Err(tr!(
+            lang,
+            "推送地址必须是 https（或本机、Tailscale 上的 http）",
+            "The push address must use https (or http on this Mac or Tailscale)"
+        ));
+    }
+    let clean = |s: &str| s.chars().filter(|c| !c.is_control()).take(160).collect::<String>();
+    let mut cmd = std::process::Command::new("/usr/bin/curl");
+    cmd.args(["-sS", "-m", "10", "-o", "/dev/null", "-w", "%{http_code}", "--proto", "=https,http"])
+        .arg("-H")
+        .arg(format!("Title: {}", clean(title)))
+        .args(["-H", "Tags: tower"]);
+    if let Some(click) = click {
+        cmd.arg("-H").arg(format!("Click: {}", clean(click)));
+    }
+    cmd.args(["--data-binary", "@-", "--"])
+        .arg(url)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(body.as_bytes());
+    }
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let code = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if out.status.success() && code.starts_with('2') {
+        Ok(())
+    } else if !out.status.success() {
+        Err(String::from_utf8_lossy(&out.stderr).trim().chars().take(200).collect())
+    } else {
+        Err(tr!(lang, "推送服务返回 {code}", "The push service answered {code}"))
+    }
+}
+
+#[cfg(test)]
+mod push_tests {
+    use super::*;
+
+    #[test]
+    fn pushes_go_only_to_encrypted_or_private_addresses() {
+        assert!(push_url_allowed("https://ntfy.sh/topic"));
+        assert!(push_url_allowed("http://localhost:8080/t"));
+        assert!(push_url_allowed("http://100.101.1.2/t"));
+        assert!(push_url_allowed("http://box.tail1234.ts.net/t"));
+        assert!(!push_url_allowed("http://ntfy.sh/topic"));
+        assert!(!push_url_allowed("http://100.200.1.2/t"));
+        assert!(!push_url_allowed("file:///etc/passwd"));
+    }
 }

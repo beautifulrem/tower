@@ -17,6 +17,7 @@ import type { OpenTarget } from "../gen/OpenTarget";
 import type { ProjectPatch } from "../gen/ProjectPatch";
 import type { ProjectView } from "../gen/ProjectView";
 import type { RemoteInfo } from "../gen/RemoteInfo";
+import type { PushStatus } from "../gen/PushStatus";
 import type { ReviewComment } from "../gen/ReviewComment";
 import type { ReviewView } from "../gen/ReviewView";
 import type { Settings } from "../gen/Settings";
@@ -99,6 +100,8 @@ export const api = {
   remoteInfo: () => invoke<RemoteInfo>("remote_info"),
   /** A new pairing token: every phone has to pair again. */
   resetRemoteToken: () => invoke<void>("reset_remote_token"),
+  testPush: () => invoke<void>("test_push"),
+  pushStatus: () => invoke<PushStatus | null>("push_status"),
   /** A `look` criterion's screenshot as a PNG data URL, or null when the file is gone. */
   lookImage: (file: string) => invoke<string | null>("look_image", { file }),
 

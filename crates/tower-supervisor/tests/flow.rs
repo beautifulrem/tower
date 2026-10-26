@@ -649,6 +649,18 @@ async fn the_phone_page_answers_with_the_pairing_token_only() {
     let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
     assert_eq!(g.state, LifecycleState::InReview);
 
+    // Without the local-network switch it is Tailscale or nothing: never
+    // every interface, and when Tailscale is not connected it says so.
+    h.sup.save_settings(Settings { remote_local_network: false, ..h.sup.settings() }).unwrap();
+    let info = h.sup.remote_info();
+    match &info.problem {
+        Some(problem) => {
+            assert!(info.links.is_empty() && problem.contains("Tailscale"), "{problem}");
+            assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err(), "not served on loopback either");
+        }
+        None => assert!(info.kinds.iter().all(|k| k == "tailscale") && !info.links.is_empty(), "{info:?}"),
+    }
+
     h.sup.save_settings(Settings { remote_enabled: false, ..h.sup.settings() }).unwrap();
     assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err() || !h.sup.remote_info().enabled);
 }
@@ -736,6 +748,19 @@ async fn blocking_items_are_pushed_to_the_configured_topic() {
     let request = tokio::task::spawn_blocking(move || received.join().unwrap()).await.unwrap();
     assert!(request.starts_with("POST /tower"), "{request}");
     assert!(request.contains(&format!("Title: {id}")), "{request}");
+    // The agent's words never leave the machine; the token neither.
+    assert!(!request.contains("写什么"), "{request}");
+    assert!(!request.contains(&h.sup.settings().remote_token) || h.sup.settings().remote_token.is_empty());
+    for _ in 0..50 {
+        if h.sup.push_status().is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(h.sup.push_status().and_then(|s| s.error), None, "the push is recorded as delivered");
+    // Plain http to a public host is refused.
+    h.sup.save_settings(Settings { push_url: "http://example.com/t".into(), ..h.sup.settings() }).unwrap();
+    assert!(h.sup.test_push().await.is_err());
 }
 
 /// Whatever a verification starts and leaves running is stopped when it

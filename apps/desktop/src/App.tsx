@@ -73,7 +73,7 @@ export function App() {
     "nav:inbox": () => go({ name: "inbox" }),
     "nav:settings": () => go({ name: "settings" }),
     "nav:back": back,
-    "app:palette": openPalette,
+    "app:palette": () => openPalette("keyboard"),
     "project:add": () => void pickProject(),
     "goal:check-integration": () => void act(api.checkIntegration, t("app.integrationChecked")),
     "help:docs": () => void openUrl("https://github.com/beautifulrem/tower/tree/main/docs"),

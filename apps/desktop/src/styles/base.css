@@ -83,26 +83,11 @@ textarea,
   font-feature-settings: var(--font-features-ui), "halt" 1;
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 10px;
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-4);
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Scrollbars are the system's overlay ones: a desktop app, not a web page. */
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.923em;
+  font-size: max(0.923em, 11.5px);
   letter-spacing: 0;
 }
 /* Tabular figures in the UI font: counts, money, durations. */
@@ -112,7 +97,7 @@ textarea,
 /* Machine values: hashes, ids, commands, paths. */
 .code-val {
   font-family: var(--font-mono);
-  font-size: 0.923em;
+  font-size: max(0.923em, 11.5px);
   letter-spacing: 0;
   font-feature-settings: var(--font-features-num);
 }
@@ -164,6 +149,28 @@ textarea,
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+}
+
+/* Scale-style group title: 12/500 text-3 with a hairline running right. */
+.scale-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-4) 0 var(--sp-2);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  font-weight: 500;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.scale-title .num {
+  color: var(--text-3);
+  font-weight: 400;
+}
+.scale-title::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border-subtle);
 }
 
 @media (prefers-reduced-motion: reduce) {

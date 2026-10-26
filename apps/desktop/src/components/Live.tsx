@@ -2,6 +2,10 @@
  * Mode annunciator and live line (docs/12 §12.6.3–12.6.4): one line that
  * says the goal is alive and what kind of thing it is doing, always with a
  * steerable detail — never "working…".
+ *
+ * The line is a fixed grid — `[badge 4em][action · target][age]` — so on
+ * the board every card's action starts at the same x, like a departures
+ * board: one goal per row, one changing word per goal.
  */
 import { Show } from "solid-js";
 
@@ -10,7 +14,7 @@ import { ago } from "../lib/format";
 import { t } from "../lib/i18n";
 import { isEngineTool, modeLabel, modeNeedsYou, pauseLabel, stateLabel, toolLabel } from "../lib/labels";
 import { state } from "../lib/store";
-import { NeedsYouMark } from "./Glyph";
+import { NeedsYouMark, Seal } from "./Glyph";
 
 export function ModeBadge(props: { goal: GoalSummary }) {
   const attention = () => modeNeedsYou(props.goal.mode) || (props.goal.needs_you > 0 && props.goal.state === "running");
@@ -22,7 +26,7 @@ export function ModeBadge(props: { goal: GoalSummary }) {
     return stateLabel(g.state);
   };
   return (
-    <span class="mode-badge" classList={{ "mode-attention": attention() }}>
+    <span class="mode-badge halt" classList={{ "mode-attention": attention() }}>
       <Show when={attention()}>
         <NeedsYouMark />
       </Show>
@@ -40,6 +44,8 @@ export interface LiveDetail {
   action: string;
   target: string;
   code?: { action?: boolean; target?: boolean };
+  /** The verified seal replaces the detail (in review, with a pin). */
+  seal?: string;
 }
 
 /** Looks like a path or command: printable ASCII without runs of spaces. */
@@ -71,9 +77,9 @@ export function liveDetail(g: GoalSummary): LiveDetail {
     case "claimed":
       return { action: t("live.claimedDone"), target: t("live.awaitingVerify") };
     case "in_review":
-      return g.progress.machine === 0
+      return g.progress.machine === 0 || !g.verified_pin
         ? { action: t("live.notMachineVerified"), target: t("live.yourCall") }
-        : { action: t("live.verified"), target: `@${(g.verified_pin ?? "").slice(0, 7)}`, code: { target: true } };
+        : { action: "", target: "", seal: g.verified_pin };
     case "accepted":
       return { action: t("live.branch"), target: g.branch ?? "", code: { target: true } };
     case "integrated":
@@ -87,23 +93,30 @@ export function liveDetail(g: GoalSummary): LiveDetail {
   }
 }
 
-export function LiveLine(props: { goal: GoalSummary; large?: boolean }) {
+export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget?: boolean }) {
   const d = () => liveDetail(props.goal);
   return (
     <div class="live-line halt" classList={{ "live-line-large": !!props.large }}>
       <ModeBadge goal={props.goal} />
-      <span class="live-action" classList={{ "code-val": !!d().code?.action }}>
-        {d().action}
+      <span class="live-detail ellipsis">
+        <Show when={d().seal} fallback={
+          <>
+            <span class="live-action" classList={{ "code-val": !!d().code?.action }}>
+              {d().action}
+            </span>
+            <Show when={d().target && !props.hideTarget}>
+              <span class="sep">·</span>
+              <span class="live-target" classList={{ "code-val": !!d().code?.target }} title={d().target}>
+                {d().target}
+              </span>
+            </Show>
+          </>
+        }>
+          <Seal pin={d().seal} compact />
+        </Show>
       </span>
-      <Show when={d().target}>
-        <span class="sep">·</span>
-        <span class="live-target ellipsis" classList={{ "code-val": !!d().code?.target }} title={d().target}>
-          {d().target}
-        </span>
-      </Show>
-      <span class="grow" />
       <Show when={props.large && props.goal.live_line}>
-        <span class="meta num">{ago(props.goal.live_line!.at, state.now)}</span>
+        <span class="live-age meta num">{ago(props.goal.live_line!.at, state.now)}</span>
       </Show>
     </div>
   );

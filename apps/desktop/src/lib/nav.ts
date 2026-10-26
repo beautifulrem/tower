@@ -16,17 +16,34 @@ export function route(): Route {
   return s[s.length - 1];
 }
 
+/**
+ * Entering or leaving review is a change of space (full screen, no title
+ * bar), so it gets the one spatial transition (docs/12 §12.7: 220ms).
+ * Everything else switches at once.
+ */
+function spatial(from: Route, to: Route, apply: () => void) {
+  const crosses = (from.name === "review") !== (to.name === "review");
+  const dvt = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+  if (crosses && dvt.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    dvt.startViewTransition(apply);
+  } else apply();
+}
+
 export function go(r: Route) {
   const cur = route();
   if (JSON.stringify(cur) === JSON.stringify(r)) return;
-  // Top-level destinations reset the stack; detail views push onto it.
-  if (r.name === "overview") setStack([r]);
-  else if (r.name === "inbox" || r.name === "settings") setStack([{ name: "overview" }, r]);
-  else setStack((s) => [...s, r].slice(-12));
+  spatial(cur, r, () => {
+    // Top-level destinations reset the stack; detail views push onto it.
+    if (r.name === "overview") setStack([r]);
+    else if (r.name === "inbox" || r.name === "settings") setStack([{ name: "overview" }, r]);
+    else setStack((s) => [...s, r].slice(-12));
+  });
 }
 
 export function back() {
-  setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  const s = stack();
+  if (s.length <= 1) return;
+  spatial(s[s.length - 1], s[s.length - 2], () => setStack((st) => st.slice(0, -1)));
 }
 
 export function canGoBack(): boolean {

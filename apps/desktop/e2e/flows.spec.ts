@@ -405,6 +405,74 @@ test("a result produced with the held-out tests present is marked for you only, 
   await expect(page.getByRole("dialog").locator(".chip-you")).toHaveCount(1);
 });
 
+test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {
+  const identity = (F: Record<string, any>) => {
+    F.environment.issues.push({
+      kind: "git_identity_missing",
+      blocking: false,
+      text: "git has no name and email set.",
+      fix: 'git config --global user.name "Your Name" && git config --global user.email you@example.com',
+    });
+  };
+  await openTower(page, "overview", { enrich: (F) => (identity(F), (F.projects = []), (F.goals = []), (F.inbox = [])) });
+  const row = page.locator(".check-row").filter({ hasText: "git has no name and email" });
+  await expect(row).toBeVisible();
+  const fix = row.locator(".fix");
+  await expect(fix).toHaveText(/user\.name .* && git config --global user\.email you@example\.com$/);
+  // Whole, not clipped: the button shows all of its text.
+  expect(await fix.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  // The welcome screen's route: six stations, joined, the last two green.
+  await expect(page.locator(".welcome-station")).toHaveCount(6);
+  await expect(page.locator(".welcome-station").nth(2)).toContainText("Claimed done");
+  await openTower(page, "settings", { enrich: identity });
+  await expect(page.locator(".check-row").filter({ hasText: "git has no name and email" }).locator(".fix")).toBeVisible();
+});
+
+test("the command palette can put the page's card aside, and H does the same", async ({ page }) => {
+  await openTower(page, "goal/G-0004");
+  await expect(page.locator(".decision")).toBeVisible();
+  await page.keyboard.press("Meta+k");
+  const dialog = page.getByRole("dialog");
+  await page.keyboard.type("put aside");
+  const option = dialog.getByRole("option").filter({ hasText: "Put aside G-0004 · Paused" });
+  await expect(option).toBeVisible();
+  await expect(option.locator("kbd")).toHaveText("H");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await page.keyboard.press("h");
+  // The native "later" menu is asked for (the shim records the menu plugin's calls).
+  await expect.poll(async () => (await calls(page)).some(([cmd]) => String(cmd).startsWith("plugin:menu|"))).toBe(true);
+});
+
+test("start-up failure is Tower's own strip with the power off: dashes for readings, one error lit, no rules line", async ({ page }) => {
+  await page.addInitScript(() => {
+    // The supervisor does not answer: `goals` throws, like a Tauri command whose state is missing.
+    const orig = (window as any).__TAURI_INTERNALS__;
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      set(v) {
+        const invoke = v.invoke;
+        v.invoke = async (cmd: string, a: unknown) => {
+          if (cmd === "goals") throw "supervisor did not start: database locked";
+          return invoke(cmd, a);
+        };
+        Object.defineProperty(window, "__TAURI_INTERNALS__", { value: v, configurable: true, writable: true });
+      },
+      get() {
+        return orig;
+      },
+    });
+  });
+  await openTower(page, "overview");
+  const failed = page.locator(".boot-failed");
+  await expect(failed).toBeVisible();
+  await expect(failed.locator(".boot-gauges")).toContainText("1 error");
+  await expect(failed.locator(".boot-gauges")).toContainText("—/— running");
+  await expect(failed.locator(".boot-error")).toContainText("database locked");
+  await expect(failed.locator(".empty-rules")).toHaveCount(0);
+  await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible();
+});
+
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await openTower(page, "goal/G-0001");

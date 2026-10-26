@@ -8,7 +8,7 @@ import { ActivityPanel, openActivity } from "./components/Activity";
 import { CommandPalette, TitleBar, Toasts, openPalette } from "./components/Chrome";
 import { ShortcutSheet, openShortcuts } from "./components/ShortcutSheet";
 import { Sidebar } from "./components/Sidebar";
-import { Button, Empty, IconButton, Loading, Rules } from "./components/ui";
+import { Button, Empty, IconButton, Loading } from "./components/ui";
 import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
 import { useMenu } from "./lib/menu";
@@ -63,11 +63,28 @@ function titleOf(): string {
   }
 }
 
-/** Start-up failed: say what, offer to try again and to look at the data. */
+/**
+ * Start-up failed: say what, offer to try again and to look at the data.
+ * Above the words, the title bar's gauge strip with the power off — every
+ * reading a dash and the one error lit — so the screen is Tower's own
+ * instrument gone dark, not a dialog; no rules line here, nothing runs.
+ */
 function BootFailed() {
   return (
     <div class="boot">
       <div class="boot-failed">
+        <div class="boot-gauges num halt" aria-hidden="true">
+          <span class="gauge gauge-errors">
+            <span class="gauge-dot down" />
+            {t("chrome.errorsShort", { n: 1 })}
+          </span>
+          <span class="gauge gauge-dead">{t("chrome.runningShort", { n: "—", max: "—" })}</span>
+          <span class="gauge gauge-dead">—</span>
+          <span class="gauge gauge-dead">
+            <span class="gauge-dot" />
+            {t("chrome.engine")} <span class="t3">—</span>
+          </span>
+        </div>
         <Empty title={t("app.bootFailedTitle")} kind="error" poster rules={false}>
           {t("app.bootFailedBody")}
         </Empty>
@@ -99,7 +116,6 @@ function BootFailed() {
             <span class="meta t3 code-val ellipsis">{state.env!.data_dir}</span>
           </Show>
         </div>
-        <Rules />
       </div>
     </div>
   );

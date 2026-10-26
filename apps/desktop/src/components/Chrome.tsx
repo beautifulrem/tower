@@ -14,6 +14,7 @@ import { startQueue } from "../lib/reviewQueue";
 import { act, dismissToast, goalList, livenessOf, patchSettings, quietNow, quietUntil, state } from "../lib/store";
 import { hasIssue, heartbeatState, isBlocking, stateLabel } from "../lib/labels";
 import { openActivity } from "./Activity";
+import { snoozeMenu } from "./DecisionCard";
 import { Icon, type IconName, LifecycleGlyph, NeedsYouMark } from "./Glyph";
 import { openShortcuts } from "./ShortcutSheet";
 import { Button, IconButton, Kbd, Overlay } from "./ui";
@@ -290,6 +291,10 @@ export function CommandPalette() {
       // A ready-to-accept goal already has its review verb below, from anywhere.
       if (g && ["running", "accepted", "verifying"].includes(g.state))
         base.unshift({ id: "review", title: t("chrome.review", { id: g.id }), hint: "r", run: () => go({ name: "review", id: g.id }) });
+      // The page's own cards can be put aside from here, as with H on the page.
+      for (const it of state.inbox)
+        if (it.goal_id === r.id && isBlocking(it))
+          base.unshift({ id: `snooze-${it.id}`, title: t("decision.putAside", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), hint: "h", icon: "bell", run: () => void snoozeMenu(it) });
     }
     // Verbs first, from any page: review each ready goal, answer each waiting card, review them all in turn.
     const verbs: Command[] = [];

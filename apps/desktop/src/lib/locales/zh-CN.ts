@@ -460,6 +460,7 @@ export const zh = {
     demoHint: "用内置的演示引擎在一个小仓库里跑一个目标：不需要 Pi 或凭据。",
     demoNeeds: "演示需要 {tools}，先安装：",
     claudeOk: "Claude Code 可用",
+    life: "一个目标的一生：草稿、运行中、自称完成、验证中、待验收、已验收",
   },
   settings: {
     environment: "环境",

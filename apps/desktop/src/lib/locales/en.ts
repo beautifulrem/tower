@@ -461,6 +461,7 @@ export const en: Dict = {
     demoHint: "Runs one goal in a small demo repository on the bundled demo engine: no Pi or credentials needed.",
     demoNeeds: "The demo needs {tools}; install first:",
     claudeOk: "Claude Code available",
+    life: "A goal's life: draft, running, claimed done, verifying, ready to accept, accepted",
   },
   settings: {
     environment: "Environment",

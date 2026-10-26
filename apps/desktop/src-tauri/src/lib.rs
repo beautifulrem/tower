@@ -80,8 +80,14 @@ impl TauriSink {
             if !seen.insert(item.id.clone()) || focused || quiet || muted {
                 continue;
             }
-            let urgent =
-                matches!(item.kind, InboxKind::Question | InboxKind::Approval | InboxKind::Paused | InboxKind::Stalled);
+            let urgent = matches!(
+                item.kind,
+                InboxKind::Question
+                    | InboxKind::Approval
+                    | InboxKind::Paused
+                    | InboxKind::Stalled
+                    | InboxKind::CiFailed
+            );
             if !urgent {
                 continue;
             }
@@ -93,6 +99,7 @@ impl TauriSink {
                 InboxKind::Question => tr!(lang, "提问", "Question"),
                 InboxKind::Approval => tr!(lang, "需要批准", "Approval"),
                 InboxKind::Paused => tr!(lang, "已暂停", "Paused"),
+                InboxKind::CiFailed => tr!(lang, "CI 未通过", "CI failed"),
                 _ => tr!(lang, "可能卡住", "May be stuck"),
             };
             let _ = app.notification().builder().title(title).body(format!("{what} · {}", item.title)).show();

@@ -23,7 +23,7 @@ import { t } from "../lib/i18n";
 import { approves, optionTone } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go } from "../lib/nav";
-import { act, state, toast } from "../lib/store";
+import { act, forgetSnoozed, rememberSnoozed, state, toast } from "../lib/store";
 import { Icon, NeedsYouMark, NoticeMark, Seal } from "./Glyph";
 import { Claim, CriteriaBar } from "./Honesty";
 import { PrLine } from "./Pr";
@@ -68,11 +68,19 @@ export function tomorrowAt9(now = new Date()): number {
   return d.getTime();
 }
 
-/** "Remind me later": the card leaves and comes back at the chosen time. */
+/** Brings a put-aside decision back now. */
+export const unsnooze = async (id: string) => {
+  const ok = await act(() => api.snooze(id, null));
+  if (ok !== undefined) forgetSnoozed(id);
+};
+
+/** "Remind me later": the card leaves and comes back at the chosen time; the inbox's footer says where it went. */
 export async function snoozeMenu(item: InboxItem) {
   const pick = async (until: number) => {
     const ok = await act(() => api.snooze(item.id, until));
-    if (ok !== undefined) toast("info", t("decision.snoozed", { time: clock(until) }), { action: { label: t("decision.unsnooze"), run: () => void act(() => api.snooze(item.id, null)) } });
+    if (ok === undefined) return;
+    rememberSnoozed(item, until);
+    toast("info", t("decision.snoozed", { time: clock(until) }), { action: { label: t("decision.unsnooze"), run: () => void unsnooze(item.id) } });
   };
   await popupActions([
     { label: t("decision.snoozeHour"), run: () => void pick(Date.now() + HOUR) },
@@ -172,7 +180,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
         </Show>
         <span class="grow" />
         <span class="meta num">{ago(it().created_at, state.now)}</span>
-        <IconButton icon="bell" size={22} label={t("decision.snooze")} title={t("decision.snooze")} aria-haspopup="menu" class="decision-snooze" onClick={() => void snoozeMenu(it())} />
+        <IconButton icon="bell" size={22} label={t("decision.snooze")} title={`${t("decision.snooze")} H`} aria-haspopup="menu" class="decision-snooze" onClick={() => void snoozeMenu(it())} />
       </header>
       <div class="decision-main">
         <Show

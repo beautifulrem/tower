@@ -18,7 +18,7 @@ import { act, init, state, toast } from "./lib/store";
 import { GoalPage } from "./views/GoalPage";
 import { Inbox } from "./views/Inbox";
 import { Overview } from "./views/Overview";
-import { pickProject } from "./views/Welcome";
+import { pickProject } from "./components/Demo";
 
 // Views you reach by an action, not at launch, load on first use: start-up
 // stays small and they are local files, so the delay is not perceptible.

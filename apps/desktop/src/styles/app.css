@@ -1909,6 +1909,36 @@ input[type="radio"] {
   height: 14px;
   font-size: 10px;
 }
+/* Cards put aside: one quiet line under the list that opens into their ways back. */
+.snoozed {
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.snoozed-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+}
+.snoozed-head:hover {
+  color: var(--text-1);
+}
+.snoozed-list {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.snoozed-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 26px;
+  padding-left: 20px;
+}
 
 /* ======================================================================
    Watch and trace

@@ -6,9 +6,9 @@
  * Without Pi the demo is the only path that works, so it is the primary
  * action; with Pi, adding a repository is.
  */
-import { open } from "@tauri-apps/plugin-dialog";
 import { For, type JSX, Show, createResource } from "solid-js";
 
+import { DemoButton, demoMissing, openPiLogin, pickProject } from "../components/Demo";
 import { DangerMark, Icon, NoticeMark, Seal } from "../components/Glyph";
 import { Claim, CriteriaBar } from "../components/Honesty";
 import { Button, Wordmark } from "../components/ui";
@@ -16,56 +16,7 @@ import type { EnvIssue } from "../gen/EnvIssue";
 import { api } from "../lib/api";
 import { t } from "../lib/i18n";
 import { envIssueLabel, hasIssue, installHint } from "../lib/labels";
-import { go } from "../lib/nav";
-import { act, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
-
-/**
- * Adds a repository. Nothing runs on its own: the toast offers to try the
- * tests on the base branch (in the sandbox, with the network for setup),
- * and Settings keeps the same offer.
- */
-export async function pickProject() {
-  const dir = await open({ directory: true, multiple: false, title: t("welcome.pickRepo") });
-  if (typeof dir !== "string") return;
-  const p = await act(() => api.addProject(dir));
-  if (!p) return;
-  await refreshProjects();
-  toast("success", t("welcome.projectAdded"), {
-    ttl: 8000,
-    action: {
-      label: t("settings.checkTests", { base: p.base_branch }),
-      run: () => void act(() => api.checkProject(p.id)).then(() => refreshProjects()),
-    },
-  });
-}
-
-/** A demo goal on the bundled engine: asks, fixes, verifies, waits for review. */
-export async function startDemo() {
-  const g = await act(api.startDemo);
-  if (!g) return;
-  await refreshProjects();
-  go({ name: "goal", id: g.id });
-}
-
-/** Opens Terminal running Pi, where `/login` connects a model account. */
-export const openPiLogin = () => void act(api.openPiLogin);
-
-/** Programs the demo needs and does not find (`EnvironmentStatus.demo_missing`). */
-export const demoMissing = () => state.env?.demo_missing ?? [];
-
-/**
- * The demo button, disabled with the reason and the install command when a
- * program it needs is missing. Primary when Pi is not usable.
- */
-export function DemoButton(props: { size?: "s" | "m"; variant?: "primary" | "default" | "ghost" }) {
-  const missing = () => demoMissing();
-  const reason = () => (missing().length ? `${t("welcome.demoNeeds", { tools: missing().join(", ") })} ${missing().map(installHint).join(" · ")}` : t("welcome.demoHint"));
-  return (
-    <Button size={props.size} variant={props.variant} disabled={missing().length > 0} title={reason()} onClick={() => void startDemo()}>
-      {t("welcome.tryDemo")}
-    </Button>
-  );
-}
+import { refreshEnvironment, state, toast } from "../lib/store";
 
 /**
  * A check row. Tower's own self-tests are facts, not verifier verdicts, so a

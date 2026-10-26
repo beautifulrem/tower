@@ -339,12 +339,17 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string> }) {
             <Match when={ev().kind === "baseline_result" && ev()}>
               {(x) => {
                 const c = x() as Extract<TraceEntry["event"], { kind: "baseline_result" }>;
+                // A baseline that could not run says why; its pass/fail means nothing and gets no mark.
                 return (
                   <div class="trace-cols">
-                    <ResultMark kind={c.passed ? "pass" : "fail"} />
-                    <span class="ellipsis">
-                      {t("trace.baseline", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
-                      <span class="t3"> · {c.passed ? t("goal.passedOnBaseShort") : t("goal.redToGreen")}</span>
+                    <Show when={!c.error} fallback={<ResultMark kind="pending" />}>
+                      <ResultMark kind={c.passed ? "pass" : "fail"} />
+                    </Show>
+                    <span class="ellipsis" title={c.error ?? undefined}>
+                      <Show when={!c.error} fallback={<>{t("trace.baselineError", { criterion: c.criterion })}<span class="t3"> · {c.error}</span></>}>
+                        {t("trace.baseline", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
+                        <span class="t3"> · {c.passed ? t("goal.passedOnBaseShort") : t("goal.redToGreen")}</span>
+                      </Show>
                     </span>
                     <span />
                     <span class="col-pin">

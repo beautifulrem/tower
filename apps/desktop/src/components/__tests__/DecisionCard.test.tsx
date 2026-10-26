@@ -147,4 +147,15 @@ describe("DecisionCard", () => {
     render(() => <DecisionCard item={item()} />);
     expect(screen.getByLabelText("Remind me later")).toBeTruthy();
   });
+
+  it("does not repeat the PR reading on the goal's own page", () => {
+    const ci = item({ kind: "ci_failed", subject: "test (ubuntu-latest, node 22)", body: "", options: ["Send to the agent", "Leave it"], tones: ["primary", "neutral"] });
+    const { container, unmount } = render(() => <DecisionCard item={ci} />);
+    // In a list the strip names the goal; on the goal page (showGoal=false) neither the goal nor its PR is said again.
+    expect(container.querySelector(".decision-head .link-quiet")).not.toBeNull();
+    unmount();
+    const { container: own } = render(() => <DecisionCard item={ci} showGoal={false} />);
+    expect(own.querySelector(".decision-head .link-quiet")).toBeNull();
+    expect(own.querySelector(".decision-head .pr-line")).toBeNull();
+  });
 });

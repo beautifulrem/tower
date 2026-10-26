@@ -19,9 +19,20 @@ export function fixtures(): Record<string, unknown> {
   return out;
 }
 
-export async function openTower(page: Page, route: string, opts: { lang?: "en" | "zh-CN" } = {}) {
+export async function openTower(
+  page: Page,
+  route: string,
+  opts: {
+    lang?: "en" | "zh-CN";
+    /** Edits the dumped views before they are served, for states the demo does not reach (a second ready goal, a look criterion…). */
+    enrich?: (F: Record<string, any>) => void;
+    theme?: "light" | "dark";
+  } = {},
+) {
   const F = fixtures() as Record<string, any>;
   if (opts.lang) F.settings = { ...F.settings, language: opts.lang };
+  opts.enrich?.(F);
+  if (opts.theme) route = `${route}?theme=${opts.theme}`;
   await page.addInitScript(
     ([F, route]) => {
       let seq = 0;
@@ -64,6 +75,10 @@ export async function openTower(page: Page, route: string, opts: { lang?: "en" |
               return F.files[`${a.id}:${a.path}:${a.old ? "old" : "new"}`] ?? null;
             case "ui_state":
               return {};
+            case "look_image":
+              return F.lookImages?.[a.file] ?? null;
+            case "remote_info":
+              return F.remoteInfo ?? null;
             case "models":
               return [];
             case "validate_contract":

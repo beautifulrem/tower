@@ -18,7 +18,7 @@ export function ShortcutSheet() {
   const groups = createMemo(() => {
     const by = new Map<string, Binding[]>();
     for (const s of activeScopes()) {
-      const described = s.bindings.filter((b) => b.desc);
+      const described = s.bindings.filter((b) => b.desc && (!b.when || b.when()));
       if (!described.length) continue;
       const name = s.name();
       by.set(name, [...(by.get(name) ?? []), ...described]);

@@ -19,6 +19,8 @@ export interface Binding {
   desc?: () => string;
   /** Keys to show instead of `key`, e.g. "j k" when k is a separate alias. */
   hint?: string;
+  /** Live only while this holds (reactive): the sheet hides it and the key does nothing otherwise. */
+  when?: () => boolean;
 }
 
 export interface Scope {
@@ -66,7 +68,7 @@ if (typeof window !== "undefined") {
     const inInput = typing(e);
     const list = scopes();
     for (let i = list.length - 1; i >= 0; i--) {
-      const hit = list[i].bindings.find((b) => b.key === combo);
+      const hit = list[i].bindings.find((b) => b.key === combo && (!b.when || b.when()));
       if (hit) {
         if (inInput && !hit.inInputs && !combo.startsWith("mod+")) return;
         e.preventDefault();

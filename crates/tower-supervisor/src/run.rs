@@ -760,7 +760,7 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
     run.flags().dialogs.insert(req.id, (opened.id, req.method));
     inner.set_mode(g, Mode::WaitingOnYou)?;
     let title = &opened.title;
-    inner.toast(ToastLevel::Warning, tr!(lang, "{g} 需要你：{title}", "{g} needs you: {title}"));
+    inner.toast(g, ToastLevel::Warning, tr!(lang, "{g} 需要你：{title}", "{g} needs you: {title}"));
     Ok(())
 }
 
@@ -946,7 +946,7 @@ pub(crate) async fn report(inner: &Arc<Inner>, goal: &str, result: Result<()>) {
     let detail = tr!(lang, "Tower 内部错误：{e}", "Tower internal error: {e}");
     tracing::error!(goal, error = %e, "background step failed");
     let _ = inner.append(goal, EventKind::EngineError { message: detail.clone() });
-    inner.toast(ToastLevel::Error, format!("{goal} · {detail}"));
+    inner.toast(goal, ToastLevel::Error, detail.clone());
     if let Err(again) = Box::pin(pause(inner, goal, PauseReason::Internal, &detail)).await {
         tracing::error!(goal, error = %again, "could not pause after an internal error");
     }
@@ -1042,6 +1042,7 @@ pub async fn steer(inner: &Arc<Inner>, goal: &str, text: &str) -> Result<String>
     inner.append(goal, EventKind::Steered { text: text.into() })?;
     let Some(run) = inner.run_of(goal) else {
         inner.toast(
+            goal,
             ToastLevel::Info,
             tr!(
                 lang,

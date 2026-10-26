@@ -286,6 +286,11 @@ async fn answer(sup: Sup<'_>, inbox_id: String, response: String) -> Res<()> {
 }
 
 #[tauri::command]
+async fn answer_assumption(sup: Sup<'_>, inbox_id: String, approved: bool, note: String) -> Res<()> {
+    sup.answer_assumption(&inbox_id, approved, &note).await
+}
+
+#[tauri::command]
 async fn retry_verify(sup: Sup<'_>, id: String) -> Res<()> {
     sup.retry_verify(&id).await
 }
@@ -426,6 +431,7 @@ pub fn run() {
             abandon,
             steer,
             answer,
+            answer_assumption,
             retry_verify,
             request_changes,
             accept,

@@ -165,6 +165,7 @@ and keep their changes unless they conflict with the contract:\n",
 pub struct Comment {
     pub path: String,
     pub line: Option<u32>,
+    pub old_line: Option<u32>,
     pub text: String,
 }
 
@@ -174,9 +175,10 @@ pub fn request_changes(summary: &str, comments: &[Comment]) -> String {
         s.push_str(&format!("\n{}\n", summary.trim()));
     }
     for c in comments {
-        match c.line {
-            Some(l) => s.push_str(&format!("\n- {}:{} — {}", c.path, l, c.text)),
-            None => s.push_str(&format!("\n- {} — {}", c.path, c.text)),
+        match (c.line, c.old_line) {
+            (Some(l), _) => s.push_str(&format!("\n- {}:{} — {}", c.path, l, c.text)),
+            (None, Some(l)) => s.push_str(&format!("\n- {}: old line {} (deleted) — {}", c.path, l, c.text)),
+            (None, None) => s.push_str(&format!("\n- {} — {}", c.path, c.text)),
         }
     }
     s.push_str("\n\nAddress every comment, then submit again.");

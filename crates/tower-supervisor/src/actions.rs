@@ -45,6 +45,20 @@ fn pick_option<'a>(options: &'a [String], response: &str) -> Option<&'a str> {
         .map(String::as_str)
 }
 
+/// Confirms or rejects an assumption card, with an optional note to the
+/// agent either way (`answer` can only carry one of the two).
+pub async fn answer_assumption(inner: &Arc<Inner>, inbox_id: &str, approved: bool, note: &str) -> Result<()> {
+    let item = inner.store(|s| s.inbox_item(inbox_id))?;
+    if item.kind != InboxKind::Assumption {
+        return Err(invalid(tr!(inner.lang(), "这不是一条假设", "This is not an assumption")));
+    }
+    let label = if approved { Choice::Approve } else { Choice::Reject }.label(inner.lang());
+    let resolved = inner.store(|s| s.resolve_inbox(inbox_id, label))?;
+    inner.emit_inbox();
+    inner.emit_goal_now(&item.goal_id);
+    review_claim(inner, &item.goal_id, &resolved.engine_ref.unwrap_or_default(), approved, note.trim()).await
+}
+
 pub async fn answer(inner: &Arc<Inner>, inbox_id: &str, response: &str) -> Result<()> {
     let item = inner.store(|s| s.inbox_item(inbox_id))?;
     let lang = inner.lang();
@@ -197,6 +211,9 @@ pub async fn review_claim(inner: &Arc<Inner>, goal: &str, claim_id: &str, approv
             format!("The human rejected an assumption you logged: {}", note.trim())
         };
         run::steer(inner, goal, &text).await?;
+    } else if !note.trim().is_empty() {
+        let text = format!("The human confirmed an assumption you logged and added: {}", note.trim());
+        run::steer(inner, goal, &text).await?;
     }
     inner.emit_goal_now(goal);
     Ok(())
@@ -223,7 +240,7 @@ pub async fn request_changes(
     let comments: Vec<prompts::Comment> = comments
         .into_iter()
         .filter(|c| !c.text.trim().is_empty())
-        .map(|c| prompts::Comment { path: c.path, line: c.line, text: c.text })
+        .map(|c| prompts::Comment { path: c.path, line: c.line, old_line: c.old_line, text: c.text })
         .collect();
     let message = prompts::request_changes(summary, &comments);
     inner.append(goal, EventKind::Steered { text: message.clone() })?;
@@ -316,6 +333,7 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
     inner.transition(goal, Transition::Accept, None, "")?;
     inner.withdraw(goal, &[InboxKind::ReviewReady, InboxKind::Assumption], &tr!(lang, "已验收", "Accepted"));
     inner.toast(
+        goal,
         ToastLevel::Success,
         tr!(lang, "已写入分支 {written}（没有推送）", "Wrote branch {written} (not pushed)"),
     );
@@ -334,7 +352,7 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
             "{written} will conflict with the current {base_branch} in {n} file(s): {list}"
         );
         inner.append(goal, EventKind::Note { text: text.clone() })?;
-        inner.toast(ToastLevel::Warning, text);
+        inner.toast(goal, ToastLevel::Warning, text);
     }
     Ok(written)
 }
@@ -463,6 +481,7 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
     }
     inner.append(goal, EventKind::BranchPushed { remote, branch: branch.clone(), pr_url: pr_url.clone() })?;
     inner.toast(
+        goal,
         ToastLevel::Success,
         match &pr_url {
             Some(u) => tr!(lang, "已推送并创建 PR：{u}", "Pushed and opened a PR: {u}"),
@@ -535,7 +554,11 @@ async fn check_pr(inner: &Arc<Inner>, gh: &Path, goal: &str) -> Result<()> {
     } else if newly_failing {
         let title = inner.store(|s| s.goal(goal))?.title;
         let names = status.failing.join(", ");
-        inner.toast(ToastLevel::Warning, tr!(lang, "{title} 的 CI 未通过：{names}", "CI failed for {title}: {names}"));
+        inner.toast(
+            goal,
+            ToastLevel::Warning,
+            tr!(lang, "{title} 的 CI 未通过：{names}", "CI failed for {title}: {names}"),
+        );
     }
     Ok(())
 }

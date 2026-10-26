@@ -139,8 +139,9 @@ impl Inner {
         }
     }
 
-    pub fn toast(&self, level: ToastLevel, text: impl Into<String>) {
-        self.sink.emit(UiUpdate::Toast { level, text: text.into() });
+    /// A transient message about one goal.
+    pub fn toast(&self, goal: &str, level: ToastLevel, text: impl Into<String>) {
+        self.sink.emit(UiUpdate::Toast { level, text: text.into(), goal_id: Some(goal.into()) });
     }
 
     /// Sends pending trace entries in one update.
@@ -817,6 +818,10 @@ impl Supervisor {
 
     pub async fn answer(&self, inbox_id: &str, response: &str) -> Result<()> {
         actions::answer(&self.inner, inbox_id, response).await
+    }
+
+    pub async fn answer_assumption(&self, inbox_id: &str, approved: bool, note: &str) -> Result<()> {
+        actions::answer_assumption(&self.inner, inbox_id, approved, note).await
     }
 
     pub async fn retry_verify(&self, id: &str) -> Result<()> {

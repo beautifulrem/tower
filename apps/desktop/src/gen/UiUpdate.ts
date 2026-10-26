@@ -9,4 +9,9 @@ import type { TraceEntry } from "./TraceEntry";
  * Pushed to the renderer. Attention-critical updates (inbox, state changes)
  * are sent immediately; summaries are coalesced (`docs/13` §13.3).
  */
-export type UiUpdate = { "type": "goal", goal: GoalSummary, } | { "type": "inbox", items: Array<InboxItem>, } | { "type": "traces", entries: Array<TraceEntry>, } | { "type": "stream", goal_id: string, text: string, } | { "type": "projects", projects: Array<ProjectView>, } | { "type": "toast", level: ToastLevel, text: string, };
+export type UiUpdate = { "type": "goal", goal: GoalSummary, } | { "type": "inbox", items: Array<InboxItem>, } | { "type": "traces", entries: Array<TraceEntry>, } | { "type": "stream", goal_id: string, text: string, } | { "type": "projects", projects: Array<ProjectView>, } | { "type": "toast", level: ToastLevel, text: string, 
+/**
+ * The goal it is about, so the interface can offer to open it (and
+ * stay quiet when you are already looking at it).
+ */
+goal_id: string | null, };

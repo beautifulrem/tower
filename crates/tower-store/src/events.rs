@@ -240,13 +240,13 @@ impl Store {
     /// known sentinels follow the current language.
     pub fn sentinel_hits(&self, goal_id: &str) -> Result<Vec<tower_core::sentinel::SentinelHit>> {
         let since: i64 = self.conn.query_row(
-            "SELECT COALESCE(MAX(seq), 0) FROM events WHERE goal_id = ?1 AND kind = 'verify_started'",
+            "SELECT COALESCE(MAX(seq), 0) FROM events INDEXED BY events_goal_kind WHERE goal_id = ?1 AND kind = 'verify_started'",
             [goal_id],
             |r| r.get(0),
         )?;
         let mut stmt = self
             .conn
-            .prepare("SELECT * FROM events WHERE goal_id = ?1 AND kind = 'sentinel_hit' AND seq > ?2 ORDER BY seq")?;
+            .prepare("SELECT * FROM events INDEXED BY events_goal_kind WHERE goal_id = ?1 AND kind = 'sentinel_hit' AND seq > ?2 ORDER BY seq")?;
         let rows = stmt.query_map(params![goal_id, since], row_to_trace)?;
         let lang = self.lang();
         let mut out = Vec::new();
@@ -265,7 +265,7 @@ impl Store {
         Ok(self
             .conn
             .query_row(
-                "SELECT * FROM events WHERE goal_id = ?1 AND kind = ?2 ORDER BY seq DESC LIMIT 1",
+                "SELECT * FROM events INDEXED BY events_goal_kind WHERE goal_id = ?1 AND kind = ?2 ORDER BY seq DESC LIMIT 1",
                 params![goal_id, kind],
                 row_to_trace,
             )

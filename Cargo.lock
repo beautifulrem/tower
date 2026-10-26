@@ -568,6 +568,11 @@ version = "0.1.0"
 [[package]]
 name = "tower-verify"
 version = "0.1.0"
+dependencies = [
+ "nix",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "tracing"

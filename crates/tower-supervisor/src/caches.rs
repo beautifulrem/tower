@@ -4,7 +4,7 @@
 //! `~/.cargo/registry` or `~/.npm` would later run when the user builds
 //! other projects outside any sandbox. Each goal therefore gets private
 //! caches, seeded once from the user's caches with copy-on-write clones
-//! (`cp -c`, APFS clonefile: near-instant, no extra space until modified),
+//! (APFS clonefile: near-instant, no extra space until modified),
 //! and only for the ecosystems the repository actually uses.
 
 use std::path::{Path, PathBuf};
@@ -62,13 +62,15 @@ pub fn prepare(cache: &Path, home: &Path, repo: &Path) -> std::io::Result<PathBu
             if let Some(parent) = dst.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let _ = std::process::Command::new("/bin/cp")
-                .args(["-cR"])
-                .arg(&src)
-                .arg(&dst)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
+            if !clone_tree(&src, &dst) {
+                let _ = std::process::Command::new("/bin/cp")
+                    .args(["-cR"])
+                    .arg(&src)
+                    .arg(&dst)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+            }
         }
         // Cargo reads its configuration from CARGO_HOME.
         let cargo_config = home.join(".cargo/config.toml");
@@ -79,6 +81,32 @@ pub fn prepare(cache: &Path, home: &Path, repo: &Path) -> std::io::Result<PathBu
         std::fs::write(&marker, "")?;
     }
     Ok(crate::paths::real(cache))
+}
+
+/// Clones a whole directory tree in one call (APFS `clonefile`, which
+/// takes directories): about ten times faster than `cp -cR` going file by
+/// file through a cache of tens of thousands of entries. `false` when it
+/// cannot (another volume or file system); the caller copies instead.
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+fn clone_tree(src: &Path, dst: &Path) -> bool {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    unsafe extern "C" {
+        fn clonefile(src: *const std::ffi::c_char, dst: *const std::ffi::c_char, flags: u32) -> std::ffi::c_int;
+    }
+    const CLONE_NOFOLLOW: u32 = 0x0001;
+    let (Ok(s), Ok(d)) = (CString::new(src.as_os_str().as_bytes()), CString::new(dst.as_os_str().as_bytes())) else {
+        return false;
+    };
+    // SAFETY: both arguments are valid NUL-terminated paths that outlive
+    // the call; clonefile only reads them.
+    unsafe { clonefile(s.as_ptr(), d.as_ptr(), CLONE_NOFOLLOW) == 0 }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clone_tree(_src: &Path, _dst: &Path) -> bool {
+    false
 }
 
 #[cfg(test)]

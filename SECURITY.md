@@ -19,6 +19,7 @@ Please **do not** open a public issue for a vulnerability. Use GitHub's private 
 
 - **Pi**: Tower's extension replaces Pi's four tools with sandboxed ones and adds three; Pi starts with exactly these seven.
 - **Claude Code** (through the ACP bridge, `extensions/tower-goal/acp.ts`): Claude Code is started with no built-in tools, no user or project settings, hooks or MCP servers; its only tools are Tower's MCP server, which applies the same gate and Seatbelt profile as with Pi.
+- Claude Code's ACP adapter is installed by Tower on first use with `npm ci` from a manifest and lockfile shipped with Tower (every package checked against its integrity hash, install scripts off), not fetched at whatever version the registry serves.
 - In both cases the engine process itself (which holds your model login) runs outside the sandbox; only what the model can cause to happen runs inside it.
 
 ## The phone page

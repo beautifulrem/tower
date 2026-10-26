@@ -5,6 +5,7 @@
 //! async methods on [`Supervisor`] and receives [`UiUpdate`]s through a
 //! [`UiSink`].
 
+mod acp_adapter;
 mod actions;
 pub mod api;
 mod caches;
@@ -1017,6 +1018,20 @@ fn install_extension(src: &Path, dst: &Path) -> std::io::Result<()> {
         let from = src.join(name);
         if from.exists() {
             std::fs::copy(&from, dst.join(name))?;
+        }
+    }
+    // Claude Code's adapter: its manifest and lockfile (installed on first use).
+    let adapter = src.join("acp-adapter");
+    if adapter.join("package-lock.json").is_file() {
+        std::fs::create_dir_all(dst.join("acp-adapter"))?;
+        for name in ["package.json", "package-lock.json"] {
+            let to = dst.join("acp-adapter").join(name);
+            let changed = std::fs::read(adapter.join(name)).ok() != std::fs::read(&to).ok();
+            if changed {
+                std::fs::copy(adapter.join(name), &to)?;
+                // A new pin: install again.
+                let _ = std::fs::remove_dir_all(dst.join("acp-adapter/node_modules"));
+            }
         }
     }
     // The ACP bridge is started directly (`#!/usr/bin/env node`).

@@ -5,7 +5,7 @@
 
 use tower_core::contract::Scope;
 use tower_core::i18n::Lang;
-use tower_core::sentinel::scan;
+use tower_core::sentinel::scan_with;
 use tower_core::view::{DiffFile, DiffLine, FileStatus, Hunk, LineKind};
 
 /// One file of a diff: deleted lines, then added lines, in one hunk.
@@ -47,7 +47,8 @@ fn scope() -> Scope {
 }
 
 fn hits(files: &[DiffFile]) -> Vec<String> {
-    scan(files, &scope(), Lang::En).into_iter().map(|h| h.sentinel).collect()
+    let commands = ["npm test".to_string(), "sh scripts/check.sh".to_string(), "make test".to_string()];
+    scan_with(files, &scope(), &commands, Lang::En).into_iter().map(|h| h.sentinel).collect()
 }
 
 #[test]
@@ -213,6 +214,22 @@ fn every_cheat_in_the_corpus_is_caught() {
             )],
             "snapshots_changed",
         ),
+        (
+            "weaken the script a criterion runs",
+            vec![modified("scripts/check.sh", &["npm test"], &["exit 0"])],
+            "test_command_changed",
+        ),
+        (
+            "change the Makefile's test target",
+            vec![modified("Makefile", &["\tnode --test"], &["\ttrue"])],
+            "test_command_changed",
+        ),
+        (
+            "drop an assertion from a Rust unit test in src",
+            vec![modified("src/cart.rs", &["        assert_eq!(total(&items), 17);"], &["        assert!(true);"])],
+            "assertions_removed",
+        ),
+        ("change a golden file", vec![modified("testdata/total.golden", &["17"], &["11"])], "test_data_changed"),
         ("write outside the scope", vec![modified("scripts/release.sh", &[], &["echo hi"])], "scope_violation"),
     ];
     assert!(cases.len() >= 25, "the corpus keeps at least 25 cheats");

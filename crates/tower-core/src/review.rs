@@ -33,6 +33,11 @@ pub fn file_risks(file: &DiffFile, fence: Option<&ScopeFence>) -> Vec<(u8, Risk)
         r.push((3, Risk::TestDeleted));
     } else if is_test && file.deletions > file.additions {
         r.push((2, Risk::TestShrunk));
+    } else if is_test && file.status == FileStatus::Modified && file.deletions > 0 {
+        r.push((2, Risk::TestEdited));
+    }
+    if crate::sentinel::changes_expectations(file) {
+        r.push((3, Risk::ExpectationChanged));
     }
     if p.contains("__snapshots__") || name.ends_with(".snap") {
         r.push((2, Risk::Snapshots));

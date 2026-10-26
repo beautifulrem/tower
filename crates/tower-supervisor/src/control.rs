@@ -120,7 +120,9 @@ pub async fn resume(inner: &Arc<Inner>, goal: &str) -> Result<()> {
         inner.transition(goal, Transition::Resume, None, &tr!(lang, "等待执行槽位", "Waiting for a free slot"))?;
         return Ok(());
     }
-    start_run(inner, goal, "resume", message).await
+    // Tower quitting is not a new attempt: the same run continues.
+    let purpose = if reason == PauseReason::AppQuit { "continue" } else { "resume" };
+    start_run(inner, goal, purpose, message).await
 }
 
 /// Snapshots the workspace; returns the new pin when it changed.

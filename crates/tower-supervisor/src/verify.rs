@@ -109,7 +109,15 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws5), &base5, &pin5))
         .await
         .map_err(|e| invalid(e.to_string()))??;
-    let mut hits = tower_core::sentinel::scan(&files, &rec.contract.scope, lang);
+    let commands: Vec<String> = rec
+        .contract
+        .machine_criteria()
+        .filter_map(|c| match &c.kind {
+            CriterionKind::Exec { command, .. } => Some(command.clone()),
+            CriterionKind::Human => None,
+        })
+        .collect();
+    let mut hits = tower_core::sentinel::scan_with(&files, &rec.contract.scope, &commands, lang);
     for h in &hits {
         append_hit(inner, goal, h)?;
     }

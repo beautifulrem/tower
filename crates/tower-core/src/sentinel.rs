@@ -35,12 +35,35 @@ pub fn is_test_path(path: &str) -> bool {
         || p.contains("/tests/")
         || p.contains("__tests__")
         || p.starts_with("spec/")
+        || p.starts_with("testdata/")
+        || p.contains("/testdata/")
+        || p.contains("fixtures/")
+        || p.contains("__snapshots__/")
+        || p.contains("/golden/")
+        || name.ends_with(".golden")
         || name.contains(".test.")
         || name.contains(".spec.")
         || name.starts_with("test_")
         || name.ends_with("_test.go")
         || name.ends_with("_test.py")
         || name.ends_with("_test.rs")
+}
+
+/// Test inputs and expected outputs kept as data.
+fn is_test_data(path: &str) -> bool {
+    let p = path.to_ascii_lowercase();
+    p.starts_with("testdata/")
+        || p.contains("/testdata/")
+        || p.contains("fixtures/")
+        || p.contains("/golden/")
+        || p.ends_with(".golden")
+}
+
+/// Files that may contain tests: test paths, and Rust sources, whose unit
+/// tests live next to the code (`#[cfg(test)] mod tests`). For Rust
+/// sources only test-shaped lines count (assertions, `#[test]`).
+fn holds_tests(path: &str) -> bool {
+    is_test_path(path) || path.ends_with(".rs")
 }
 
 /// Whether a test file renamed from `old` to `new` is still one the runner
@@ -207,6 +230,19 @@ fn edited_pairs(file: &DiffFile) -> Vec<(&str, &str)> {
     out
 }
 
+/// Whether a file of the diff edits an assertion so that it expects a
+/// different value (same shape, different literals).
+pub fn changes_expectations(file: &DiffFile) -> bool {
+    holds_tests(&file.path)
+        && file.status != FileStatus::Added
+        && edited_pairs(file).into_iter().any(|(old, new)| {
+            is_assertion(old) && is_assertion(new) && {
+                let ((s1, l1), (s2, l2)) = (shape(old), shape(new));
+                s1 == s2 && l1 != l2
+            }
+        })
+}
+
 fn is_assertion(line: &str) -> bool {
     let l = line.trim_start();
     l.contains("assert") || l.contains("expect(") || l.starts_with("should") || l.contains(".should")
@@ -227,6 +263,47 @@ fn hit(id: &str, severity: u8, detail: String, lang: Lang) -> SentinelHit {
 /// Runs every sentinel over the diff between base and the verified pin.
 /// Titles and details are written in `lang`.
 pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
+    scan_with(files, scope, &[], lang)
+}
+
+/// Files a criterion command runs: scripts it executes (as the command, or
+/// through sh, bash, node, python, ruby…), and the task runner's file for
+/// `make`, `just`, `task` and `nox`. Not files it merely reads (a `grep`
+/// target can be the very thing the goal changes).
+fn command_files(commands: &[String]) -> Vec<String> {
+    const RUNNERS: &[&str] =
+        &["sh", "bash", "zsh", "node", "python", "python3", "ruby", "perl", "deno", "bun", "tsx", "ts-node"];
+    let mut out = Vec::new();
+    for c in commands {
+        for segment in c.split(['&', '|', ';']) {
+            let words: Vec<&str> =
+                segment.split_whitespace().map(|w| w.trim_matches(|ch| ch == '\'' || ch == '"')).collect();
+            let Some(first) = words.first() else { continue };
+            let script = if RUNNERS.contains(first) {
+                words.iter().skip(1).find(|w| !w.starts_with('-')).copied()
+            } else if first.contains('/') {
+                Some(*first)
+            } else {
+                None
+            };
+            if let Some(path) = script {
+                out.push(path.trim_start_matches("./").to_string());
+            }
+            match *first {
+                "make" | "gmake" => out.extend(["Makefile", "makefile", "GNUmakefile"].map(String::from)),
+                "just" => out.extend(["justfile", "Justfile", ".justfile"].map(String::from)),
+                "task" => out.extend(["Taskfile.yml", "Taskfile.yaml"].map(String::from)),
+                "nox" => out.push("noxfile.py".into()),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// Runs every sentinel; `commands` are the contract's criterion commands,
+/// whose own files (scripts they name, the Makefile) are frozen.
+pub fn scan_with(files: &[DiffFile], scope: &Scope, commands: &[String], lang: Lang) -> Vec<SentinelHit> {
     let mut hits = Vec::new();
     let fence = ScopeFence::compile(scope).ok();
 
@@ -272,7 +349,7 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
     // Removing assertions from a test file without adding any is how a
     // failing test is made to pass quietly.
     let mut weakened = Vec::new();
-    for f in files.iter().filter(|f| is_test_path(&f.path) && f.status == FileStatus::Modified) {
+    for f in files.iter().filter(|f| holds_tests(&f.path) && f.status == FileStatus::Modified) {
         let is_assert = |l: &str| {
             let l = l.trim_start();
             l.contains("assert") || l.contains("expect(") || l.starts_with("should")
@@ -297,7 +374,7 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
     // cannot fail, and bodies cut short: each lets a failing test pass.
     let mut fewer_tests = Vec::new();
     let mut hollow = Vec::new();
-    for f in files.iter().filter(|f| is_test_path(&f.path) && f.status == FileStatus::Modified) {
+    for f in files.iter().filter(|f| holds_tests(&f.path) && f.status == FileStatus::Modified) {
         let removed = removed_lines(f).filter(|l| starts_test(l)).count();
         let added = added_lines(f).filter(|l| starts_test(l)).count();
         if removed > added {
@@ -318,7 +395,7 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
     // An assertion kept as it was but expecting a different value: the
     // classic way to make a failing test pass without fixing the code.
     let mut expectations = Vec::new();
-    for f in files.iter().filter(|f| is_test_path(&f.path) && f.status != FileStatus::Added) {
+    for f in files.iter().filter(|f| holds_tests(&f.path) && f.status != FileStatus::Added) {
         for (old, new) in edited_pairs(f) {
             if !is_assertion(old) || !is_assertion(new) {
                 continue;
@@ -347,6 +424,25 @@ pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
             if t.starts_with("\"test") || t.starts_with("\"pretest") || t.starts_with("\"posttest") {
                 test_command.push(format!("{}: {}", f.path, line.trim()));
             }
+        }
+    }
+    // Expected outputs kept as data (fixtures, golden files): changing them
+    // changes what the tests expect.
+    let data: Vec<&str> = files
+        .iter()
+        .filter(|f| f.status == FileStatus::Modified && is_test_data(&f.path))
+        .map(|f| f.path.as_str())
+        .collect();
+    if !data.is_empty() {
+        hits.push(hit("test_data_changed", 2, data.join("\n"), lang));
+    }
+
+    // What the criteria themselves run: the scripts they name, the Makefile.
+    let frozen = command_files(commands);
+    for f in files.iter().filter(|f| f.status != FileStatus::Added) {
+        let path = f.old_path.as_deref().unwrap_or(&f.path);
+        if frozen.iter().any(|c| c == path || c == &f.path) && !test_command.iter().any(|t| t.starts_with(&f.path)) {
+            test_command.push(f.path.clone());
         }
     }
     if !test_command.is_empty() {

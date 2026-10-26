@@ -42,6 +42,9 @@
   --titlebar-h: 52px;
   --row-goal-h: 36px;
   --rail-w: 340px;
+  /* One reading width for everything you read (decision cards, forms, long
+     text); instruments (board rows, criteria, diffs) run full width. */
+  --reading-w: 840px;
 
   /* Motion: signal, not decoration (§12.7). Hover arrives instantly and
      leaves slowly; entering layers ease out, leaving ones ease in. A view
@@ -55,6 +58,13 @@
   --dur-attn: 700ms;
   --dur-view: 120ms;
   --dur-space: 220ms;
+}
+
+/* A half-screen window (≤1200px) gives the sidebar back 28px. */
+@media (max-width: 1200px) {
+  :root {
+    --sidebar-w: 204px;
+  }
 }
 
 /* Interface size (Settings › Appearance): the whole surface scales together. */
@@ -97,7 +107,8 @@
   --st-attention: oklch(0.800 0.150 75);
   --st-danger: oklch(0.750 0.150 25);
   --st-verified: oklch(0.770 0.130 155);
-  --st-active: oklch(0.760 0.085 230);
+  /* Enough chroma that the running half-disc is told from a neutral grey at 10px. */
+  --st-active: oklch(0.780 0.120 235);
   --st-neutral: var(--text-3);
   --attention-bg: oklch(0.225 0.030 75);
   /* The one-shot arrival flash a decision card decays from (§12.7). */
@@ -139,13 +150,13 @@
   --border: oklch(0.20 0.01 70 / 0.14);
   --border-strong: oklch(0.20 0.01 70 / 0.22);
 
-  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.2:1.
-     text-4 (≈ 4.0:1) is for rules, line numbers' idle state and disabled
-     marks only — never for a run of text. */
+  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.2:1,
+     text-4 ≈ 4.6:1 (AA), so a line number or an empty segment drawn in it
+     is still legible; it is never used for a run of text. */
   --text-1: oklch(0.230 0.006 70);
   --text-2: oklch(0.430 0.006 70);
   --text-3: oklch(0.530 0.006 70);
-  --text-4: oklch(0.590 0.005 70);
+  --text-4: oklch(0.555 0.005 70);
 
   --focus: oklch(0.230 0.006 70 / 0.65);
   --select-edge: oklch(0.20 0.01 70 / 0.30);
@@ -156,7 +167,7 @@
   --st-attention: oklch(0.600 0.150 65);
   --st-danger: oklch(0.540 0.190 25);
   --st-verified: oklch(0.550 0.130 155);
-  --st-active: oklch(0.520 0.095 230);
+  --st-active: oklch(0.500 0.130 240);
   --st-neutral: var(--text-3);
   /* Amber proper, not peach: hue 85 and little chroma on white. */
   --attention-bg: oklch(0.962 0.034 85);

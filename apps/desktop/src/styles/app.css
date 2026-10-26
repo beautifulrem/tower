@@ -25,6 +25,13 @@
   grid-template-columns: var(--sidebar-w) 1fr;
   height: 100%;
 }
+/* Review is a change of space: the sidebar leaves and the diff takes the whole window. */
+.shell-full {
+  grid-template-columns: 1fr;
+}
+.shell-full .sidebar {
+  display: none;
+}
 
 .content {
   display: flex;
@@ -127,6 +134,21 @@
 }
 .gauge-down {
   color: var(--text-1);
+}
+/* The engine heartbeat: quiet while recent, text-1 past 30 s, a danger square past 2 min. */
+.gauge-stale {
+  color: var(--text-1);
+}
+.gauge-quiet {
+  color: var(--text-2);
+}
+.gauge-quiet .icon {
+  color: var(--text-3);
+}
+@media (max-width: 1200px) {
+  .gauge-version {
+    display: none;
+  }
 }
 
 .icon-btn {
@@ -306,7 +328,7 @@
 }
 .result-stale,
 .result-pending {
-  color: var(--text-4);
+  color: var(--text-3);
 }
 .result-obs-pass,
 .result-obs-fail {
@@ -332,6 +354,15 @@
   margin-left: -6px;
   border-radius: var(--radius-s);
   background: var(--attention-bg);
+}
+/* The one signature motion besides amber: a badge word changing settles in 100ms, like a split-flap. */
+.mode-badge.swap {
+  animation: swap var(--dur-fast) linear 1;
+}
+@keyframes swap {
+  from {
+    opacity: 0.3;
+  }
 }
 
 /* The flight strip: badge column, detail, age. */
@@ -401,6 +432,10 @@
 }
 .seal-compact {
   font-size: inherit;
+}
+/* Where the verdict is the point — review header, ready-to-accept card, the goal's identity line — the seal is one step larger. */
+.seal-large {
+  font-size: var(--fs-body);
 }
 
 /* Observation: degraded trust keeps a dashed frame, on the word only. */
@@ -529,12 +564,13 @@
   display: inline-flex;
   gap: 2px;
 }
+/* An empty segment is drawn, not hinted: "not yet" has to be as visible as "done". */
 .seg {
   width: 12px;
   height: 4px;
   border-radius: 1px;
   box-sizing: border-box;
-  border: 1px dotted var(--border-strong);
+  border: 1px solid var(--text-4);
 }
 .compact .seg {
   width: 9px;
@@ -586,8 +622,10 @@
   background: var(--bg-selected);
   transform: translateY(0.5px);
 }
+/* Disabled like AppKit: the frame stays, only the words step back. */
 .btn:disabled {
-  opacity: 0.4;
+  color: var(--text-3);
+  border-color: var(--border-subtle);
 }
 .btn-s {
   height: 24px;
@@ -604,6 +642,11 @@
   background: var(--text-2);
   border-color: var(--text-2);
 }
+.btn-primary:disabled {
+  background: var(--bg-selected);
+  border-color: var(--border);
+  color: var(--text-3);
+}
 .btn-ghost {
   background: transparent;
   border-color: transparent;
@@ -613,6 +656,10 @@
   background: var(--bg-hover);
   border-color: transparent;
   color: var(--text-1);
+}
+/* A disabled ghost keeps a hairline so it still reads as a button, not as a caption. */
+.btn-ghost:disabled {
+  border-color: var(--border-subtle);
 }
 .btn-danger {
   color: var(--text-1);
@@ -637,7 +684,7 @@
   opacity: 0.7;
   font-weight: 500;
 }
-.btn-primary .kbd {
+.btn-primary:not(:disabled) .kbd {
   color: var(--bg-app);
   background: transparent;
   opacity: 0.8;
@@ -771,8 +818,20 @@ input[type="radio"] {
   margin: 0;
 }
 .narrow {
-  width: 72px !important;
+  width: 6ch !important;
+  min-width: 56px;
   flex: 0 0 auto;
+}
+/* A count under a text area: "312 / 800", text-1 once over the limit. */
+.char-count {
+  display: block;
+  margin-top: 4px;
+  text-align: right;
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+}
+.char-count.over {
+  color: var(--text-1);
 }
 
 /* A unit inside the field's edge: "$ 5", "600 秒". */
@@ -1025,12 +1084,14 @@ input[type="radio"] {
   align-items: center;
   gap: var(--sp-2);
   margin-bottom: var(--sp-2);
+  max-width: var(--reading-w);
 }
 .quick-prompt {
   position: absolute;
   left: 11px;
   top: 5px;
   font-family: var(--font-mono);
+  font-size: 13px;
   color: var(--text-3);
   pointer-events: none;
   z-index: 1;
@@ -1054,11 +1115,22 @@ input[type="radio"] {
   color: var(--text-3);
   pointer-events: none;
 }
-.quick-warn {
+.quick-warn,
+.base-tests {
   flex-basis: 100%;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+}
+.base-tests {
+  color: var(--text-2);
+  margin: -4px 0 var(--sp-3);
+}
+.test-check {
+  margin: -4px 0 var(--sp-2);
+}
+.test-check .fact-row {
+  gap: var(--sp-3);
 }
 
 .board-group {
@@ -1156,9 +1228,26 @@ input[type="radio"] {
   padding: 0;
   min-height: 20px;
 }
+/* The side column's first baseline meets the lede's. */
 .welcome-side {
   display: grid;
   gap: var(--sp-4);
+  padding-top: 6px;
+}
+/* The only place a wordmark belongs: small, tracked, above the first sentence. */
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+  color: var(--text-3);
+  margin-bottom: calc(-1 * var(--sp-2));
+}
+.wordmark svg {
+  display: block;
 }
 .welcome-actions {
   display: flex;
@@ -1225,6 +1314,13 @@ input[type="radio"] {
   min-width: 5em;
   justify-content: flex-end;
 }
+.goal-sub .seal {
+  font-size: var(--fs-body);
+}
+/* While the detail loads, the sections already stand; only their bodies are empty. */
+.section-skeleton .section-body {
+  min-height: 28px;
+}
 
 .annunciator {
   padding: 0 0 var(--sp-3);
@@ -1235,12 +1331,47 @@ input[type="radio"] {
   display: grid;
   gap: var(--sp-3);
   margin-bottom: var(--sp-4);
+  max-width: var(--reading-w);
 }
 .goal-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--rail-w);
   gap: var(--sp-8);
   flex: 1;
+}
+/* A half-screen window: the rail folds under the main column as a two-column summary. */
+@media (max-width: 1280px) {
+  .goal-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .rail {
+    border-left: 0;
+    padding-left: 0;
+    margin-top: var(--sp-5);
+    padding-top: var(--sp-5);
+    border-top: 1px solid var(--border-subtle);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--sp-5) var(--sp-8);
+  }
+}
+/* The change readout: its own grid, so "0 files" never stacks and the pins never overlap. */
+.changes-row {
+  display: grid;
+  grid-template-columns: 14px 2.5em minmax(0, 1fr) auto auto;
+  column-gap: var(--sp-2);
+  align-items: center;
+  min-height: 28px;
+  white-space: nowrap;
+}
+.changes-row > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.changes-row .col-pin {
+  overflow: visible;
 }
 
 /* Instrument columns: mark · id · title + command · result · duration · pin · age.
@@ -1262,17 +1393,33 @@ input[type="radio"] {
   gap: var(--sp-2);
   min-width: 0;
 }
+/* The title is what you read; the command gives way first. */
 .criterion-title {
+  flex: 0 1 auto;
+  min-width: 8em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .criterion-cmd {
+  flex: 1 1 0;
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 340px;
+  max-width: min(340px, 45%);
+}
+@media (max-width: 1280px) {
+  .criterion-row {
+    grid-template-columns: 14px 2.5em minmax(0, 1fr) auto 6em;
+  }
+  .criterion-row .col-dur,
+  .criterion-row .col-pin {
+    display: none;
+  }
+  .criterion-row .col-span {
+    grid-column: 4 / -1;
+  }
 }
 .criterion.stale .criterion-title,
 .criterion.stale .criterion-cmd {
@@ -1400,6 +1547,10 @@ input[type="radio"] {
   border-radius: 2px;
   background: var(--text-3);
 }
+/* Any spend at all shows as at least a sliver: $0.02 of $8 is a reading, not nothing. */
+.budget-fill.some {
+  min-width: 2px;
+}
 .budget-fill.over {
   background: var(--st-attention);
 }
@@ -1438,6 +1589,21 @@ input[type="radio"] {
   text-align: right;
   color: var(--text-2);
 }
+/* Rolling back is offered on hover of the row, next to the outcome. */
+.run-rollback {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) linear;
+}
+.run-row:hover .run-rollback,
+.run-rollback:focus-visible {
+  opacity: 1;
+}
+.run-rollback:hover {
+  color: var(--text-1);
+}
 
 .rail {
   display: flex;
@@ -1456,7 +1622,7 @@ input[type="radio"] {
 }
 .rail-dl {
   display: grid;
-  grid-template-columns: fit-content(7em) 1fr;
+  grid-template-columns: fit-content(8.5em) 1fr;
   gap: 6px var(--sp-3);
   margin: 0;
   font-size: var(--fs-meta);
@@ -1471,13 +1637,15 @@ input[type="radio"] {
   min-width: 0;
   word-break: break-word;
 }
-.rail-dl.mono dd {
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
+/* Machine values (globs, paths, branches) in mono; the labels stay in the UI face. */
+.rail-dl-code dd,
 .rail-dl dd.mono {
   font-family: var(--font-mono);
   font-size: 12px;
+}
+.rail-dl dd .icon-btn {
+  vertical-align: -6px;
+  margin-left: 2px;
 }
 .rail p.meta {
   color: var(--text-2);
@@ -1603,9 +1771,20 @@ input[type="radio"] {
   font-size: var(--fs-hint);
   color: var(--text-3);
 }
+/* A security decision says so, in words, before the buttons. */
+.decision-caution {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  max-width: 60ch;
+}
+.decision-caution .glyph {
+  flex: 0 0 auto;
+  align-self: center;
+}
 
 .inbox {
-  max-width: 840px;
+  max-width: var(--reading-w);
   display: grid;
   gap: var(--sp-3);
 }
@@ -1614,6 +1793,20 @@ input[type="radio"] {
 }
 .inbox .scale-title:first-child {
   margin-top: 0;
+}
+/* A line of key hints under a list: the review status bar's voice, inline. */
+.key-hints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--sp-4);
+  font-size: var(--fs-hint);
+  line-height: 16px;
+  color: var(--text-3);
+}
+.key-hints .kbd {
+  height: 14px;
+  font-size: 10px;
 }
 
 /* ======================================================================
@@ -1697,20 +1890,38 @@ input[type="radio"] {
   content: "■ ";
   color: var(--st-danger);
 }
+/* A run boundary: one full-width rule with the time inline, not a row in the grid. */
 .trace-divider {
-  display: block;
-  font-size: var(--fs-meta);
-  color: var(--text-3);
-  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 8px 12px 2px;
   padding-top: 6px;
-  margin-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--fs-meta);
+  line-height: 20px;
+  color: var(--text-3);
+}
+.trace-divider .trace-time {
+  width: 40px;
 }
 .trace-state {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 .trace-state .icon {
+  color: var(--text-3);
+}
+.injected-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+.injected-head .icon {
   color: var(--text-3);
 }
 .trace-cols {
@@ -1735,11 +1946,12 @@ input[type="radio"] {
   flex-direction: column;
   height: 100%;
 }
+/* Full width: the traffic lights sit in the first 80px, so the header starts after them. */
 .review-head {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: 8px var(--sp-3) 8px var(--sp-4);
+  padding: 8px var(--sp-3) 8px 84px;
   min-height: 56px;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -1756,16 +1968,35 @@ input[type="radio"] {
   letter-spacing: var(--tr-14);
   font-weight: 500;
 }
+/* The header is always two lines: the stats never wrap, they truncate, and the pin pair goes first. */
 .review-stats {
   display: flex;
   align-items: center;
   gap: var(--sp-6);
   line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  min-width: 0;
 }
 .review-stat-group {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.review-stat-pins {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+@media (max-width: 1240px) {
+  .review-stat-pins,
+  .review-stat-pins + .sep {
+    display: none;
+  }
 }
 .review-body {
   display: grid;
@@ -1912,6 +2143,11 @@ input[type="radio"] {
 .file-head .mono {
   margin-right: var(--sp-2);
 }
+.file-head .arrow {
+  color: var(--text-3);
+  vertical-align: -1px;
+  margin: 0 4px;
+}
 .file-status {
   font-size: var(--fs-hint);
   color: var(--text-3);
@@ -1989,6 +2225,10 @@ input[type="radio"] {
   word-break: break-all;
   color: var(--code-foreground);
   user-select: text;
+}
+/* Rows wait, hidden, for their colours (at most 150ms) so code never flashes from grey to coloured. */
+.code-pending .code > * {
+  visibility: hidden;
 }
 .sign {
   display: inline-block;
@@ -2147,7 +2387,11 @@ input[type="radio"] {
   color: var(--text-1);
   font-weight: 500;
 }
+/* The ◆ modifies the state word, so it sits next to it. */
 .palette-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--fs-meta);
   color: var(--text-3);
   white-space: nowrap;
@@ -2251,6 +2495,11 @@ input[type="radio"] {
   content: "◆ ";
   color: var(--st-attention);
 }
+/* Success wears a quiet check; information has no prefix: three shapes for three kinds. */
+.toast-success .icon {
+  color: var(--text-2);
+  margin-right: -4px;
+}
 
 /* ======================================================================
    Contract editor and settings
@@ -2261,6 +2510,28 @@ input[type="radio"] {
   grid-template-columns: minmax(0, 640px) 300px;
   gap: 0 var(--sp-8);
   max-width: 1000px;
+}
+/* A half-screen window: the dials fold under the form; autonomy becomes one row of three. */
+@media (max-width: 1280px) {
+  .editor {
+    grid-template-columns: minmax(0, 640px);
+  }
+  .editor-side {
+    position: static;
+    border-left: 0;
+    padding-left: 0;
+    margin-top: var(--sp-4);
+    padding-top: var(--sp-5);
+    border-top: 1px solid var(--border-subtle);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0 var(--sp-8);
+  }
+  .autonomy-choices {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--sp-3);
+  }
 }
 .editor-main {
   min-width: 0;
@@ -2351,7 +2622,7 @@ input[type="radio"] {
 }
 
 .settings {
-  max-width: 820px;
+  max-width: var(--reading-w);
   display: grid;
   gap: var(--sp-6);
 }
@@ -2399,6 +2670,13 @@ input[type="radio"] {
 }
 .settings-form .form-row {
   grid-column: 2;
+}
+/* A count with its unit: the unit wrap shrinks to the narrow field. */
+.settings-form .field-narrow .unit-wrap {
+  width: max-content;
+}
+.settings-form .field-narrow .unit-wrap input {
+  padding-right: 24px !important;
 }
 .settings-form .form-row.check {
   margin-bottom: 0;
@@ -2450,20 +2728,28 @@ input[type="radio"] {
 .checks .section-title {
   margin-bottom: var(--sp-2);
 }
+/* Mark in the first column; text, then the fix (a command or an action) on its own line under it. */
 .check-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: start;
   gap: 6px var(--sp-3);
   padding: 6px 0;
   min-width: 0;
 }
-/* A long fix command takes its own line under the text instead of squeezing it. */
-.check-row > .col {
-  flex: 1 1 16em;
+.check-row > .fix,
+.check-row > .check-action {
+  grid-column: 2;
+  justify-self: start;
+  max-width: 100%;
 }
-.check-row > .fix {
-  margin-left: calc(14px + var(--sp-3));
+.check-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
 }
 .check-mark {
   width: 14px;
@@ -2508,11 +2794,16 @@ input[type="radio"] {
    Board rows — the instrument lines of the overview
    ====================================================================== */
 
+/* The quick field and the decision queue share one right edge; the filter follows. */
 .overview-top {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-2);
   margin-bottom: var(--sp-2);
+  max-width: var(--reading-w);
+}
+.overview > .empty {
+  margin-top: var(--sp-6);
 }
 .overview-top .quick {
   flex: 1 1 auto;
@@ -2527,7 +2818,7 @@ input[type="radio"] {
 .board-queue {
   display: grid;
   gap: var(--sp-2);
-  max-width: 840px;
+  max-width: var(--reading-w);
 }
 .board-rows {
   border-top: 1px solid var(--border-subtle);
@@ -2603,7 +2894,8 @@ input[type="radio"] {
   white-space: nowrap;
 }
 .criteria-bar.tiny .seg {
-  width: 8px;
+  width: 9px;
+  height: 5px;
 }
 .criteria-bar.tiny .meta {
   font-size: var(--fs-hint);
@@ -2642,13 +2934,16 @@ input[type="radio"] {
 .g-row.selected .g-act .btn {
   opacity: 1;
 }
-/* Narrower windows: identity folds into the title's tooltip; the rest keeps its columns. */
+/* Narrower windows: identity folds into the title's tooltip, the live line keeps only
+   its badge and verb (the object is in the tooltip), and the title gets the room. */
 @media (max-width: 1240px) {
   .g-row {
-    grid-template-columns: 14px minmax(10em, 1fr) minmax(12em, 1.3fr) 9em 5em 7em 5em 5em;
+    grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 5em 5em;
   }
   .g-id,
-  .g-crit .crit-human {
+  .g-crit .crit-human,
+  .g-live .live-target,
+  .g-live .live-detail .sep {
     display: none;
   }
 }
@@ -2716,9 +3011,18 @@ input[type="radio"] {
 .boot-failed .empty {
   padding: 0;
 }
+.boot-error-wrap {
+  position: relative;
+}
 .boot-error {
   margin: 0;
   max-height: 200px;
+  padding-right: 40px;
+}
+.boot-error-wrap .icon-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
 }
 
 /* ======================================================================
@@ -2830,9 +3134,24 @@ input[type="radio"] {
 .verify-item:last-child {
   border-bottom: 0;
 }
+/* The output tail: eight lines, then a functional fade and a line that says how much is folded. */
 .verify-tail {
   margin: 4px 0 0 22px;
+  max-height: none;
+}
+.verify-tail.folded {
   max-height: 160px;
+  overflow: hidden;
+  mask-image: linear-gradient(black 70%, transparent);
+  -webkit-mask-image: linear-gradient(black 70%, transparent);
+}
+.verify-more {
+  margin: 2px 0 0 22px;
+}
+/* The branch name, whole, with a copy button at its end. */
+.panel-branch .icon-btn {
+  vertical-align: -6px;
+  margin-left: 4px;
 }
 .review-verify {
   display: inline-flex;
@@ -2858,12 +3177,18 @@ input[type="radio"] {
 .gap-row td {
   padding: 0 !important;
 }
+/* Fold controls are interface, not code: UI face, the @@ header alone stays mono. */
 .gap-controls {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
   min-height: 24px;
   padding: 0 8px 0 4px;
+  font-family: var(--font-ui);
+  letter-spacing: var(--tr-12);
+}
+.gap-header {
+  font-family: var(--font-mono);
 }
 .gap-buttons {
   display: inline-flex;
@@ -2899,8 +3224,8 @@ input[type="radio"] {
   white-space: nowrap;
 }
 .gap-all {
+  height: 20px;
   font-size: var(--fs-hint);
-  color: var(--text-2);
 }
 .ln-btn {
   width: 100%;
@@ -2911,6 +3236,15 @@ input[type="radio"] {
   color: inherit;
   font: inherit;
   text-align: right;
+}
+/* Keyboard review: the table is one tab stop; inside it ↑↓ walk the lines. */
+.diff:focus-visible {
+  outline: none;
+}
+.ln-btn:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: -1.5px;
+  color: var(--text-1);
 }
 .ln:hover {
   color: var(--text-1);

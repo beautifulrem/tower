@@ -42,6 +42,7 @@ import {
 	checkWrite,
 	isAllow,
 	langOf,
+	permissionOutcome,
 	sandboxed,
 	scrubEnv,
 } from "./policy.ts";
@@ -558,20 +559,7 @@ async function bridgeMain() {
 			return;
 		}
 		if (m.method === "session/request_permission") {
-			// Tower's own tools gate themselves and are allowed here; anything
-			// else (a tool the agent should not have) is refused.
-			const options = (params.options ?? []) as Json[];
-			const call = (params.toolCall ?? {}) as Json;
-			const meta = ((call._meta ?? {}) as Json).claudeCode as Json | undefined;
-			const name = String(meta?.toolName ?? call.title ?? "");
-			const ours = name.startsWith("mcp__tower__");
-			const pick = ours
-				? (options.find((o) => o.kind === "allow_once") ?? options.find((o) => o.kind === "allow_always"))
-				: (options.find((o) => o.kind === "reject_once") ?? options.find((o) => o.kind === "reject_always"));
-			send({
-				id: m.id,
-				result: { outcome: pick ? { outcome: "selected", optionId: pick.optionId } : { outcome: "cancelled" } },
-			});
+			send({ id: m.id, result: { outcome: permissionOutcome(params) } });
 			return;
 		}
 		if (m.id !== undefined) send({ id: m.id, error: { code: -32601, message: `Tower does not offer ${m.method}` } });

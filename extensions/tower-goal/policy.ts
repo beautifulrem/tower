@@ -197,3 +197,20 @@ export function withDefaultTimeout<T>(params: T): T {
 	}
 	return params;
 }
+
+/**
+ * The ACP bridge's answer to a permission request: Tower's own tools
+ * (`mcp__tower__*`) gate themselves and are allowed; anything else — a
+ * tool the agent should not have — is refused; with no refusal to pick,
+ * the request is cancelled.
+ */
+export function permissionOutcome(params: Record<string, unknown>): { outcome: string; optionId?: unknown } {
+	const options = (Array.isArray(params.options) ? params.options : []) as Array<Record<string, unknown>>;
+	const call = (params.toolCall ?? {}) as Record<string, unknown>;
+	const meta = ((call._meta ?? {}) as Record<string, unknown>).claudeCode as Record<string, unknown> | undefined;
+	const name = String(meta?.toolName ?? call.title ?? "");
+	const ours = name.startsWith("mcp__tower__");
+	const kinds = ours ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
+	const pick = kinds.map((k) => options.find((o) => o.kind === k)).find(Boolean);
+	return pick ? { outcome: "selected", optionId: pick.optionId } : { outcome: "cancelled" };
+}

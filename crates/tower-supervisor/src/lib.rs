@@ -12,6 +12,7 @@ mod caches;
 mod canary;
 mod control;
 mod demo;
+mod desk;
 mod edits;
 mod environment;
 mod inner;
@@ -24,6 +25,7 @@ pub mod prompts;
 mod remote;
 mod run;
 pub mod sandbox;
+mod settings_api;
 pub mod shell_env;
 mod summarize;
 mod verify;
@@ -38,10 +40,10 @@ use tower_core::contract::{Contract, ContractIssue};
 use tower_core::lifecycle::Transition;
 use tower_core::review::build_units;
 use tower_core::view::{
-    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, RemoteInfo, ReviewView,
-    Settings, TraceEntry,
+    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
+    TraceEntry,
 };
-use tower_core::{EventKind, Lang, LifecycleState, Mode, PauseReason, tr};
+use tower_core::{EventKind, LifecycleState, Mode, PauseReason, tr};
 use tower_git::{Git, GitError};
 use tower_pi::EngineError;
 use tower_store::{NewGoal, NewProject, ProjectPatch, Store, StoreError};
@@ -364,180 +366,6 @@ impl Supervisor {
         Ok(ReviewView { goal_id: id.into(), base_commit: base, from, pin, stat, units, files })
     }
 
-    pub fn settings(&self) -> Settings {
-        self.inner.settings()
-    }
-
-    /// The interface language from the settings.
-    pub fn lang(&self) -> Lang {
-        self.inner.lang()
-    }
-
-    /// Saves settings. A language change applies to everything created from
-    /// now on and to everything derived on read; the shell rebuilds its menu.
-    pub fn save_settings(&self, settings: Settings) -> Result<()> {
-        // Errors speak the language being chosen, so switching reads right.
-        let lang = settings.lang();
-        if settings.max_concurrent == 0 || settings.max_concurrent > 10 {
-            return Err(invalid(tr!(lang, "并发上限必须在 1 到 10 之间", "Concurrent goals must be between 1 and 10")));
-        }
-        for ext in self.inner.extensions(&settings).iter().skip(1) {
-            if !ext.is_file() {
-                let path = ext.display();
-                return Err(invalid(tr!(lang, "找不到扩展文件：{path}", "Extension file not found: {path}")));
-            }
-        }
-        let before = self.inner.settings();
-        let mut settings = settings;
-        if settings.remote_enabled && settings.remote_token.is_empty() {
-            settings.remote_token = remote::new_token();
-        }
-        self.inner.store(|s| s.save_settings(&settings))?;
-        *self.inner.models.lock().unwrap_or_else(PoisonError::into_inner) = None;
-        let remote_changed =
-            (before.remote_enabled, before.remote_port, &before.remote_token, before.remote_local_network)
-                != (
-                    settings.remote_enabled,
-                    settings.remote_port,
-                    &settings.remote_token,
-                    settings.remote_local_network,
-                );
-        if remote_changed {
-            // Saved either way; Settings shows why the page is not served.
-            let _ = self.apply_remote();
-        }
-        // Read-time text (card titles and Tower's own choices, goal labels)
-        // is re-sent so open screens switch language without a reload.
-        if before.lang() != lang {
-            self.inner.emit_inbox();
-            if let Ok(goals) = self.inner.store(|s| s.summaries()) {
-                for goal in goals {
-                    self.inner.sink.emit(UiUpdate::Goal { goal });
-                }
-            }
-        }
-        let inner = self.inner.clone();
-        tokio::spawn(async move { run::schedule(&inner).await });
-        Ok(())
-    }
-
-    /// Starts or stops the phone page according to the settings. When it
-    /// cannot start, the reason is kept for Settings (and returned).
-    fn apply_remote(&self) -> Result<()> {
-        let s = self.inner.settings();
-        let lang = self.inner.lang();
-        if !s.remote_enabled {
-            self.inner.remote.stop();
-            self.inner.remote.set_problem(None);
-            return Ok(());
-        }
-        let Some(host) = remote::listen_host(&self.inner.env, s.remote_local_network) else {
-            self.inner.remote.stop();
-            let problem = tr!(
-                lang,
-                "Tailscale 没有连接，手机页面没有开启。打开 Tailscale，或在下面允许本地网络（令牌会以明文经过局域网）。",
-                "Tailscale is not connected, so the phone page is off. Open Tailscale, or allow the local network below (the token then crosses it unencrypted)."
-            );
-            self.inner.remote.set_problem(Some(problem.clone()));
-            return Err(invalid(problem));
-        };
-        if self.inner.remote.host().as_deref() == Some(host.as_str()) && !self.remote_settings_changed(&s) {
-            return Ok(());
-        }
-        self.inner.remote.start(&self.inner, &host, s.remote_port, s.remote_token.clone()).map_err(|e| {
-            let problem = tr!(
-                lang,
-                "无法在端口 {port} 上提供手机页面：{e}",
-                "Could not serve the phone page on port {port}: {e}",
-                port = s.remote_port
-            );
-            self.inner.remote.set_problem(Some(problem.clone()));
-            invalid(problem)
-        })?;
-        *self.inner.remote_applied.lock().unwrap_or_else(PoisonError::into_inner) =
-            Some((s.remote_port, s.remote_token.clone()));
-        Ok(())
-    }
-
-    fn remote_settings_changed(&self, s: &Settings) -> bool {
-        self.inner.remote_applied.lock().unwrap_or_else(PoisonError::into_inner).as_ref()
-            != Some(&(s.remote_port, s.remote_token.clone()))
-    }
-
-    /// How to open the phone page on this network.
-    pub fn remote_info(&self) -> RemoteInfo {
-        let s = self.inner.settings();
-        if !s.remote_enabled {
-            return RemoteInfo {
-                enabled: false,
-                links: Vec::new(),
-                qr_svg: String::new(),
-                tailscale: false,
-                kinds: Vec::new(),
-                problem: None,
-            };
-        }
-        let problem = self.inner.remote.problem();
-        let tailscale_ip = remote::tailscale_ip(&self.inner.env);
-        // Only addresses it actually listens on, and that work now.
-        let addrs: Vec<String> = match self.inner.remote.host() {
-            None => Vec::new(),
-            Some(h) if h == "0.0.0.0" => remote::addresses(&self.inner.env),
-            Some(h) => vec![h],
-        };
-        let is_ts = |a: &str| tailscale_ip.as_deref() == Some(a);
-        let tailscale = addrs.first().is_some_and(|a| is_ts(a));
-        let links: Vec<String> =
-            addrs.iter().map(|a| format!("http://{a}:{}/#{}", s.remote_port, s.remote_token)).collect();
-        let kinds = addrs.iter().map(|a| if is_ts(a) { "tailscale" } else { "lan" }.to_string()).collect();
-        let qr_svg = links.first().map(|l| remote::qr_svg(l)).unwrap_or_default();
-        RemoteInfo { enabled: true, links, qr_svg, tailscale, kinds, problem }
-    }
-
-    /// Sets your git name and email (global configuration), at your request
-    /// from the environment check, so accepted work is committed as you.
-    pub fn set_git_identity(&self, name: &str, email: &str) -> Result<()> {
-        let lang = self.inner.lang();
-        let (name, email) = (name.trim(), email.trim());
-        if name.is_empty() || name.contains(['\n', '\r']) {
-            return Err(invalid(tr!(lang, "写下你的名字", "Enter your name")));
-        }
-        if !email.contains('@') || email.contains(char::is_whitespace) {
-            return Err(invalid(tr!(lang, "写下有效的邮箱", "Enter a valid email address")));
-        }
-        self.inner.git.set_global_identity(name, email)?;
-        Ok(())
-    }
-
-    /// Sends a test push to the configured address and says how it went.
-    pub async fn test_push(&self) -> Result<()> {
-        let s = self.inner.settings();
-        let lang = s.lang();
-        let url = s.push_url.trim().to_string();
-        if url.is_empty() {
-            return Err(invalid(tr!(lang, "先填写推送地址", "Enter a push address first")));
-        }
-        let title = "Tower".to_string();
-        let body = tr!(lang, "测试推送：能看到这条就说明推送可用", "Test push: if you can read this, pushes work");
-        let result = tokio::task::spawn_blocking(move || inner::send_push(&url, &title, &body, None, lang))
-            .await
-            .map_err(|e| invalid(e.to_string()))?;
-        *self.inner.push_status.lock().unwrap_or_else(PoisonError::into_inner) =
-            Some(tower_core::view::PushStatus { at: tower_store::system_now(), error: result.clone().err() });
-        result.map_err(invalid)
-    }
-
-    /// The outcome of the last push, if one was sent since Tower started.
-    pub fn push_status(&self) -> Option<tower_core::view::PushStatus> {
-        self.inner.push_status.lock().unwrap_or_else(PoisonError::into_inner).clone()
-    }
-
-    /// A new pairing secret: phones paired before must pair again.
-    pub fn reset_remote_token(&self) -> Result<()> {
-        let s = self.inner.settings();
-        self.save_settings(Settings { remote_token: remote::new_token(), ..s })
-    }
-
     pub async fn models(&self) -> Result<Vec<ModelInfo>> {
         actions::models(&self.inner).await
     }
@@ -761,59 +589,6 @@ impl Supervisor {
         edits::rollback(&self.inner, id, run_no).await
     }
 
-    /// Writes a diagnostics archive for a bug report: versions, the
-    /// environment check, settings (without the phone pairing token),
-    /// goals, open items and the recent trace of unfinished goals, with
-    /// secrets redacted. Returns the archive's path (in the data folder).
-    pub fn export_diagnostics(&self) -> Result<PathBuf> {
-        let inner = &self.inner;
-        let stamp = tower_store::system_now();
-        let dir = inner.paths.root.join("diagnostics").join(format!("tower-diagnostics-{stamp}"));
-        std::fs::create_dir_all(&dir)?;
-        let write = |name: &str, v: &serde_json::Value| -> Result<()> {
-            let text = tower_verify::redact(&serde_json::to_string_pretty(v).unwrap_or_default());
-            std::fs::write(dir.join(name), text)?;
-            Ok(())
-        };
-        let os = std::process::Command::new("/usr/bin/sw_vers")
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-            .unwrap_or_default();
-        write(
-            "about.json",
-            &serde_json::json!({ "tower": env!("CARGO_PKG_VERSION"), "macos": os, "sandbox": sandbox::available() }),
-        )?;
-        write("environment.json", &serde_json::to_value(self.environment()).unwrap_or_default())?;
-        let mut settings = inner.settings();
-        settings.remote_token = String::new();
-        write("settings.json", &serde_json::to_value(settings).unwrap_or_default())?;
-        let goals = inner.store(|s| s.summaries())?;
-        write("goals.json", &serde_json::to_value(&goals).unwrap_or_default())?;
-        write("inbox.json", &serde_json::to_value(inner.store(|s| s.open_inbox_items())?).unwrap_or_default())?;
-        for g in goals.iter().filter(|g| !g.state.is_terminal()) {
-            let trace = inner.store(|s| s.trace(&g.id, None, 300))?;
-            write(&format!("trace-{}.json", g.id), &serde_json::to_value(trace).unwrap_or_default())?;
-        }
-        let zip = dir.with_extension("zip");
-        let ok = std::process::Command::new("/usr/bin/ditto")
-            .args(["-c", "-k", "--keepParent"])
-            .arg(&dir)
-            .arg(&zip)
-            .status()
-            .is_ok_and(|s| s.success());
-        let _ = std::fs::remove_dir_all(&dir);
-        if !ok {
-            return Err(invalid(tr!(self.inner.lang(), "无法打包诊断信息", "Could not package the diagnostics")));
-        }
-        Ok(zip)
-    }
-
-    /// A screenshot taken for a `look` criterion, as a data URL.
-    pub fn look_image(&self, file: &str) -> Option<String> {
-        look::data_url(&self.inner.paths.root.join("evidence"), file)
-    }
-
-    /// Undoes the latest rollback.
     pub async fn undo_rollback(&self, id: &str) -> Result<()> {
         edits::undo_rollback(&self.inner, id).await
     }
@@ -914,80 +689,6 @@ impl Supervisor {
     /// request with the GitHub CLI. Returns the PR URL when one was opened.
     pub async fn push(&self, id: &str, open_pr: bool) -> Result<Option<String>> {
         pr::push(&self.inner, id, open_pr).await
-    }
-
-    /// Opens a goal's workspace in the user's editor, a terminal, or Finder.
-    /// Editing while the goal is paused is the "I'll fix it" path: the next resume
-    /// tells the agent which files the human changed.
-    pub fn open_workspace(&self, id: &str, target: OpenTarget) -> Result<()> {
-        let rec = self.inner.store(|s| s.goal(id))?;
-        let ws = rec.workspace.ok_or_else(|| self.no_workspace())?;
-        let (program, args): (PathBuf, Vec<String>) = match target {
-            OpenTarget::Finder => (PathBuf::from("/usr/bin/open"), vec![ws.clone()]),
-            OpenTarget::Terminal => (PathBuf::from("/usr/bin/open"), vec!["-a".into(), "Terminal".into(), ws.clone()]),
-            OpenTarget::Editor => {
-                let configured = self.inner.settings().editor;
-                let candidates: Vec<String> = if configured.trim().is_empty() {
-                    ["cursor", "code", "zed", "subl"].iter().map(|s| s.to_string()).collect()
-                } else {
-                    vec![configured.trim().to_string()]
-                };
-                match candidates.iter().find_map(|c| self.inner.env.which(c)) {
-                    Some(p) => (p, vec![ws.clone()]),
-                    None => (PathBuf::from("/usr/bin/open"), vec!["-t".into(), ws.clone()]),
-                }
-            }
-        };
-        std::process::Command::new(program)
-            .args(args)
-            .env_clear()
-            .envs(self.inner.env.pairs())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()?;
-        Ok(())
-    }
-
-    /// Opens one file of a goal's workspace in the editor, at a line when the
-    /// editor supports it (`code`/`cursor -g file:line`, `zed file:line`).
-    pub fn open_file(&self, id: &str, path: &str, line: Option<u32>) -> Result<()> {
-        let rec = self.inner.store(|s| s.goal(id))?;
-        let ws = PathBuf::from(rec.workspace.ok_or_else(|| self.no_workspace())?);
-        let file = ws.join(path);
-        if !paths::real(&file).starts_with(paths::real(&ws)) {
-            return Err(invalid(tr!(self.inner.lang(), "路径不在工作区内", "The path is outside the workspace")));
-        }
-        let configured = self.inner.settings().editor;
-        let candidates: Vec<String> = if configured.trim().is_empty() {
-            ["cursor", "code", "zed", "subl"].iter().map(|s| s.to_string()).collect()
-        } else {
-            vec![configured.trim().to_string()]
-        };
-        let target = match line {
-            Some(l) => format!("{}:{l}", file.display()),
-            None => file.display().to_string(),
-        };
-        let (program, args): (PathBuf, Vec<String>) = match candidates.iter().find_map(|c| self.inner.env.which(c)) {
-            Some(p) => {
-                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                if matches!(name.as_str(), "code" | "cursor" | "codium") {
-                    (p, vec![ws.display().to_string(), "-g".into(), target])
-                } else {
-                    (p, vec![target])
-                }
-            }
-            None => (PathBuf::from("/usr/bin/open"), vec!["-t".into(), file.display().to_string()]),
-        };
-        std::process::Command::new(program)
-            .args(args)
-            .env_clear()
-            .envs(self.inner.env.pairs())
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()?;
-        Ok(())
     }
 
     pub fn human_check(&self, id: &str, criterion: &str, checked: bool) -> Result<()> {

@@ -511,6 +511,13 @@
 .chip-fact {
   border: 1px solid var(--border);
 }
+/* Your register as a chip: the human stamp's solid left rule, text-1. A reading only you were given. */
+.chip-you {
+  padding-left: 6px;
+  border-left: 2px solid var(--text-1);
+  border-radius: 0;
+  color: var(--text-1);
+}
 .chip .sep {
   padding: 0;
 }
@@ -1935,6 +1942,41 @@ input[type="radio"] {
   flex: 0 0 auto;
   align-self: center;
   margin-left: 2px;
+}
+/* Held-out output on a card: your register — a solid 2px rule in text-1, like a human stamp, with "for you only" where
+   a source would hang. The agent's words wear the dashed ┆; this is the one block on a card the agent has never seen. */
+.heldout {
+  display: grid;
+  gap: var(--sp-2);
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--text-1);
+}
+.heldout-label {
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.heldout-fail {
+  display: grid;
+  gap: 4px;
+}
+.heldout-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-meta);
+}
+.heldout-note {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  max-width: 60ch;
+}
+.heldout-note .glyph {
+  flex: 0 0 auto;
+  align-self: center;
 }
 /* A security decision says so, in words, before the buttons. */
 .decision-caution {
@@ -4043,12 +4085,10 @@ input[type="radio"] {
   gap: var(--sp-2);
 }
 .quiet-time {
-  width: 7.5ch !important;
-  padding-left: 6px !important;
-  padding-right: 6px !important;
-}
-.quiet-time::-webkit-calendar-picker-indicator {
-  display: none;
+  width: 6.5ch !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  text-align: center;
 }
 /* The last push's outcome beside the test button: a sent one is a quiet check, a failed one carries its ■, time and reason. */
 .push-test {

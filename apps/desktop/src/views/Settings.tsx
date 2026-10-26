@@ -496,7 +496,9 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
   const setEdge = (edge: "start" | "end", value: string) => {
     const minute = parseHhmm(value);
     const q = hours();
-    if (minute === null || !q) return;
+    if (!q) return;
+    // Not a time: the field goes back to the saved edge rather than keeping a value that saves nothing.
+    if (minute === null) return setHours({ ...q });
     setHours({ ...q, [edge]: minute });
   };
   const testPush = async () => {
@@ -524,7 +526,8 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
             </svg>
           </button>
         </Field>
-        {/* The daily window: a switch, then the two edges as time fields in one line, so "22:00 to 08:00" reads as a sentence. */}
+        {/* The daily window: a switch, then the two edges in one line, so "from 22:00 to 08:00" reads as a sentence. Plain 24-hour
+            fields, as every clock on the desk: WebKit's native time field follows the system's 12-hour locale and would show 22:00 as 10:00. */}
         <label class="check form-row">
           <input type="checkbox" checked={!!hours()} onChange={(e) => setHours(e.currentTarget.checked ? DEFAULT_QUIET_HOURS : null)} />
           <span>{t("settings.quietHoursEnable")}</span>
@@ -535,11 +538,11 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
             <div class="form-row quiet-hours num" role="group" aria-label={t("settings.quietHours")}>
               <label>
                 <span class="t3">{t("settings.quietFrom")}</span>
-                <input type="time" class="quiet-time" value={hhmm(q().start)} onChange={(e) => setEdge("start", e.currentTarget.value)} aria-label={`${t("settings.quietHours")} · ${t("settings.quietFrom")}`} />
+                <input class="quiet-time num" inputmode="numeric" placeholder="22:00" value={hhmm(q().start)} onChange={(e) => setEdge("start", e.currentTarget.value)} aria-label={`${t("settings.quietHours")} · ${t("settings.quietFrom")}`} />
               </label>
               <label>
                 <span class="t3">{t("settings.quietTo")}</span>
-                <input type="time" class="quiet-time" value={hhmm(q().end)} onChange={(e) => setEdge("end", e.currentTarget.value)} aria-label={`${t("settings.quietHours")} · ${t("settings.quietTo")}`} />
+                <input class="quiet-time num" inputmode="numeric" placeholder="08:00" value={hhmm(q().end)} onChange={(e) => setEdge("end", e.currentTarget.value)} aria-label={`${t("settings.quietHours")} · ${t("settings.quietTo")}`} />
               </label>
             </div>
           )}

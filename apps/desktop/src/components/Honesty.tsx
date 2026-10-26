@@ -151,6 +151,29 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean; tiny
 }
 
 /**
+ * A result produced with the held-out tests present: its output went to you
+ * and never to the agent. Said in your register — the solid rule of a human
+ * stamp, not the verifier's green nor the claim's dashes — quietly, under the
+ * row, with the long form one hover away.
+ */
+export function HeldOutLine(props: { c: CriterionView }) {
+  return (
+    <Show when={props.c.verified?.held_out}>
+      <div class="criterion-row criterion-obs">
+        <span />
+        <span />
+        <span />
+        <span class="col-span">
+          <span class="chip chip-you" title={t("goal.heldOutLong")}>
+            {t("goal.heldOut")}
+          </span>
+        </span>
+      </div>
+    </Show>
+  );
+}
+
+/**
  * The baseline line under a passed criterion: red → green only when the
  * command failed on the base AND still passes with the agent's edits to
  * existing tests undone. A pass that depends on edited tests is said in the

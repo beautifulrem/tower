@@ -142,10 +142,11 @@ pub(crate) async fn capture(
     // reading --user-data-dir, and aborts if it cannot create it — which the
     // profile forbids. On a Mac that never opened this browser, Tower makes
     // the empty folder first.
+    // (Your real home: the browser asks the system, not $HOME.)
     if let Some(sub) = app_support_dir(browser)
-        && let Some((_, home)) = env.iter().find(|(k, _)| k == "HOME")
+        && let Some(home) = std::env::var_os("HOME")
     {
-        let _ = std::fs::create_dir_all(Path::new(home).join("Library/Application Support").join(sub));
+        let _ = std::fs::create_dir_all(Path::new(&home).join("Library/Application Support").join(sub));
     }
     let shot = tokio::time::timeout(
         Duration::from_secs(45),

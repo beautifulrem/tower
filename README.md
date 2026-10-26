@@ -1,62 +1,61 @@
 # Tower
 
-**一个以 Goal 为第一公民的编程 Agent 监督台。引擎：[Pi](https://github.com/earendil-works/pi)。**
+English · [简体中文](README.zh-CN.md)
 
-> 现有 Agent GUI 几乎都沿用 VSCode 的排布：左侧 Session 列表，中间是 Agent 输出流，右侧是 Diff。
-> 这是 Chat 时代的惯性。Tower 问的是另一个问题：和 Agent 交互时，我们真正想看到的是什么？
-> 是它**要做什么、在做什么、做成了什么、改变了什么**——以及**证据**。
+**A goal-centric supervision desk for coding agents. Engine: [Pi](https://github.com/earendil-works/pi).**
 
-![概览](assets/screenshots/overview.png)
+Most agent GUIs inherit the editor layout: sessions on the left, a chat stream in the middle, a diff on the right. Tower asks what you actually need to see when you hand work to an agent: what it is going to do, what it is doing, what it got done, what it changed — and the evidence.
 
-## 核心主张
+![Overview](assets/screenshots/overview.png)
 
-1. **Goal，而不是 Session。** 侧边栏只有 Goal 与「需要你」收件箱；Session 降级为 Goal 里的轨迹。
-2. **Goal 是一份合同。** 意图、可执行的验收标准、范围围栏、预算和自主度。
-3. **事实与声明分离。** Agent 说“完成”只是声明。Tower 对工作区拍快照，在干净检出里、沙箱中重跑验收标准；只有这些验证器结论能是绿色。Agent 的话以虚线标出、写明“Agent 称”，永远不变绿。
-4. **完成三态。** 自称完成 → 已验证 → 你验收。只有你的验收会写入你的仓库，而且只是新建一个本地分支；Tower 从不推送。
-5. **例外管理。** 只有问题、审批、待确认的假设和需要你选择出路的暂停会打扰你；其余时间每个 Goal 只有一行实况，说明它在做哪一类事、对象是什么。
-6. **评审即操控。** 大 diff 切成按风险排序、每个不超过约 300 行的评审单元；在某一行写的批注就是给 Agent 的转向指令。
-7. **尊重 Pi。** Tower 通过一个标准 Pi 扩展只给模型加三个工具（`ask_user`、`log`、`submit`）；Tower 注入的每条消息都在轨迹中原样可见。
+## Why Tower
 
-| Goal 页 | 评审 |
+- **Goals, not sessions.** The sidebar holds goals and a Needs-You inbox. Sessions are traces inside a goal.
+- **A goal is a contract.** Intent, executable acceptance criteria, a scope fence, a budget, an autonomy preset and stop conditions.
+- **Facts are not claims.** An agent saying "done" is a claim. Tower snapshots the workspace, checks out exactly that snapshot in a clean directory and re-runs your criteria under a sandbox. Only those results are green. What the agent says is labelled "Agent 称" and is never green.
+- **Sentinels for passing-but-wrong work.** Deleted tests, `.skip`/`.only`, a rewritten test command, fewer assertions or writes outside the scope hold the goal until you look, even when every criterion passed.
+- **Only interrupts you when it must.** Questions, approvals, assumptions, stalls and pauses that need a way out go to Needs-You (with a notification if Tower is in the background). Everything else stays quiet: one live line per goal says what kind of thing it is doing, with a concrete detail.
+- **Review is steering.** Large diffs are cut into risk-ordered units of at most ~300 lines; a comment on a line is an instruction to the agent. Viewed marks, draft comments and "since last review" make re-reviews short.
+- **Your repository is untouched.** Each goal works in a private clone. Accepting writes one commit, authored by you, to a new local branch. Pushing and opening a PR are explicit actions of yours.
+- **Respects Pi.** Tower adds exactly three tools to the model (`ask_user`, `log`, `submit`) through a standard Pi extension, and every message Tower injects is visible in the trace.
+
+| Goal page | Review |
 |---|---|
-| ![Goal 页](assets/screenshots/goal.png) | ![评审](assets/screenshots/review.png) |
+| ![Goal](assets/screenshots/goal.png) | ![Review](assets/screenshots/review.png) |
 
-| 需要你 | 合同编辑器 |
+| Needs-You | Contract editor |
 |---|---|
-| ![需要你](assets/screenshots/inbox.png) | ![合同编辑器](assets/screenshots/contract.png) |
+| ![Inbox](assets/screenshots/inbox.png) | ![Contract](assets/screenshots/contract.png) |
 
-<p align="center"><img src="assets/screenshots/goal-light.png" width="720" alt="浅色主题"></p>
+The interface is in Simplified Chinese today; the agent can write to you in Chinese or English (Settings). An English interface is planned.
 
-## 状态
+## Install
 
-设计中 M1 主循环的可运行原型。在 macOS 上以 RPC 模式驱动 Pi，端到端跑通：隔离工作区 → Agent 运行 → 声称完成 → 沙箱中验证 → 自动返工 → 评审 → 写入本地分支 → 识别合入。实现了什么、与设计有何差异、已知缺口见 [`docs/17-implementation.md`](docs/17-implementation.md)。
+Download the latest build from [Releases](https://github.com/beautifulrem/tower/releases) (macOS 13+). Builds are not notarized yet: the first time, right-click Tower.app and choose **Open**.
 
-## 运行
+You also need [Pi](https://github.com/earendil-works/pi) with a model you are logged in to:
 
-需要：macOS 13+、Rust 1.90+、Node 22+、pnpm、git，以及已登录模型的 [Pi](https://github.com/earendil-works/pi)（`npm i -g @earendil-works/pi-coding-agent`，然后运行 `pi` 并 `/login`）。
+```sh
+npm i -g @earendil-works/pi-coding-agent
+pi            # then /login
+```
+
+If your models come from a Pi extension package (for example ClinePass), list its entry file under Settings → "额外加载的 Pi 扩展" and make its key available in your login shell (`export CLINE_API_KEY=…`). Tower passes `*_API_KEY` variables to Pi but never to the agent's shell.
+
+## Build from source
+
+macOS 13+, Rust (pinned in `rust-toolchain.toml`), Node 22+, pnpm, git.
 
 ```sh
 pnpm install
-pnpm dev            # Tauri 开发模式（界面热更新）
-pnpm build          # 打包 .app / .dmg 到 target/release/bundle
-pnpm check          # 类型检查、clippy 与全部测试
+pnpm dev        # Tauri dev build with hot reload
+pnpm build      # .app / .dmg in target/release/bundle
+pnpm check      # type-check, clippy, all tests (what CI runs)
 ```
 
-在设置中添加一个 git 仓库，回到概览写一句你想要的结果，按回车。
+### Try it without model credentials
 
-Tower 默认不加载你的 Pi 扩展（它们在沙箱之外运行）。如果你的模型来自扩展包（例如 ClinePass 的 `pi-clinepass-provider`），在设置的“额外加载的 Pi 扩展”中填入它的入口文件，并让 Tower 能读到它需要的凭据（例如在登录 shell 中 `export CLINE_API_KEY=…`，Tower 会把 `*_API_KEY` 传给 Pi，但不会传给 Agent 的 shell）。
-
-也可以不开界面直接跑一个目标：
-
-```sh
-TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
-  <仓库> "<意图>" "<验收命令>" [provider/model] [扩展入口文件…]
-```
-
-### 不需要模型凭据的演示
-
-`tools/demo-engine` 是一个按 Pi 的 RPC 协议应答的脚本化引擎。它不调用模型，但会像 Agent 一样在演示仓库里读代码、跑测试、记录原因、提问、修改并提交。
+`tools/demo-engine` is a scripted stand-in for Pi that speaks its RPC protocol and edits a demo repository like an agent would.
 
 ```sh
 tools/demo-engine/make_demo_repo.sh /tmp/tower-demo/shop
@@ -64,38 +63,39 @@ TOWER_HOME=/tmp/tower-demo/home cargo run -p tower-supervisor --example seed_dem
 TOWER_HOME=/tmp/tower-demo/home pnpm dev
 ```
 
-`TOWER_HOME` 让演示数据与你真实的 `~/.tower` 分开。
+Or run one goal headlessly against your real Pi:
 
-## 结构
+```sh
+TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
+  <repo> "<intent>" "<acceptance command>" [provider/model] [extension…]
+```
+
+## How it is built
 
 ```
-apps/desktop/            Tauri 2 外壳（Rust）+ SolidJS 界面
-  src-tauri/             命令一一对应 Supervisor 方法，更新经一个事件推回
-  src/                   视图、组件、设计令牌（docs/12）
+apps/desktop/            Tauri 2 shell (Rust) + SolidJS interface
 crates/
-  tower-core/            领域模型：生命周期状态机、合同、诚实语法、评审单元
-  tower-store/           单写者 SQLite 事件日志与投影
-  tower-pi/              Pi RPC 适配器
-  tower-git/             卫星克隆、内容寻址的快照、封装分支
-  tower-verify/          验收命令执行器：进程组、超时、截尾与脱敏的输出
-  tower-supervisor/      把以上部分串成 Goal 生命周期的单写者
-extensions/tower-goal/   Pi 扩展：ask_user / log / submit、范围与自主度门禁、沙箱版 bash
-docs/                    产品设计（从 00 开始读）与对抗评审记录
-tools/                   演示引擎与截图脚本
+  tower-core/            lifecycle state machine, contracts, honesty grammar, sentinels, review units
+  tower-store/           single-writer SQLite event log with projections
+  tower-pi/              Pi engine adapter over JSONL RPC
+  tower-git/             satellite clones, content-addressed snapshots, sealing, push
+  tower-verify/          criterion runner: process groups, timeouts, bounded redacted output
+  tower-supervisor/      the single writer that runs goals through their lifecycle
+extensions/tower-goal/   Pi extension: ask_user / log / submit, scope and autonomy gate, sandboxed bash
+docs/                    the product design (start at 00) and its adversarial reviews
+tools/                   demo engine and screenshot helper
 ```
 
-Supervisor 持有全部状态；界面只保存一份由合并后的更新驱动的只读副本，JS 打包后约 38 KB（gzip）。
+The supervisor owns all state; the interface holds a read-only replica fed by coalesced updates. The JavaScript bundle is about 50 KB gzipped; the app is about 11 MB.
 
-## 设计文档
+## Design
 
-[`docs/`](docs/) 包含愿景与原则（`00`）、调研（`01`）、领域模型、生命周期、交互、Pi 集成、系统架构、验证与诚实、注意力、记忆、隔离、安全、视觉、性能、路线图、决策记录（ADR-001–240）、注册表，以及原型实现说明（`17`）。设计经过 112 轮对抗评审（`docs/reviews/`）。
+The full design is in [`docs/`](docs/) (in Chinese): vision and principles, research, domain model, lifecycle, interface, Pi integration, architecture, verification, attention, memory, isolation, security, visual system, performance, roadmap, a decision log (ADR-001–240) and a registry. It went through 112 rounds of adversarial review. `docs/17-implementation.md` maps the design to this code and lists what differs.
 
-| 先读 | 再读 | 实现前读 |
-|---|---|---|
-| `docs/00-vision-and-principles.md` | `docs/03-goal-lifecycle.md` | `docs/05-pi-integration.md` |
-| `docs/01-research-synthesis.md` | `docs/04-ux-information-architecture.md` | `docs/06-system-architecture.md` |
-| `docs/02-domain-model.md` | `docs/07` – `docs/11` | `docs/12` – `docs/17` |
+## Contributing
 
-## 许可
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
-尚未选择许可证（仓库目前为私有）。
+## License
+
+[MIT](LICENSE)

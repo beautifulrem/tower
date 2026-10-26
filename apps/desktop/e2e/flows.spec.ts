@@ -10,6 +10,18 @@ test("every decision card offers to be put aside", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Remind me later" })).toHaveCount((fixtures.inbox as unknown[]).length);
 });
 
+test("answering a card closes the loop: the card sits in a folding slot and the receipt rises in", async ({ page }) => {
+  await openTower(page, "inbox");
+  const slot = page.locator(".decision-slot").first();
+  await expect(slot).toBeVisible();
+  await expect(slot.locator(".decision")).toBeVisible();
+  await slot.locator(".decision-actions .btn").first().click();
+  const toast = page.locator(".toast").first();
+  await expect(toast).toBeVisible();
+  expect(await toast.evaluate((el) => getComputedStyle(el).animationName)).toBe("rise");
+  await expect(slot.locator(".decision")).toHaveClass(/leaving/);
+});
+
 test("a put-aside card is still accounted for in the inbox, with its way back", async ({ page }) => {
   await openTower(page, "inbox", { enrich: enrichSnoozed });
   const head = page.getByRole("button", { name: /1 put aside \(04:02\)/ });

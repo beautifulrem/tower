@@ -1797,6 +1797,19 @@ input[type="radio"] {
   opacity: 0;
   transform: translateY(-2px);
 }
+/* An answered card's place closes under it: the slot folds from its height to nothing in 160ms, and the list below moves up with it. */
+.decision-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--dur-base) var(--ease-in), opacity var(--dur-base) var(--ease-in);
+}
+.decision-slot > * {
+  min-height: 0;
+}
+.decision-slot.leaving {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
 .decision-head {
   display: flex;
   align-items: center;
@@ -2655,6 +2668,7 @@ input[type="radio"] {
   gap: 8px;
   justify-items: end;
 }
+/* A toast rises 4px into its corner (it comes from below, not from above like a sheet) and settles back 2px as it goes. */
 .toast {
   display: flex;
   align-items: center;
@@ -2665,12 +2679,19 @@ input[type="radio"] {
   background: var(--bg-overlay);
   box-shadow: var(--shadow-overlay);
   color: var(--text-1);
-  animation: lift var(--dur-base) var(--ease-out);
-  transition: opacity var(--dur-fast) var(--ease-in);
+  animation: rise var(--dur-base) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
   user-select: text;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 .toast.leaving {
   opacity: 0;
+  transform: translateY(2px);
 }
 .toast-text {
   min-width: 0;

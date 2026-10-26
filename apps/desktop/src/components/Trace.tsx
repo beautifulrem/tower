@@ -209,7 +209,8 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string> }) {
             <Match when={ev().kind === "tool_ended" && ev()}>
               {(x) => {
                 const e = x() as Extract<TraceEntry["event"], { kind: "tool_ended" }>;
-                const call = () => props.calls?.get(e.call_id);
+                // The call's own summary rides on the event; older entries fall back to the paired `tool_started`.
+                const call = () => e.target || props.calls?.get(e.call_id);
                 const result = () => (e.is_error || e.tool === "bash" || !call() ? e.summary : "");
                 return (
                   <div class="row">

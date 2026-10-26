@@ -116,6 +116,9 @@ pub enum PauseReason {
     /// Tower itself failed while moving the goal along (a bug or a broken
     /// data directory). Recorded instead of leaving the goal stuck.
     Internal,
+    /// The agent changed dependency manifests, so verification's setup
+    /// would run its choices with the network; that needs the human.
+    DependenciesChanged,
 }
 
 impl PauseReason {

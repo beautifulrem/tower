@@ -7,7 +7,7 @@
 | 层 | 选择 | 理由 |
 |---|---|---|
 | 桌面外壳 | Tauri 2（Rust） | 安装包与内存比 Electron 小一个数量级；后端逻辑可以全部用 Rust 写 |
-| 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；打包后 JS 约 38 KB（gzip），远低于 `13` 的 250 KB 启动包预算 |
+| 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；启动时加载的 JS 约 67 KB（gzip），评审、设置、合同编辑器按需加载，语法高亮在 Worker 中；三项预算由 CI 检查（`tools/bundle-budget.sh`），远低于 `13` 的 250 KB 启动包预算 |
 | 状态 | SQLite（rusqlite，WAL） | 单文件、单写者；事件与投影在同一事务中写入 |
 | 引擎 | Pi，RPC 模式 | 每个运行中的 Goal 一个 `pi --mode rpc` 子进程，严格按 LF 分帧 |
 | 沙箱 | macOS Seatbelt（`sandbox-exec`），默认拒绝 | Agent 的 bash、`read`/`edit`/`write` 与验证器命令都在 Tower 为每个 Goal 生成的配置下运行 |

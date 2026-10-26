@@ -2,7 +2,7 @@
 """A scripted OpenAI-compatible chat completions server for testing Tower
 against the real Pi. Each request's position in the script is the number of
 tool results already in the conversation. Prints the port it listens on."""
-import json, sys
+import json, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 STEPS = [
@@ -21,6 +21,16 @@ STEPS = [
     ("write", {"path": "result.txt", "content": "@ANSWER@\n"}),
     ("submit", {"summary": "按回答写入了 result.txt", "criteria": [{"id": "C1", "met": True, "evidence": "写入了文件"}]}),
 ]
+
+# A model that makes the failing test pass by changing what it expects.
+CHEAT = [
+    ("read", {"path": "test/cart.test.js"}),
+    ("edit", {"path": "test/cart.test.js", "edits": [{"oldText": "assert.equal(total(), 17);", "newText": "assert.equal(total(), 11);"}]}),
+    ("submit", {"summary": "Tests pass now", "criteria": [{"id": "C1", "met": True, "evidence": "node --test passes"}]}),
+]
+
+if os.environ.get("MOCK_SCENARIO") == "cheat":
+    STEPS = CHEAT
 
 
 def answer_from(messages):

@@ -130,6 +130,10 @@ pub fn pause_label(r: PauseReason, lang: Lang) -> &'static str {
         SentinelHigh => lang.pick("哨兵命中：需要你确认", "Sentinel hit: needs your confirmation"),
         WallClockCap => lang.pick("超过单次运行的墙钟上限", "The run passed its wall-clock cap"),
         Internal => lang.pick("Tower 内部出错", "Tower ran into an internal error"),
+        DependenciesChanged => lang.pick(
+            "Agent 改了依赖，验证的准备步骤需要联网",
+            "The agent changed dependencies; verification setup needs the network",
+        ),
     }
 }
 
@@ -159,10 +163,11 @@ pub enum Choice {
     No,
     Allow,
     Deny,
+    InstallWithNetwork,
 }
 
 impl Choice {
-    pub const ALL: [Choice; 18] = [
+    pub const ALL: [Choice; 19] = [
         Choice::Approve,
         Choice::Reject,
         Choice::Retry,
@@ -181,6 +186,7 @@ impl Choice {
         Choice::No,
         Choice::Allow,
         Choice::Deny,
+        Choice::InstallWithNetwork,
     ];
 
     pub fn label(self, lang: Lang) -> &'static str {
@@ -204,6 +210,7 @@ impl Choice {
             No => lang.pick("否", "No"),
             Allow => lang.pick("允许", "Allow"),
             Deny => lang.pick("拒绝", "Deny"),
+            InstallWithNetwork => lang.pick("我看过改动，这次联网安装", "I've checked, install with the network"),
         }
     }
 
@@ -244,6 +251,10 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
         "test_config_changed" => lang.pick("修改了测试配置", "Changed the test configuration"),
         "snapshots_changed" => lang.pick("更新了测试快照", "Updated test snapshots"),
         "tests_removed" => lang.pick("测试用例变少了", "Fewer test cases"),
+        "expectations_changed" => lang.pick("改了测试的期望值", "Changed what a test expects"),
+        "passes_only_with_edited_tests" => {
+            lang.pick("只有在改过的测试下才通过", "Passes only with the agent's edits to existing tests")
+        }
         "tests_hollowed" => {
             lang.pick("新增了不会失败的断言或提前返回", "Added assertions that cannot fail or early returns")
         }

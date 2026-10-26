@@ -223,6 +223,11 @@ pub enum EventKind {
         files: Vec<String>,
     },
     /// The human pushed the accepted branch (and maybe opened a PR).
+    /// The human allowed verification's setup to use the network for the
+    /// dependency changes with this fingerprint.
+    SetupNetworkApproved {
+        fingerprint: String,
+    },
     /// The pull request's state and checks as GitHub reports them, recorded
     /// when they change.
     PrChecked {
@@ -247,7 +252,8 @@ impl EventKind {
             | Self::InboxResolved { .. }
             | Self::Steered { .. }
             | Self::HumanCheck { .. }
-            | Self::ClaimReviewed { .. } => Source::Human,
+            | Self::ClaimReviewed { .. }
+            | Self::SetupNetworkApproved { .. } => Source::Human,
             Self::SentinelHit { .. }
             | Self::Stalled { .. }
             | Self::HumanEdited { .. }
@@ -309,6 +315,7 @@ impl EventKind {
             Self::LocalFilesCopied { .. } => "local_files_copied",
             Self::BranchPushed { .. } => "branch_pushed",
             Self::PrChecked { .. } => "pr_checked",
+            Self::SetupNetworkApproved { .. } => "setup_network_approved",
         }
     }
 }

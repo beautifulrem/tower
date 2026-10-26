@@ -77,6 +77,19 @@ def run(message):
         os.makedirs("test", exist_ok=True)
         open("test/cart.test.js", "w").write("test.skip('total', () => {});\n")
         tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
+    elif scenario == "poison_cache":
+        # Plant something in the agent's package cache, which verification
+        # must never see.
+        cache = os.environ.get("npm_config_cache", "")
+        if cache:
+            os.makedirs(cache, exist_ok=True)
+            open(os.path.join(cache, "poison"), "w").write("x")
+        open("done.txt", "w").write("ok\n")
+        tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
+    elif scenario == "deps":
+        open("package.json", "w").write('{"dependencies": {"left-pad": "1.3.0"}}\n')
+        open("done.txt", "w").write("ok\n")
+        tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
     elif scenario == "flaky":
         for _ in range(4):
             tool("bash", {"command": "npm run build"}, "error: build failed", error=True)

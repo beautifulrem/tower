@@ -9,7 +9,7 @@
  */
 import { For, Match, Show, Switch, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
 
-import { DecisionCard } from "../components/DecisionCard";
+import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark, ResultMark, Seal } from "../components/Glyph";
 import { BaselineLine, Claim, ConsistencyBadge, CriteriaBar, HeldOutLine, HumanStamp, ObsChip } from "../components/Honesty";
 import { LiveLine } from "../components/Live";
@@ -107,6 +107,8 @@ export function GoalPage(props: { id: string }) {
       { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review") },
       { key: "p", run: () => togglePause(), desc: () => t("keys.pauseResume") },
       { key: "shift+e", run: () => go({ name: "new", amendId: props.id }), desc: () => t("goal.amend") },
+      // The same H as the inbox: the page's card (its first, when there are several) steps aside until later.
+      { key: "h", run: () => inbox()[0] && void snoozeMenu(inbox()[0]), desc: () => t("keys.snooze"), when: () => inbox().length > 0 },
     ],
     () => t("keys.goalScope"),
   );

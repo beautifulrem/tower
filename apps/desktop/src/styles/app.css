@@ -1323,6 +1323,52 @@ input[type="radio"] {
 .welcome-points span {
   color: var(--text-2);
 }
+/* A goal's life as a route: six stations, each a glyph over its word, joined by hairlines. The glyphs are the
+   board's own at 14px; the words the wordmark's small tracked voice. Green starts at the verifier's station. */
+.welcome-life {
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  padding: var(--sp-2) 0 0;
+  list-style: none;
+}
+.welcome-station {
+  position: relative;
+  flex: 1 1 0;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.welcome-station .glyph {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-app);
+  box-shadow: 0 0 0 4px var(--bg-app);
+}
+/* The route: a hairline through the glyphs' centres, from the first station to the last. */
+.welcome-station + .welcome-station::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 50%;
+  width: 100%;
+  border-top: 1px solid var(--border-strong);
+}
+.welcome-station-word {
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  text-align: center;
+  max-width: 7em;
+  text-wrap: balance;
+}
+:root[lang="zh-CN"] .welcome-station-word {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
 /* The grammar, shown rather than described: a static sample card. */
 .welcome-sample {
   display: grid;
@@ -3043,12 +3089,13 @@ input[type="radio"] {
 .check-mark.pending {
   color: var(--text-4);
 }
+/* A fix is a command to copy: it wraps rather than hides its tail (git's identity fix is two commands long). */
 .fix {
   flex: 0 1 auto;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   padding: 2px 8px;
   border: 0;
   border-radius: var(--radius-s);
@@ -3411,8 +3458,28 @@ input[type="radio"] {
   padding: 0;
   margin-top: 0;
 }
-.boot-failed .empty-rules {
-  margin-top: var(--sp-3);
+/* The title bar's gauge strip with the power off: the same cluster, every reading a dash in the quietest grey,
+   the one error lit. It sits where the strip sits — on a hairline, right-aligned — above the words. */
+.boot-gauges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+  height: var(--titlebar-h);
+  margin-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.gauge-dead,
+.gauge-dead .gauge-dot {
+  color: var(--text-4);
+  background-color: transparent;
+}
+.gauge-dead .gauge-dot {
+  border: 1px solid var(--text-4);
+  box-sizing: border-box;
 }
 .boot-error-wrap {
   position: relative;

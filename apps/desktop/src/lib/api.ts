@@ -46,6 +46,10 @@ export const api = {
 
   settings: () => invoke<Settings>("settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
+  /** Opens Terminal running Pi, where `/login` connects a model account. */
+  openPiLogin: () => invoke<void>("open_pi_login"),
+  /** Re-runs the project's test command on its base branch. */
+  checkProject: (id: string) => invoke<void>("check_project", { id }),
   models: () => invoke<ModelInfo[]>("models"),
   validateContract: (contract: Contract) => invoke<ContractIssue[]>("validate_contract", { contract }),
 
@@ -77,6 +81,10 @@ export const api = {
   removeWorkspace: (id: string) => invoke<void>("remove_workspace", { id }),
   reviewClaim: (id: string, claimId: string, approved: boolean, note: string) =>
     invoke<void>("review_claim", { id, claimId, approved, note }),
+  /** Undoes hunk `hunk` (0-based, in ReviewView order) of `path` in the workspace; paused or in review only. */
+  revertHunk: (id: string, path: string, hunk: number) => invoke<void>("revert_hunk", { id, path, hunk }),
+  /** Puts the workspace back to where run `runNo` started; paused or in review only. */
+  rollback: (id: string, runNo: number) => invoke<void>("rollback", { id, runNo }),
 
   /** Per-goal interface state (viewed files, draft comments, last reviewed pin), kept in SQLite. */
   uiState: (id: string) => invoke<Record<string, string>>("ui_state", { id }),

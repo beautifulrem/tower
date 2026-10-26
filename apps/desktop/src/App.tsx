@@ -8,13 +8,13 @@ import { ActivityPanel, openActivity } from "./components/Activity";
 import { CommandPalette, TitleBar, Toasts, openPalette } from "./components/Chrome";
 import { ShortcutSheet, openShortcuts } from "./components/ShortcutSheet";
 import { Sidebar } from "./components/Sidebar";
-import { Button, Empty, Loading } from "./components/ui";
+import { Button, Empty, IconButton, Loading } from "./components/ui";
 import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
 import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
 import { t } from "./lib/i18n";
-import { act, init, state } from "./lib/store";
+import { act, init, state, toast } from "./lib/store";
 import { GoalPage } from "./views/GoalPage";
 import { Inbox } from "./views/Inbox";
 import { Overview } from "./views/Overview";
@@ -71,7 +71,18 @@ function BootFailed() {
         <Empty title={t("app.bootFailedTitle")} kind="error">
           {t("app.bootFailedBody")}
         </Empty>
-        <pre class="output-tail boot-error">{state.loadError}</pre>
+        <div class="boot-error-wrap">
+          <pre class="output-tail boot-error">{state.loadError}</pre>
+          <IconButton
+            icon="copy"
+            size={22}
+            label={t("app.copyError")}
+            onClick={() => {
+              void navigator.clipboard.writeText(state.loadError ?? "");
+              toast("info", t("common.copied"));
+            }}
+          />
+        </div>
         <div class="row">
           <Button variant="primary" onClick={() => void init()}>
             {t("common.retry")}
@@ -133,7 +144,7 @@ export function App() {
   return (
     <Show when={state.loaded} fallback={<div class="boot"><Loading text={t("app.starting")} /></div>}>
       <Show when={!state.loadError} fallback={<BootFailed />}>
-        <div class="shell">
+        <div class="shell" classList={{ "shell-full": route().name === "review" }}>
           <Sidebar />
           <main class="content">
             <Show when={route().name !== "review"}>

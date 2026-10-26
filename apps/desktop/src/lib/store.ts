@@ -141,6 +141,28 @@ export async function refreshEnvironment() {
   setState({ env, settings });
 }
 
+/** Saves a partial change to the settings (quiet hours, muted goals) and reloads them. */
+export async function patchSettings(patch: Partial<Settings>): Promise<boolean> {
+  const current = state.settings ?? (await api.settings());
+  const ok = await act(() => api.saveSettings({ ...current, ...patch }));
+  if (ok === undefined) return false;
+  await refreshEnvironment();
+  return true;
+}
+
+/** Whether notifications are silenced right now. */
+export function quietNow(): boolean {
+  const until = state.settings?.quiet_until;
+  return !!until && until > state.now;
+}
+
+/** Mutes or unmutes one goal's notifications. */
+export async function setGoalMuted(id: string, muted: boolean): Promise<boolean> {
+  const list = state.settings?.muted_goals ?? [];
+  const next = muted ? [...new Set([...list, id])] : list.filter((g) => g !== id);
+  return patchSettings({ muted_goals: next });
+}
+
 export async function refreshProjects() {
   setState("projects", reconcile(await api.projects()));
 }

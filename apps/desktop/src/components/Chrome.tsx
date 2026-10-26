@@ -1,24 +1,65 @@
 /** Title bar (breadcrumb and gauges), toasts and the command palette. */
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 
 import { api } from "../lib/api";
-import { usd } from "../lib/format";
-import { type Match, matchText, segments } from "../lib/fuzzy";
+import { clock, duration, usd } from "../lib/format";
+import { type Match, fuzzy, matchText, segments } from "../lib/fuzzy";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { back, canGoBack, go, route } from "../lib/nav";
+import { popupActions } from "../lib/native";
 import { bumpRecent, recentIds } from "../lib/recent";
-import { act, dismissToast, goalList, state } from "../lib/store";
+import { act, dismissToast, goalList, patchSettings, quietNow, state } from "../lib/store";
 import { stateLabel } from "../lib/labels";
 import { openActivity } from "./Activity";
 import { Icon, type IconName, LifecycleGlyph, NeedsYouMark } from "./Glyph";
 import { openShortcuts } from "./ShortcutSheet";
 import { IconButton, Kbd, Overlay } from "./ui";
 
+const HOUR = 3_600_000;
+
+/** Quiet hours: one hour, until tomorrow 9:00, or off. Shared by the gauge menu and Settings. */
+export async function pickQuiet() {
+  const tomorrow9 = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    return d.getTime();
+  };
+  await popupActions([
+    { label: t("quiet.forHour"), run: () => void patchSettings({ quiet_until: Date.now() + HOUR }) },
+    { label: t("quiet.untilTomorrow"), run: () => void patchSettings({ quiet_until: tomorrow9() }) },
+    { label: t("quiet.off"), run: () => void patchSettings({ quiet_until: null }), separatorBefore: true, enabled: quietNow() },
+  ]);
+}
+
+/**
+ * Engine heartbeat: seconds since the newest update of any running goal. The
+ * title bar ticks once a second only while something runs, so "quiet"
+ * (nothing to say) and "dead" (nothing said for two minutes) look different.
+ */
+function Heartbeat(props: { running: number }) {
+  const [now, setNow] = createSignal(Date.now());
+  const timer = window.setInterval(() => props.running > 0 && setNow(Date.now()), 1000);
+  onCleanup(() => clearInterval(timer));
+  const last = () => Math.max(0, ...goalList().filter((g) => g.state === "running").map((g) => g.updated_at));
+  const secs = () => Math.max(0, Math.round((now() - last()) / 1000));
+  return (
+    <Show when={props.running > 0 && last() > 0}>
+      <span class="gauge num" classList={{ "gauge-stale": secs() > 30 }} title={t("chrome.heartbeatTitle")}>
+        <Show when={secs() > 120}>
+          <span class="gauge-dot down" />
+        </Show>
+        {secs() > 30 ? t("chrome.silentFor", { d: secs() < 120 ? `${secs()}s` : duration(secs() * 1000, false) }) : t("chrome.heartbeat", { n: secs() })}
+      </span>
+    </Show>
+  );
+}
+
 /**
  * Left: where you are. On a goal that is the breadcrumb `project › G-0003`
  * (the title belongs to the H1 below); elsewhere the page name. Right: the
- * gauge cluster — runs, spend, engine, and unseen errors — in one strip.
+ * gauge cluster — errors, runs, heartbeat, spend, quiet, engine — in one strip.
  */
 export function TitleBar(props: { title: string }) {
   const running = () => goalList().filter((g) => g.state === "running").length;
@@ -50,7 +91,7 @@ export function TitleBar(props: { title: string }) {
         <Show when={state.unseenActivity > 0}>
           <button class="gauge gauge-errors link-plain" onClick={() => openActivity()} aria-label={t("chrome.unseenErrors", { n: state.unseenActivity })} title={t("chrome.unseenErrors", { n: state.unseenActivity })}>
             <span class="gauge-dot down" />
-            {state.unseenActivity}
+            {t("chrome.errorsShort", { n: state.unseenActivity })}
           </button>
         </Show>
         <Show when={running() > 0}>
@@ -59,9 +100,20 @@ export function TitleBar(props: { title: string }) {
             {t("chrome.runningShort", { n: running(), max: max() })}
           </span>
         </Show>
+        <Heartbeat running={running()} />
         <span class="gauge" title={t("chrome.spent", { usd: usd(spent()) })}>
           {usd(spent())}
         </span>
+        <button
+          class="gauge gauge-quiet link-plain"
+          onClick={() => void pickQuiet()}
+          aria-haspopup="menu"
+          aria-label={quietNow() ? t("quiet.until", { time: clock(state.settings!.quiet_until!) }) : t("quiet.menuTitle")}
+          title={quietNow() ? t("quiet.until", { time: clock(state.settings!.quiet_until!) }) : t("quiet.hint")}
+        >
+          <Icon name="bell" size={12} />
+          <Show when={quietNow()}>{t("quiet.until", { time: clock(state.settings!.quiet_until!) })}</Show>
+        </button>
         <Show
           when={engineOk()}
           fallback={
@@ -71,10 +123,10 @@ export function TitleBar(props: { title: string }) {
             </button>
           }
         >
-          <span class="gauge" title={state.env?.pi_path ?? ""}>
+          <span class="gauge" title={`Pi ${state.env!.pi_version!} · ${state.env?.pi_path ?? ""}`}>
             <span class="gauge-dot" />
             {t("chrome.engine")}
-            <span class="t3">Pi {state.env!.pi_version!.split(" ")[0]}</span>
+            <span class="t3 gauge-version">Pi {state.env!.pi_version!.split(" ")[0]}</span>
           </span>
         </Show>
       </div>
@@ -93,6 +145,9 @@ export function Toasts() {
       <For each={state.toasts}>
         {(toast) => (
           <div class={`toast toast-${toast.level}`} classList={{ leaving: !!toast.leaving }} role={toast.level === "error" ? "alert" : "status"}>
+            <Show when={toast.level === "success"}>
+              <Icon name="check" size={10} />
+            </Show>
             <span class="toast-text">{toast.text}</span>
             <Show when={toast.action}>
               {(a) => (
@@ -126,12 +181,27 @@ interface Command {
   icon?: IconName;
   run: () => void;
   goalId?: string;
+  goalTitle?: string;
 }
 
 interface Scored {
   c: Command;
   m: Match | null;
   recent: number;
+}
+
+/**
+ * A goal row is matched on its title and on its id separately, and the better
+ * one wins; positions are reported on the displayed `id title` string. So
+ * `gwc` lights up 购物车 in the title rather than the G of G-0003 plus 物车.
+ * Only when neither matches alone does the whole string get a try.
+ */
+export function matchGoal(query: string, id: string, title: string): Match | null {
+  const byTitle = matchText(query, title);
+  const byId = fuzzy(query, id);
+  const shifted = byTitle ? { score: byTitle.score, positions: byTitle.positions.map((p) => p + id.length + 1) } : null;
+  if (shifted && byId) return shifted.score >= byId.score ? shifted : byId;
+  return shifted ?? byId ?? matchText(query, `${id} ${title}`);
 }
 
 /** Marks the matched characters so the eye lands on why a row is here. */
@@ -152,6 +222,7 @@ export function CommandPalette() {
       { id: "settings", title: t("chrome.openSettings"), hint: "mod+,", icon: "sliders", run: () => go({ name: "settings" }) },
       { id: "activity", title: t("chrome.openActivity"), hint: "mod+shift+l", icon: "list", run: () => openActivity() },
       { id: "shortcuts", title: t("chrome.openShortcuts"), hint: "?", icon: "keyboard", run: () => openShortcuts() },
+      { id: "quiet", title: quietNow() ? t("quiet.off") : t("quiet.forHour"), icon: "bell", run: () => void (quietNow() ? patchSettings({ quiet_until: null }) : patchSettings({ quiet_until: Date.now() + HOUR })) },
       { id: "integration", title: t("chrome.checkIntegration"), icon: "harness", run: () => void act(api.checkIntegration, t("chrome.checked")) },
     ];
     const r = route();
@@ -166,6 +237,7 @@ export function CommandPalette() {
       id: `goal-${g.id}`,
       title: `${g.id} ${g.title}`,
       goalId: g.id,
+      goalTitle: g.title,
       run: () => go({ name: "goal", id: g.id }),
     }));
     return [...base, ...goals];
@@ -184,7 +256,7 @@ export function CommandPalette() {
     const all = commands();
     if (!n) return all.map((c) => ({ c, m: null, recent: rank(c.id) }));
     return all
-      .map((c) => ({ c, m: matchText(n, c.title), recent: rank(c.id) }))
+      .map((c) => ({ c, m: c.goalId ? matchGoal(n, c.goalId, c.goalTitle ?? "") : matchText(n, c.title), recent: rank(c.id) }))
       .filter((s): s is Scored & { m: Match } => s.m !== null)
       .sort((a, b) => b.m.score + b.recent * 0.5 - (a.m.score + a.recent * 0.5))
       .slice(0, 14);
@@ -313,12 +385,12 @@ export function CommandPalette() {
                         </span>
                         <Show when={goal()}>
                           {(g) => (
-                            <>
+                            <span class="palette-state">
                               <Show when={g().needs_you > 0}>
                                 <NeedsYouMark />
                               </Show>
-                              <span class="palette-state">{stateLabel(g().state)}</span>
-                            </>
+                              {stateLabel(g().state)}
+                            </span>
                           )}
                         </Show>
                         <Show when={s.c.hint}>

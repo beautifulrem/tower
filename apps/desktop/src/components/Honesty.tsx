@@ -23,6 +23,7 @@ import { Icon, ResultMark } from "./Glyph";
 export function FactChip(props: { pin?: string | null; at?: number | null; children?: JSX.Element }) {
   return (
     <span class="fact">
+      <span class="sr-only">{t("honesty.srVerified")} </span>
       <Icon name="harness" size={10} class="fact-icon" label={t("honesty.measured")} />
       {props.children}
       <Show when={props.pin}>
@@ -40,6 +41,7 @@ export function FactChip(props: { pin?: string | null; at?: number | null; child
 export function ObsChip(props: { title?: string }) {
   return (
     <span class="chip chip-obs" title={props.title}>
+      <span class="sr-only">{t("honesty.srObserved")} </span>
       {t("honesty.observation")}
     </span>
   );
@@ -58,7 +60,7 @@ export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX
         <span class="claim-rule" aria-hidden="true">
           ┆
         </span>
-        <span class="sr-only">{t("honesty.agentSaysPlain")} </span>
+        <span class="sr-only">{t("honesty.srClaim")} </span>
         <span class="claim-kind">{props.kind ?? t("honesty.agentSaysPlain")}</span>
       </span>
       <div class="claim-text">{props.children}</div>

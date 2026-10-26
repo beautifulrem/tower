@@ -1,0 +1,17 @@
+[package]
+name = "tower-core"
+description = "Tower domain model: goals, contracts, lifecycle state machine and the honesty grammar."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+ts-rs.workspace = true
+globset.workspace = true
+
+[lints]
+workspace = true

@@ -83,6 +83,7 @@ tools/demo-engine        不调用模型的脚本化 Pi，用来演示与测试
 - `tower-git`：真实临时仓库上的完整隔离链路，包括 squash 合并后的合入判定。
 - `tower-verify`：退出码、环境故障分类、超时杀掉整个进程组、取消、输出上限、脱敏。
 - `tower-supervisor`：真实 Seatbelt 下的配置生效测试；用脚本化引擎与真实 git 跑五条端到端流程（主流程到分支与合入、失败自动返工、提问与回答、停下未提交、暂停继续与放弃）。
+- `tower-supervisor` 的 `real_pi` 测试：驱动真实的 `pi`（RPC 模式），模型是脚本化的 OpenAI 兼容服务（不需要凭据）。验证扩展的 `log`、`ask_user`、`submit` 与审批对话框经 Pi 往返；沙箱版 bash 写工作区之外被拒绝、读 `~/.ssh` 被拒绝；Agent 的 shell 中没有 `*_API_KEY`；单向门命令被拒绝后阻断。没有安装 `pi` 时跳过。
 - `extensions/tower-goal`：路径模式、范围围栏、自主度矩阵、凭据剥除、沙箱命令的引号。
 
 ## 17.8 运行与演示

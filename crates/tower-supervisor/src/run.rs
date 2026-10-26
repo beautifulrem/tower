@@ -91,7 +91,13 @@ pub async fn schedule(inner: &Arc<Inner>) {
         } else {
             ("resume", prompts::resume("waiting for a free slot", &human_notes_since_last_run(inner, &g.id), &[]))
         };
-        if let Err(e) = start_run(inner, &g.id, purpose, message).await {
+        // Re-read: the goal may have been paused or abandoned since the list
+        // was taken, and the scheduler must never start what a human stopped.
+        let still_ready = inner.store(|s| s.goal(&g.id)).is_ok_and(|now| now.state == LifecycleState::Ready);
+        if !still_ready {
+            continue;
+        }
+        if let Err(e) = start_scheduled(inner, &g.id, purpose, message).await {
             tracing::warn!(goal = %g.id, error = %e, "could not start run");
         }
     }
@@ -174,6 +180,25 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
     })
 }
 
+/// Marks a goal as being started; released when dropped.
+struct Starting<'a> {
+    inner: &'a Inner,
+    goal: String,
+}
+
+impl<'a> Starting<'a> {
+    fn claim(inner: &'a Inner, goal: &str) -> Option<Self> {
+        let fresh = inner.starting.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.to_string());
+        fresh.then(|| Starting { inner, goal: goal.to_string() })
+    }
+}
+
+impl Drop for Starting<'_> {
+    fn drop(&mut self) {
+        self.inner.starting.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.goal);
+    }
+}
+
 /// Prepares the workspace if needed, starts Pi and sends the first message.
 ///
 /// Boxed because runs start other runs (a settled run schedules the next
@@ -184,15 +209,41 @@ pub fn start_run<'a>(
     purpose: &'a str,
     message: String,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(start_run_inner(inner, goal_id, purpose, message))
+    Box::pin(start_run_inner(inner, goal_id, purpose, message, false))
 }
 
-async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, message: String) -> Result<()> {
+fn start_scheduled<'a>(
+    inner: &'a Arc<Inner>,
+    goal_id: &'a str,
+    purpose: &'a str,
+    message: String,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    Box::pin(start_run_inner(inner, goal_id, purpose, message, true))
+}
+
+/// `only_if_ready`: the scheduler's starts, which must not start a goal that
+/// stopped being ready (a human paused it) after the scheduler looked.
+async fn start_run_inner(
+    inner: &Arc<Inner>,
+    goal_id: &str,
+    purpose: &str,
+    message: String,
+    only_if_ready: bool,
+) -> Result<()> {
     let lang = inner.lang();
+    // One start at a time per goal: preparing a workspace takes a while, and
+    // two callers (the scheduler and a human resume) must not both get through.
+    let _starting = match Starting::claim(inner, goal_id) {
+        Some(s) => s,
+        None => return Err(invalid(tr!(lang, "这个目标正在启动", "This goal is already starting"))),
+    };
     if inner.run_of(goal_id).is_some() {
         return Err(invalid(tr!(lang, "这个目标已经在运行", "This goal is already running")));
     }
     let mut goal = inner.store(|s| s.goal(goal_id))?;
+    if only_if_ready && goal.state != LifecycleState::Ready {
+        return Ok(());
+    }
 
     if goal.workspace.is_none() {
         inner.set_mode(goal_id, Mode::Starting)?;

@@ -357,11 +357,8 @@ impl Git {
             if !meta.is_file() || meta.len() > MAX_BYTES {
                 continue;
             }
-            let to = dest.join(rel);
-            if let Some(parent) = to.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::copy(&from, &to)?;
+            let bytes = std::fs::read(&from)?;
+            write_inside(dest, rel, &bytes)?;
             copied.push(rel.to_string());
         }
         copied.sort();
@@ -406,6 +403,40 @@ impl Git {
             ),
             _ => None,
         }
+    }
+
+    /// A clean checkout of `base` cloned from the user's own repository, so
+    /// nothing the agent can write (its workspace's object store) shapes it.
+    pub fn trusted_checkout(&self, project_root: &Path, base: &str, dir: &Path) -> Result<()> {
+        if dir.exists() {
+            std::fs::remove_dir_all(dir)?;
+        }
+        if let Some(parent) = dir.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let (root, d) = (project_root.to_string_lossy(), dir.to_string_lossy());
+        self.run(project_root, &["clone", "--quiet", "--no-checkout", "--no-hardlinks", &root, &d])?;
+        self.run(dir, &["checkout", "--quiet", "--detach", base])?;
+        Ok(())
+    }
+
+    /// Brings the agent's snapshot (`refs/tower/pin` of its workspace) into a
+    /// checkout made by [`Git::trusted_checkout`] and switches to it, keeping
+    /// untracked and ignored files (installed dependencies).
+    pub fn switch_to_pin(&self, dir: &Path, ws: &Path, pin: &str) -> Result<()> {
+        self.run(dir, &["fetch", "--quiet", "--no-tags", &ws.to_string_lossy(), "+refs/tower/pin:refs/tower/pin"])?;
+        let fetched = self.run_trim(dir, &["rev-parse", "refs/tower/pin"])?;
+        if fetched != pin {
+            return Err(GitError::Invalid(format!("the workspace's snapshot moved ({fetched} is not {pin})")));
+        }
+        self.run(dir, &["checkout", "--quiet", "--force", "--detach", pin])?;
+        Ok(())
+    }
+
+    /// Removes untracked, non-ignored files (`git clean -fd`).
+    pub fn clean_untracked(&self, dir: &Path) -> Result<()> {
+        self.run(dir, &["clean", "-fdq"])?;
+        Ok(())
     }
 
     /// Switches a verification checkout to `rev`, keeping untracked and
@@ -557,6 +588,56 @@ fn rename_target(path: &str) -> String {
         return joined.replace("//", "/");
     }
     path.split(" => ").last().unwrap_or(path).to_string()
+}
+
+/// Writes `bytes` to `root/rel` without ever following a symlink: `root`
+/// may hold content someone else controls (an agent's checkout), and a
+/// planted link at `rel` or in one of its directories would otherwise send
+/// the write elsewhere. An existing link at `rel` is replaced by the file;
+/// a link among the directories is refused.
+pub fn write_inside(root: &Path, rel: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let rel = Path::new(rel);
+    if rel.is_absolute() || rel.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("not a plain relative path: {}", rel.display()),
+        ));
+    }
+    let mut dir = root.to_path_buf();
+    let parts: Vec<_> = rel.components().collect();
+    for part in &parts[..parts.len().saturating_sub(1)] {
+        dir.push(part);
+        match std::fs::symlink_metadata(&dir) {
+            Ok(m) if m.file_type().is_symlink() => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("{} is a symbolic link", dir.display()),
+                ));
+            }
+            Ok(m) if m.is_dir() => {}
+            Ok(_) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!("{} is not a directory", dir.display()),
+                ));
+            }
+            Err(_) => std::fs::create_dir(&dir)?,
+        }
+    }
+    let target = root.join(rel);
+    if std::fs::symlink_metadata(&target).is_ok_and(|m| m.file_type().is_symlink()) {
+        std::fs::remove_file(&target)?;
+    }
+    // create_new would refuse an existing file; truncate an existing regular
+    // file instead, with O_NOFOLLOW as a last guard against a racing link.
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .custom_flags(0x0100) // O_NOFOLLOW on macOS
+        .open(&target)?;
+    std::io::Write::write_all(&mut f, bytes)
 }
 
 #[cfg(test)]

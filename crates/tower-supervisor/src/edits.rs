@@ -105,18 +105,13 @@ async fn restore(inner: &Arc<Inner>, goal: &str, ws: &std::path::Path, commit: &
 pub async fn write_file(inner: &Arc<Inner>, goal: &str, path: &str, text: &str) -> Result<()> {
     let (_, ws) = editable_workspace(inner, goal)?;
     let lang = inner.lang();
-    let rel = std::path::Path::new(path);
-    if rel.is_absolute()
-        || rel.components().any(|c| matches!(c, std::path::Component::ParentDir))
-        || path.starts_with(".git")
-    {
+    if path.starts_with(".git") {
         return Err(invalid(tr!(lang, "只能修改工作区里的文件", "Only files inside the workspace can be edited")));
     }
-    let target = ws.join(rel);
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&target, text)?;
+    // The workspace is the agent's: never follow a link it may have planted.
+    tower_git::write_inside(&ws, path, text.as_bytes()).map_err(|e| {
+        invalid(tr!(lang, "只能修改工作区里的文件（{e}）", "Only files inside the workspace can be edited ({e})"))
+    })?;
     inner.append(goal, EventKind::HumanEdited { files: vec![path.to_string()] })?;
     run::repin(inner, goal).await?;
     inner.emit_goal_now(goal);

@@ -127,6 +127,7 @@ impl Supervisor {
             models: Mutex::default(),
             keep_awake: Mutex::default(),
             remote: remote::Remote::default(),
+            starting: Mutex::default(),
         });
         let sup = Self { inner };
         sup.spawn_loops();

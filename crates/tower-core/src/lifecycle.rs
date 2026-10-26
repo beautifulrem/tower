@@ -120,7 +120,9 @@ pub enum Transition {
     Ratify,
     /// The supervisor started a run (fresh, rework, resume or steer).
     RunStarted,
-    Pause { reason: PauseReason },
+    Pause {
+        reason: PauseReason,
+    },
     /// Human chose to continue a paused goal; the next state is decided by
     /// what the goal was waiting for (`continuation`).
     Resume,
@@ -132,7 +134,9 @@ pub enum Transition {
     VerifyPassed,
     /// Verification failed. `rework` is true when the supervisor decided to
     /// hand the failure evidence back to the agent automatically.
-    VerifyFailed { rework: bool },
+    VerifyFailed {
+        rework: bool,
+    },
     /// Human asked for changes during review.
     RequestChanges,
     /// Human accepted and the goal branch was written.

@@ -26,25 +26,58 @@ pub struct Response {
 pub enum PiEvent {
     AgentStart,
     /// One low-level run ended; more work may follow.
-    AgentEnd { will_retry: bool },
+    AgentEnd {
+        will_retry: bool,
+    },
     /// Pi will not continue on its own.
-    AgentSettled { aborted: bool },
+    AgentSettled {
+        aborted: bool,
+    },
     TurnStart,
     TurnEnd,
     /// A streamed assistant text fragment.
-    TextDelta { delta: String },
+    TextDelta {
+        delta: String,
+    },
     /// A finished message. `role` is `user`, `assistant` or `toolResult`.
-    MessageEnd { role: String, text: String, stop_reason: Option<String>, error: Option<String> },
-    ToolStart { call_id: String, tool: String, args: Value },
-    ToolEnd { call_id: String, tool: String, result: Value, is_error: bool },
+    MessageEnd {
+        role: String,
+        text: String,
+        stop_reason: Option<String>,
+        error: Option<String>,
+    },
+    ToolStart {
+        call_id: String,
+        tool: String,
+        args: Value,
+    },
+    ToolEnd {
+        call_id: String,
+        tool: String,
+        result: Value,
+        is_error: bool,
+    },
     CompactionStart,
     CompactionEnd,
-    RetryStart { attempt: u32, max_attempts: u32, error: String },
-    RetryEnd { success: bool },
+    RetryStart {
+        attempt: u32,
+        max_attempts: u32,
+        error: String,
+    },
+    RetryEnd {
+        success: bool,
+    },
     UiRequest(UiRequest),
-    ExtensionError { extension: String, event: String, error: String },
+    ExtensionError {
+        extension: String,
+        event: String,
+        error: String,
+    },
     /// Anything else, kept for the trace.
-    Other { kind: String, raw: Value },
+    Other {
+        kind: String,
+        raw: Value,
+    },
 }
 
 /// An extension UI request. Dialogs (`select`, `confirm`, `input`, `editor`)
@@ -135,9 +168,9 @@ pub fn parse_record(line: &str) -> Result<Record, serde_json::Error> {
         "agent_end" => Record::Event(PiEvent::AgentEnd {
             will_retry: v.get("willRetry").and_then(Value::as_bool).unwrap_or(false),
         }),
-        "agent_settled" => Record::Event(PiEvent::AgentSettled {
-            aborted: v.get("aborted").and_then(Value::as_bool).unwrap_or(false),
-        }),
+        "agent_settled" => {
+            Record::Event(PiEvent::AgentSettled { aborted: v.get("aborted").and_then(Value::as_bool).unwrap_or(false) })
+        }
         "turn_start" => Record::Event(PiEvent::TurnStart),
         "turn_end" => Record::Event(PiEvent::TurnEnd),
         "message_update" => {
@@ -175,9 +208,9 @@ pub fn parse_record(line: &str) -> Result<Record, serde_json::Error> {
             max_attempts: v.get("maxAttempts").and_then(Value::as_u64).unwrap_or(0) as u32,
             error: str_field(&v, "errorMessage"),
         }),
-        "auto_retry_end" => Record::Event(PiEvent::RetryEnd {
-            success: v.get("success").and_then(Value::as_bool).unwrap_or(false),
-        }),
+        "auto_retry_end" => {
+            Record::Event(PiEvent::RetryEnd { success: v.get("success").and_then(Value::as_bool).unwrap_or(false) })
+        }
         "extension_ui_request" => Record::Event(PiEvent::UiRequest(serde_json::from_value(v)?)),
         "extension_error" => Record::Event(PiEvent::ExtensionError {
             extension: str_field(&v, "extensionPath"),
@@ -194,12 +227,16 @@ mod tests {
 
     #[test]
     fn parses_responses_and_events() {
-        let r = parse_record(r#"{"id":"1","type":"response","command":"prompt","success":true,"data":{"disposition":"started"}}"#)
-            .unwrap();
+        let r = parse_record(
+            r#"{"id":"1","type":"response","command":"prompt","success":true,"data":{"disposition":"started"}}"#,
+        )
+        .unwrap();
         assert!(matches!(r, Record::Response(Response { success: true, ref command, .. }) if command == "prompt"));
 
-        let e = parse_record(r#"{"type":"tool_execution_start","toolCallId":"c1","toolName":"bash","args":{"command":"ls"}}"#)
-            .unwrap();
+        let e = parse_record(
+            r#"{"type":"tool_execution_start","toolCallId":"c1","toolName":"bash","args":{"command":"ls"}}"#,
+        )
+        .unwrap();
         assert_eq!(
             e,
             Record::Event(PiEvent::ToolStart {

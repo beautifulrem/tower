@@ -10,9 +10,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tower_core::LifecycleState;
 use tower_core::contract::{Contract, Criterion, CriterionKind};
 use tower_core::view::{InboxKind, Settings};
-use tower_core::LifecycleState;
 use tower_supervisor::{Config, NewGoalInput, NullSink, Paths, Supervisor};
 
 #[tokio::main]
@@ -49,7 +49,11 @@ async fn main() {
             kind: CriterionKind::Exec { command: "node --test test/cart.test.js".into(), timeout_secs: 120 },
         });
         if human {
-            c.criteria.push(Criterion { id: "C3".into(), title: "在结账页手动核对一次总价".into(), kind: CriterionKind::Human });
+            c.criteria.push(Criterion {
+                id: "C3".into(),
+                title: "在结账页手动核对一次总价".into(),
+                kind: CriterionKind::Human,
+            });
         }
         c.scope.include = vec!["src/**".into(), "test/**".into()];
         c.scope.readonly = vec!["package.json".into()];
@@ -74,7 +78,9 @@ async fn main() {
         let blocked = |id: &str| inbox.iter().any(|i| i.goal_id == id && i.kind == InboxKind::Question);
         let busy = goals
             .iter()
-            .filter(|g| matches!(g.state, LifecycleState::Running | LifecycleState::Claimed | LifecycleState::Verifying))
+            .filter(|g| {
+                matches!(g.state, LifecycleState::Running | LifecycleState::Claimed | LifecycleState::Verifying)
+            })
             .filter(|g| !blocked(&g.id))
             .count();
         if busy == 0 {

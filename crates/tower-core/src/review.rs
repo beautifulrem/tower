@@ -12,8 +12,13 @@ pub fn file_risks(file: &DiffFile, fence: Option<&ScopeFence>) -> Vec<(u8, Strin
     let p = file.path.to_ascii_lowercase();
     let name = p.rsplit('/').next().unwrap_or(&p);
     let mut r = Vec::new();
-    let is_test = p.contains("/test") || p.contains("__tests__") || name.contains(".test.") || name.contains(".spec.")
-        || name.starts_with("test_") || name.ends_with("_test.go") || name.ends_with("_test.rs");
+    let is_test = p.contains("/test")
+        || p.contains("__tests__")
+        || name.contains(".test.")
+        || name.contains(".spec.")
+        || name.starts_with("test_")
+        || name.ends_with("_test.go")
+        || name.ends_with("_test.rs");
 
     if let Some(fence) = fence {
         match fence.check_write(&file.path) {
@@ -80,9 +85,8 @@ pub fn build_units(files: &[DiffFile], scope: Option<&Scope>) -> Vec<ReviewUnit>
         let dir = dir_of(&f.path).to_string();
         let risks = file_risks(f, fence.as_ref());
         let risk = risks.first().map(|r| r.0).unwrap_or(0);
-        let fits = units
-            .last()
-            .is_some_and(|u| u.dir == dir && u.lines + lines <= UNIT_LINE_BUDGET && !u.files.is_empty());
+        let fits =
+            units.last().is_some_and(|u| u.dir == dir && u.lines + lines <= UNIT_LINE_BUDGET && !u.files.is_empty());
         if !fits {
             units.push(Acc { dir: dir.clone(), files: Vec::new(), lines: 0, risk: 0, reasons: Vec::new() });
         }
@@ -125,7 +129,15 @@ mod tests {
     use super::*;
 
     fn file(path: &str, status: FileStatus, add: u32, del: u32) -> DiffFile {
-        DiffFile { path: path.into(), old_path: None, status, additions: add, deletions: del, binary: false, hunks: vec![] }
+        DiffFile {
+            path: path.into(),
+            old_path: None,
+            status,
+            additions: add,
+            deletions: del,
+            binary: false,
+            hunks: vec![],
+        }
     }
 
     #[test]

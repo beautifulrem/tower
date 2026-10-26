@@ -45,10 +45,7 @@ impl Store {
     }
 
     pub fn project_by_root(&self, root: &str) -> Result<Option<ProjectView>> {
-        Ok(self
-            .conn
-            .query_row("SELECT * FROM projects WHERE root = ?1", [root], row_to_project)
-            .optional()?)
+        Ok(self.conn.query_row("SELECT * FROM projects WHERE root = ?1", [root], row_to_project).optional()?)
     }
 
     pub fn projects(&self) -> Result<Vec<ProjectView>> {

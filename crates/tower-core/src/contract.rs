@@ -154,14 +154,8 @@ impl Contract {
 
     pub fn validate(&self) -> Vec<ContractIssue> {
         let mut issues = Vec::new();
-        let err = |field: &str, message: &str| ContractIssue::Error {
-            field: field.into(),
-            message: message.into(),
-        };
-        let warn = |field: &str, message: &str| ContractIssue::Warning {
-            field: field.into(),
-            message: message.into(),
-        };
+        let err = |field: &str, message: &str| ContractIssue::Error { field: field.into(), message: message.into() };
+        let warn = |field: &str, message: &str| ContractIssue::Warning { field: field.into(), message: message.into() };
 
         if self.intent.trim().is_empty() {
             issues.push(err("intent", "目的不能为空"));
@@ -184,10 +178,7 @@ impl Contract {
             }
         }
         if self.machine_criteria().next().is_none() {
-            issues.push(warn(
-                "criteria",
-                "没有可执行的验收标准：Agent 的“完成”无法被机器验证，只能由你人工判断",
-            ));
+            issues.push(warn("criteria", "没有可执行的验收标准：Agent 的“完成”无法被机器验证，只能由你人工判断"));
         }
         // Written so that NaN also fails.
         let positive = |v: f64| v.partial_cmp(&0.0) == Some(std::cmp::Ordering::Greater);
@@ -282,11 +273,7 @@ mod tests {
     fn invalid_contracts_are_rejected() {
         let mut c = Contract::quick("  ", Some(" ".into()));
         c.budget.soft_usd = 10.0;
-        let errors = c
-            .validate()
-            .into_iter()
-            .filter(|i| matches!(i, ContractIssue::Error { .. }))
-            .count();
+        let errors = c.validate().into_iter().filter(|i| matches!(i, ContractIssue::Error { .. })).count();
         assert_eq!(errors, 3, "intent, command and budget");
         assert!(!c.is_ratifiable());
     }

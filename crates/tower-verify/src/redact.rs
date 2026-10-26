@@ -57,13 +57,14 @@ fn redact_pem(text: &str) -> String {
         out.push_str(before);
         let header_end = from.find('\n').unwrap_or(from.len());
         if from[..header_end].contains("PRIVATE KEY")
-            && let Some(end) = from.find("-----END ") {
-                let end_line = from[end..].find('\n').map(|i| end + i).unwrap_or(from.len());
-                out.push_str("-----BEGIN PRIVATE KEY----- ");
-                out.push_str(MASK);
-                rest = &from[end_line..];
-                continue;
-            }
+            && let Some(end) = from.find("-----END ")
+        {
+            let end_line = from[end..].find('\n').map(|i| end + i).unwrap_or(from.len());
+            out.push_str("-----BEGIN PRIVATE KEY----- ");
+            out.push_str(MASK);
+            rest = &from[end_line..];
+            continue;
+        }
         out.push_str(&from[..header_end]);
         rest = &from[header_end..];
     }

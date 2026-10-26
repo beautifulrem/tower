@@ -83,12 +83,7 @@ pub async fn schedule(inner: &Arc<Inner>) {
 /// Human steering recorded while no engine was running, to carry into the
 /// next run's first message.
 fn human_notes_since_last_run(inner: &Inner, goal: &str) -> Vec<String> {
-    let since = inner
-        .store(|s| s.last_event(goal, "run_started"))
-        .ok()
-        .flatten()
-        .map(|e| e.at)
-        .unwrap_or(0);
+    let since = inner.store(|s| s.last_event(goal, "run_started")).ok().flatten().map(|e| e.at).unwrap_or(0);
     inner
         .store(|s| s.events_since(goal, since))
         .unwrap_or_default()
@@ -127,12 +122,12 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
         std::fs::write(&profile, sandbox::profile(&ws_real, &tmp_real, &real(&home)))?;
         env.push(("TOWER_SANDBOX_PROFILE".into(), profile.display().to_string()));
     }
-    let model = Some(goal.contract.model.clone()).filter(|m| !m.is_empty()).or_else(|| {
-        Some(settings.default_model.clone()).filter(|m| !m.is_empty())
-    });
-    let thinking = Some(goal.contract.thinking.clone()).filter(|m| !m.is_empty()).or_else(|| {
-        Some(settings.default_thinking.clone()).filter(|m| !m.is_empty())
-    });
+    let model = Some(goal.contract.model.clone())
+        .filter(|m| !m.is_empty())
+        .or_else(|| Some(settings.default_model.clone()).filter(|m| !m.is_empty()));
+    let thinking = Some(goal.contract.thinking.clone())
+        .filter(|m| !m.is_empty())
+        .or_else(|| Some(settings.default_thinking.clone()).filter(|m| !m.is_empty()));
     Ok(EngineConfig {
         program,
         cwd: ws.to_path_buf(),
@@ -170,7 +165,8 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
         inner.set_mode(goal_id, Mode::Starting)?;
         let ws = inner.paths.workspace(goal_id);
         let git = inner.git.clone();
-        let (root, branch, ws2, id) = (PathBuf::from(&goal.project_root), goal.base_branch.clone(), ws.clone(), goal.id.clone());
+        let (root, branch, ws2, id) =
+            (PathBuf::from(&goal.project_root), goal.base_branch.clone(), ws.clone(), goal.id.clone());
         let prepared = tokio::task::spawn_blocking(move || git.prepare_workspace(&root, &branch, &ws2, &id))
             .await
             .map_err(|e| invalid(e.to_string()))?;
@@ -224,9 +220,10 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
 
     if let Ok(state) = run.engine.state().await
         && let Some(file) = state.get("sessionFile").and_then(Value::as_str)
-            && goal.session_file.as_deref() != Some(file) {
-                inner.append(goal_id, EventKind::SessionAttached { session_file: file.into() })?;
-            }
+        && goal.session_file.as_deref() != Some(file)
+    {
+        inner.append(goal_id, EventKind::SessionAttached { session_file: file.into() })?;
+    }
     inner.append(goal_id, EventKind::Injected { channel: "prompt".into(), text: message.clone() })?;
     if let Err(e) = run.engine.prompt(&message).await {
         stop_engine(inner, &run, Stop::Pause(PauseReason::PrepareFailed)).await;
@@ -321,13 +318,19 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
         PiEvent::CompactionEnd => inner.set_mode(g, Mode::Thinking)?,
         PiEvent::RetryStart { attempt, max_attempts, error } => {
             inner.set_mode(g, Mode::Retrying)?;
-            inner.append(g, EventKind::Note { text: format!("模型服务出错，第 {attempt}/{max_attempts} 次重试：{error}") })?;
+            inner.append(
+                g,
+                EventKind::Note {
+                    text: format!("模型服务出错，第 {attempt}/{max_attempts} 次重试：{error}")
+                },
+            )?;
         }
         PiEvent::RetryEnd { .. } => inner.set_mode(g, Mode::Thinking)?,
         PiEvent::TurnEnd => on_turn_end(inner, run).await?,
         PiEvent::UiRequest(req) => on_ui_request(inner, run, req)?,
         PiEvent::ExtensionError { extension, event, error } => {
-            inner.append(g, EventKind::EngineError { message: format!("扩展错误（{event}，{extension}）：{error}") })?;
+            inner
+                .append(g, EventKind::EngineError { message: format!("扩展错误（{event}，{extension}）：{error}") })?;
         }
         PiEvent::AgentSettled { .. } => on_settled(inner, run).await?,
         PiEvent::AgentEnd { .. } | PiEvent::Other { .. } => {}
@@ -344,7 +347,10 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
         "log" => {
             let kind = ClaimKind::parse(&s("kind")).unwrap_or(ClaimKind::Progress);
             let text = s("text");
-            inner.append(g, EventKind::Claim { claim_id: claim_id.clone(), claim: kind, text: text.clone(), criterion: None })?;
+            inner.append(
+                g,
+                EventKind::Claim { claim_id: claim_id.clone(), claim: kind, text: text.clone(), criterion: None },
+            )?;
             if kind.needs_approval() {
                 inner.open_inbox(NewInboxItem {
                     goal_id: g.into(),
@@ -371,7 +377,11 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
                             EventKind::Claim {
                                 claim_id: format!("{claim_id}/{id}"),
                                 claim: ClaimKind::CriterionMet,
-                                text: if evidence.is_empty() { format!("{id} 已满足") } else { evidence.to_string() },
+                                text: if evidence.is_empty() {
+                                    format!("{id} 已满足")
+                                } else {
+                                    evidence.to_string()
+                                },
                                 criterion: Some(id.to_string()),
                             },
                         )?;
@@ -384,7 +394,11 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
     }
     inner.append(
         g,
-        EventKind::ToolStarted { call_id: call_id.clone(), tool: tool.clone(), summary: summarize::tool_call(&tool, &args, &run.workspace) },
+        EventKind::ToolStarted {
+            call_id: call_id.clone(),
+            tool: tool.clone(),
+            summary: summarize::tool_call(&tool, &args, &run.workspace),
+        },
     )?;
     if tool != "log" && tool != "submit" {
         inner.set_mode(g, Mode::for_tool(&tool))?;
@@ -400,9 +414,11 @@ fn observe(inner: &Inner, goal: &str, args: &Value, passed: bool) -> Result<()> 
     let contract = inner.store(|s| s.goal(goal))?.contract;
     for c in &contract.criteria {
         if let CriterionKind::Exec { command: crit, .. } = &c.kind
-            && !crit.trim().is_empty() && command.contains(crit.trim()) {
-                inner.append(goal, EventKind::Observed { criterion: c.id.clone(), passed })?;
-            }
+            && !crit.trim().is_empty()
+            && command.contains(crit.trim())
+        {
+            inner.append(goal, EventKind::Observed { criterion: c.id.clone(), passed })?;
+        }
     }
     Ok(())
 }
@@ -424,13 +440,15 @@ async fn on_turn_end(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         None
     };
     if let Some(reason) = reason
-        && run.flags().stopping.is_none() && !run.flags().submitted {
-            let inner = inner.clone();
-            let g = g.to_string();
-            tokio::spawn(async move {
-                let _ = pause(&inner, &g, reason, &format!("已花费 ${cost:.2}")).await;
-            });
-        }
+        && run.flags().stopping.is_none()
+        && !run.flags().submitted
+    {
+        let inner = inner.clone();
+        let g = g.to_string();
+        tokio::spawn(async move {
+            let _ = pause(&inner, &g, reason, &format!("已花费 ${cost:.2}")).await;
+        });
+    }
     Ok(())
 }
 
@@ -438,9 +456,10 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
     let g = run.goal_id.as_str();
     if !req.is_dialog() {
         if req.method == "notify"
-            && let Some(m) = req.message.filter(|m| !m.is_empty()) {
-                inner.append(g, EventKind::Note { text: m })?;
-            }
+            && let Some(m) = req.message.filter(|m| !m.is_empty())
+        {
+            inner.append(g, EventKind::Note { text: m })?;
+        }
         return Ok(());
     }
     let title = req.title.clone().unwrap_or_default();

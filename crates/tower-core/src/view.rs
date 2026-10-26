@@ -4,12 +4,12 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::Millis;
 use crate::contract::{Budget, Contract, Criterion};
 use crate::event::{EventKind, Source};
 use crate::honesty::{ClaimKind, Consistency, Progress};
 use crate::lifecycle::{LifecycleState, PauseReason};
 use crate::mode::Mode;
-use crate::Millis;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]

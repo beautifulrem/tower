@@ -21,7 +21,10 @@ pub(crate) fn insert_event(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &
 fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Result<()> {
     match e {
         EventKind::ContractRatified { contract } => {
-            tx.execute("UPDATE goals SET contract = ?2 WHERE id = ?1", params![goal_id, serde_json::to_string(contract)?])?;
+            tx.execute(
+                "UPDATE goals SET contract = ?2 WHERE id = ?1",
+                params![goal_id, serde_json::to_string(contract)?],
+            )?;
         }
         EventKind::StateChanged { from, to, reason, .. } => {
             let current: String = tx.query_row("SELECT state FROM goals WHERE id = ?1", [goal_id], |r| r.get(0))?;
@@ -187,9 +190,8 @@ impl Store {
 
     /// Trace page, newest first, before `before_seq` (exclusive).
     pub fn trace(&self, goal_id: &str, before_seq: Option<i64>, limit: u32) -> Result<Vec<TraceEntry>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT * FROM events WHERE goal_id = ?1 AND seq < ?2 ORDER BY seq DESC LIMIT ?3",
-        )?;
+        let mut stmt =
+            self.conn.prepare("SELECT * FROM events WHERE goal_id = ?1 AND seq < ?2 ORDER BY seq DESC LIMIT ?3")?;
         let rows = stmt.query_map(params![goal_id, before_seq.unwrap_or(i64::MAX), limit], row_to_trace)?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
@@ -224,11 +226,14 @@ mod tests {
 
     fn goal(s: &mut Store) -> String {
         let p = s
-            .add_project(NewProject { name: "a".into(), root: "/a".into(), base_branch: "main".into(), test_command: None })
+            .add_project(NewProject {
+                name: "a".into(),
+                root: "/a".into(),
+                base_branch: "main".into(),
+                test_command: None,
+            })
             .unwrap();
-        s.create_goal(NewGoal { project_id: p.id, title: "t".into(), contract: Contract::quick("x", None) })
-            .unwrap()
-            .id
+        s.create_goal(NewGoal { project_id: p.id, title: "t".into(), contract: Contract::quick("x", None) }).unwrap().id
     }
 
     #[test]

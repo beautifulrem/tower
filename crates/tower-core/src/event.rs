@@ -56,8 +56,12 @@ impl Source {
 #[serde(rename_all = "snake_case", tag = "kind")]
 #[ts(export)]
 pub enum EventKind {
-    GoalCreated { title: String },
-    ContractRatified { contract: Contract },
+    GoalCreated {
+        title: String,
+    },
+    ContractRatified {
+        contract: Contract,
+    },
     StateChanged {
         from: LifecycleState,
         to: LifecycleState,
@@ -66,18 +70,46 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         note: String,
     },
-    WorkspacePrepared { workspace: String, base_commit: String },
-    SessionAttached { session_file: String },
-    RunStarted { run_no: u32, purpose: String },
-    RunEnded { run_no: u32, outcome: String },
-    ModeChanged { mode: Mode },
+    WorkspacePrepared {
+        workspace: String,
+        base_commit: String,
+    },
+    SessionAttached {
+        session_file: String,
+    },
+    RunStarted {
+        run_no: u32,
+        purpose: String,
+    },
+    RunEnded {
+        run_no: u32,
+        outcome: String,
+    },
+    ModeChanged {
+        mode: Mode,
+    },
     /// The text sent to the engine (prompt, steer, follow-up). Shown in the
     /// trace marked as "Tower 注入" so every injected token is visible.
-    Injected { channel: String, text: String },
-    ToolStarted { call_id: String, tool: String, summary: String },
-    ToolEnded { call_id: String, tool: String, is_error: bool, summary: String, duration_ms: i64 },
+    Injected {
+        channel: String,
+        text: String,
+    },
+    ToolStarted {
+        call_id: String,
+        tool: String,
+        summary: String,
+    },
+    ToolEnded {
+        call_id: String,
+        tool: String,
+        is_error: bool,
+        summary: String,
+        duration_ms: i64,
+    },
     /// One assistant message, truncated for the trace.
-    AssistantMessage { text: String },
+    AssistantMessage {
+        text: String,
+    },
     Claim {
         claim_id: String,
         claim: ClaimKind,
@@ -85,10 +117,24 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         criterion: Option<String>,
     },
-    Submitted { summary: String },
-    Pinned { pin: String, files: u32, additions: u32, deletions: u32 },
-    VerifyStarted { pin: String },
-    SetupFinished { command: String, ok: bool, exit_code: Option<i32>, duration_ms: i64 },
+    Submitted {
+        summary: String,
+    },
+    Pinned {
+        pin: String,
+        files: u32,
+        additions: u32,
+        deletions: u32,
+    },
+    VerifyStarted {
+        pin: String,
+    },
+    SetupFinished {
+        command: String,
+        ok: bool,
+        exit_code: Option<i32>,
+        duration_ms: i64,
+    },
     CriterionResult {
         criterion: String,
         pin: String,
@@ -97,18 +143,48 @@ pub enum EventKind {
         duration_ms: i64,
         output_tail: String,
     },
-    VerifyFinished { pin: String, passed: bool, env_error: bool },
+    VerifyFinished {
+        pin: String,
+        passed: bool,
+        env_error: bool,
+    },
     /// Agent-environment observation: a command matching a criterion ran there.
-    Observed { criterion: String, passed: bool },
-    InboxOpened { item_id: String, title: String },
-    InboxResolved { item_id: String, response: String },
-    Steered { text: String },
-    HumanCheck { criterion: String, checked: bool },
-    ClaimReviewed { claim_id: String, approved: bool },
-    CostUpdated { total_usd: f64 },
-    BranchWritten { branch: String, commit: String },
-    EngineError { message: String },
-    Note { text: String },
+    Observed {
+        criterion: String,
+        passed: bool,
+    },
+    InboxOpened {
+        item_id: String,
+        title: String,
+    },
+    InboxResolved {
+        item_id: String,
+        response: String,
+    },
+    Steered {
+        text: String,
+    },
+    HumanCheck {
+        criterion: String,
+        checked: bool,
+    },
+    ClaimReviewed {
+        claim_id: String,
+        approved: bool,
+    },
+    CostUpdated {
+        total_usd: f64,
+    },
+    BranchWritten {
+        branch: String,
+        commit: String,
+    },
+    EngineError {
+        message: String,
+    },
+    Note {
+        text: String,
+    },
 }
 
 impl EventKind {

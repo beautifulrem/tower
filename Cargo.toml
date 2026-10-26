@@ -14,7 +14,6 @@ members = [
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
-license = "MIT"
 repository = "https://github.com/beautifulrem/tower"
 
 [workspace.dependencies]
@@ -52,3 +51,9 @@ all = { level = "warn", priority = -1 }
 codegen-units = 1
 lto = "thin"
 strip = true
+
+# Proc macros and build scripts must keep their symbols: stripping them makes
+# rustc unable to load the proc-macro dylibs on macOS.
+[profile.release.build-override]
+strip = false
+debug = false

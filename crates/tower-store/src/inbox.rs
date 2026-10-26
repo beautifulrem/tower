@@ -78,9 +78,8 @@ impl Store {
 
     /// Open items, most urgent first, then oldest first.
     pub fn open_inbox_items(&self) -> Result<Vec<InboxItem>> {
-        let mut stmt = self
-            .conn
-            .prepare(&format!("{ITEM_SQL} WHERE i.resolved_at IS NULL ORDER BY i.urgency, i.created_at"))?;
+        let mut stmt =
+            self.conn.prepare(&format!("{ITEM_SQL} WHERE i.resolved_at IS NULL ORDER BY i.urgency, i.created_at"))?;
         let rows = stmt.query_map([], row_to_item)?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
@@ -95,10 +94,8 @@ impl Store {
             return Err(StoreError::Conflict("这一项已经处理过了".into()));
         }
         let now = self.now();
-        self.conn.execute(
-            "UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1",
-            params![id, now, response],
-        )?;
+        self.conn
+            .execute("UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1", params![id, now, response])?;
         self.append(&item.goal_id, EventKind::InboxResolved { item_id: id.into(), response: response.into() })?;
         Ok(Resolved { item, engine_ref })
     }
@@ -107,9 +104,8 @@ impl Store {
     /// questions when the engine died. Returns how many were withdrawn.
     pub fn withdraw_inbox(&mut self, goal_id: &str, kinds: &[InboxKind], reason: &str) -> Result<usize> {
         let mut stmt = self.conn.prepare("SELECT id, kind FROM inbox WHERE goal_id = ?1 AND resolved_at IS NULL")?;
-        let open: Vec<(String, String)> = stmt
-            .query_map([goal_id], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<rusqlite::Result<_>>()?;
+        let open: Vec<(String, String)> =
+            stmt.query_map([goal_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
         drop(stmt);
         let kinds: Vec<String> = kinds.iter().map(enum_str).collect();
         let mut n = 0;
@@ -153,7 +149,12 @@ mod tests {
     fn inbox_orders_by_urgency_and_resolves_once() {
         let (mut s, clock) = store();
         let p = s
-            .add_project(NewProject { name: "a".into(), root: "/a".into(), base_branch: "main".into(), test_command: None })
+            .add_project(NewProject {
+                name: "a".into(),
+                root: "/a".into(),
+                base_branch: "main".into(),
+                test_command: None,
+            })
             .unwrap();
         let g = s
             .create_goal(NewGoal { project_id: p.id, title: "t".into(), contract: Contract::quick("x", None) })

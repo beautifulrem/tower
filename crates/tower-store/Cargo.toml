@@ -4,7 +4,6 @@ description = "Single-writer SQLite event store and projections for Tower."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
 
 [dependencies]
 tower-core.workspace = true

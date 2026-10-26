@@ -9,14 +9,37 @@ use std::path::Path;
 
 /// Package-manager caches under the home directory that installs need.
 const CACHE_DIRS: &[&str] = &[
-    ".npm", ".pnpm-store", ".cache", ".yarn", ".bun", ".cargo/registry", ".cargo/git", ".rustup/tmp",
-    "Library/Caches", "Library/pnpm", "go/pkg/mod", ".gradle", ".m2",
+    ".npm",
+    ".pnpm-store",
+    ".cache",
+    ".yarn",
+    ".bun",
+    ".cargo/registry",
+    ".cargo/git",
+    ".rustup/tmp",
+    "Library/Caches",
+    "Library/pnpm",
+    "go/pkg/mod",
+    ".gradle",
+    ".m2",
 ];
 
 /// Credential stores the agent must not read.
 const SECRET_DIRS: &[&str] = &[
-    ".ssh", ".aws", ".gnupg", ".config/gh", ".docker", ".kube", ".azure", ".config/gcloud",
-    ".pi/agent/auth.json", ".netrc", ".npmrc", ".pypirc", ".git-credentials", ".tower/tower.db",
+    ".ssh",
+    ".aws",
+    ".gnupg",
+    ".config/gh",
+    ".docker",
+    ".kube",
+    ".azure",
+    ".config/gcloud",
+    ".pi/agent/auth.json",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    ".git-credentials",
+    ".tower/tower.db",
     "Library/Keychains",
 ];
 

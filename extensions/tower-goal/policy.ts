@@ -181,3 +181,19 @@ export function shellQuote(s: string): string {
 export function sandboxed(command: string, profile: string): string {
 	return `exec /usr/bin/sandbox-exec -f ${shellQuote(profile)} /bin/bash -c ${shellQuote(command)}`;
 }
+
+/**
+ * Pi's bash has no timeout unless the model asks for one; a command that
+ * hangs (a search of the whole disk, a server left in the foreground) would
+ * hold the run until the stall alarm. Commands get five minutes unless the
+ * model asks for another limit.
+ */
+export const DEFAULT_COMMAND_TIMEOUT_SECS = 300;
+
+export function withDefaultTimeout<T>(params: T): T {
+	const p = params as { timeout?: unknown };
+	if (p && typeof p === "object" && p.timeout === undefined) {
+		return { ...p, timeout: DEFAULT_COMMAND_TIMEOUT_SECS } as T;
+	}
+	return params;
+}

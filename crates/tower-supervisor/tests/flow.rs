@@ -783,3 +783,18 @@ async fn verification_leaves_nothing_running() {
     let left = String::from_utf8_lossy(&ps.stdout).lines().filter(|l| l.trim() == "sleep 4321").count();
     assert_eq!(left, 0, "a process from the verification survived it");
 }
+
+/// An agent that keeps trying to read outside its workspace (looking for
+/// the held-out tests, say) is not stopped, but review says so.
+#[tokio::test(flavor = "multi_thread")]
+async fn probing_outside_the_workspace_is_reported() {
+    let h = harness("probe").await;
+    let id = create(&h).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!(g.state, LifecycleState::InReview, "a medium finding does not hold the goal");
+    let d = h.sup.goal(&id).unwrap();
+    let hit = d.sentinels.iter().find(|s| s.sentinel == "sandbox_probing").expect("reported");
+    assert!(hit.detail.contains("5"), "{}", hit.detail);
+    let trace = h.sup.trace(&id, None, 1000).unwrap();
+    assert!(trace.iter().any(|e| matches!(e.event, EventKind::ToolEnded { denied: true, is_error: true, .. })));
+}

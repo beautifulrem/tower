@@ -538,6 +538,9 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             let duration_ms = call.as_ref().map(|c| c.started.elapsed().as_millis() as i64).unwrap_or(0);
             let text = tower_pi::result_text(&result);
             let target = call.as_ref().map(|c| summarize::tool_call(&tool, &c.args, &run.workspace));
+            // A refusal is a failure, whatever the command's exit status.
+            let denied = sandbox_denied(&text);
+            let is_error = is_error || denied;
             inner.append(
                 g,
                 EventKind::ToolEnded {
@@ -547,6 +550,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                     summary: summarize::tool_result(&text),
                     duration_ms,
                     target,
+                    denied,
                 },
             )?;
             run.flags().last_activity = Some(Instant::now());
@@ -959,4 +963,14 @@ mod tests {
         assert!(!same_command("npm test || true", "npm test"));
         assert!(!same_command("npm test -- --grep cart", "npm test"));
     }
+}
+
+/// Whether a tool's output shows the sandbox refusing an access (the
+/// kernel's EPERM, as shells and Node print it).
+pub(crate) fn sandbox_denied(text: &str) -> bool {
+    let t = text.to_ascii_lowercase();
+    t.contains("operation not permitted")
+        || t.contains("eperm:")
+        || t.contains("sandbox-exec: ")
+        || t.contains("deny(1)")
 }

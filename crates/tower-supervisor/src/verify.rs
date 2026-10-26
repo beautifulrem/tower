@@ -20,6 +20,8 @@ use crate::{Inner, Result, invalid, run};
 
 const SETUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const MIN_FREE: u64 = 2_000_000_000;
+/// Sandbox refusals in one goal that make it a pattern rather than an accident.
+const PROBING_THRESHOLD: usize = 5;
 
 /// Free space on the volume holding `path`, from `df`.
 fn free_bytes(path: &Path) -> Option<u64> {
@@ -127,6 +129,25 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
         })
         .collect();
     let mut hits = tower_core::sentinel::scan_with(&files, &rec.contract.scope, &commands, lang);
+    // Repeated refusals by the sandbox: the agent looked for something
+    // outside its workspace (often the held-out tests).
+    let denied = inner.store(|s| s.denied_tools(goal))?;
+    if denied.len() >= PROBING_THRESHOLD {
+        let n = denied.len();
+        let last: Vec<&str> = denied.iter().rev().take(5).map(String::as_str).collect();
+        let list = last.join("\n");
+        let detail = tr!(
+            lang,
+            "沙箱拒绝了 {n} 次越界访问，最近几次：\n{list}",
+            "The sandbox refused {n} accesses outside the workspace; the latest:\n{list}"
+        );
+        hits.push(tower_core::sentinel::SentinelHit {
+            sentinel: "sandbox_probing".into(),
+            severity: 2,
+            title: tower_core::i18n::sentinel_title("sandbox_probing", lang).unwrap_or_default().into(),
+            detail,
+        });
+    }
     for h in &hits {
         append_hit(inner, goal, h)?;
     }

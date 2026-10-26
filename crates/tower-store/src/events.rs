@@ -259,6 +259,21 @@ impl Store {
         Ok(out)
     }
 
+    /// The targets of every tool call the sandbox refused, oldest first.
+    pub fn denied_tools(&self, goal_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT * FROM events INDEXED BY events_goal_kind WHERE goal_id = ?1 AND kind = 'tool_ended' ORDER BY seq",
+        )?;
+        let rows = stmt.query_map(params![goal_id], row_to_trace)?;
+        let mut out = Vec::new();
+        for r in rows {
+            if let EventKind::ToolEnded { denied: true, tool, target, .. } = r?.event {
+                out.push(target.unwrap_or(tool));
+            }
+        }
+        Ok(out)
+    }
+
     /// The most recent event of a kind, used e.g. to find the last failure.
     pub fn last_event(&self, goal_id: &str, kind: &str) -> Result<Option<TraceEntry>> {
         use rusqlite::OptionalExtension;

@@ -56,10 +56,10 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
         EventKind::SessionAttached { session_file } => {
             tx.execute("UPDATE goals SET session_file = ?2 WHERE id = ?1", params![goal_id, session_file])?;
         }
-        EventKind::RunStarted { run_no, purpose, .. } => {
+        EventKind::RunStarted { run_no, purpose, start_pin } => {
             tx.execute(
-                "INSERT INTO runs (goal_id, run_no, purpose, started_at) VALUES (?1, ?2, ?3, ?4)",
-                params![goal_id, run_no, purpose, at],
+                "INSERT INTO runs (goal_id, run_no, purpose, started_at, start_pin) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![goal_id, run_no, purpose, at, start_pin],
             )?;
             tx.execute(
                 "UPDATE goals SET run_no = ?2, run_started_at = ?3,

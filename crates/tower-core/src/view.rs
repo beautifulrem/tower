@@ -188,6 +188,8 @@ pub struct RunView {
     pub started_at: Millis,
     pub ended_at: Option<Millis>,
     pub outcome: Option<String>,
+    /// The workspace snapshot when the run began; rolling back needs it.
+    pub start_pin: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -209,6 +211,8 @@ pub struct GoalDetail {
     pub sentinels: Vec<crate::sentinel::SentinelHit>,
     /// Git-ignored files copied into the workspace (e.g. `.env`).
     pub local_files: Vec<String>,
+    /// The branch acceptance writes (or updates) in the user's repository.
+    pub branch_preview: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -449,6 +453,8 @@ pub struct EnvironmentStatus {
     pub pi_version: Option<String>,
     pub git_version: Option<String>,
     pub data_dir: String,
+    /// The oldest Pi version Tower supports, e.g. `1.4.0`.
+    pub min_pi_version: String,
     /// Programs the in-app demo needs that are missing (e.g. `node`).
     pub demo_missing: Vec<String>,
     /// The same problems as `issues`, as plain sentences.

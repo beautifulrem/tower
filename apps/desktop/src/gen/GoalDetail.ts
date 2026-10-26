@@ -19,4 +19,8 @@ sentinels: Array<SentinelHit>,
 /**
  * Git-ignored files copied into the workspace (e.g. `.env`).
  */
-local_files: Array<string>, };
+local_files: Array<string>, 
+/**
+ * The branch acceptance writes (or updates) in the user's repository.
+ */
+branch_preview: string, };

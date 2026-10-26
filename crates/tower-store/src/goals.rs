@@ -478,7 +478,7 @@ impl Store {
             .collect();
 
         let mut stmt = self.conn.prepare(
-            "SELECT run_no, purpose, started_at, ended_at, outcome FROM runs WHERE goal_id = ?1 ORDER BY run_no",
+            "SELECT run_no, purpose, started_at, ended_at, outcome, start_pin FROM runs WHERE goal_id = ?1 ORDER BY run_no",
         )?;
         let runs = stmt
             .query_map([id], |r| {
@@ -488,6 +488,7 @@ impl Store {
                     started_at: r.get(2)?,
                     ended_at: r.get(3)?,
                     outcome: r.get(4)?,
+                    start_pin: r.get(5)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -523,6 +524,8 @@ impl Store {
                     _ => None,
                 })
                 .unwrap_or_default(),
+            // Written by the supervisor, which knows the naming rule.
+            branch_preview: String::new(),
         })
     }
 }

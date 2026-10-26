@@ -235,7 +235,9 @@ impl Supervisor {
     /// The goal page. Does not mark the goal viewed; call [`Self::mark_viewed`]
     /// when the human leaves the page so the next briefing starts there.
     pub fn goal(&self, id: &str) -> Result<GoalDetail> {
-        self.inner.store(|s| s.detail(id))
+        let mut detail = self.inner.store(|s| s.detail(id))?;
+        detail.branch_preview = actions::branch_name(&self.inner.store(|s| s.goal(id))?);
+        Ok(detail)
     }
 
     pub fn mark_viewed(&self, id: &str) -> Result<()> {

@@ -558,12 +558,19 @@ async function bridgeMain() {
 			return;
 		}
 		if (m.method === "session/request_permission") {
-			// Only Tower's own tools exist, and they gate themselves.
+			// Tower's own tools gate themselves and are allowed here; anything
+			// else (a tool the agent should not have) is refused.
 			const options = (params.options ?? []) as Json[];
-			const allow = options.find((o) => o.kind === "allow_once") ?? options.find((o) => o.kind === "allow_always");
+			const call = (params.toolCall ?? {}) as Json;
+			const meta = ((call._meta ?? {}) as Json).claudeCode as Json | undefined;
+			const name = String(meta?.toolName ?? call.title ?? "");
+			const ours = name.startsWith("mcp__tower__");
+			const pick = ours
+				? (options.find((o) => o.kind === "allow_once") ?? options.find((o) => o.kind === "allow_always"))
+				: (options.find((o) => o.kind === "reject_once") ?? options.find((o) => o.kind === "reject_always"));
 			send({
 				id: m.id,
-				result: { outcome: allow ? { outcome: "selected", optionId: allow.optionId } : { outcome: "cancelled" } },
+				result: { outcome: pick ? { outcome: "selected", optionId: pick.optionId } : { outcome: "cancelled" } },
 			});
 			return;
 		}

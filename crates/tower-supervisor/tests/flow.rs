@@ -505,7 +505,14 @@ async fn the_phone_page_answers_with_the_pairing_token_only() {
     let h = harness("ask").await;
     assert!(!h.sup.remote_info().enabled);
     let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    h.sup.save_settings(Settings { remote_enabled: true, remote_port: port, ..h.sup.settings() }).unwrap();
+    h.sup
+        .save_settings(Settings {
+            remote_enabled: true,
+            remote_port: port,
+            remote_local_network: true,
+            ..h.sup.settings()
+        })
+        .unwrap();
     let info = h.sup.remote_info();
     assert!(info.enabled && info.qr_svg.contains("<svg"));
     let token = h.sup.settings().remote_token;

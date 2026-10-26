@@ -365,8 +365,14 @@ impl Supervisor {
         }
         self.inner.store(|s| s.save_settings(&settings))?;
         *self.inner.models.lock().unwrap_or_else(PoisonError::into_inner) = None;
-        let remote_changed = (before.remote_enabled, before.remote_port, &before.remote_token)
-            != (settings.remote_enabled, settings.remote_port, &settings.remote_token);
+        let remote_changed =
+            (before.remote_enabled, before.remote_port, &before.remote_token, before.remote_local_network)
+                != (
+                    settings.remote_enabled,
+                    settings.remote_port,
+                    &settings.remote_token,
+                    settings.remote_local_network,
+                );
         if remote_changed {
             self.apply_remote()?;
         }
@@ -379,7 +385,8 @@ impl Supervisor {
     fn apply_remote(&self) -> Result<()> {
         let s = self.inner.settings();
         if s.remote_enabled {
-            self.inner.remote.start(&self.inner, s.remote_port, s.remote_token).map_err(|e| {
+            let host = remote::listen_host(&self.inner.env, s.remote_local_network);
+            self.inner.remote.start(&self.inner, &host, s.remote_port, s.remote_token).map_err(|e| {
                 invalid(tr!(
                     self.inner.lang(),
                     "无法在端口 {port} 上提供手机页面：{e}",
@@ -399,7 +406,12 @@ impl Supervisor {
         if !s.remote_enabled {
             return RemoteInfo { enabled: false, links: Vec::new(), qr_svg: String::new(), tailscale: false };
         }
-        let addrs = remote::addresses(&self.inner.env);
+        let mut addrs = remote::addresses(&self.inner.env);
+        // Only addresses it actually listens on.
+        let host = remote::listen_host(&self.inner.env, s.remote_local_network);
+        if host != "0.0.0.0" {
+            addrs.retain(|a| *a == host);
+        }
         let tailscale = addrs.first().is_some_and(|a| a.starts_with("100."));
         let links: Vec<String> =
             addrs.iter().map(|a| format!("http://{a}:{}/#{}", s.remote_port, s.remote_token)).collect();

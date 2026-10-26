@@ -44,6 +44,7 @@ fn answers(url: &str) -> bool {
 
 /// Starts the app, captures `url` into `out`, stops the app. Returns why
 /// there is no screenshot otherwise.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn capture(
     dir: &Path,
     env: &[(String, String)],
@@ -51,6 +52,7 @@ pub(crate) async fn capture(
     start: &str,
     url: &str,
     timeout: Duration,
+    network: bool,
     out: &Path,
 ) -> Result<PathBuf, String> {
     let browser = browser().ok_or("no Chrome, Chromium, Edge, Brave or Arc to take screenshots with")?;
@@ -108,6 +110,14 @@ pub(crate) async fn capture(
                 "--virtual-time-budget=3000",
             ])
             .arg(format!("--user-data-dir={}", profile_dir.display()))
+            // The page is the agent's code, and the browser runs outside the
+            // sandbox: without the network, everything but this machine goes
+            // to a proxy that does not exist.
+            .args(if network {
+                vec![]
+            } else {
+                vec!["--proxy-server=http://127.0.0.1:9".to_string(), "--proxy-bypass-list=<local>".to_string()]
+            })
             .arg(format!("--screenshot={}", out.display()))
             .arg(url)
             .stdout(std::process::Stdio::null())

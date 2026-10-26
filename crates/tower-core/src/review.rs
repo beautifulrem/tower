@@ -36,6 +36,9 @@ pub fn file_risks(file: &DiffFile, fence: Option<&ScopeFence>) -> Vec<(u8, Risk)
     } else if is_test && file.status == FileStatus::Modified && file.deletions > 0 {
         r.push((2, Risk::TestEdited));
     }
+    if crate::sentinel::is_test_harness(&file.path) {
+        r.push((3, Risk::TestHarness));
+    }
     if crate::sentinel::changes_expectations(file) {
         r.push((3, Risk::ExpectationChanged));
     }

@@ -263,6 +263,10 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
         "snapshots_changed" => lang.pick("更新了测试快照", "Updated test snapshots"),
         "tests_removed" => lang.pick("测试用例变少了", "Fewer test cases"),
         "expectations_changed" => lang.pick("改了测试的期望值", "Changed what a test expects"),
+        "test_harness_changed" => lang.pick(
+            "改了测试框架的配置、全局准备或 mock",
+            "Changed the test harness (runner config, global setup or mocks)",
+        ),
         "test_data_changed" => lang.pick("改了测试数据或期望输出", "Changed test data or expected outputs"),
         "passes_only_with_edited_tests" => {
             lang.pick("只有在改过的测试下才通过", "Passes only with the agent's edits to existing tests")
@@ -293,6 +297,8 @@ pub enum Risk {
     Binary,
     /// An existing test was edited (not only added to).
     TestEdited,
+    /// Test runner configuration, global setup or mocks.
+    TestHarness,
     /// An assertion now expects a different value.
     ExpectationChanged,
 }
@@ -315,6 +321,7 @@ impl Risk {
             LargeDeletion => lang.pick("大量删除", "large deletion"),
             Binary => lang.pick("二进制文件", "binary file"),
             TestEdited => lang.pick("改了已有的测试", "edits an existing test"),
+            TestHarness => lang.pick("测试框架的配置、准备或 mock", "test harness: runner config, setup or mocks"),
             ExpectationChanged => lang.pick("断言的期望值变了", "an assertion now expects something else"),
         }
     }

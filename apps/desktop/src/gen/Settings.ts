@@ -57,4 +57,9 @@ remote_enabled: boolean, remote_port: number,
 /**
  * The pairing secret every phone request must carry.
  */
-remote_token: string, };
+remote_token: string, 
+/**
+ * Also listen on the local network (unencrypted). Off: only on
+ * Tailscale's address when there is one.
+ */
+remote_local_network: boolean, };

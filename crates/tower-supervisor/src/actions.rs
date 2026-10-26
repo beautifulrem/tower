@@ -199,6 +199,7 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
 /// The most recent failing results, as rework evidence.
 fn last_failures(inner: &Inner, rec: &GoalRecord) -> Result<Vec<prompts::Failure>> {
     let detail = inner.store(|s| s.detail(&rec.id))?;
+    let holdout = inner.store(|s| s.project(&rec.project_id))?.holdout_files;
     Ok(detail
         .criteria
         .iter()
@@ -210,7 +211,7 @@ fn last_failures(inner: &Inner, rec: &GoalRecord) -> Result<Vec<prompts::Failure
                 title: cv.criterion.title.clone(),
                 command: command.clone(),
                 exit_code: v.exit_code,
-                output_tail: v.output_tail.clone(),
+                output_tail: verify::withhold_if_held_out(&holdout, command, v.output_tail.clone()),
             })
         })
         .collect())

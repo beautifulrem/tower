@@ -138,19 +138,36 @@ fn disables_body(line: &str) -> bool {
     l == "return;" || l == "return" || l.starts_with("if(false)") || l.starts_with("if(0)") || l == "iffalse:"
 }
 
-const TEST_CONFIGS: &[&str] = &[
+const TEST_CONFIGS: &[&str] = &["vite.config", "setup.cfg", "tox.ini"];
+
+/// The test harness: what decides which tests run and what they run
+/// against (runner configuration, global setup, mocks). Adding or changing
+/// any of it can make every test pass; it holds the goal for the human.
+const TEST_HARNESS: &[&str] = &[
     "jest.config",
+    "jest.setup",
     "vitest.config",
-    "vite.config",
+    "vitest.setup",
+    "vitest.workspace",
     "playwright.config",
     "karma.conf",
     ".mocharc",
     "pytest.ini",
     "conftest.py",
-    "setup.cfg",
-    "tox.ini",
     "phpunit.xml",
+    "setupTests",
+    "test-setup",
+    "setup-tests",
 ];
+
+/// Whether `path` is part of the test harness.
+pub fn is_test_harness(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    TEST_HARNESS.iter().any(|h| name.starts_with(h))
+        || path.contains("__mocks__/")
+        || path.starts_with("spec/support/")
+        || path.contains("/spec/support/")
+}
 
 /// Test configuration inside general manifests: lines that decide which
 /// tests run or how.
@@ -447,6 +464,11 @@ pub fn scan_with(files: &[DiffFile], scope: &Scope, commands: &[String], lang: L
     }
     if !test_command.is_empty() {
         hits.push(hit("test_command_changed", HIGH, test_command.join("\n"), lang));
+    }
+
+    let harness: Vec<&str> = files.iter().filter(|f| is_test_harness(&f.path)).map(|f| f.path.as_str()).collect();
+    if !harness.is_empty() {
+        hits.push(hit("test_harness_changed", HIGH, harness.join("\n"), lang));
     }
 
     let configs: Vec<&str> = files

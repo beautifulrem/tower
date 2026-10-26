@@ -308,6 +308,8 @@ struct Bench<'a> {
     offline: Option<std::path::PathBuf>,
     criteria: Option<std::path::PathBuf>,
     setup: Option<String>,
+    /// The project's held-out test patterns.
+    holdout: Vec<String>,
     cancel: &'a Cancel,
     _cache: RemoveOnDrop,
 }
@@ -338,7 +340,9 @@ impl<'a> Bench<'a> {
         let mut env = inner.env.without_credentials();
         env.push(("CI".into(), "1".into()));
         env.extend(criteria.env);
-        let project_setup = inner.store(|s| s.project(&rec.project_id))?.setup_command;
+        let project = inner.store(|s| s.project(&rec.project_id))?;
+        let holdout = project.holdout_files.clone();
+        let project_setup = project.setup_command;
         let setup = if !rec.contract.setup.trim().is_empty() {
             Some(rec.contract.setup.clone())
         } else if !project_setup.trim().is_empty() {
@@ -358,6 +362,7 @@ impl<'a> Bench<'a> {
             offline: offline.profile,
             criteria: criteria.profile,
             setup,
+            holdout,
             cancel,
             _cache: cleanup,
         })
@@ -436,6 +441,7 @@ impl<'a> Bench<'a> {
                 start,
                 url,
                 Duration::from_secs((*timeout_secs).max(5) as u64),
+                self.rec.contract.network,
                 &out,
             )
             .await;
@@ -585,7 +591,7 @@ impl<'a> Bench<'a> {
                     title: c.title.clone(),
                     command: command.clone(),
                     exit_code: r.exit_code,
-                    output_tail: r.output_tail,
+                    output_tail: withhold_if_held_out(&self.holdout, command, r.output_tail),
                 });
             }
         }
@@ -715,6 +721,18 @@ fn setup_may_use_network(
     Ok(matches!(approved.map(|e| e.event), Some(EventKind::SetupNetworkApproved { fingerprint }) if fingerprint == fp))
 }
 
+/// The output of a criterion that runs held-out tests goes to the human,
+/// not back to the agent: it would describe the tests the agent must not
+/// see. A criterion runs them when its command names a path under one of
+/// the held-out patterns' fixed prefixes (`holdout/**` → `holdout/`).
+pub(crate) fn withhold_if_held_out(patterns: &[String], command: &str, output: String) -> String {
+    let runs = patterns.iter().any(|p| {
+        let prefix: String = p.chars().take_while(|c| !matches!(c, '*' | '?' | '[' | '{')).collect();
+        !prefix.trim().is_empty() && command.contains(prefix.trim_end_matches('/'))
+    });
+    if runs { "(output withheld: this criterion runs held-out tests, which you cannot see)".into() } else { output }
+}
+
 /// Removes a directory when dropped (best effort).
 struct RemoveOnDrop(std::path::PathBuf);
 
@@ -748,4 +766,17 @@ pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, _verdict: &str) -> Re
 fn tail_lines(s: &str, n: usize) -> String {
     let lines: Vec<&str> = s.lines().collect();
     lines[lines.len().saturating_sub(n)..].join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::withhold_if_held_out;
+
+    #[test]
+    fn held_out_output_never_goes_back_to_the_agent() {
+        let p = vec!["holdout/**".to_string()];
+        assert!(withhold_if_held_out(&p, "sh holdout/check.sh", "secret expectation".into()).contains("withheld"));
+        assert_eq!(withhold_if_held_out(&p, "npm test", "visible".into()), "visible");
+        assert_eq!(withhold_if_held_out(&[], "sh holdout/check.sh", "visible".into()), "visible");
+    }
 }

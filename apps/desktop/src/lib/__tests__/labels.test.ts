@@ -8,7 +8,7 @@ vi.mock("../store", () => ({ state: { settings: { language: "en" } } }));
 
 const { envIssueLabel, installHint, engineMark, engineLabel } = await import("../labels");
 const { matches } = await import("../../components/Trace");
-const { matchGoal } = await import("../../components/Chrome");
+const { matchGoal } = await import("../../components/Palette");
 
 const env = { pi_version: "1.2.0 (abc)", pi_path: "/usr/bin/pi" } as EnvironmentStatus;
 const issue = (kind: EnvIssue["kind"]): EnvIssue => ({ kind, blocking: true, text: "Pi 1.2.0 太旧，Tower 需要 1.4.0 或更新的版本。", fix: null });

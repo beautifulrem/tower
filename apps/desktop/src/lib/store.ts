@@ -13,6 +13,7 @@ import type { Settings } from "../gen/Settings";
 import type { ToastLevel } from "../gen/ToastLevel";
 import type { TraceEntry } from "../gen/TraceEntry";
 import { api, errorText, onOpen, onUpdate } from "./api";
+import { ensureLocale, localeOf } from "./i18n";
 import { go, route } from "./nav";
 import { setThemeChoice } from "./theme";
 
@@ -324,6 +325,8 @@ export async function init() {
     const sub = subscribe();
     const [goals, inbox, projects, snoozed] = await Promise.all([api.goals(), api.inbox(), api.projects(), api.snoozedInbox().catch(() => [] as InboxItem[])]);
     await refreshEnvironment();
+    // The setting's language may not be the system's: its words come before the replica is shown, so no frame reads in the wrong one.
+    await ensureLocale(localeOf(state.settings?.language));
     setState(
       produce((s) => {
         s.goals = Object.fromEntries(goals.map((g) => [g.id, g]));

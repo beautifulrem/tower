@@ -7,7 +7,7 @@ import "./styles/app.css";
 import { render } from "solid-js/web";
 
 import { App } from "./App";
-import { syncDocumentLang } from "./lib/i18n";
+import { ensureLocale, syncDocumentLang, systemLocale } from "./lib/i18n";
 import { init } from "./lib/store";
 
 import { watchTheme } from "./lib/theme";
@@ -31,5 +31,7 @@ new MutationObserver((records) => {
       if (n instanceof HTMLElement) n.querySelectorAll("textarea").forEach((t) => requestAnimationFrame(() => fit(t)));
 }).observe(document.body, { childList: true, subtree: true });
 
+// The system language's words arrive before the first frame (a local file, one round trip); the setting's, if
+// it names the other language, before the replica is shown (`init` waits for them).
 void init();
-render(() => <App />, document.getElementById("root")!);
+void ensureLocale(systemLocale).then(() => render(() => <App />, document.getElementById("root")!));

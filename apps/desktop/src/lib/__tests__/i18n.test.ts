@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../store", () => ({ state: { settings: { language: "en" } } }));
 
-const { dicts, t } = await import("../i18n");
+const { en } = await import("../locales/en");
+const { zh } = await import("../locales/zh-CN");
+const { t, registerDict } = await import("../i18n");
+registerDict("en", en);
+registerDict("zh-CN", zh);
+const dicts = { "zh-CN": zh, en };
 
 type Tree = { [k: string]: string | ((p: never) => string) | Tree };
 

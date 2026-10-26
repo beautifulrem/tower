@@ -61,6 +61,9 @@ jobs:
           git config --global user.email "ci@example.com"
           cargo test --workspace
 
+      - name: Verification cost on a larger repository (2 000 files, budget 120 s)
+        run: cargo test -p tower-supervisor --test perf_verify -- --ignored --nocapture
+
       - name: Interface end-to-end tests (WebKit, accessibility)
         run: |
           pnpm --dir apps/desktop exec playwright install webkit

@@ -121,12 +121,19 @@ pub(crate) async fn capture(
         }
         None => tokio::process::Command::new(browser),
     };
+    // Its application-support folders go in its own throwaway home (on a
+    // Mac that never ran this browser they would otherwise be created in
+    // yours, which the profile does not allow).
+    cmd.env("HOME", &profile_dir);
     let shot = tokio::time::timeout(
         Duration::from_secs(45),
         cmd.args([
             "--headless=new",
             "--disable-breakpad",
             "--disable-crash-reporter",
+            // A throwaway home has no keychain entry; never ask for one.
+            "--use-mock-keychain",
+            "--password-store=basic",
             "--disable-gpu",
             "--hide-scrollbars",
             "--no-first-run",

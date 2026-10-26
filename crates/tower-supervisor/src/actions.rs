@@ -292,12 +292,50 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
             .await
             .map_err(|e| invalid(e.to_string()))??;
     inner.append(goal, EventKind::BranchWritten { branch: written.clone(), commit })?;
+    // Say what acceptance leaves unresolved instead of dropping it silently.
+    let open: Vec<&str> = detail
+        .claims
+        .iter()
+        .filter(|c| c.kind == tower_core::honesty::ClaimKind::Assumption && c.approved.is_none())
+        .map(|c| c.text.as_str())
+        .collect();
+    if !open.is_empty() {
+        let n = open.len();
+        let list = open.join(lang.pick("；", "; "));
+        inner.append(
+            goal,
+            EventKind::Note {
+                text: tr!(
+                    lang,
+                    "验收时还有 {n} 条假设没有确认：{list}",
+                    "Accepted with {n} unconfirmed assumption(s): {list}"
+                ),
+            },
+        )?;
+    }
     inner.transition(goal, Transition::Accept, None, "")?;
     inner.withdraw(goal, &[InboxKind::ReviewReady, InboxKind::Assumption], &tr!(lang, "已验收", "Accepted"));
     inner.toast(
         ToastLevel::Success,
         tr!(lang, "已写入分支 {written}（没有推送）", "Wrote branch {written} (not pushed)"),
     );
+    // The base may have moved on while the goal ran: warn now, not at merge time.
+    let base_branch = inner.store(|s| s.project(&rec.project_id))?.base_branch;
+    let git = inner.git.clone();
+    let (root, b, w) = (PathBuf::from(&rec.project_root), base_branch.clone(), written.clone());
+    if let Ok(Some(files)) = tokio::task::spawn_blocking(move || git.merge_conflicts(&root, &b, &w)).await
+        && !files.is_empty()
+    {
+        let n = files.len();
+        let list = files.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+        let text = tr!(
+            lang,
+            "{written} 与当前的 {base_branch} 会有 {n} 个文件冲突：{list}",
+            "{written} will conflict with the current {base_branch} in {n} file(s): {list}"
+        );
+        inner.append(goal, EventKind::Note { text: text.clone() })?;
+        inner.toast(ToastLevel::Warning, text);
+    }
     Ok(written)
 }
 

@@ -4,6 +4,7 @@ import type { DiffStat } from "./DiffStat";
 import type { LifecycleState } from "./LifecycleState";
 import type { LiveLine } from "./LiveLine";
 import type { Mode } from "./Mode";
+import type { Overlap } from "./Overlap";
 import type { PauseReason } from "./PauseReason";
 import type { Progress } from "./Progress";
 
@@ -15,4 +16,9 @@ needs_you: number, verified_pin: string | null, branch: string | null, created_a
 /**
  * When the current run started, for the elapsed clock.
  */
-run_started_at: number | null, last_viewed_at: number | null, };
+run_started_at: number | null, last_viewed_at: number | null, 
+/**
+ * Other unfinished goals of the same project that change some of the
+ * same files: they will likely conflict when both are merged.
+ */
+overlaps: Array<Overlap>, };

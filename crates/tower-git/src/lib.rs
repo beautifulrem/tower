@@ -347,6 +347,40 @@ impl Git {
         Ok(out.split('\0').filter(|p| !p.is_empty()).map(String::from).collect())
     }
 
+    /// Files the working tree of `workspace` changes relative to `base`,
+    /// including new untracked files. Cheap enough to poll.
+    pub fn touched(&self, workspace: &Path, base: &str) -> Result<Vec<String>> {
+        let tracked = self.run(workspace, &["diff", "--name-only", "-z", "--no-renames", base])?;
+        let untracked = self.run(workspace, &["ls-files", "--others", "--exclude-standard", "-z"])?;
+        let mut files: Vec<String> =
+            tracked.split('\0').chain(untracked.split('\0')).filter(|p| !p.is_empty()).map(String::from).collect();
+        files.sort();
+        files.dedup();
+        Ok(files)
+    }
+
+    /// Files that would conflict if `theirs` were merged into `ours`, without
+    /// touching any checkout (`git merge-tree`, git 2.38+). `None` when this
+    /// git cannot tell.
+    pub fn merge_conflicts(&self, repo: &Path, ours: &str, theirs: &str) -> Option<Vec<String>> {
+        let mut c = self.command(repo);
+        c.args(["merge-tree", "--write-tree", "--name-only", "--no-messages", ours, theirs]);
+        let out = c.output().ok()?;
+        match out.status.code() {
+            Some(0) => Some(Vec::new()),
+            // Exit 1: conflicts. The first line is the tree, then one path per line.
+            Some(1) => Some(
+                String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .skip(1)
+                    .filter(|l| !l.is_empty())
+                    .map(String::from)
+                    .collect(),
+            ),
+            _ => None,
+        }
+    }
+
     /// The URL of `origin` in the user's repository, if any.
     pub fn origin_url(&self, project_root: &Path) -> Option<String> {
         self.run_trim(project_root, &["remote", "get-url", "origin"]).ok().filter(|u| !u.is_empty())

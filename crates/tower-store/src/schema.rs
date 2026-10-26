@@ -157,6 +157,10 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (goal_id, key)
     );
     "#,
+    // 5: files each goal's workspace changes, for overlap detection
+    r#"
+    ALTER TABLE goals ADD COLUMN touched TEXT NOT NULL DEFAULT '[]';
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

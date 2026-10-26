@@ -6,7 +6,7 @@ use tower_core::view::{
     BriefingItem, ClaimView, CriterionResultView, CriterionView, DiffStat, GoalDetail, GoalSummary, LiveLine,
     ObservationView, RunView,
 };
-use tower_core::{EventKind, LifecycleState, Millis, Mode, PauseReason};
+use tower_core::{EventKind, Lang, LifecycleState, Millis, Mode, PauseReason, tr};
 
 use crate::{Result, Store, StoreError};
 
@@ -146,7 +146,11 @@ impl Store {
     pub fn update_draft(&mut self, id: &str, title: &str, contract: &Contract) -> Result<()> {
         let g = self.goal(id)?;
         if g.state != LifecycleState::Draft {
-            return Err(StoreError::Conflict("只有草稿可以直接修改合同；已批准的合同请修订".into()));
+            return Err(StoreError::Conflict(tr!(
+                self.lang(),
+                "只有草稿可以直接修改合同；已批准的合同请修订",
+                "Only a draft's contract can be edited directly; amend a ratified contract instead"
+            )));
         }
         let now = self.now();
         self.conn.execute(
@@ -292,6 +296,7 @@ impl Store {
     pub fn detail(&self, id: &str) -> Result<GoalDetail> {
         let summary = self.summary(id)?;
         let rec = self.goal(id)?;
+        let lang = self.lang();
 
         let mut results = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare(
@@ -372,12 +377,13 @@ impl Store {
                             rec.pin.as_deref(),
                         );
                         let evidence = f.map(|f| {
-                            format!(
-                                "验证器：{} {} @{}",
-                                criterion.as_deref().unwrap_or(""),
-                                if f.passed { "通过" } else { "失败" },
-                                short(&f.pin)
-                            )
+                            let (id, pin) = (criterion.as_deref().unwrap_or(""), short(&f.pin));
+                            match (lang, f.passed) {
+                                (Lang::Zh, true) => format!("验证器：{id} 通过 @{pin}"),
+                                (Lang::Zh, false) => format!("验证器：{id} 失败 @{pin}"),
+                                (Lang::En, true) => format!("Verifier: {id} passed @{pin}"),
+                                (Lang::En, false) => format!("Verifier: {id} failed @{pin}"),
+                            }
                         });
                         (consistency, evidence)
                     }
@@ -408,7 +414,7 @@ impl Store {
                 .events_since(id, since)?
                 .into_iter()
                 .filter_map(|e| {
-                    briefing::describe(&e.event).map(|text| BriefingItem { source: e.source, text, at: e.at })
+                    briefing::describe(&e.event, lang).map(|text| BriefingItem { source: e.source, text, at: e.at })
                 })
                 .collect(),
         };
@@ -449,8 +455,16 @@ mod tests {
     use crate::NewProject;
     use crate::test_support::store;
 
+    fn set_lang(s: &mut Store, code: &str) {
+        let mut cfg = s.settings().unwrap();
+        cfg.language = code.into();
+        s.save_settings(&cfg).unwrap();
+    }
+
+    /// A goal in a store whose interface language is English.
     pub(crate) fn seeded() -> (Store, crate::test_support::TestClock, String) {
         let (mut s, clock) = store();
+        set_lang(&mut s, "en");
         let p = s
             .add_project(NewProject {
                 name: "web".into(),
@@ -463,7 +477,7 @@ mod tests {
             .create_goal(NewGoal {
                 project_id: p.id,
                 title: "修复重复扣款".into(),
-                contract: Contract::quick("同一订单只扣款一次", Some("pnpm test".into())),
+                contract: Contract::quick("同一订单只扣款一次", Some("pnpm test".into()), Lang::Zh),
             })
             .unwrap();
         (s, clock, g.id)
@@ -534,7 +548,9 @@ mod tests {
         .unwrap();
         let claim = &s.detail(&id).unwrap().claims[0];
         assert_eq!(claim.consistency, Consistency::Contradicted);
-        assert!(claim.evidence.as_deref().unwrap().contains("失败"));
+        assert_eq!(claim.evidence.as_deref().unwrap(), "Verifier: C1 failed @aaa");
+        set_lang(&mut s, "zh-CN");
+        assert_eq!(s.detail(&id).unwrap().claims[0].evidence.as_deref().unwrap(), "验证器：C1 失败 @aaa");
     }
 
     #[test]
@@ -569,6 +585,9 @@ mod tests {
         s.append(&id, EventKind::Submitted { summary: "done".into() }).unwrap();
         let b = s.detail(&id).unwrap().briefing;
         assert_eq!(b.len(), 1);
-        assert_eq!(b[0].text, "Agent 称已完成");
+        assert_eq!(b[0].text, "Agent says it is done");
+        // Briefings are written on read, so they follow a language switch.
+        set_lang(&mut s, "zh-CN");
+        assert_eq!(s.detail(&id).unwrap().briefing[0].text, "Agent 称已完成");
     }
 }

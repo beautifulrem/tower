@@ -5,54 +5,61 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
+use tower_core::i18n::Choice;
 use tower_core::lifecycle::Transition;
 use tower_core::view::{InboxKind, ModelInfo};
-use tower_core::{EventKind, LifecycleState, PauseReason};
+use tower_core::{EventKind, Lang, LifecycleState, PauseReason, tr};
 use tower_pi::{Engine, EngineConfig};
 use tower_store::GoalRecord;
 
 use crate::api::{ReviewComment, ToastLevel};
 use crate::{Inner, Result, invalid, prompts, run, verify};
 
-pub const APPROVE: &str = "批准";
-pub const REJECT: &str = "驳回";
-
-const RETRY: &str = "重试";
-const CONTINUE: &str = "继续";
-const REVERIFY: &str = "重新验证";
-const ONE_MORE_REWORK: &str = "让 Agent 再返工一次";
-const RAISE_SOFT: &str = "把软上限提高到硬上限并继续";
-const DOUBLE_BUDGET: &str = "预算翻倍并继续";
-const ABANDON: &str = "放弃这个目标";
-const OVERRIDE_SENTINEL: &str = "我已确认，进入评审";
-const SENTINEL_REWORK: &str = "让 Agent 去掉这些改动后重做";
-const MORE_TIME: &str = "再给 30 分钟";
-pub const KEEP_WAITING: &str = "继续等待";
-pub const PAUSE: &str = "暂停";
-
 /// The ways out of each pause reason, offered on its Needs-You card.
-pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<&'static str> {
+pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<Choice> {
+    use Choice::*;
     match reason {
-        PauseReason::VerifyFailedLimit => vec![ONE_MORE_REWORK, ABANDON],
-        PauseReason::VerifyEnvError => vec![REVERIFY, CONTINUE, ABANDON],
-        PauseReason::BudgetSoftCap => vec![RAISE_SOFT, ABANDON],
-        PauseReason::BudgetHardCap => vec![DOUBLE_BUDGET, ABANDON],
-        PauseReason::IdleWithoutSubmit => vec![CONTINUE, ABANDON],
-        PauseReason::EngineCrash | PauseReason::ProviderError | PauseReason::PrepareFailed => vec![RETRY, ABANDON],
-        PauseReason::SentinelHigh => vec![SENTINEL_REWORK, OVERRIDE_SENTINEL, ABANDON],
-        PauseReason::WallClockCap => vec![MORE_TIME, ABANDON],
-        PauseReason::Human | PauseReason::AppQuit => vec![CONTINUE],
+        PauseReason::VerifyFailedLimit => vec![OneMoreRework, Abandon],
+        PauseReason::VerifyEnvError => vec![Reverify, Continue, Abandon],
+        PauseReason::BudgetSoftCap => vec![RaiseSoftCap, Abandon],
+        PauseReason::BudgetHardCap => vec![DoubleBudget, Abandon],
+        PauseReason::IdleWithoutSubmit => vec![Continue, Abandon],
+        PauseReason::EngineCrash | PauseReason::ProviderError | PauseReason::PrepareFailed => vec![Retry, Abandon],
+        PauseReason::SentinelHigh => vec![SentinelRework, OverrideSentinel, Abandon],
+        PauseReason::WallClockCap => vec![MoreTime, Abandon],
+        PauseReason::Human | PauseReason::AppQuit => vec![Continue],
     }
+}
+
+/// The option `response` picks, as the item stores it: the same text, or
+/// the same choice written in the other language. Items keep the language
+/// they were created in; the interface may have switched since.
+fn pick_option<'a>(options: &'a [String], response: &str) -> Option<&'a str> {
+    let choice = Choice::parse(response);
+    options
+        .iter()
+        .find(|o| *o == response)
+        .or_else(|| options.iter().find(|o| choice.is_some() && Choice::parse(o) == choice))
+        .map(String::as_str)
 }
 
 pub async fn answer(inner: &Arc<Inner>, inbox_id: &str, response: &str) -> Result<()> {
     let item = inner.store(|s| s.inbox_item(inbox_id))?;
+    let lang = inner.lang();
     if item.kind == InboxKind::ReviewReady {
-        return Err(invalid("待验收的目标请在评审中验收或要求修改"));
+        return Err(invalid(tr!(
+            lang,
+            "待验收的目标请在评审中验收或要求修改",
+            "Accept this goal or request changes in the review"
+        )));
     }
-    if !item.options.is_empty() && !item.allow_text && !item.options.iter().any(|o| o == response) {
-        return Err(invalid("请选择一个选项"));
-    }
+    // Answer with the option's own text, so the engine (or the extension
+    // that offered it) sees the label it wrote, whatever language was used.
+    let response = match pick_option(&item.options, response) {
+        Some(option) => option,
+        None if item.options.is_empty() || item.allow_text => response,
+        None => return Err(invalid(tr!(lang, "请选择一个选项", "Pick one of the options"))),
+    };
     let resolved = inner.store(|s| s.resolve_inbox(inbox_id, response))?;
     inner.emit_inbox();
     inner.emit_goal_now(&item.goal_id);
@@ -60,21 +67,27 @@ pub async fn answer(inner: &Arc<Inner>, inbox_id: &str, response: &str) -> Resul
 
     match item.kind {
         InboxKind::Question | InboxKind::Approval => {
-            let ui_id = resolved.engine_ref.ok_or_else(|| invalid("缺少引擎请求编号"))?;
+            let ui_id = resolved
+                .engine_ref
+                .ok_or_else(|| invalid(tr!(lang, "缺少引擎请求编号", "The engine request id is missing")))?;
             run::answer_dialog(inner, goal, &ui_id, response)?;
         }
         InboxKind::Assumption => {
             let claim_id = resolved.engine_ref.unwrap_or_default();
-            let approved = response == APPROVE;
-            let note = if approved || response == REJECT { "" } else { response };
+            let choice = Choice::parse(response);
+            let approved = choice == Some(Choice::Approve);
+            let note = if approved || choice == Some(Choice::Reject) { "" } else { response };
             review_claim(inner, goal, &claim_id, approved, note).await?;
         }
         InboxKind::Paused => on_pause_choice(inner, goal, response).await?,
-        InboxKind::Stalled => match response {
-            KEEP_WAITING => {}
-            PAUSE => run::pause(inner, goal, PauseReason::Human, "你在卡住提醒中暂停了它").await?,
-            text => {
-                run::steer(inner, goal, text).await?;
+        InboxKind::Stalled => match Choice::parse(response) {
+            Some(Choice::KeepWaiting) => {}
+            Some(Choice::Pause) => {
+                let note = tr!(lang, "你在卡住提醒中暂停了它", "You paused it from the stall alert");
+                run::pause(inner, goal, PauseReason::Human, &note).await?
+            }
+            _ => {
+                run::steer(inner, goal, response).await?;
             }
         },
         InboxKind::ReviewReady => {}
@@ -82,15 +95,16 @@ pub async fn answer(inner: &Arc<Inner>, inbox_id: &str, response: &str) -> Resul
     Ok(())
 }
 
-async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, choice: &str) -> Result<()> {
+async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Result<()> {
     let rec = inner.store(|s| s.goal(goal))?;
-    match choice {
-        ABANDON => run::abandon(inner, goal).await,
-        REVERIFY => {
+    let lang = inner.lang();
+    match Choice::parse(response) {
+        Some(Choice::Abandon) => run::abandon(inner, goal).await,
+        Some(Choice::Reverify) => {
             verify::spawn(inner.clone(), goal.into());
             Ok(())
         }
-        ONE_MORE_REWORK => {
+        Some(Choice::OneMoreRework) => {
             let mut c = rec.contract.clone();
             c.max_rework = rec.rework_cycles + 1;
             c.version += 1;
@@ -99,28 +113,39 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, choice: &str) -> Result
             let msg = prompts::rework(rec.rework_cycles + 1, c.max_rework, &failures);
             run::start_run(inner, goal, "rework", msg).await
         }
-        OVERRIDE_SENTINEL => {
+        Some(Choice::OverrideSentinel) => {
             // The human looked at what the sentinels found and accepts it:
             // the verified snapshot goes to review, with the override on record.
-            inner.append(goal, EventKind::Note { text: "你确认了哨兵命中的改动，目标进入评审".into() })?;
+            let text = tr!(
+                lang,
+                "你确认了哨兵命中的改动，目标进入评审",
+                "You confirmed the changes the sentinels flagged; the goal goes to review"
+            );
+            inner.append(goal, EventKind::Note { text })?;
             inner.transition(goal, Transition::VerifyStarted, None, "")?;
-            inner.transition(goal, Transition::VerifyPassed, None, "哨兵命中已由你确认")?;
-            verify::review_ready(inner, goal, "全部机器标准通过；哨兵命中已由你确认")
+            let note = tr!(lang, "哨兵命中已由你确认", "Sentinel hits confirmed by you");
+            inner.transition(goal, Transition::VerifyPassed, None, &note)?;
+            let body = tr!(
+                lang,
+                "全部机器标准通过；哨兵命中已由你确认",
+                "Every machine criterion passed; you confirmed the sentinel hits"
+            );
+            verify::review_ready(inner, goal, &body)
         }
-        SENTINEL_REWORK => {
+        Some(Choice::SentinelRework) => {
             let hits = inner.store(|s| s.sentinel_hits(goal))?;
             run::start_run(inner, goal, "rework", prompts::sentinel_rework(&hits)).await
         }
-        MORE_TIME => {
+        Some(Choice::MoreTime) => {
             let mut c = rec.contract.clone();
             c.budget.wall_minutes += 30;
             c.version += 1;
             inner.append(goal, EventKind::ContractRatified { contract: c })?;
             run::resume(inner, goal).await
         }
-        RAISE_SOFT | DOUBLE_BUDGET => {
+        Some(choice @ (Choice::RaiseSoftCap | Choice::DoubleBudget)) => {
             let mut c = rec.contract.clone();
-            if choice == RAISE_SOFT {
+            if choice == Choice::RaiseSoftCap {
                 c.budget.soft_usd = c.budget.hard_usd;
             } else {
                 c.budget.soft_usd = c.budget.hard_usd * 2.0;
@@ -130,10 +155,10 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, choice: &str) -> Result
             inner.append(goal, EventKind::ContractRatified { contract: c })?;
             run::resume(inner, goal).await
         }
-        // CONTINUE, RETRY, or free text (a note for the agent).
-        other => {
-            if !matches!(other, CONTINUE | RETRY) && !other.trim().is_empty() {
-                inner.append(goal, EventKind::Steered { text: other.trim().into() })?;
+        // Continue, retry, or free text (a note for the agent).
+        choice => {
+            if !matches!(choice, Some(Choice::Continue | Choice::Retry)) && !response.trim().is_empty() {
+                inner.append(goal, EventKind::Steered { text: response.trim().into() })?;
             }
             run::resume(inner, goal).await
         }
@@ -163,10 +188,11 @@ fn last_failures(inner: &Inner, rec: &GoalRecord) -> Result<Vec<prompts::Failure
 pub async fn review_claim(inner: &Arc<Inner>, goal: &str, claim_id: &str, approved: bool, note: &str) -> Result<()> {
     inner.append(goal, EventKind::ClaimReviewed { claim_id: claim_id.into(), approved })?;
     if !approved {
+        // A steer for the agent, so it stays in English like every prompt.
         let text = if note.trim().is_empty() {
-            "你记录的一个假设被驳回了：不要依赖它，重新判断。".to_string()
+            "The human rejected an assumption you logged: do not rely on it; reconsider.".to_string()
         } else {
-            format!("你记录的一个假设被驳回了：{}", note.trim())
+            format!("The human rejected an assumption you logged: {}", note.trim())
         };
         run::steer(inner, goal, &text).await?;
     }
@@ -181,11 +207,16 @@ pub async fn request_changes(
     comments: Vec<ReviewComment>,
 ) -> Result<()> {
     let rec = inner.store(|s| s.goal(goal))?;
+    let lang = inner.lang();
     if !matches!(rec.state, LifecycleState::InReview | LifecycleState::Accepted) {
-        return Err(invalid("只有待验收或已验收的目标可以要求修改"));
+        return Err(invalid(tr!(
+            lang,
+            "只有待验收或已验收的目标可以要求修改",
+            "Changes can only be requested on a goal that is ready to accept or accepted"
+        )));
     }
     if summary.trim().is_empty() && comments.is_empty() {
-        return Err(invalid("写下要改什么"));
+        return Err(invalid(tr!(lang, "写下要改什么", "Write what should change")));
     }
     let comments: Vec<prompts::Comment> = comments
         .into_iter()
@@ -194,7 +225,7 @@ pub async fn request_changes(
         .collect();
     let message = prompts::request_changes(summary, &comments);
     inner.append(goal, EventKind::Steered { text: message.clone() })?;
-    inner.withdraw(goal, &[InboxKind::ReviewReady], "要求修改");
+    inner.withdraw(goal, &[InboxKind::ReviewReady], &tr!(lang, "要求修改", "Changes requested"));
     inner.transition(goal, Transition::RequestChanges, None, "")?;
     run::start_run(inner, goal, "request_changes", message).await
 }
@@ -204,8 +235,13 @@ pub async fn request_changes(
 /// sealed as one commit on a new local branch in the user's repository.
 pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
     let rec = inner.store(|s| s.goal(goal))?;
+    let lang = inner.lang();
     if rec.state != LifecycleState::InReview {
-        return Err(invalid("只有待验收的目标可以验收"));
+        return Err(invalid(tr!(
+            lang,
+            "只有待验收的目标可以验收",
+            "Only a goal that is ready to accept can be accepted"
+        )));
     }
     let detail = inner.store(|s| s.detail(goal))?;
     if let Some(c) = detail
@@ -213,14 +249,19 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
         .iter()
         .find(|c| matches!(c.criterion.kind, tower_core::CriterionKind::Human) && !c.human_checked)
     {
-        return Err(invalid(format!("人工标准 {} 还没有勾选", c.criterion.id)));
+        let id = &c.criterion.id;
+        return Err(invalid(tr!(lang, "人工标准 {id} 还没有勾选", "Human criterion {id} is not checked yet")));
     }
     let (Some(ws), Some(base), Some(pin)) = (rec.workspace.clone(), rec.base_commit.clone(), rec.pin.clone()) else {
-        return Err(invalid("没有可验收的快照"));
+        return Err(invalid(tr!(lang, "没有可验收的快照", "There is no snapshot to accept")));
     };
     let has_machine = rec.contract.machine_criteria().next().is_some();
     if has_machine && rec.verified_pin.as_deref() != Some(pin.as_str()) {
-        return Err(invalid("当前快照没有通过验证，请重新验证"));
+        return Err(invalid(tr!(
+            lang,
+            "当前快照没有通过验证，请重新验证",
+            "The current snapshot has not passed verification; verify again"
+        )));
     }
     let git = inner.git.clone();
     let (ws2, base2) = (ws.clone(), base.clone());
@@ -228,11 +269,15 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
         .await
         .map_err(|e| invalid(e.to_string()))??;
     if now.pin != pin {
-        return Err(invalid("工作区在验证之后发生了变化，请重新验证"));
+        return Err(invalid(tr!(
+            lang,
+            "工作区在验证之后发生了变化，请重新验证",
+            "The workspace changed after verification; verify again"
+        )));
     }
 
     let branch = format!("tower/{}-{}", goal.to_lowercase(), slug(&rec.title));
-    let message = seal_message(&rec, &pin, has_machine);
+    let message = seal_message(&rec, &pin, has_machine, lang);
     let git = inner.git.clone();
     let root = PathBuf::from(&rec.project_root);
     let (written, commit) =
@@ -241,15 +286,19 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
             .map_err(|e| invalid(e.to_string()))??;
     inner.append(goal, EventKind::BranchWritten { branch: written.clone(), commit })?;
     inner.transition(goal, Transition::Accept, None, "")?;
-    inner.withdraw(goal, &[InboxKind::ReviewReady, InboxKind::Assumption], "已验收");
-    inner.toast(ToastLevel::Success, format!("已写入分支 {written}（没有推送）"));
+    inner.withdraw(goal, &[InboxKind::ReviewReady, InboxKind::Assumption], &tr!(lang, "已验收", "Accepted"));
+    inner.toast(
+        ToastLevel::Success,
+        tr!(lang, "已写入分支 {written}（没有推送）", "Wrote branch {written} (not pushed)"),
+    );
     Ok(written)
 }
 
-fn seal_message(rec: &GoalRecord, pin: &str, verified: bool) -> String {
+fn seal_message(rec: &GoalRecord, pin: &str, verified: bool, lang: Lang) -> String {
     let mut m = format!("{}\n\n{}\n", rec.title, rec.contract.intent.trim());
     if let Some(s) = rec.submit_summary.as_deref().filter(|s| !s.trim().is_empty()) {
-        m.push_str(&format!("\nAgent 称：{}\n", s.trim()));
+        let s = s.trim();
+        m.push_str(&tr!(lang, "\nAgent 称：{s}\n", "\nAgent says: {s}\n"));
     }
     m.push_str(&format!("\nTower-Goal: {}\n", rec.id));
     if verified {
@@ -273,15 +322,19 @@ fn slug(title: &str) -> String {
 /// only on this explicit human action.
 pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Option<String>> {
     let rec = inner.store(|s| s.goal(goal))?;
+    let lang = inner.lang();
     if !matches!(rec.state, LifecycleState::Accepted | LifecycleState::Integrated) {
-        return Err(invalid("只有已验收的目标可以推送"));
+        return Err(invalid(tr!(lang, "只有已验收的目标可以推送", "Only an accepted goal can be pushed")));
     }
-    let branch = rec.branch.clone().ok_or_else(|| invalid("还没有写入分支"))?;
+    let branch =
+        rec.branch.clone().ok_or_else(|| invalid(tr!(lang, "还没有写入分支", "No branch has been written yet")))?;
     let root = PathBuf::from(&rec.project_root);
     let git = inner.git.clone();
     let (root2, branch2) = (root.clone(), branch.clone());
     let remote = tokio::task::spawn_blocking(move || -> Result<String> {
-        let url = git.origin_url(&root2).ok_or_else(|| invalid("你的仓库没有 origin 远端"))?;
+        let url = git
+            .origin_url(&root2)
+            .ok_or_else(|| invalid(tr!(lang, "你的仓库没有 origin 远端", "Your repository has no origin remote")))?;
         git.push_branch(&root2, &branch2)?;
         Ok(url)
     })
@@ -290,19 +343,33 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
 
     let mut pr_url = None;
     if open_pr {
-        let gh = inner.env.which("gh").ok_or_else(|| invalid("已推送；没有找到 GitHub CLI（gh），无法创建 PR"))?;
+        let gh = inner.env.which("gh").ok_or_else(|| {
+            invalid(tr!(
+                lang,
+                "已推送；没有找到 GitHub CLI（gh），无法创建 PR",
+                "Pushed. The GitHub CLI (gh) was not found, so no PR was opened"
+            ))
+        })?;
         let detail = inner.store(|s| s.detail(goal))?;
         let mut body = format!("{}\n\n", rec.contract.intent.trim());
         for c in &detail.criteria {
             let mark = match &c.verified {
-                Some(v) if v.passed && !v.stale => "✅ 已由 Tower 在干净环境中验证",
-                _ if matches!(c.criterion.kind, tower_core::CriterionKind::Human) && c.human_checked => "☑️ 人工确认",
+                Some(v) if v.passed && !v.stale => {
+                    lang.pick("✅ 已由 Tower 在干净环境中验证", "✅ verified by Tower in a clean checkout")
+                }
+                _ if matches!(c.criterion.kind, tower_core::CriterionKind::Human) && c.human_checked => {
+                    lang.pick("☑️ 人工确认", "☑️ checked by a human")
+                }
                 _ => "—",
             };
             body.push_str(&format!("- **{}** {} — {mark}\n", c.criterion.id, c.criterion.title));
         }
         if let Some(s) = &rec.submit_summary {
-            body.push_str(&format!("\n> Agent 的说明（声明，未经验证）：{s}\n"));
+            body.push_str(&tr!(
+                lang,
+                "\n> Agent 的说明（声明，未经验证）：{s}\n",
+                "\n> The agent's summary (a claim, not verified): {s}\n"
+            ));
         }
         body.push_str(&format!(
             "\n<sub>Tower goal {} · verified snapshot {}</sub>\n",
@@ -328,9 +395,12 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
             .output()
             .await?;
         if !out.status.success() {
-            return Err(invalid(format!(
-                "已推送 {branch}；创建 PR 失败：{}",
-                String::from_utf8_lossy(&out.stderr).trim()
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let stderr = stderr.trim();
+            return Err(invalid(tr!(
+                lang,
+                "已推送 {branch}；创建 PR 失败：{stderr}",
+                "Pushed {branch}, but opening the PR failed: {stderr}"
             )));
         }
         pr_url = String::from_utf8_lossy(&out.stdout).lines().rev().find(|l| l.starts_with("http")).map(String::from);
@@ -339,8 +409,8 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
     inner.toast(
         ToastLevel::Success,
         match &pr_url {
-            Some(u) => format!("已推送并创建 PR：{u}"),
-            None => format!("已推送 {branch}"),
+            Some(u) => tr!(lang, "已推送并创建 PR：{u}", "Pushed and opened a PR: {u}"),
+            None => tr!(lang, "已推送 {branch}", "Pushed {branch}"),
         },
     );
     Ok(pr_url)
@@ -350,6 +420,7 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
 /// base branch, and archives integrated goals after a day.
 pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
     let accepted = inner.store(|s| s.goals_in_state(LifecycleState::Accepted))?;
+    let lang = inner.lang();
     for g in accepted {
         let Some(entry) = inner.store(|s| s.last_event(&g.id, "branch_written"))? else { continue };
         let EventKind::BranchWritten { commit, .. } = entry.event else { continue };
@@ -358,7 +429,8 @@ pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
         let merged =
             tokio::task::spawn_blocking(move || git.is_integrated(&root, &base, &commit)).await.unwrap_or(false);
         if merged {
-            inner.transition(&g.id, Transition::Integrated, None, "在本地基线分支中观测到合入")?;
+            let note = tr!(lang, "在本地基线分支中观测到合入", "Seen merged into the local base branch");
+            inner.transition(&g.id, Transition::Integrated, None, &note)?;
         }
     }
     let day = 24 * 60 * 60 * 1000;
@@ -366,7 +438,8 @@ pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
     for g in inner.store(|s| s.goals_in_state(LifecycleState::Integrated))? {
         let at = inner.store(|s| s.last_event(&g.id, "state_changed"))?.map(|e| e.at).unwrap_or(now);
         if now - at > day {
-            inner.transition(&g.id, Transition::Archive, None, "合入 24 小时后自动归档")?;
+            let note = tr!(lang, "合入 24 小时后自动归档", "Archived automatically 24 hours after merging");
+            inner.transition(&g.id, Transition::Archive, None, &note)?;
         }
     }
     Ok(())
@@ -379,7 +452,7 @@ pub async fn models(inner: &Arc<Inner>) -> Result<Vec<ModelInfo>> {
     {
         return Ok(list.clone());
     }
-    let program = inner.pi_program().ok_or_else(|| invalid("没有找到 pi"))?;
+    let program = inner.pi_program().ok_or_else(|| invalid(tr!(inner.lang(), "没有找到 pi", "Pi was not found")))?;
     let tmp = inner.paths.tmp("_models");
     std::fs::create_dir_all(&tmp)?;
     let cfg = EngineConfig {
@@ -430,5 +503,23 @@ mod tests {
         assert_eq!(slug("Fix checkout double charge!"), "fix-checkout-double-charge");
         assert_eq!(slug("修复重复扣款"), "goal");
         assert_eq!(slug("修复 checkout 扣款"), "checkout");
+    }
+
+    #[test]
+    fn answers_match_options_in_either_language() {
+        let zh = Choice::labels(&[Choice::SentinelRework, Choice::OverrideSentinel, Choice::Abandon], Lang::Zh);
+        assert_eq!(pick_option(&zh, "放弃这个目标"), Some("放弃这个目标"));
+        // The interface switched to English after the item was created.
+        assert_eq!(pick_option(&zh, "Abandon this goal"), Some("放弃这个目标"));
+        assert_eq!(pick_option(&zh, "I've checked, go to review"), Some("我已确认，进入评审"));
+        assert_eq!(pick_option(&zh, "Keep waiting"), None);
+        assert_eq!(pick_option(&zh, "just do it"), None);
+        // The extension's approval options, answered in the other language.
+        let en = Choice::labels(&[Choice::Allow, Choice::Deny], Lang::En);
+        assert_eq!(pick_option(&en, "拒绝"), Some("Deny"));
+        // Options Tower did not write (an agent's question) match exactly.
+        let free = vec!["order id".to_string(), "request id".to_string()];
+        assert_eq!(pick_option(&free, "order id"), Some("order id"));
+        assert_eq!(pick_option(&free, "Continue"), None);
     }
 }

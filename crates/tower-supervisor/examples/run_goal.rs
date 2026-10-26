@@ -44,11 +44,11 @@ async fn main() {
         Some(p) => p,
         None => sup.add_project(repo).await.expect("add project"),
     };
-    let mut contract = Contract::quick(intent.as_str(), None);
+    let mut contract = Contract::quick(intent.as_str(), None, tower_core::Lang::En);
     contract.model = model;
     contract.criteria = vec![Criterion {
         id: "C1".into(),
-        title: "验收命令通过".into(),
+        title: "The acceptance command passes".into(),
         kind: CriterionKind::Exec { command: command.clone(), timeout_secs: 300 },
     }];
     let goal = sup
@@ -72,10 +72,10 @@ async fn main() {
             let line = match &e.event {
                 EventKind::ToolStarted { tool, summary, .. } => format!("  → {tool} {summary}"),
                 EventKind::ToolEnded { is_error: true, summary, .. } => format!("    ✕ {summary}"),
-                EventKind::Claim { claim, text, .. } => format!("  Agent 称（{claim:?}）{text}"),
+                EventKind::Claim { claim, text, .. } => format!("  Agent says ({claim:?}) {text}"),
                 EventKind::StateChanged { from, to, note, .. } => format!("■ {from:?} → {to:?} {note}"),
                 EventKind::CriterionResult { criterion, passed, exit_code, .. } => {
-                    format!("⚙ 验证器 {criterion} {} (exit {exit_code:?})", if *passed { "通过" } else { "失败" })
+                    format!("⚙ verifier {criterion} {} (exit {exit_code:?})", if *passed { "passed" } else { "failed" })
                 }
                 EventKind::EngineError { message } => format!("! {message}"),
                 EventKind::CostUpdated { total_usd } => format!("  $ {total_usd:.4}"),
@@ -87,15 +87,15 @@ async fn main() {
 
         for item in sup.inbox().unwrap() {
             if item.goal_id == goal.id && matches!(item.kind, InboxKind::Question | InboxKind::Approval) {
-                let answer = item.options.first().cloned().unwrap_or_else(|| "按你的判断继续".into());
-                println!("? {} — 回答：{answer}", item.title);
+                let answer = item.options.first().cloned().unwrap_or_else(|| "Use your judgement and continue".into());
+                println!("? {} — answer: {answer}", item.title);
                 let _ = sup.answer(&item.id, &answer).await;
             }
         }
         let g = sup.goals().unwrap().into_iter().find(|g| g.id == goal.id).unwrap();
         if matches!(g.state, LifecycleState::InReview | LifecycleState::Paused | LifecycleState::Abandoned) {
             println!(
-                "\n结果：{:?} {:?} · 已验证 {}/{} · 返工 {} · ${:.4} · {:.0}s",
+                "\nresult: {:?} {:?} · verified {}/{} · rework {} · ${:.4} · {:.0}s",
                 g.state,
                 g.pause_reason,
                 g.progress.verified,
@@ -106,15 +106,15 @@ async fn main() {
             );
             let d = sup.goal(&goal.id).unwrap();
             if let Some(s) = d.submit_summary {
-                println!("Agent 称（提交说明）：{s}");
+                println!("Agent says (submit summary): {s}");
             }
             if let Some(ws) = d.workspace {
-                println!("工作区：{ws}");
+                println!("workspace: {ws}");
             }
             break;
         }
         if started.elapsed() > Duration::from_secs(900) {
-            println!("超时");
+            println!("timed out");
             break;
         }
     }

@@ -8,6 +8,7 @@ use crate::Millis;
 use crate::contract::{Budget, Contract, Criterion};
 use crate::event::{EventKind, Source};
 use crate::honesty::{ClaimKind, Consistency, Progress};
+use crate::i18n::Lang;
 use crate::lifecycle::{LifecycleState, PauseReason};
 use crate::mode::Mode;
 
@@ -318,19 +319,25 @@ pub struct Settings {
     /// `cursor`). Empty means detect.
     #[serde(default)]
     pub editor: String,
-    /// Interface and agent language: `zh-CN` or `en`.
+    /// Interface and agent language: `zh-CN` or `en`. A new install follows
+    /// the system language ([`crate::i18n::system_language`]).
     #[serde(default = "default_language")]
     pub language: String,
 }
 
 fn default_language() -> String {
-    "zh-CN".into()
+    crate::i18n::system_language().code().into()
 }
 
 impl Settings {
+    /// The interface language.
+    pub fn lang(&self) -> Lang {
+        Lang::from_code(&self.language)
+    }
+
     /// The language the agent writes human-facing text in.
     pub fn agent_language(&self) -> &'static str {
-        if self.language.starts_with("en") { "English" } else { "Simplified Chinese" }
+        self.lang().pick("Simplified Chinese", "English")
     }
 }
 

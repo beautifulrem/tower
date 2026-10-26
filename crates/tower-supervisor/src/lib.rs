@@ -29,7 +29,7 @@ use tower_core::view::{
     EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
     TraceEntry,
 };
-use tower_core::{EventKind, LifecycleState, Mode, PauseReason};
+use tower_core::{EventKind, Lang, LifecycleState, Mode, PauseReason, tr};
 use tower_git::{Git, GitError};
 use tower_pi::EngineError;
 use tower_store::{NewGoal, NewInboxItem, NewProject, ProjectPatch, Store, StoreError};
@@ -180,6 +180,12 @@ impl Inner {
         self.store(|s| s.settings()).unwrap_or_default()
     }
 
+    /// The interface language, for text created now (inbox items, notes,
+    /// toasts, errors). Stored text keeps the language it was written in.
+    pub fn lang(&self) -> Lang {
+        self.settings().lang()
+    }
+
     pub fn pi_program(&self) -> Option<PathBuf> {
         let configured = self.settings().pi_path;
         if !configured.trim().is_empty() {
@@ -295,13 +301,18 @@ impl Supervisor {
     async fn recover(&self) {
         let inner = &self.inner;
         let running = inner.store(|s| s.goals_in_state(LifecycleState::Running)).unwrap_or_default();
+        let lang = inner.lang();
         for g in running {
             // The process that ran it is gone (crash or forced quit): close the run.
             let _ = inner.append(&g.id, EventKind::RunEnded { run_no: g.run_no, outcome: "interrupted".into() });
-            inner.withdraw(&g.id, &[InboxKind::Question, InboxKind::Approval], "Tower 重新启动");
+            inner.withdraw(
+                &g.id,
+                &[InboxKind::Question, InboxKind::Approval],
+                &tr!(lang, "Tower 重新启动", "Tower restarted"),
+            );
             let _ = inner.set_mode(&g.id, Mode::Idle);
-            let _ =
-                inner.transition(&g.id, Transition::Pause { reason: PauseReason::AppQuit }, None, "上次退出时仍在运行");
+            let note = tr!(lang, "上次退出时仍在运行", "Still running when Tower last quit");
+            let _ = inner.transition(&g.id, Transition::Pause { reason: PauseReason::AppQuit }, None, &note);
         }
         for state in [LifecycleState::Claimed, LifecycleState::Verifying] {
             for g in inner.store(|s| s.goals_in_state(state)).unwrap_or_default() {
@@ -323,8 +334,9 @@ impl Supervisor {
     /// Pauses every running goal so it resumes on next launch (`ADR-017`).
     pub async fn shutdown(&self) {
         let runs: Vec<String> = self.inner.runs.lock().expect("runs lock").keys().cloned().collect();
+        let note = tr!(self.inner.lang(), "Tower 退出", "Tower quit");
         for id in runs {
-            let _ = run::pause(&self.inner, &id, PauseReason::AppQuit, "Tower 退出").await;
+            let _ = run::pause(&self.inner, &id, PauseReason::AppQuit, &note).await;
         }
         for (_, c) in self.inner.verifications.lock().expect("verify lock").drain() {
             c.cancel();
@@ -342,19 +354,30 @@ impl Supervisor {
             out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
         });
         let git_version = inner.git.version().ok();
+        let lang = inner.lang();
         let mut problems = Vec::new();
         if pi.is_none() {
-            problems.push(
-                "没有找到 pi。请先安装 Pi（npm i -g @earendil-works/pi-coding-agent），或在设置中指定路径。".into(),
-            );
+            problems.push(tr!(
+                lang,
+                "没有找到 pi。请先安装 Pi（npm i -g @earendil-works/pi-coding-agent），或在设置中指定路径。",
+                "Pi was not found. Install it (npm i -g @earendil-works/pi-coding-agent) or set its path in Settings."
+            ));
         } else if pi_version.is_none() {
-            problems.push("pi 无法运行。请检查设置中的路径。".into());
+            problems.push(tr!(
+                lang,
+                "pi 无法运行。请检查设置中的路径。",
+                "Pi does not run. Check its path in Settings."
+            ));
         }
         if git_version.is_none() {
-            problems.push("没有找到 git。".into());
+            problems.push(tr!(lang, "没有找到 git。", "git was not found."));
         }
         if !sandbox::available() {
-            problems.push("这台机器上没有 OS 沙箱：Agent 的命令以你的权限运行。".into());
+            problems.push(tr!(
+                lang,
+                "这台机器上没有 OS 沙箱：Agent 的命令以你的权限运行。",
+                "No OS sandbox on this machine: the agent's commands run with your permissions."
+            ));
         }
         EnvironmentStatus {
             pi_path: pi.map(|p| p.display().to_string()),
@@ -398,7 +421,7 @@ impl Supervisor {
     pub async fn review(&self, id: &str, since: Option<String>) -> Result<ReviewView> {
         let rec = self.inner.store(|s| s.goal(id))?;
         let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else {
-            return Err(invalid("这个目标还没有工作区"));
+            return Err(invalid(tr!(self.inner.lang(), "这个目标还没有工作区", "This goal has no workspace yet")));
         };
         let git = self.inner.git.clone();
         let pin = match rec.pin.clone() {
@@ -429,7 +452,7 @@ impl Supervisor {
             additions: files.iter().map(|f| f.additions).sum(),
             deletions: files.iter().map(|f| f.deletions).sum(),
         };
-        let units = build_units(&files, Some(&rec.contract.scope));
+        let units = build_units(&files, Some(&rec.contract.scope), self.inner.lang());
         Ok(ReviewView { goal_id: id.into(), base_commit: base, from, pin, stat, units, files })
     }
 
@@ -437,13 +460,23 @@ impl Supervisor {
         self.inner.settings()
     }
 
+    /// The interface language from the settings.
+    pub fn lang(&self) -> Lang {
+        self.inner.lang()
+    }
+
+    /// Saves settings. A language change applies to everything created from
+    /// now on and to everything derived on read; the shell rebuilds its menu.
     pub fn save_settings(&self, settings: Settings) -> Result<()> {
+        // Errors speak the language being chosen, so switching reads right.
+        let lang = settings.lang();
         if settings.max_concurrent == 0 || settings.max_concurrent > 10 {
-            return Err(invalid("并发上限必须在 1 到 10 之间"));
+            return Err(invalid(tr!(lang, "并发上限必须在 1 到 10 之间", "Concurrent goals must be between 1 and 10")));
         }
         for ext in self.inner.extensions(&settings).iter().skip(1) {
             if !ext.is_file() {
-                return Err(invalid(format!("找不到扩展文件：{}", ext.display())));
+                let path = ext.display();
+                return Err(invalid(tr!(lang, "找不到扩展文件：{path}", "Extension file not found: {path}")));
             }
         }
         self.inner.store(|s| s.save_settings(&settings))?;
@@ -458,7 +491,7 @@ impl Supervisor {
     }
 
     pub fn validate_contract(&self, contract: &Contract) -> Vec<ContractIssue> {
-        contract.validate()
+        contract.validate(self.inner.lang())
     }
 
     // ---- projects -----------------------------------------------------------
@@ -466,10 +499,14 @@ impl Supervisor {
     pub async fn add_project(&self, path: &str) -> Result<ProjectView> {
         let git = self.inner.git.clone();
         let p = PathBuf::from(path);
+        let lang = self.inner.lang();
         let (root, branch) = tokio::task::spawn_blocking(move || -> Result<(PathBuf, String)> {
-            let root = git.repo_root(&p).map_err(|_| invalid("这个文件夹不是 git 仓库"))?;
+            let root = git
+                .repo_root(&p)
+                .map_err(|_| invalid(tr!(lang, "这个文件夹不是 git 仓库", "This folder is not a git repository")))?;
             let branch = git.current_branch(&root).unwrap_or_else(|_| "main".into());
-            git.resolve(&root, &branch).map_err(|_| invalid("仓库还没有任何提交"))?;
+            git.resolve(&root, &branch)
+                .map_err(|_| invalid(tr!(lang, "仓库还没有任何提交", "The repository has no commits yet")))?;
             Ok((root, branch))
         })
         .await
@@ -484,11 +521,14 @@ impl Supervisor {
     }
 
     pub fn update_project(&self, id: &str, patch: &ProjectPatch) -> Result<ProjectView> {
+        let lang = self.inner.lang();
         if patch.base_branch.trim().is_empty() {
-            return Err(invalid("基线分支不能为空"));
+            return Err(invalid(tr!(lang, "基线分支不能为空", "The base branch cannot be empty")));
         }
         for p in &patch.local_files {
-            globset::Glob::new(p).map_err(|e| invalid(format!("无效的本地文件模式 {p}：{e}")))?;
+            globset::Glob::new(p).map_err(|e| {
+                invalid(tr!(lang, "无效的本地文件模式 {p}：{e}", "Invalid local file pattern {p}: {e}"))
+            })?;
         }
         let p = self.inner.store(|s| s.update_project(id, patch))?;
         self.emit_projects();
@@ -512,7 +552,7 @@ impl Supervisor {
     pub async fn create_goal(&self, input: NewGoalInput) -> Result<GoalSummary> {
         let title = input.title.trim();
         if title.is_empty() {
-            return Err(invalid("标题不能为空"));
+            return Err(invalid(tr!(self.inner.lang(), "标题不能为空", "The title cannot be empty")));
         }
         let mut contract = input.contract;
         contract.version = 1;
@@ -529,12 +569,16 @@ impl Supervisor {
     /// The one-line quick path: intent in, ratified minimal contract out.
     pub async fn quick_goal(&self, project_id: &str, intent: &str) -> Result<GoalSummary> {
         let intent = intent.trim();
+        let settings = self.inner.settings();
         if intent.is_empty() {
-            return Err(invalid("写一句你想要的结果"));
+            return Err(invalid(tr!(
+                settings.lang(),
+                "写一句你想要的结果",
+                "Write one sentence about the result you want"
+            )));
         }
         let project = self.inner.store(|s| s.project(project_id))?;
-        let settings = self.inner.settings();
-        let mut contract = Contract::quick(intent, project.test_command.clone());
+        let mut contract = Contract::quick(intent, project.test_command.clone(), settings.lang());
         contract.model = settings.default_model.clone();
         contract.thinking = settings.default_thinking.clone();
         let title: String = intent.chars().take(48).collect();
@@ -549,14 +593,19 @@ impl Supervisor {
 
     pub async fn ratify(&self, id: &str) -> Result<()> {
         let rec = self.inner.store(|s| s.goal(id))?;
+        let lang = self.inner.lang();
         if rec.state != LifecycleState::Draft {
-            return Err(invalid("只有草稿可以批准"));
+            return Err(invalid(tr!(lang, "只有草稿可以批准", "Only a draft can be ratified")));
         }
-        let issues = rec.contract.validate();
+        let issues = rec.contract.validate(lang);
         if let Some(ContractIssue::Error { message, .. }) =
             issues.iter().find(|i| matches!(i, ContractIssue::Error { .. }))
         {
-            return Err(invalid(format!("合同还不能批准：{message}")));
+            return Err(invalid(tr!(
+                lang,
+                "合同还不能批准：{message}",
+                "The contract cannot be ratified yet: {message}"
+            )));
         }
         self.inner.append(id, EventKind::ContractRatified { contract: rec.contract })?;
         self.inner.transition(id, Transition::Ratify, None, "")?;
@@ -570,11 +619,12 @@ impl Supervisor {
         if rec.state == LifecycleState::Draft {
             return self.update_draft(id, &rec.title, &contract);
         }
+        let lang = self.inner.lang();
         if rec.state.is_terminal() {
-            return Err(invalid("已结束的目标不能修订合同"));
+            return Err(invalid(tr!(lang, "已结束的目标不能修订合同", "An ended goal's contract cannot be amended")));
         }
         if !contract.is_ratifiable() {
-            return Err(invalid("修订后的合同有错误"));
+            return Err(invalid(tr!(lang, "修订后的合同有错误", "The amended contract has errors")));
         }
         contract.version = rec.contract.version + 1;
         self.inner.append(id, EventKind::ContractRatified { contract })?;
@@ -583,7 +633,8 @@ impl Supervisor {
     }
 
     pub async fn pause(&self, id: &str) -> Result<()> {
-        run::pause(&self.inner, id, PauseReason::Human, "你暂停了它").await
+        let note = tr!(self.inner.lang(), "你暂停了它", "You paused it");
+        run::pause(&self.inner, id, PauseReason::Human, &note).await
     }
 
     pub async fn resume(&self, id: &str) -> Result<()> {
@@ -606,13 +657,18 @@ impl Supervisor {
 
     pub async fn retry_verify(&self, id: &str) -> Result<()> {
         let rec = self.inner.store(|s| s.goal(id))?;
+        let lang = self.inner.lang();
         if !matches!(rec.state, LifecycleState::InReview | LifecycleState::Paused | LifecycleState::Claimed) {
-            return Err(invalid("现在不能重新验证"));
+            return Err(invalid(tr!(lang, "现在不能重新验证", "This goal cannot be verified again right now")));
         }
         if self.inner.run_of(id).is_some() {
-            return Err(invalid("Agent 正在运行，先暂停"));
+            return Err(invalid(tr!(lang, "Agent 正在运行，先暂停", "The agent is running; pause it first")));
         }
-        self.inner.withdraw(id, &[InboxKind::Paused, InboxKind::ReviewReady], "重新验证");
+        self.inner.withdraw(
+            id,
+            &[InboxKind::Paused, InboxKind::ReviewReady],
+            &tr!(lang, "重新验证", "Verifying again"),
+        );
         verify::spawn(self.inner.clone(), id.to_string());
         Ok(())
     }
@@ -627,7 +683,8 @@ impl Supervisor {
 
     pub fn archive(&self, id: &str) -> Result<()> {
         self.inner.transition(id, Transition::Archive, None, "")?;
-        self.inner.withdraw(id, &[InboxKind::ReviewReady, InboxKind::Assumption, InboxKind::Paused], "已归档");
+        let reason = tr!(self.inner.lang(), "已归档", "Archived");
+        self.inner.withdraw(id, &[InboxKind::ReviewReady, InboxKind::Assumption, InboxKind::Paused], &reason);
         Ok(())
     }
 
@@ -641,7 +698,11 @@ impl Supervisor {
     pub async fn remove_workspace(&self, id: &str) -> Result<()> {
         let rec = self.inner.store(|s| s.goal(id))?;
         if !rec.state.is_terminal() {
-            return Err(invalid("只有已归档或已放弃的目标可以删除工作区"));
+            return Err(invalid(tr!(
+                self.inner.lang(),
+                "只有已归档或已放弃的目标可以删除工作区",
+                "Only an archived or abandoned goal's workspace can be removed"
+            )));
         }
         let paths = self.inner.paths.clone();
         let goal = id.to_string();
@@ -671,11 +732,11 @@ impl Supervisor {
     }
 
     /// Opens a goal's workspace in the user's editor, a terminal, or Finder.
-    /// Editing while the goal is paused is the "我来改" path: the next resume
+    /// Editing while the goal is paused is the "I'll fix it" path: the next resume
     /// tells the agent which files the human changed.
     pub fn open_workspace(&self, id: &str, target: OpenTarget) -> Result<()> {
         let rec = self.inner.store(|s| s.goal(id))?;
-        let ws = rec.workspace.ok_or_else(|| invalid("这个目标还没有工作区"))?;
+        let ws = rec.workspace.ok_or_else(|| self.no_workspace())?;
         let (program, args): (PathBuf, Vec<String>) = match target {
             OpenTarget::Finder => (PathBuf::from("/usr/bin/open"), vec![ws.clone()]),
             OpenTarget::Terminal => (PathBuf::from("/usr/bin/open"), vec!["-a".into(), "Terminal".into(), ws.clone()]),
@@ -707,10 +768,10 @@ impl Supervisor {
     /// editor supports it (`code`/`cursor -g file:line`, `zed file:line`).
     pub fn open_file(&self, id: &str, path: &str, line: Option<u32>) -> Result<()> {
         let rec = self.inner.store(|s| s.goal(id))?;
-        let ws = PathBuf::from(rec.workspace.ok_or_else(|| invalid("这个目标还没有工作区"))?);
+        let ws = PathBuf::from(rec.workspace.ok_or_else(|| self.no_workspace())?);
         let file = ws.join(path);
         if !paths::real(&file).starts_with(paths::real(&ws)) {
-            return Err(invalid("路径不在工作区内"));
+            return Err(invalid(tr!(self.inner.lang(), "路径不在工作区内", "The path is outside the workspace")));
         }
         let configured = self.inner.settings().editor;
         let candidates: Vec<String> = if configured.trim().is_empty() {
@@ -752,6 +813,10 @@ impl Supervisor {
 
     pub async fn review_claim(&self, id: &str, claim_id: &str, approved: bool, note: &str) -> Result<()> {
         actions::review_claim(&self.inner, id, claim_id, approved, note).await
+    }
+
+    fn no_workspace(&self) -> Error {
+        invalid(tr!(self.inner.lang(), "这个目标还没有工作区", "This goal has no workspace yet"))
     }
 }
 

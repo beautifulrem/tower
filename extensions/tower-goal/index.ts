@@ -14,6 +14,9 @@
  *   TOWER_GOAL_ID, TOWER_WORKSPACE, TOWER_CONTRACT (path to contract.json)
  *   TOWER_SANDBOX_PROFILE  macOS Seatbelt profile for the agent's shell (S2)
  *   TOWER_TMP              the agent's private temporary directory
+ *   TOWER_LANG             the human's interface language (zh-CN or en) for
+ *                          approval reasons and options; the model always
+ *                          reads English
  *
  * Pi's built-in bash is replaced by the same tool with a spawn hook that
  * strips credential-shaped variables and, when a profile is given, runs the
@@ -27,7 +30,17 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-import { type Autonomy, type Scope, checkBash, checkWrite, sandboxed, scrubEnv } from "./policy.ts";
+import {
+	type Autonomy,
+	type Scope,
+	TEXT,
+	checkBash,
+	checkWrite,
+	isAllow,
+	langOf,
+	sandboxed,
+	scrubEnv,
+} from "./policy.ts";
 
 interface ContractFile {
 	autonomy: Autonomy;
@@ -38,6 +51,7 @@ interface ContractFile {
 const WORKSPACE = realOrSelf(process.env.TOWER_WORKSPACE ?? process.cwd());
 const SANDBOX_PROFILE = process.env.TOWER_SANDBOX_PROFILE;
 const AGENT_TMP = process.env.TOWER_TMP;
+const LANG = langOf(process.env.TOWER_LANG);
 
 function realOrSelf(p: string): string {
 	try {
@@ -82,8 +96,7 @@ function dialogTitle(payload: Record<string, unknown>): string {
 	return `tower:${JSON.stringify(payload)}`;
 }
 
-const ALLOW = "允许";
-const DENY = "拒绝";
+const OPTIONS = [TEXT.allow[LANG], TEXT.deny[LANG]];
 
 export default function towerGoal(pi: ExtensionAPI) {
 	// Read once per run: the contract cannot change under a running agent.
@@ -179,15 +192,14 @@ export default function towerGoal(pi: ExtensionAPI) {
 			if (verdict === "outside_workspace") {
 				return { block: true, reason: `Tower: ${raw} is outside this goal's workspace. Only files inside ${WORKSPACE} may be changed.` };
 			}
-			const reason =
-				verdict === "readonly" ? "合同把这个路径设为只读" : verdict === "excluded" ? "合同排除了这个路径" : "这个路径在合同的范围围栏之外";
+			const reason = TEXT[verdict];
 			const choice = await ctx.ui.select(
-				dialogTitle({ tower: "approval", tool: name, target: rel, reason }),
-				[ALLOW, DENY],
+				dialogTitle({ tower: "approval", tool: name, target: rel, reason: reason[LANG] }),
+				OPTIONS,
 			);
-			return choice === ALLOW
+			return isAllow(choice)
 				? undefined
-				: { block: true, reason: `The human declined: writing ${rel} is not allowed (${reason}). Stay inside the contract's scope or ask_user.` };
+				: { block: true, reason: `The human declined: writing ${rel} is not allowed (${reason.en}). Stay inside the contract's scope or ask_user.` };
 		}
 
 		if (name === "bash") {
@@ -195,12 +207,12 @@ export default function towerGoal(pi: ExtensionAPI) {
 			const v = checkBash(command, contract.autonomy);
 			if (v.action === "allow") return undefined;
 			const choice = await ctx.ui.select(
-				dialogTitle({ tower: "approval", tool: "bash", target: command, reason: v.reason }),
-				[ALLOW, DENY],
+				dialogTitle({ tower: "approval", tool: "bash", target: command, reason: v.reason[LANG] }),
+				OPTIONS,
 			);
-			return choice === ALLOW
+			return isAllow(choice)
 				? undefined
-				: { block: true, reason: `The human declined this command (${v.reason}). Find another way or ask_user.` };
+				: { block: true, reason: `The human declined this command (${v.reason.en}). Find another way or ask_user.` };
 		}
 
 		return undefined;

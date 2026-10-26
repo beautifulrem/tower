@@ -16,6 +16,8 @@ use std::process::{Command, Output};
 use thiserror::Error;
 use tower_core::view::{DiffFile, DiffStat};
 
+/// Low-level errors in English, like git's own output. The supervisor adds
+/// localized context where they reach the human.
 #[derive(Debug, Error)]
 pub enum GitError {
     #[error("git could not be started: {0}")]
@@ -112,7 +114,7 @@ impl Git {
 
     pub fn current_branch(&self, root: &Path) -> Result<String> {
         let b = self.run_trim(root, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
-        if b.is_empty() { Err(GitError::Invalid("HEAD 不在任何分支上".into())) } else { Ok(b) }
+        if b.is_empty() { Err(GitError::Invalid("HEAD is not on a branch".into())) } else { Ok(b) }
     }
 
     pub fn resolve(&self, root: &Path, rev: &str) -> Result<String> {
@@ -140,7 +142,7 @@ impl Git {
     ) -> Result<String> {
         let base = self.resolve(project_root, base_branch)?;
         if ws.exists() {
-            return Err(GitError::Invalid(format!("工作区已存在：{}", ws.display())));
+            return Err(GitError::Invalid(format!("workspace already exists: {}", ws.display())));
         }
         if let Some(parent) = ws.parent() {
             std::fs::create_dir_all(parent)?;
@@ -314,7 +316,9 @@ impl Git {
         }
         let mut b = globset::GlobSetBuilder::new();
         for p in patterns.iter().map(|p| p.trim()).filter(|p| !p.is_empty()) {
-            b.add(globset::Glob::new(p).map_err(|e| GitError::Invalid(format!("无效的本地文件模式 {p}：{e}")))?);
+            b.add(
+                globset::Glob::new(p).map_err(|e| GitError::Invalid(format!("invalid local file pattern {p}: {e}")))?,
+            );
         }
         let set = b.build().map_err(|e| GitError::Invalid(e.to_string()))?;
         let listed = self.run(project_root, &["ls-files", "-z", "--others", "--ignored", "--exclude-standard"])?;

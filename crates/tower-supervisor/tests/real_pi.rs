@@ -92,10 +92,11 @@ async fn a_goal_runs_through_the_real_pi() {
     )
     .await
     .unwrap();
-    sup.save_settings(Settings { pi_path: pi.display().to_string(), ..Settings::default() }).unwrap();
+    sup.save_settings(Settings { pi_path: pi.display().to_string(), language: "en".into(), ..Settings::default() })
+        .unwrap();
     let project = sup.add_project(repo.to_str().unwrap()).await.unwrap();
 
-    let mut contract = Contract::quick("按回答写入 result.txt", None);
+    let mut contract = Contract::quick("按回答写入 result.txt", None, tower_core::Lang::En);
     contract.model = "mock/scripted".into();
     contract.criteria = vec![Criterion {
         id: "C1".into(),
@@ -119,6 +120,10 @@ async fn a_goal_runs_through_the_real_pi() {
     }
     let approval = approval.unwrap_or_else(|| panic!("no approval; trace: {:#?}", sup.trace(&id, None, 500).unwrap()));
     assert!(approval.body.contains("git push origin main"), "{approval:?}");
+    // The extension wrote the card in the settings language.
+    assert_eq!(approval.title, "Approval needed: push to a remote (one-way door)");
+    assert_eq!(approval.options, ["Allow", "Deny"]);
+    // Declined with the Chinese label: it still reaches the extension as "Deny".
     sup.answer(&approval.id, "拒绝").await.unwrap();
 
     // The question arrives through the extension's dialog.

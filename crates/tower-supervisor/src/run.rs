@@ -9,9 +9,10 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use tower_core::contract::CriterionKind;
 use tower_core::honesty::ClaimKind;
+use tower_core::i18n::{Choice, pause_label, state_label};
 use tower_core::lifecycle::Transition;
 use tower_core::view::InboxKind;
-use tower_core::{EventKind, LifecycleState, Mode, PauseReason};
+use tower_core::{EventKind, Lang, LifecycleState, Mode, PauseReason, tr};
 use tower_pi::{Engine, EngineConfig, EngineOutput, PiEvent, UiAnswer, UiRequest};
 use tower_store::NewInboxItem;
 
@@ -81,7 +82,7 @@ pub async fn schedule(inner: &Arc<Inner>) {
         let (purpose, message) = if g.run_no == 0 {
             ("initial", prompts::initial(&g.title, &g.contract))
         } else {
-            ("resume", prompts::resume("等待执行槽位", &human_notes_since_last_run(inner, &g.id), &[]))
+            ("resume", prompts::resume("waiting for a free slot", &human_notes_since_last_run(inner, &g.id), &[]))
         };
         if let Err(e) = start_run(inner, &g.id, purpose, message).await {
             tracing::warn!(goal = %g.id, error = %e, "could not start run");
@@ -105,7 +106,9 @@ fn human_notes_since_last_run(inner: &Inner, goal: &str) -> Vec<String> {
 }
 
 fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Result<EngineConfig> {
-    let program = inner.pi_program().ok_or_else(|| invalid("没有找到 pi，请在设置中指定路径"))?;
+    let program = inner.pi_program().ok_or_else(|| {
+        invalid(tr!(inner.lang(), "没有找到 pi，请在设置中指定路径", "Pi was not found; set its path in Settings"))
+    })?;
     let settings = inner.settings();
     let goal_dir = inner.paths.goal_dir(&goal.id);
     let tmp = inner.paths.tmp(&goal.id);
@@ -123,6 +126,8 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
         ("TOWER_WORKSPACE".into(), ws_real.display().to_string()),
         ("TOWER_CONTRACT".into(), contract_path.display().to_string()),
         ("TOWER_TMP".into(), tmp_real.display().to_string()),
+        // The language of the extension's approval reasons and options.
+        ("TOWER_LANG".into(), settings.lang().code().into()),
         ("PI_OFFLINE".into(), "1".into()),
     ]);
     if sandbox::available() {
@@ -172,8 +177,9 @@ pub fn start_run<'a>(
 }
 
 async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, message: String) -> Result<()> {
+    let lang = inner.lang();
     if inner.run_of(goal_id).is_some() {
-        return Err(invalid("这个目标已经在运行"));
+        return Err(invalid(tr!(lang, "这个目标已经在运行", "This goal is already running")));
     }
     let mut goal = inner.store(|s| s.goal(goal_id))?;
 
@@ -200,7 +206,11 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
                 goal = inner.store(|s| s.goal(goal_id))?;
             }
             Err(e) => {
-                fail_to_start(inner, goal_id, &format!("准备工作区失败：{e}"))?;
+                fail_to_start(
+                    inner,
+                    goal_id,
+                    &tr!(lang, "准备工作区失败：{e}", "Could not prepare the workspace: {e}"),
+                )?;
                 return Err(e.into());
             }
         }
@@ -217,7 +227,7 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
     let (engine, rx) = match Engine::spawn(&cfg) {
         Ok(x) => x,
         Err(e) => {
-            fail_to_start(inner, goal_id, &format!("启动 pi 失败：{e}"))?;
+            fail_to_start(inner, goal_id, &tr!(lang, "启动 pi 失败：{e}", "Could not start Pi: {e}"))?;
             return Err(e.into());
         }
     };
@@ -251,7 +261,8 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
     inner.append(goal_id, EventKind::Injected { channel: "prompt".into(), text: message.clone() })?;
     if let Err(e) = run.engine.prompt(&message).await {
         stop_engine(inner, &run, Stop::Pause(PauseReason::PrepareFailed)).await;
-        pause_after_stop(inner, goal_id, PauseReason::PrepareFailed, &format!("发送开场消息失败：{e}"))?;
+        let detail = tr!(lang, "发送开场消息失败：{e}", "Could not send the first message: {e}");
+        pause_after_stop(inner, goal_id, PauseReason::PrepareFailed, &detail)?;
         return Err(e.into());
     }
     inner.set_mode(goal_id, Mode::Thinking)?;
@@ -302,12 +313,13 @@ async fn setup_workspace(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, ws:
         EventKind::SetupFinished { command, ok: r.passed(), exit_code: r.exit_code(), duration_ms: r.duration_ms },
     )?;
     if !r.passed() {
-        inner.append(
-            &goal.id,
-            EventKind::Note {
-                text: format!("准备命令失败，Agent 会在没有它的情况下开始：\n{}", r.output_tail)
-            },
-        )?;
+        let tail = &r.output_tail;
+        let text = tr!(
+            inner.lang(),
+            "准备命令失败，Agent 会在没有它的情况下开始：\n{tail}",
+            "The setup command failed; the agent starts without it:\n{tail}"
+        );
+        inner.append(&goal.id, EventKind::Note { text })?;
     }
     Ok(())
 }
@@ -328,15 +340,18 @@ async fn watchdog(inner: Arc<Inner>, run: Arc<Run>) {
             let inner2 = inner.clone();
             let g = run.goal_id.clone();
             let minutes = goal.contract.budget.wall_minutes;
+            let detail = tr!(inner.lang(), "本次运行已超过 {minutes} 分钟", "This run has passed {minutes} minutes");
             tokio::spawn(async move {
-                let _ = pause(&inner2, &g, PauseReason::WallClockCap, &format!("本次运行已超过 {minutes} 分钟")).await;
+                let _ = pause(&inner2, &g, PauseReason::WallClockCap, &detail).await;
             });
             break;
         }
         let quiet = run.flags().last_activity.unwrap_or(run.started).elapsed();
         let waiting = !run.flags().dialogs.is_empty();
         if quiet > QUIET && !waiting {
-            report_stall(&inner, &run, "no_progress", &format!("{} 分钟没有任何工具调用", quiet.as_secs() / 60));
+            let minutes = quiet.as_secs() / 60;
+            let detail = tr!(inner.lang(), "{minutes} 分钟没有任何工具调用", "No tool calls for {minutes} minutes");
+            report_stall(&inner, &run, "no_progress", &detail);
         }
     }
 }
@@ -348,13 +363,18 @@ fn report_stall(inner: &Arc<Inner>, run: &Arc<Run>, detector: &str, detail: &str
         return;
     }
     let g = run.goal_id.as_str();
+    let lang = inner.lang();
     let _ = inner.append(g, EventKind::Stalled { detector: detector.into(), detail: detail.into() });
     let _ = inner.open_inbox(NewInboxItem {
         goal_id: g.into(),
         kind: InboxKind::Stalled,
-        title: format!("可能卡住：{detail}"),
-        body: "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。".into(),
-        options: vec![actions::KEEP_WAITING.into(), actions::PAUSE.into()],
+        title: tr!(lang, "可能卡住：{detail}", "May be stuck: {detail}"),
+        body: tr!(
+            lang,
+            "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。",
+            "The agent is still running. You can keep waiting, write a steer, or pause it."
+        ),
+        options: Choice::labels(&[Choice::KeepWaiting, Choice::Pause], lang),
         allow_text: true,
         urgency: 2,
         engine_ref: None,
@@ -373,7 +393,12 @@ async fn pump(inner: Arc<Inner>, run: Arc<Run>, mut rx: mpsc::UnboundedReceiver<
         let result = match out {
             EngineOutput::Event(e) => on_event(&inner, &run, e).await,
             EngineOutput::ProtocolError(line) => inner
-                .append(&run.goal_id, EventKind::EngineError { message: format!("无法解析 pi 的输出：{line}") })
+                .append(
+                    &run.goal_id,
+                    EventKind::EngineError {
+                        message: tr!(inner.lang(), "无法解析 pi 的输出：{line}", "Could not parse Pi's output: {line}"),
+                    },
+                )
                 .map(|_| ()),
             EngineOutput::Exited { code, stderr_tail } => {
                 on_exit(&inner, &run, code, &stderr_tail).await;
@@ -413,7 +438,9 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                     inner.append(g, EventKind::AssistantMessage { text: head(text.trim(), 8_000).into() })?;
                 }
                 if stop_reason.as_deref() == Some("error") {
-                    let msg = error.unwrap_or_else(|| "模型服务返回错误".into());
+                    let msg = error.unwrap_or_else(|| {
+                        tr!(inner.lang(), "模型服务返回错误", "The model provider returned an error")
+                    });
                     run.flags().last_error = Some(msg.clone());
                     inner.append(g, EventKind::EngineError { message: msg })?;
                 }
@@ -449,7 +476,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                             inner,
                             run,
                             &format!("repeat:{signature}"),
-                            &format!("{signature} 连续失败 {n} 次"),
+                            &tr!(inner.lang(), "{signature} 连续失败 {n} 次", "{signature} failed {n} times in a row"),
                         );
                     }
                 } else {
@@ -470,7 +497,11 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             inner.append(
                 g,
                 EventKind::Note {
-                    text: format!("模型服务出错，第 {attempt}/{max_attempts} 次重试：{error}")
+                    text: tr!(
+                        inner.lang(),
+                        "模型服务出错，第 {attempt}/{max_attempts} 次重试：{error}",
+                        "Model provider error, retry {attempt}/{max_attempts}: {error}"
+                    ),
                 },
             )?;
         }
@@ -478,8 +509,12 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
         PiEvent::TurnEnd => on_turn_end(inner, run).await?,
         PiEvent::UiRequest(req) => on_ui_request(inner, run, req)?,
         PiEvent::ExtensionError { extension, event, error } => {
-            inner
-                .append(g, EventKind::EngineError { message: format!("扩展错误（{event}，{extension}）：{error}") })?;
+            let message = tr!(
+                inner.lang(),
+                "扩展错误（{event}，{extension}）：{error}",
+                "Extension error ({event}, {extension}): {error}"
+            );
+            inner.append(g, EventKind::EngineError { message })?;
         }
         PiEvent::AgentSettled { .. } => on_settled(inner, run).await?,
         PiEvent::AgentEnd { .. } | PiEvent::Other { .. } => {}
@@ -504,9 +539,13 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
                 inner.open_inbox(NewInboxItem {
                     goal_id: g.into(),
                     kind: InboxKind::Assumption,
-                    title: "Agent 的假设待你确认".into(),
+                    title: tr!(
+                        inner.lang(),
+                        "Agent 的假设待你确认",
+                        "An assumption by the agent needs your confirmation"
+                    ),
                     body: text,
-                    options: vec![actions::APPROVE.into(), actions::REJECT.into()],
+                    options: Choice::labels(&[Choice::Approve, Choice::Reject], inner.lang()),
                     allow_text: true,
                     urgency: 4,
                     engine_ref: Some(claim_id.clone()),
@@ -527,7 +566,7 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
                                 claim_id: format!("{claim_id}/{id}"),
                                 claim: ClaimKind::CriterionMet,
                                 text: if evidence.is_empty() {
-                                    format!("{id} 已满足")
+                                    tr!(inner.lang(), "{id} 已满足", "{id} is met")
                                 } else {
                                     evidence.to_string()
                                 },
@@ -594,8 +633,9 @@ async fn on_turn_end(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     {
         let inner = inner.clone();
         let g = g.to_string();
+        let detail = tr!(inner.lang(), "已花费 ${cost:.2}", "Spent ${cost:.2}");
         tokio::spawn(async move {
-            let _ = pause(&inner, &g, reason, &format!("已花费 ${cost:.2}")).await;
+            let _ = pause(&inner, &g, reason, &detail).await;
         });
     }
     Ok(())
@@ -612,13 +652,17 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
         return Ok(());
     }
     let title = req.title.clone().unwrap_or_default();
+    let lang = inner.lang();
     let item = match title.strip_prefix("tower:").and_then(|j| serde_json::from_str::<Value>(j).ok()) {
         Some(p) if p.get("tower").and_then(Value::as_str) == Some("approval") => {
             let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
             NewInboxItem {
                 goal_id: g.into(),
                 kind: InboxKind::Approval,
-                title: format!("需要你批准：{}", s("reason")),
+                title: {
+                    let reason = s("reason");
+                    tr!(lang, "需要你批准：{reason}", "Approval needed: {reason}")
+                },
                 body: format!("{} · {}", s("tool"), s("target")),
                 options: req.options.clone(),
                 allow_text: false,
@@ -648,9 +692,17 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
         None => NewInboxItem {
             goal_id: g.into(),
             kind: InboxKind::Question,
-            title: if title.is_empty() { "扩展请求你的输入".into() } else { title },
+            title: if title.is_empty() {
+                tr!(lang, "扩展请求你的输入", "An extension asks for your input")
+            } else {
+                title
+            },
             body: req.message.clone().unwrap_or_default(),
-            options: if req.method == "confirm" { vec!["是".into(), "否".into()] } else { req.options.clone() },
+            options: if req.method == "confirm" {
+                Choice::labels(&[Choice::Yes, Choice::No], lang)
+            } else {
+                req.options.clone()
+            },
             allow_text: matches!(req.method.as_str(), "input" | "editor"),
             urgency: 1,
             engine_ref: Some(req.id.clone()),
@@ -659,7 +711,8 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
     let opened = inner.open_inbox(item)?;
     run.flags().dialogs.insert(req.id, (opened.id, req.method));
     inner.set_mode(g, Mode::WaitingOnYou)?;
-    inner.toast(ToastLevel::Warning, format!("{} 需要你：{}", g, opened.title));
+    let title = &opened.title;
+    inner.toast(ToastLevel::Warning, tr!(lang, "{g} 需要你：{title}", "{g} needs you: {title}"));
     Ok(())
 }
 
@@ -697,8 +750,9 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         return Ok(());
     }
     let inner = inner.clone();
+    let detail = tr!(inner.lang(), "提醒过一次后仍未提交", "Still no submit after one reminder");
     tokio::spawn(async move {
-        let _ = pause(&inner, &g, PauseReason::IdleWithoutSubmit, "提醒过一次后仍未提交").await;
+        let _ = pause(&inner, &g, PauseReason::IdleWithoutSubmit, &detail).await;
     });
     Ok(())
 }
@@ -722,11 +776,13 @@ async fn on_exit(inner: &Arc<Inner>, run: &Arc<Run>, code: Option<i32>, stderr_t
     let g = run.goal_id.as_str();
     remove_run(inner, run);
     let tail: String = tail(stderr_tail.trim(), 2_000).to_string();
-    let detail = format!(
-        "pi 意外退出（{}）{}",
-        code.map(|c| format!("退出码 {c}")).unwrap_or_else(|| "被信号终止".into()),
-        if tail.is_empty() { String::new() } else { format!("\n{tail}") }
-    );
+    let lang = inner.lang();
+    let how = match code {
+        Some(c) => tr!(lang, "退出码 {c}", "exit code {c}"),
+        None => tr!(lang, "被信号终止", "killed by a signal"),
+    };
+    let tail = if tail.is_empty() { String::new() } else { format!("\n{tail}") };
+    let detail = tr!(lang, "pi 意外退出（{how}）{tail}", "Pi exited unexpectedly ({how}){tail}");
     let _ = inner.append(g, EventKind::RunEnded { run_no: run.run_no, outcome: "crashed".into() });
     let _ = inner.append(g, EventKind::EngineError { message: detail.clone() });
     let _ = pause_after_stop(inner, g, PauseReason::EngineCrash, &detail);
@@ -769,23 +825,36 @@ pub fn pause_after_stop(inner: &Arc<Inner>, goal: &str, reason: PauseReason, det
     if state == LifecycleState::Paused {
         return Ok(());
     }
-    inner.withdraw(goal, &[InboxKind::Question, InboxKind::Approval], "运行已停止");
+    let lang = inner.lang();
+    inner.withdraw(goal, &[InboxKind::Question, InboxKind::Approval], &tr!(lang, "运行已停止", "The run stopped"));
     inner.set_mode(goal, Mode::Idle)?;
     inner.transition(goal, Transition::Pause { reason }, None, detail)?;
     if reason.needs_human() {
         let rec = inner.store(|s| s.goal(goal))?;
-        inner.open_inbox(NewInboxItem {
-            goal_id: goal.into(),
-            kind: InboxKind::Paused,
-            title: format!("已暂停：{}", tower_core::briefing::pause_label(reason)),
-            body: detail.into(),
-            options: actions::pause_options(reason, &rec).iter().map(|s| s.to_string()).collect(),
-            allow_text: matches!(reason, PauseReason::IdleWithoutSubmit),
-            urgency: 2,
-            engine_ref: None,
-        })?;
+        inner.open_inbox(paused_item(&rec, reason, detail, lang, matches!(reason, PauseReason::IdleWithoutSubmit)))?;
     }
     Ok(())
+}
+
+/// The Needs-You card for a pause that needs a way out.
+pub fn paused_item(
+    rec: &tower_store::GoalRecord,
+    reason: PauseReason,
+    detail: &str,
+    lang: Lang,
+    allow_text: bool,
+) -> NewInboxItem {
+    let why = pause_label(reason, lang);
+    NewInboxItem {
+        goal_id: rec.id.clone(),
+        kind: InboxKind::Paused,
+        title: tr!(lang, "已暂停：{why}", "Paused: {why}"),
+        body: detail.into(),
+        options: Choice::labels(&actions::pause_options(reason, rec), lang),
+        allow_text,
+        urgency: 2,
+        engine_ref: None,
+    }
 }
 
 /// Pauses a goal: stops its engine or verification, then records the pause.
@@ -798,7 +867,9 @@ pub async fn pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: 
         rec.state,
         LifecycleState::Ready | LifecycleState::Running | LifecycleState::Claimed | LifecycleState::Verifying
     ) {
-        return Err(invalid(format!("{}状态下不能暂停", tower_core::briefing::state_label(rec.state))));
+        let lang = inner.lang();
+        let state = state_label(rec.state, lang);
+        return Err(invalid(tr!(lang, "{state}状态下不能暂停", "A goal that is {state} cannot be paused")));
     }
     if let Some(run) = inner.run_of(goal) {
         stop_engine(inner, &run, Stop::Pause(reason)).await;
@@ -817,20 +888,21 @@ pub async fn pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: 
 /// (`docs/03` §3.2.1); this is the default "continue" for all of them.
 pub async fn resume(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     let rec = inner.store(|s| s.goal(goal))?;
+    let lang = inner.lang();
     if rec.state != LifecycleState::Paused {
-        return Err(invalid("只有已暂停的目标可以继续"));
+        return Err(invalid(tr!(lang, "只有已暂停的目标可以继续", "Only a paused goal can be resumed")));
     }
-    inner.withdraw(goal, &[InboxKind::Paused], "已继续");
+    inner.withdraw(goal, &[InboxKind::Paused], &tr!(lang, "已继续", "Resumed"));
     let reason = rec.pause_reason.unwrap_or(PauseReason::Human);
     if reason == PauseReason::VerifyEnvError {
         verify::spawn(inner.clone(), goal.into());
         return Ok(());
     }
     let edits = human_edits(inner, goal).await.unwrap_or_default();
-    let message =
-        prompts::resume(tower_core::briefing::pause_label(reason), &human_notes_since_last_run(inner, goal), &edits);
+    // The prompt is for the agent, so the reason is in English.
+    let message = prompts::resume(pause_label(reason, Lang::En), &human_notes_since_last_run(inner, goal), &edits);
     if inner.running_count() >= inner.settings().max_concurrent as usize {
-        inner.transition(goal, Transition::Resume, None, "等待执行槽位")?;
+        inner.transition(goal, Transition::Resume, None, &tr!(lang, "等待执行槽位", "Waiting for a free slot"))?;
         return Ok(());
     }
     start_run(inner, goal, "resume", message).await
@@ -860,7 +932,7 @@ pub async fn repin(inner: &Arc<Inner>, goal: &str) -> Result<Option<(String, Opt
 }
 
 /// Files the human changed in the workspace since the pause snapshot,
-/// recorded as a fact and handed to the agent on resume (`我来改`).
+/// recorded as a fact and handed to the agent on resume ("I'll fix it").
 async fn human_edits(inner: &Arc<Inner>, goal: &str) -> Result<Vec<String>> {
     let Some((new, Some(old))) = repin(inner, goal).await? else { return Ok(Vec::new()) };
     let rec = inner.store(|s| s.goal(goal))?;
@@ -885,7 +957,7 @@ pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     inner.withdraw(
         goal,
         &[InboxKind::Question, InboxKind::Approval, InboxKind::Assumption, InboxKind::Paused, InboxKind::ReviewReady],
-        "目标已放弃",
+        &tr!(inner.lang(), "目标已放弃", "The goal was abandoned"),
     );
     inner.set_mode(goal, Mode::Idle)?;
     inner.transition(goal, Transition::Abandon, None, "")?;
@@ -895,12 +967,20 @@ pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {
 
 pub async fn steer(inner: &Arc<Inner>, goal: &str, text: &str) -> Result<String> {
     let text = text.trim();
+    let lang = inner.lang();
     if text.is_empty() {
-        return Err(invalid("转向内容不能为空"));
+        return Err(invalid(tr!(lang, "转向内容不能为空", "The steer cannot be empty")));
     }
     inner.append(goal, EventKind::Steered { text: text.into() })?;
     let Some(run) = inner.run_of(goal) else {
-        inner.toast(ToastLevel::Info, "目标没有在运行：这条批注会在下次运行开始时带给 Agent");
+        inner.toast(
+            ToastLevel::Info,
+            tr!(
+                lang,
+                "目标没有在运行：这条批注会在下次运行开始时带给 Agent",
+                "The goal is not running: the agent gets this note when the next run starts"
+            ),
+        );
         return Ok("queued_for_next_run".into());
     };
     inner.append(goal, EventKind::Injected { channel: "steer".into(), text: text.into() })?;
@@ -910,10 +990,18 @@ pub async fn steer(inner: &Arc<Inner>, goal: &str, text: &str) -> Result<String>
 
 /// Answers an engine dialog previously turned into an inbox item.
 pub fn answer_dialog(inner: &Arc<Inner>, goal: &str, ui_id: &str, response: &str) -> Result<()> {
-    let run = inner.run_of(goal).ok_or_else(|| invalid("Agent 已不在运行，这个问题已失效"))?;
+    let run = inner.run_of(goal).ok_or_else(|| {
+        invalid(tr!(
+            inner.lang(),
+            "Agent 已不在运行，这个问题已失效",
+            "The agent is no longer running; this question has expired"
+        ))
+    })?;
     let method = run.flags().dialogs.remove(ui_id).map(|(_, m)| m).unwrap_or_else(|| "input".into());
     let answer = match method.as_str() {
-        "confirm" => UiAnswer::Confirmed(matches!(response, "是" | "允许" | "yes" | "true")),
+        "confirm" => UiAnswer::Confirmed(
+            matches!(Choice::parse(response), Some(Choice::Yes | Choice::Allow)) || response.trim() == "true",
+        ),
         _ if response.is_empty() => UiAnswer::Cancelled,
         _ => UiAnswer::Value(response.into()),
     };

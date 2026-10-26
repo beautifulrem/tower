@@ -205,7 +205,8 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// Sentinel findings since the latest verification started.
+    /// Sentinel findings since the latest verification started. Titles of
+    /// known sentinels follow the current language.
     pub fn sentinel_hits(&self, goal_id: &str) -> Result<Vec<tower_core::sentinel::SentinelHit>> {
         let since: i64 = self.conn.query_row(
             "SELECT COALESCE(MAX(seq), 0) FROM events WHERE goal_id = ?1 AND kind = 'verify_started'",
@@ -216,9 +217,11 @@ impl Store {
             .conn
             .prepare("SELECT * FROM events WHERE goal_id = ?1 AND kind = 'sentinel_hit' AND seq > ?2 ORDER BY seq")?;
         let rows = stmt.query_map(params![goal_id, since], row_to_trace)?;
+        let lang = self.lang();
         let mut out = Vec::new();
         for r in rows {
             if let EventKind::SentinelHit { sentinel, severity, title, detail } = r?.event {
+                let title = tower_core::i18n::sentinel_title(&sentinel, lang).map(String::from).unwrap_or(title);
                 out.push(tower_core::sentinel::SentinelHit { sentinel, severity, title, detail });
             }
         }
@@ -256,7 +259,13 @@ mod tests {
                 test_command: None,
             })
             .unwrap();
-        s.create_goal(NewGoal { project_id: p.id, title: "t".into(), contract: Contract::quick("x", None) }).unwrap().id
+        s.create_goal(NewGoal {
+            project_id: p.id,
+            title: "t".into(),
+            contract: Contract::quick("x", None, tower_core::Lang::En),
+        })
+        .unwrap()
+        .id
     }
 
     #[test]

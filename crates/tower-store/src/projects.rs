@@ -1,5 +1,7 @@
 use rusqlite::{OptionalExtension, Row, params};
+use tower_core::i18n::plural;
 use tower_core::view::ProjectView;
+use tower_core::{Lang, tr};
 
 use crate::goals::json_col;
 use crate::{Result, Store, StoreError, new_id};
@@ -41,7 +43,8 @@ fn row_to_project(r: &Row<'_>) -> rusqlite::Result<ProjectView> {
 impl Store {
     pub fn add_project(&mut self, p: NewProject) -> Result<ProjectView> {
         if self.project_by_root(&p.root)?.is_some() {
-            return Err(StoreError::Conflict(format!("项目已存在：{}", p.root)));
+            let root = &p.root;
+            return Err(StoreError::Conflict(tr!(self.lang(), "项目已存在：{root}", "Project already added: {root}")));
         }
         let id = new_id("prj");
         let now = self.now();
@@ -98,7 +101,13 @@ impl Store {
             |r| r.get(0),
         )?;
         if live > 0 {
-            return Err(StoreError::Conflict(format!("项目还有 {live} 个未结束的目标")));
+            let message = match self.lang() {
+                Lang::Zh => format!("项目还有 {live} 个未结束的目标"),
+                Lang::En => {
+                    format!("The project still has {}", plural(live as usize, "open goal", "open goals"))
+                }
+            };
+            return Err(StoreError::Conflict(message));
         }
         let tx = self.conn.transaction()?;
         for table in ["events", "runs", "claims", "criterion_results", "observations", "human_checks", "inbox"] {

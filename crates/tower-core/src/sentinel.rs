@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::contract::{Scope, ScopeFence, WriteVerdict};
+use crate::i18n::{Lang, plural, sentinel_title};
 use crate::view::{DiffFile, FileStatus, LineKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -82,8 +83,13 @@ fn removed_lines(file: &DiffFile) -> impl Iterator<Item = &str> {
     file.hunks.iter().flat_map(|h| h.lines.iter()).filter(|l| l.kind == LineKind::Del).map(|l| l.text.as_str())
 }
 
+fn hit(id: &str, severity: u8, detail: String, lang: Lang) -> SentinelHit {
+    SentinelHit { sentinel: id.into(), severity, title: sentinel_title(id, lang).unwrap_or(id).into(), detail }
+}
+
 /// Runs every sentinel over the diff between base and the verified pin.
-pub fn scan(files: &[DiffFile], scope: &Scope) -> Vec<SentinelHit> {
+/// Titles and details are written in `lang`.
+pub fn scan(files: &[DiffFile], scope: &Scope, lang: Lang) -> Vec<SentinelHit> {
     let mut hits = Vec::new();
     let fence = ScopeFence::compile(scope).ok();
 
@@ -93,12 +99,7 @@ pub fn scan(files: &[DiffFile], scope: &Scope) -> Vec<SentinelHit> {
         .map(|f| f.path.as_str())
         .collect();
     if !deleted_tests.is_empty() {
-        hits.push(SentinelHit {
-            sentinel: "test_deleted".into(),
-            severity: HIGH,
-            title: "删除了测试文件".into(),
-            detail: deleted_tests.join("\n"),
-        });
+        hits.push(hit("test_deleted", HIGH, deleted_tests.join("\n"), lang));
     }
 
     let mut skips = Vec::new();
@@ -110,12 +111,7 @@ pub fn scan(files: &[DiffFile], scope: &Scope) -> Vec<SentinelHit> {
         }
     }
     if !skips.is_empty() {
-        hits.push(SentinelHit {
-            sentinel: "test_skipped".into(),
-            severity: HIGH,
-            title: "新增了跳过或只运行部分测试的标记".into(),
-            detail: skips.join("\n"),
-        });
+        hits.push(hit("test_skipped", HIGH, skips.join("\n"), lang));
     }
 
     // Removing assertions from a test file without adding any is how a
@@ -129,16 +125,16 @@ pub fn scan(files: &[DiffFile], scope: &Scope) -> Vec<SentinelHit> {
         let removed = removed_lines(f).filter(|l| is_assert(l)).count();
         let added = added_lines(f).filter(|l| is_assert(l)).count();
         if removed > 0 && added < removed {
-            weakened.push(format!("{}：删去 {removed} 条断言，新增 {added} 条", f.path));
+            weakened.push(match lang {
+                Lang::Zh => format!("{}：删去 {removed} 条断言，新增 {added} 条", f.path),
+                Lang::En => {
+                    format!("{}: removed {}, added {added}", f.path, plural(removed, "assertion", "assertions"))
+                }
+            });
         }
     }
     if !weakened.is_empty() {
-        hits.push(SentinelHit {
-            sentinel: "assertions_removed".into(),
-            severity: 2,
-            title: "测试中的断言变少了".into(),
-            detail: weakened.join("\n"),
-        });
+        hits.push(hit("assertions_removed", 2, weakened.join("\n"), lang));
     }
 
     let mut test_command = Vec::new();
@@ -151,12 +147,7 @@ pub fn scan(files: &[DiffFile], scope: &Scope) -> Vec<SentinelHit> {
         }
     }
     if !test_command.is_empty() {
-        hits.push(SentinelHit {
-            sentinel: "test_command_changed".into(),
-            severity: HIGH,
-            title: "修改了测试命令".into(),
-            detail: test_command.join("\n"),
-        });
+        hits.push(hit("test_command_changed", HIGH, test_command.join("\n"), lang));
     }
 
     let configs: Vec<&str> = files
@@ -168,12 +159,7 @@ pub fn scan(files: &[DiffFile], scope: &Scope) -> Vec<SentinelHit> {
         .map(|f| f.path.as_str())
         .collect();
     if !configs.is_empty() {
-        hits.push(SentinelHit {
-            sentinel: "test_config_changed".into(),
-            severity: 2,
-            title: "修改了测试配置".into(),
-            detail: configs.join("\n"),
-        });
+        hits.push(hit("test_config_changed", 2, configs.join("\n"), lang));
     }
 
     let snapshots: Vec<&str> = files
@@ -182,12 +168,7 @@ pub fn scan(files: &[DiffFile], scope: &Scope) -> Vec<SentinelHit> {
         .map(|f| f.path.as_str())
         .collect();
     if !snapshots.is_empty() {
-        hits.push(SentinelHit {
-            sentinel: "snapshots_changed".into(),
-            severity: 2,
-            title: "更新了测试快照".into(),
-            detail: snapshots.join("\n"),
-        });
+        hits.push(hit("snapshots_changed", 2, snapshots.join("\n"), lang));
     }
 
     if let Some(fence) = fence {
@@ -195,18 +176,17 @@ pub fn scan(files: &[DiffFile], scope: &Scope) -> Vec<SentinelHit> {
             .iter()
             .filter_map(|f| match fence.check_write(&f.path) {
                 WriteVerdict::Allowed => None,
-                WriteVerdict::OutsideScope => Some(format!("{}（围栏外）", f.path)),
-                WriteVerdict::Excluded => Some(format!("{}（合同排除）", f.path)),
-                WriteVerdict::ReadOnly => Some(format!("{}（只读）", f.path)),
+                WriteVerdict::OutsideScope => {
+                    Some(format!("{}{}", f.path, lang.pick("（围栏外）", " (outside the scope fence)")))
+                }
+                WriteVerdict::Excluded => {
+                    Some(format!("{}{}", f.path, lang.pick("（合同排除）", " (excluded by the contract)")))
+                }
+                WriteVerdict::ReadOnly => Some(format!("{}{}", f.path, lang.pick("（只读）", " (read-only)"))),
             })
             .collect();
         if !outside.is_empty() {
-            hits.push(SentinelHit {
-                sentinel: "scope_violation".into(),
-                severity: HIGH,
-                title: "改动超出了合同的范围".into(),
-                detail: outside.join("\n"),
-            });
+            hits.push(hit("scope_violation", HIGH, outside.join("\n"), lang));
         }
     }
 
@@ -250,7 +230,7 @@ mod tests {
             file("src/cart.js", FileStatus::Modified, &["a * b"], &["a + b"]),
             file("test/cart.test.js", FileStatus::Modified, &["assert.equal(f(2), 4);"], &[]),
         ];
-        assert!(scan(&files, &Scope::default()).is_empty());
+        assert!(scan(&files, &Scope::default(), Lang::En).is_empty());
     }
 
     #[test]
@@ -265,9 +245,11 @@ mod tests {
                 &[r#"    "test": "node --test""#],
             ),
         ];
-        let hits = scan(&files, &Scope::default());
+        let hits = scan(&files, &Scope::default(), Lang::En);
         assert_eq!(ids(&hits), ["test_deleted", "test_skipped", "test_command_changed"]);
         assert!(hits.iter().all(|h| h.severity == HIGH));
+        assert_eq!(hits[0].title, "Deleted test files");
+        assert_eq!(scan(&files, &Scope::default(), Lang::Zh)[0].title, "删除了测试文件");
     }
 
     #[test]
@@ -277,7 +259,29 @@ mod tests {
             file("test/a.test.js", FileStatus::Modified, &[], &["  assert.equal(x, 1);"]),
             file("README.md", FileStatus::Modified, &["hi"], &[]),
         ];
-        let hits = scan(&files, &scope);
+        let hits = scan(&files, &scope, Lang::En);
         assert_eq!(ids(&hits), ["assertions_removed", "scope_violation"]);
+        assert_eq!(hits[0].detail, "test/a.test.js: removed 1 assertion, added 0");
+        assert_eq!(hits[1].detail, "README.md (outside the scope fence)");
+        let zh = scan(&files, &scope, Lang::Zh);
+        assert_eq!(zh[0].detail, "test/a.test.js：删去 1 条断言，新增 0 条");
+        assert_eq!(zh[1].detail, "README.md（围栏外）");
+    }
+
+    #[test]
+    fn every_sentinel_has_a_title_in_both_languages() {
+        for id in [
+            "test_deleted",
+            "test_skipped",
+            "assertions_removed",
+            "test_command_changed",
+            "test_config_changed",
+            "snapshots_changed",
+            "scope_violation",
+        ] {
+            for lang in Lang::ALL {
+                assert!(sentinel_title(id, lang).is_some(), "{id} {lang:?}");
+            }
+        }
     }
 }

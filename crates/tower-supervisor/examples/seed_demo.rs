@@ -10,9 +10,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tower_core::LifecycleState;
 use tower_core::contract::{Contract, Criterion, CriterionKind};
 use tower_core::view::{InboxKind, Settings};
+use tower_core::{Lang, LifecycleState};
 use tower_supervisor::{Config, NewGoalInput, NullSink, Paths, Supervisor};
 
 #[tokio::main]
@@ -40,18 +40,21 @@ async fn main() {
         None => sup.add_project(&repo).await.expect("add project"),
     };
 
+    // The demo speaks the language of the data directory's settings (a new
+    // one follows the system, or TOWER_LANG).
+    let lang = sup.settings().lang();
     let goal = |title: &str, intent: &str, human: bool| {
-        let mut c = Contract::quick(intent, Some("npm test".into()));
-        c.criteria[0].title = "购物车测试全部通过".into();
+        let mut c = Contract::quick(intent, Some("npm test".into()), lang);
+        c.criteria[0].title = lang.pick("购物车测试全部通过", "Cart tests pass").into();
         c.criteria.push(Criterion {
             id: "C2".into(),
-            title: "总价计算的单元测试".into(),
+            title: lang.pick("总价计算的单元测试", "Unit tests for the total").into(),
             kind: CriterionKind::Exec { command: "node --test test/cart.test.js".into(), timeout_secs: 120 },
         });
         if human {
             c.criteria.push(Criterion {
                 id: "C3".into(),
-                title: "在结账页手动核对一次总价".into(),
+                title: lang.pick("在结账页手动核对一次总价", "Check one total by hand on the checkout page").into(),
                 kind: CriterionKind::Human,
             });
         }
@@ -60,12 +63,30 @@ async fn main() {
         NewGoalInput { project_id: project.id.clone(), title: title.into(), contract: c, ratify: true }
     };
 
-    for (title, intent, human) in [
-        ("修复购物车总价计算", "购物车总价应为单价乘以数量，修复 total()", true),
-        ("折扣规则对齐产品文档", "询问折扣顺序后修复 total()，保证折扣不会让总价为负", false),
-        ("清理购物车计算的边界情况", "返工演示：先给出不完整的修复，验证失败后再修好", false),
-        ("调研结账慢的原因", "卡住演示：调研结账流程为什么慢", false),
-    ] {
+    // Words in the intent pick the demo engine's script (ask, rework, stall).
+    let goals = match lang {
+        Lang::Zh => [
+            ("修复购物车总价计算", "购物车总价应为单价乘以数量，修复 total()", true),
+            ("折扣规则对齐产品文档", "询问折扣顺序后修复 total()，保证折扣不会让总价为负", false),
+            ("清理购物车计算的边界情况", "返工演示：先给出不完整的修复，验证失败后再修好", false),
+            ("调研结账慢的原因", "卡住演示：调研结账流程为什么慢", false),
+        ],
+        Lang::En => [
+            ("Fix the cart total", "The cart total should be price times quantity; fix total()", true),
+            (
+                "Align discount rules with the product doc",
+                "Ask about the discount order, then fix total() so a discount never makes the total negative",
+                false,
+            ),
+            (
+                "Clean up cart edge cases",
+                "Rework demo: submit an incomplete fix first, then fix it after verification fails",
+                false,
+            ),
+            ("Find out why checkout is slow", "Stall demo: investigate why the checkout flow is slow", false),
+        ],
+    };
+    for (title, intent, human) in goals {
         let g = sup.create_goal(goal(title, intent, human)).await.expect("create");
         println!("created {} {}", g.id, g.title);
     }

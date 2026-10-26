@@ -19,7 +19,8 @@ const PREFIXES: &[(&str, usize)] = &[
     ("npm_", 30),
 ];
 
-const MASK: &str = "[已脱敏]";
+/// Language-neutral, like the command output it appears in.
+const MASK: &str = "[redacted]";
 
 fn is_token_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | '+' | '=')
@@ -102,8 +103,8 @@ mod tests {
     #[test]
     fn masks_known_token_shapes() {
         let s = "key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123 done";
-        assert_eq!(redact(s), "key sk-ant-[已脱敏] done");
-        assert!(redact("ghp_0123456789abcdefghijklmnopqrstuvwxyz").starts_with("ghp_[已脱敏]"));
+        assert_eq!(redact(s), "key sk-ant-[redacted] done");
+        assert!(redact("ghp_0123456789abcdefghijklmnopqrstuvwxyz").starts_with("ghp_[redacted]"));
     }
 
     #[test]
@@ -114,7 +115,7 @@ mod tests {
 
     #[test]
     fn masks_assignments_and_private_keys() {
-        assert_eq!(redact("DB_PASSWORD=hunter2hunter2"), "DB_PASSWORD=[已脱敏]");
+        assert_eq!(redact("DB_PASSWORD=hunter2hunter2"), "DB_PASSWORD=[redacted]");
         let pem = "a\n-----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY-----\nb";
         let r = redact(pem);
         assert!(!r.contains("MIIabc"));

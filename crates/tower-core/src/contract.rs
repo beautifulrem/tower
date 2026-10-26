@@ -9,6 +9,9 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::i18n::Lang;
+use crate::tr;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Contract {
@@ -122,13 +125,14 @@ pub enum ContractIssue {
 
 impl Contract {
     /// The minimal contract the quick path ratifies in one keystroke: the
-    /// intent plus whatever test command the project already declares.
-    pub fn quick(intent: impl Into<String>, test_command: Option<String>) -> Self {
+    /// intent plus whatever test command the project already declares. The
+    /// criterion title is written in `lang`.
+    pub fn quick(intent: impl Into<String>, test_command: Option<String>, lang: Lang) -> Self {
         let criteria = test_command
             .map(|command| {
                 vec![Criterion {
                     id: "C1".into(),
-                    title: "现有测试全部通过".into(),
+                    title: tr!(lang, "现有测试全部通过", "All existing tests pass"),
                     kind: CriterionKind::Exec { command, timeout_secs: 600 },
                 }]
             })
@@ -158,40 +162,52 @@ impl Contract {
         self.criteria.iter().filter(|c| matches!(c.kind, CriterionKind::Human))
     }
 
-    pub fn validate(&self) -> Vec<ContractIssue> {
+    /// Problems with the contract, with messages in `lang`.
+    pub fn validate(&self, lang: Lang) -> Vec<ContractIssue> {
         let mut issues = Vec::new();
-        let err = |field: &str, message: &str| ContractIssue::Error { field: field.into(), message: message.into() };
-        let warn = |field: &str, message: &str| ContractIssue::Warning { field: field.into(), message: message.into() };
+        let err = |field: &str, message: String| ContractIssue::Error { field: field.into(), message };
+        let warn = |field: &str, message: String| ContractIssue::Warning { field: field.into(), message };
 
         if self.intent.trim().is_empty() {
-            issues.push(err("intent", "目的不能为空"));
+            issues.push(err("intent", tr!(lang, "目的不能为空", "The intent cannot be empty")));
         }
         let mut seen = std::collections::HashSet::new();
         for c in &self.criteria {
+            let id = &c.id;
             if !seen.insert(c.id.as_str()) {
-                issues.push(err("criteria", &format!("标准编号 {} 重复", c.id)));
+                issues.push(err("criteria", tr!(lang, "标准编号 {id} 重复", "Criterion id {id} is used twice")));
             }
             if c.title.trim().is_empty() {
-                issues.push(err("criteria", &format!("标准 {} 缺少说明", c.id)));
+                issues.push(err("criteria", tr!(lang, "标准 {id} 缺少说明", "Criterion {id} needs a description")));
             }
             if let CriterionKind::Exec { command, timeout_secs } = &c.kind {
                 if command.trim().is_empty() {
-                    issues.push(err("criteria", &format!("标准 {} 缺少命令", c.id)));
+                    issues.push(err("criteria", tr!(lang, "标准 {id} 缺少命令", "Criterion {id} needs a command")));
                 }
                 if *timeout_secs == 0 {
-                    issues.push(err("criteria", &format!("标准 {} 的超时必须大于 0", c.id)));
+                    issues.push(err(
+                        "criteria",
+                        tr!(lang, "标准 {id} 的超时必须大于 0", "Criterion {id} needs a timeout above 0"),
+                    ));
                 }
             }
         }
         if self.machine_criteria().next().is_none() {
-            issues.push(warn("criteria", "没有可执行的验收标准：Agent 的“完成”无法被机器验证，只能由你人工判断"));
+            issues.push(warn(
+                "criteria",
+                tr!(
+                    lang,
+                    "没有可执行的验收标准：Agent 的“完成”无法被机器验证，只能由你人工判断",
+                    "No executable acceptance criteria: a machine cannot verify the agent's \"done\", only you can judge it"
+                ),
+            ));
         }
         // Written so that NaN also fails.
         let positive = |v: f64| v.partial_cmp(&0.0) == Some(std::cmp::Ordering::Greater);
         if !positive(self.budget.soft_usd) || !positive(self.budget.hard_usd) {
-            issues.push(err("budget", "预算必须大于 0"));
+            issues.push(err("budget", tr!(lang, "预算必须大于 0", "The budget must be above 0")));
         } else if self.budget.soft_usd > self.budget.hard_usd {
-            issues.push(err("budget", "软上限不能高于硬上限"));
+            issues.push(err("budget", tr!(lang, "软上限不能高于硬上限", "The soft cap cannot be above the hard cap")));
         }
         for (field, globs) in [
             ("scope.include", &self.scope.include),
@@ -200,7 +216,7 @@ impl Contract {
         ] {
             for g in globs {
                 if Glob::new(g).is_err() {
-                    issues.push(err(field, &format!("无效的路径模式：{g}")));
+                    issues.push(err(field, tr!(lang, "无效的路径模式：{g}", "Invalid path pattern: {g}")));
                 }
             }
         }
@@ -208,7 +224,7 @@ impl Contract {
     }
 
     pub fn is_ratifiable(&self) -> bool {
-        !self.validate().iter().any(|i| matches!(i, ContractIssue::Error { .. }))
+        !self.validate(Lang::En).iter().any(|i| matches!(i, ContractIssue::Error { .. }))
     }
 }
 
@@ -266,22 +282,39 @@ mod tests {
 
     #[test]
     fn quick_contract_is_ratifiable_and_warns_without_tests() {
-        let with = Contract::quick("修复登录", Some("pnpm test".into()));
+        let with = Contract::quick("修复登录", Some("pnpm test".into()), Lang::Zh);
         assert!(with.is_ratifiable());
-        assert!(with.validate().is_empty());
+        assert!(with.validate(Lang::Zh).is_empty());
+        assert_eq!(with.criteria[0].title, "现有测试全部通过");
+        assert_eq!(
+            Contract::quick("Fix login", Some("pnpm test".into()), Lang::En).criteria[0].title,
+            "All existing tests pass"
+        );
 
-        let without = Contract::quick("修复登录", None);
+        let without = Contract::quick("修复登录", None, Lang::Zh);
         assert!(without.is_ratifiable());
-        assert!(matches!(without.validate()[..], [ContractIssue::Warning { .. }]));
+        assert!(matches!(without.validate(Lang::Zh)[..], [ContractIssue::Warning { .. }]));
     }
 
     #[test]
     fn invalid_contracts_are_rejected() {
-        let mut c = Contract::quick("  ", Some(" ".into()));
+        let mut c = Contract::quick("  ", Some(" ".into()), Lang::En);
         c.budget.soft_usd = 10.0;
-        let errors = c.validate().into_iter().filter(|i| matches!(i, ContractIssue::Error { .. })).count();
+        let errors = c.validate(Lang::En).into_iter().filter(|i| matches!(i, ContractIssue::Error { .. })).count();
         assert_eq!(errors, 3, "intent, command and budget");
         assert!(!c.is_ratifiable());
+    }
+
+    #[test]
+    fn validation_speaks_the_requested_language() {
+        let mut c = Contract::quick("x", Some("pnpm test".into()), Lang::En);
+        c.budget.soft_usd = 10.0;
+        let message = |lang| match &c.validate(lang)[..] {
+            [ContractIssue::Error { field, message }] if field == "budget" => message.clone(),
+            other => panic!("unexpected issues: {other:?}"),
+        };
+        assert_eq!(message(Lang::Zh), "软上限不能高于硬上限");
+        assert_eq!(message(Lang::En), "The soft cap cannot be above the hard cap");
     }
 
     #[test]

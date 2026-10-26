@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_notification::NotificationExt;
 use tower_core::contract::{Contract, ContractIssue};
+use tower_core::tr;
 use tower_core::view::{
     EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
     TraceEntry,
@@ -46,11 +47,13 @@ impl TauriSink {
                     InboxKind::Question | InboxKind::Approval | InboxKind::Paused | InboxKind::Stalled
                 );
                 if urgent {
+                    let lang = self.app.try_state::<Supervisor>().map(|s| s.lang()).unwrap_or_default();
+                    let goal = &item.goal_id;
                     let _ = self
                         .app
                         .notification()
                         .builder()
-                        .title(format!("{} 需要你", item.goal_id))
+                        .title(tr!(lang, "{goal} 需要你", "{goal} needs you"))
                         .body(&item.title)
                         .show();
                 }
@@ -146,9 +149,20 @@ fn settings(sup: Sup<'_>) -> Settings {
     sup.settings()
 }
 
+/// Saves settings; a language change also rebuilds the native menu so the
+/// whole app switches at once.
 #[tauri::command]
-fn save_settings(sup: Sup<'_>, settings: Settings) -> Res<()> {
-    sup.save_settings(settings)
+fn save_settings(app: AppHandle, sup: Sup<'_>, settings: Settings) -> Res<()> {
+    let before = sup.lang();
+    sup.save_settings(settings)?;
+    let lang = sup.lang();
+    if lang != before {
+        match menu::build(&app, lang).and_then(|m| app.set_menu(m)) {
+            Ok(_) => {}
+            Err(e) => tracing::warn!(error = %e, "could not rebuild the menu"),
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -280,8 +294,6 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
-            app.set_menu(menu::build(&handle)?)?;
-            app.on_menu_event(|app, event| menu::forward(app, event.id().as_ref()));
             let config = Config {
                 paths: Paths::new(Paths::default_root()),
                 extension_source: extension_source(&handle),
@@ -289,6 +301,9 @@ pub fn run() {
             };
             let sink = Arc::new(TauriSink { app: handle.clone(), seen: Mutex::default() });
             let sup = tauri::async_runtime::block_on(Supervisor::start(config, sink.clone() as Arc<dyn UiSink>))?;
+            // The menu speaks the settings language, so it is built once they are readable.
+            app.set_menu(menu::build(&handle, sup.lang())?)?;
+            app.on_menu_event(|app, event| menu::forward(app, event.id().as_ref()));
             // Items already open at launch were announced before: badge them, don't notify again.
             if let Ok(items) = sup.inbox() {
                 sink.seen.lock().expect("seen lock").extend(items.iter().map(|i| i.id.clone()));

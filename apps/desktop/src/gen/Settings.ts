@@ -28,6 +28,7 @@ user_memory: string,
  */
 editor: string, 
 /**
- * Interface and agent language: `zh-CN` or `en`.
+ * Interface and agent language: `zh-CN` or `en`. A new install follows
+ * the system language ([`crate::i18n::system_language`]).
  */
 language: string, };

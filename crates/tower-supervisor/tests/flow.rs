@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use tower_core::contract::{Contract, Criterion, CriterionKind};
 use tower_core::view::{GoalSummary, InboxKind, Settings};
-use tower_core::{LifecycleState, PauseReason};
+use tower_core::{Lang, LifecycleState, PauseReason};
 use tower_supervisor::shell_env::ShellEnv;
 use tower_supervisor::{Config, NewGoalInput, Paths, Supervisor, UiSink, UiUpdate};
 
@@ -61,12 +61,14 @@ async fn harness(scenario: &str) -> Harness {
     .await
     .unwrap();
     let fake = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake_pi.py");
-    sup.save_settings(Settings { pi_path: fake.display().to_string(), ..Settings::default() }).unwrap();
+    // English, so the flows do not depend on the machine's language.
+    sup.save_settings(Settings { pi_path: fake.display().to_string(), language: "en".into(), ..Settings::default() })
+        .unwrap();
     Harness { _tmp: tmp, repo, sup, sink }
 }
 
 fn contract() -> Contract {
-    let mut c = Contract::quick("创建 done.txt", None);
+    let mut c = Contract::quick("创建 done.txt", None, Lang::En);
     c.criteria = vec![Criterion {
         id: "C1".into(),
         title: "done.txt 存在".into(),
@@ -101,8 +103,16 @@ async fn sentinels_hold_a_passing_but_suspicious_snapshot() {
     assert!(d.sentinels.iter().any(|s| s.sentinel == "test_skipped"), "{:?}", d.sentinels);
     assert!(d.criteria[0].verified.as_ref().unwrap().passed, "the criteria themselves passed");
 
-    // The human looks and decides it is fine.
+    // The card was written in English.
     let item = wait_inbox(&h, &id, InboxKind::Paused).await;
+    assert_eq!(item.title, "Paused: Sentinel hit: needs your confirmation");
+    assert_eq!(
+        item.options,
+        ["Have the agent redo it without these changes", "I've checked, go to review", "Abandon this goal"]
+    );
+    // The human switches the interface to Chinese, looks, and decides it is
+    // fine: the Chinese label still picks the option on the English card.
+    h.sup.save_settings(Settings { language: "zh-CN".into(), ..h.sup.settings() }).unwrap();
     h.sup.answer(&item.id, "我已确认，进入评审").await.unwrap();
     wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
 }

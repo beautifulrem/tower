@@ -11,7 +11,7 @@ Tower's direction comes from `docs/00` (vision) and `docs/16` (roadmap in the de
 ## Next
 
 - **More engines.** Claude Code runs through the Agent Client Protocol already; Codex next, through the same bridge.
-- **Away from the desk.** The phone page answers questions and approvals over your own network already; next, push notifications through it.
+- **Away from the desk.** The phone page and ntfy pushes are in; next, a native notification channel that needs no server.
 - **Visual evidence** for UI work: screenshots of the running app attached to a verification, compared with the base.
 
 ## Later

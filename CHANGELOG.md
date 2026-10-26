@@ -19,6 +19,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - Claude Code as a second engine, through the Agent Client Protocol: a bridge speaks Pi's RPC to Tower and drives `claude-agent-acp`, which gets no built-in tools, settings, hooks or MCP servers of its own, only Tower's sandboxed tools. Choose it in Settings or per goal.
 
 ### Away from the desk
+- Pushes through ntfy (your own server or a public one): items that block a goal arrive on your phone with their titles and open the phone page.
 - A phone page, served over your own network (Tailscale recommended): what needs you, answered in place, and pausing running goals. Off by default; paired by a link or QR code carrying a 256-bit token.
 
 ### Workflow

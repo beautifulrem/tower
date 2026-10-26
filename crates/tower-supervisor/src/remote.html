@@ -4,53 +4,139 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
 <title>Tower</title>
 <style>
+  /*
+   * Tower on a phone: the same quiet cockpit, one column. Three greys and no
+   * more; colour only where a human is needed (the amber strip on a card) or
+   * the verifier has spoken (the green seal). Same tokens as the desktop's
+   * tokens.css, in oklch; the system font so nothing is fetched.
+   */
   :root {
-    --bg: #fbfaf9; --fg: #1d1b1a; --dim: #6f6b68; --line: rgba(0,0,0,.09); --field: #fff;
-    --amber: oklch(.62 .14 75); --green: oklch(.55 .12 150); --red: oklch(.55 .17 28);
+    --bg: oklch(0.992 0.002 80); --bg-raised: oklch(1 0 0); --bg-inset: oklch(0.975 0.003 80);
+    --bg-hover: oklch(0.955 0.004 80); --bg-selected: oklch(0.940 0.006 80);
+    --border-subtle: oklch(0.20 0.01 70 / 0.08); --border: oklch(0.20 0.01 70 / 0.14); --border-strong: oklch(0.20 0.01 70 / 0.22);
+    --text-1: oklch(0.230 0.006 70); --text-2: oklch(0.430 0.006 70); --text-3: oklch(0.530 0.006 70); --text-4: oklch(0.555 0.005 70);
+    --st-attention: oklch(0.600 0.150 65); --attention-bg: oklch(0.962 0.034 85);
+    --st-danger: oklch(0.540 0.190 25); --st-verified: oklch(0.550 0.130 155); --st-active: oklch(0.500 0.130 240);
+    --focus: oklch(0.230 0.006 70 / 0.65);
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #151413; --fg: #ecebea; --dim: #9a9693; --line: rgba(255,255,255,.1); --field: #1f1e1d; }
+    :root {
+      --bg: oklch(0.180 0.004 70); --bg-raised: oklch(0.205 0.005 70); --bg-inset: oklch(0.160 0.004 70);
+      --bg-hover: oklch(0.235 0.005 70); --bg-selected: oklch(0.265 0.006 70);
+      --border-subtle: oklch(1 0 0 / 0.06); --border: oklch(1 0 0 / 0.10); --border-strong: oklch(1 0 0 / 0.16);
+      --text-1: oklch(0.945 0.003 70); --text-2: oklch(0.860 0.005 70); --text-3: oklch(0.720 0.006 70); --text-4: oklch(0.620 0.006 70);
+      --st-attention: oklch(0.800 0.150 75); --attention-bg: oklch(0.225 0.030 75);
+      --st-danger: oklch(0.750 0.150 25); --st-verified: oklch(0.770 0.130 155); --st-active: oklch(0.780 0.120 235);
+      --focus: oklch(0.945 0.003 70 / 0.70);
+    }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 -apple-system, "PingFang SC", system-ui, sans-serif;
-         padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
-  header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 18px; }
-  header b { font-size: 17px; letter-spacing: -.01em; }
-  header span { color: var(--dim); font-size: 13px; margin-left: auto; font-variant-numeric: tabular-nums; }
-  h2 { font-size: 12px; font-weight: 500; color: var(--dim); margin: 22px 0 8px; letter-spacing: .02em; }
-  .card { border-top: 1px solid var(--line); padding: 14px 0; }
-  .card:first-of-type { border-top: 0; }
-  .meta { color: var(--dim); font-size: 12px; margin-bottom: 4px; }
-  .title { font-weight: 600; }
-  .title::before { content: ""; display: inline-block; width: 7px; height: 7px; background: var(--amber); margin-right: 8px; vertical-align: 2px; }
-  .body { color: var(--dim); margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
-  .opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  button { font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 7px; border: 1px solid var(--line);
-           background: var(--field); color: var(--fg); }
-  button.danger { color: var(--red); }
-  button:active { opacity: .7; }
-  textarea { width: 100%; margin-top: 10px; font: inherit; padding: 8px; border-radius: 7px; border: 1px solid var(--line);
-             background: var(--field); color: var(--fg); resize: vertical; min-height: 44px; }
-  .row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
-  .row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .state { color: var(--dim); font-size: 12px; }
-  .empty { color: var(--dim); padding: 8px 0; }
-  .error { color: var(--red); padding: 12px 0; }
+  p, pre, figure { margin: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text-1);
+    font: 15px/22px -apple-system, "PingFang SC", system-ui, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased; letter-spacing: -0.003em;
+    padding: max(14px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace; font-size: 13px; }
+  button { font: inherit; color: inherit; cursor: default; -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, textarea:focus-visible { outline: 1.5px solid var(--focus); outline-offset: 2px; }
+
+  /* The wordmark: a ring with the verifier's check, the name tracked wide — the desktop's, at the same size. */
+  header { display: flex; align-items: center; gap: 8px; height: 32px; margin-bottom: 14px; }
+  .wordmark { display: inline-flex; align-items: center; gap: 8px; font-size: 10px; line-height: 12px; letter-spacing: 0.14em; font-weight: 500; color: var(--text-3); }
+  .wordmark svg { display: block; }
+  #status { margin-left: auto; font-size: 12px; color: var(--text-3); display: inline-flex; align-items: center; gap: 6px; }
+  #status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-4); }
+  #status.off .dot { border-radius: 1px; background: var(--st-danger); }
+
+  /* Scale titles, as on the board: the word, a hairline, the count. */
+  h2 { display: flex; align-items: center; gap: 10px; margin: 22px 0 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-3); letter-spacing: 0; }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
+  h2 .num { color: var(--text-2); order: 3; }
+  .empty { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; color: var(--text-2); font-size: 14px; }
+  .empty svg { flex: 0 0 auto; margin-top: 6px; color: var(--text-3); }
+  .error { color: var(--text-1); font-size: 14px; padding: 10px 0; }
+  .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); margin-right: 8px; vertical-align: 1px; }
+
+  /* A decision card: amber lives only in its 28px strip. */
+  .card { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); margin-bottom: 10px; overflow: hidden; }
+  .strip { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+  .strip .mark { width: 9px; height: 9px; flex: 0 0 auto; }
+  .strip .kind { color: var(--text-1); font-weight: 500; }
+  .strip .goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .strip .age { margin-left: auto; color: var(--text-3); flex: 0 0 auto; }
+  .main { padding: 10px 12px 12px; display: grid; gap: 8px; }
+  .question { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: -0.008em; user-select: text; }
+  .question.code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .body { color: var(--text-2); font-size: 14px; white-space: pre-wrap; word-break: break-word; user-select: text; }
+  .tail { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-inset); border: 1px solid var(--border-subtle); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
+  .caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-1); }
+  .caution svg { flex: 0 0 auto; margin-top: 3px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btn { height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-1); font-size: 14px; font-weight: 500; white-space: nowrap; }
+  .btn:active { background: var(--bg-selected); }
+  .btn.primary { background: var(--text-1); border-color: var(--text-1); color: var(--bg); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+  .btn.armed { border-color: var(--text-1); background: var(--bg-selected); }
+  .btn:disabled { color: var(--text-3); border-color: var(--border-subtle); }
+  textarea { width: 100%; font: inherit; font-size: 14px; line-height: 20px; padding: 6px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text-1); resize: none; min-height: 34px; outline: none; }
+  textarea:focus { border-color: var(--border-strong); }
+  .reply { display: flex; gap: 8px; align-items: flex-end; }
+  .reply textarea { flex: 1; }
+  .claim { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); column-gap: 10px; font-size: 14px; }
+  .claim .who { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 3px; }
+  .claim .who::before { content: "┆ "; color: var(--text-4); }
+  .claim .what { color: var(--text-2); }
+
+  /* A goal row: glyph, title, badge word · detail, age. */
+  .row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 44px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+  .row:first-of-type { border-top: 0; }
+  .row .glyph { display: block; }
+  .row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .live { display: flex; gap: 6px; align-items: baseline; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
+  .row .live .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
+  .row .live .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .live .detail.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+  .row .seal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-1); font-weight: 500; }
+  .row .seal .pin { color: var(--text-2); font-weight: 400; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+  .row .btn { height: 30px; padding: 0 10px; font-size: 13px; }
+  .foot { margin-top: 28px; font-size: 11px; line-height: 16px; color: var(--text-4); text-align: center; }
 </style>
 </head>
 <body>
-<header><b>Tower</b><span id="status"></span></header>
-<main id="app"><p class="empty" id="hello"></p></main>
+<header>
+  <span class="wordmark" aria-hidden="true">
+    <svg width="14" height="14" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter"><circle cx="5" cy="5" r="4"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7"/></svg>
+    TOWER
+  </span>
+  <span id="status" role="status"><span class="dot"></span><span id="status-text"></span></span>
+</header>
+<main id="app"></main>
+<p class="foot" id="foot"></p>
 <script>
 const T = {
-  en: { needs: "Needs you", running: "Running", none: "Nothing needs you.", noRuns: "No goal is running.", send: "Send",
-        pause: "Pause", confirm: "Press again to confirm", unpaired: "Open the link from Tower's Settings on this phone to pair it.",
-        updated: "updated", offline: "Can't reach Tower" },
-  zh: { needs: "需要你", running: "运行中", none: "没有需要你的事。", noRuns: "没有正在运行的目标。", send: "发送",
-        pause: "暂停", confirm: "再按一次确认", unpaired: "在这台手机上打开 Tower 设置里的链接完成配对。",
-        updated: "更新于", offline: "连不上 Tower" },
+  en: { needs: "Needs you", toAccept: "Ready to accept", running: "Running", none: "Nothing needs you.", noneBody: "Questions, approvals and pauses show up here.",
+        noRuns: "No goal is running.", send: "Send", pause: "Pause", confirm: "Press again", unpaired: "Open the pairing link from Tower's Settings on this phone.",
+        updated: "updated", offline: "Can't reach Tower", you: "you", ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
+        acceptOnDesk: "Review and accept on the desk", claim: "Agent says", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
+        foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays on the desk.",
+        states: { draft: "Draft", ready: "Ready", running: "Running", paused: "Paused", claimed: "Claimed done", verifying: "Verifying", in_review: "Ready to accept", accepted: "Accepted", integrated: "Merged", archived: "Archived", abandoned: "Abandoned" },
+        modes: { idle: "Idle", starting: "Starting", thinking: "Thinking", reading: "Working", editing: "Working", executing: "Working", waiting_on_you: "Needs you", retrying: "Retrying", compacting: "Compacting", verifying: "Verifying", settled: "Stopped" },
+        kinds: { question: "Question", approval: "Approval", assumption: "Assumption", paused: "Paused", review_ready: "Ready to accept", stalled: "May be stuck", ci_failed: "CI failed" } },
+  zh: { needs: "需要你", toAccept: "待验收", running: "运行中", none: "没有需要你决定的事。", noneBody: "问题、审批、假设与暂停会出现在这里。",
+        noRuns: "没有正在运行的目标。", send: "发送", pause: "暂停", confirm: "再按一次", unpaired: "在这台手机上打开 Tower 设置里的配对链接。",
+        updated: "更新于", offline: "连不上 Tower", you: "你", ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
+        acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 称", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
+        foot: "这个页面由你自己的电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
+        states: { draft: "草稿", ready: "就绪", running: "运行中", paused: "已暂停", claimed: "自称完成", verifying: "验证中", in_review: "待验收", accepted: "已验收", integrated: "已合入", archived: "已归档", abandoned: "已放弃" },
+        modes: { idle: "空闲", starting: "准备中", thinking: "思考", reading: "执行", editing: "执行", executing: "执行", waiting_on_you: "等你", retrying: "重试", compacting: "压缩中", verifying: "验证", settled: "已停" },
+        kinds: { question: "问题", approval: "审批", assumption: "假设", paused: "已暂停", review_ready: "待验收", stalled: "可能卡住", ci_failed: "CI 失败" } },
 };
 let lang = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
 const t = (k) => T[lang][k];
@@ -59,6 +145,7 @@ if (location.hash.length > 1) { sessionStorage.setItem("tower-token", location.h
 const token = sessionStorage.getItem("tower-token");
 const app = document.getElementById("app");
 const status = document.getElementById("status");
+const statusText = document.getElementById("status-text");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const api = async (path, body) => {
   const r = await fetch(path, { method: body ? "POST" : "GET", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
@@ -66,6 +153,34 @@ const api = async (path, body) => {
   if (!r.ok) throw new Error(data.error || r.status);
   return data;
 };
+// Glyphs: the desktop's one-pen set, 10px grid, 1.25px butt-capped lines.
+const G = {
+  diamond: `<svg class="mark" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)"/></svg>`,
+  notice: `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>`,
+  ring: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>`,
+  seal: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4.25" fill="var(--st-verified)"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg)" stroke-width="1.25"/></svg>`,
+  state(s) {
+    const c = s === "running" || s === "verifying" ? "var(--st-active)" : s === "in_review" || s === "accepted" ? "var(--st-verified)" : "var(--text-3)";
+    const ring = `<circle cx="5" cy="5" r="4" fill="none" stroke="${c}" stroke-width="1.25"${s === "claimed" || s === "verifying" ? ' stroke-dasharray="1.7 1.45"' : ""}/>`;
+    const inner = s === "running" || s === "verifying" ? `<path d="M5 1 A4 4 0 0 0 5 9 Z" fill="${c}"/>`
+      : s === "paused" ? `<line x1="3.3" y1="1.5" x2="3.3" y2="8.5" stroke="${c}" stroke-width="1.25"/><line x1="6.7" y1="1.5" x2="6.7" y2="8.5" stroke="${c}" stroke-width="1.25"/>`
+      : s === "in_review" ? `<path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="${c}" stroke-width="1.25"/>`
+      : s === "ready" ? `<circle cx="5" cy="5" r="1.2" fill="${c}"/>` : "";
+    return `<svg class="glyph" width="10" height="10" viewBox="0 0 10 10" aria-label="${esc(t("states")[s] ?? s)}" role="img">${s === "paused" ? "" : ring}${inner}</svg>`;
+  },
+};
+const machine = (s) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
+// Prose first, machine lines (an installer's tail, a command, a path) after, as on the desk.
+const MACHINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
+function parts(i) {
+  const body = (i.body || "").trim();
+  if (!body || body === i.subject.trim()) return { prose: "", tail: "" };
+  if (i.kind === "approval") return { prose: "", tail: body };
+  const lines = body.split("\n");
+  const first = lines.findIndex((l) => MACHINE.test(l.trim()));
+  if (first < 0) return { prose: body, tail: "" };
+  return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
+}
 let armed = null;
 async function answer(id, response, danger) {
   if (danger && armed !== id + response) { armed = id + response; render(last); return; }
@@ -74,49 +189,78 @@ async function answer(id, response, danger) {
   load();
 }
 async function pause(goal) {
+  if (armed !== "pause" + goal) { armed = "pause" + goal; render(last); return; }
+  armed = null;
   try { await api("/api/pause", { goal }); } catch (e) { alert(e.message); }
   load();
 }
 let last = null;
+const ago = (at) => t("ago")(Math.round((Date.now() - at) / 60000));
 function render(s) {
   if (!s) return;
   lang = s.lang.startsWith("zh") ? "zh" : "en";
   document.documentElement.lang = s.lang;
+  document.getElementById("foot").textContent = t("foot");
+  const goals = new Map(s.goals.map((g) => [g.id, g]));
   const items = s.inbox.filter((i) => i.kind !== "review_ready");
-  let h = `<h2>${t("needs")} · ${items.length}</h2>`;
-  if (!items.length) h += `<p class="empty">${t("none")}</p>`;
+  const ready = s.inbox.filter((i) => i.kind === "review_ready");
+  let h = `<h2>${t("needs")}<span class="num">${items.length}</span></h2>`;
+  if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>`;
   for (const i of items) {
+    const g = goals.get(i.goal_id);
+    const p = parts(i);
     const opts = i.options.map((o, n) => {
-      const danger = i.tones[n] === "destructive";
-      const label = danger && armed === i.id + o ? t("confirm") : o;
-      return `<button class="${danger ? "danger" : ""}" data-id="${esc(i.id)}" data-o="${esc(o)}" data-d="${danger}">${esc(label)}</button>`;
+      const tone = i.tones[n] || (n === 0 ? "primary" : "neutral");
+      const danger = tone === "destructive";
+      const isArmed = danger && armed === i.id + o;
+      return `<button class="btn ${tone === "primary" ? "primary" : ""} ${isArmed ? "armed" : ""}" data-id="${esc(i.id)}" data-o="${esc(o)}" data-d="${danger}">${esc(isArmed ? t("confirm") : o)}</button>`;
     }).join("");
-    h += `<div class="card"><div class="meta">${esc(i.goal_id)} · ${esc(i.goal_title)}</div>
-      <div class="title">${esc(i.title)}</div>${i.body ? `<div class="body">${esc(i.body)}</div>` : ""}
-      ${opts ? `<div class="opts">${opts}</div>` : ""}
-      ${i.allow_text ? `<textarea id="t-${esc(i.id)}" rows="2"></textarea><div class="opts"><button data-send="${esc(i.id)}">${t("send")}</button></div>` : ""}</div>`;
+    const security = i.kind === "paused" && g && g.pause_reason === "dependencies_changed";
+    h += `<article class="card">
+      <div class="strip">${G.diamond}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span>·</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span></div>
+      <div class="main">
+        <p class="question ${i.kind === "ci_failed" ? "code" : ""}">${esc(i.subject)}</p>
+        ${p.prose ? `<p class="body">${esc(p.prose)}</p>` : ""}
+        ${p.tail ? `<pre class="tail">${esc(p.tail)}</pre>` : ""}
+        ${security ? `<p class="caution">${G.notice}<span>${t("security")}</span></p>` : ""}
+        ${opts ? `<div class="opts">${opts}</div>` : ""}
+        ${i.allow_text && i.kind !== "assumption" ? `<div class="reply"><textarea id="t-${esc(i.id)}" rows="1" aria-label="${t("send")}"></textarea><button class="btn" data-send="${esc(i.id)}">${t("send")}</button></div>` : ""}
+      </div></article>`;
+  }
+  if (ready.length) {
+    h += `<h2>${t("toAccept")}<span class="num">${ready.length}</span></h2>`;
+    for (const i of ready) {
+      const g = goals.get(i.goal_id);
+      const seal = g && g.verified_pin ? `<span class="seal">${G.seal}<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span></span>` : "";
+      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="live">${seal}<span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span class="mono" style="color:var(--text-3);font-size:12px">${esc(i.goal_id)}</span></div>`;
+    }
   }
   const running = s.goals.filter((g) => g.state === "running");
-  h += `<h2>${t("running")} · ${running.length}</h2>`;
-  if (!running.length) h += `<p class="empty">${t("noRuns")}</p>`;
+  h += `<h2>${t("running")}<span class="num">${running.length}</span></h2>`;
+  if (!running.length) h += `<p class="empty">${G.ring}<span>${t("noRuns")}</span></p>`;
   for (const g of running) {
-    h += `<div class="row"><span class="name">${esc(g.title)}</span><span class="state">${esc(g.live_line?.detail ?? "")}</span>
-      <button data-pause="${esc(g.id)}">${t("pause")}</button></div>`;
+    const l = g.live_line;
+    const badge = t("modes")[g.mode] ?? g.mode;
+    const detail = l ? `${l.action}${l.target ? " · " + l.target : ""}` : "";
+    const isArmed = armed === "pause" + g.id;
+    h += `<div class="row">${G.state("running")}<div><div class="title">${esc(g.title)}</div><div class="live"><span class="badge">${esc(badge)}</span><span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span></div></div>
+      <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
   }
   app.innerHTML = h;
-  status.textContent = `${t("updated")} ${new Date().toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}`;
+  status.className = "";
+  statusText.textContent = `${t("updated")} ${new Date().toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}`;
 }
 app.addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
   if (b.dataset.pause) return pause(b.dataset.pause);
   if (b.dataset.send) { const v = document.getElementById("t-" + b.dataset.send).value.trim(); if (v) answer(b.dataset.send, v, false); return; }
-  answer(b.dataset.id, b.dataset.o, b.dataset.d === "true");
+  if (b.dataset.id) answer(b.dataset.id, b.dataset.o, b.dataset.d === "true");
 });
 async function load() {
-  if (!token) { app.innerHTML = `<p class="empty">${t("unpaired")}</p>`; return; }
+  if (!token) { app.innerHTML = `<p class="empty">${G.ring}<span>${t("unpaired")}</span></p>`; document.getElementById("foot").textContent = t("foot"); return; }
   try { last = await api("/api/state"); render(last); }
-  catch (e) { app.innerHTML = `<p class="error">${t("offline")}: ${esc(e.message)}</p>`; }
+  catch (e) { app.innerHTML = `<p class="error">${t("offline")} · ${esc(e.message)}</p>`; status.className = "off"; statusText.textContent = t("offline"); }
 }
 load();
 setInterval(() => { if (!document.hidden && !document.activeElement?.matches("textarea")) load(); }, 5000);

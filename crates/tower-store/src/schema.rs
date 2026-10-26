@@ -219,6 +219,16 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE criterion_results ADD COLUMN held_out INTEGER NOT NULL DEFAULT 0;
     "#,
+    // 17: what the must-fail canary showed, per criterion
+    r#"
+    CREATE TABLE canary_results (
+        goal_id    TEXT NOT NULL,
+        criterion  TEXT NOT NULL,
+        pin        TEXT NOT NULL,
+        state      TEXT NOT NULL,
+        PRIMARY KEY (goal_id, criterion)
+    );
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

@@ -291,6 +291,10 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
             "源码触及断言库、测试框架或模块加载",
             "Program code reaches into assertion libraries, test runners or the module loader",
         ),
+        "assertions_unchecked" => lang.pick(
+            "源码触及测试框架，而断言没能检查",
+            "Program code reaches into the tests, and the assertions could not be checked",
+        ),
         "sandbox_probing" => {
             lang.pick("Agent 反复尝试读取工作区之外的内容", "The agent repeatedly tried to read outside its workspace")
         }

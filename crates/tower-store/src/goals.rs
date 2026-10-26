@@ -440,6 +440,19 @@ impl Store {
                 original.insert(c, passed);
             }
         }
+        let mut canary = std::collections::HashMap::new();
+        let mut stmt = self.conn.prepare("SELECT criterion, pin, state FROM canary_results WHERE goal_id = ?1")?;
+        for row in
+            stmt.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?
+        {
+            let (c, pin, state) = row?;
+            if rec.pin.as_deref() == Some(pin.as_str())
+                && let Ok(state) =
+                    serde_json::from_value::<tower_core::view::CanaryState>(serde_json::Value::String(state))
+            {
+                canary.insert(c, state);
+            }
+        }
         let mut observed = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare("SELECT criterion, passed, at FROM observations WHERE goal_id = ?1")?;
         for row in stmt
@@ -466,6 +479,7 @@ impl Store {
                     CriterionKind::Human | CriterionKind::Look { .. } => None,
                 },
                 passes_with_source_only: original.get(&c.id).copied(),
+                canary: canary.get(&c.id).copied(),
                 look: looks.get(&c.id).cloned(),
                 passed_on_base: match &c.kind {
                     CriterionKind::Exec { command, .. } => baseline

@@ -9,7 +9,7 @@ use std::time::Duration;
 use tower_core::contract::CriterionKind;
 use tower_core::i18n::plural;
 use tower_core::lifecycle::Transition;
-use tower_core::view::InboxKind;
+use tower_core::view::{CanaryState, InboxKind};
 use tower_core::{EventKind, Lang, LifecycleState, Mode, PauseReason, tr};
 use tower_git::Git;
 use tower_store::NewInboxItem;
@@ -201,6 +201,28 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     bench.close().await;
     let (outcome, extra) = outcome?;
     hits.extend(extra);
+    // Program code that reaches into the test machinery, on a criterion
+    // whose assertions could not be checked: nothing vouches for the pass.
+    if hits.iter().any(|h| h.sentinel == "source_touches_tests") {
+        let unchecked: Vec<String> = inner
+            .store(|s| s.detail(goal))?
+            .criteria
+            .into_iter()
+            .filter(|c| c.canary == Some(CanaryState::NotChecked))
+            .map(|c| c.criterion.id)
+            .collect();
+        if !unchecked.is_empty() {
+            let ids = unchecked.join(", ");
+            let detail = tr!(
+                lang,
+                "源码触及断言库或测试框架，而 {ids} 的断言没能用金丝雀检查（测试的语言或写法 Tower 不认识）。请亲自确认这些测试真的在检查。",
+                "Program code reaches into the assertion library or test runner, and the assertions of {ids} could not be checked with the canary (a language or test style Tower does not know). Check yourself that these tests really test."
+            );
+            let hit = sentinel_hit("assertions_unchecked", detail, lang);
+            append_hit(inner, goal, &hit)?;
+            hits.push(hit);
+        }
+    }
 
     if cancel.is_cancelled() {
         return Ok(());
@@ -865,13 +887,23 @@ impl<'a> Bench<'a> {
             let profile =
                 if held_files.is_empty() { self.criteria.as_deref() } else { self.held_out_profile.as_deref() };
             let mut tripped = Vec::new();
-            for (c, command, timeout) in proving.iter().filter(|_| !canary.files.is_empty()) {
-                if paths_gone(&self.dir, command) || (held_files.is_empty() && names_held_out(&self.holdout, command)) {
-                    continue;
-                }
-                canary.clear();
-                let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;
-                if r.passed && canary.ran() {
+            for (c, command, timeout) in &proving {
+                let runnable = !canary.files.is_empty()
+                    && !paths_gone(&self.dir, command)
+                    && !(held_files.is_empty() && names_held_out(&self.holdout, command));
+                let state = if runnable {
+                    canary.clear();
+                    let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;
+                    match canary.verdict(r.passed) {
+                        crate::canary::Verdict::Tampered => CanaryState::Tampered,
+                        crate::canary::Verdict::Intact => CanaryState::Intact,
+                        crate::canary::Verdict::NotChecked => CanaryState::NotChecked,
+                    }
+                } else {
+                    CanaryState::NotChecked
+                };
+                inner.append(goal, EventKind::CanaryChecked { criterion: c.id.clone(), pin: pin.into(), state })?;
+                if state == CanaryState::Tampered {
                     tripped.push(c.id.clone());
                 }
             }
@@ -879,8 +911,8 @@ impl<'a> Bench<'a> {
             if !tripped.is_empty() {
                 let detail = tr!(
                     lang,
-                    "Tower 在测试文件末尾加了一个必然失败的测试，{ids} 仍然报告通过。断言、测试框架或结果报告在运行时被改动了，这次验证的“通过”都不能当作事实。",
-                    "Tower added a test that must fail to the end of the test files, and {ids} still reported success. Assertions, the test runner or its reporting were altered at run time; none of this verification's passes count as evidence.",
+                    "Tower 在测试文件里加了必然失败的断言（用的是测试自己用的那些断言），{ids} 运行时它们没有失败，或者命令仍然报告通过。断言、测试框架或结果报告在运行时被改动了，这次验证的“通过”都不能当作事实。",
+                    "Tower added assertions that must fail to the test files (the same assertions the tests use), and while {ids} ran they did not fail, or the command still reported success. Assertions, the test runner or its reporting were altered at run time; none of this verification's passes count as evidence.",
                     ids = tripped.join(", ")
                 );
                 let hit = sentinel_hit("assertions_disabled", detail, lang);

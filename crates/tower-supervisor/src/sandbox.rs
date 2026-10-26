@@ -90,8 +90,8 @@ const SYSTEM_READ: &[&str] = &[
     "/private/etc",
     "/private/var/db/timezone",
     "/private/var/select",
-    "/Applications/Xcode.app",
-    "/Applications/Xcode-beta.app",
+    // Where `xcode-select` points the /usr/bin shims (git, clang, …).
+    "/private/var/db/xcode_select_link",
     "/Library/Developer",
     "/Library/Frameworks",
     "/Library/Java",
@@ -208,8 +208,12 @@ pub fn profile(spec: &Spec) -> String {
 
     // Reads: an allow-list. System locations and toolchains, minus package
     // managers' configuration, then the goal's own directories.
-    // dyld reads the root directory itself (its entries, not their contents).
-    s.push_str("(allow file-read* (literal \"/\"))\n(allow file-read*\n");
+    // dyld reads the root directory itself (its entries, not their contents);
+    // any installed Xcode (Xcode.app, Xcode_16.4.app, Xcode-beta.app) serves
+    // the /usr/bin developer tools.
+    s.push_str(
+        "(allow file-read* (literal \"/\") (regex #\"^/Applications/Xcode[^/]*\\.app(/|$)\"))\n(allow file-read*\n",
+    );
     for p in SYSTEM_READ {
         s.push_str(&format!("  (subpath \"{p}\")\n"));
     }

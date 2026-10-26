@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
+import { enrichCi, enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -104,12 +104,35 @@ test("in a half-screen window the live line keeps its verb and lets the elapsed 
   await expect(running.locator(".live-detail")).toHaveAttribute("title", /1h 49m/);
 });
 
+test("with a decision card on a ready-to-accept goal, the card's first option is the page's one primary action", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCi });
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Review \d+ files?/ })).toBeVisible();
+  const primaries = page.locator(".goal-page .btn-primary");
+  await expect(primaries).toHaveCount(1);
+  await expect(primaries).toHaveText(/Send the failures to the agent/);
+});
+
+test("the title bar's bell is a 22pt target, and a half-screen window drops a healthy engine's label rather than hanging it empty", async ({ page }) => {
+  await openTower(page, "overview");
+  const bell = page.locator(".gauge-quiet");
+  const box = await bell.boundingBox();
+  expect(box!.width).toBeGreaterThanOrEqual(22);
+  expect(box!.height).toBeGreaterThanOrEqual(22);
+  await expect(page.locator(".gauge-engine")).toBeVisible();
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(page.locator(".gauge-engine")).toBeHidden();
+});
+
 test("a paused goal that was never verified shows one primary action and no 'verify again'", async ({ page }) => {
   await openTower(page, "goal/G-0004", { enrich: enrichRollback });
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.locator(".goal-page .btn-primary")).toHaveCount(1);
   await expect(page.getByText("Verify again")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Undo rollback" })).toBeVisible();
+  const undo = page.getByRole("button", { name: "Undo rollback" });
+  await expect(undo).toBeVisible();
+  // A text button is still a 20pt target.
+  expect((await undo.boundingBox())!.height).toBeGreaterThanOrEqual(20);
 });
 
 test("the look comparison answers the keyboard: modes, slider, held space", async ({ page }) => {

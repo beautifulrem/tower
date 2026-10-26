@@ -142,7 +142,7 @@ export function TitleBar(props: { title: string }) {
           }
         >
           <span
-            class="gauge"
+            class="gauge gauge-engine"
             title={
               state.settings?.engine === "claude-code"
                 ? `Claude Code · ${state.settings.claude_acp_command || "claude-agent-acp"}`

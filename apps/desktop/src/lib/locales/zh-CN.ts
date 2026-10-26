@@ -739,6 +739,7 @@ export const zh = {
     networkOn: "可联网",
     networkOff: "不联网",
     engine: "引擎",
+    engineName: "名称",
     model: "模型",
     localFiles: "本地文件",
     workspace: "工作区",

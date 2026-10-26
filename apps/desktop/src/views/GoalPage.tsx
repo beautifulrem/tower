@@ -445,11 +445,12 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: bool
     <>
       {/* After your own edit of a verified goal the next step is fixed: verify again. Ready to accept, that is the page's one primary action;
           paused, the header's "resume" (or the decision card) already is, so the button here is a plain one and the sentence says what resuming does.
-          A goal that was never verified has nothing to verify "again": no block. The way back from a rollback lives on the runs section. */}
+          A goal that was never verified has nothing to verify "again": no block. The way back from a rollback lives on the runs section.
+          With a decision card on the page the card's first option is the one primary action, whatever the state: the block's button steps back. */}
       <Show when={editedSinceVerify()}>
         <Section title={t("goal.next")}>
           <div class="section-cta">
-            <Button variant={g().state === "in_review" ? "primary" : "default"} size="s" onClick={() => void act(() => api.retryVerify(g().id))}>
+            <Button variant={g().state === "in_review" && !props.hasDecision ? "primary" : "default"} size="s" onClick={() => void act(() => api.retryVerify(g().id))}>
               {t("goal.reverify")}
             </Button>
             <span class="meta">{g().state === "in_review" ? t("goal.editedNeedsVerify") : t("goal.editedPaused")}</span>
@@ -461,7 +462,7 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: bool
       <Show when={g().state === "in_review" && !editedSinceVerify()}>
         <Section title={t("goal.next")}>
           <div class="section-cta">
-            <Button variant="primary" size="s" kbd="r" onClick={() => go({ name: "review", id: g().id })}>
+            <Button variant={props.hasDecision ? "default" : "primary"} size="s" kbd="r" onClick={() => go({ name: "review", id: g().id })}>
               {t("goal.reviewUnits", { n: g().diffstat?.files ?? 0 })}
             </Button>
             <span class="meta">{g().verified_pin ? t("goal.reviewCtaVerified") : t("goal.reviewCtaUnverified")}</span>
@@ -612,7 +613,7 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: bool
               <Show when={props.undoable}>
                 <span class="row" style={{ gap: "var(--sp-2)" }}>
                   <span class="t2">{t("goal.rolledBackState")}</span>
-                  <button class="link-plain t3 row" style={{ gap: "4px" }} onClick={props.onUndoRollback} title={t("goal.undoRollback")}>
+                  <button class="link-plain text-btn t3" onClick={props.onUndoRollback} title={t("goal.undoRollback")}>
                     <Icon name="undo" size={10} />
                     {t("goal.undoRollback")}
                   </button>
@@ -663,7 +664,7 @@ function RunRow(props: { goalId: string; r: RunView; editable: boolean; onUndo: 
       <span class="run-outcome row" style={{ "justify-content": "flex-end" }}>
         {/* Only runs that recorded their starting snapshot can be rolled back to. */}
         <Show when={props.editable && r().ended_at && r().start_pin}>
-          <button class="link-plain run-rollback t3" onClick={() => void rollback()} title={t("goal.rollbackTitle")}>
+          <button class="link-plain text-btn run-rollback t3" onClick={() => void rollback()} title={t("goal.rollbackTitle")}>
             <Icon name="undo" size={10} /> {t("goal.rollback")}
           </button>
         </Show>
@@ -917,9 +918,9 @@ function ContractRail(props: { d: GoalDetail }) {
       <div class="rail-block">
         <div class="rail-head">{t("goal.engine")}</div>
         <dl class="rail-dl">
-          {/* The engine is a reading only when the contract overrides the default; one concept, one name: "engine". */}
+          {/* The engine is a reading only when the contract overrides the default. The block is "Engine"; its first row is the name, not the word again. */}
           <Show when={c().engine && c().engine !== effectiveEngine("", state.settings?.engine)}>
-            <dt>{t("goal.engine")}</dt>
+            <dt>{t("goal.engineName")}</dt>
             <dd>{engineLabel(c().engine)}</dd>
           </Show>
           <dt>{t("goal.model")}</dt>

@@ -48,6 +48,7 @@ pub enum ToastLevel {
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "snake_case", tag = "type")]
 #[ts(export)]
+#[allow(clippy::large_enum_variant)] // short-lived, sent once
 pub enum UiUpdate {
     Goal {
         goal: GoalSummary,

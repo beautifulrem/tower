@@ -243,10 +243,12 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
         }
     };
 
-    let run_no = goal.run_no + 1;
+    // A run interrupted by Tower quitting continues under the same number.
+    let continuing = purpose == "continue" && goal.run_no > 0;
+    let run_no = if continuing { goal.run_no } else { goal.run_no + 1 };
     // Where this run starts from, kept (as a ref, so git never collects it)
     // for rolling back. Best effort: a run is not refused for want of it.
-    let start_pin = match goal.base_commit.clone() {
+    let start_pin = match goal.base_commit.clone().filter(|_| !continuing) {
         Some(base) => {
             let git = inner.git.clone();
             let ws2 = ws.clone();

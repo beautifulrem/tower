@@ -58,7 +58,8 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
         }
         EventKind::RunStarted { run_no, purpose, start_pin } => {
             tx.execute(
-                "INSERT INTO runs (goal_id, run_no, purpose, started_at, start_pin) VALUES (?1, ?2, ?3, ?4, ?5)",
+                "INSERT INTO runs (goal_id, run_no, purpose, started_at, start_pin) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT (goal_id, run_no) DO UPDATE SET ended_at = NULL, outcome = NULL",
                 params![goal_id, run_no, purpose, at, start_pin],
             )?;
             tx.execute(

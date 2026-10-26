@@ -568,7 +568,10 @@ async fn look_criteria_get_before_and_after_screenshots() {
 }
 
 fn tower_supervisor_test_support_browser() -> Option<&'static str> {
-    ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium"]
-        .into_iter()
-        .find(|b| Path::new(b).is_file())
+    [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]
+    .into_iter()
+    .find(|b| Path::new(b).is_file())
 }

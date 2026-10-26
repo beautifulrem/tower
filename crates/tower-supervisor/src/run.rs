@@ -411,6 +411,7 @@ fn report_stall(inner: &Arc<Inner>, run: &Arc<Run>, detector: &str, detail: &str
         goal_id: g.into(),
         kind: InboxKind::Stalled,
         title: tr!(lang, "可能卡住：{detail}", "May be stuck: {detail}"),
+        subject: detail.into(),
         body: tr!(
             lang,
             "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。",
@@ -590,6 +591,7 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
                         "Agent 的假设待你确认",
                         "An assumption by the agent needs your confirmation"
                     ),
+                    subject: text.clone(),
                     body: text,
                     options: Choice::labels(&[Choice::Approve, Choice::Reject], inner.lang()),
                     allow_text: true,
@@ -713,6 +715,7 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
                     let reason = s("reason");
                     tr!(lang, "需要你批准：{reason}", "Approval needed: {reason}")
                 },
+                subject: s("reason"),
                 body: format!("{} · {}", s("tool"), s("target")),
                 options: req.options.clone(),
                 allow_text: false,
@@ -731,6 +734,7 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
                 goal_id: g.into(),
                 kind: InboxKind::Question,
                 title: s("question"),
+                subject: s("question"),
                 body: s("why"),
                 options,
                 allow_text: true,
@@ -742,6 +746,7 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
         None => NewInboxItem {
             goal_id: g.into(),
             kind: InboxKind::Question,
+            subject: title.clone(),
             title: if title.is_empty() {
                 tr!(lang, "扩展请求你的输入", "An extension asks for your input")
             } else {
@@ -904,6 +909,7 @@ pub fn paused_item(
         goal_id: rec.id.clone(),
         kind: InboxKind::Paused,
         title: tr!(lang, "已暂停：{why}", "Paused: {why}"),
+        subject: why.into(),
         body: detail.into(),
         options: Choice::labels(&actions::pause_options(reason, rec), lang),
         allow_text,

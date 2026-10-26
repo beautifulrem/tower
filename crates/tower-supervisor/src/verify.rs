@@ -395,6 +395,7 @@ pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, body: &str) -> Result
             let title = &rec.title;
             tr!(inner.lang(), "待验收：{title}", "Ready to accept: {title}")
         },
+        subject: rec.title.clone(),
         body: body.into(),
         options: Vec::new(),
         allow_text: false,

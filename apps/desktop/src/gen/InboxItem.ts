@@ -2,7 +2,16 @@
 import type { InboxKind } from "./InboxKind";
 import type { OptionTone } from "./OptionTone";
 
-export type InboxItem = { id: string, goal_id: string, goal_title: string, kind: InboxKind, title: string, body: string, 
+export type InboxItem = { id: string, goal_id: string, goal_title: string, kind: InboxKind, 
+/**
+ * The full title in the current interface language, e.g. "Paused: …".
+ */
+title: string, 
+/**
+ * Only the variable part (the question, the pause reason, the stall),
+ * for layouts that show the kind separately.
+ */
+subject: string, body: string, 
 /**
  * Fixed choices. Empty means free text only.
  */

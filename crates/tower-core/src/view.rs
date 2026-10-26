@@ -238,7 +238,11 @@ pub struct InboxItem {
     pub goal_id: String,
     pub goal_title: String,
     pub kind: InboxKind,
+    /// The full title in the current interface language, e.g. "Paused: …".
     pub title: String,
+    /// Only the variable part (the question, the pause reason, the stall),
+    /// for layouts that show the kind separately.
+    pub subject: String,
     pub body: String,
     /// Fixed choices. Empty means free text only.
     pub options: Vec<String>,

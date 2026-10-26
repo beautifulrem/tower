@@ -9,7 +9,24 @@ vi.mock("../../lib/store", async () => {
     settings: { language: "en", muted_goals: [] as string[], quiet_until: null },
     goals: {} as Record<string, unknown>,
     inbox: [] as unknown[],
-    snoozed: [{ id: "I-7", goalId: "G-0004", title: "The agent stopped without submitting", until: new Date(2026, 9, 27, 4, 2).getTime() }],
+    // The supervisor's list of put-aside items, as the inbox update carries it.
+    snoozed: [
+      {
+        id: "I-7",
+        goal_id: "G-0004",
+        goal_title: "Find out why checkout is slow",
+        kind: "paused",
+        title: "Paused: stopped",
+        subject: "The agent stopped without submitting",
+        body: "",
+        options: ["Continue"],
+        tones: ["primary"],
+        allow_text: false,
+        created_at: 0,
+        urgency: 1,
+        snoozed_until: new Date(2026, 9, 27, 4, 2).getTime(),
+      },
+    ],
     now: Date.now(),
   });
   return {
@@ -17,12 +34,13 @@ vi.mock("../../lib/store", async () => {
     toast: vi.fn(),
     goalList: () => [],
     act: async <T,>(fn: () => Promise<T>) => fn(),
-    forgetSnoozed: (id: string) => setState("snoozed", (s) => s.filter((x) => x.id !== id)),
-    rememberSnoozed: vi.fn(),
+    /** Test-only: the supervisor's next inbox update, which drops a brought-back item from the list. */
+    __supervisorDrops: (id: string) => setState("snoozed", (s) => s.filter((x) => x.id !== id)),
   };
 });
 
 const { Inbox } = await import("../Inbox");
+const { __supervisorDrops } = (await import("../../lib/store")) as unknown as { __supervisorDrops: (id: string) => void };
 
 describe("Inbox", () => {
   beforeEach(() => invoked.splice(0));
@@ -39,6 +57,8 @@ describe("Inbox", () => {
     await Promise.resolve();
     expect(invoked.map((i) => i.cmd)).toEqual(["snooze"]);
     expect(invoked[0].args).toEqual({ inboxId: "I-7", until: null });
+    // The list is the supervisor's: its next update, not the click, removes the entry.
+    __supervisorDrops("I-7");
     await new Promise((r) => setTimeout(r));
     expect(document.querySelector(".snoozed")).toBeNull();
   });

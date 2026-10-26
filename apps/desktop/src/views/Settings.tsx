@@ -356,10 +356,10 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
     void navigator.clipboard.writeText(link);
     toast("success", t("common.copied"));
   };
-  /** A pairing link as a reading: which network, then host:port; the scheme and the token stay out of sight. */
+  /** A pairing link as a reading: which network (the supervisor says), then host:port; the scheme and the token stay out of sight. */
   const hostOf = (link: string) => link.replace(/^https?:\/\//, "").replace(/\/?#.*$/, "");
-  const isTailscale = (link: string) => hostOf(link).startsWith("100.");
-  const lan = () => (info()?.links ?? []).some((l) => !isTailscale(l));
+  const kindOf = (i: number) => info()?.kinds?.[i] ?? "lan";
+  const lan = () => (info()?.kinds ?? []).some((k) => k !== "tailscale");
   return (
     <section class="settings-block" onFocusOut={() => void props.commit().then((saved) => saved && refetch())}>
       <h2 class="section-title">{t("settings.phone")}</h2>
@@ -415,9 +415,9 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
                     <div class="phone-qr" innerHTML={i().qr_svg} aria-label={t("settings.phoneQr")} role="img" />
                     <div class="phone-links">
                       <For each={i().links}>
-                        {(link) => (
+                        {(link, n) => (
                           <div class="phone-link">
-                            <span class="phone-link-net t3">{isTailscale(link) ? t("settings.phoneLinkTailscale") : t("settings.phoneLinkLan")}</span>
+                            <span class="phone-link-net t3">{kindOf(n()) === "tailscale" ? t("settings.phoneLinkTailscale") : t("settings.phoneLinkLan")}</span>
                             <span class="mono t1 ellipsis" title={link}>
                               {hostOf(link)}
                             </span>

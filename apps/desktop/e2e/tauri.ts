@@ -64,6 +64,8 @@ export async function openTower(
               return F.goals;
             case "inbox":
               return F.inbox;
+            case "snoozed_inbox":
+              return F.snoozed ?? [];
             case "goal":
               return F[`goal-${a.id}`];
             case "trace":

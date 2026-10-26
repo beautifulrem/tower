@@ -23,7 +23,7 @@ import { t } from "../lib/i18n";
 import { approves, optionTone } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go } from "../lib/nav";
-import { act, forgetSnoozed, rememberSnoozed, state, toast } from "../lib/store";
+import { act, state, toast } from "../lib/store";
 import { Icon, NeedsYouMark, NoticeMark, Seal } from "./Glyph";
 import { Claim, CriteriaBar } from "./Honesty";
 import { PrLine } from "./Pr";
@@ -68,18 +68,14 @@ export function tomorrowAt9(now = new Date()): number {
   return d.getTime();
 }
 
-/** Brings a put-aside decision back now. */
-export const unsnooze = async (id: string) => {
-  const ok = await act(() => api.snooze(id, null));
-  if (ok !== undefined) forgetSnoozed(id);
-};
+/** Brings a put-aside decision back now; the supervisor's next inbox update moves it. */
+export const unsnooze = (id: string) => act(() => api.snooze(id, null));
 
 /** "Remind me later": the card leaves and comes back at the chosen time; the inbox's footer says where it went. */
 export async function snoozeMenu(item: InboxItem) {
   const pick = async (until: number) => {
     const ok = await act(() => api.snooze(item.id, until));
     if (ok === undefined) return;
-    rememberSnoozed(item, until);
     toast("info", t("decision.snoozed", { time: clock(until) }), { action: { label: t("decision.unsnooze"), run: () => void unsnooze(item.id) } });
   };
   await popupActions([

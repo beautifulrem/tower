@@ -109,7 +109,17 @@ export function enrichCi(F: F) {
     allow_text: false,
     created_at: Date.now() - 39 * 60_000,
     urgency: 2,
+    snoozed_until: null,
   });
+}
+
+/** One decision put aside until 04:02, as the supervisor reports it. */
+export function enrichSnoozed(F: F) {
+  const src = F.inbox.find((i: any) => i.kind === "paused") ?? F.inbox[0];
+  const at = new Date();
+  at.setHours(4, 2, 0, 0);
+  at.setDate(at.getDate() + 1);
+  F.snoozed = [{ ...src, id: "inbox-snoozed-1", goal_id: "G-0002", goal_title: "Align discount rules with the product doc", subject: "Which discount applies first?", kind: "question", snoozed_until: at.getTime() }];
 }
 
 /** The phone page is on, reachable over Tailscale and the local network. */
@@ -118,6 +128,7 @@ export function enrichPhone(F: F) {
   F.remoteInfo = {
     enabled: true,
     links: ["http://100.101.102.103:7317/#k3Jd9sQ2", "http://192.168.1.24:7317/#k3Jd9sQ2"],
+    kinds: ["tailscale", "lan"],
     qr_svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" shape-rendering="crispEdges"><rect width="21" height="21" fill="#fff"/><path fill="#000" d="M1 1h7v7H1zM2 2v5h5V2zM3 3h3v3H3zM13 1h7v7h-7zM14 2v5h5V2zM15 3h3v3h-3zM1 13h7v7H1zM2 14v5h5v-5zM3 15h3v3H3zM9 1h1v1H9zM11 1h1v2h-1zM9 3h2v1H9zM10 5h1v1h-1zM9 7h1v2H9zM11 8h1v1h-1zM1 9h2v1H1zM4 9h1v2H4zM6 9h2v1H6zM9 10h2v1H9zM12 9h1v1h-1zM14 9h1v2h-1zM16 10h2v1h-2zM19 9h1v2h-1zM2 11h1v1H2zM5 12h2v1H5zM9 12h1v2H9zM11 12h2v1h-2zM13 13h1v1h-1zM15 12h1v1h-1zM17 12h1v2h-1zM19 12h1v1h-1zM10 14h2v1h-2zM13 15h2v1h-2zM16 15h1v1h-1zM18 14h2v1h-2zM9 16h1v2H9zM11 17h1v1h-1zM13 17h1v2h-1zM15 17h2v1h-2zM18 16h1v1h-1zM19 18h1v2h-1zM10 19h2v1h-2zM14 19h3v1h-3z"/></svg>`,
     tailscale: true,
   };
@@ -132,4 +143,5 @@ export function enrichRich(F: F) {
   enrichSecondReady(F);
   enrichCi(F);
   enrichPhone(F);
+  enrichSnoozed(F);
 }

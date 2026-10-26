@@ -44,6 +44,7 @@ const item = (over: Partial<InboxItem> = {}): InboxItem => ({
   allow_text: true,
   created_at: Date.now() - 60_000,
   urgency: 1,
+  snoozed_until: null,
   ...over,
 });
 

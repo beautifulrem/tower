@@ -74,6 +74,12 @@
   .strip .kind { color: var(--text-1); font-weight: 500; }
   .strip .goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .strip .age { margin-left: auto; color: var(--text-3); flex: 0 0 auto; }
+  /* The bell: 44pt of target around a 12px glyph, quiet until pressed. */
+  .strip .bell { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 0 -14px 0 -4px; padding: 0; border: 0; background: transparent; color: var(--text-3); opacity: .7; flex: 0 0 auto; }
+  .strip .bell[aria-expanded="true"], .strip .bell:active { opacity: 1; color: var(--text-1); }
+  /* "Later": two times, offered inline where the bell is; no sheet to dismiss. */
+  .later { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--text-3); }
+  .later .btn { min-height: 40px; font-size: 14px; }
   .main { padding: 10px 12px 12px; display: grid; gap: 8px; }
   .question { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: -0.008em; user-select: text; }
   .question.code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
@@ -133,6 +139,7 @@ const T = {
   en: { needs: "Needs you", toAccept: "Ready to accept", running: "Running", none: "Nothing needs you.", noneBody: "Questions, approvals and pauses show up here.",
         noRuns: "No goal is running.", send: "Send", pause: "Pause", confirm: "Press again", unpaired: "Open the pairing link from Tower's Settings on this phone.",
         updated: "updated", every: "every 5 s", offline: "Can't reach Tower", retry: "Retry", you: "you", atDesk: "At your Mac",
+        later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00", putAside: "Put aside until",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
         acceptOnDesk: "Review and accept on your Mac", claim: "Agent says", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
         foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
@@ -142,6 +149,7 @@ const T = {
   zh: { needs: "需要你", toAccept: "待验收", running: "运行中", none: "没有需要你决定的事。", noneBody: "问题、审批、假设与暂停会出现在这里。",
         noRuns: "没有正在运行的目标。", send: "发送", pause: "暂停", confirm: "再按一次", unpaired: "在这台手机上打开 Tower 设置里的配对链接。",
         updated: "更新于", every: "每 5 秒", offline: "连不上 Tower", retry: "重试", you: "你", atDesk: "在电脑上",
+        later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00", putAside: "已收起，再提醒于",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
         acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 称", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
         foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
@@ -166,6 +174,7 @@ const api = async (path, body) => {
 };
 // Glyphs: the desktop's one-pen set, 10px grid, 1.25px butt-capped lines.
 const G = {
+  bell: `<svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true"><path d="M2 7.5 L2 5 A3 3 0 0 1 8 5 L8 7.5 Z"/><path d="M4 8.8 A1 1 0 0 0 6 8.8"/></svg>`,
   diamond: `<svg class="mark" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)"/></svg>`,
   notice: `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>`,
   ring: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>`,
@@ -201,6 +210,14 @@ const DESK_ONLY = {
 };
 const atDeskOnly = (i, o) => (i.kind === "approval" ? DESK_ONLY.approval : DESK_ONLY.any).includes(o);
 let armed = null;
+// The card whose "later" choices are open (one at a time, like the arming).
+let later = null;
+async function snooze(id, until) {
+  later = null;
+  try { await api("/api/snooze", { inbox_id: id, until }); } catch (e) { alert(e.message); }
+  load();
+}
+const tomorrowAt9 = () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d.getTime(); };
 async function answer(id, response, danger) {
   if (danger && armed !== id + response) { armed = id + response; render(last); return; }
   armed = null;
@@ -247,9 +264,11 @@ function render(s) {
       return `<button class="btn ${tone === "primary" ? "primary" : ""} ${isArmed ? "armed" : ""}" data-id="${esc(i.id)}" data-o="${esc(o)}" data-d="${danger}">${esc(isArmed ? t("confirm") : o)}</button>`;
     }).join("");
     const security = i.kind === "paused" && g && g.pause_reason === "dependencies_changed";
+    const laterOpen = later === i.id;
     h += `<article class="card">
-      <div class="strip">${G.diamond}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span>·</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span></div>
+      <div class="strip">${G.diamond}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span>·</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span><button class="bell" data-later="${esc(i.id)}" aria-label="${t("later")}" aria-expanded="${laterOpen}">${G.bell}</button></div>
       <div class="main">
+        ${laterOpen ? `<div class="later"><span>${t("later")}</span><button class="btn" data-snooze="${esc(i.id)}" data-until="${Date.now() + 3_600_000}">${t("inHour")}</button><button class="btn" data-snooze="${esc(i.id)}" data-until="${tomorrowAt9()}">${t("tomorrow")}</button></div>` : ""}
         <p class="question ${i.kind === "ci_failed" ? "code" : ""}">${esc(i.subject)}</p>
         ${p.prose ? `<p class="body">${esc(p.prose)}</p>` : ""}
         ${p.tail ? `<pre class="tail">${esc(p.tail)}</pre>` : ""}
@@ -287,6 +306,8 @@ app.addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
   if (b.dataset.retry !== undefined) return load();
+  if (b.dataset.later) { later = later === b.dataset.later ? null : b.dataset.later; return render(last); }
+  if (b.dataset.snooze) return snooze(b.dataset.snooze, Number(b.dataset.until));
   if (b.dataset.pause) return pause(b.dataset.pause);
   if (b.dataset.send) { const v = document.getElementById("t-" + b.dataset.send).value.trim(); if (v) answer(b.dataset.send, v, false); return; }
   if (b.dataset.id) answer(b.dataset.id, b.dataset.o, b.dataset.d === "true");

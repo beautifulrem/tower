@@ -45,6 +45,15 @@ pnpm check          # 类型检查、clippy 与全部测试
 
 在设置中添加一个 git 仓库，回到概览写一句你想要的结果，按回车。
 
+Tower 默认不加载你的 Pi 扩展（它们在沙箱之外运行）。如果你的模型来自扩展包（例如 ClinePass 的 `pi-clinepass-provider`），在设置的“额外加载的 Pi 扩展”中填入它的入口文件，并让 Tower 能读到它需要的凭据（例如在登录 shell 中 `export CLINE_API_KEY=…`，Tower 会把 `*_API_KEY` 传给 Pi，但不会传给 Agent 的 shell）。
+
+也可以不开界面直接跑一个目标：
+
+```sh
+TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
+  <仓库> "<意图>" "<验收命令>" [provider/model] [扩展入口文件…]
+```
+
 ### 不需要模型凭据的演示
 
 `tools/demo-engine` 是一个按 Pi 的 RPC 协议应答的脚本化引擎。它不调用模型，但会像 Agent 一样在演示仓库里读代码、跑测试、记录原因、提问、修改并提交。

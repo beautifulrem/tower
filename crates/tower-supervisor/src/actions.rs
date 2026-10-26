@@ -276,6 +276,8 @@ pub async fn models(inner: &Arc<Inner>) -> Result<Vec<ModelInfo>> {
         cwd: tmp.clone(),
         session_dir: tmp,
         load_user_extensions: false,
+        // Provider extensions contribute models, so the list must include them.
+        extensions: inner.extensions(&inner.settings()),
         env: inner.env.pairs().into_iter().chain([("PI_OFFLINE".to_string(), "1".to_string())]).collect(),
         ..Default::default()
     };

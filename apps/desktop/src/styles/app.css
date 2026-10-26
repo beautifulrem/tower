@@ -955,6 +955,7 @@ input[type="radio"] {
 }
 
 .output-tail {
+  font-feature-settings: "liga" 0, "calt" 0;
   margin: 6px 0 10px;
   padding: 10px 12px;
   max-height: 320px;
@@ -1325,8 +1326,9 @@ input[type="radio"] {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  /* Show code exactly as written: no ligatures in diffs. */
+  /* Show code exactly as written: no ligatures or contextual arrows. */
   font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
   font-size: var(--fs-code);
   line-height: var(--lh-code);
 }

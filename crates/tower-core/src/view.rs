@@ -289,6 +289,10 @@ pub struct Settings {
     pub max_concurrent: u32,
     /// Load the user's own Pi extensions into goal runs.
     pub load_user_extensions: bool,
+    /// Specific Pi extensions to load explicitly (e.g. a model provider
+    /// package), even when the user's extensions are not loaded.
+    #[serde(default)]
+    pub extra_extensions: Vec<String>,
 }
 
 impl Default for Settings {
@@ -299,6 +303,7 @@ impl Default for Settings {
             default_thinking: String::new(),
             max_concurrent: 3,
             load_user_extensions: false,
+            extra_extensions: Vec::new(),
         }
     }
 }

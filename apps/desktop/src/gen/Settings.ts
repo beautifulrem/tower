@@ -12,4 +12,9 @@ default_model: string, default_thinking: string, max_concurrent: number,
 /**
  * Load the user's own Pi extensions into goal runs.
  */
-load_user_extensions: boolean, };
+load_user_extensions: boolean, 
+/**
+ * Specific Pi extensions to load explicitly (e.g. a model provider
+ * package), even when the user's extensions are not loaded.
+ */
+extra_extensions: Array<string>, };

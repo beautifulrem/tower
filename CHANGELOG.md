@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Interface
+- English and Simplified Chinese throughout: interface, native menu, notifications, Needs-You cards, errors, briefings, review risk reasons, sentinel titles and the extension's approval prompts. A new install follows the macOS language; Settings → Language switches everything at once, including the menu bar.
+- Needs-You options are matched by meaning, not text: a card written in one language can be answered in the other.
+
 ## [0.1.0] — 2026-10-26
 
 The first working version of the M1 loop described in `docs/`.

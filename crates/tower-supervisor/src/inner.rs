@@ -32,6 +32,8 @@ pub(crate) struct Inner {
     pub(crate) models: Mutex<Option<(std::time::Instant, Vec<ModelInfo>)>>,
     /// `caffeinate` while any engine runs, so a sleeping Mac does not stall goals.
     pub(crate) keep_awake: Mutex<Option<std::process::Child>>,
+    /// The phone page's server, when enabled.
+    pub(crate) remote: crate::remote::Remote,
 }
 
 impl Inner {

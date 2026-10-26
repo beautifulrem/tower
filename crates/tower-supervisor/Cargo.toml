@@ -20,6 +20,9 @@ tracing.workspace = true
 ts-rs.workspace = true
 directories.workspace = true
 globset.workspace = true
+tiny_http.workspace = true
+qrcode.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -18,6 +18,7 @@ pub mod paths;
 mod pr;
 mod project_check;
 pub mod prompts;
+mod remote;
 mod run;
 pub mod sandbox;
 pub mod shell_env;
@@ -34,8 +35,8 @@ use tower_core::contract::{Contract, ContractIssue};
 use tower_core::lifecycle::Transition;
 use tower_core::review::build_units;
 use tower_core::view::{
-    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
-    TraceEntry,
+    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, RemoteInfo, ReviewView,
+    Settings, TraceEntry,
 };
 use tower_core::{EventKind, Lang, LifecycleState, Mode, PauseReason, tr};
 use tower_git::{Git, GitError};
@@ -124,10 +125,14 @@ impl Supervisor {
             traces: Mutex::default(),
             models: Mutex::default(),
             keep_awake: Mutex::default(),
+            remote: remote::Remote::default(),
         });
         let sup = Self { inner };
         sup.spawn_loops();
         sweep(&sup.inner.paths);
+        if let Err(e) = sup.apply_remote() {
+            tracing::warn!(error = %e, "phone page not started");
+        }
         sup.recover().await;
         Ok(sup)
     }
@@ -351,11 +356,59 @@ impl Supervisor {
                 return Err(invalid(tr!(lang, "找不到扩展文件：{path}", "Extension file not found: {path}")));
             }
         }
+        let before = self.inner.settings();
+        let mut settings = settings;
+        if settings.remote_enabled && settings.remote_token.is_empty() {
+            settings.remote_token = remote::new_token();
+        }
         self.inner.store(|s| s.save_settings(&settings))?;
         *self.inner.models.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        let remote_changed = (before.remote_enabled, before.remote_port, &before.remote_token)
+            != (settings.remote_enabled, settings.remote_port, &settings.remote_token);
+        if remote_changed {
+            self.apply_remote()?;
+        }
         let inner = self.inner.clone();
         tokio::spawn(async move { run::schedule(&inner).await });
         Ok(())
+    }
+
+    /// Starts or stops the phone page according to the settings.
+    fn apply_remote(&self) -> Result<()> {
+        let s = self.inner.settings();
+        if s.remote_enabled {
+            self.inner.remote.start(&self.inner, s.remote_port, s.remote_token).map_err(|e| {
+                invalid(tr!(
+                    self.inner.lang(),
+                    "无法在端口 {port} 上提供手机页面：{e}",
+                    "Could not serve the phone page on port {port}: {e}",
+                    port = s.remote_port
+                ))
+            })?;
+        } else {
+            self.inner.remote.stop();
+        }
+        Ok(())
+    }
+
+    /// How to open the phone page on this network.
+    pub fn remote_info(&self) -> RemoteInfo {
+        let s = self.inner.settings();
+        if !s.remote_enabled {
+            return RemoteInfo { enabled: false, links: Vec::new(), qr_svg: String::new(), tailscale: false };
+        }
+        let addrs = remote::addresses(&self.inner.env);
+        let tailscale = addrs.first().is_some_and(|a| a.starts_with("100."));
+        let links: Vec<String> =
+            addrs.iter().map(|a| format!("http://{a}:{}/#{}", s.remote_port, s.remote_token)).collect();
+        let qr_svg = links.first().map(|l| remote::qr_svg(l)).unwrap_or_default();
+        RemoteInfo { enabled: true, links, qr_svg, tailscale }
+    }
+
+    /// A new pairing secret: phones paired before must pair again.
+    pub fn reset_remote_token(&self) -> Result<()> {
+        let s = self.inner.settings();
+        self.save_settings(Settings { remote_token: remote::new_token(), ..s })
     }
 
     pub async fn models(&self) -> Result<Vec<ModelInfo>> {

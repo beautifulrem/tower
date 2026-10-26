@@ -423,6 +423,32 @@ pub struct Settings {
     /// `claude-agent-acp` if installed, else `npx` with a pinned version.
     #[serde(default)]
     pub claude_acp_command: String,
+    /// Serve the phone page (Needs-You and pausing) on your network.
+    #[serde(default)]
+    pub remote_enabled: bool,
+    #[serde(default = "default_remote_port")]
+    pub remote_port: u16,
+    /// The pairing secret every phone request must carry.
+    #[serde(default)]
+    pub remote_token: String,
+}
+
+fn default_remote_port() -> u16 {
+    7317
+}
+
+/// How to open the phone page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct RemoteInfo {
+    pub enabled: bool,
+    /// Links that pair a phone (the token is in the fragment), Tailscale's
+    /// address first.
+    pub links: Vec<String>,
+    /// QR code of the first link, as SVG.
+    pub qr_svg: String,
+    /// Whether a Tailscale address is among the links (encrypted transport).
+    pub tailscale: bool,
 }
 
 fn default_engine() -> String {
@@ -464,6 +490,9 @@ impl Default for Settings {
             muted_goals: Vec::new(),
             engine: default_engine(),
             claude_acp_command: String::new(),
+            remote_enabled: false,
+            remote_port: default_remote_port(),
+            remote_token: String::new(),
         }
     }
 }

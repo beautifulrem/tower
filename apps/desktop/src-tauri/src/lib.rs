@@ -15,8 +15,8 @@ use tauri_plugin_notification::NotificationExt;
 use tower_core::contract::{Contract, ContractIssue};
 use tower_core::tr;
 use tower_core::view::{
-    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
-    TraceEntry,
+    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, RemoteInfo, ReviewView,
+    Settings, TraceEntry,
 };
 use tower_store::ProjectPatch;
 use tower_supervisor::{Config, Error, NewGoalInput, OpenTarget, Paths, ReviewComment, Supervisor, UiSink, UiUpdate};
@@ -241,6 +241,16 @@ async fn undo_rollback(sup: Sup<'_>, id: String) -> Res<()> {
 #[tauri::command]
 async fn write_file(sup: Sup<'_>, id: String, path: String, text: String) -> Res<()> {
     sup.write_file(&id, &path, &text).await
+}
+
+#[tauri::command]
+fn remote_info(sup: Sup<'_>) -> RemoteInfo {
+    sup.remote_info()
+}
+
+#[tauri::command]
+fn reset_remote_token(sup: Sup<'_>) -> Res<()> {
+    sup.reset_remote_token()
 }
 
 #[tauri::command]
@@ -478,6 +488,8 @@ pub fn run() {
             ui_state,
             set_ui_state,
             start_demo,
+            remote_info,
+            reset_remote_token,
             undo_rollback,
             write_file,
             snooze,

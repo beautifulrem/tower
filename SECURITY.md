@@ -21,6 +21,10 @@ Please **do not** open a public issue for a vulnerability. Use GitHub's private 
 - **Claude Code** (through the ACP bridge, `extensions/tower-goal/acp.ts`): Claude Code is started with no built-in tools, no user or project settings, hooks or MCP servers; its only tools are Tower's MCP server, which applies the same gate and Seatbelt profile as with Pi.
 - In both cases the engine process itself (which holds your model login) runs outside the sandbox; only what the model can cause to happen runs inside it.
 
+## The phone page
+
+Off by default. When you turn it on (Settings), Tower serves a small page on your network so a phone can answer Needs-You items and pause goals. Every request must carry a 256-bit pairing token from the link or QR code in Settings; the page itself holds no data, and the token travels in the link's fragment, which browsers do not send. Over Tailscale the connection is encrypted; on a plain local network it is not, so anyone who can watch that network could read the token — Settings says so and can issue a new token at any time.
+
 ## Known limits
 
 - Pi itself (which holds the model credentials and talks to the provider) runs outside the sandbox; only what the model can cause to happen runs inside it.

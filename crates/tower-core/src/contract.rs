@@ -196,6 +196,16 @@ impl Contract {
                         tr!(lang, "标准 {id} 的超时必须大于 0", "Criterion {id} needs a timeout above 0"),
                     ));
                 }
+                if let Some(part) = text_only_check(command) {
+                    issues.push(warn(
+                        "criteria",
+                        tr!(
+                            lang,
+                            "标准 {id} 中的 `{part}` 只检查文本或文件是否存在，不检查行为：Agent 写一行注释就能满足",
+                            "In criterion {id}, `{part}` checks text or a file's existence, not behaviour: a comment would satisfy it"
+                        ),
+                    ));
+                }
             }
         }
         if self.machine_criteria().next().is_none() {
@@ -282,9 +292,45 @@ impl ScopeFence {
     }
 }
 
+/// The first part of a criterion command that only inspects text or file
+/// existence (`grep`, `test -f`, `echo`, …), if any. Such checks are easy to
+/// satisfy without doing the work.
+pub fn text_only_check(command: &str) -> Option<String> {
+    command
+        .split(['&', '|', ';'])
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .find(|p| {
+            let mut words = p.split_whitespace();
+            let first = words.next().unwrap_or("");
+            let second = words.next().unwrap_or("");
+            matches!(first, "grep" | "egrep" | "rg" | "echo" | "true" | "cat" | "ls")
+                || ((first == "test" || first == "[") && matches!(second, "-f" | "-e" | "-d" | "-s"))
+        })
+        .map(String::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_only_criteria_are_flagged() {
+        assert_eq!(
+            text_only_check("npm test && grep -q taxRate test/cart.test.js").as_deref(),
+            Some("grep -q taxRate test/cart.test.js")
+        );
+        assert_eq!(text_only_check("test -f dist/app.js").as_deref(), Some("test -f dist/app.js"));
+        assert_eq!(text_only_check("npm test 2>&1 | tail -5"), None);
+        assert_eq!(text_only_check("cargo test --workspace"), None);
+        let mut c = Contract::quick("x", Some("npm test && grep -q x y".into()), Lang::En);
+        c.criteria[0].title = "t".into();
+        assert!(
+            c.validate(Lang::En)
+                .iter()
+                .any(|i| matches!(i, ContractIssue::Warning { message, .. } if message.contains("not behaviour")))
+        );
+    }
 
     #[test]
     fn quick_contract_is_ratifiable_and_warns_without_tests() {

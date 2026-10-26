@@ -575,3 +575,16 @@ fn tower_supervisor_test_support_browser() -> Option<&'static str> {
     .into_iter()
     .find(|b| Path::new(b).is_file())
 }
+
+/// The diagnostics archive for bug reports has no pairing token or secrets.
+#[tokio::test(flavor = "multi_thread")]
+async fn diagnostics_leave_secrets_out() {
+    let h = harness("pass").await;
+    h.sup.save_settings(Settings { remote_enabled: true, remote_port: 0, ..h.sup.settings() }).ok();
+    let token = h.sup.settings().remote_token;
+    let zip = h.sup.export_diagnostics().unwrap();
+    let out = Command::new("/usr/bin/unzip").arg("-p").arg(&zip).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("\"tower\""), "the archive has content");
+    assert!(token.is_empty() || !text.contains(&token), "no pairing token");
+}

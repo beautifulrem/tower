@@ -259,6 +259,11 @@ fn look_image(sup: Sup<'_>, file: String) -> Option<String> {
 }
 
 #[tauri::command]
+fn export_diagnostics(sup: Sup<'_>) -> Res<String> {
+    sup.export_diagnostics().map(|p| p.display().to_string())
+}
+
+#[tauri::command]
 async fn start_demo(sup: Sup<'_>) -> Res<GoalSummary> {
     sup.start_demo().await
 }
@@ -458,7 +463,22 @@ pub fn run() {
             let sup = tauri::async_runtime::block_on(Supervisor::start(config, sink.clone() as Arc<dyn UiSink>))?;
             // The menu speaks the settings language, so it is built once they are readable.
             app.set_menu(menu::build(&handle, sup.lang())?)?;
-            app.on_menu_event(|app, event| menu::forward(app, event.id().as_ref()));
+            app.on_menu_event(|app, event| {
+                if event.id().as_ref() == "help:diagnostics" {
+                    // Written into the data folder and shown in Finder, ready
+                    // to attach to an issue.
+                    if let Some(sup) = app.try_state::<Supervisor>() {
+                        match sup.export_diagnostics() {
+                            Ok(zip) => {
+                                let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(zip).spawn();
+                            }
+                            Err(e) => tracing::warn!(error = %e, "diagnostics not exported"),
+                        }
+                    }
+                    return;
+                }
+                menu::forward(app, event.id().as_ref())
+            });
             // Items already open at launch were announced before: badge them, don't notify again.
             if let Ok(items) = sup.inbox() {
                 sink.seen
@@ -493,6 +513,7 @@ pub fn run() {
             ui_state,
             set_ui_state,
             start_demo,
+            export_diagnostics,
             look_image,
             remote_info,
             reset_remote_token,

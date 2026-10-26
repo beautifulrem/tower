@@ -310,6 +310,24 @@ mod tests {
         assert!(scan(&files, &Scope::default(), Lang::En).is_empty());
     }
 
+    /// A large change (200 files, 60 000 changed lines) stays well inside
+    /// the time a verification takes. Generous bound: debug builds on CI.
+    #[test]
+    fn large_diffs_scan_quickly() {
+        let add: Vec<String> = (0..150).map(|i| format!("  assert.equal(f({i}), {i});")).collect();
+        let del: Vec<String> = (0..150).map(|i| format!("  expect(g({i})).toBe({i});")).collect();
+        let add: Vec<&str> = add.iter().map(String::as_str).collect();
+        let del: Vec<&str> = del.iter().map(String::as_str).collect();
+        let files: Vec<DiffFile> =
+            (0..200).map(|i| file(&format!("test/m{i}.test.js"), FileStatus::Modified, &add, &del)).collect();
+        let t = std::time::Instant::now();
+        let hits =
+            scan(&files, &Scope { include: vec!["src/**".into(), "test/**".into()], ..Scope::default() }, Lang::En);
+        let units = crate::review::build_units(&files, None, Lang::En);
+        assert!(hits.is_empty() && !units.is_empty());
+        assert!(t.elapsed() < std::time::Duration::from_secs(2), "took {:?}", t.elapsed());
+    }
+
     #[test]
     fn quieter_ways_of_hiding_a_failure_are_caught() {
         let files = vec![

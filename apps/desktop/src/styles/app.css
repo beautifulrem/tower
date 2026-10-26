@@ -2990,7 +2990,7 @@ input[type="radio"] {
 .g-row {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 5em 11.5em 5em;
+  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 12.5em 5em;
   column-gap: var(--sp-3);
   align-items: center;
   height: var(--row-goal-h);
@@ -3074,7 +3074,9 @@ input[type="radio"] {
 }
 /* Identity: nothing in it is squeezed by the browser's own proportions. The id,
    separators and readings keep their width; the project name may shorten but
-   stays legible (3.5em); the engine mark gives way first, and leaves at 1400. */
+   stays legible (3.5em). The engine mark is two letters or nothing — never a
+   letter and a half: on a crowded row (rework, a mute, an overlap, a PR beside
+   it) it leaves first, below 1560, and lives on in the title's tooltip. */
 .g-id {
   display: flex;
   align-items: center;
@@ -3089,17 +3091,17 @@ input[type="radio"] {
   flex: 0 1 auto;
   min-width: 3.5em;
 }
-.g-id .g-engine {
-  flex: 0 10 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .g-id .sep {
   padding: 0 0.25em;
 }
 .g-engine-narrow {
   display: none;
+}
+@media (max-width: 1560px) {
+  .g-row[data-crowded="true"] .g-engine,
+  .g-row[data-crowded="true"] .g-engine-sep {
+    display: none;
+  }
 }
 @media (max-width: 1400px) {
   .g-id .g-engine,
@@ -3114,15 +3116,18 @@ input[type="radio"] {
 }
 /* The row's own button stays quiet (a ghost) and whole: no opacity, so its words keep 4.5:1 on white. */
 /* Narrower windows: identity folds into the title's tooltip, the live line keeps only
-   its badge and verb (the object is in the tooltip), and the title gets the room. */
+   its badge and verb (the object and the run's elapsed time are in the tooltip — the
+   separators go with their readings, so two words never touch), and the title gets the room. */
 @media (max-width: 1240px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 5em 5em;
+    grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 6.5em 5em;
   }
   .g-id,
   .g-crit .crit-human,
   .g-live .live-target,
-  .g-live .live-detail .sep {
+  .g-live .live-target-sep,
+  .g-live .live-elapsed,
+  .g-live .live-elapsed-sep {
     display: none;
   }
   /* The identity column is gone; the engine mark rides in front of the live line instead. */

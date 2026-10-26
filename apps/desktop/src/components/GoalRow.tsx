@@ -29,8 +29,10 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   const otherEngine = () => !!engine() && effectiveEngine(engine(), state.settings?.engine) !== effectiveEngine("", state.settings?.engine);
   // Arrived in the last few seconds: one short settle, so the eye finds it.
   const fresh = Date.now() - props.goal.created_at < 5000;
+  // Identity with more than id · project · engine in it: the engine mark leaves first in a narrower window (whole, never clipped).
+  const crowded = () => otherEngine() && (g().rework_cycles > 0 || !!g().overlaps?.length || !!g().pr || !!state.settings?.muted_goals.includes(g().id));
   return (
-    <div class="g-row" classList={{ selected: !!props.selected }} data-goal={g().id} data-new={fresh ? "true" : undefined} onClick={open}>
+    <div class="g-row" classList={{ selected: !!props.selected }} data-goal={g().id} data-new={fresh ? "true" : undefined} data-crowded={crowded() ? "true" : undefined} onClick={open}>
       <span class="g-glyph">
         <LifecycleGlyph goal={g()} />
       </span>

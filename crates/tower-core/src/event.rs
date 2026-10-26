@@ -116,6 +116,11 @@ pub enum EventKind {
         is_error: bool,
         summary: String,
         duration_ms: i64,
+        /// What the call was about (its start summary), so the trace can
+        /// show it without pairing start and end.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        target: Option<String>,
     },
     /// One assistant message, truncated for the trace.
     AssistantMessage {

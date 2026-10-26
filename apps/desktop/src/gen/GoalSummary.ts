@@ -26,4 +26,8 @@ overlaps: Array<Overlap>,
 /**
  * The pull request opened from Tower, once there is one.
  */
-pr: PrView | null, };
+pr: PrView | null, 
+/**
+ * The goal's engine (`pi` or `claude-code`); empty means the default.
+ */
+engine: string, };

@@ -486,6 +486,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             let call = run.flags().tools.remove(&call_id);
             let duration_ms = call.as_ref().map(|c| c.started.elapsed().as_millis() as i64).unwrap_or(0);
             let text = tower_pi::result_text(&result);
+            let target = call.as_ref().map(|c| summarize::tool_call(&tool, &c.args, &run.workspace));
             inner.append(
                 g,
                 EventKind::ToolEnded {
@@ -494,6 +495,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                     is_error,
                     summary: summarize::tool_result(&text),
                     duration_ms,
+                    target,
                 },
             )?;
             run.flags().last_activity = Some(Instant::now());

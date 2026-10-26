@@ -14,7 +14,7 @@ export function PrLine(props: { pr: PrView; compact?: boolean }) {
   const stateWord = () =>
     ({ open: t("goal.prOpen"), merged: t("goal.prMerged"), closed: t("goal.prClosed") })[s().state] ?? s().state;
   return (
-    <button class="pr-line link-quiet row halt" onClick={() => void openUrl(props.pr.url)} title={props.pr.url}>
+    <button class="pr-line link-quiet row text-btn halt" onClick={() => void openUrl(props.pr.url)} title={props.pr.url}>
       <span class="t1">PR</span>
       <span class="t2">{stateWord()}</span>
       <Show when={s().passed + s().failed + s().pending > 0}>

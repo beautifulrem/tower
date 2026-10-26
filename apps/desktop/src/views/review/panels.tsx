@@ -20,10 +20,10 @@ import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
 import { act, state, toast } from "../../lib/store";
 import { toComment } from "./types";
 
-/** Lines of an output tail shown before it folds. */
-const TAIL_LINES = 8;
+/** Lines of an output tail shown before it folds: the exit code and the runner's last three, so four criteria and their pictures fit one screen. */
+const TAIL_LINES = 4;
 
-/** An output tail that folds after eight lines, with a line saying how much more there is. */
+/** An output tail that folds after four lines, with a line saying how much more there is. */
 function OutputTail(props: { text: string }) {
   const [all, setAll] = createSignal(false);
   const lines = () => props.text.split("\n");

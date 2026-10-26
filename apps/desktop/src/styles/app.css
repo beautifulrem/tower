@@ -878,19 +878,26 @@ textarea:hover,
   border-color: var(--border-strong);
   transition-duration: 0ms;
 }
+/* Focus has two forms: a control wears the 1.5px ring, a field shows it in its border — and the border has to
+   change for real: from the 10% hairline to text-3, a line the eye finds from across the room. The pointer gets
+   that one line; the keyboard (focus-visible) gets a second, inside, so Tab lands on a 2px edge and never on a
+   ring around a 1600px editor. A text area is a field — the composer's, a sheet's, the steer box's — so a sheet
+   opening onto one does not flash a ring. */
 input:focus,
-textarea:focus {
-  border-color: var(--border-strong);
+textarea:focus,
+.select:focus {
+  border-color: var(--text-3);
 }
-input:focus-visible {
-  outline: 1.5px solid var(--focus);
-  outline-offset: 0;
-}
-/* Focus has two forms: a control wears the 1.5px ring, a field shows it in its border. A text area is a
-   field — the composer's, a sheet's, the steer box's — so a sheet opening onto one does not flash a ring. */
+input:focus-visible:not([type="checkbox"]):not([type="radio"]),
 textarea:focus-visible {
   outline: none;
-  border-color: var(--border-strong);
+  border-color: var(--text-3);
+  box-shadow: inset 0 0 0 1px var(--text-3);
+}
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: 1px;
 }
 input::placeholder,
 textarea::placeholder {
@@ -1171,6 +1178,22 @@ input[type="radio"] {
 }
 .next-line .sep {
   padding: 0;
+}
+/* One line, one sentence: each goal is named in at most 18em and ends in an ellipsis, three of them and a count;
+   the bar never wraps, whatever the window — "Since" and its time stay together. */
+.today-bar .briefing-item {
+  flex: 0 1 auto;
+  max-width: 18em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.today-bar .briefing-more {
+  flex: 0 0 auto;
+}
+.today-bar .link {
+  flex: 0 0 auto;
 }
 .today-brief {
   display: flex;
@@ -1881,7 +1904,11 @@ input[type="radio"] {
 .decision-slot > * {
   min-height: 0;
 }
-.decision-slot.leaving {
+/* The fold hangs on the card's own leaving as well as the list's: a card you answered folds the moment the
+   receipt rises, not when the supervisor writes back — the two were one gesture, so they are one motion. The
+   list's flag stays for a card that leaves from outside (answered on the phone, put aside elsewhere). */
+.decision-slot.leaving,
+.decision-slot:has(> .decision.leaving) {
   grid-template-rows: 0fr;
   opacity: 0;
 }
@@ -2014,15 +2041,16 @@ input[type="radio"] {
   gap: var(--sp-2);
   font-size: var(--fs-meta);
 }
+/* The note reads at the card's own width (the card is already a reading width; a 60ch cap left one word on a
+   second line in English), and its ◇ sits on the first line, never between two. */
 .heldout-note {
   display: flex;
   gap: 6px;
-  align-items: baseline;
-  max-width: 60ch;
+  align-items: flex-start;
 }
 .heldout-note .glyph {
   flex: 0 0 auto;
-  align-self: center;
+  margin-top: 4px;
 }
 /* A security decision says so, in words, before the buttons. */
 .decision-caution {
@@ -2129,11 +2157,24 @@ input[type="radio"] {
   box-shadow: var(--card-lift);
 }
 .trace-filters {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border-subtle);
+}
+/* The list scrolls under the filter bar: the first row fades in under it over 8px, instead of being cut at the rule. */
+.trace-filters::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+  background: linear-gradient(to bottom, var(--bg-raised), transparent);
+  pointer-events: none;
 }
 .trace-scroll {
   overflow: auto;
@@ -2243,6 +2284,17 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+/* Loading, failed or empty, the review keeps its shape: the message takes the whole middle (so the status bar
+   stays at the foot where it always is) and the view's own margins, which the full-width diff does without. */
+.review .page-loading {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-6) var(--sp-8);
+}
+.review .page-loading .empty-poster {
+  margin-top: clamp(80px, 22vh, 260px);
 }
 /* Full width: the traffic lights sit in the first 80px, so the header starts after them. */
 .review-head {
@@ -2501,13 +2553,21 @@ input[type="radio"] {
   font-size: 11.5px;
   user-select: none;
 }
-/* The comment affordance: a "+" that appears on hover of the row. */
+/* The comment affordance: a "+" that appears on hover of the row. The glyph stays 16px (the row is 20); what
+   you press is the whole 24px gutter cell around it. */
 .gutter {
+  position: relative;
   padding: 0 !important;
   text-align: center;
   user-select: none;
 }
+.gutter-btn::before {
+  content: "";
+  position: absolute;
+  inset: -4px -2px;
+}
 .gutter-btn {
+  position: relative;
   width: 16px;
   height: 16px;
   margin-top: 2px;
@@ -3177,6 +3237,11 @@ input[type="radio"] {
   letter-spacing: 0.2em;
   font-size: 11px;
 }
+/* The age ends at its right edge and the identity starts at its left: with only the column gap between them the
+   two heads read as one word, so the identity's head steps in by a breath. */
+.board-ghost-head > .g-id {
+  padding-left: var(--sp-3);
+}
 .board-ghost-row .g-glyph {
   color: var(--text-4);
 }
@@ -3627,13 +3692,13 @@ input[type="radio"] {
 .verify-item:last-child {
   border-bottom: 0;
 }
-/* The output tail: eight lines, then a functional fade and a line that says how much is folded. */
+/* The output tail: four lines, then a functional fade and a line that says how much is folded. */
 .verify-tail {
   margin: 4px 0 0 22px;
   max-height: none;
 }
 .verify-tail.folded {
-  max-height: 160px;
+  max-height: calc(4 * 18px + 20px);
   overflow: hidden;
   mask-image: linear-gradient(black 70%, transparent);
   -webkit-mask-image: linear-gradient(black 70%, transparent);
@@ -3887,7 +3952,7 @@ input[type="radio"] {
 .file-editor-text:focus,
 .file-editor-text:focus-visible {
   outline: none;
-  border-color: var(--border-strong);
+  border-color: var(--text-3);
 }
 .file-editor-foot {
   gap: var(--sp-2);

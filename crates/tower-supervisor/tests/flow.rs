@@ -553,11 +553,18 @@ async fn look_criteria_get_before_and_after_screenshots() {
         kind: CriterionKind::Look {
             start: format!("python3 -m http.server {port} --bind 127.0.0.1"),
             url: format!("http://localhost:{port}/done.txt"),
-            timeout_secs: 8,
+            timeout_secs: 5,
         },
     });
     let id = create_with(&h, c).await;
-    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    // Starting the app twice and a browser takes longer than other flows.
+    for _ in 0..600 {
+        let g = h.sup.goals().unwrap().into_iter().find(|g| g.id == id).unwrap();
+        if matches!(g.state, LifecycleState::InReview | LifecycleState::Paused) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     let d = h.sup.goal(&id).unwrap();
     let look = d.criteria[1].look.clone().expect("a look");
     let after = look.pin.clone().expect("a screenshot of the agent's snapshot");

@@ -255,8 +255,10 @@ impl Store {
             |r| r.get(0),
         )?;
         let overlaps = self.overlaps(&rec)?;
+        let pr: Option<String> = self.conn.query_row("SELECT pr FROM goals WHERE id = ?1", [&rec.id], |r| r.get(0))?;
         Ok(GoalSummary {
             overlaps,
+            pr: pr.map(|p| serde_json::from_str(&p)).transpose()?,
             id: rec.id,
             project_id: rec.project_id,
             project_name,

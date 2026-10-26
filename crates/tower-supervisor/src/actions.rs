@@ -489,6 +489,13 @@ pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
             inner.transition(&g.id, Transition::Integrated, None, &note)?;
         }
     }
+    if let Some(gh) = inner.env.which("gh") {
+        for g in inner.store(|s| s.goals_in_state(LifecycleState::Accepted))? {
+            if let Err(e) = check_pr(inner, &gh, &g.id).await {
+                tracing::debug!(goal = %g.id, error = %e, "pull request check failed");
+            }
+        }
+    }
     let day = 24 * 60 * 60 * 1000;
     let now = tower_store::system_now();
     for g in inner.store(|s| s.goals_in_state(LifecycleState::Integrated))? {
@@ -499,6 +506,68 @@ pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Reads the state and checks of the goal's pull request with the GitHub
+/// CLI. Records a change; a merge on GitHub integrates the goal; newly
+/// failing checks are announced.
+async fn check_pr(inner: &Arc<Inner>, gh: &Path, goal: &str) -> Result<()> {
+    let Some(pr) = inner.store(|s| s.summary(goal))?.pr else { return Ok(()) };
+    let out = tokio::process::Command::new(gh)
+        .args(["pr", "view", &pr.url, "--json", "state,statusCheckRollup"])
+        .env_clear()
+        .envs(inner.env.pairs())
+        .output()
+        .await?;
+    if !out.status.success() {
+        return Ok(());
+    }
+    let Some(status) = parse_pr_status(&String::from_utf8_lossy(&out.stdout)) else { return Ok(()) };
+    if status == pr.status {
+        return Ok(());
+    }
+    let lang = inner.lang();
+    let newly_failing = status.failed > pr.status.failed;
+    inner.append(goal, EventKind::PrChecked { url: pr.url.clone(), status: status.clone() })?;
+    if status.state == "merged" {
+        let note = tr!(lang, "PR 已在 GitHub 上合并", "The PR was merged on GitHub");
+        inner.transition(goal, Transition::Integrated, None, &note)?;
+    } else if newly_failing {
+        let title = inner.store(|s| s.goal(goal))?.title;
+        let names = status.failing.join(", ");
+        inner.toast(ToastLevel::Warning, tr!(lang, "{title} 的 CI 未通过：{names}", "CI failed for {title}: {names}"));
+    }
+    Ok(())
+}
+
+/// Summarises `gh pr view --json state,statusCheckRollup`.
+pub(crate) fn parse_pr_status(json: &str) -> Option<tower_core::view::PrStatus> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let state = v.get("state")?.as_str()?.to_ascii_lowercase();
+    let mut s = tower_core::view::PrStatus { state, passed: 0, failed: 0, pending: 0, failing: Vec::new() };
+    for c in v.get("statusCheckRollup").and_then(|r| r.as_array()).into_iter().flatten() {
+        let get = |k: &str| c.get(k).and_then(|x| x.as_str()).unwrap_or("").to_ascii_uppercase();
+        let name = c.get("name").or_else(|| c.get("context")).and_then(|x| x.as_str()).unwrap_or("check");
+        // Check runs have a status and, when completed, a conclusion; commit
+        // statuses have a state.
+        let verdict = match (get("conclusion").as_str(), get("status").as_str(), get("state").as_str()) {
+            ("SUCCESS" | "NEUTRAL" | "SKIPPED", _, _) | (_, _, "SUCCESS") => 1,
+            ("FAILURE" | "TIMED_OUT" | "CANCELLED" | "ACTION_REQUIRED" | "STARTUP_FAILURE", _, _)
+            | (_, _, "FAILURE" | "ERROR") => -1,
+            _ => 0,
+        };
+        match verdict {
+            1 => s.passed += 1,
+            -1 => {
+                s.failed += 1;
+                if s.failing.len() < 4 {
+                    s.failing.push(name.to_string());
+                }
+            }
+            _ => s.pending += 1,
+        }
+    }
+    Some(s)
 }
 
 /// Lists the models the user's Pi can use, cached for ten minutes.
@@ -554,6 +623,19 @@ pub async fn models(inner: &Arc<Inner>) -> Result<Vec<ModelInfo>> {
 mod tests {
     use super::*;
     use tower_core::Lang;
+
+    #[test]
+    fn pull_request_checks_are_summarised() {
+        let json = r#"{"state":"OPEN","statusCheckRollup":[
+            {"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"FAILURE"},
+            {"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"SUCCESS"},
+            {"__typename":"CheckRun","name":"build","status":"IN_PROGRESS","conclusion":""},
+            {"__typename":"StatusContext","context":"ci/legacy","state":"SUCCESS"}]}"#;
+        let s = parse_pr_status(json).unwrap();
+        assert_eq!((s.state.as_str(), s.passed, s.failed, s.pending), ("open", 2, 1, 1));
+        assert_eq!(s.failing, ["test"]);
+        assert_eq!(parse_pr_status(r#"{"state":"MERGED","statusCheckRollup":[]}"#).unwrap().state, "merged");
+    }
 
     #[test]
     fn branch_slugs_are_ascii() {

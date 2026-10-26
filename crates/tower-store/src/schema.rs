@@ -161,6 +161,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE goals ADD COLUMN touched TEXT NOT NULL DEFAULT '[]';
     "#,
+    // 6: the pull request opened from Tower
+    r#"
+    ALTER TABLE goals ADD COLUMN pr TEXT;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

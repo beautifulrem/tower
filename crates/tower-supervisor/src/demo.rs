@@ -13,7 +13,7 @@ const PACKAGE_JSON: &str = r#"{
   "name": "demo-shop",
   "private": true,
   "type": "commonjs",
-  "scripts": { "test": "node --test test/" }
+  "scripts": { "test": "node --test" }
 }
 "#;
 

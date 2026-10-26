@@ -43,6 +43,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # The real_pi test drives the real Pi (with a scripted model) and is
+      # skipped when Pi is missing; install the supported version so it runs.
+      - name: Install Pi for the real-engine test
+        run: npm i -g @earendil-works/pi-coding-agent@1.4.0
+
       - name: Rust tests
         run: |
           git config --global user.name "CI"

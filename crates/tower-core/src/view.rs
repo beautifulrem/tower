@@ -591,6 +591,9 @@ pub enum EnvIssueKind {
     /// Claude Code is the chosen engine but `claude` (or Node.js, which the
     /// bridge needs) is not installed.
     ClaudeMissing,
+    /// git has no name and email: accepting a goal would commit without
+    /// your identity, so Tower asks for it first.
+    GitIdentityMissing,
 }
 
 /// The Pi versions Tower supports: at least `PI_MIN`, tested up to the

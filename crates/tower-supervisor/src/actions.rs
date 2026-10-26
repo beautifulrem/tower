@@ -322,6 +322,18 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
         )));
     }
 
+    // The commit carries your name, or none is written: never a stand-in.
+    let git = inner.git.clone();
+    let root = PathBuf::from(&rec.project_root);
+    // (The demo project is Tower's own sandbox repository.)
+    let demo = root.starts_with(inner.paths.demo_projects());
+    if !demo && !tokio::task::spawn_blocking(move || git.has_identity(&root)).await.unwrap_or(false) {
+        return Err(invalid(tr!(
+            lang,
+            "git 没有设置你的名字和邮箱，验收的提交会没有作者。先运行：git config --global user.name \"你的名字\" 和 git config --global user.email 你的邮箱，然后再验收。",
+            "git has no name and email set, so the accepted commit would have no author. Run git config --global user.name \"Your Name\" and git config --global user.email you@example.com, then accept again."
+        )));
+    }
     let branch = branch_name(&rec);
     let message = seal_message(&rec, &pin, has_machine);
     let git = inner.git.clone();

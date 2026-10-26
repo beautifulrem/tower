@@ -34,6 +34,7 @@ jobs:
       - name: Type-check and build the interface
         run: |
           pnpm --dir apps/desktop check
+          pnpm --dir apps/desktop test
           pnpm --dir apps/desktop build
           tools/bundle-budget.sh
 

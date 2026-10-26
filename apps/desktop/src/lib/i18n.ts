@@ -1149,7 +1149,7 @@ const en: Dict = {
   },
 };
 
-const dicts: Record<Locale, Dict> = { "zh-CN": zh, en };
+export const dicts: Record<Locale, Dict> = { "zh-CN": zh, en };
 
 // ---- keys and lookup ---------------------------------------------------------
 

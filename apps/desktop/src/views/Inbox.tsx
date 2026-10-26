@@ -4,7 +4,7 @@
  * ready to accept. j/k move; 1–9 pick an option on the focused card, and a
  * destructive option asks for the key twice.
  */
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, type JSX, Show, createMemo, createSignal } from "solid-js";
 
 import { DecisionCard, chooseOption } from "../components/DecisionCard";
 import { Button, Empty, Kbd } from "../components/ui";
@@ -12,6 +12,7 @@ import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { isBlocking } from "../lib/labels";
 import { go } from "../lib/nav";
+import { startQueue } from "../lib/reviewQueue";
 import { goalList, state } from "../lib/store";
 
 export function Inbox() {
@@ -53,11 +54,19 @@ export function Inbox() {
 
   const running = () => goalList().filter((g) => g.state === "running").length;
 
-  const Group = (props: { title: string; list: ReturnType<typeof blocking>; offset: number }) => (
+  /** Steps through every ready-to-accept goal: accepting or sending one back opens the next. */
+  const reviewAll = () => {
+    const first = startQueue(review().map((i) => i.goal_id));
+    if (first) go({ name: "review", id: first });
+  };
+  useKeys([{ key: "shift+r", run: reviewAll, desc: () => t("inbox.reviewAll") }], () => t("common.needsYou"));
+
+  const Group = (props: { title: string; list: ReturnType<typeof blocking>; offset: number; aside?: JSX.Element }) => (
     <Show when={props.list.length > 0}>
       <h2 class="scale-title halt">
         {props.title}
         <span class="num">{props.list.length}</span>
+        {props.aside}
       </h2>
       <For each={props.list}>
         {(it, i) => (
@@ -76,6 +85,7 @@ export function Inbox() {
         fallback={
           <Empty
             title={t("inbox.emptyTitle")}
+            poster
             action={
               <Button size="s" onClick={() => go({ name: "overview" })} kbd="mod+1">
                 {t("chrome.openOverview")}
@@ -87,7 +97,18 @@ export function Inbox() {
         }
       >
         <Group title={t("inbox.blocking")} list={blocking()} offset={0} />
-        <Group title={t("inbox.toReview")} list={review()} offset={blocking().length} />
+        <Group
+          title={t("inbox.toReview")}
+          list={review()}
+          offset={blocking().length}
+          aside={
+            <Show when={review().length > 1}>
+              <Button size="s" variant="ghost" onClick={reviewAll} kbd="shift+r">
+                {t("inbox.reviewAll")}
+              </Button>
+            </Show>
+          }
+        />
         <p class="key-hints halt" aria-hidden="true">
           <span>
             <Kbd k="j k" /> {t("inbox.keyMove")}

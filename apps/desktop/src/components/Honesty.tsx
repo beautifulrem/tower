@@ -7,14 +7,15 @@
  * like a ledger: who said it, what was said, and on the right what was
  * measured.
  */
-import { type JSX, Show } from "solid-js";
+import { type JSX, Match, Show, Switch } from "solid-js";
 
 import type { Consistency } from "../gen/Consistency";
+import type { CriterionView } from "../gen/CriterionView";
 import type { Progress } from "../gen/Progress";
 import { ago, clock, short } from "../lib/format";
 import { t } from "../lib/i18n";
 import { state } from "../lib/store";
-import { Icon, ResultMark } from "./Glyph";
+import { Icon, NeedsYouMark, NoticeMark, ResultMark } from "./Glyph";
 
 /**
  * Fact: harness-produced, the normal case, so it carries no frame — only
@@ -145,5 +146,45 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean; tiny
         </span>
       </Show>
     </div>
+  );
+}
+
+/**
+ * The baseline line under a passed criterion: red → green only when the
+ * command failed on the base AND still passes with the agent's edits to
+ * existing tests undone. A pass that depends on edited tests is said in the
+ * attention register — it is the opposite of evidence.
+ */
+export function BaselineLine(props: { c: CriterionView }) {
+  const c = () => props.c;
+  const passed = () => !!c().verified?.passed;
+  const dependent = () => c().passes_with_original_tests === false;
+  const redToGreen = () => c().passed_on_base === false && !dependent();
+  return (
+    <Show when={passed() && (c().passed_on_base !== null || dependent())}>
+      <div class="criterion-row criterion-obs">
+        <span />
+        <span />
+        <span />
+        <span class="col-span" classList={{ t1: c().passed_on_base === true, t3: redToGreen(), "baseline-dependent": dependent() }}>
+          <Switch>
+            <Match when={dependent()}>
+              <NeedsYouMark title={t("goal.dependsOnEditedTestsLong")} />
+              <span title={t("goal.dependsOnEditedTestsLong")}>{t("goal.dependsOnEditedTests")}</span>
+            </Match>
+            <Match when={c().passed_on_base === true}>
+              <NoticeMark />
+              <span>{t("goal.passedOnBase")}</span>
+            </Match>
+            <Match when={redToGreen()}>
+              <span class="num">{t("goal.redToGreen")}</span>
+              <Show when={c().passes_with_original_tests === true}>
+                <span class="t4">· {t("goal.withOriginalTests")}</span>
+              </Show>
+            </Match>
+          </Switch>
+        </span>
+      </div>
+    </Show>
   );
 }

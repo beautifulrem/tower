@@ -11,7 +11,7 @@ import { For, type JSX, Show, createResource } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, Seal } from "../components/Glyph";
 import { Claim, CriteriaBar } from "../components/Honesty";
-import { Button } from "../components/ui";
+import { Button, Wordmark } from "../components/ui";
 import type { EnvIssue } from "../gen/EnvIssue";
 import { api } from "../lib/api";
 import { t } from "../lib/i18n";
@@ -19,11 +19,24 @@ import { envIssueLabel, hasIssue, installHint } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 
+/**
+ * Adds a repository. Nothing runs on its own: the toast offers to try the
+ * tests on the base branch (in the sandbox, with the network for setup),
+ * and Settings keeps the same offer.
+ */
 export async function pickProject() {
   const dir = await open({ directory: true, multiple: false, title: t("welcome.pickRepo") });
   if (typeof dir !== "string") return;
-  const p = await act(() => api.addProject(dir), t("welcome.projectAdded"));
-  if (p) await refreshProjects();
+  const p = await act(() => api.addProject(dir));
+  if (!p) return;
+  await refreshProjects();
+  toast("success", t("welcome.projectAdded"), {
+    ttl: 8000,
+    action: {
+      label: t("settings.checkTests", { base: p.base_branch }),
+      run: () => void act(() => api.checkProject(p.id)).then(() => refreshProjects()),
+    },
+  });
 }
 
 /** A demo goal on the bundled engine: asks, fixes, verifies, waits for review. */
@@ -81,7 +94,7 @@ function Check(props: { ok: boolean | null; blocking?: boolean; title: string; d
           title={t("welcome.clickToCopy")}
           onClick={() => {
             void navigator.clipboard.writeText(props.fix!);
-            toast("info", t("welcome.copied"));
+            toast("success", t("welcome.copied"));
           }}
         >
           {props.fix}
@@ -108,19 +121,6 @@ function SampleCard() {
   );
 }
 
-/** The mark: a ring with the verifier's check, drawn with the same pen as every glyph. */
-function Wordmark() {
-  return (
-    <div class="wordmark" aria-hidden="true">
-      <svg width="14" height="14" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter">
-        <circle cx="5" cy="5" r="4" />
-        <path d="M3.1 5.2 L4.5 6.6 L7 3.7" />
-      </svg>
-      TOWER
-    </div>
-  );
-}
-
 export function Welcome() {
   const [models, { refetch }] = createResource(() => api.models().catch(() => null));
   const env = () => state.env;
@@ -128,9 +128,10 @@ export function Welcome() {
   const piIssue = () => issues().find((i) => i.kind === "pi_missing" || i.kind === "pi_broken" || i.kind === "pi_too_old");
   const piNote = () => issues().find((i) => i.kind === "pi_untested");
   const piOk = () => (env() ? !piIssue() && !!env()!.pi_version : null);
+  const claudeIssue = () => issues().find((i) => i.kind === "claude_missing");
   const modelCount = () => (models.loading ? null : (models() ?? []).length);
   const sandbox = () => (env() ? !hasIssue(env(), "no_sandbox") : null);
-  const other = () => issues().filter((i) => !["pi_missing", "pi_broken", "pi_too_old", "pi_untested", "git_missing", "no_sandbox"].includes(i.kind));
+  const other = () => issues().filter((i) => !["pi_missing", "pi_broken", "pi_too_old", "pi_untested", "git_missing", "no_sandbox", "claude_missing"].includes(i.kind));
   const fixFor = (i: EnvIssue | undefined) => i?.fix ?? undefined;
   // Without a working Pi, the demo is the way in.
   const demoPrimary = () => piOk() === false || (piOk() === true && modelCount() === 0);
@@ -188,6 +189,15 @@ export function Welcome() {
                   </>
                 ) : undefined
               }
+            />
+          </Show>
+          {/* Claude Code as the chosen engine: its own check, with the trust model in one line. */}
+          <Show when={state.settings?.engine === "claude-code"}>
+            <Check
+              ok={env() ? !claudeIssue() : null}
+              title={claudeIssue() ? envIssueLabel(claudeIssue()!, env()) : t("welcome.claudeOk")}
+              detail={t("settings.engineTrust")}
+              fix={claudeIssue()?.fix ?? undefined}
             />
           </Show>
           <Check

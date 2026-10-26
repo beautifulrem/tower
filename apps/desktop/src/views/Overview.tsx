@@ -26,7 +26,7 @@ import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 import { DemoButton, Welcome } from "./Welcome";
 
-const ORDER: Group[] = ["running", "review", "ready", "paused", "done"];
+const ORDER: Group[] = ["running", "verifying", "review", "ready", "paused", "done"];
 const FILTER_KEY = "tower.overviewProject";
 const ALL = "__all__";
 
@@ -48,8 +48,10 @@ export function Overview() {
   );
   const groups = createMemo(() => {
     const by = new Map<Group, GoalSummary[]>();
+    // Goals with a decision card are in the queue above, so no row lands in "needs you".
     for (const g of live()) {
-      const k = groupOf(g) === "needs_you" ? "review" : groupOf(g);
+      const k = groupOf(g, decided());
+      if (k === "needs_you") continue;
       by.set(k, [...(by.get(k) ?? []), g]);
     }
     return ORDER.filter((k) => by.has(k)).map((k) => ({ key: k, goals: by.get(k)! }));
@@ -125,6 +127,7 @@ export function Overview() {
           fallback={
             <Empty
               title={project() === ALL ? t("overview.emptyTitle") : t("overview.emptyProject", { project: state.projects.find((p) => p.id === project())?.name ?? "" })}
+              poster
               action={
                 <span class="row">
                   <DemoButton size="s" />

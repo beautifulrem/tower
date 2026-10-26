@@ -6,6 +6,9 @@
  *
  * The strip says the kind (`item.kind`), the question line says only the
  * variable part (`item.subject`); both arrive in the interface language.
+ * The honesty grammar holds inside the card too: prose is set in the UI
+ * face, machine text (a command, a check name, an installer's tail) in
+ * mono — decided per paragraph, never per card kind.
  * A newly arrived card decays from a brighter amber once (700ms): the only
  * motion Tower makes on its own. Destructive options never fire from one
  * press: the first arms the button for two seconds, the second confirms.
@@ -15,15 +18,16 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
-import { ago, count } from "../lib/format";
+import { ago, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
 import { approves, optionTone } from "../lib/labels";
+import { popupActions } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, state, toast } from "../lib/store";
-import { NeedsYouMark, NoticeMark, Seal } from "./Glyph";
+import { Icon, NeedsYouMark, NoticeMark, Seal } from "./Glyph";
 import { Claim, CriteriaBar } from "./Honesty";
 import { PrLine } from "./Pr";
-import { Button, Kbd } from "./ui";
+import { Button, IconButton, Kbd } from "./ui";
 
 const kindLabel = (k: InboxItem["kind"]): string => t(`inboxKind.${k}`);
 
@@ -31,6 +35,7 @@ const kindLabel = (k: InboxItem["kind"]): string => t(`inboxKind.${k}`);
 const [armed, setArmed] = createSignal<{ item: string; option: number; until: number } | null>(null);
 let armTimer: number | undefined;
 export const ARM_MS = 2000;
+const HOUR = 3_600_000;
 
 /**
  * Chooses option `index` on an item. Destructive options arm on the first
@@ -55,6 +60,26 @@ export async function chooseOption(item: InboxItem, index: number, text = ""): P
   return (await act(() => api.answer(item.id, option))) !== undefined;
 }
 
+/** Tomorrow at 9:00 local time, the second snooze choice. */
+export function tomorrowAt9(now = new Date()): number {
+  const d = new Date(now);
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return d.getTime();
+}
+
+/** "Remind me later": the card leaves and comes back at the chosen time. */
+export async function snoozeMenu(item: InboxItem) {
+  const pick = async (until: number) => {
+    const ok = await act(() => api.snooze(item.id, until));
+    if (ok !== undefined) toast("info", t("decision.snoozed", { time: clock(until) }), { action: { label: t("decision.unsnooze"), run: () => void act(() => api.snooze(item.id, null)) } });
+  };
+  await popupActions([
+    { label: t("decision.snoozeHour"), run: () => void pick(Date.now() + HOUR) },
+    { label: t("decision.snoozeTomorrow"), run: () => void pick(tomorrowAt9()) },
+  ]);
+}
+
 /**
  * A ready-to-accept card's body is the agent's submit summary — a claim —
  * unless the agent wrote none, in which case the supervisor put its own
@@ -77,9 +102,25 @@ const submitClaim = (item: InboxItem): string | null => {
   return b && !TOWER_REVIEW_BODIES.has(b) ? b : null;
 };
 
-/** Items whose body is machine text (a command to approve, changed manifests, failing checks). */
-const codeBody = (item: InboxItem, pauseReason: string | null | undefined) =>
-  item.kind === "approval" || item.kind === "ci_failed" || (item.kind === "paused" && pauseReason === "dependencies_changed");
+/** A line that came out of a machine: an installer, a test runner, a path, a command. */
+const MACHINE_LINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
+
+/**
+ * The card's body split into registers: the leading prose (the supervisor's
+ * or the agent's sentences) and the machine tail (the lines after them, or
+ * every line when the whole body is machine text such as a command to
+ * approve or a list of changed manifests). An assumption's body repeats its
+ * subject and is dropped.
+ */
+export function bodyParts(item: InboxItem): { prose: string; tail: string } {
+  const body = item.body.trim();
+  if (!body || body === item.subject.trim()) return { prose: "", tail: "" };
+  if (item.kind === "approval") return { prose: "", tail: body };
+  const lines = body.split("\n");
+  const first = lines.findIndex((l) => MACHINE_LINE.test(l.trim()));
+  if (first < 0) return { prose: body, tail: "" };
+  return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
+}
 
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean; ref?: (el: HTMLElement) => void }) {
   const [text, setText] = createSignal("");
@@ -98,6 +139,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   };
   // Letting the verification setup reach the network is a security decision: the card says so.
   const networkDecision = () => it().kind === "paused" && goal()?.pause_reason === "dependencies_changed";
+  const parts = () => bodyParts(it());
 
   const send = async (i: number) => {
     setBusy(true);
@@ -138,9 +180,18 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             <span class="code-val t2">{it().goal_id}</span> {it().goal_title}
           </button>
         </Show>
+        {/* The PR reading belongs with the goal's name; the right edge is the time's alone. */}
+        <Show when={it().kind === "ci_failed" && goal()?.pr}>
+          {(pr) => (
+            <>
+              <span class="sep">·</span>
+              <PrLine pr={pr()} compact />
+            </>
+          )}
+        </Show>
         <span class="grow" />
-        <Show when={it().kind === "ci_failed" && goal()?.pr}>{(pr) => <PrLine pr={pr()} compact />}</Show>
         <span class="meta num">{ago(it().created_at, state.now)}</span>
+        <IconButton icon="bell" size={22} label={t("decision.snooze")} title={t("decision.snooze")} aria-haspopup="menu" class="decision-snooze" onClick={() => void snoozeMenu(it())} />
       </header>
       <div class="decision-main">
         <Show
@@ -174,15 +225,25 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </>
           }
         >
-          <p class="decision-question">{it().subject}</p>
-          <Show when={it().body}>
-            <p class="decision-body" classList={{ "code-val": codeBody(it(), goal()?.pause_reason) }}>
-              {it().body}
-            </p>
+          {/* A failing check's name is a machine value inside the question, not the question's typeface. */}
+          <p class="decision-question">
+            <Show when={it().kind === "ci_failed"} fallback={it().subject}>
+              <span class="code-val">{it().subject}</span>
+            </Show>
+          </p>
+          <Show when={parts().prose}>
+            <p class="decision-body">{parts().prose}</p>
+          </Show>
+          <Show when={parts().tail}>
+            <pre class="output-tail decision-tail">{parts().tail}</pre>
           </Show>
           <Show when={networkDecision()}>
             <p class="decision-caution meta t1">
-              <NoticeMark /> {t("decision.networkCaution")}
+              <NoticeMark /> <span>{t("decision.networkCaution")}</span>
+              <Button size="s" variant="ghost" class="decision-caution-open" onClick={() => go({ name: "review", id: it().goal_id })}>
+                {t("goal.openChanges")}
+                <Icon name="chevron-right" size={10} />
+              </Button>
             </p>
           </Show>
           <div class="decision-actions">

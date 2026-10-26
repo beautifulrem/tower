@@ -16,6 +16,7 @@ import type { NewGoalInput } from "../gen/NewGoalInput";
 import type { OpenTarget } from "../gen/OpenTarget";
 import type { ProjectPatch } from "../gen/ProjectPatch";
 import type { ProjectView } from "../gen/ProjectView";
+import type { RemoteInfo } from "../gen/RemoteInfo";
 import type { ReviewComment } from "../gen/ReviewComment";
 import type { ReviewView } from "../gen/ReviewView";
 import type { Settings } from "../gen/Settings";
@@ -85,6 +86,19 @@ export const api = {
   revertHunk: (id: string, path: string, hunk: number) => invoke<void>("revert_hunk", { id, path, hunk }),
   /** Puts the workspace back to where run `runNo` started; paused or in review only. */
   rollback: (id: string, runNo: number) => invoke<void>("rollback", { id, runNo }),
+  /** Restores the workspace to just before the latest rollback. */
+  undoRollback: (id: string) => invoke<void>("undo_rollback", { id }),
+  /** Writes one workspace file with your text (an edit in review); paused or in review only. */
+  writeFile: (id: string, path: string, text: string) => invoke<void>("write_file", { id, path, text }),
+  /** Hides a decision until `until` (ms since the epoch); null brings it back. */
+  snooze: (inboxId: string, until: number | null) => invoke<void>("snooze", { inboxId, until }),
+
+  /** How to open the phone page: links (Tailscale first), a QR code, whether the transport is encrypted. */
+  remoteInfo: () => invoke<RemoteInfo>("remote_info"),
+  /** A new pairing token: every phone has to pair again. */
+  resetRemoteToken: () => invoke<void>("reset_remote_token"),
+  /** A `look` criterion's screenshot as a PNG data URL, or null when the file is gone. */
+  lookImage: (file: string) => invoke<string | null>("look_image", { file }),
 
   /** Per-goal interface state (viewed files, draft comments, last reviewed pin), kept in SQLite. */
   uiState: (id: string) => invoke<Record<string, string>>("ui_state", { id }),

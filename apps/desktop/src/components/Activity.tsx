@@ -27,7 +27,7 @@ export function ActivityPanel() {
   const entries = () => [...state.activity].reverse();
   const copy = (text: string) => {
     void navigator.clipboard.writeText(text);
-    toast("info", t("activity.copied"));
+    toast("success", t("activity.copied"));
   };
   return (
     <Show when={open()}>

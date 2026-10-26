@@ -11,17 +11,29 @@
 import { Show, createEffect, on } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
-import { ago } from "../lib/format";
+import { ago, duration } from "../lib/format";
 import { t } from "../lib/i18n";
-import { isEngineTool, modeLabel, modeNeedsYou, pauseLabel, stateLabel, toolLabel } from "../lib/labels";
-import { state } from "../lib/store";
+import { heartbeatState, isEngineTool, modeLabel, modeNeedsYou, pauseLabel, stateLabel, toolLabel } from "../lib/labels";
+import { livenessOf, state } from "../lib/store";
 import { NeedsYouMark, Seal } from "./Glyph";
+
+/**
+ * A running goal whose event stream has been still for two minutes with no
+ * tool in flight: the badge says so instead of "thinking", so the board and
+ * the title bar's heartbeat never contradict each other.
+ */
+export function silent(g: GoalSummary, now: number): boolean {
+  if (g.state !== "running") return false;
+  const l = livenessOf(g);
+  return heartbeatState(Math.max(0, now - l.at), l.tool !== null) === "silent";
+}
 
 export function ModeBadge(props: { goal: GoalSummary }) {
   const attention = () => modeNeedsYou(props.goal.mode) || (props.goal.needs_you > 0 && props.goal.state === "running");
+  const isSilent = () => !attention() && silent(props.goal, state.now);
   const text = () => {
     const g = props.goal;
-    if (g.state === "running") return attention() ? modeLabel("waiting_on_you") : modeLabel(g.mode);
+    if (g.state === "running") return attention() ? modeLabel("waiting_on_you") : isSilent() ? t("chrome.unresponsive") : modeLabel(g.mode);
     if (g.state === "verifying") return modeLabel("verifying");
     if (g.state === "paused") return stateLabel("paused");
     return stateLabel(g.state);
@@ -39,7 +51,7 @@ export function ModeBadge(props: { goal: GoalSummary }) {
     ),
   );
   return (
-    <span ref={el} class="mode-badge halt" classList={{ "mode-attention": attention() }}>
+    <span ref={el} class="mode-badge halt" classList={{ "mode-attention": attention(), "mode-silent": isSilent() }}>
       <Show when={attention()}>
         <NeedsYouMark />
       </Show>
@@ -59,6 +71,8 @@ export interface LiveDetail {
   code?: { action?: boolean; target?: boolean };
   /** The verified seal replaces the detail (in review, with a pin). */
   seal?: string;
+  /** How long the current run has been going ("running 1h 46m"), on the board. */
+  elapsed?: string;
 }
 
 /** Looks like a path or command: printable ASCII without runs of spaces. */
@@ -73,6 +87,8 @@ export function liveDetail(g: GoalSummary): LiveDetail {
       return { action, target: item.subject };
     }
   }
+  // The run's elapsed time rides with the live detail, so the board's age column means one thing: last update.
+  const ran = g.state === "running" && g.run_started_at ? t("live.runningFor", { d: duration(Math.max(0, state.now - g.run_started_at), false) }) : "";
   if (g.live_line && g.state === "running") {
     const tool = g.live_line.action;
     const label = toolLabel(tool);
@@ -80,14 +96,15 @@ export function liveDetail(g: GoalSummary): LiveDetail {
       action: label,
       target: g.live_line.target,
       code: { action: isEngineTool(tool) || (label === tool && machine(tool)), target: machine(g.live_line.target) },
+      elapsed: ran,
     };
   }
   switch (g.state) {
     case "running":
       // No tool in flight: the badge already says what kind of step it is; the detail says which run.
       return g.mode === "starting"
-        ? { action: t("live.starting"), target: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : "" }
-        : { action: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : t("live.getStarted"), target: "" };
+        ? { action: t("live.starting"), target: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : "", elapsed: ran }
+        : { action: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : t("live.getStarted"), target: "", elapsed: ran };
     case "verifying":
       return { action: t("live.criteria"), target: t("live.passedOf", { v: g.progress.verified, m: g.progress.machine }) };
     case "claimed":
@@ -127,6 +144,10 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
                 <span class="live-target" classList={{ "code-val": !!d().code?.target }}>
                   {d().target}
                 </span>
+              </Show>
+              <Show when={d().elapsed && !props.large}>
+                <span class="sep live-elapsed-sep">·</span>
+                <span class="live-elapsed num t3">{d().elapsed}</span>
               </Show>
             </>
           }

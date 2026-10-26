@@ -7,14 +7,13 @@
  * one call to action; paused, the decision card owns the only text box and
  * the "next" block steps aside; running, the steer box sits at the bottom.
  */
-import { For, Match, Show, Switch, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
+import { For, Match, Show, Switch, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
 
 import { DecisionCard } from "../components/DecisionCard";
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark, ResultMark, Seal } from "../components/Glyph";
-import { Claim, ConsistencyBadge, CriteriaBar, HumanStamp, ObsChip } from "../components/Honesty";
+import { BaselineLine, Claim, ConsistencyBadge, CriteriaBar, HumanStamp, ObsChip } from "../components/Honesty";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
-import { Trace } from "../components/Trace";
 import { Button, Empty, IconButton, Kbd, Section, Loading } from "../components/ui";
 import type { ClaimView } from "../gen/ClaimView";
 import type { CriterionView } from "../gen/CriterionView";
@@ -26,9 +25,13 @@ import { ago, clock, count, duration, short, usd, usdLimit } from "../lib/format
 import { useKeys } from "../lib/keys";
 import { useMenu } from "../lib/menu";
 import { t } from "../lib/i18n";
-import { hasIssue, pauseLabel, runOutcomeLabel, runPurposeLabel, stateLabel } from "../lib/labels";
+import { effectiveEngine, engineLabel, hasIssue, pauseLabel, runOutcomeLabel, runPurposeLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, onTrace, setGoalMuted, state, toast } from "../lib/store";
+
+// The trace (one key away) and the screenshots of look criteria load on first use, so start-up stays small.
+const Trace = lazy(() => import("../components/Trace").then((m) => ({ default: m.Trace })));
+const LookStrip = lazy(() => import("../components/Look").then((m) => ({ default: m.LookStrip })));
 
 /** Trace kinds that change nothing the detail shows; the summary update covers them. */
 const DETAIL_IRRELEVANT = new Set([
@@ -73,6 +76,25 @@ export function GoalPage(props: { id: string }) {
   // Review-ready items live in the inbox; on the goal page the header says it.
   const inbox = () => state.inbox.filter((i) => i.goal_id === props.id && i.kind !== "review_ready");
 
+  // A rollback can be undone until the next run starts; the last page of the trace says whether one is pending.
+  const [undoable, setUndoable] = createSignal(false);
+  void api
+    .trace(props.id, null, 100)
+    .then((page) => {
+      const last = [...page].reverse().find((e) => e.event.kind === "rolled_back" || e.event.kind === "run_started");
+      setUndoable(last?.event.kind === "rolled_back");
+    })
+    .catch(() => {});
+  const offUndo = onTrace(props.id, (e) => {
+    if (e.event.kind === "rolled_back") setUndoable(true);
+    if (e.event.kind === "run_started") setUndoable(false);
+  });
+  onCleanup(offUndo);
+  const undoRollback = async () => {
+    const ok = await act(() => api.undoRollback(props.id), t("goal.rollbackUndone"));
+    if (ok !== undefined) setUndoable(false);
+  };
+
   useMenu({
     "goal:review": () => go({ name: "review", id: props.id }),
     "goal:watch": () => setWatch((w) => !w),
@@ -106,6 +128,8 @@ export function GoalPage(props: { id: string }) {
   /** States whose word is not already said by the annunciator or the seal. */
   const showStateWord = (g: GoalDetail["summary"]) =>
     !["running", "verifying", "claimed"].includes(g.state) && !(g.state === "in_review" && g.verified_pin);
+  /** The run has passed its wall-clock cap. */
+  const overWall = (g: GoalDetail["summary"]) => !!g.run_started_at && state.now - g.run_started_at > g.budget.wall_minutes * 60_000;
 
   return (
     <Show
@@ -160,7 +184,8 @@ export function GoalPage(props: { id: string }) {
                   <Show when={showStateWord(g())}>
                     <span class="sep">·</span>
                     <span class="t1">{stateLabel(g().state)}</span>
-                    <Show when={g().pause_reason && g().state === "paused"}>
+                    {/* With a decision card on the page the reason is the card's question; the line keeps only the state word. */}
+                    <Show when={g().pause_reason && g().state === "paused" && inbox().length === 0}>
                       <span class="sep">·</span>
                       <span>{pauseLabel(g().pause_reason!)}</span>
                     </Show>
@@ -168,6 +193,14 @@ export function GoalPage(props: { id: string }) {
                       <span class="sep">·</span>
                       <span>{t("live.notMachineVerified")}</span>
                     </Show>
+                  </Show>
+                  <Show when={g().state === "running" && overWall(g())}>
+                    <span class="sep">·</span>
+                    <span class="over-wall">{t("goal.overWall")}</span>
+                  </Show>
+                  <Show when={detail()?.contract.engine && detail()!.contract.engine !== effectiveEngine("", state.settings?.engine)}>
+                    <span class="sep">·</span>
+                    <span class="t3">{engineLabel(detail()!.contract.engine)}</span>
                   </Show>
                   <Show when={state.settings?.muted_goals.includes(g().id)}>
                     <span class="sep">·</span>
@@ -231,7 +264,7 @@ export function GoalPage(props: { id: string }) {
             <div class="goal-body">
               <div class="goal-main">
                 <Show when={detail()} fallback={<GoalSkeleton />}>
-                  {(d) => <GoalBlocks d={d()} hasDecision={inbox().length > 0} />}
+                  {(d) => <GoalBlocks d={d()} hasDecision={inbox().length > 0} undoable={undoable()} onUndoRollback={undoRollback} />}
                 </Show>
               </div>
               <aside class="goal-rail">
@@ -306,7 +339,7 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
         label: t("goal.copyPush"),
         run: () => {
           void navigator.clipboard.writeText(`git push -u origin ${props.goal.branch}`);
-          toast("info", t("goal.copiedPush"));
+          toast("success", t("goal.copiedPush"));
         },
         enabled: !!props.goal.branch,
       },
@@ -342,12 +375,8 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
 
   return (
     <>
+      {/* Ready to accept: the "next" block below carries the one primary action (R); the header does not say it twice. */}
       <Switch>
-        <Match when={s() === "in_review"}>
-          <Button size="s" variant="primary" kbd="r" onClick={() => go({ name: "review", id: id() })}>
-            {t("goal.review")}
-          </Button>
-        </Match>
         <Match when={s() === "paused"}>
           <Button size="s" variant="primary" kbd="p" onClick={props.onPause}>
             {t("goal.resume")}
@@ -395,9 +424,13 @@ function dedupe(claims: ClaimView[], keep: number): { shown: ClaimView[]; hidden
   return { shown: unique.slice(0, keep).reverse(), hidden: claims.length - Math.min(unique.length, keep) };
 }
 
-function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean }) {
+function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: boolean; onUndoRollback: () => void }) {
   const d = () => props.d;
   const g = () => d().summary;
+  // You changed the workspace after the last verification (an undone hunk, a rollback, an edit): the next step is to verify again.
+  const editedSinceVerify = () => editable(g().state) && d().criteria.some((c) => c.verified?.stale);
+  // Criteria that pass only with the agent's edits to existing tests make their "criterion met" claims inconsistent.
+  const testDependent = createMemo(() => new Set(d().criteria.filter((c) => c.passes_with_original_tests === false).map((c) => c.criterion.id)));
   const causes = createMemo(() => dedupe(d().claims.filter((c) => c.kind === "cause"), 3));
   const assumptions = () => d().claims.filter((c) => c.kind === "assumption");
   const decisions = () => d().claims.filter((c) => c.kind === "decision");
@@ -413,8 +446,26 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean }) {
 
   return (
     <>
+      {/* After your own edit the next step is fixed: verify again (and, after a rollback, the way back). */}
+      <Show when={editedSinceVerify() || props.undoable}>
+        <Section title={t("goal.next")}>
+          <div class="section-cta">
+            <Button variant="primary" size="s" onClick={() => void act(() => api.retryVerify(g().id))}>
+              {t("goal.reverify")}
+            </Button>
+            <Show when={props.undoable}>
+              <Button size="s" variant="ghost" onClick={props.onUndoRollback}>
+                <Icon name="undo" size={10} />
+                {t("goal.undoRollback")}
+              </Button>
+            </Show>
+            <span class="meta">{t("goal.editedNeedsVerify")}</span>
+          </div>
+        </Section>
+      </Show>
+
       {/* Ready to accept: the next step is yours, in one line. */}
-      <Show when={g().state === "in_review"}>
+      <Show when={g().state === "in_review" && !editedSinceVerify() && !props.undoable}>
         <Section title={t("goal.next")}>
           <div class="section-cta">
             <Button variant="primary" size="s" kbd="r" onClick={() => go({ name: "review", id: g().id })}>
@@ -505,7 +556,16 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean }) {
           </Show>
         }
       >
-        <Show when={g().diffstat} fallback={<Empty title={t("goal.noSnapshotTitle")} inline>{t("goal.noSnapshot")}</Empty>}>
+        <Show
+          when={g().diffstat?.files}
+          fallback={
+            <Show when={g().diffstat} fallback={<Empty title={t("goal.noSnapshotTitle")} inline>{t("goal.noSnapshot")}</Empty>}>
+              <Empty title={t("goal.noChangesTitle")} inline>
+                {t("goal.noChangesBody", { sha: short(d().base_commit) })}
+              </Empty>
+            </Show>
+          }
+        >
           {/* The change readout has its own grid: nothing here is a criterion. */}
           <div class="changes-row num meta">
             <span />
@@ -539,7 +599,7 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean }) {
 
       <Show when={ledger().length}>
         <Section title={t("goal.ledger")} minor>
-          <For each={ledger()}>{(c) => <LedgerRow c={c} />}</For>
+          <For each={ledger()}>{(c) => <LedgerRow c={c} testDependent={!!c.criterion && testDependent().has(c.criterion)} />}</For>
         </Section>
       </Show>
 
@@ -550,8 +610,20 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean }) {
       </Show>
 
       <Show when={d().runs.length}>
-        <Section title={t("goal.runs")} minor aside={<span class="meta num">{t("goal.runCount", { n: d().runs.length })}</span>}>
-          <For each={runs()}>{(r) => <RunRow goalId={g().id} r={r} editable={editable(g().state)} />}</For>
+        <Section
+          title={t("goal.runs")}
+          minor
+          aside={
+            <span class="meta num row" style={{ gap: "var(--sp-3)" }}>
+              {/* The rollback shows on hover of a row; the heading says so, for the keyboard and the eye. */}
+              <Show when={editable(g().state) && d().runs.some((r) => r.ended_at && r.start_pin)}>
+                <span class="t4">{t("goal.rollbackHint")}</span>
+              </Show>
+              {t("goal.runCount", { n: d().runs.length })}
+            </span>
+          }
+        >
+          <For each={runs()}>{(r) => <RunRow goalId={g().id} r={r} editable={editable(g().state)} onUndo={props.onUndoRollback} />}</For>
           <Show when={d().runs.length > 3}>
             <button class="more-link" onClick={() => setAllRuns((a) => !a)}>
               <Icon name={allRuns() ? "caret-down" : "caret-right"} size={10} />
@@ -565,7 +637,7 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean }) {
 }
 
 /** One run; while the goal is paused or in review the workspace can be put back to where it started. */
-function RunRow(props: { goalId: string; r: RunView; editable: boolean }) {
+function RunRow(props: { goalId: string; r: RunView; editable: boolean; onUndo: () => void }) {
   const r = () => props.r;
   const rollback = async () => {
     const ok = await ask(t("goal.rollbackConfirm", { id: props.goalId, n: r().run_no }), {
@@ -574,7 +646,10 @@ function RunRow(props: { goalId: string; r: RunView; editable: boolean }) {
       cancel: t("common.cancel"),
       kind: "warning",
     });
-    if (ok) await act(() => api.rollback(props.goalId, r().run_no), t("goal.rolledBack", { n: r().run_no }));
+    if (!ok) return;
+    const done = await act(() => api.rollback(props.goalId, r().run_no));
+    // The way back rides on the receipt: a slip costs one click.
+    if (done !== undefined) toast("success", t("goal.rolledBack", { n: r().run_no }), { ttl: 8000, action: { label: t("goal.undoRollback"), run: props.onUndo } });
   };
   return (
     <div class="run-row meta">
@@ -603,7 +678,9 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
   const c = () => props.c;
   const v = () => c().verified;
   const [open, setOpen] = createSignal(false);
-  const human = () => c().criterion.kind.type === "human";
+  // Human and "look" criteria are both judged by you; only exec ones have a verifier verdict.
+  const human = () => c().criterion.kind.type !== "exec";
+  const look = () => (c().criterion.kind.type === "look" ? (c().criterion.kind as { url: string }) : null);
   const mark = () => {
     if (!v()) return "pending";
     if (v()!.stale) return "stale";
@@ -634,6 +711,7 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
           <Show when={!human()}>
             <code class="criterion-cmd code-val">{(c().criterion.kind as { command: string }).command}</code>
           </Show>
+          <Show when={look()}>{(l) => <code class="criterion-cmd code-val">{l().url}</code>}</Show>
         </span>
         <Show
           when={v()}
@@ -661,20 +739,8 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
           <span class="col-age">{ago(v()!.at, state.now)}</span>
         </Show>
       </div>
-      {/* Red → green: did the criterion fail before the change? Measured on a clean checkout of the base. */}
-      <Show when={v()?.passed && c().passed_on_base !== null}>
-        <div class="criterion-row criterion-obs">
-          <span />
-          <span />
-          <span />
-          <span class="col-span" classList={{ t1: c().passed_on_base === true, t3: c().passed_on_base === false }}>
-            <Show when={c().passed_on_base} fallback={<span class="num">{t("goal.redToGreen")}</span>}>
-              <NoticeMark />
-              <span>{t("goal.passedOnBase")}</span>
-            </Show>
-          </span>
-        </div>
-      </Show>
+      <BaselineLine c={c()} />
+      <Show when={c().look}>{(l) => <LookStrip look={l()} title={`${c().criterion.id} ${c().criterion.title}`} />}</Show>
       <Show when={c().observed}>
         <div class="criterion-row criterion-obs">
           <ResultMark kind={c().observed!.passed ? "obs-pass" : "obs-fail"} />
@@ -694,17 +760,20 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
   );
 }
 
-function LedgerRow(props: { c: ClaimView }) {
+function LedgerRow(props: { c: ClaimView; testDependent?: boolean }) {
+  // A claim about a criterion that passes only with edited tests is contradicted by that measurement, whatever the linked fact says.
+  const value = () => (props.testDependent ? "contradicted" : props.c.consistency);
+  const evidence = () => (props.testDependent ? t("goal.dependsOnEditedTestsLong") : props.c.evidence);
   return (
-    <Claim bare kind={t("claimKind.criterion_met")} aside={<ConsistencyBadge value={props.c.consistency} evidence={props.c.evidence} />}>
+    <Claim bare kind={t("claimKind.criterion_met")} aside={<ConsistencyBadge value={value()} evidence={evidence()} />}>
       <Show when={props.c.criterion}>
         <span class="num t3">{props.c.criterion} </span>
       </Show>
       {props.c.text}
-      <Show when={props.c.evidence}>
+      <Show when={evidence()}>
         <div class="ledger-evidence meta">
           <Icon name="return" size={10} />
-          {props.c.evidence}
+          {evidence()}
         </div>
       </Show>
     </Claim>
@@ -746,23 +815,25 @@ function BudgetMeter(props: { g: GoalDetail["summary"] }) {
   const fill = () => Math.min(100, (props.g.cost_usd / Math.max(props.g.budget.hard_usd, 0.01)) * 100);
   const softPct = () => Math.min(100, (props.g.budget.soft_usd / Math.max(props.g.budget.hard_usd, 0.01)) * 100);
   const over = () => props.g.cost_usd >= props.g.budget.soft_usd;
+  const elapsedMin = () => Math.floor((state.now - (props.g.run_started_at ?? state.now)) / 60_000);
+  const overWallClock = () => elapsedMin() > props.g.budget.wall_minutes;
   return (
     <div class="budget">
       <div class="budget-bar" title={t("goal.budgetTitle")}>
         <span class="budget-fill" classList={{ over: over(), some: props.g.cost_usd > 0 }} style={{ width: `${fill()}%` }} />
         <span class="budget-soft" style={{ left: `${softPct()}%` }} />
       </div>
+      {/* Each reading is one unbreakable segment with its separator in front, so a wrap never leaves a dot at a line's end. */}
       <div class="meta num budget-line">
         <span class="t1">{t("goal.budgetLine", { spent: usd(props.g.cost_usd), soft: usdLimit(props.g.budget.soft_usd), pct: pct(props.g.cost_usd, props.g.budget.soft_usd) })}</span>
-        <span class="sep">·</span>
-        <span>{t("goal.hardCap", { v: usdLimit(props.g.budget.hard_usd) })}</span>
-        <Show when={props.g.run_started_at}>
+        <span>
           <span class="sep">·</span>
-          <span>
-            {t("goal.wallLine", {
-              elapsed: Math.floor((state.now - props.g.run_started_at!) / 60_000),
-              minutes: props.g.budget.wall_minutes,
-            })}
+          {t("goal.hardCap", { v: usdLimit(props.g.budget.hard_usd) })}
+        </span>
+        <Show when={props.g.run_started_at}>
+          <span classList={{ "over-wall": overWallClock() }} title={overWallClock() ? t("goal.overWallTitle") : undefined}>
+            <span class="sep">·</span>
+            {t("goal.wallLine", { elapsed: elapsedMin(), minutes: props.g.budget.wall_minutes })}
           </span>
         </Show>
       </div>
@@ -841,8 +912,13 @@ function ContractRail(props: { d: GoalDetail }) {
       <div class="rail-block">
         <div class="rail-head">{t("goal.engine")}</div>
         <dl class="rail-dl">
+          {/* The engine is a reading only when the contract overrides the default. */}
+          <Show when={c().engine && c().engine !== effectiveEngine("", state.settings?.engine)}>
+            <dt>{t("goal.agent")}</dt>
+            <dd>{engineLabel(c().engine)}</dd>
+          </Show>
           <dt>{t("goal.model")}</dt>
-          <dd classList={{ mono: isModelId(model()) }}>{model() || t("common.piDefault")}</dd>
+          <dd classList={{ mono: isModelId(model()) }}>{model() || (effectiveEngine(c().engine, state.settings?.engine) === "claude-code" ? t("common.engineDefault") : t("common.piDefault"))}</dd>
           <Show when={props.d.local_files.length}>
             <dt>{t("goal.localFiles")}</dt>
             <dd class="mono">{props.d.local_files.join("  ")}</dd>
@@ -857,7 +933,7 @@ function ContractRail(props: { d: GoalDetail }) {
                 label={t("goal.copyBranch")}
                 onClick={() => {
                   void navigator.clipboard.writeText(branch()!);
-                  toast("info", t("common.copied"));
+                  toast("success", t("common.copied"));
                 }}
               />
             </dd>

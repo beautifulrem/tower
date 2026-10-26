@@ -1,9 +1,11 @@
 /**
  * The project's test command, run once on a clean copy of its base branch
- * (`ProjectView.test_check`). Shown quietly: one line in Settings with the
- * output on demand, and a one-line notice wherever a goal is created when
- * the tests already fail on base (the first criterion would then be red→green
- * evidence) or cannot run (the goal would pause at verification).
+ * (`ProjectView.test_check`). Nothing runs on its own — setup may reach the
+ * network — so a project that was never checked offers the check. Shown
+ * quietly: one line in Settings with the output on demand, and a one-line
+ * notice wherever a goal is created when the tests already fail on base
+ * (the first criterion would then be red→green evidence) or cannot run
+ * (the goal would pause at verification).
  */
 import { Show, createSignal } from "solid-js";
 
@@ -32,8 +34,22 @@ export function TestCheckLine(props: { p: ProjectView }) {
     return x.passed ? t("settings.testCheckPass", { base: x.base, dur: duration(x.duration_ms, false) }) : t("settings.testCheckFail", { base: x.base });
   };
   return (
-    <Show when={c()}>
-      <div class="test-check">
+    <div class="test-check">
+      <Show
+        when={c()}
+        fallback={
+          <Show when={props.p.test_command}>
+            <div class="fact-row">
+              <ResultMark kind="pending" title={t("settings.testCheckNone", { base: props.p.base_branch })} />
+              <span class="meta t2">{t("settings.testCheckNone", { base: props.p.base_branch })}</span>
+              <span class="grow" />
+              <Button size="s" variant="ghost" busy={busy()} onClick={() => void recheck()} title={t("settings.checkTestsHint")}>
+                {t("settings.checkTests", { base: props.p.base_branch })}
+              </Button>
+            </div>
+          </Show>
+        }
+      >
         <div class="fact-row">
           <Show when={c()!.passed !== null} fallback={<ResultMark kind="pending" title={t("settings.testCheckRunning")} />}>
             <Show when={!c()!.env_error} fallback={<ResultMark kind="env" />}>
@@ -43,10 +59,11 @@ export function TestCheckLine(props: { p: ProjectView }) {
           <span class="meta t1">{text()}</span>
           <span class="code-val t3 ellipsis">{c()!.command}</span>
           <span class="grow" />
+          {/* Two ghost buttons, one form: the output toggle is not a link. */}
           <Show when={c()!.output_tail}>
-            <button class="link meta" onClick={() => setOpen((o) => !o)} aria-expanded={open()}>
+            <Button size="s" variant="ghost" aria-expanded={open()} aria-pressed={open()} onClick={() => setOpen((o) => !o)}>
               {open() ? t("trace.hideOutput") : t("settings.testCheckOutput")}
-            </button>
+            </Button>
           </Show>
           <Button size="s" variant="ghost" busy={busy()} disabled={c()!.passed === null} onClick={() => void recheck()}>
             {t("settings.recheck")}
@@ -55,8 +72,8 @@ export function TestCheckLine(props: { p: ProjectView }) {
         <Show when={open()}>
           <pre class="output-tail">{c()!.output_tail}</pre>
         </Show>
-      </div>
-    </Show>
+      </Show>
+    </div>
   );
 }
 

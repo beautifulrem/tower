@@ -16,10 +16,13 @@ use tower_core::view::{GoalSummary, InboxItem};
 
 use crate::Inner;
 
-/// The running server, kept so it can be stopped.
+/// The running server, kept so it can be stopped, with the address it
+/// listens on and why it is not running when it should be.
 #[derive(Default)]
 pub struct Remote {
     server: Mutex<Option<Arc<tiny_http::Server>>>,
+    host: Mutex<Option<String>>,
+    problem: Mutex<Option<String>>,
 }
 
 impl std::fmt::Debug for Remote {
@@ -40,27 +43,32 @@ pub fn new_token() -> String {
     format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
 }
 
-/// Where to listen: only Tailscale's address when it exists (the only
-/// encrypted way in), unless the settings ask for the local network too.
-pub fn listen_host(env: &crate::shell_env::ShellEnv, local_network: bool) -> String {
-    if local_network {
-        return "0.0.0.0".into();
-    }
-    addresses(env).into_iter().find(|a| a.starts_with("100.")).unwrap_or_else(|| "0.0.0.0".into())
+/// Tailscale's address on this Mac, only while Tailscale is connected:
+/// the CLI keeps printing the last address after it stops, so the address
+/// must also be one this Mac can bind.
+pub fn tailscale_ip(env: &crate::shell_env::ShellEnv) -> Option<String> {
+    let cli = env.which("tailscale").or_else(|| {
+        let app = std::path::PathBuf::from("/Applications/Tailscale.app/Contents/MacOS/Tailscale");
+        app.is_file().then_some(app)
+    })?;
+    let o = std::process::Command::new(cli).args(["ip", "-4"]).stderr(std::process::Stdio::null()).output().ok()?;
+    let ip = String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or_default().trim().to_string();
+    let addr: std::net::Ipv4Addr = ip.parse().ok()?;
+    std::net::UdpSocket::bind((addr, 0)).ok()?;
+    Some(ip)
 }
 
-/// Addresses the phone can use: the Tailscale address first, then the
-/// local network's.
+/// Where to listen: Tailscale's address (the only encrypted way in), or
+/// every interface when the settings ask for the local network. Without
+/// either there is nowhere safe to listen: `None`.
+pub fn listen_host(env: &crate::shell_env::ShellEnv, local_network: bool) -> Option<String> {
+    if local_network { Some("0.0.0.0".into()) } else { tailscale_ip(env) }
+}
+
+/// Addresses the phone can use: the Tailscale address first (while it is
+/// connected), then the local network's.
 pub fn addresses(env: &crate::shell_env::ShellEnv) -> Vec<String> {
-    let mut out = Vec::new();
-    if let Some(ts) = env.which("tailscale")
-        && let Ok(o) = std::process::Command::new(ts).args(["ip", "-4"]).output()
-    {
-        let ip = String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or_default().trim().to_string();
-        if !ip.is_empty() {
-            out.push(ip);
-        }
-    }
+    let mut out: Vec<String> = tailscale_ip(env).into_iter().collect();
     // The address the system would use to reach the outside (no packet is sent).
     if let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0")
         && sock.connect("192.0.2.1:9").is_ok()
@@ -85,6 +93,21 @@ impl Remote {
         if let Some(s) = self.server.lock().unwrap_or_else(PoisonError::into_inner).take() {
             s.unblock();
         }
+        *self.host.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    }
+
+    /// The address it listens on, if it is running.
+    pub fn host(&self) -> Option<String> {
+        self.host.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    /// Why it is not running although it is turned on.
+    pub fn problem(&self) -> Option<String> {
+        self.problem.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
+
+    pub fn set_problem(&self, problem: Option<String>) {
+        *self.problem.lock().unwrap_or_else(PoisonError::into_inner) = problem;
     }
 
     /// Starts serving on `port` at `host` with `token`, replacing a running
@@ -93,6 +116,8 @@ impl Remote {
         self.stop();
         let server = Arc::new(tiny_http::Server::http((host, port)).map_err(|e| std::io::Error::other(e.to_string()))?);
         *self.server.lock().unwrap_or_else(PoisonError::into_inner) = Some(server.clone());
+        *self.host.lock().unwrap_or_else(PoisonError::into_inner) = Some(host.to_string());
+        self.set_problem(None);
         let weak = Arc::downgrade(inner);
         let rt = tokio::runtime::Handle::current();
         std::thread::spawn(move || {

@@ -128,6 +128,8 @@ impl Supervisor {
             models: Mutex::default(),
             keep_awake: Mutex::default(),
             remote: remote::Remote::default(),
+            remote_applied: Mutex::default(),
+            push_status: Arc::default(),
             starting: Mutex::default(),
         });
         let sup = Self { inner };
@@ -135,6 +137,7 @@ impl Supervisor {
         sweep(&sup.inner.paths);
         if let Err(e) = sup.apply_remote() {
             tracing::warn!(error = %e, "phone page not started");
+            sup.inner.sink.emit(UiUpdate::Toast { level: ToastLevel::Warning, text: e.to_string(), goal_id: None });
         }
         sup.recover().await;
         Ok(sup)
@@ -149,6 +152,21 @@ impl Supervisor {
                 tick.tick().await;
                 let Some(inner) = weak.upgrade() else { break };
                 inner.flush_dirty();
+            }
+        });
+        // The phone page follows Tailscale: started when it connects, moved
+        // when its address changes, stopped (with the reason) when it goes.
+        let weak = Arc::downgrade(&self.inner);
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(20));
+            tick.tick().await;
+            loop {
+                tick.tick().await;
+                let Some(inner) = weak.upgrade() else { break };
+                if inner.settings().remote_enabled {
+                    let sup = Supervisor { inner };
+                    let _ = tokio::task::spawn_blocking(move || sup.apply_remote()).await;
+                }
             }
         });
         // Overlap radar: which files each unfinished goal changes, so goals
@@ -380,7 +398,8 @@ impl Supervisor {
                     settings.remote_local_network,
                 );
         if remote_changed {
-            self.apply_remote()?;
+            // Saved either way; Settings shows why the page is not served.
+            let _ = self.apply_remote();
         }
         // Read-time text (card titles and Tower's own choices, goal labels)
         // is re-sent so open screens switch language without a reload.
@@ -397,23 +416,47 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Starts or stops the phone page according to the settings.
+    /// Starts or stops the phone page according to the settings. When it
+    /// cannot start, the reason is kept for Settings (and returned).
     fn apply_remote(&self) -> Result<()> {
         let s = self.inner.settings();
-        if s.remote_enabled {
-            let host = remote::listen_host(&self.inner.env, s.remote_local_network);
-            self.inner.remote.start(&self.inner, &host, s.remote_port, s.remote_token).map_err(|e| {
-                invalid(tr!(
-                    self.inner.lang(),
-                    "无法在端口 {port} 上提供手机页面：{e}",
-                    "Could not serve the phone page on port {port}: {e}",
-                    port = s.remote_port
-                ))
-            })?;
-        } else {
+        let lang = self.inner.lang();
+        if !s.remote_enabled {
             self.inner.remote.stop();
+            self.inner.remote.set_problem(None);
+            return Ok(());
         }
+        let Some(host) = remote::listen_host(&self.inner.env, s.remote_local_network) else {
+            self.inner.remote.stop();
+            let problem = tr!(
+                lang,
+                "Tailscale 没有连接，手机页面没有开启。打开 Tailscale，或在下面允许本地网络（令牌会以明文经过局域网）。",
+                "Tailscale is not connected, so the phone page is off. Open Tailscale, or allow the local network below (the token then crosses it unencrypted)."
+            );
+            self.inner.remote.set_problem(Some(problem.clone()));
+            return Err(invalid(problem));
+        };
+        if self.inner.remote.host().as_deref() == Some(host.as_str()) && !self.remote_settings_changed(&s) {
+            return Ok(());
+        }
+        self.inner.remote.start(&self.inner, &host, s.remote_port, s.remote_token.clone()).map_err(|e| {
+            let problem = tr!(
+                lang,
+                "无法在端口 {port} 上提供手机页面：{e}",
+                "Could not serve the phone page on port {port}: {e}",
+                port = s.remote_port
+            );
+            self.inner.remote.set_problem(Some(problem.clone()));
+            invalid(problem)
+        })?;
+        *self.inner.remote_applied.lock().unwrap_or_else(PoisonError::into_inner) =
+            Some((s.remote_port, s.remote_token.clone()));
         Ok(())
+    }
+
+    fn remote_settings_changed(&self, s: &Settings) -> bool {
+        self.inner.remote_applied.lock().unwrap_or_else(PoisonError::into_inner).as_ref()
+            != Some(&(s.remote_port, s.remote_token.clone()))
     }
 
     /// How to open the phone page on this network.
@@ -426,20 +469,47 @@ impl Supervisor {
                 qr_svg: String::new(),
                 tailscale: false,
                 kinds: Vec::new(),
+                problem: None,
             };
         }
-        let mut addrs = remote::addresses(&self.inner.env);
-        // Only addresses it actually listens on.
-        let host = remote::listen_host(&self.inner.env, s.remote_local_network);
-        if host != "0.0.0.0" {
-            addrs.retain(|a| *a == host);
-        }
-        let tailscale = addrs.first().is_some_and(|a| a.starts_with("100."));
+        let problem = self.inner.remote.problem();
+        let tailscale_ip = remote::tailscale_ip(&self.inner.env);
+        // Only addresses it actually listens on, and that work now.
+        let addrs: Vec<String> = match self.inner.remote.host() {
+            None => Vec::new(),
+            Some(h) if h == "0.0.0.0" => remote::addresses(&self.inner.env),
+            Some(h) => vec![h],
+        };
+        let is_ts = |a: &str| tailscale_ip.as_deref() == Some(a);
+        let tailscale = addrs.first().is_some_and(|a| is_ts(a));
         let links: Vec<String> =
             addrs.iter().map(|a| format!("http://{a}:{}/#{}", s.remote_port, s.remote_token)).collect();
-        let kinds = addrs.iter().map(|a| if a.starts_with("100.") { "tailscale" } else { "lan" }.to_string()).collect();
+        let kinds = addrs.iter().map(|a| if is_ts(a) { "tailscale" } else { "lan" }.to_string()).collect();
         let qr_svg = links.first().map(|l| remote::qr_svg(l)).unwrap_or_default();
-        RemoteInfo { enabled: true, links, qr_svg, tailscale, kinds }
+        RemoteInfo { enabled: true, links, qr_svg, tailscale, kinds, problem }
+    }
+
+    /// Sends a test push to the configured address and says how it went.
+    pub async fn test_push(&self) -> Result<()> {
+        let s = self.inner.settings();
+        let lang = s.lang();
+        let url = s.push_url.trim().to_string();
+        if url.is_empty() {
+            return Err(invalid(tr!(lang, "先填写推送地址", "Enter a push address first")));
+        }
+        let title = "Tower".to_string();
+        let body = tr!(lang, "测试推送：能看到这条就说明推送可用", "Test push: if you can read this, pushes work");
+        let result = tokio::task::spawn_blocking(move || inner::send_push(&url, &title, &body, None, lang))
+            .await
+            .map_err(|e| invalid(e.to_string()))?;
+        *self.inner.push_status.lock().unwrap_or_else(PoisonError::into_inner) =
+            Some(tower_core::view::PushStatus { at: tower_store::system_now(), error: result.clone().err() });
+        result.map_err(invalid)
+    }
+
+    /// The outcome of the last push, if one was sent since Tower started.
+    pub fn push_status(&self) -> Option<tower_core::view::PushStatus> {
+        self.inner.push_status.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
     /// A new pairing secret: phones paired before must pair again.

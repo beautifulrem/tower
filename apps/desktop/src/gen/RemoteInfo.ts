@@ -20,4 +20,9 @@ tailscale: boolean,
 /**
  * One per link: "tailscale" or "lan".
  */
-kinds: Array<string>, };
+kinds: Array<string>, 
+/**
+ * Why the page is not being served although it is turned on
+ * (Tailscale disconnected, the port taken), in the interface language.
+ */
+problem: string | null, };

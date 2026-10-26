@@ -254,6 +254,16 @@ fn reset_remote_token(sup: Sup<'_>) -> Res<()> {
 }
 
 #[tauri::command]
+async fn test_push(sup: Sup<'_>) -> Res<()> {
+    sup.test_push().await
+}
+
+#[tauri::command]
+fn push_status(sup: Sup<'_>) -> Option<tower_core::view::PushStatus> {
+    sup.push_status()
+}
+
+#[tauri::command]
 fn look_image(sup: Sup<'_>, file: String) -> Option<String> {
     sup.look_image(&file)
 }
@@ -523,6 +533,8 @@ pub fn run() {
             look_image,
             remote_info,
             reset_remote_token,
+            test_push,
+            push_status,
             undo_rollback,
             write_file,
             snooze,

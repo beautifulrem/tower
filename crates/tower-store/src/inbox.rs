@@ -51,6 +51,7 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
             (tr!(lang, "Agent 的假设待你确认", "An assumption by the agent needs your confirmation"), body.clone())
         }
         InboxKind::Stalled if !subject.is_empty() => {
+            let subject = tower_core::i18n::Stall::decode(&subject).map_or(subject, |s| s.text(lang));
             (tr!(lang, "可能卡住：{subject}", "May be stuck: {subject}"), subject)
         }
         InboxKind::CiFailed => (tr!(lang, "CI 未通过：{subject}", "CI failed: {subject}"), subject),
@@ -60,6 +61,17 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
         _ if !subject.is_empty() => (stored, subject),
         _ => (stored.clone(), stored),
     };
+    // Tower's own explanation follows the language too.
+    let body =
+        if kind == InboxKind::Stalled && tower_core::i18n::Stall::decode(&r.get::<_, String>("subject")?).is_some() {
+            tr!(
+                lang,
+                "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。",
+                "The agent is still running. You can keep waiting, write a steer, or pause it."
+            )
+        } else {
+            body
+        };
     let stored_options: Vec<String> = json_col(r, "options")?;
     // Tower's own choices are shown in the current language (answers are
     // matched by meaning); an agent's suggested answers are left alone.

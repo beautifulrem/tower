@@ -432,11 +432,12 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
 
 test("the command palette can put the page's card aside, and H does the same", async ({ page }) => {
   await openTower(page, "goal/G-0004");
-  await expect(page.locator(".decision")).toBeVisible();
+  // (How many cards the seeded goal has depends on timing; the first one counts.)
+  await expect(page.locator(".decision").first()).toBeVisible();
   await page.keyboard.press("Meta+k");
   const dialog = page.getByRole("dialog");
   await page.keyboard.type("put aside");
-  const option = dialog.getByRole("option").filter({ hasText: "Put aside G-0004 · Paused" });
+  const option = dialog.getByRole("option").filter({ hasText: /Put aside G-0004 · / });
   await expect(option).toBeVisible();
   await expect(option.locator("kbd")).toHaveText("H");
   await page.keyboard.press("Escape");

@@ -18,9 +18,10 @@ import type { Criterion } from "../gen/Criterion";
 import { api } from "../lib/api";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
+import { effectiveEngine, engineLabel, modelsFor } from "../lib/labels";
 import { back, go } from "../lib/nav";
 import { act, state } from "../lib/store";
-import { thinkingOptions } from "./Settings";
+import { engineOptions, thinkingOptions } from "./Settings";
 
 function blank(intent = "", testCommand: string | null = null): Contract {
   return {
@@ -46,6 +47,8 @@ function blank(intent = "", testCommand: string | null = null): Contract {
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
+type Kind = Criterion["kind"]["type"];
+
 export function ContractEditor(props: { projectId?: string; draftId?: string; amendId?: string }) {
   const editingId = props.draftId ?? props.amendId;
   const [projectId, setProjectId] = createSignal(props.projectId ?? state.projects[0]?.id ?? "");
@@ -56,6 +59,12 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   // Field errors appear once the human has started editing, not on arrival.
   const [touched, setTouched] = createSignal(!!editingId);
   const [models] = createResource(() => api.models().catch(() => []));
+  // The engine the goal will run on: the contract's, else the settings' default.
+  const engine = () => effectiveEngine(c.engine, state.settings?.engine);
+  const modelOptions = () => [
+    { value: "", label: engine() === "claude-code" ? t("common.engineDefault") : t("common.piDefault") },
+    ...modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` })),
+  ];
 
   // Changes before the initial values are in place do not count as edits.
   let loaded = false;
@@ -93,16 +102,19 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   /** Why the primary action is disabled, in one line. */
   const reason = () => (errors().length ? errors()[0].message : null);
 
-  const addCriterion = (kind: "exec" | "human") => {
+  const addCriterion = (kind: Kind) => {
     const n = c.criteria.length + 1;
     let id = `C${n}`;
     while (c.criteria.some((x) => x.id === id)) id = `C${Number(id.slice(1)) + 1}`;
     const cr: Criterion =
       kind === "exec"
         ? { id, title: "", kind: { type: "exec", command: "", timeout_secs: 600 } }
-        : { id, title: "", kind: { type: "human" } };
+        : kind === "look"
+          ? { id, title: "", kind: { type: "look", start: "", url: "http://localhost:3000/", timeout_secs: 60 } }
+          : { id, title: "", kind: { type: "human" } };
     setC("criteria", (list) => [...list, cr]);
   };
+  const setKind = (i: number, fn: (k: Criterion["kind"]) => void) => setC("criteria", i, "kind", produce(fn));
 
   const save = async (ratify: boolean) => {
     const contract = structuredClone(unwrap(c));
@@ -127,6 +139,8 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   };
 
   useKeys([{ key: "mod+enter", run: () => !errors().length && void save(true), inInputs: true }]);
+
+  const autonomyDesc = () => t(`contract.${c.autonomy}Desc`);
 
   return (
     <div class="editor">
@@ -170,10 +184,16 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             <h2 class="section-title">{t("contract.criteria")}</h2>
             <span class="grow" />
             <Button size="s" variant="ghost" onClick={() => addCriterion("exec")}>
-              <Icon name="plus" size={10} /> {t("contract.addCommand")}
+              <Icon name="plus" size={10} />
+              {t("contract.addCommand")}
+            </Button>
+            <Button size="s" variant="ghost" onClick={() => addCriterion("look")} title={t("contract.lookHint")}>
+              <Icon name="plus" size={10} />
+              {t("contract.addLook")}
             </Button>
             <Button size="s" variant="ghost" onClick={() => addCriterion("human")}>
-              <Icon name="plus" size={10} /> {t("contract.addHuman")}
+              <Icon name="plus" size={10} />
+              {t("contract.addHuman")}
             </Button>
           </div>
           <p class="field-hint" style={{ "margin-bottom": "12px" }}>
@@ -181,10 +201,10 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           </p>
           <For each={c.criteria}>
             {(cr, i) => (
-              <div class="criterion-edit">
+              <div class="criterion-edit" classList={{ "criterion-edit-look": cr.kind.type === "look" }}>
                 <span class="num">{cr.id}</span>
                 <input value={cr.title} aria-label={`${cr.id} ${t("contract.criterionTitle")}`} placeholder={t("contract.criterionTitle")} onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)} />
-                <Show when={cr.kind.type === "exec"} fallback={<span class="meta">{t("contract.humanCheck")}</span>}>
+                <Show when={cr.kind.type !== "human"} fallback={<span class="meta">{t("contract.humanCheck")}</span>}>
                   <span class="unit-wrap timeout">
                     <input
                       class="num"
@@ -193,7 +213,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                       value={(cr.kind as { timeout_secs: number }).timeout_secs}
                       title={t("contract.timeout")}
                       aria-label={`${cr.id} ${t("contract.timeout")}`}
-                      onInput={(e) => setC("criteria", i(), "kind", produce((k: Criterion["kind"]) => { if (k.type === "exec") k.timeout_secs = Number(e.currentTarget.value) || 1; }))}
+                      onInput={(e) => setKind(i(), (k) => { if (k.type !== "human") k.timeout_secs = Number(e.currentTarget.value) || 1; })}
                     />
                     <span class="unit">{t("contract.seconds")}</span>
                   </span>
@@ -205,8 +225,28 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                     aria-label={`${cr.id} ${t("contract.addCommand")}`}
                     value={(cr.kind as { command: string }).command}
                     placeholder="pnpm test -- checkout"
-                    onInput={(e) => setC("criteria", i(), "kind", produce((k: Criterion["kind"]) => { if (k.type === "exec") k.command = e.currentTarget.value; }))}
+                    onInput={(e) => setKind(i(), (k) => { if (k.type === "exec") k.command = e.currentTarget.value; })}
                   />
+                </Show>
+                {/* A "look" criterion: Tower starts the app, waits for the URL, and photographs base and snapshot for you to compare. */}
+                <Show when={cr.kind.type === "look"}>
+                  <div class="criterion-cmd-row look-fields">
+                    <input
+                      class="mono"
+                      aria-label={`${cr.id} ${t("contract.lookStart")}`}
+                      value={(cr.kind as { start: string }).start}
+                      placeholder={t("contract.lookStartPlaceholder")}
+                      onInput={(e) => setKind(i(), (k) => { if (k.type === "look") k.start = e.currentTarget.value; })}
+                    />
+                    <input
+                      class="mono"
+                      aria-label={`${cr.id} ${t("contract.lookUrl")}`}
+                      value={(cr.kind as { url: string }).url}
+                      placeholder="http://localhost:3000/checkout"
+                      onInput={(e) => setKind(i(), (k) => { if (k.type === "look") k.url = e.currentTarget.value; })}
+                    />
+                  </div>
+                  <span class="criterion-cmd-row field-hint">{t("contract.lookHint")}</span>
                 </Show>
               </div>
             )}
@@ -270,10 +310,11 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       <aside class="editor-side">
         <div class="editor-block">
           <h2 class="section-title">{t("contract.autonomy")}</h2>
+          {/* Three levels; in a narrow window the descriptions fold into tooltips and only the chosen one stays as a line. */}
           <div class="autonomy-choices" role="radiogroup" aria-label={t("contract.autonomy")}>
             <For each={["cautious", "standard", "autonomous"] as const}>
               {(v) => (
-                <label class="radio">
+                <label class="radio" title={t(`contract.${v}Desc`)}>
                   <input type="radio" name="autonomy" checked={c.autonomy === v} onChange={() => setC("autonomy", v)} />
                   <b>{t(`contract.${v}`)}</b>
                   <span class="radio-desc">{t(`contract.${v}Desc`)}</span>
@@ -281,6 +322,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               )}
             </For>
           </div>
+          <p class="field-hint autonomy-current">{autonomyDesc()}</p>
           <p class="field-hint">{t("contract.oneWayNote")}</p>
         </div>
         <div class="editor-block">
@@ -306,16 +348,25 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         </div>
         <div class="editor-block">
           <h2 class="section-title">{t("contract.engine")}</h2>
-          <Field label={t("contract.model")} hint={t("contract.modelHint")}>
+          {/* The engine picker filters the model list: Pi's providers for Pi, Claude Code's aliases for Claude Code. */}
+          <Field label={t("contract.agent")} hint={engine() === "claude-code" ? t("settings.engineTrust") : undefined}>
             <Select
-              value={c.model}
-              options={[{ value: "", label: t("common.piDefault") }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
-              onChange={(v) => setC("model", v)}
+              value={c.engine}
+              options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]}
+              onChange={(v) => {
+                setC("engine", v);
+                setC("model", "");
+              }}
             />
           </Field>
-          <Field label={t("contract.thinking")}>
-            <Select value={c.thinking} options={thinkingOptions()} onChange={(v) => setC("thinking", v)} />
+          <Field label={t("contract.model")} hint={engine() === "claude-code" ? t("contract.modelHintClaude") : t("contract.modelHint")}>
+            <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
           </Field>
+          <Show when={engine() !== "claude-code"}>
+            <Field label={t("contract.thinking")}>
+              <Select value={c.thinking} options={thinkingOptions()} onChange={(v) => setC("thinking", v)} />
+            </Field>
+          </Show>
         </div>
       </aside>
     </div>

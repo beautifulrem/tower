@@ -8,7 +8,17 @@ vi.mock("../../lib/store", async () => {
   const { createStore } = await import("solid-js/store");
   const [state] = createStore({
     settings: { language: "en", muted_goals: [] as string[], quiet_until: null },
-    goals: { "G-0002": { id: "G-0002", state: "paused", pause_reason: "dependencies_changed", pr: null } } as Record<string, unknown>,
+    goals: {
+      "G-0002": {
+        id: "G-0002",
+        state: "paused",
+        pause_reason: "dependencies_changed",
+        pr: null,
+        verified_pin: null,
+        diffstat: null,
+        progress: { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 },
+      },
+    } as Record<string, unknown>,
     inbox: [] as InboxItem[],
     now: Date.now(),
   });
@@ -94,6 +104,16 @@ describe("DecisionCard", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("shows the agent's submit summary on a ready-to-accept card as a claim, never Tower's own sentence twice", () => {
+    const ready = (body: string) => item({ id: `R-${body.length}`, kind: "review_ready", subject: "Fix the cart total", options: [], tones: [], allow_text: false, body });
+    const { unmount } = render(() => <DecisionCard item={ready("Multiply price by quantity in total()")} />);
+    expect(screen.getByText("Multiply price by quantity in total()").closest(".claim")).not.toBeNull();
+    expect(screen.getByText("Agent claim:")).toBeTruthy();
+    unmount();
+    render(() => <DecisionCard item={ready("Every machine criterion passed in a clean checkout")} />);
+    expect(screen.queryByText(/Every machine criterion passed/)).toBeNull();
   });
 
   it("marks a dependency-network decision as a security decision", () => {

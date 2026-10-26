@@ -163,7 +163,8 @@ export function AcceptPanel(props: AcceptPanelProps) {
   };
   // A pushed branch already exists: accepting adds a commit on it rather than writing a new one.
   const updating = () => !!g()?.pr || (!!g()?.branch && g()?.state === "in_review" && !!props.detail?.runs.some((r) => r.purpose === "ci_fix"));
-  const branchName = () => g()?.branch ?? `tower/${props.id.toLowerCase()}-…`;
+  // The branch acceptance writes (or, when one exists, updates): the supervisor names it ahead of time.
+  const branchName = () => g()?.branch || props.detail?.branch_preview || null;
   const accept = async () => {
     setBusy(true);
     const branch = await act(() => api.accept(props.id));
@@ -214,20 +215,21 @@ export function AcceptPanel(props: AcceptPanelProps) {
         <dl class="panel-branch">
           <dt>{t("goal.branch")}</dt>
           <dd>
-            {branchName()}
-            <Show when={g()?.branch}>
-              <IconButton
-                icon="copy"
-                size={22}
-                label={t("goal.copyBranch")}
-                onClick={() => {
-                  void navigator.clipboard.writeText(g()!.branch!);
-                  toast("info", t("common.copied"));
-                }}
-              />
-            </Show>
-            <Show when={!g()?.branch}>
-              <span class="t3"> · {t("review.branchNote")}</span>
+            <Show when={branchName()} fallback={<span class="t3">{t("review.branchNote")}</span>}>
+              {(name) => (
+                <>
+                  {name()}
+                  <IconButton
+                    icon="copy"
+                    size={22}
+                    label={t("goal.copyBranch")}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(name());
+                      toast("info", t("common.copied"));
+                    }}
+                  />
+                </>
+              )}
             </Show>
           </dd>
         </dl>

@@ -21,7 +21,7 @@ import { approves, optionTone } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, state, toast } from "../lib/store";
 import { NeedsYouMark, NoticeMark, Seal } from "./Glyph";
-import { CriteriaBar } from "./Honesty";
+import { Claim, CriteriaBar } from "./Honesty";
 import { PrLine } from "./Pr";
 import { Button, Kbd } from "./ui";
 
@@ -54,6 +54,28 @@ export async function chooseOption(item: InboxItem, index: number, text = ""): P
   if (item.kind === "assumption") return (await act(() => api.answerAssumption(item.id, approves(item, index), text.trim()))) !== undefined;
   return (await act(() => api.answer(item.id, option))) !== undefined;
 }
+
+/**
+ * A ready-to-accept card's body is the agent's submit summary — a claim —
+ * unless the agent wrote none, in which case the supervisor put its own
+ * sentence there. Those sentences are fixed (either language), so a body
+ * that is not one of them is the agent's and wears the claim gutter; the
+ * supervisor's own sentence repeats what the seal readout says and is not
+ * shown twice. (A `body_is_claim` flag from the supervisor would make this
+ * a lookup instead of a list.)
+ */
+const TOWER_REVIEW_BODIES = new Set([
+  "全部机器标准在干净环境中通过",
+  "Every machine criterion passed in a clean checkout",
+  "没有可执行的标准：请你判断结果",
+  "No executable criteria: judge the result yourself",
+  "全部机器标准通过；哨兵命中已由你确认",
+  "Every machine criterion passed; you confirmed the sentinel hits",
+]);
+const submitClaim = (item: InboxItem): string | null => {
+  const b = item.body.trim();
+  return b && !TOWER_REVIEW_BODIES.has(b) ? b : null;
+};
 
 /** Items whose body is machine text (a command to approve, changed manifests, failing checks). */
 const codeBody = (item: InboxItem, pauseReason: string | null | undefined) =>
@@ -143,6 +165,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                   </div>
                 )}
               </Show>
+              <Show when={submitClaim(it())}>{(text) => <Claim kind={t("goal.submitSummary")}>{text()}</Claim>}</Show>
               <div class="decision-actions">
                 <Button variant="primary" onClick={() => go({ name: "review", id: it().goal_id })} kbd={props.focused ? "r" : undefined}>
                   {t("decision.openReview")}

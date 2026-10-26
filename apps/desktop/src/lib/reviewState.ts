@@ -30,12 +30,25 @@ export function fileHash(f: DiffFile): string {
 
 export type Layout = "unified" | "split";
 
+/**
+ * Hunks you accepted — your reading marks, nothing in the workspace. They
+ * belong to one diff (`range`: the snapshot pair the hunks were cut from, as
+ * `from..pin`); when the snapshot changes under the review, the hunks are
+ * different hunks and the marks start over.
+ */
+export interface AcceptedHunks {
+  range: string;
+  /** Hunk indices per file path. */
+  files: Record<string, number[]>;
+}
+
 export interface ReviewState {
   viewed: Record<string, string>;
   drafts: Draft[];
   reviewed: string | null;
   /** Side-by-side or unified, remembered per goal. */
   layout: Layout;
+  accepted: AcceptedHunks | null;
 }
 
 const parse = <T>(raw: string | undefined | null, fallback: T): T => {
@@ -61,6 +74,7 @@ export async function loadReviewState(goal: string): Promise<ReviewState> {
     drafts: parse(stored.drafts, legacy?.drafts ?? []),
     reviewed: stored.reviewed ?? legacy?.reviewed ?? null,
     layout: stored.layout === "split" ? "split" : "unified",
+    accepted: parse<AcceptedHunks | null>(stored.accepted, null),
   };
   if (legacy) {
     void api.setUiState(goal, "viewed", JSON.stringify(state.viewed)).catch(() => {});
@@ -78,6 +92,7 @@ function migrateLegacy(goal: string): ReviewState | null {
     drafts: parse(localStorage.getItem(keys[1]), []),
     reviewed: localStorage.getItem(keys[2]),
     layout: "unified",
+    accepted: null,
   };
   keys.forEach((k) => localStorage.removeItem(k));
   return s;
@@ -89,4 +104,6 @@ export const persist = {
     void api.setUiState(goal, "drafts", list.length ? JSON.stringify(list) : null).catch(() => {}),
   reviewed: (goal: string, pin: string) => void api.setUiState(goal, "reviewed", pin).catch(() => {}),
   layout: (goal: string, layout: Layout) => void api.setUiState(goal, "layout", layout === "split" ? "split" : null).catch(() => {}),
+  accepted: (goal: string, a: AcceptedHunks | null) =>
+    void api.setUiState(goal, "accepted", a && Object.keys(a.files).length ? JSON.stringify(a) : null).catch(() => {}),
 };

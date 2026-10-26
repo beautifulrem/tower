@@ -7,9 +7,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { HELD_OUT_BODY } from "./rich";
+import { HELD_OUT_BODY, HELD_OUT_OPTIONS, HELD_OUT_TONES } from "./rich";
 import { fixtures } from "./tauri";
 
 const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../crates/tower-supervisor/src/remote.html"), "utf8");
@@ -110,23 +111,88 @@ test("the phone card is drawn with the desk's pen: a 32px strip with an amber ed
   await expect(page.locator(".row .live .elapsed")).toHaveText("running 1h 49m");
 });
 
-test("a held-out failure on the phone keeps the sentence as prose and the runner's output as one machine block", async ({ page }) => {
+const HELD_OUT_STATE = {
+  goals: [{ id: "G-0004", title: "Find out why checkout is slow", state: "paused", mode: "idle", run_started_at: null, live_line: null, pause_reason: "held_out_failed", verified_pin: null }],
+  inbox: [
+    { id: "h", goal_id: "G-0004", goal_title: "Find out why checkout is slow", kind: "paused", title: "", subject: "Held-out tests failed (the agent cannot see them)", body: HELD_OUT_BODY, options: HELD_OUT_OPTIONS, tones: HELD_OUT_TONES, allow_text: true, created_at: Date.now() },
+  ],
+  lang: "en",
+};
+
+test("a held-out failure on the phone is the desk's card: the output for you only, the hint first and primary, names before the failure, showing it kept at the desk", async ({ page }) => {
+  await openPhone(page, { state: HELD_OUT_STATE });
+  const card = page.locator(".card").first();
+  await expect(card.locator(".body")).toContainText("Every visible criterion passed");
+  await expect(card.locator(".body")).not.toContainText("AssertionError");
+  await expect(card.locator(".body")).not.toContainText("Failing in");
+  const held = card.locator(".heldout");
+  await expect(held.locator(".label")).toHaveText("For you only");
+  expect(await held.evaluate((el) => getComputedStyle(el).borderLeftWidth)).toBe("2px");
+  await expect(held.locator(".head")).toContainText("C2");
+  await expect(held.locator(".head")).toContainText("Rounding edge cases");
+  await expect(held.locator(".names code")).toHaveText(["total rounds half-cents up", "applies tax once"]);
+  await expect(held.locator(".tail")).toContainText("AssertionError");
+  // The hint is the primary path, with a placeholder, above the agent-facing choices.
+  const area = card.locator("textarea");
+  await expect(area).toHaveAttribute("placeholder", /A hint for the agent/);
+  const send = card.getByRole("button", { name: "Send the hint and resume" });
+  await expect(send).toHaveClass(/primary/);
+  const ys = await Promise.all([held, area, card.locator(".opts")].map(async (l) => (await l.boundingBox())!.y));
+  expect(ys[0]).toBeLessThan(ys[1]);
+  expect(ys[1]).toBeLessThan(ys[2]);
+  await expect(card.locator(".btn.primary")).toHaveCount(1);
+  // Telling only the names is offered; showing the failure stays at the desk; abandoning asks twice.
+  await expect(card.getByRole("button", { name: "Tell the agent only which tests failed" })).toBeVisible();
+  await expect(card.getByRole("button", { name: /Show the agent the failure/ })).toHaveCount(0);
+  await expect(card.locator(".desk")).toContainText("Show the agent the failure");
+  await card.getByRole("button", { name: "Abandon this goal" }).click();
+  await expect(card.getByRole("button", { name: "Press again" })).toBeVisible();
+  await expect(card.locator(".note")).toContainText("does not know these tests exist");
+  // The hint goes as free text.
+  const sent = page.waitForRequest((r) => r.url().endsWith("/api/answer") && r.method() === "POST");
+  await area.fill("Half-cents round up");
+  await send.click();
+  expect((await sent).postDataJSON()).toEqual({ inbox_id: "h", response: "Half-cents round up" });
+});
+
+test("every reply box on the phone says what it asks for", async ({ page }) => {
   await openPhone(page, {
     state: {
-      goals: [{ id: "G-0004", title: "Find out why checkout is slow", state: "paused", mode: "idle", run_started_at: null, live_line: null, pause_reason: "held_out_failed", verified_pin: null }],
+      goals: [],
       inbox: [
-        { id: "h", goal_id: "G-0004", goal_title: "Find out why checkout is slow", kind: "paused", title: "", subject: "Held-out tests failed (the agent cannot see them)", body: HELD_OUT_BODY, options: ["Show the agent the failure (it will see the held-out tests)", "Abandon this goal"], tones: ["neutral", "destructive"], allow_text: true, created_at: Date.now() },
+        { id: "q", goal_id: "G-0002", goal_title: "Align discount rules", kind: "question", title: "", subject: "Which discount applies first?", body: "", options: ["Percentage", "Fixed"], tones: ["primary", "neutral"], allow_text: true, created_at: Date.now() },
+        { id: "p", goal_id: "G-0004", goal_title: "Find out why checkout is slow", kind: "paused", title: "", subject: "The agent stopped", body: "", options: ["Continue"], tones: ["primary"], allow_text: true, created_at: Date.now() },
       ],
       lang: "en",
     },
   });
-  const card = page.locator(".card").first();
-  await expect(card.locator(".body")).toContainText("Every visible criterion passed");
-  await expect(card.locator(".body")).not.toContainText("AssertionError");
-  await expect(card.locator(".tail")).toContainText("C2 · Rounding edge cases");
-  await expect(card.locator(".tail")).toContainText("AssertionError");
-  await expect(card.locator("textarea")).toBeVisible();
+  await expect(page.locator("#t-q")).toHaveAttribute("placeholder", "Write your answer…");
+  await expect(page.locator("#t-p")).toHaveAttribute("placeholder", "A note for the agent (optional)…");
 });
+
+test("the empty phone page is the list's own shape: hollow rows under each title, and the titles in the wordmark's voice", async ({ page }) => {
+  await openPhone(page, { state: { goals: [], inbox: [], lang: "en" } });
+  await expect(page.locator(".empty").first()).toContainText("Nothing needs you");
+  await expect(page.locator(".ghost .row")).toHaveCount(3);
+  expect(await page.locator(".ghost").first().innerText()).toBe("");
+  const h2 = page.locator("h2").first();
+  expect(await h2.evaluate((el) => getComputedStyle(el).textTransform)).toBe("uppercase");
+  expect(parseFloat(await h2.evaluate((el) => getComputedStyle(el).letterSpacing))).toBeGreaterThan(0.5);
+});
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`the phone page has no serious accessibility violations (${scheme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    for (const state of [undefined, HELD_OUT_STATE, null]) {
+      await openPhone(page, state === undefined ? {} : { state });
+      await page.waitForTimeout(200);
+      const results = await new AxeBuilder({ page }).analyze();
+      const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+      const report = serious.flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(" ")}: ${n.failureSummary?.split("\n").slice(1).join(" ") ?? ""}`));
+      expect(report).toEqual([]);
+    }
+  });
+}
 
 // Preview screens of the phone page, with the desktop's (SHOTS=<dir>).
 for (const s of [

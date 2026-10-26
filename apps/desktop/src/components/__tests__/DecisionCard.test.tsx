@@ -43,6 +43,8 @@ const { DecisionCard, ARM_MS, heldOutParts } = await import("../DecisionCard");
 const HELD_OUT_BODY = [
   "Every visible criterion passed; the held-out tests did not. The agent does not know these tests and has not seen the output below.",
   "",
+  "Failing in C2: total rounds half-cents up, applies tax once",
+  "",
   "C2 · Rounding edge cases",
   "✖ total rounds half-cents up (0.4ms)",
   "  AssertionError: expected 10.01 to equal 10.02",
@@ -56,8 +58,8 @@ const heldOutItem = (): InboxItem =>
     goal_title: "Clean up cart edge cases",
     subject: "Held-out tests failed (the agent cannot see them)",
     body: HELD_OUT_BODY,
-    options: ["Show the agent the failure (it will see the held-out tests)", "Abandon this goal"],
-    tones: ["neutral", "destructive"],
+    options: ["Tell the agent only which tests failed", "Show the agent the failure (it will see the held-out tests)", "Abandon this goal"],
+    tones: ["neutral", "neutral", "destructive"],
     allow_text: true,
   });
 
@@ -179,14 +181,18 @@ describe("DecisionCard", () => {
     expect(screen.getByLabelText("Remind me later")).toBeTruthy();
   });
 
-  it("splits a held-out body into the sentence and one block per failed criterion, output intact", () => {
+  it("splits a held-out body into the sentence, the failing names and one block per failed criterion, output intact", () => {
     const { prose, failures } = heldOutParts(HELD_OUT_BODY);
     expect(prose).toMatch(/^Every visible criterion passed/);
+    expect(prose).not.toContain("Failing in");
     expect(failures).toHaveLength(1);
-    expect(failures[0]).toMatchObject({ id: "C2", title: "Rounding edge cases" });
+    expect(failures[0]).toMatchObject({ id: "C2", title: "Rounding edge cases", names: ["total rounds half-cents up", "applies tax once"] });
     expect(failures[0].tail).toContain("AssertionError");
+    expect(failures[0].tail).not.toContain("Failing in");
     // A middle dot inside the output does not start a new block.
     expect(heldOutParts("Sentence.\n\nC1 · One\nsome · output\n\nC3 · Three\nmore").failures.map((f) => f.id)).toEqual(["C1", "C3"]);
+    // The Chinese line is read the same way; names with no output block still get a row.
+    expect(heldOutParts("句子。\n\nC2 失败的测试：甲、乙").failures).toEqual([{ id: "C2", title: "", tail: "", names: ["甲", "乙"] }]);
   });
 
   it("makes the hint the way out of a held-out failure: the field comes first and sends as a note, the output is marked for you only, and showing the agent is a plain second choice", async () => {
@@ -196,6 +202,10 @@ describe("DecisionCard", () => {
     expect(held.textContent).toContain("For you only");
     expect(held.querySelector(".output-tail")!.textContent).toContain("AssertionError");
     expect(screen.getByText("Rounding edge cases")).toBeTruthy();
+    // The failing tests are named as machine values, before the output.
+    const names = [...held.querySelectorAll(".heldout-names code")].map((el) => el.textContent);
+    expect(names).toEqual(["total rounds half-cents up", "applies tax once"]);
+    expect(screen.getByText("Tell the agent only which tests failed").closest("button")!.className).toContain("btn-default");
     // Order: the output, then the hint field, then the agent-facing options.
     const main = container.querySelector(".decision-main")!;
     const order = [...main.children].map((el) => el.className.split(" ")[0]);
@@ -206,7 +216,7 @@ describe("DecisionCard", () => {
     expect(send.disabled).toBe(true);
     expect(screen.getByText(/Show the agent the failure/).closest("button")!.className).toContain("btn-default");
     expect(screen.getByText("Abandon this goal").closest("button")!.className).toContain("btn-danger");
-    expect(screen.getByText(/A hint keeps it that way/)).toBeTruthy();
+    expect(screen.getByText(/only the names of what failed, keeps it that way/)).toBeTruthy();
     const area = screen.getByPlaceholderText(/A hint for the agent/) as HTMLTextAreaElement;
     fireEvent.input(area, { target: { value: "Half-cents round up" } });
     fireEvent.click(send);

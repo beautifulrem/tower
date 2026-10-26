@@ -878,19 +878,26 @@ textarea:hover,
   border-color: var(--border-strong);
   transition-duration: 0ms;
 }
+/* Focus has two forms: a control wears the 1.5px ring, a field shows it in its border — and the border has to
+   change for real: from the 10% hairline to text-3, a line the eye finds from across the room. The pointer gets
+   that one line; the keyboard (focus-visible) gets a second, inside, so Tab lands on a 2px edge and never on a
+   ring around a 1600px editor. A text area is a field — the composer's, a sheet's, the steer box's — so a sheet
+   opening onto one does not flash a ring. */
 input:focus,
-textarea:focus {
-  border-color: var(--border-strong);
+textarea:focus,
+.select:focus {
+  border-color: var(--text-3);
 }
-input:focus-visible {
-  outline: 1.5px solid var(--focus);
-  outline-offset: 0;
-}
-/* Focus has two forms: a control wears the 1.5px ring, a field shows it in its border. A text area is a
-   field — the composer's, a sheet's, the steer box's — so a sheet opening onto one does not flash a ring. */
+input:focus-visible:not([type="checkbox"]):not([type="radio"]),
 textarea:focus-visible {
   outline: none;
-  border-color: var(--border-strong);
+  border-color: var(--text-3);
+  box-shadow: inset 0 0 0 1px var(--text-3);
+}
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: 1px;
 }
 input::placeholder,
 textarea::placeholder {
@@ -1171,6 +1178,22 @@ input[type="radio"] {
 }
 .next-line .sep {
   padding: 0;
+}
+/* One line, one sentence: each goal is named in at most 18em and ends in an ellipsis, three of them and a count;
+   the bar never wraps, whatever the window — "Since" and its time stay together. */
+.today-bar .briefing-item {
+  flex: 0 1 auto;
+  max-width: 18em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.today-bar .briefing-more {
+  flex: 0 0 auto;
+}
+.today-bar .link {
+  flex: 0 0 auto;
 }
 .today-brief {
   display: flex;
@@ -1675,15 +1698,26 @@ input[type="radio"] {
 .sentinel {
   margin-bottom: var(--sp-2);
 }
+/* A sentinel's detail: one register per line — the supervisor's sentence in the UI face, the paths that
+   triggered it in mono — so "the sandbox refused 12 accesses; the latest:" reads as a sentence above its list. */
 .sentinel-detail {
+  display: grid;
+  gap: 1px;
   margin: 2px 0 0 22px;
-  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 18px;
   color: var(--text-2);
+  user-select: text;
+}
+.sentinel-prose {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 72ch;
+}
+.sentinel-machine {
   white-space: pre-wrap;
   word-break: break-all;
-  user-select: text;
+  color: var(--text-2);
 }
 
 /* Budget lives in the rail: a 4px bar with soft and hard tick marks. */
@@ -1881,7 +1915,11 @@ input[type="radio"] {
 .decision-slot > * {
   min-height: 0;
 }
-.decision-slot.leaving {
+/* The fold hangs on the card's own leaving as well as the list's: a card you answered folds the moment the
+   receipt rises, not when the supervisor writes back — the two were one gesture, so they are one motion. The
+   list's flag stays for a card that leaves from outside (answered on the phone, put aside elsewhere). */
+.decision-slot.leaving,
+.decision-slot:has(> .decision.leaving) {
   grid-template-rows: 0fr;
   opacity: 0;
 }
@@ -2014,15 +2052,26 @@ input[type="radio"] {
   gap: var(--sp-2);
   font-size: var(--fs-meta);
 }
+/* The failing tests' names: a label, then each name as a machine value, wrapping as a list. */
+.heldout-names {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+.heldout-names code {
+  user-select: text;
+}
+/* The note reads at the card's own width (the card is already a reading width; a 60ch cap left one word on a
+   second line in English), and its ◇ sits on the first line, never between two. */
 .heldout-note {
   display: flex;
   gap: 6px;
-  align-items: baseline;
-  max-width: 60ch;
+  align-items: flex-start;
 }
 .heldout-note .glyph {
   flex: 0 0 auto;
-  align-self: center;
+  margin-top: 4px;
 }
 /* A security decision says so, in words, before the buttons. */
 .decision-caution {
@@ -2129,11 +2178,24 @@ input[type="radio"] {
   box-shadow: var(--card-lift);
 }
 .trace-filters {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border-subtle);
+}
+/* The list scrolls under the filter bar: the first row fades in under it over 8px, instead of being cut at the rule. */
+.trace-filters::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+  background: linear-gradient(to bottom, var(--bg-raised), transparent);
+  pointer-events: none;
 }
 .trace-scroll {
   overflow: auto;
@@ -2243,6 +2305,17 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+/* Loading, failed or empty, the review keeps its shape: the message takes the whole middle (so the status bar
+   stays at the foot where it always is) and the view's own margins, which the full-width diff does without. */
+.review .page-loading {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-6) var(--sp-8);
+}
+.review .page-loading .empty-poster {
+  margin-top: clamp(80px, 22vh, 260px);
 }
 /* Full width: the traffic lights sit in the first 80px, so the header starts after them. */
 .review-head {
@@ -2501,13 +2574,21 @@ input[type="radio"] {
   font-size: 11.5px;
   user-select: none;
 }
-/* The comment affordance: a "+" that appears on hover of the row. */
+/* The comment affordance: a "+" that appears on hover of the row. The glyph stays 16px (the row is 20); what
+   you press is the whole 24px gutter cell around it. */
 .gutter {
+  position: relative;
   padding: 0 !important;
   text-align: center;
   user-select: none;
 }
+.gutter-btn::before {
+  content: "";
+  position: absolute;
+  inset: -4px -2px;
+}
 .gutter-btn {
+  position: relative;
   width: 16px;
   height: 16px;
   margin-top: 2px;
@@ -2777,13 +2858,17 @@ input[type="radio"] {
   gap: 8px;
   justify-items: end;
 }
-/* A toast rises 4px into its corner (it comes from below, not from above like a sheet) and settles back 2px as it goes. */
+/* A toast rises 4px into its corner (it comes from below, not from above like a sheet) and settles back 2px as it goes.
+   It speaks Tower's grammar at its left edge, the way a card's strip and a held-out block do: a 2px rule, inside the
+   corner radius — text-1 for a receipt of your own action (replied, copied, paused, next to accept), amber when
+   something needs you, the danger red for an error. The glyphs stay for those who cannot see the colour. */
 .toast {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   max-width: 380px;
-  padding: 8px 10px 8px 12px;
+  padding: 8px 10px 8px 16px;
   border-radius: var(--radius-l);
   background: var(--bg-overlay);
   box-shadow: var(--shadow-overlay);
@@ -2791,6 +2876,22 @@ input[type="radio"] {
   animation: rise var(--dur-base) var(--ease-out);
   transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
   user-select: text;
+}
+.toast::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--text-1);
+}
+.toast-warning::before {
+  background: var(--st-attention);
+}
+.toast-error::before {
+  background: var(--st-danger);
 }
 @keyframes rise {
   from {
@@ -3089,6 +3190,27 @@ input[type="radio"] {
 .check-mark.pending {
   color: var(--text-4);
 }
+/* git's name and email, set in place: two fields and a button on one line, the hint under them. */
+.identity-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--sp-2);
+  width: 100%;
+}
+.identity-form .identity-name {
+  flex: 1 1 10em;
+  min-width: 8em;
+  max-width: 14em;
+}
+.identity-form .identity-email {
+  flex: 1 1 14em;
+  min-width: 11em;
+  max-width: 20em;
+}
+.identity-form .identity-hint {
+  flex-basis: 100%;
+}
 /* A fix is a command to copy: it wraps rather than hides its tail (git's identity fix is two commands long). */
 .fix {
   flex: 0 1 auto;
@@ -3116,6 +3238,39 @@ input[type="radio"] {
 :root[data-transition="space"]::view-transition-old(root),
 :root[data-transition="space"]::view-transition-new(root) {
   animation-duration: var(--dur-space);
+}
+/* Entering review is a change of space, and the space has a shape: the file tree slides in from the left
+   edge over the 220ms while the diff crossfades into place — one movement to remember, rather than a whole
+   screen dissolving. Each pane is its own group, so the rest of the window keeps the plain crossfade. Leaving,
+   the tree slides back the way it came. Reduced motion skips view transitions altogether (nav.ts). */
+.review-units {
+  view-transition-name: review-tree;
+}
+.review-diff {
+  view-transition-name: review-diff;
+}
+:root[data-transition="space"]::view-transition-new(review-tree) {
+  animation: tree-in var(--dur-space) var(--ease-out);
+}
+:root[data-transition="space"]::view-transition-old(review-tree) {
+  animation: tree-out var(--dur-space) var(--ease-in);
+}
+:root[data-transition="space"]::view-transition-old(review-diff),
+:root[data-transition="space"]::view-transition-new(review-diff) {
+  animation-duration: var(--dur-space);
+  animation-timing-function: var(--ease-out);
+}
+@keyframes tree-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+@keyframes tree-out {
+  to {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
 }
 
 /* ======================================================================
@@ -3176,6 +3331,11 @@ input[type="radio"] {
 :root[lang="zh-CN"] .board-ghost-head > span {
   letter-spacing: 0.2em;
   font-size: 11px;
+}
+/* The age ends at its right edge and the identity starts at its left: with only the column gap between them the
+   two heads read as one word, so the identity's head steps in by a breath. */
+.board-ghost-head > .g-id {
+  padding-left: var(--sp-3);
 }
 .board-ghost-row .g-glyph {
   color: var(--text-4);
@@ -3627,13 +3787,13 @@ input[type="radio"] {
 .verify-item:last-child {
   border-bottom: 0;
 }
-/* The output tail: eight lines, then a functional fade and a line that says how much is folded. */
+/* The output tail: four lines, then a functional fade and a line that says how much is folded. */
 .verify-tail {
   margin: 4px 0 0 22px;
   max-height: none;
 }
 .verify-tail.folded {
-  max-height: 160px;
+  max-height: calc(4 * 18px + 20px);
   overflow: hidden;
   mask-image: linear-gradient(black 70%, transparent);
   -webkit-mask-image: linear-gradient(black 70%, transparent);
@@ -3774,6 +3934,27 @@ input[type="radio"] {
   left: 50%;
   transform: translateX(-50%);
 }
+/* An accepted hunk: your reading mark, in your register — the solid 2px rule of a human stamp down the header
+   row that now stands for the folded hunk, and the button's check in text-1. Nothing green: nothing was verified,
+   and nothing in the workspace changed. */
+.hunk-head.hunk-accepted td {
+  box-shadow: inset 2px 0 0 var(--text-1);
+}
+.hunk-head.hunk-accepted .gap-header {
+  color: var(--text-2);
+}
+.accept-hunk .icon {
+  color: var(--text-3);
+}
+.accept-hunk-on,
+.accept-hunk-on .icon {
+  color: var(--text-1);
+}
+.review-accepted {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
 /* ======================================================================
    Toast actions and the errors gauge
@@ -3887,7 +4068,7 @@ input[type="radio"] {
 .file-editor-text:focus,
 .file-editor-text:focus-visible {
   outline: none;
-  border-color: var(--border-strong);
+  border-color: var(--text-3);
 }
 .file-editor-foot {
   gap: var(--sp-2);

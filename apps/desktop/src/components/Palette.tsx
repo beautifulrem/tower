@@ -29,8 +29,11 @@ interface Command {
   hint?: string;
   icon?: IconName;
   run: () => void;
+  /** A goal row: matched on the id and the title apart. */
   goalId?: string;
   goalTitle?: string;
+  /** A verb about one goal (review it, answer its card): the row wears that goal's state glyph. */
+  goalRef?: string;
 }
 
 interface Scored {
@@ -85,13 +88,13 @@ export function CommandPalette() {
       // The page's own cards can be put aside from here, as with H on the page.
       for (const it of state.inbox)
         if (it.goal_id === r.id && isBlocking(it))
-          base.unshift({ id: `snooze-${it.id}`, title: t("decision.putAside", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), hint: "h", icon: "bell", run: () => void snoozeMenu(it) });
+          base.unshift({ id: `snooze-${it.id}`, title: t("decision.putAside", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), hint: "h", icon: "bell", goalRef: it.goal_id, run: () => void snoozeMenu(it) });
     }
     // Verbs first, from any page: review each ready goal, answer each waiting card, review them all in turn.
     const verbs: Command[] = [];
     const ready = goalList().filter((g) => g.state === "in_review");
     for (const g of ready)
-      verbs.push({ id: `review-${g.id}`, title: t("chrome.reviewGoal", { id: g.id, title: g.title }), icon: "ring-check", run: () => go({ name: "review", id: g.id }) });
+      verbs.push({ id: `review-${g.id}`, title: t("chrome.reviewGoal", { id: g.id, title: g.title }), icon: "ring-check", goalRef: g.id, run: () => go({ name: "review", id: g.id }) });
     if (ready.length > 1)
       verbs.push({
         id: "review-all",
@@ -105,7 +108,7 @@ export function CommandPalette() {
       });
     for (const it of state.inbox)
       if (isBlocking(it))
-        verbs.push({ id: `answer-${it.id}`, title: t("chrome.answerCard", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), icon: "inbox", run: () => go({ name: "goal", id: it.goal_id }) });
+        verbs.push({ id: `answer-${it.id}`, title: t("chrome.answerCard", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), icon: "inbox", goalRef: it.goal_id, run: () => go({ name: "goal", id: it.goal_id }) });
     base.unshift(...verbs);
     const goals = goalList().map<Command>((g) => ({
       id: `goal-${g.id}`,
@@ -137,7 +140,15 @@ export function CommandPalette() {
   });
   const groups = createMemo(() => {
     const list = scored();
-    if (needle()) return list.length ? [{ title: "", items: list, offset: 0 }] : [];
+    // With a query, what you can do and where you can go stay apart: the verbs and commands first, then the goals.
+    if (needle()) {
+      const cmds = list.filter((s) => !s.c.goalId);
+      const goals = list.filter((s) => s.c.goalId);
+      return [
+        { title: t("chrome.groupCommands"), items: cmds, offset: 0 },
+        { title: t("chrome.groupGoals"), items: goals, offset: cmds.length },
+      ].filter((g) => g.items.length);
+    }
     const recent = list.filter((s) => s.recent > 0).sort((a, b) => b.recent - a.recent).slice(0, 4);
     const ids = new Set(recent.map((s) => s.c.id));
     const cmds = list.filter((s) => !s.c.goalId && !ids.has(s.c.id));
@@ -222,6 +233,8 @@ export function CommandPalette() {
                   {(s, i) => {
                     const idx = () => grp.offset + i();
                     const goal = () => (s.c.goalId ? state.goals[s.c.goalId] : undefined);
+                    // A verb about a goal carries that goal's state glyph where a command would carry its icon.
+                    const glyphGoal = () => goal() ?? (s.c.goalRef ? state.goals[s.c.goalRef] : undefined);
                     // Positions are on the full "G-0003 title" string; the id takes the first id.length + 1 of them.
                     const titlePositions = () => {
                       const g = goal();
@@ -245,7 +258,7 @@ export function CommandPalette() {
                         onClick={() => run(s)}
                       >
                         <span class="palette-icon">
-                          <Show when={goal()} fallback={<Icon name={s.c.icon ?? "chevron-right"} />}>
+                          <Show when={glyphGoal()} fallback={<Icon name={s.c.icon ?? "chevron-right"} />}>
                             {(g) => <LifecycleGlyph goal={g()} />}
                           </Show>
                         </span>

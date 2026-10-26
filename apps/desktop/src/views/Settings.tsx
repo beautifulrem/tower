@@ -6,6 +6,7 @@
 import { For, Show, createResource, createSignal, onMount } from "solid-js";
 
 import { pickQuiet } from "../components/Chrome";
+import { GitIdentityForm } from "../components/GitIdentity";
 import { DangerMark, Icon, NeedsYouMark, NoticeMark } from "../components/Glyph";
 import { TestCheckLine } from "../components/TestCheck";
 import { Button, Empty, Field, IconButton, Loading, Select } from "../components/ui";
@@ -154,6 +155,12 @@ export function Settings() {
                 </Show>
               </span>
               <span class="grow meta t1">{envIssueLabel(i, state.env)}</span>
+              {/* A missing git identity is set here, in two fields; the command stays beside them for a terminal. */}
+              <Show when={i.kind === "git_identity_missing"}>
+                <div class="check-action">
+                  <GitIdentityForm />
+                </div>
+              </Show>
               <Show when={i.fix}>
                 <button
                   class="fix code-val"
@@ -367,6 +374,17 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
           <span>{t("settings.phoneEnable")}</span>
           <span class="check-desc">{t("settings.phoneEnableHint")}</span>
         </label>
+        {/* Switched on but not served: the supervisor's sentence names the cause and the way out, in the attention register, right under the
+            switch — the problem before the details, and "allow the local network below" pointing where that switch is. No link or QR is shown
+            for a page nobody can reach. */}
+        <Show when={props.s.remote_enabled && info()?.problem}>
+          {(problem) => (
+            <p class="form-row phone-problem" role="status">
+              <NeedsYouMark />
+              <span>{problem()}</span>
+            </p>
+          )}
+        </Show>
         {/* The port and the network are readings of a page that is on; off, they wait. */}
         <Field label={t("settings.phonePort")} class="field-narrow">
           <input
@@ -396,16 +414,6 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
           <Show when={info()} fallback={<span class="field-hint form-row">{info.loading ? t("common.loading") : t("settings.phoneUnavailable")}</span>}>
             {(i) => (
               <>
-                {/* Switched on but not served: the supervisor's sentence names the cause and the way out, in the attention register; no link
-                    or QR is shown for a page nobody can reach. */}
-                <Show when={i().problem}>
-                  {(problem) => (
-                    <p class="form-row phone-problem" role="status">
-                      <NeedsYouMark />
-                      <span>{problem()}</span>
-                    </p>
-                  )}
-                </Show>
                 <Show
                   when={i().links.length > 0 && !i().problem}
                   fallback={
@@ -447,8 +455,9 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
                     </div>
                   </div>
                 </Show>
+                {/* An action looks like one: a plain button, not a ghost that weighs the same as the hint beside it. */}
                 <div class="form-row row">
-                  <Button size="s" variant="ghost" busy={busy()} onClick={() => void reset()}>
+                  <Button size="s" busy={busy()} onClick={() => void reset()}>
                     {t("settings.phoneReset")}
                   </Button>
                   <span class="field-hint">{t("settings.phoneResetHint")}</span>

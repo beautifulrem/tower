@@ -500,7 +500,8 @@ async fn a_test_that_must_fail_catches_disabled_assertions() {
     git(&h.repo, &["add", "."]);
     git(&h.repo, &["commit", "--quiet", "-m", "add() is wrong"]);
     let mut c = contract();
-    c.criteria[0].kind = CriterionKind::Exec { command: "node --test test/".into(), timeout_secs: 60 };
+    // (Discovery rather than a directory argument, which Node 24 reads as a file.)
+    c.criteria[0].kind = CriterionKind::Exec { command: "node --test".into(), timeout_secs: 60 };
     let id = create_with(&h, c).await;
     let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
     let d = h.sup.goal(&id).unwrap();
@@ -656,7 +657,16 @@ async fn the_phone_page_answers_with_the_pairing_token_only() {
     match &info.problem {
         Some(problem) => {
             assert!(info.links.is_empty() && problem.contains("Tailscale"), "{problem}");
-            assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err(), "not served on loopback either");
+            // The old listener closes once its thread has wound down.
+            let mut closed = false;
+            for _ in 0..40 {
+                if std::net::TcpStream::connect(("127.0.0.1", port)).is_err() {
+                    closed = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            assert!(closed, "not served on loopback either");
         }
         None => assert!(info.kinds.iter().all(|k| k == "tailscale") && !info.links.is_empty(), "{info:?}"),
     }
@@ -697,7 +707,7 @@ async fn look_criteria_get_before_and_after_screenshots() {
     }
     let d = h.sup.goal(&id).unwrap();
     let look = d.criteria[1].look.clone().expect("a look");
-    let after = look.pin.clone().expect("a screenshot of the agent's snapshot");
+    let after = look.pin.clone().unwrap_or_else(|| panic!("a screenshot of the agent's snapshot: {look:?}"));
     assert!(std::fs::metadata(&after).unwrap().len() > 1000);
     assert!(h.sup.look_image(&after).unwrap().starts_with("data:image/png;base64,"));
     assert!(look.base.is_none() && look.base_error.is_some(), "done.txt does not exist on the base: {look:?}");

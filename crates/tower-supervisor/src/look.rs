@@ -147,15 +147,22 @@ pub(crate) async fn capture(
         .arg(format!("--screenshot={}", out.display()))
         .arg(url)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status(),
+        .stderr(std::process::Stdio::piped())
+        .output(),
     )
     .await;
     stop();
     let _ = std::fs::remove_dir_all(&profile_dir);
     match shot {
-        Ok(Ok(s)) if s.success() && out.is_file() => Ok(out.to_path_buf()),
-        Ok(Ok(s)) => Err(format!("the browser could not take the screenshot ({s})")),
+        Ok(Ok(o)) if o.status.success() && out.is_file() => Ok(out.to_path_buf()),
+        Ok(Ok(o)) => {
+            // Chromium's last words, without its noise about displays.
+            let err = String::from_utf8_lossy(&o.stderr);
+            let mut tail: Vec<&str> =
+                err.lines().filter(|l| !l.contains("DisplayLink") && !l.trim().is_empty()).rev().take(3).collect();
+            tail.reverse();
+            Err(format!("the browser could not take the screenshot ({}): {}", o.status, tail.join(" / ")))
+        }
         Ok(Err(e)) => Err(format!("the browser did not start: {e}")),
         Err(_) => Err("the browser took too long".into()),
     }

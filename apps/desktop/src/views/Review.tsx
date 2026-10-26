@@ -5,8 +5,12 @@
  */
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 
+import type { Hunk } from "../gen/Hunk";
+import { highlight, languageOf } from "../lib/highlight";
+import type { Tokens } from "../lib/highlight.worker";
+
 import { CriteriaBar, FactChip } from "../components/Honesty";
-import { Button, Empty, Kbd, Spinner } from "../components/ui";
+import { Button, Empty, Kbd, Loading } from "../components/ui";
 import type { DiffFile } from "../gen/DiffFile";
 import type { DiffLine } from "../gen/DiffLine";
 import type { ReviewComment } from "../gen/ReviewComment";
@@ -63,23 +67,23 @@ export function Review(props: { id: string }) {
       <header class="review-head" data-tauri-drag-region>
         <div class="col grow">
           <div class="row">
-            <span class="num t3">{props.id}</span>
             <h1 class="review-title ellipsis">{g()?.title}</h1>
+            <span class="code-val t3">{props.id}</span>
           </div>
           <Show when={view()}>
-            <div class="meta num row">
-              <span class="diff-add">+{count(view()!.stat.additions)}</span>
-              <span class="diff-del">−{count(view()!.stat.deletions)}</span>
-              <span class="sep">·</span>
-              <span>{view()!.stat.files} 文件</span>
-              <span class="sep">·</span>
-              <span>{units().length} 个评审单元</span>
-              <span class="sep">·</span>
-              <span>
-                base @{short(view()!.base_commit)} → @{short(view()!.pin)}
+            <div class="review-stats meta halt">
+              <span class="num">
+                <span class="t1">+{count(view()!.stat.additions)}</span> −{count(view()!.stat.deletions)}
+                <span class="sep">·</span>
+                {view()!.stat.files} 个文件
+                <span class="sep">·</span>
+                {units().length} 个评审单元
+                <span class="sep">·</span>
+                <span class="code-val">
+                  @{short(view()!.base_commit)} → @{short(view()!.pin)}
+                </span>
               </span>
               <Show when={g()}>
-                <span class="sep">·</span>
                 <CriteriaBar progress={g()!.progress} compact />
               </Show>
             </div>
@@ -95,7 +99,7 @@ export function Review(props: { id: string }) {
         </Show>
       </header>
 
-      <Show when={!view.loading} fallback={<div class="page-loading"><Spinner /></div>}>
+      <Show when={!view.loading} fallback={<div class="page-loading"><Loading /></div>}>
         <Show when={!view.error} fallback={<Empty title="无法载入改动">{String(view.error)}</Empty>}>
           <Show when={units().length > 0} fallback={<Empty title="没有改动">Agent 还没有改动任何被跟踪的文件。</Empty>}>
             <div class="review-body">
@@ -172,11 +176,11 @@ function UnitItem(props: { u: ReviewUnit; active: boolean; seen: boolean; onClic
         <span class="unit-risk" aria-label={`风险 ${props.u.risk}`}>
           {props.u.risk >= 3 ? "▪▪" : props.u.risk >= 2 ? "▪" : ""}
         </span>
-        <span class="mono ellipsis grow">{props.u.title}</span>
-        <span class="meta num">{props.u.lines}</span>
+        <span class="unit-title ellipsis grow">{props.u.title}</span>
+        <span class="meta num">{props.u.lines} 行</span>
         <span class="t3">{props.seen ? "◦" : ""}</span>
       </div>
-      <div class="meta ellipsis">{props.u.files.map((f) => f.split("/").pop()).join(" · ")}</div>
+      <div class="unit-files ellipsis">{props.u.files.map((f) => f.split("/").pop()).join("  ")}</div>
     </button>
   );
 }
@@ -229,31 +233,15 @@ function FileDiff(props: {
                       {h.header}
                     </td>
                   </tr>
-                  <For each={h.lines}>
-                    {(l) => (
-                      <>
-                        <DiffRow l={l} onLine={props.onLine} hasComment={commentAt(l.new_no ?? l.old_no).length > 0} />
-                        <Show when={l.kind !== "del" && composingAt(l.new_no)}>
-                          <tr>
-                            <td colspan="3">
-                              <Composer onSubmit={props.onComment} onCancel={props.onCancel} />
-                            </td>
-                          </tr>
-                        </Show>
-                        <Show when={l.kind !== "del"}>
-                          <For each={commentAt(l.new_no)}>
-                            {(c) => (
-                              <tr>
-                                <td colspan="3">
-                                  <div class="inline-comment">{c.text}</div>
-                                </td>
-                              </tr>
-                            )}
-                          </For>
-                        </Show>
-                      </>
-                    )}
-                  </For>
+                  <HunkRows
+                    hunk={h}
+                    path={props.file.path}
+                    onLine={props.onLine}
+                    composingAt={composingAt}
+                    commentAt={commentAt}
+                    onComment={props.onComment}
+                    onCancel={props.onCancel}
+                  />
                 </>
               )}
             </For>
@@ -264,7 +252,74 @@ function FileDiff(props: {
   );
 }
 
-function DiffRow(props: { l: DiffLine; onLine: (n: number | null) => void; hasComment: boolean }) {
+/**
+ * One hunk. Old and new sides are highlighted separately (so a deleted line
+ * is coloured in its own context), off the main thread; rows render as
+ * plain text first and pick up colour when tokens arrive.
+ */
+function HunkRows(props: {
+  hunk: Hunk;
+  path: string;
+  onLine: (n: number | null) => void;
+  composingAt: (n: number | null) => boolean;
+  commentAt: (n: number | null) => ReviewComment[];
+  onComment: (t: string) => void;
+  onCancel: () => void;
+}) {
+  const lang = languageOf(props.path);
+  const [tokens] = createResource(
+    () => props.hunk,
+    async (h) => {
+      if (!lang) return null;
+      const newSide = h.lines.filter((l) => l.kind !== "del").map((l) => l.text).join("\n");
+      const oldSide = h.lines.filter((l) => l.kind !== "add").map((l) => l.text).join("\n");
+      const [n, o] = await Promise.all([highlight(lang, newSide), highlight(lang, oldSide)]);
+      if (!n || !o) return null;
+      let i = 0;
+      let j = 0;
+      return h.lines.map((l) => {
+        if (l.kind === "add") return n[i++];
+        if (l.kind === "del") return o[j++];
+        j++;
+        return n[i++];
+      });
+    },
+  );
+  return (
+    <For each={props.hunk.lines}>
+      {(l, idx) => (
+        <>
+          <DiffRow l={l} tokens={tokens()?.[idx()]} onLine={props.onLine} hasComment={props.commentAt(l.new_no ?? l.old_no).length > 0} />
+          <Show when={l.kind !== "del" && props.composingAt(l.new_no)}>
+            <tr>
+              <td colspan="3">
+                <Composer onSubmit={props.onComment} onCancel={props.onCancel} />
+              </td>
+            </tr>
+          </Show>
+          <Show when={l.kind !== "del"}>
+            <For each={props.commentAt(l.new_no)}>
+              {(c) => (
+                <tr>
+                  <td colspan="3">
+                    <div class="inline-comment">{c.text}</div>
+                  </td>
+                </tr>
+              )}
+            </For>
+          </Show>
+        </>
+      )}
+    </For>
+  );
+}
+
+function DiffRow(props: {
+  l: DiffLine;
+  tokens?: Tokens[number];
+  onLine: (n: number | null) => void;
+  hasComment: boolean;
+}) {
   const sign = { add: "+", del: "−", context: " " }[props.l.kind];
   return (
     <tr class={`dl dl-${props.l.kind}`} classList={{ commented: props.hasComment }}>
@@ -274,7 +329,13 @@ function DiffRow(props: { l: DiffLine; onLine: (n: number | null) => void; hasCo
       </td>
       <td class="code mono">
         <span class="sign">{sign}</span>
-        {props.l.text}
+        <Show when={props.tokens} fallback={props.l.text}>
+          <For each={props.tokens}>
+            {([text, color, style]) => (
+              <span style={{ color, "font-style": style && style & 1 ? "italic" : undefined }}>{text}</span>
+            )}
+          </For>
+        </Show>
       </td>
     </tr>
   );

@@ -31,16 +31,14 @@ export function Inbox() {
       <Show
         when={items().length > 0}
         fallback={
-          <Empty title="没有需要你决定的事">
-            问题、审批、Agent 的假设和需要你选择出路的暂停会出现在这里。其余时间，Tower 保持安静。
-          </Empty>
+          <Empty title="没有需要你决定的事">问题、审批、假设与暂停会出现在这里</Empty>
         }
       >
-        <p class="inbox-lede meta">按紧急程度排序：阻塞运行的问题与审批在前，待验收在后。</p>
+        <p class="inbox-lede meta">按紧急程度排序：阻塞运行的问题与审批在前，待验收在后 · J / K 移动 · 1–9 选择</p>
         <For each={items()}>
           {(it, i) => (
             <div onMouseEnter={() => setFocus(i())}>
-              <DecisionCard item={it} focused={current()?.id === it.id} />
+              <DecisionCard item={it} focused={current()?.id === it.id} quiet />
             </div>
           )}
         </For>

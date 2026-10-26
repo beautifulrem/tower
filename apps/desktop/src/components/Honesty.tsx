@@ -9,27 +9,30 @@ import type { Progress } from "../gen/Progress";
 import { ago, short } from "../lib/format";
 import { state } from "../lib/store";
 
-/** ⚙ fact chip: solid hairline frame, harness-produced. */
+/**
+ * ⚙ fact: harness-produced, the normal case, so it carries no frame — only
+ * the gear and the snapshot it was measured on.
+ */
 export function FactChip(props: { pin?: string | null; at?: number | null; children?: JSX.Element }) {
   return (
-    <span class="chip chip-fact num">
-      <span class="chip-icon">⚙</span>
+    <span class="fact">
+      <span class="fact-icon" aria-label="Tower 测得">⚙</span>
       {props.children}
       <Show when={props.pin}>
-        <span>@{short(props.pin)}</span>
+        <span class="code-val">@{short(props.pin)}</span>
       </Show>
       <Show when={props.at}>
         <span class="sep">·</span>
-        <span>{ago(props.at, state.now)}</span>
+        <span class="num">{ago(props.at, state.now)}</span>
       </Show>
     </span>
   );
 }
 
-/** Observation chip: dashed frame, never coloured. */
+/** Observation: a degraded register, so it keeps a dashed frame; never coloured. */
 export function ObsChip(props: { at?: number | null; children?: JSX.Element }) {
   return (
-    <span class="chip chip-obs num">
+    <span class="chip chip-obs">
       观测
       {props.children}
       <Show when={props.at}>
@@ -40,13 +43,19 @@ export function ObsChip(props: { at?: number | null; children?: JSX.Element }) {
   );
 }
 
-/** "Agent 称" block: dashed left rule, secondary text, never green. */
-export function Claim(props: { children: JSX.Element; label?: string; aside?: JSX.Element }) {
+/**
+ * "Agent 称": a hanging label column and secondary text. Never green, never
+ * a solid mark — the dashed ┆ is the claim register's only glyph.
+ */
+export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX.Element }) {
   return (
     <div class="claim">
-      <div class="claim-body">
-        <span class="claim-label">{props.label ?? "Agent 称"}</span>
-        <span class="claim-text">{props.children}</span>
+      <span class="claim-label halt">┆ Agent 称</span>
+      <div class="claim-text">
+        <Show when={props.kind}>
+          <span class="claim-kind">{props.kind}</span>
+        </Show>
+        {props.children}
       </div>
       <Show when={props.aside}>
         <div class="claim-aside">{props.aside}</div>
@@ -103,7 +112,7 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean }) {
             <span class={`seg seg-${s}`} />
           ))}
         </span>
-        <span class="meta num">
+        <span class="meta num halt">
           已验证 {p().verified}/{p().machine}
           <span class="sep">·</span>
           观测 {p().observed}/{p().machine}

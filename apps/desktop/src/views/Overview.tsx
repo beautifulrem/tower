@@ -5,8 +5,9 @@
  */
 import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 
+import { NeedsYouMark } from "../components/Glyph";
 import { GoalCard } from "../components/GoalCard";
-import { Button, Empty, Kbd } from "../components/ui";
+import { Button, Empty } from "../components/ui";
 import type { GoalSummary } from "../gen/GoalSummary";
 import { api } from "../lib/api";
 import { useKeys } from "../lib/keys";
@@ -50,14 +51,23 @@ export function Overview() {
   return (
     <Show when={state.projects.length > 0} fallback={<Welcome />}>
       <div class="overview">
+        <Show when={state.inbox[0]}>
+          {(it) => (
+            <button class="next-line halt" onClick={() => go({ name: "goal", id: it().goal_id })}>
+              <NeedsYouMark />
+              <span>下一件</span>
+              <span class="sep">·</span>
+              <span class="code-val t3">{it().goal_id}</span>
+              <span class="ellipsis">{it().title}</span>
+            </button>
+          )}
+        </Show>
         <QuickPath />
         <AppBriefing />
         <Show
           when={live().length > 0}
           fallback={
-            <Empty title="还没有进行中的目标">
-              在上面写一句你想要的结果，按 <Kbd k="enter" /> 开始；或按 <Kbd k="n" /> 打开合同编辑器写验收标准。
-            </Empty>
+            <Empty title="没有进行中的目标">在上面写一句你想要的结果按 ↵，或按 ⌘N 写合同</Empty>
           }
         >
           <For each={groups()}>
@@ -151,6 +161,9 @@ function QuickPath() {
           <For each={state.projects}>{(p) => <option value={p.id}>{p.name}</option>}</For>
         </select>
       </Show>
+      <span class="quick-prompt" aria-hidden="true">
+        ›
+      </span>
       <input
         class="quick-input"
         placeholder={`在 ${current()?.name ?? "项目"} 中，一句话描述你想要的结果…`}
@@ -159,14 +172,7 @@ function QuickPath() {
         onInput={(e) => setIntent(e.currentTarget.value)}
         onKeyDown={submit}
       />
-      <div class="quick-hints hint">
-        <span>
-          <Kbd k="enter" /> 快速开始
-        </span>
-        <span>
-          <Kbd k="alt+enter" /> 写合同
-        </span>
-      </div>
+      <div class="quick-hints">↵ 快速开始 · ⌥↵ 写合同</div>
       <Show when={current() && !current()!.test_command}>
         <div class="quick-warn meta">
           这个项目没有检测到测试命令：快速开始的目标将没有可执行的验收标准。

@@ -4,6 +4,8 @@
 //! a single `tower://update` event. The renderer holds no authoritative
 //! state (`ADR-005`).
 
+mod menu;
+
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -273,6 +275,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
+            app.set_menu(menu::build(&handle)?)?;
+            app.on_menu_event(|app, event| menu::forward(app, event.id().as_ref()));
             let config = Config {
                 paths: Paths::new(Paths::default_root()),
                 extension_source: extension_source(&handle),

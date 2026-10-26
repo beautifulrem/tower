@@ -10,13 +10,15 @@ import { LifecycleGlyph } from "../components/Glyph";
 import { Claim, ConsistencyBadge, CriteriaBar, FactChip, HumanStamp, ObsChip } from "../components/Honesty";
 import { LiveLine } from "../components/Live";
 import { Trace } from "../components/Trace";
-import { Button, Kbd, Section, Spinner } from "../components/ui";
+import { Button, Kbd, Section, Loading } from "../components/ui";
 import type { ClaimView } from "../gen/ClaimView";
 import type { CriterionView } from "../gen/CriterionView";
 import type { GoalDetail } from "../gen/GoalDetail";
 import { api } from "../lib/api";
+import { popupActions } from "../lib/native";
 import { clock, count, duration, short, usd, usdLimit } from "../lib/format";
 import { useKeys } from "../lib/keys";
+import { useMenu } from "../lib/menu";
 import { pauseLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, onTrace, state } from "../lib/store";
@@ -46,6 +48,13 @@ export function GoalPage(props: { id: string }) {
   // Review-ready items live in the inbox; on the goal page the header says it.
   const inbox = () => state.inbox.filter((i) => i.goal_id === props.id && i.kind !== "review_ready");
 
+  useMenu({
+    "goal:review": () => go({ name: "review", id: props.id }),
+    "goal:watch": () => setWatch((w) => !w),
+    "goal:pause": () => togglePause(),
+    "goal:amend": () => go({ name: "new", amendId: props.id }),
+  });
+
   useKeys([
     { key: "w", run: () => setWatch((w) => !w) },
     { key: "r", run: () => go({ name: "review", id: props.id }) },
@@ -60,17 +69,18 @@ export function GoalPage(props: { id: string }) {
   };
 
   return (
-    <Show when={summary()} fallback={<div class="page-loading"><Spinner /></div>}>
+    <Show when={summary()} fallback={<div class="page-loading"><Loading /></div>}>
       {(g) => (
         <div class="goal-page">
           <header class="goal-head">
             <div class="goal-head-main">
               <div class="row">
                 <LifecycleGlyph goal={g()} size={14} />
-                <span class="num t3">{g().id}</span>
                 <h1 class="goal-title ellipsis">{g().title}</h1>
               </div>
-              <div class="goal-sub meta">
+              <div class="goal-sub meta halt">
+                <span class="code-val t3">{g().id}</span>
+                <span class="sep">·</span>
                 <span class="t1">{stateLabel[g().state]}</span>
                 <Show when={g().pause_reason && g().state === "paused"}>
                   <span class="sep">·</span>
@@ -81,7 +91,7 @@ export function GoalPage(props: { id: string }) {
                   <span>
                     第 {g().run_no} 次运行
                     <Show when={g().rework_cycles > 0}>
-                      （返工 {g().rework_cycles}/{g().max_rework}）
+                      （返工 {g().rework_cycles} / {g().max_rework}）
                     </Show>
                   </span>
                 </Show>
@@ -90,6 +100,12 @@ export function GoalPage(props: { id: string }) {
                 <Show when={detail()?.contract}>
                   <span class="sep">·</span>
                   <span>合同 v{detail()!.contract.version}</span>
+                </Show>
+                <Show when={g().verified_pin}>
+                  <span class="sep">·</span>
+                  <FactChip pin={g().verified_pin}>
+                    <span>已验证</span>
+                  </FactChip>
                 </Show>
               </div>
             </div>
@@ -113,20 +129,22 @@ export function GoalPage(props: { id: string }) {
             </div>
           </Show>
 
-          <div class="annunciator">
-            <LiveLine goal={g()} large />
-          </div>
+          <Show when={["running", "claimed", "verifying"].includes(g().state)}>
+            <div class="annunciator">
+              <LiveLine goal={g()} large />
+            </div>
+          </Show>
 
           <Show when={inbox().length > 0}>
             <div class="goal-decisions">
-              <For each={inbox()}>{(it) => <DecisionCard item={it} />}</For>
+              <For each={inbox()}>{(it) => <DecisionCard item={it} showGoal={false} />}</For>
             </div>
           </Show>
 
           <Show when={!watch()} fallback={<WatchPanel id={props.id} />}>
             <div class="goal-body">
               <div class="goal-main">
-                <Show when={detail()} fallback={<Spinner />}>
+                <Show when={detail()} fallback={<Loading />}>
                   {(d) => <GoalBlocks d={d()} />}
                 </Show>
               </div>
@@ -145,122 +163,82 @@ export function GoalPage(props: { id: string }) {
   );
 }
 
+/**
+ * One primary action for the current state, at most two secondary ones, and
+ * everything else in a native "…" menu (destructive actions live only there).
+ */
 function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; onWatch: () => void; onPause: () => void }) {
   const s = () => props.goal.state;
-  const canReview = () => props.goal.diffstat !== null || ["in_review", "accepted", "running"].includes(s());
+  const id = () => props.goal.id;
+  const confirmPush = (pr: boolean) => {
+    const what = pr ? "推送到 origin 并创建 PR" : "推送到 origin";
+    if (confirm(`把 ${props.goal.branch} ${what}？推送无法撤回。`)) void act(() => api.push(id(), pr));
+  };
+  const more = () =>
+    popupActions([
+      { label: props.watching ? "回到状态视图" : "观察（实时轨迹）", run: props.onWatch },
+      { label: "修订合同…", run: () => go({ name: "new", amendId: id() }), enabled: !["draft", "archived", "abandoned", "accepted", "integrated"].includes(s()) },
+      { label: "重新验证", run: () => void act(() => api.retryVerify(id())), enabled: ["in_review", "paused"].includes(s()) },
+      { label: "在编辑器中打开工作区", run: () => void act(() => api.openWorkspace(id(), "editor")), separatorBefore: true, enabled: !["draft", "ready"].includes(s()) },
+      { label: "在终端中打开工作区", run: () => void act(() => api.openWorkspace(id(), "terminal")), enabled: !["draft", "ready"].includes(s()) },
+      { label: "在 Finder 中显示工作区", run: () => void act(() => api.openWorkspace(id(), "finder")), enabled: !["draft", "ready"].includes(s()) },
+      { label: "只推送分支", run: () => confirmPush(false), separatorBefore: true, enabled: ["accepted", "integrated"].includes(s()) && !!props.goal.branch },
+      { label: "归档", run: () => void act(() => api.archive(id()), "已归档"), enabled: ["accepted", "integrated", "in_review"].includes(s()) },
+      {
+        label: "删除工作区…",
+        run: () => {
+          if (confirm(`删除 ${id()} 的工作区？轨迹与记录保留；你的仓库不受影响。`)) void act(() => api.removeWorkspace(id()), "工作区已删除");
+        },
+        enabled: ["archived", "abandoned"].includes(s()),
+      },
+      {
+        label: "放弃这个目标…",
+        separatorBefore: true,
+        run: () => {
+          if (confirm(`放弃 ${id()}？Agent 会停止，工作区保留在磁盘上。`)) void act(() => api.abandon(id()));
+        },
+        enabled: !["archived", "abandoned"].includes(s()),
+      },
+    ]);
+
   return (
     <>
-      <Show when={canReview()}>
-        <Button variant={s() === "in_review" ? "primary" : "default"} size="s" kbd="r" onClick={() => go({ name: "review", id: props.goal.id })}>
-          评审
-        </Button>
-      </Show>
-      <Button size="s" kbd="w" variant={props.watching ? "primary" : "default"} onClick={props.onWatch}>
-        {props.watching ? "回到状态" : "观察"}
-      </Button>
       <Switch>
-        <Match when={["running", "verifying", "ready", "claimed"].includes(s())}>
-          <Button size="s" kbd="p" onClick={props.onPause}>
-            暂停
+        <Match when={s() === "in_review"}>
+          <Button size="s" variant="primary" kbd="r" onClick={() => go({ name: "review", id: id() })}>
+            评审
           </Button>
         </Match>
         <Match when={s() === "paused"}>
-          <Button size="s" kbd="p" variant="primary" onClick={props.onPause}>
+          <Button size="s" variant="primary" kbd="p" onClick={props.onPause}>
             继续
           </Button>
         </Match>
         <Match when={s() === "draft"}>
-          <Button size="s" variant="primary" onClick={() => go({ name: "new", draftId: props.goal.id })}>
+          <Button size="s" variant="primary" onClick={() => go({ name: "new", draftId: id() })}>
             编辑合同
           </Button>
         </Match>
+        <Match when={["accepted", "integrated"].includes(s()) && props.goal.branch}>
+          <Button size="s" variant="primary" onClick={() => confirmPush(true)}>
+            推送并开 PR
+          </Button>
+        </Match>
       </Switch>
-      <Show when={["in_review", "paused"].includes(s())}>
-        <Button size="s" onClick={() => void act(() => api.retryVerify(props.goal.id))}>
-          重新验证
+      <Show when={["running", "verifying", "ready", "claimed"].includes(s())}>
+        <Button size="s" kbd="p" onClick={props.onPause}>
+          暂停
         </Button>
       </Show>
-      <Show when={["accepted", "integrated"].includes(s()) && props.goal.branch}>
-        <Button
-          size="s"
-          variant="primary"
-          onClick={() => {
-            if (confirm(`把 ${props.goal.branch} 推送到 origin 并创建 PR？推送无法撤回。`))
-              void act(() => api.push(props.goal.id, true));
-          }}
-        >
-          推送并开 PR
-        </Button>
-        <Button
-          size="s"
-          onClick={() => {
-            if (confirm(`把 ${props.goal.branch} 推送到 origin？推送无法撤回。`)) void act(() => api.push(props.goal.id, false));
-          }}
-        >
-          只推送
+      <Show when={s() !== "in_review" && (props.goal.diffstat !== null || s() === "running")}>
+        <Button size="s" kbd="r" onClick={() => go({ name: "review", id: id() })}>
+          改动
         </Button>
       </Show>
-      <Show when={!["draft", "ready", "archived", "abandoned"].includes(s())}>
-        <OpenMenu id={props.goal.id} />
-      </Show>
-      <Show when={!["draft", "archived", "abandoned", "integrated", "accepted"].includes(s())}>
-        <Button size="s" variant="ghost" kbd="shift+e" onClick={() => go({ name: "new", amendId: props.goal.id })}>
-          修订合同
-        </Button>
-      </Show>
-      <Show when={["accepted", "integrated", "in_review"].includes(s())}>
-        <Button size="s" variant="ghost" onClick={() => void act(() => api.archive(props.goal.id), "已归档")}>
-          归档
-        </Button>
-      </Show>
-      <Show when={["archived", "abandoned"].includes(s())}>
-        <Button
-          size="s"
-          variant="ghost"
-          onClick={() => {
-            if (confirm(`删除 ${props.goal.id} 的工作区？轨迹与记录保留；你的仓库不受影响。`))
-              void act(() => api.removeWorkspace(props.goal.id), "工作区已删除");
-          }}
-        >
-          删除工作区
-        </Button>
-      </Show>
-      <Show when={!["archived", "abandoned"].includes(s())}>
-        <Button
-          size="s"
-          variant="ghost"
-          onClick={() => {
-            if (confirm(`放弃 ${props.goal.id}？Agent 会停止，工作区保留在磁盘上。`)) void act(() => api.abandon(props.goal.id));
-          }}
-        >
-          放弃
-        </Button>
-      </Show>
-    </>
-  );
-}
-
-/** "打开" — the workspace in an editor, a terminal or Finder (我来改). */
-function OpenMenu(props: { id: string }) {
-  const [open, setOpen] = createSignal(false);
-  const go = (target: "editor" | "terminal" | "finder") => {
-    setOpen(false);
-    void act(() => api.openWorkspace(props.id, target));
-  };
-  return (
-    <div class="menu-anchor" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOpen(false)}>
-      <Button size="s" variant="ghost" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open()}>
-        打开 ▾
+      <Button size="s" variant="ghost" aria-label="更多操作" onClick={() => void more()}>
+        ⋯
       </Button>
-      <Show when={open()}>
-        <div class="menu" role="menu">
-          <button role="menuitem" onClick={() => go("editor")}>在编辑器中打开</button>
-          <button role="menuitem" onClick={() => go("terminal")}>在终端中打开</button>
-          <button role="menuitem" onClick={() => go("finder")}>在 Finder 中显示</button>
-          <p class="menu-note">暂停时改动工作区，继续时 Agent 会被告知你改了哪些文件。</p>
-        </div>
-      </Show>
-    </div>
+    </>
   );
 }
 
@@ -292,7 +270,7 @@ function GoalBlocks(props: { d: GoalDetail }) {
               </div>
             )}
           </For>
-          <For each={causes()}>{(c) => <Claim label="Agent 称（原因）">{c.text}</Claim>}</For>
+          <For each={causes()}>{(c) => <Claim kind="原因">{c.text}</Claim>}</For>
         </Section>
       </Show>
 
@@ -347,13 +325,13 @@ function GoalBlocks(props: { d: GoalDetail }) {
           </div>
         </Show>
         <Show when={d().submit_summary}>
-          <Claim label="Agent 称（提交说明）">{d().submit_summary}</Claim>
+          <Claim kind="提交说明">{d().submit_summary}</Claim>
         </Show>
       </Section>
 
       <Section title="接下来">
         <Show when={next()} fallback={<p class="meta">Agent 还没有说明下一步。</p>}>
-          <Claim>{next()!.text}</Claim>
+          <Claim kind="下一步">{next()!.text}</Claim>
         </Show>
         <BudgetMeter g={g()} />
       </Section>
@@ -475,10 +453,10 @@ function LedgerRow(props: { c: ClaimView }) {
 }
 
 function DecisionClaim(props: { goalId: string; c: ClaimView }) {
-  const label = () => (props.c.kind === "assumption" ? "Agent 的假设" : "Agent 的决定");
+  const label = () => (props.c.kind === "assumption" ? "假设" : "决定");
   return (
     <Claim
-      label={label()}
+      kind={label()}
       aside={
         <Show
           when={props.c.approved !== null}

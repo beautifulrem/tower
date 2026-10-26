@@ -11,6 +11,10 @@ body,
   margin: 0;
 }
 
+html {
+  font-optical-sizing: auto;
+}
+
 body {
   background: var(--bg-app);
   color: var(--text-1);
@@ -18,16 +22,12 @@ body {
   font-feature-settings: var(--font-features-ui);
   font-size: var(--fs-body);
   line-height: var(--lh-body);
+  letter-spacing: var(--tr-13);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
   user-select: none;
   cursor: default;
-}
-
-:lang(zh) body,
-body:lang(zh) {
-  line-height: 21px;
 }
 
 h1,
@@ -46,8 +46,21 @@ select {
   color: inherit;
 }
 
-button {
-  cursor: pointer;
+/* A desktop app, not a web page: no hand cursor on controls. */
+button,
+[role="button"],
+a {
+  cursor: default;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+textarea {
+  resize: none;
 }
 
 input,
@@ -57,13 +70,17 @@ textarea,
 }
 
 ::selection {
-  background: var(--accent-soft);
+  background: var(--selection);
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-  border-radius: var(--radius-s);
+  outline: 1.5px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Single-line labels: halve CJK punctuation width (PingFang SC "halt"). */
+.halt {
+  font-feature-settings: var(--font-features-ui), "halt" 1;
 }
 
 ::-webkit-scrollbar {
@@ -85,9 +102,18 @@ textarea,
 
 .mono {
   font-family: var(--font-mono);
+  font-size: 0.923em;
+  letter-spacing: 0;
 }
+/* Tabular figures in the UI font: counts, money, durations. */
 .num {
+  font-variant-numeric: tabular-nums;
+}
+/* Machine values: hashes, ids, commands, paths. */
+.code-val {
   font-family: var(--font-mono);
+  font-size: 0.923em;
+  letter-spacing: 0;
   font-feature-settings: var(--font-features-num);
 }
 .t1 { color: var(--text-1); }
@@ -107,6 +133,7 @@ textarea,
   color: var(--text-3);
 }
 .sep {
+  font-family: var(--font-ui);
   color: var(--text-3);
   padding: 0 0.35em;
 }

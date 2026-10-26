@@ -1,0 +1,21 @@
+# Research clones (not versioned)
+research/pi-mono/
+
+# OS
+.DS_Store
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Rust
+target/
+
+# Tauri
+apps/desktop/src-tauri/gen/schemas/
+
+# Local env
+.env
+.env.*
+!.env.example

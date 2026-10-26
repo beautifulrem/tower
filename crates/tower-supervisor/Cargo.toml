@@ -4,6 +4,7 @@ description = "Tower's supervisor: the single writer that runs goals through the
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 
 [dependencies]
 tower-core.workspace = true

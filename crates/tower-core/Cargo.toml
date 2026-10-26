@@ -4,6 +4,7 @@ description = "Tower domain model: goals, contracts, lifecycle state machine and
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 
 [dependencies]
 serde.workspace = true

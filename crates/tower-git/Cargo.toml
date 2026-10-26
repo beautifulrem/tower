@@ -4,6 +4,7 @@ description = "Workspace isolation for Tower goals: satellite clones, snapshots,
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 
 [dependencies]
 tower-core.workspace = true

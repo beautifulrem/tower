@@ -16,8 +16,8 @@
     (global-name "com.apple.bsd.dirhelper")
     (global-name "com.apple.system.opendirectoryd.membership")
 
-    ; Communicate with the security server for TLS certificate information.
-    (global-name "com.apple.SecurityServer")
+    ; TLS certificate trust evaluation. Tower leaves out
+    ; the keychain server, which Codex allows here.
     (global-name "com.apple.networkd")
     (global-name "com.apple.ocspd")
     (global-name "com.apple.trustd.agent")

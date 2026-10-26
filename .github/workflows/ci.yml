@@ -55,5 +55,10 @@ jobs:
           git config --global user.email "ci@example.com"
           cargo test --workspace
 
+      - name: Interface end-to-end tests (WebKit, accessibility)
+        run: |
+          pnpm --dir apps/desktop exec playwright install webkit
+          tools/e2e.sh
+
       - name: Extension tests
         run: node --test extensions/tower-goal/policy.test.ts extensions/tower-goal/sandboxfs.test.ts

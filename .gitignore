@@ -20,3 +20,5 @@ apps/desktop/src-tauri/gen/schemas/
 .env.*
 !.env.example
 apps/desktop/dist/
+apps/desktop/test-results/
+apps/desktop/playwright-report/

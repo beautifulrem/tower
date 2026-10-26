@@ -77,7 +77,7 @@ export function Inbox() {
           <Empty
             title={t("inbox.emptyTitle")}
             action={
-              <Button size="s" variant="ghost" onClick={() => go({ name: "overview" })} kbd="mod+1">
+              <Button size="s" onClick={() => go({ name: "overview" })} kbd="mod+1">
                 {t("chrome.openOverview")}
               </Button>
             }

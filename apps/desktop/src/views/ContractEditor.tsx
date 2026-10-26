@@ -178,7 +178,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             {(cr, i) => (
               <div class="criterion-edit">
                 <span class="num">{cr.id}</span>
-                <input value={cr.title} placeholder={t("contract.criterionTitle")} onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)} />
+                <input value={cr.title} aria-label={`${cr.id} ${t("contract.criterionTitle")}`} placeholder={t("contract.criterionTitle")} onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)} />
                 <Show when={cr.kind.type === "exec"} fallback={<span class="meta">{t("contract.humanCheck")}</span>}>
                   <span class="unit-wrap timeout">
                     <input
@@ -187,6 +187,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                       min="1"
                       value={(cr.kind as { timeout_secs: number }).timeout_secs}
                       title={t("contract.timeout")}
+                      aria-label={`${cr.id} ${t("contract.timeout")}`}
                       onInput={(e) => setC("criteria", i(), "kind", produce((k: Criterion["kind"]) => { if (k.type === "exec") k.timeout_secs = Number(e.currentTarget.value) || 1; }))}
                     />
                     <span class="unit">{t("contract.seconds")}</span>
@@ -196,6 +197,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                 <Show when={cr.kind.type === "exec"}>
                   <input
                     class="mono criterion-cmd-row"
+                    aria-label={`${cr.id} ${t("contract.addCommand")}`}
                     value={(cr.kind as { command: string }).command}
                     placeholder="pnpm test -- checkout"
                     onInput={(e) => setC("criteria", i(), "kind", produce((k: Criterion["kind"]) => { if (k.type === "exec") k.command = e.currentTarget.value; }))}

@@ -137,8 +137,8 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean; tiny
         </span>
       </Show>
       <Show when={p().human > 0}>
-        <span class="sep" aria-hidden="true">·</span>
-        <span class="meta num" aria-hidden="true">
+        <span class="sep crit-human" aria-hidden="true">·</span>
+        <span class="meta num crit-human" aria-hidden="true">
           {props.tiny ? t("honesty.humanShort", { d: p().human_done, n: p().human }) : t("honesty.human", { d: p().human_done, n: p().human })}
         </span>
       </Show>

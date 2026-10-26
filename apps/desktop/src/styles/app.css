@@ -2642,7 +2642,8 @@ input[type="radio"] {
   .g-row {
     grid-template-columns: 14px minmax(10em, 1fr) minmax(12em, 1.3fr) 9em 5em 7em 5em 5em;
   }
-  .g-id {
+  .g-id,
+  .g-crit .crit-human {
     display: none;
   }
 }

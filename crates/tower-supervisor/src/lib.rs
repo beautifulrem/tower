@@ -986,6 +986,13 @@ impl Supervisor {
     }
 }
 
+/// Whether notifications and pushes wait now: quiet for a while, or inside
+/// the daily quiet hours.
+pub fn is_quiet(settings: &Settings) -> bool {
+    settings.quiet_until.is_some_and(|t| t > tower_store::system_now())
+        || settings.quiet_hours.is_some_and(|q| inner::local_minute().is_some_and(|m| q.contains(m)))
+}
+
 /// Removes what an interrupted verification or check left behind (Tower
 /// quit or crashed mid-way). Nothing runs yet at this point.
 fn sweep(paths: &Paths) {

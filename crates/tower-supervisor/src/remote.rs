@@ -221,7 +221,12 @@ fn answerable_away(item: &InboxItem, response: &str) -> bool {
     let choice = Choice::parse(response);
     match item.kind {
         tower_core::view::InboxKind::Approval => !matches!(choice, Some(Choice::Allow) | Some(Choice::Approve)),
-        _ => !matches!(choice, Some(Choice::OverrideSentinel) | Some(Choice::InstallWithNetwork)),
+        // Showing the agent held-out failures gives the tests away: also a
+        // decision for the desk, where the output can be read in full.
+        _ => !matches!(
+            choice,
+            Some(Choice::OverrideSentinel) | Some(Choice::InstallWithNetwork) | Some(Choice::ShowHeldOutFailure)
+        ),
     }
 }
 

@@ -72,8 +72,7 @@ impl TauriSink {
         badge(&window, items);
         let focused = window.is_focused().unwrap_or(false);
         let settings = app.try_state::<Supervisor>().map(|s| s.settings());
-        let now = tower_store::system_now();
-        let quiet = settings.as_ref().and_then(|s| s.quiet_until).is_some_and(|until| until > now);
+        let quiet = settings.as_ref().is_some_and(tower_supervisor::is_quiet);
         let mut seen = self.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         // Forget items no longer open (answered, or snoozed): a snoozed item
         // that comes back is announced again.

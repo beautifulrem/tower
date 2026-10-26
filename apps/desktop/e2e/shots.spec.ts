@@ -55,6 +55,10 @@ const screens: Array<{
   { name: "settings-en-light", route: "settings", lang: "en", theme: "light" },
   { name: "settings-phone-zh-dark", route: "settings", lang: "zh-CN", theme: "dark", element: ".settings-block:has(.phone-pair)" },
   { name: "settings-phone-en-light", route: "settings", lang: "en", theme: "light", element: ".settings-block:has(.phone-pair)" },
+  { name: "settings-attention-zh-dark", route: "settings", lang: "zh-CN", theme: "dark", element: ".settings-block:has(.push-test)" },
+  { name: "settings-attention-en-light", route: "settings", lang: "en", theme: "light", element: ".settings-block:has(.push-test)" },
+  { name: "heldout-card-zh-dark", route: "goal/G-0004", lang: "zh-CN", theme: "dark", element: ".decision-heldout" },
+  { name: "heldout-card-en-light", route: "goal/G-0004", lang: "en", theme: "light", element: ".decision-heldout" },
   { name: "contract-en-light", route: "new", lang: "en", theme: "light" },
   { name: "contract-zh-dark", route: "new", lang: "zh-CN", theme: "dark" },
 ];

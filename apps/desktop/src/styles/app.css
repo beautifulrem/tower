@@ -4152,7 +4152,8 @@ input[type="radio"] {
   gap: var(--sp-2);
 }
 .quiet-time {
-  width: 6.5ch !important;
+  width: 7.5ch !important;
+  min-width: 64px;
   padding-left: 8px !important;
   padding-right: 8px !important;
   text-align: center;

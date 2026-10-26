@@ -407,6 +407,8 @@ test("a result produced with the held-out tests present is marked for you only, 
 
 test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {
   const identity = (F: Record<string, any>) => {
+    // The dumping supervisor may itself lack an identity: one row either way.
+    F.environment.issues = F.environment.issues.filter((i: { kind: string }) => i.kind !== "git_identity_missing");
     F.environment.issues.push({
       kind: "git_identity_missing",
       blocking: false,

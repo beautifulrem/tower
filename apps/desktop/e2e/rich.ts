@@ -197,4 +197,6 @@ export function enrichRich(F: F) {
   enrichCi(F);
   enrichPhone(F);
   enrichSnoozed(F);
+  enrichHeldOut(F);
+  enrichPushes(F);
 }

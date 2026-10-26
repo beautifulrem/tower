@@ -381,6 +381,12 @@ impl Git {
         }
     }
 
+    /// The content of `path` at `rev`, as text (lossy), or `None` when the
+    /// file does not exist there.
+    pub fn file_at(&self, repo: &Path, rev: &str, path: &str) -> Option<String> {
+        self.run(repo, &["show", &format!("{rev}:{path}")]).ok()
+    }
+
     /// Makes `dir` a repository on `main` with everything in it committed.
     pub fn init_with_commit(&self, dir: &Path, message: &str) -> Result<()> {
         self.run(dir, &["init", "--quiet", "--initial-branch=main"])?;

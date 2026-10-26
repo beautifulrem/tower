@@ -217,6 +217,10 @@ async fn a_goal_goes_from_intent_to_a_branch() {
     let review = h.sup.review(&id, None).await.unwrap();
     assert_eq!(review.files.len(), 1);
     assert_eq!(review.files[0].path, "done.txt");
+    // Whole files on either side, for expanding context around a hunk.
+    assert_eq!(h.sup.file_text(&id, "README.md", true, None).await.unwrap().as_deref(), Some("hello\n"));
+    assert!(h.sup.file_text(&id, "done.txt", false, None).await.unwrap().is_some());
+    assert_eq!(h.sup.file_text(&id, "done.txt", true, None).await.unwrap(), None);
 
     // The user's checkout is untouched until acceptance, and even then only
     // a branch is added.

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichCi, enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
+import { enrichCi, enrichEngines, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -325,6 +325,42 @@ test("at 1800 wide the decision queue and the board share one centred container"
   const card = page.locator(".board-queue .decision").first();
   const row = page.locator(".g-row").first();
   expect(Math.abs((await card.boundingBox())!.x - (await row.boundingBox())!.x)).toBeLessThan(8);
+});
+
+test("the phone page switched on but not served says why, with its way out, and nothing to scan; the title bar carries the reading", async ({ page }) => {
+  await openTower(page, "settings", { enrich: enrichPhoneProblem });
+  const problem = page.locator(".phone-problem");
+  await expect(problem).toBeVisible();
+  await expect(problem).toContainText("Tailscale is not connected");
+  await expect(problem).toContainText("Open Tailscale, or allow the local network");
+  await expect(page.locator(".phone-qr")).toHaveCount(0);
+  await expect(page.locator(".phone-link")).toHaveCount(0);
+  const gauge = page.locator(".gauge-phone");
+  await expect(gauge).toHaveText(/Phone page off/);
+  await expect(gauge).toHaveAttribute("title", /Tailscale is not connected/);
+});
+
+test("quiet hours are a daily window with two edges, and the last push's failure is a line with its time and reason", async ({ page }) => {
+  await openTower(page, "settings", { enrich: enrichPushes });
+  await expect(page.getByRole("heading", { name: "Notifications and pushes" })).toBeVisible();
+  const from = page.getByLabel("Quiet hours · From");
+  await expect(from).toHaveValue("22:00");
+  await expect(page.getByLabel("Quiet hours · to")).toHaveValue("08:00");
+  await from.fill("23:30");
+  await from.blur();
+  await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { quiet_hours: { start: number } | null } }).settings.quiet_hours?.start === 23 * 60 + 30)).toBe(true);
+  await expect(page.getByLabel("Also push when a goal is ready to accept")).toBeChecked();
+  const status = page.locator(".push-status");
+  await expect(status).toContainText("Last push failed · 21:03");
+  await expect(status).toContainText("ntfy.example.net could not be reached");
+  // A test push goes where the field points, and the line follows it.
+  await page.getByRole("button", { name: "Send a test push" }).click();
+  await expect.poll(async () => (await calls(page)).some(([cmd]) => cmd === "test_push")).toBe(true);
+  await expect(status).toContainText("Last push sent");
+  await expect(page.locator(".toast")).toContainText("Test push sent");
+  // Switching the window off saves null.
+  await page.getByLabel("Quiet hours every day").uncheck();
+  await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { quiet_hours: unknown } }).settings.quiet_hours === null)).toBe(true);
 });
 
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {

@@ -8,6 +8,7 @@ import type { EnvironmentStatus } from "../gen/EnvironmentStatus";
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { InboxItem } from "../gen/InboxItem";
 import type { ProjectView } from "../gen/ProjectView";
+import type { QuietHours } from "../gen/QuietHours";
 import type { Settings } from "../gen/Settings";
 import type { ToastLevel } from "../gen/ToastLevel";
 import type { TraceEntry } from "../gen/TraceEntry";
@@ -76,6 +77,13 @@ interface State {
   activity: ActivityEntry[];
   /** Errors and warnings logged since the activity panel was last opened. */
   unseenActivity: number;
+  /**
+   * Why the phone page is not being served although it is switched on
+   * (Tailscale disconnected, the port taken), in the supervisor's words;
+   * null when it is served or off. Read with the settings, so the title bar
+   * can say it and Settings can show the way out.
+   */
+  remoteProblem: string | null;
   /** Ticks so relative times stay fresh without per-component timers. */
   now: number;
 }
@@ -94,6 +102,7 @@ const [state, setState] = createStore<State>({
   toasts: [],
   activity: [],
   unseenActivity: 0,
+  remoteProblem: null,
   now: Date.now(),
 });
 
@@ -133,12 +142,17 @@ export function clearActivity() {
   setState({ activity: [], unseenActivity: 0 });
 }
 
-/** At most two toasts; each leaves with a 100ms fade (human-caused removal). */
+/**
+ * At most two toasts; each leaves with a 100ms fade (human-caused removal).
+ * Errors and warnings stay six seconds — a warning about nothing in
+ * particular (the phone page could not start) has no page to say it again,
+ * only the activity log — the rest four.
+ */
 export function toast(level: ToastLevel, text: string, opts: { ttl?: number; goalId?: string | null; action?: ToastAction } = {}) {
   const id = ++toastSeq;
   setState("toasts", (t) => [...t.slice(-1), { id, level, text, goalId: opts.goalId, action: opts.action }]);
   logActivity(level, text, opts.goalId ?? null);
-  const ttl = opts.ttl ?? (level === "error" ? 6000 : opts.action ? 6000 : 4200);
+  const ttl = opts.ttl ?? (level === "error" || level === "warning" || opts.action ? 6000 : 4200);
   setTimeout(() => dismissToast(id), ttl);
 }
 export function dismissToast(id: number) {
@@ -176,6 +190,9 @@ export async function act<T>(fn: () => Promise<T>, success?: string): Promise<T 
 export async function refreshEnvironment() {
   const [env, settings] = await Promise.all([api.environment(), api.settings()]);
   setState({ env, settings });
+  // The phone page's problem is part of the environment's truth: read it whenever the settings are, so it is never stale.
+  const remoteProblem = settings.remote_enabled ? await api.remoteInfo().then((i) => i?.problem ?? null, () => null) : null;
+  setState({ remoteProblem });
 }
 
 /** Saves a partial change to the settings (quiet hours, muted goals) and reloads them. */
@@ -187,10 +204,42 @@ export async function patchSettings(patch: Partial<Settings>): Promise<boolean> 
   return true;
 }
 
-/** Whether notifications are silenced right now. */
+const MINUTE = 60_000;
+const DAY_MINUTES = 24 * 60;
+
+/** Minutes after local midnight, the unit of `QuietHours`. */
+export function minuteOfDay(at: number): number {
+  const d = new Date(at);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+/** Whether `minute` falls inside the daily window; the same rule as the supervisor's (`QuietHours::contains`): it may cross midnight, and an empty window is never quiet. */
+export function inQuietHours(q: QuietHours | null | undefined, minute: number): boolean {
+  if (!q || q.start === q.end) return false;
+  return q.start < q.end ? minute >= q.start && minute < q.end : minute >= q.start || minute < q.end;
+}
+
+/**
+ * When the current silence ends (ms since the epoch), or null when nothing
+ * is silenced: the later of a "quiet until" and today's quiet hours, so the
+ * bell reads one time whichever rule is the reason.
+ */
+export function quietUntil(now = state.now): number | null {
+  const s = state.settings;
+  if (!s) return null;
+  const until = s.quiet_until && s.quiet_until > now ? s.quiet_until : null;
+  let hours: number | null = null;
+  if (inQuietHours(s.quiet_hours, minuteOfDay(now))) {
+    const minute = minuteOfDay(now);
+    const left = (s.quiet_hours!.end - minute + DAY_MINUTES) % DAY_MINUTES || DAY_MINUTES;
+    hours = now - (now % MINUTE) + left * MINUTE;
+  }
+  return until === null ? hours : hours === null ? until : Math.max(until, hours);
+}
+
+/** Whether notifications are silenced right now, by "quiet until" or by the daily quiet hours. */
 export function quietNow(): boolean {
-  const until = state.settings?.quiet_until;
-  return !!until && until > state.now;
+  return quietUntil() !== null;
 }
 
 /** Mutes or unmutes one goal's notifications. */

@@ -129,6 +129,7 @@ pub fn pause_label(r: PauseReason, lang: Lang) -> &'static str {
         ProviderError => lang.pick("模型服务出错", "Model provider error"),
         SentinelHigh => lang.pick("哨兵命中：需要你确认", "Sentinel hit: needs your confirmation"),
         WallClockCap => lang.pick("超过单次运行的墙钟上限", "The run passed its wall-clock cap"),
+        Internal => lang.pick("Tower 内部出错", "Tower ran into an internal error"),
     }
 }
 

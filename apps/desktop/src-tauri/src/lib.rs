@@ -125,6 +125,16 @@ fn mark_viewed(sup: Sup<'_>, id: String) -> Res<()> {
 }
 
 #[tauri::command]
+fn ui_state(sup: Sup<'_>, id: String) -> Res<std::collections::BTreeMap<String, String>> {
+    sup.ui_state(&id)
+}
+
+#[tauri::command]
+fn set_ui_state(sup: Sup<'_>, id: String, key: String, value: Option<String>) -> Res<()> {
+    sup.set_ui_state(&id, &key, value.as_deref())
+}
+
+#[tauri::command]
 fn trace(sup: Sup<'_>, id: String, before: Option<i64>, limit: u32) -> Res<Vec<TraceEntry>> {
     sup.trace(&id, before, limit)
 }
@@ -324,6 +334,8 @@ pub fn run() {
             goals,
             goal,
             mark_viewed,
+            ui_state,
+            set_ui_state,
             trace,
             inbox,
             review,

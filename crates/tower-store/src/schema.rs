@@ -139,6 +139,24 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE projects ADD COLUMN setup_command TEXT NOT NULL DEFAULT '';
     "#,
+    // 4: criteria on the base commit; review state kept by the interface
+    r#"
+    CREATE TABLE baseline_results (
+        goal_id    TEXT NOT NULL,
+        criterion  TEXT NOT NULL,
+        command    TEXT NOT NULL,
+        base       TEXT NOT NULL,
+        passed     INTEGER NOT NULL,
+        at         INTEGER NOT NULL,
+        PRIMARY KEY (goal_id, criterion)
+    );
+    CREATE TABLE goal_ui_state (
+        goal_id    TEXT NOT NULL,
+        key        TEXT NOT NULL,
+        value      TEXT NOT NULL,
+        PRIMARY KEY (goal_id, key)
+    );
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

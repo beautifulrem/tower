@@ -23,7 +23,7 @@ const SETUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 pub fn spawn(inner: Arc<Inner>, goal: String) {
     let cancel = Cancel::default();
     {
-        let mut v = inner.verifications.lock().expect("verify lock");
+        let mut v = inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if v.contains_key(&goal) {
             return;
         }
@@ -31,15 +31,17 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
     }
     tokio::spawn(async move {
         let result = verify(&inner, &goal, &cancel).await;
-        inner.verifications.lock().expect("verify lock").remove(&goal);
+        inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
         if let Err(e) = result
             && !cancel.is_cancelled()
         {
             tracing::warn!(goal = %goal, error = %e, "verification failed to run");
             let message = tr!(inner.lang(), "验证没能完成：{e}", "Verification could not finish: {e}");
-            let _ = inner.append(&goal, EventKind::EngineError { message });
-            let _ = inner.set_mode(&goal, Mode::Idle);
-            let _ = to_paused(&inner, &goal, PauseReason::VerifyEnvError, &e.to_string());
+            let r = inner
+                .append(&goal, EventKind::EngineError { message })
+                .and_then(|_| inner.set_mode(&goal, Mode::Idle))
+                .and_then(|_| to_paused(&inner, &goal, PauseReason::VerifyEnvError, &e.to_string()));
+            run::report(&inner, &goal, r).await;
         }
     });
 }
@@ -155,7 +157,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     if !copied.is_empty() {
         inner.append(goal, EventKind::LocalFilesCopied { files: copied })?;
     }
-    let outcome = run_criteria(inner, goal, &rec.contract, &dir, &snap.pin, cancel).await;
+    let outcome = run_criteria(inner, goal, &rec.contract, &dir, Target::Pin(&snap.pin), cancel).await;
     let git = inner.git.clone();
     let (ws4, dir4) = (ws.clone(), dir.clone());
     let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws4), &dir4)).await;
@@ -167,6 +169,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     inner.set_mode(goal, Mode::Idle)?;
     match outcome {
         Outcome::Passed if !high.is_empty() => {
+            spawn_baseline(inner.clone(), goal.to_string());
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
             let hits = high.join(lang.pick("；", "; "));
             let detail = tr!(lang, "机器标准都通过了，但{hits}", "Every machine criterion passed, but: {hits}");
@@ -177,6 +180,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
             inner.transition(goal, Transition::VerifyPassed, None, "")?;
             let body = tr!(lang, "全部机器标准在干净环境中通过", "Every machine criterion passed in a clean checkout");
             review_ready(inner, goal, &body)?;
+            spawn_baseline(inner.clone(), goal.to_string());
         }
         Outcome::EnvError(detail) => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
@@ -211,6 +215,56 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     Ok(())
 }
 
+/// What a criteria run checks: the agent's pinned snapshot, or the base
+/// commit before any change (the baseline).
+#[derive(Clone, Copy)]
+enum Target<'a> {
+    Pin(&'a str),
+    Base(&'a str),
+}
+
+/// Runs the criteria that have no baseline yet on a clean checkout of the
+/// base commit, in the background, after a passing verification. A
+/// criterion that already passes before any change proves nothing about
+/// the goal; the interface says so next to its green result. Failures to
+/// run are not errors: the baseline is extra evidence, not a gate.
+pub(crate) fn spawn_baseline(inner: Arc<Inner>, goal: String) {
+    tokio::spawn(async move {
+        if let Err(e) = baseline(&inner, &goal).await {
+            tracing::info!(goal = %goal, error = %e, "baseline check did not run");
+        }
+    });
+}
+
+async fn baseline(inner: &Arc<Inner>, goal: &str) -> Result<()> {
+    let rec = inner.store(|s| s.goal(goal))?;
+    let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else { return Ok(()) };
+    let detail = inner.store(|s| s.detail(goal))?;
+    let missing: Vec<String> = detail
+        .criteria
+        .iter()
+        .filter(|c| matches!(c.criterion.kind, CriterionKind::Exec { .. }) && c.passed_on_base.is_none())
+        .map(|c| c.criterion.id.clone())
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let mut contract = rec.contract.clone();
+    contract.criteria.retain(|c| missing.contains(&c.id));
+
+    let dir = inner.paths.verify(&format!("{goal}-base"));
+    let git = inner.git.clone();
+    let (ws1, base1, dir1) = (ws.clone(), base.clone(), dir.clone());
+    tokio::task::spawn_blocking(move || git.add_verify_checkout(Path::new(&ws1), &base1, &dir1))
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+    run::copy_local_files(inner, &rec, &dir).await?;
+    let outcome = run_criteria(inner, goal, &contract, &dir, Target::Base(&base), &Cancel::default()).await;
+    let git = inner.git.clone();
+    let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws), &dir)).await;
+    outcome.map(|_| ())
+}
+
 enum Outcome {
     Passed,
     Failed(Vec<Failure>),
@@ -222,12 +276,15 @@ async fn run_criteria(
     goal: &str,
     contract: &tower_core::Contract,
     dir: &Path,
-    pin: &str,
+    target: Target<'_>,
     cancel: &Cancel,
 ) -> Result<Outcome> {
     let lang = inner.lang();
     let rec = inner.store(|s| s.goal(goal))?;
-    let tmp = inner.paths.tmp(&format!("{goal}-verify"));
+    let tmp = inner.paths.tmp(&match target {
+        Target::Pin(_) => format!("{goal}-verify"),
+        Target::Base(_) => format!("{goal}-base"),
+    });
     // Setup may download dependencies; the criteria get the network only
     // when the contract allows it.
     let setup_jail = run::jail(inner, &rec, dir, &tmp, "verify-setup", true)?;
@@ -248,15 +305,17 @@ async fn run_criteria(
     if let Some(setup) = setup {
         let spec = RunSpec::new(command_for(&setup, setup_jail.profile.as_deref()), dir, env.clone(), SETUP_TIMEOUT);
         let r = tower_verify::run(&spec, cancel).await;
-        inner.append(
-            goal,
-            EventKind::SetupFinished {
-                command: setup.clone(),
-                ok: r.passed(),
-                exit_code: r.exit_code(),
-                duration_ms: r.duration_ms,
-            },
-        )?;
+        if let Target::Pin(_) = target {
+            inner.append(
+                goal,
+                EventKind::SetupFinished {
+                    command: setup.clone(),
+                    ok: r.passed(),
+                    exit_code: r.exit_code(),
+                    duration_ms: r.duration_ms,
+                },
+            )?;
+        }
         if !r.passed() {
             let tail = tail_lines(&r.output_tail, 20);
             let detail = tr!(lang, "准备命令 `{setup}` 失败：\n{tail}", "The setup command `{setup}` failed:\n{tail}");
@@ -290,6 +349,19 @@ async fn run_criteria(
                 "The command `{command}` of {id} could not run ({how}):\n{tail}"
             )));
         }
+        let pin = match target {
+            Target::Pin(pin) => pin,
+            Target::Base(base) => {
+                let event = EventKind::BaselineResult {
+                    criterion: c.id.clone(),
+                    command: command.clone(),
+                    base: base.into(),
+                    passed: r.passed(),
+                };
+                inner.append(goal, event)?;
+                continue;
+            }
+        };
         inner.append(
             goal,
             EventKind::CriterionResult {

@@ -1,14 +1,14 @@
 //! Human decisions: answering Needs-You items, reviewing, accepting.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tower_core::i18n::Choice;
 use tower_core::lifecycle::Transition;
 use tower_core::view::{InboxKind, ModelInfo};
-use tower_core::{EventKind, Lang, LifecycleState, PauseReason, tr};
+use tower_core::{EventKind, LifecycleState, PauseReason, tr};
 use tower_pi::{Engine, EngineConfig};
 use tower_store::GoalRecord;
 
@@ -24,7 +24,9 @@ pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<Choice> {
         PauseReason::BudgetSoftCap => vec![RaiseSoftCap, Abandon],
         PauseReason::BudgetHardCap => vec![DoubleBudget, Abandon],
         PauseReason::IdleWithoutSubmit => vec![Continue, Abandon],
-        PauseReason::EngineCrash | PauseReason::ProviderError | PauseReason::PrepareFailed => vec![Retry, Abandon],
+        PauseReason::EngineCrash | PauseReason::ProviderError | PauseReason::PrepareFailed | PauseReason::Internal => {
+            vec![Retry, Abandon]
+        }
         PauseReason::SentinelHigh => vec![SentinelRework, OverrideSentinel, Abandon],
         PauseReason::WallClockCap => vec![MoreTime, Abandon],
         PauseReason::Human | PauseReason::AppQuit => vec![Continue],
@@ -276,8 +278,13 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
         )));
     }
 
-    let branch = format!("tower/{}-{}", goal.to_lowercase(), slug(&rec.title));
-    let message = seal_message(&rec, &pin, has_machine, lang);
+    // Titles in Chinese have no ASCII words: fall back to identifiers in
+    // the intent (`total()`, `taxRate`), then to the goal number alone.
+    let branch = match slug(&rec.title).or_else(|| slug(&rec.contract.intent)) {
+        Some(s) => format!("tower/{}-{s}", goal.to_lowercase()),
+        None => format!("tower/{}", goal.to_lowercase()),
+    };
+    let message = seal_message(&rec, &pin, has_machine);
     let git = inner.git.clone();
     let root = PathBuf::from(&rec.project_root);
     let (written, commit) =
@@ -294,11 +301,13 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
     Ok(written)
 }
 
-fn seal_message(rec: &GoalRecord, pin: &str, verified: bool, lang: Lang) -> String {
+fn seal_message(rec: &GoalRecord, pin: &str, verified: bool) -> String {
     let mut m = format!("{}\n\n{}\n", rec.title, rec.contract.intent.trim());
     if let Some(s) = rec.submit_summary.as_deref().filter(|s| !s.trim().is_empty()) {
         let s = s.trim();
-        m.push_str(&tr!(lang, "\nAgent 称：{s}\n", "\nAgent says: {s}\n"));
+        // Written into the user's repository, so in English whatever the
+        // interface language; the agent's words stay marked as a claim.
+        m.push_str(&format!("\nAgent's summary (a claim, not verified): {s}\n"));
     }
     m.push_str(&format!("\nTower-Goal: {}\n", rec.id));
     if verified {
@@ -309,12 +318,21 @@ fn seal_message(rec: &GoalRecord, pin: &str, verified: bool, lang: Lang) -> Stri
     m
 }
 
-fn slug(title: &str) -> String {
+fn slug(title: &str) -> Option<String> {
     let s: String =
         title.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect();
-    let s = s.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");
-    let s: String = s.chars().take(32).collect();
-    if s.is_empty() { "goal".into() } else { s }
+    let words: Vec<&str> = s.split('-').filter(|p| !p.is_empty()).collect();
+    let mut out = String::new();
+    for w in words {
+        if out.len() + w.len() + 1 > 32 {
+            break;
+        }
+        if !out.is_empty() {
+            out.push('-');
+        }
+        out.push_str(w);
+    }
+    (out.len() >= 3).then_some(out)
 }
 
 /// Pushes the accepted branch to `origin` and, when asked and the GitHub
@@ -447,7 +465,7 @@ pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
 
 /// Lists the models the user's Pi can use, cached for ten minutes.
 pub async fn models(inner: &Arc<Inner>) -> Result<Vec<ModelInfo>> {
-    if let Some((at, list)) = inner.models.lock().expect("models lock").as_ref()
+    if let Some((at, list)) = inner.models.lock().unwrap_or_else(PoisonError::into_inner).as_ref()
         && at.elapsed() < Duration::from_secs(600)
     {
         return Ok(list.clone());
@@ -490,19 +508,21 @@ pub async fn models(inner: &Arc<Inner>) -> Result<Vec<ModelInfo>> {
                 .collect()
         })
         .unwrap_or_default();
-    *inner.models.lock().expect("models lock") = Some((Instant::now(), list.clone()));
+    *inner.models.lock().unwrap_or_else(PoisonError::into_inner) = Some((Instant::now(), list.clone()));
     Ok(list)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tower_core::Lang;
 
     #[test]
     fn branch_slugs_are_ascii() {
-        assert_eq!(slug("Fix checkout double charge!"), "fix-checkout-double-charge");
-        assert_eq!(slug("修复重复扣款"), "goal");
-        assert_eq!(slug("修复 checkout 扣款"), "checkout");
+        assert_eq!(slug("Fix checkout double charge!").as_deref(), Some("fix-checkout-double-charge"));
+        assert_eq!(slug("修复重复扣款"), None);
+        assert_eq!(slug("修复 checkout 扣款").as_deref(), Some("checkout"));
+        assert_eq!(slug("给 total() 增加税率参数 taxRate").as_deref(), Some("total-taxrate"));
     }
 
     #[test]

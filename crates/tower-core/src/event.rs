@@ -153,6 +153,15 @@ pub enum EventKind {
         passed: bool,
         env_error: bool,
     },
+    /// The criterion's command run in a clean checkout of the base commit,
+    /// before any change. A criterion that already passes there does not
+    /// prove the goal is done ("red before, green after").
+    BaselineResult {
+        criterion: String,
+        command: String,
+        base: String,
+        passed: bool,
+    },
     /// Agent-environment observation: a command matching a criterion ran there.
     Observed {
         criterion: String,
@@ -243,6 +252,7 @@ impl EventKind {
             | Self::VerifyStarted { .. }
             | Self::SetupFinished { .. }
             | Self::CriterionResult { .. }
+            | Self::BaselineResult { .. }
             | Self::VerifyFinished { .. }
             | Self::CostUpdated { .. }
             | Self::BranchWritten { .. }
@@ -273,6 +283,7 @@ impl EventKind {
             Self::VerifyStarted { .. } => "verify_started",
             Self::SetupFinished { .. } => "setup_finished",
             Self::CriterionResult { .. } => "criterion_result",
+            Self::BaselineResult { .. } => "baseline_result",
             Self::VerifyFinished { .. } => "verify_finished",
             Self::Observed { .. } => "observed",
             Self::InboxOpened { .. } => "inbox_opened",

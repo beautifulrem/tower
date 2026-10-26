@@ -105,6 +105,9 @@ pub struct ObservationView {
 pub struct CriterionView {
     pub criterion: Criterion,
     pub verified: Option<CriterionResultView>,
+    /// Whether the same command already passed on the base commit, when
+    /// checked. `Some(true)` means this criterion cannot tell done from not.
+    pub passed_on_base: Option<bool>,
     pub observed: Option<ObservationView>,
     pub human_checked: bool,
 }

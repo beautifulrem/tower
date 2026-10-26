@@ -18,7 +18,7 @@ mod verify;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -105,7 +105,7 @@ pub(crate) struct Inner {
 impl Inner {
     /// Runs `f` with the store locked. Never hold across an await.
     pub fn store<T>(&self, f: impl FnOnce(&mut Store) -> Result<T, StoreError>) -> Result<T> {
-        let mut s = self.store.lock().expect("store lock");
+        let mut s = self.store.lock().unwrap_or_else(PoisonError::into_inner);
         Ok(f(&mut s)?)
     }
 
@@ -117,11 +117,11 @@ impl Inner {
     }
 
     pub fn mark_dirty(&self, goal: &str) {
-        self.dirty.lock().expect("dirty lock").insert(goal.to_string());
+        self.dirty.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.to_string());
     }
 
     pub fn emit_goal_now(&self, goal: &str) {
-        self.dirty.lock().expect("dirty lock").remove(goal);
+        self.dirty.lock().unwrap_or_else(PoisonError::into_inner).remove(goal);
         if let Ok(g) = self.store(|s| s.summary(goal)) {
             self.sink.emit(UiUpdate::Goal { goal: g });
         }
@@ -138,7 +138,7 @@ impl Inner {
     }
 
     fn flush_dirty(&self) {
-        let ids: Vec<String> = self.dirty.lock().expect("dirty lock").drain().collect();
+        let ids: Vec<String> = self.dirty.lock().unwrap_or_else(PoisonError::into_inner).drain().collect();
         for id in ids {
             if let Ok(g) = self.store(|s| s.summary(&id)) {
                 self.sink.emit(UiUpdate::Goal { goal: g });
@@ -214,7 +214,7 @@ impl Inner {
     /// tied to this process so it never outlives Tower).
     pub fn update_keep_awake(&self) {
         let running = self.running_count() > 0;
-        let mut guard = self.keep_awake.lock().expect("keep-awake lock");
+        let mut guard = self.keep_awake.lock().unwrap_or_else(PoisonError::into_inner);
         match (running, guard.is_some()) {
             (true, false) if cfg!(target_os = "macos") => {
                 *guard = std::process::Command::new("/usr/bin/caffeinate")
@@ -236,11 +236,11 @@ impl Inner {
     }
 
     pub fn running_count(&self) -> usize {
-        self.runs.lock().expect("runs lock").len()
+        self.runs.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 
     pub fn run_of(&self, goal: &str) -> Option<Arc<Run>> {
-        self.runs.lock().expect("runs lock").get(goal).cloned()
+        self.runs.lock().unwrap_or_else(PoisonError::into_inner).get(goal).cloned()
     }
 }
 
@@ -292,7 +292,9 @@ impl Supervisor {
             loop {
                 tick.tick().await;
                 let Some(inner) = weak.upgrade() else { break };
-                let _ = actions::check_integrations(&inner).await;
+                if let Err(e) = actions::check_integrations(&inner).await {
+                    tracing::warn!(error = %e, "integration check failed");
+                }
             }
         });
     }
@@ -327,19 +329,21 @@ impl Supervisor {
             .filter(|g| g.pause_reason == Some(PauseReason::AppQuit))
             .collect();
         for g in quit {
-            let _ = run::resume(inner, &g.id).await;
+            let r = run::resume(inner, &g.id).await;
+            run::report(inner, &g.id, r).await;
         }
         run::schedule(inner).await;
     }
 
     /// Pauses every running goal so it resumes on next launch (`ADR-017`).
     pub async fn shutdown(&self) {
-        let runs: Vec<String> = self.inner.runs.lock().expect("runs lock").keys().cloned().collect();
+        let runs: Vec<String> =
+            self.inner.runs.lock().unwrap_or_else(PoisonError::into_inner).keys().cloned().collect();
         let note = tr!(self.inner.lang(), "Tower 退出", "Tower quit");
         for id in runs {
             let _ = run::pause(&self.inner, &id, PauseReason::AppQuit, &note).await;
         }
-        for (_, c) in self.inner.verifications.lock().expect("verify lock").drain() {
+        for (_, c) in self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).drain() {
             c.cancel();
         }
     }
@@ -407,6 +411,16 @@ impl Supervisor {
         self.inner.store(|s| s.mark_viewed(id))?;
         self.inner.emit_goal_now(id);
         Ok(())
+    }
+
+    /// The interface's per-goal state (viewed files, draft comments, last
+    /// reviewed snapshot), as stored JSON strings by key.
+    pub fn ui_state(&self, id: &str) -> Result<std::collections::BTreeMap<String, String>> {
+        self.inner.store(|s| s.ui_state(id))
+    }
+
+    pub fn set_ui_state(&self, id: &str, key: &str, value: Option<&str>) -> Result<()> {
+        self.inner.store(|s| s.set_ui_state(id, key, value))
     }
 
     pub fn trace(&self, id: &str, before: Option<i64>, limit: u32) -> Result<Vec<TraceEntry>> {
@@ -481,7 +495,7 @@ impl Supervisor {
             }
         }
         self.inner.store(|s| s.save_settings(&settings))?;
-        *self.inner.models.lock().expect("models lock") = None;
+        *self.inner.models.lock().unwrap_or_else(PoisonError::into_inner) = None;
         let inner = self.inner.clone();
         tokio::spawn(async move { run::schedule(&inner).await });
         Ok(())
@@ -582,7 +596,7 @@ impl Supervisor {
         let mut contract = Contract::quick(intent, project.test_command.clone(), settings.lang());
         contract.model = settings.default_model.clone();
         contract.thinking = settings.default_thinking.clone();
-        let title: String = intent.chars().take(48).collect();
+        let title = tower_core::text::title_from_intent(intent);
         self.create_goal(NewGoalInput { project_id: project_id.into(), title, contract, ratify: true }).await
     }
 

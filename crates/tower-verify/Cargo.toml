@@ -1,11 +1,18 @@
 [package]
 name = "tower-verify"
+description = "Runs acceptance criteria for Tower in clean checkouts: process groups, timeouts, bounded output and redaction."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+tokio.workspace = true
+nix.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
 
 [lints]
 workspace = true

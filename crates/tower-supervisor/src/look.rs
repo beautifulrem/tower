@@ -114,11 +114,18 @@ pub(crate) async fn capture(
     // Confined by Tower's own profile on macOS (see `sandbox::browser_profile`).
     let confined = crate::sandbox::available().then(|| {
         let sb = profile_dir.join("browser.sb");
-        let home = env.iter().find(|(k, _)| k == "HOME").map(|(_, v)| PathBuf::from(v)).unwrap_or_default();
+        // Your real home (the browser asks the system for it, not $HOME).
+        let home = crate::paths::real(&std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default());
         // Seatbelt matches resolved paths (`/var` is `/private/var`).
         let (profile_real, out_real) = (crate::paths::real(&profile_dir), crate::paths::real(&out_dir));
+        let lib = home.join("Library");
+        let support = app_support_dir(browser).map(|d| lib.join("Application Support").join(d));
+        let mut readable = vec![lib.join("Fonts"), lib.join("Preferences"), lib.join("Caches")];
+        readable.extend(support);
+        let readable: Vec<&Path> = readable.iter().map(PathBuf::as_path).collect();
         let text = crate::sandbox::browser_profile(
             &home,
+            &readable,
             &[&profile_real, &out_real],
             network,
             &crate::sandbox::proxy_ports(env),

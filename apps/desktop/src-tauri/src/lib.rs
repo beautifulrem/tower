@@ -79,7 +79,9 @@ impl TauriSink {
         seen.retain(|id| items.iter().any(|i| &i.id == id));
         for item in items {
             let muted = settings.as_ref().is_some_and(|s| s.muted_goals.contains(&item.goal_id));
-            if !seen.insert(item.id.clone()) || focused || quiet || muted {
+            // While quiet nothing is marked as announced: items that waited
+            // are announced on the next update after the quiet ends.
+            if quiet || !seen.insert(item.id.clone()) || focused || muted {
                 continue;
             }
             let urgent = matches!(

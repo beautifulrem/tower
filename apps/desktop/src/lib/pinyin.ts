@@ -21,11 +21,21 @@ let collator: Intl.Collator | null | undefined;
 
 function coll(): Intl.Collator | null {
   if (collator === undefined) {
-    try {
-      const c = new Intl.Collator("zh-u-co-pinyin");
-      collator = c.resolvedOptions().collation === "pinyin" ? c : null;
-    } catch {
-      collator = null;
+    // Engines differ in what `resolvedOptions().collation` reports (Node
+    // says "pinyin", others "default" for the same pinyin order), so the
+    // order itself is checked: 啊 < 吧 < 擦 and 李 < 张 by pinyin, not by
+    // code point (张 U+5F20 < 李 U+674E).
+    collator = null;
+    for (const tag of ["zh-u-co-pinyin", "zh"]) {
+      try {
+        const c = new Intl.Collator(tag);
+        if (c.compare("啊", "吧") < 0 && c.compare("吧", "擦") < 0 && c.compare("李", "张") < 0) {
+          collator = c;
+          break;
+        }
+      } catch {
+        // try the next tag
+      }
     }
   }
   return collator;

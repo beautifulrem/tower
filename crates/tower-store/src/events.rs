@@ -137,11 +137,11 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
                 params![goal_id, criterion, pin, passed],
             )?;
         }
-        EventKind::BaselineResult { criterion, command, base, passed } => {
+        EventKind::BaselineResult { criterion, command, base, passed, error } => {
             tx.execute(
-                "INSERT OR REPLACE INTO baseline_results (goal_id, criterion, command, base, passed, at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![goal_id, criterion, command, base, passed, at],
+                "INSERT OR REPLACE INTO baseline_results (goal_id, criterion, command, base, passed, at, error)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![goal_id, criterion, command, base, passed, at, error],
             )?;
         }
         EventKind::VerifyFinished { pin, passed, .. } => {

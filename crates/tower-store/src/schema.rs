@@ -211,6 +211,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     CREATE INDEX events_goal_kind ON events(goal_id, kind, seq);
     "#,
+    // 15: a baseline that could not run says why
+    r#"
+    ALTER TABLE baseline_results ADD COLUMN error TEXT;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

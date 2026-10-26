@@ -11,6 +11,10 @@ export type CriterionView = { criterion: Criterion, verified: CriterionResultVie
  */
 passed_on_base: boolean | null, 
 /**
+ * Why the criterion could not be checked on the base, if so.
+ */
+base_error: string | null, 
+/**
  * For `look` criteria: the screenshots before (base) and after (the
  * current snapshot), or why one is missing.
  */

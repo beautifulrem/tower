@@ -172,6 +172,11 @@ pub enum EventKind {
         command: String,
         base: String,
         passed: bool,
+        /// Why the criterion could not run on the base at all (then `passed`
+        /// means nothing).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        error: Option<String>,
     },
     /// A screenshot for a `look` criterion, taken by the verifier on the
     /// base (`side` = "base") or on the agent's snapshot ("pin"). `error`

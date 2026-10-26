@@ -175,6 +175,8 @@ pub struct CriterionView {
     /// Whether the same command already passed on the base commit, when
     /// checked. `Some(true)` means this criterion cannot tell done from not.
     pub passed_on_base: Option<bool>,
+    /// Why the criterion could not be checked on the base, if so.
+    pub base_error: Option<String>,
     /// For `look` criteria: the screenshots before (base) and after (the
     /// current snapshot), or why one is missing.
     pub look: Option<LookView>,

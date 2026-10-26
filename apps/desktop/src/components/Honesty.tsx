@@ -99,29 +99,48 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
  * Two-track progress (ADR-020): verified segments are facts and may be
  * green; observed ones are hollow and grey; human criteria sit apart.
  */
-export function CriteriaBar(props: { progress: Progress; compact?: boolean }) {
+export function CriteriaBar(props: { progress: Progress; compact?: boolean; tiny?: boolean }) {
   const p = () => props.progress;
   const segs = () =>
     Array.from({ length: p().machine }, (_, i) =>
       i < p().verified ? "verified" : i < Math.max(p().verified, p().observed) ? "observed" : "empty",
     );
+  const full = () =>
+    [
+      p().machine > 0 ? `${t("honesty.verified", { v: p().verified, m: p().machine })} · ${t("honesty.observed", { o: p().observed, m: p().machine })}` : t("honesty.notMachineVerified"),
+      p().human > 0 ? t("honesty.human", { d: p().human_done, n: p().human }) : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
   return (
-    <div class="criteria-bar" classList={{ compact: !!props.compact }}>
-      <Show when={p().machine > 0} fallback={<span class="meta">{t("honesty.notMachineVerified")}</span>}>
+    <div class="criteria-bar" classList={{ compact: !!props.compact || !!props.tiny, tiny: !!props.tiny }} title={`${full()} — ${t("honesty.barTitle")}`}>
+      <span class="sr-only">{full()}</span>
+      <Show when={p().machine > 0} fallback={<span class="meta" aria-hidden="true">{props.tiny ? t("honesty.noMachineShort") : t("honesty.notMachineVerified")}</span>}>
         <span class="segs" aria-hidden="true">
           {segs().map((s) => (
             <span class={`seg seg-${s}`} />
           ))}
         </span>
-        <span class="meta num halt">
-          {t("honesty.verified", { v: p().verified, m: p().machine })}
-          <span class="sep">·</span>
-          {t("honesty.observed", { o: p().observed, m: p().machine })}
+        <span class="meta num halt" aria-hidden="true">
+          <Show
+            when={!props.tiny}
+            fallback={
+              <>
+                {p().verified}/{p().machine}
+              </>
+            }
+          >
+            {t("honesty.verified", { v: p().verified, m: p().machine })}
+            <span class="sep">·</span>
+            {t("honesty.observed", { o: p().observed, m: p().machine })}
+          </Show>
         </span>
       </Show>
       <Show when={p().human > 0}>
-        <span class="sep">·</span>
-        <span class="meta num">{t("honesty.human", { d: p().human_done, n: p().human })}</span>
+        <span class="sep" aria-hidden="true">·</span>
+        <span class="meta num" aria-hidden="true">
+          {props.tiny ? t("honesty.humanShort", { d: p().human_done, n: p().human }) : t("honesty.human", { d: p().human_done, n: p().human })}
+        </span>
       </Show>
     </div>
   );

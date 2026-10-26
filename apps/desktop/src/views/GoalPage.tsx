@@ -15,11 +15,11 @@ import { Claim, ConsistencyBadge, CriteriaBar, HumanStamp, ObsChip } from "../co
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
 import { Trace } from "../components/Trace";
-import { Button, IconButton, Kbd, Section, Loading } from "../components/ui";
+import { Button, Empty, IconButton, Kbd, Section, Loading } from "../components/ui";
 import type { ClaimView } from "../gen/ClaimView";
 import type { CriterionView } from "../gen/CriterionView";
 import type { GoalDetail } from "../gen/GoalDetail";
-import { api } from "../lib/api";
+import { api, errorText } from "../lib/api";
 import { ask, popupActions } from "../lib/native";
 import { ago, clock, count, duration, short, usd, usdLimit } from "../lib/format";
 import { useKeys } from "../lib/keys";
@@ -61,17 +61,27 @@ export function GoalPage(props: { id: string }) {
     "goal:amend": () => go({ name: "new", amendId: props.id }),
   });
 
-  useKeys([
-    { key: "w", run: () => setWatch((w) => !w) },
-    { key: "r", run: () => go({ name: "review", id: props.id }) },
-    { key: "p", run: () => togglePause() },
-    { key: "shift+e", run: () => go({ name: "new", amendId: props.id }) },
-  ]);
+  useKeys(
+    [
+      { key: "w", run: () => setWatch((w) => !w), desc: () => t("keys.watch") },
+      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review") },
+      { key: "p", run: () => togglePause(), desc: () => t("keys.pauseResume") },
+      { key: "shift+e", run: () => go({ name: "new", amendId: props.id }), desc: () => t("goal.amend") },
+    ],
+    () => t("keys.goalScope"),
+  );
 
-  const togglePause = () => {
+  /** One key pauses; the toast offers the way back, so a slip costs nothing. */
+  const togglePause = async () => {
     const s = summary()?.state;
-    if (s === "running" || s === "verifying" || s === "ready" || s === "claimed") void act(() => api.pause(props.id));
-    else if (s === "paused") void act(() => api.resume(props.id));
+    if (s === "running" || s === "verifying" || s === "ready" || s === "claimed") {
+      const ok = await act(() => api.pause(props.id));
+      if (ok !== undefined)
+        toast("info", t("goal.pausedToast", { id: props.id }), {
+          goalId: props.id,
+          action: { label: t("goal.resume"), run: () => void act(() => api.resume(props.id)) },
+        });
+    } else if (s === "paused") void act(() => api.resume(props.id));
   };
 
   /** States whose word is not already said by the annunciator or the seal. */
@@ -79,7 +89,29 @@ export function GoalPage(props: { id: string }) {
     !["running", "verifying", "claimed"].includes(g.state) && !(g.state === "in_review" && g.verified_pin);
 
   return (
-    <Show when={summary()} fallback={<div class="page-loading"><Loading /></div>}>
+    <Show
+      when={summary()}
+      fallback={
+        <div class="page-loading">
+          <Show
+            when={detail.error}
+            fallback={<Loading text={t("goal.loading", { id: props.id })} />}
+          >
+            <Empty
+              title={t("goal.notFound", { id: props.id })}
+              kind="error"
+              action={
+                <Button size="s" variant="ghost" onClick={() => go({ name: "overview" })}>
+                  {t("chrome.openOverview")}
+                </Button>
+              }
+            >
+              {errorText(detail.error)}
+            </Empty>
+          </Show>
+        </div>
+      }
+    >
       {(g) => (
         <div class="goal-page">
           <header class="goal-head">
@@ -175,7 +207,7 @@ export function GoalPage(props: { id: string }) {
           <Show when={!watch()} fallback={<WatchPanel id={props.id} />}>
             <div class="goal-body">
               <div class="goal-main">
-                <Show when={detail()} fallback={<Loading />}>
+                <Show when={detail()} fallback={<Loading text={t("goal.loadingDetail")} />}>
                   {(d) => <GoalBlocks d={d()} />}
                 </Show>
               </div>
@@ -295,7 +327,7 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
       <Button size="s" variant="ghost" kbd="w" aria-pressed={props.watching} onClick={props.onWatch}>
         <Icon name="pulse" /> {t("goal.trace")}
       </Button>
-      <IconButton icon="ellipsis" label={t("goal.moreActions")} onClick={() => void more()} />
+      <IconButton icon="ellipsis" label={t("goal.moreActions")} aria-haspopup="menu" onClick={() => void more()} />
     </>
   );
 }
@@ -362,7 +394,7 @@ function GoalBlocks(props: { d: GoalDetail }) {
               </div>
             )}
           </For>
-          <For each={causes().shown}>{(c) => <Claim bare kind={t("claimKind.cause")}>{c.text}</Claim>}</For>
+          <For each={causes().shown}>{(c) => <Claim bare>{c.text}</Claim>}</For>
           <Show when={causes().hidden > 0}>
             <div class="claim">
               <span />
@@ -397,7 +429,19 @@ function GoalBlocks(props: { d: GoalDetail }) {
       <Section title={t("goal.criteria")} aside={<CriteriaBar progress={g().progress} />}>
         <For each={d().criteria}>{(c) => <CriterionRow goalId={g().id} c={c} state={g().state} />}</For>
         <Show when={d().criteria.length === 0}>
-          <p class="meta">{t("goal.noCriteria")}</p>
+          <Empty
+            title={t("goal.noCriteria")}
+            inline
+            action={
+              <Show when={!["accepted", "integrated", "archived", "abandoned"].includes(g().state)}>
+                <Button size="s" variant="ghost" onClick={() => go({ name: "new", amendId: g().id })} kbd="shift+e">
+                  {t("goal.amend")}
+                </Button>
+              </Show>
+            }
+          >
+            {t("goal.noCriteriaBody")}
+          </Empty>
         </Show>
       </Section>
 
@@ -411,7 +455,7 @@ function GoalBlocks(props: { d: GoalDetail }) {
           </Show>
         }
       >
-        <Show when={g().diffstat} fallback={<p class="meta">{t("goal.noSnapshot")}</p>}>
+        <Show when={g().diffstat} fallback={<Empty title={t("goal.noSnapshotTitle")} inline>{t("goal.noSnapshot")}</Empty>}>
           <div class="criterion-row num">
             <span />
             <span />
@@ -438,8 +482,8 @@ function GoalBlocks(props: { d: GoalDetail }) {
 
       <Show when={!settled()}>
         <Section title={t("goal.next")}>
-          <Show when={next()} fallback={<p class="meta">{t("goal.noNext")}</p>}>
-            <Claim kind={t("goal.nextStep")}>{next()!.text}</Claim>
+          <Show when={next()} fallback={<Empty title={t("goal.noNext")} inline>{g().state === "running" ? t("goal.noNextRunning") : t("goal.noNextIdle")}</Empty>}>
+            <Claim>{next()!.text}</Claim>
           </Show>
         </Section>
       </Show>
@@ -508,6 +552,7 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
               disabled={!["in_review", "verifying", "running", "paused", "claimed"].includes(props.state)}
               onChange={(e) => void act(() => api.humanCheck(props.goalId, c().criterion.id, e.currentTarget.checked))}
               title={t("goal.humanCriterionTitle")}
+              aria-label={`${c().criterion.id} ${c().criterion.title}`}
             />
           }
         >
@@ -528,13 +573,13 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
             </span>
           }
         >
-          <button class="col-click col-result" onClick={() => setOpen((o) => !o)} title={t("goal.viewOutput")}>
+          <button class="col-click col-result" onClick={() => setOpen((o) => !o)} title={t("goal.viewOutput")} aria-expanded={open()}>
             {v()!.passed ? t("common.passed") : t("common.failed")}
           </button>
-          <button class="col-click col-dur" onClick={() => setOpen((o) => !o)} title={t("goal.viewOutput")}>
+          <button class="col-click col-dur" onClick={() => setOpen((o) => !o)} title={t("goal.viewOutput")} tabindex="-1" aria-hidden="true">
             {duration(v()!.duration_ms)}
           </button>
-          <button class="col-click col-pin" onClick={() => setOpen((o) => !o)} title={t("honesty.measured")}>
+          <button class="col-click col-pin" onClick={() => setOpen((o) => !o)} title={t("honesty.measured")} tabindex="-1" aria-hidden="true">
             <Icon name="harness" size={10} />@{short(v()!.pin)}
           </button>
           <span class="col-age">{ago(v()!.at, state.now)}</span>

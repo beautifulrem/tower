@@ -40,6 +40,9 @@ export const api = {
   inbox: () => invoke<InboxItem[]>("inbox"),
   review: (id: string, since: string | null = null) => invoke<ReviewView>("review", { id, since }),
   openFile: (id: string, path: string, line: number | null) => invoke<void>("open_file", { id, path, line }),
+  /** One whole file on the base side (`old`) or in the reviewed snapshot; null when absent on that side. */
+  fileText: (id: string, path: string, old: boolean, pin: string | null) =>
+    invoke<string | null>("file_text", { id, path, old, pin }),
 
   settings: () => invoke<Settings>("settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),
@@ -60,6 +63,9 @@ export const api = {
   abandon: (id: string) => invoke<void>("abandon", { id }),
   steer: (id: string, text: string) => invoke<string>("steer", { id, text }),
   answer: (inboxId: string, response: string) => invoke<void>("answer", { inboxId, response }),
+  /** Approves or rejects an assumption, with a note to the agent either way. */
+  answerAssumption: (inboxId: string, approved: boolean, note: string) =>
+    invoke<void>("answer_assumption", { inboxId, approved, note }),
   retryVerify: (id: string) => invoke<void>("retry_verify", { id }),
   requestChanges: (id: string, summary: string, comments: ReviewComment[]) =>
     invoke<void>("request_changes", { id, summary, comments }),

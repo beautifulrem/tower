@@ -84,6 +84,13 @@
   font-size: var(--fs-meta);
   color: var(--text-2);
 }
+.sidebar .side-row:focus-visible,
+.unit:focus-visible,
+.palette-item:focus-visible,
+.tab:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: -1.5px;
+}
 .titlebar-crumbs .icon {
   color: var(--text-3);
 }
@@ -621,18 +628,19 @@
 .btn[aria-busy="true"] .btn-label {
   opacity: 0.6;
 }
-/* Key hints inside buttons are quiet text, not a second button. */
+/* Key hints inside buttons are quiet text, not a second button (0.7 keeps 4.5:1 on white). */
 .btn .kbd {
   background: transparent;
   padding: 0;
   margin-left: 1px;
   color: inherit;
-  opacity: 0.55;
+  opacity: 0.7;
   font-weight: 500;
 }
 .btn-primary .kbd {
   color: var(--bg-app);
   background: transparent;
+  opacity: 0.8;
 }
 
 .kbd {
@@ -741,8 +749,7 @@ textarea::placeholder {
 }
 /* Inside a raised card a field sits on the page colour: never a hole. */
 .decision textarea,
-.decision input,
-.goal-card textarea {
+.decision input {
   background: var(--bg-app);
 }
 .select {
@@ -900,19 +907,6 @@ input[type="radio"] {
   color: var(--text-1);
 }
 
-/* An empty state is one quiet line where the content would appear. */
-.empty {
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-  padding: var(--sp-2) 0;
-  font-size: var(--fs-body);
-  color: var(--text-2);
-}
-.empty-body {
-  color: var(--text-3);
-}
-
 /* ======================================================================
    Sections and rows
    ====================================================================== */
@@ -1068,61 +1062,7 @@ input[type="radio"] {
 }
 
 .board-group {
-  margin-bottom: var(--sp-2);
-}
-.board-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--card-goal-min-w), 1fr));
-  gap: var(--sp-3);
-}
-
-.goal-card {
-  height: 132px;
-  display: grid;
-  grid-template-rows: repeat(5, 20px);
-  row-gap: 4px;
-  align-content: center;
-  padding: 8px 12px;
-  border-radius: var(--radius-m);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-raised);
-  outline: none;
-  transition: background-color var(--dur-hover-out) linear;
-}
-:root[data-theme="light"] .goal-card {
-  border-color: var(--border);
-}
-.goal-card:hover {
-  background: var(--bg-hover);
-  transition-duration: 0ms;
-}
-.goal-card:focus-visible,
-.goal-card.selected {
-  box-shadow: inset 0 0 0 1px var(--select-edge);
-}
-.card-row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.card-title {
-  font-weight: 500;
-}
-/* Rows 3–4: left reading, right number in a fixed column, aligned across cards. */
-.card-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--sp-2);
-}
-.card-split .card-num {
-  min-width: 6ch;
-  text-align: right;
-}
-.card-foot .sep {
-  padding: 0 0.2em;
+  margin-bottom: var(--sp-3);
 }
 
 /* ---------- briefings ---------- */
@@ -1336,7 +1276,7 @@ input[type="radio"] {
 }
 .criterion.stale .criterion-title,
 .criterion.stale .criterion-cmd {
-  color: var(--text-4);
+  color: var(--text-3);
 }
 .col-result {
   color: var(--text-1);
@@ -1721,6 +1661,9 @@ input[type="radio"] {
   margin: 6px auto 10px;
   font-size: var(--fs-meta);
 }
+.trace-empty {
+  padding: 4px 12px;
+}
 .trace-row {
   display: grid;
   grid-template-columns: 48px 1fr;
@@ -2015,10 +1958,6 @@ input[type="radio"] {
   font-size: 11.5px;
   user-select: none;
 }
-.ln-click:hover {
-  color: var(--text-1);
-  background: var(--bg-hover);
-}
 /* The comment affordance: a "+" that appears on hover of the row. */
 .gutter {
   padding: 0 !important;
@@ -2119,6 +2058,7 @@ input[type="radio"] {
   padding-top: 14vh;
   background: oklch(0 0 0 / 0.16);
   animation: fade var(--dur-fast) var(--ease-out);
+  overflow: hidden;
 }
 @keyframes fade {
   from {
@@ -2191,6 +2131,7 @@ input[type="radio"] {
   background: transparent;
   text-align: left;
   color: var(--text-2);
+  white-space: nowrap;
 }
 .palette-item.selected {
   background: var(--bg-selected);
@@ -2212,7 +2153,11 @@ input[type="radio"] {
   white-space: nowrap;
 }
 .palette-empty {
-  padding: 12px;
+  display: grid;
+  gap: 2px;
+  padding: 12px 10px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
 }
 .palette-foot {
   display: flex;
@@ -2512,6 +2457,9 @@ input[type="radio"] {
   padding: 6px 0;
   min-width: 0;
 }
+.check-row > .col {
+  flex: 1 1 10em;
+}
 .check-mark {
   width: 14px;
   flex: 0 0 14px;
@@ -2524,7 +2472,11 @@ input[type="radio"] {
   color: var(--text-4);
 }
 .fix {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 2px 8px;
   border: 0;
   border-radius: var(--radius-s);
@@ -2535,9 +2487,472 @@ input[type="radio"] {
   background: var(--bg-selected);
 }
 
-/* ---------- spatial transition into and out of review ---------- */
+/* ---------- view transitions: a short crossfade between views, a longer one into review ---------- */
 
 ::view-transition-old(root),
 ::view-transition-new(root) {
+  animation-duration: var(--dur-view);
+  animation-timing-function: var(--ease-out);
+}
+:root[data-transition="space"]::view-transition-old(root),
+:root[data-transition="space"]::view-transition-new(root) {
   animation-duration: var(--dur-space);
+}
+
+/* ======================================================================
+   Board rows — the instrument lines of the overview
+   ====================================================================== */
+
+.overview-top {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.overview-top .quick {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+.overview-filter {
+  width: auto !important;
+  flex: 0 0 auto;
+  height: 32px !important;
+  max-width: 14em;
+}
+.board-queue {
+  display: grid;
+  gap: var(--sp-2);
+  max-width: 840px;
+}
+.board-rows {
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* One goal per line. Columns, left to right: glyph · title · live line ·
+   criteria · change · spend · age · identity · action. Fixed widths keep
+   every reading under the one above it. */
+.g-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(10em, 1fr) minmax(14em, 1.35fr) 11em 4.5em 7em 5em 11.5em 5em;
+  column-gap: var(--sp-3);
+  align-items: center;
+  height: var(--row-goal-h);
+  padding: 0 var(--sp-2) 0 var(--sp-1);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background-color var(--dur-hover-out) linear;
+}
+.g-row:hover {
+  background: var(--bg-hover);
+  transition-duration: 0ms;
+}
+.g-row.selected {
+  background: var(--bg-selected);
+  box-shadow: inset 2px 0 0 var(--text-3);
+}
+.g-row[data-new="true"] {
+  animation: arrive var(--dur-base) var(--ease-out) 1;
+}
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+.g-glyph {
+  display: inline-flex;
+  justify-content: center;
+}
+.g-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-1);
+  font-weight: 500;
+  text-align: left;
+}
+.g-title:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: 0;
+}
+/* The selected row is the focus indicator; no second box around the title. */
+.g-row.selected .g-title:focus-visible {
+  outline: none;
+}
+.g-live {
+  min-width: 0;
+}
+.g-live .live-line {
+  grid-template-columns: minmax(3.5em, max-content) minmax(0, 1fr);
+}
+.g-crit {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.criteria-bar.tiny .seg {
+  width: 8px;
+}
+.criteria-bar.tiny .meta {
+  font-size: var(--fs-hint);
+}
+.g-diff,
+.g-spend,
+.g-age {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+}
+.g-spend {
+  color: var(--text-2);
+}
+.g-id {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.g-id .sep {
+  padding: 0 0.25em;
+}
+.g-act {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.g-act .btn {
+  opacity: 0.75;
+}
+.g-row:hover .g-act .btn,
+.g-row.selected .g-act .btn {
+  opacity: 1;
+}
+/* Narrower windows: identity folds into the title's tooltip; the rest keeps its columns. */
+@media (max-width: 1240px) {
+  .g-row {
+    grid-template-columns: 14px minmax(10em, 1fr) minmax(12em, 1.3fr) 9em 5em 7em 5em 5em;
+  }
+  .g-id {
+    display: none;
+  }
+}
+
+/* ======================================================================
+   Empty, loading and failed states
+   ====================================================================== */
+
+.empty {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0;
+  max-width: 560px;
+  font-size: var(--fs-body);
+  color: var(--text-2);
+}
+.empty-inline {
+  padding: var(--sp-2) 0;
+}
+.empty-mark {
+  flex: 0 0 14px;
+  display: inline-flex;
+  justify-content: center;
+  padding-top: 5px;
+  color: var(--text-3);
+}
+.empty-loading .empty-mark {
+  color: var(--text-4);
+}
+.empty-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.empty-title {
+  color: var(--text-1);
+  font-weight: 500;
+}
+.empty-body {
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+}
+.empty-action {
+  margin-top: var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.loading .icon {
+  color: var(--text-4);
+}
+
+.boot-failed {
+  width: min(560px, 90vw);
+  display: grid;
+  gap: var(--sp-3);
+}
+.boot-failed .empty {
+  padding: 0;
+}
+.boot-error {
+  margin: 0;
+  max-height: 200px;
+}
+
+/* ======================================================================
+   Panels: the shortcut sheet, the activity log, the verification readout
+   ====================================================================== */
+
+.panel-wide {
+  width: min(760px, 94vw);
+  max-height: 80vh;
+  overflow: auto;
+}
+.overlay-top {
+  padding-top: 14vh;
+}
+.overlay:not(.overlay-top) {
+  padding-top: 10vh;
+}
+
+.keys-sheet {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4) var(--sp-8);
+}
+.keys-group {
+  display: grid;
+  gap: 1px;
+  align-content: start;
+}
+.keys-group-title {
+  margin-bottom: 4px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  font-weight: 500;
+  color: var(--text-3);
+}
+.keys-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 24px;
+}
+.keys-desc {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-1);
+}
+.keys-keys {
+  display: inline-flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+.keys-note {
+  margin-top: -4px;
+}
+
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.activity-list {
+  display: grid;
+  gap: 1px;
+  margin: 0 -6px;
+}
+.activity-row {
+  display: grid;
+  grid-template-columns: 5ch 14px minmax(0, 1fr) auto;
+  column-gap: var(--sp-2);
+  align-items: start;
+  padding: 4px 6px;
+  border-radius: var(--radius-s);
+}
+.activity-row:hover {
+  background: var(--bg-hover);
+}
+.activity-time {
+  font-size: var(--fs-hint);
+  line-height: 20px;
+  color: var(--text-3);
+}
+.activity-mark {
+  display: inline-flex;
+  justify-content: center;
+  padding-top: 5px;
+}
+.activity-text {
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-1);
+}
+.activity-goal {
+  margin-right: 6px;
+}
+
+.verify-head {
+  display: grid;
+  gap: 2px;
+}
+.verify-list {
+  display: grid;
+  gap: var(--sp-2);
+}
+.verify-item {
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.verify-item:last-child {
+  border-bottom: 0;
+}
+.verify-tail {
+  margin: 4px 0 0 22px;
+  max-height: 160px;
+}
+.review-verify {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border-radius: var(--radius-s);
+  padding: 2px 4px;
+  margin: -2px -4px;
+}
+.review-verify:hover {
+  background: var(--bg-hover);
+  text-decoration: none;
+}
+.icon-btn.pressed {
+  background: var(--bg-selected);
+  color: var(--text-1);
+}
+
+/* ======================================================================
+   Diff folds and the side-by-side layout
+   ====================================================================== */
+
+.gap-row td {
+  padding: 0 !important;
+}
+.gap-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 24px;
+  padding: 0 8px 0 4px;
+}
+.gap-buttons {
+  display: inline-flex;
+  gap: 2px;
+  width: 44px;
+  justify-content: center;
+}
+.gap-btn {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-2);
+}
+.gap-btn:hover {
+  background: var(--bg-selected);
+  color: var(--text-1);
+}
+.gap-header {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+.gap-count {
+  color: var(--text-3);
+  font-size: var(--fs-hint);
+  white-space: nowrap;
+}
+.gap-all {
+  font-size: var(--fs-hint);
+  color: var(--text-2);
+}
+.ln-btn {
+  width: 100%;
+  height: var(--lh-code);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+}
+.ln:hover {
+  color: var(--text-1);
+  background: var(--bg-hover);
+}
+.col-half {
+  width: calc(50% - 44px);
+}
+.diff-split .code {
+  padding-left: 8px !important;
+  border-left: 1px solid var(--border-subtle);
+}
+.diff-split .ln:first-child + .code {
+  border-left: 0;
+}
+.diff-split td.dl-add {
+  background: var(--diff-add-bg);
+}
+.diff-split td.dl-del {
+  background: var(--diff-del-bg);
+}
+.diff-split td.dl-blank {
+  background: var(--bg-inset);
+}
+.diff-split .dl.commented .ln:first-child {
+  box-shadow: inset 2px 0 0 var(--st-attention);
+}
+
+/* ======================================================================
+   Toast actions and the errors gauge
+   ====================================================================== */
+
+.toast-action {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-1);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.toast-action:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+.gauge-errors {
+  color: var(--text-1);
 }

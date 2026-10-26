@@ -173,18 +173,18 @@ export function NeedsYouMark(props: { title?: string }) {
 }
 
 /** ◇: worth noticing, no decision needed. Never coloured. */
-export function NoticeMark() {
+export function NoticeMark(props: { title?: string }) {
   return (
-    <svg class="glyph" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true">
+    <svg class="glyph" width="9" height="9" viewBox="0 0 10 10" role="img" aria-label={props.title ?? t("common.notice")}>
       <path d="M5 1 L9 5 L5 9 L1 5 Z" fill="none" stroke="currentColor" stroke-width="1.2" />
     </svg>
   );
 }
 
 /** ■: the verifier or a sentinel found something wrong. */
-export function DangerMark() {
+export function DangerMark(props: { title?: string }) {
   return (
-    <svg class="glyph mark-danger" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true">
+    <svg class="glyph mark-danger" width="9" height="9" viewBox="0 0 10 10" role="img" aria-label={props.title ?? t("common.problem")}>
       <rect x="1" y="1" width="8" height="8" fill="currentColor" />
     </svg>
   );
@@ -211,7 +211,15 @@ export type IconName =
   | "sliders"
   | "pulse"
   | "dot"
-  | "network";
+  | "network"
+  | "copy"
+  | "arrow-up"
+  | "arrow-down"
+  | "columns"
+  | "keyboard"
+  | "list"
+  | "folder"
+  | "expand";
 
 const PATHS: Record<IconName, () => JSX.Element> = {
   plus: () => <path d="M6 2.25 V9.75 M2.25 6 H9.75" />,
@@ -286,6 +294,29 @@ const PATHS: Record<IconName, () => JSX.Element> = {
       <path d="M1.5 6 H10.5 M6 1.5 C3.9 3.4 3.9 8.6 6 10.5 M6 1.5 C8.1 3.4 8.1 8.6 6 10.5" />
     </>
   ),
+  copy: () => (
+    <>
+      <rect x="4" y="4" width="6.5" height="6.5" />
+      <path d="M8 4 V1.5 H1.5 V8 H4" />
+    </>
+  ),
+  "arrow-up": () => <path d="M6 10 V2 M2.75 5.25 L6 2 L9.25 5.25" />,
+  "arrow-down": () => <path d="M6 2 V10 M2.75 6.75 L6 10 L9.25 6.75" />,
+  columns: () => (
+    <>
+      <rect x="1.5" y="2" width="9" height="8" />
+      <path d="M6 2 V10" />
+    </>
+  ),
+  keyboard: () => (
+    <>
+      <rect x="1" y="3" width="10" height="6.5" />
+      <path d="M3 5.25 H3.5 M5.25 5.25 H5.75 M7.5 5.25 H8 M3.5 7.5 H8.5" />
+    </>
+  ),
+  list: () => <path d="M1.5 3 H10.5 M1.5 6 H10.5 M1.5 9 H7.5" />,
+  folder: () => <path d="M1.5 3 H5 L6.25 4.25 H10.5 V9.75 H1.5 Z" />,
+  expand: () => <path d="M6 1.5 V10.5 M3.5 4 L6 1.5 L8.5 4 M3.5 8 L6 10.5 L8.5 8" />,
 };
 
 /** One of Tower's own line icons; 12px by default, 16px for toolbar buttons. */
@@ -335,12 +366,12 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
       stale: t("honesty.stale"),
       "obs-pass": `${t("honesty.observation")} · ${t("common.passed")}`,
       "obs-fail": `${t("honesty.observation")} · ${t("common.failed")}`,
-      pending: "",
+      pending: t("goal.awaitingVerify"),
       env: t("pause.verify_env_error"),
     })[props.kind];
   return (
-    <span class={`result result-${props.kind}`} title={label() || undefined}>
-      <Icon name={RESULT_ICON[props.kind]} size={props.kind.startsWith("obs") ? 12 : 10} label={label() || undefined} />
+    <span class={`result result-${props.kind}`} title={label()}>
+      <Icon name={RESULT_ICON[props.kind]} size={props.kind.startsWith("obs") ? 12 : 10} label={label()} />
     </span>
   );
 }
@@ -352,7 +383,7 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
 export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean }) {
   return (
     <Show when={props.pin}>
-      <span class="seal" classList={{ "seal-compact": !!props.compact }}>
+      <span class="seal" classList={{ "seal-compact": !!props.compact }} title={t("honesty.sealTitle", { pin: props.pin!.slice(0, 7) })}>
         <svg class="glyph" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
           <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.25" />

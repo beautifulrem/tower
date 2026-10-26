@@ -15,7 +15,7 @@ import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
 import { ago, count } from "../lib/format";
 import { t } from "../lib/i18n";
-import { isApproveOption, isDestructiveOption, isRejectOption } from "../lib/labels";
+import { approves, optionTone } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, state } from "../lib/store";
 import { NeedsYouMark, Seal } from "./Glyph";
@@ -33,19 +33,21 @@ function bareTitle(title: string): string {
 }
 
 /** The one armed destructive option, shared so the keyboard and the mouse agree. */
-const [armed, setArmed] = createSignal<{ item: string; option: string; until: number } | null>(null);
+const [armed, setArmed] = createSignal<{ item: string; option: number; until: number } | null>(null);
 let armTimer: number | undefined;
 export const ARM_MS = 2000;
 
 /**
- * Chooses an option on an item. Destructive options arm on the first call
- * and send on the second within two seconds. Returns true when sent.
+ * Chooses option `index` on an item. Destructive options arm on the first
+ * call and send on the second within two seconds. Returns true when sent.
  */
-export async function chooseOption(item: InboxItem, option: string, text = ""): Promise<boolean> {
-  if (isDestructiveOption(option)) {
+export async function chooseOption(item: InboxItem, index: number, text = ""): Promise<boolean> {
+  const option = item.options[index];
+  if (option === undefined) return false;
+  if (optionTone(item, index) === "destructive") {
     const a = armed();
-    if (!a || a.item !== item.id || a.option !== option || a.until < Date.now()) {
-      setArmed({ item: item.id, option, until: Date.now() + ARM_MS });
+    if (!a || a.item !== item.id || a.option !== index || a.until < Date.now()) {
+      setArmed({ item: item.id, option: index, until: Date.now() + ARM_MS });
       clearTimeout(armTimer);
       armTimer = window.setTimeout(() => setArmed(null), ARM_MS);
       return false;
@@ -53,22 +55,12 @@ export async function chooseOption(item: InboxItem, option: string, text = ""): 
     setArmed(null);
     clearTimeout(armTimer);
   }
-  // Assumptions: approve and reject each carry the note. The supervisor
-  // reads any text other than the approve label as a rejection with a
-  // note; a note on approval travels as a steer instead.
-  if (item.kind === "assumption") {
-    if (isApproveOption(option)) {
-      const ok = await act(() => api.answer(item.id, option));
-      if (ok === undefined) return false;
-      if (text.trim()) await act(() => api.steer(item.goal_id, text.trim()));
-      return true;
-    }
-    if (isRejectOption(option)) return (await act(() => api.answer(item.id, text.trim() || option))) !== undefined;
-  }
+  // Assumptions carry the note with either verdict.
+  if (item.kind === "assumption") return (await act(() => api.answerAssumption(item.id, approves(item, index), text.trim()))) !== undefined;
   return (await act(() => api.answer(item.id, option))) !== undefined;
 }
 
-export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean }) {
+export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean; ref?: (el: HTMLElement) => void }) {
   const [text, setText] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [leaving, setLeaving] = createSignal(false);
@@ -79,14 +71,14 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   const [tick, setTick] = createSignal(Date.now());
   const ticker = window.setInterval(() => armed() && setTick(Date.now()), 100);
   onCleanup(() => clearInterval(ticker));
-  const armedFor = (opt: string) => {
+  const armedFor = (i: number) => {
     const a = armed();
-    return a && a.item === it().id && a.option === opt && a.until > tick() ? Math.ceil((a.until - tick()) / 1000) : null;
+    return a && a.item === it().id && a.option === i && a.until > tick() ? Math.ceil((a.until - tick()) / 1000) : null;
   };
 
-  const send = async (option: string) => {
+  const send = async (i: number) => {
     setBusy(true);
-    const sent = await chooseOption(it(), option, text());
+    const sent = await chooseOption(it(), i, text());
     setBusy(false);
     if (sent) setLeaving(true);
   };
@@ -101,9 +93,12 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
 
   return (
     <article
+      ref={props.ref}
       class="decision"
       classList={{ focused: !!props.focused, quiet: !!props.quiet && !props.focused, leaving: leaving() }}
       data-new={fresh ? "true" : undefined}
+      tabindex="-1"
+      aria-label={`${kindLabel(it().kind)} · ${it().goal_id} · ${bareTitle(it().title)}`}
     >
       <header class="decision-head halt">
         <NeedsYouMark />
@@ -157,16 +152,17 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
           <div class="decision-actions">
             <For each={it().options}>
               {(opt, i) => {
-                const destructive = isDestructiveOption(opt);
-                const left = () => armedFor(opt);
+                const tone = () => optionTone(it(), i());
+                const left = () => armedFor(i());
                 return (
                   <Button
-                    variant={i() === 0 ? "primary" : destructive ? "danger" : "default"}
+                    variant={tone() === "primary" ? "primary" : tone() === "destructive" ? "danger" : "default"}
                     class={left() ? "armed" : ""}
                     busy={busy()}
-                    onClick={() => void send(opt)}
+                    onClick={() => void send(i())}
                     kbd={props.focused && i() < 9 ? String(i() + 1) : undefined}
-                    title={destructive ? t("decision.pressTwice") : undefined}
+                    title={tone() === "destructive" ? t("decision.pressTwice") : undefined}
+                    aria-live={left() ? "polite" : undefined}
                   >
                     {left() ? t("decision.pressAgain", { s: left()! }) : opt}
                   </Button>
@@ -179,6 +175,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <textarea
                 ref={(el) => autogrow(el, 1, 6)}
                 rows={1}
+                aria-label={isAssumption() ? t("decision.assumptionNotePlaceholder") : it().kind === "question" ? t("decision.answerPlaceholder") : t("decision.notePlaceholder")}
                 placeholder={
                   isAssumption()
                     ? t("decision.assumptionNotePlaceholder")

@@ -41,6 +41,7 @@ export function Sidebar() {
     <button
       class="side-row side-goal"
       classList={{ active: activeId() === props.g.id, ended: isEnded(props.g) }}
+      aria-current={activeId() === props.g.id ? "page" : undefined}
       onClick={() => go({ name: "goal", id: props.g.id })}
       title={`${props.g.id} ${props.g.title}`}
       aria-label={`${props.g.title}, ${t(`state.${props.g.state}`)}${props.g.needs_you > 0 ? `, ${t("common.needsYou")}` : ""}`}
@@ -59,14 +60,14 @@ export function Sidebar() {
     <nav class="sidebar" aria-label={t("sidebar.label")}>
       <div class="sidebar-drag" data-tauri-drag-region />
       <div class="side-top">
-        <button class="side-row" classList={{ active: route().name === "new" }} onClick={() => go({ name: "new" })}>
+        <button class="side-row" classList={{ active: route().name === "new" }} aria-current={route().name === "new" ? "page" : undefined} onClick={() => go({ name: "new" })}>
           <span class="side-icon">
             <Icon name="plus" />
           </span>
           <span class="grow">{t("app.newGoal")}</span>
           <Kbd k="mod+n" />
         </button>
-        <button class="side-row" classList={{ active: route().name === "inbox" }} onClick={() => go({ name: "inbox" })}>
+        <button class="side-row" classList={{ active: route().name === "inbox" }} aria-current={route().name === "inbox" ? "page" : undefined} onClick={() => go({ name: "inbox" })}>
           <span class="side-icon">
             <Show when={blocking() > 0} fallback={<Icon name="inbox" />}>
               <NeedsYouMark />
@@ -86,7 +87,7 @@ export function Sidebar() {
             <span class="num side-count t1">{toReview()}</span>
           </button>
         </Show>
-        <button class="side-row" classList={{ active: route().name === "overview" }} onClick={() => go({ name: "overview" })}>
+        <button class="side-row" classList={{ active: route().name === "overview" }} aria-current={route().name === "overview" ? "page" : undefined} onClick={() => go({ name: "overview" })}>
           <span class="side-icon">
             <Icon name="grid" />
           </span>
@@ -128,7 +129,7 @@ export function Sidebar() {
       </div>
 
       <div class="side-foot">
-        <button class="side-row" classList={{ active: route().name === "settings" }} onClick={() => go({ name: "settings" })}>
+        <button class="side-row" classList={{ active: route().name === "settings" }} aria-current={route().name === "settings" ? "page" : undefined} onClick={() => go({ name: "settings" })}>
           <span class="side-icon">
             <Icon name="sliders" />
           </span>

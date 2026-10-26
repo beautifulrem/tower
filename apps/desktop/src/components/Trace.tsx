@@ -13,6 +13,7 @@ import { pauseLabel, runOutcomeLabel, runPurposeLabel, stateLabel } from "../lib
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark, ResultMark } from "./Glyph";
 import { Claim } from "./Honesty";
 import { PrLine } from "./Pr";
+import { Empty } from "./ui";
 import { act, onTrace, refreshProjects, state } from "../lib/store";
 
 type Filter = "all" | "tools" | "words" | "facts" | "errors";
@@ -60,6 +61,7 @@ export function Trace(props: { id: string; live?: boolean }) {
   const [entries, setEntries] = createSignal<TraceEntry[]>([]);
   const [filter, setFilter] = createSignal<Filter>("all");
   const [more, setMore] = createSignal(true);
+  const [loaded, setLoaded] = createSignal(false);
   let scroller!: HTMLDivElement;
 
   const load = async () => {
@@ -71,6 +73,7 @@ export function Trace(props: { id: string; live?: boolean }) {
 
   onMount(async () => {
     await load();
+    setLoaded(true);
     scroller.scrollTop = scroller.scrollHeight;
   });
   // Live entries are appended in 100ms batches; one array copy per batch.
@@ -93,12 +96,13 @@ export function Trace(props: { id: string; live?: boolean }) {
     clearTimeout(flush);
   });
 
+  const shown = () => entries().filter((e) => matches(e, filter()));
   return (
     <div class="trace">
-      <div class="trace-filters">
+      <div class="trace-filters" role="tablist" aria-label={t("trace.filterLabel")}>
         <For each={filters}>
           {(f) => (
-            <button class="tab" classList={{ active: filter() === f }} onClick={() => setFilter(f)}>
+            <button class="tab" role="tab" aria-selected={filter() === f} classList={{ active: filter() === f }} onClick={() => setFilter(f)}>
               {t(`trace.${f}`)}
             </button>
           )}
@@ -108,13 +112,20 @@ export function Trace(props: { id: string; live?: boolean }) {
           <span class="meta">{t("trace.live")}</span>
         </Show>
       </div>
-      <div class="trace-scroll" ref={scroller}>
+      <div class="trace-scroll" ref={scroller} role="log" aria-live="off">
         <Show when={more()}>
           <button class="trace-more link" onClick={load}>
             {t("trace.loadEarlier")}
           </button>
         </Show>
-        <For each={entries().filter((e) => matches(e, filter()))}>{(e) => <TraceRow e={e} />}</For>
+        <Show when={loaded() && shown().length === 0}>
+          <div class="trace-empty">
+            <Empty title={entries().length === 0 ? t("trace.emptyTitle") : t(`trace.emptyFilter_${filter()}`)} inline>
+              {entries().length === 0 ? t("trace.emptyBody") : ""}
+            </Empty>
+          </div>
+        </Show>
+        <For each={shown()}>{(e) => <TraceRow e={e} />}</For>
       </div>
     </div>
   );
@@ -186,7 +197,7 @@ function TraceRow(props: { e: TraceEntry }) {
               const c = x() as Extract<TraceEntry["event"], { kind: "injected" }>;
               return (
                 <div class="injected">
-                  <button class="chip chip-fact" onClick={() => setOpen((o) => !o)}>
+                  <button class="chip chip-fact" onClick={() => setOpen((o) => !o)} aria-expanded={open()}>
                     <Icon name="harness" size={10} />
                     {t("trace.injected")} · {c.channel === "steer" ? t("trace.steer") : t("trace.message")}
                     <Icon name={open() ? "caret-down" : "caret-right"} size={10} />
@@ -213,7 +224,7 @@ function TraceRow(props: { e: TraceEntry }) {
                     <span class="col-pin">
                       <Icon name="harness" size={10} />@{short(c.pin)}
                     </span>
-                    <button class="link meta" onClick={() => setOpen((o) => !o)}>
+                    <button class="link meta" onClick={() => setOpen((o) => !o)} aria-expanded={open()}>
                       {open() ? t("trace.hideOutput") : t("trace.output")}
                     </button>
                   </div>

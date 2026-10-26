@@ -6,7 +6,7 @@
 import { For, Show, createResource, createSignal, onMount } from "solid-js";
 
 import { DangerMark, NoticeMark } from "../components/Glyph";
-import { Button, Field, Select } from "../components/ui";
+import { Button, Empty, Field, Loading, Select } from "../components/ui";
 import type { ProjectView } from "../gen/ProjectView";
 import type { Settings as SettingsT } from "../gen/Settings";
 import { api } from "../lib/api";
@@ -14,7 +14,7 @@ import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { ask } from "../lib/native";
 import { act, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
-import { type ThemeChoice, setThemeChoice, themeChoice } from "../lib/theme";
+import { type SizeChoice, type ThemeChoice, setSizeChoice, setThemeChoice, sizeChoice, themeChoice } from "../lib/theme";
 import { pickProject } from "./Welcome";
 
 /** Thinking levels; call inside a reactive scope so "Pi default" follows the locale. */
@@ -51,6 +51,7 @@ export function Settings() {
   const [s, setS] = createSignal<SettingsT | null>(null);
   const [models] = createResource(() => api.models().catch(() => []));
   const [theme, setTheme] = createSignal<ThemeChoice>(themeChoice());
+  const [size, setSize] = createSignal<SizeChoice>(sizeChoice());
   const saved = useSavedStamp();
   onMount(async () => setS(await api.settings()));
 
@@ -131,7 +132,7 @@ export function Settings() {
         </For>
       </section>
 
-      <Show when={s()}>
+      <Show when={s()} fallback={<Loading text={t("settings.loading")} />}>
         <section class="settings-block" onFocusOut={() => void commit()}>
           <div class="settings-head">
             <h2 class="section-title">{t("settings.engineDefaults")}</h2>
@@ -200,30 +201,61 @@ export function Settings() {
             {t("settings.addRepo")}
           </Button>
         </div>
-        <For each={state.projects} fallback={<p class="meta">{t("settings.noProjects")}</p>}>
+        <For each={state.projects} fallback={<Empty title={t("settings.noProjects")} inline>{t("settings.noProjectsBody")}</Empty>}>
           {(p) => <ProjectRow p={p} />}
         </For>
       </section>
 
       <section class="settings-block">
         <h2 class="section-title">{t("settings.appearance")}</h2>
-        <div class="row" style={{ gap: "20px" }}>
-          <For each={["system", "light", "dark"] as ThemeChoice[]}>
-            {(choice) => (
-              <label class="radio" style={{ "margin-bottom": "0" }}>
-                <input
-                  type="radio"
-                  name="theme"
-                  checked={theme() === choice}
-                  onChange={() => {
-                    setThemeChoice(choice);
-                    setTheme(choice);
-                  }}
-                />
-                <span>{{ system: t("settings.themeSystem"), light: t("settings.themeLight"), dark: t("settings.themeDark") }[choice]}</span>
-              </label>
-            )}
-          </For>
+        <div class="settings-form">
+          <div class="field">
+            <span class="field-label" id="theme-label">
+              {t("settings.theme")}
+            </span>
+            <div class="row" style={{ gap: "20px" }} role="radiogroup" aria-labelledby="theme-label">
+              <For each={["system", "light", "dark"] as ThemeChoice[]}>
+                {(choice) => (
+                  <label class="radio" style={{ "margin-bottom": "0" }}>
+                    <input
+                      type="radio"
+                      name="theme"
+                      checked={theme() === choice}
+                      onChange={() => {
+                        setThemeChoice(choice);
+                        setTheme(choice);
+                      }}
+                    />
+                    <span>{{ system: t("settings.themeSystem"), light: t("settings.themeLight"), dark: t("settings.themeDark") }[choice]}</span>
+                  </label>
+                )}
+              </For>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field-label" id="size-label">
+              {t("settings.size")}
+            </span>
+            <div class="row" style={{ gap: "20px" }} role="radiogroup" aria-labelledby="size-label">
+              <For each={["compact", "standard", "large"] as SizeChoice[]}>
+                {(choice) => (
+                  <label class="radio" style={{ "margin-bottom": "0" }}>
+                    <input
+                      type="radio"
+                      name="size"
+                      checked={size() === choice}
+                      onChange={() => {
+                        setSizeChoice(choice);
+                        setSize(choice);
+                      }}
+                    />
+                    <span>{{ compact: t("settings.sizeCompact"), standard: t("settings.sizeStandard"), large: t("settings.sizeLarge") }[choice]}</span>
+                  </label>
+                )}
+              </For>
+            </div>
+            <span class="field-hint">{t("settings.sizeHint")}</span>
+          </div>
         </div>
       </section>
     </div>

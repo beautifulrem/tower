@@ -5,6 +5,7 @@ import type { GoalSummary } from "../gen/GoalSummary";
 import type { InboxItem } from "../gen/InboxItem";
 import type { LifecycleState } from "../gen/LifecycleState";
 import type { Mode } from "../gen/Mode";
+import type { OptionTone } from "../gen/OptionTone";
 import type { PauseReason } from "../gen/PauseReason";
 import { t } from "./i18n";
 
@@ -67,17 +68,16 @@ export function isBlocking(item: InboxItem): boolean {
 }
 
 /**
- * Options the supervisor offers are plain labels in the language the item
- * was created in (tower-core `Choice`). The destructive ones never fire
- * from a single key: abandoning a goal, overriding a sentinel.
+ * How the supervisor wants an option presented (tower-core `Choice::tone`):
+ * one tone per option, in order. Destructive options never fire from a
+ * single key: abandoning a goal, overriding a sentinel.
  */
-const DESTRUCTIVE = /^(放弃这个目标|Abandon this goal|我已确认，进入评审|I've checked, go to review)$/i;
-const APPROVE = /^(批准|Approve)$/i;
-const REJECT = /^(驳回|Reject)$/i;
+export function optionTone(item: InboxItem, index: number): OptionTone {
+  return item.tones[index] ?? (index === 0 ? "primary" : "neutral");
+}
 
-export const isDestructiveOption = (opt: string): boolean => DESTRUCTIVE.test(opt.trim());
-export const isApproveOption = (opt: string): boolean => APPROVE.test(opt.trim());
-export const isRejectOption = (opt: string): boolean => REJECT.test(opt.trim());
+/** On an assumption card the primary option approves; any other rejects. */
+export const approves = (item: InboxItem, index: number): boolean => optionTone(item, index) === "primary";
 
 /** Whether the environment reports an issue of this kind. */
 export function hasIssue(env: EnvironmentStatus | null | undefined, kind: EnvIssueKind): boolean {

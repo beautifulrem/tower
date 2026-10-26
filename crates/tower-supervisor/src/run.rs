@@ -318,10 +318,27 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
     };
 
     let run_no = goal.run_no + 1;
+    // Where this run starts from, kept (as a ref, so git never collects it)
+    // for rolling back. Best effort: a run is not refused for want of it.
+    let start_pin = match goal.base_commit.clone() {
+        Some(base) => {
+            let git = inner.git.clone();
+            let ws2 = ws.clone();
+            tokio::task::spawn_blocking(move || -> Option<String> {
+                let snap = git.snapshot(&ws2, &base).ok()?;
+                git.keep(&ws2, &format!("refs/tower/runs/{run_no}"), &snap.pin).ok()?;
+                Some(snap.pin)
+            })
+            .await
+            .ok()
+            .flatten()
+        }
+        None => None,
+    };
     if goal.state != LifecycleState::Running {
         inner.transition(goal_id, Transition::RunStarted, None, purpose)?;
     }
-    inner.append(goal_id, EventKind::RunStarted { run_no, purpose: purpose.into() })?;
+    inner.append(goal_id, EventKind::RunStarted { run_no, purpose: purpose.into(), start_pin })?;
     inner.set_mode(goal_id, Mode::Starting)?;
 
     let run = Arc::new(Run {

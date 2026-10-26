@@ -86,6 +86,11 @@ pub enum EventKind {
     RunStarted {
         run_no: u32,
         purpose: String,
+        /// The workspace snapshot when the run began, kept so the human can
+        /// roll back to it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        start_pin: Option<String>,
     },
     RunEnded {
         run_no: u32,

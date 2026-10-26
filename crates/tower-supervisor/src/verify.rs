@@ -888,9 +888,8 @@ impl<'a> Bench<'a> {
                 if held_files.is_empty() { self.criteria.as_deref() } else { self.held_out_profile.as_deref() };
             let mut tripped = Vec::new();
             for (c, command, timeout) in &proving {
-                let runnable = !canary.files.is_empty()
-                    && !paths_gone(&self.dir, command)
-                    && !(held_files.is_empty() && names_held_out(&self.holdout, command));
+                let held_out_missing = held_files.is_empty() && names_held_out(&self.holdout, command);
+                let runnable = !canary.files.is_empty() && !paths_gone(&self.dir, command) && !held_out_missing;
                 let state = if runnable {
                     canary.clear();
                     let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;

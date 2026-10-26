@@ -141,7 +141,12 @@ pub async fn review_claim(inner: &Arc<Inner>, goal: &str, claim_id: &str, approv
     Ok(())
 }
 
-pub async fn request_changes(inner: &Arc<Inner>, goal: &str, summary: &str, comments: Vec<ReviewComment>) -> Result<()> {
+pub async fn request_changes(
+    inner: &Arc<Inner>,
+    goal: &str,
+    summary: &str,
+    comments: Vec<ReviewComment>,
+) -> Result<()> {
     let rec = inner.store(|s| s.goal(goal))?;
     if !matches!(rec.state, LifecycleState::InReview | LifecycleState::Accepted) {
         return Err(invalid("只有待验收或已验收的目标可以要求修改"));
@@ -170,7 +175,11 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
         return Err(invalid("只有待验收的目标可以验收"));
     }
     let detail = inner.store(|s| s.detail(goal))?;
-    if let Some(c) = detail.criteria.iter().find(|c| matches!(c.criterion.kind, tower_core::CriterionKind::Human) && !c.human_checked) {
+    if let Some(c) = detail
+        .criteria
+        .iter()
+        .find(|c| matches!(c.criterion.kind, tower_core::CriterionKind::Human) && !c.human_checked)
+    {
         return Err(invalid(format!("人工标准 {} 还没有勾选", c.criterion.id)));
     }
     let (Some(ws), Some(base), Some(pin)) = (rec.workspace.clone(), rec.base_commit.clone(), rec.pin.clone()) else {
@@ -193,9 +202,10 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
     let message = seal_message(&rec, &pin, has_machine);
     let git = inner.git.clone();
     let root = PathBuf::from(&rec.project_root);
-    let (written, commit) = tokio::task::spawn_blocking(move || git.seal(&root, Path::new(&ws), &base, &pin, &branch, &message))
-        .await
-        .map_err(|e| invalid(e.to_string()))??;
+    let (written, commit) =
+        tokio::task::spawn_blocking(move || git.seal(&root, Path::new(&ws), &base, &pin, &branch, &message))
+            .await
+            .map_err(|e| invalid(e.to_string()))??;
     inner.append(goal, EventKind::BranchWritten { branch: written.clone(), commit })?;
     inner.transition(goal, Transition::Accept, None, "")?;
     inner.withdraw(goal, &[InboxKind::ReviewReady, InboxKind::Assumption], "已验收");
@@ -218,10 +228,8 @@ fn seal_message(rec: &GoalRecord, pin: &str, verified: bool) -> String {
 }
 
 fn slug(title: &str) -> String {
-    let s: String = title
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
-        .collect();
+    let s: String =
+        title.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' }).collect();
     let s = s.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");
     let s: String = s.chars().take(32).collect();
     if s.is_empty() { "goal".into() } else { s }
@@ -236,7 +244,8 @@ pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
         let EventKind::BranchWritten { commit, .. } = entry.event else { continue };
         let git = inner.git.clone();
         let (root, base) = (PathBuf::from(&g.project_root), g.base_branch.clone());
-        let merged = tokio::task::spawn_blocking(move || git.is_integrated(&root, &base, &commit)).await.unwrap_or(false);
+        let merged =
+            tokio::task::spawn_blocking(move || git.is_integrated(&root, &base, &commit)).await.unwrap_or(false);
         if merged {
             inner.transition(&g.id, Transition::Integrated, None, "在本地基线分支中观测到合入")?;
         }
@@ -255,9 +264,10 @@ pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
 /// Lists the models the user's Pi can use, cached for ten minutes.
 pub async fn models(inner: &Arc<Inner>) -> Result<Vec<ModelInfo>> {
     if let Some((at, list)) = inner.models.lock().expect("models lock").as_ref()
-        && at.elapsed() < Duration::from_secs(600) {
-            return Ok(list.clone());
-        }
+        && at.elapsed() < Duration::from_secs(600)
+    {
+        return Ok(list.clone());
+    }
     let program = inner.pi_program().ok_or_else(|| invalid("没有找到 pi"))?;
     let tmp = inner.paths.tmp("_models");
     std::fs::create_dir_all(&tmp)?;

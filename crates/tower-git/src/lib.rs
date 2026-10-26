@@ -131,7 +131,13 @@ impl Git {
 
     /// Creates the goal's satellite at `ws` from `base_branch` of the user's
     /// repository and returns the base commit.
-    pub fn prepare_workspace(&self, project_root: &Path, base_branch: &str, ws: &Path, goal_id: &str) -> Result<String> {
+    pub fn prepare_workspace(
+        &self,
+        project_root: &Path,
+        base_branch: &str,
+        ws: &Path,
+        goal_id: &str,
+    ) -> Result<String> {
         let base = self.resolve(project_root, base_branch)?;
         if ws.exists() {
             return Err(GitError::Invalid(format!("工作区已存在：{}", ws.display())));
@@ -257,7 +263,14 @@ impl Git {
         Ok((name, commit))
     }
 
-    fn commit_tree_with_message(&self, ws: &Path, tree: &str, base: &str, message: &str, who: &Identity) -> Result<String> {
+    fn commit_tree_with_message(
+        &self,
+        ws: &Path,
+        tree: &str,
+        base: &str,
+        message: &str,
+        who: &Identity,
+    ) -> Result<String> {
         Ok(self
             .run_with(ws, &["commit-tree", tree, "-p", base, "-m", message], |c| {
                 c.env("GIT_AUTHOR_NAME", &who.name)

@@ -28,9 +28,7 @@ impl Paths {
         if let Some(home) = std::env::var_os("TOWER_HOME") {
             return PathBuf::from(home);
         }
-        directories::BaseDirs::new()
-            .map(|d| d.home_dir().join(".tower"))
-            .unwrap_or_else(|| PathBuf::from(".tower"))
+        directories::BaseDirs::new().map(|d| d.home_dir().join(".tower")).unwrap_or_else(|| PathBuf::from(".tower"))
     }
 
     pub fn ensure(&self) -> std::io::Result<()> {

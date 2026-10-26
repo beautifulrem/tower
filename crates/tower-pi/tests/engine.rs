@@ -26,7 +26,9 @@ async fn a_run_streams_events_and_round_trips_a_dialog() {
 
     engine.prompt("go").await.unwrap();
     assert_eq!(next_event(&mut rx).await, EngineOutput::Event(PiEvent::AgentStart));
-    assert!(matches!(next_event(&mut rx).await, EngineOutput::Event(PiEvent::ToolStart { tool, .. }) if tool == "bash"));
+    assert!(
+        matches!(next_event(&mut rx).await, EngineOutput::Event(PiEvent::ToolStart { tool, .. }) if tool == "bash")
+    );
 
     // U+2028 inside a JSON string must not split the record.
     let EngineOutput::Event(PiEvent::ToolEnd { result, .. }) = next_event(&mut rx).await else { panic!() };

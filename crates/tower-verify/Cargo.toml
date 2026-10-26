@@ -4,7 +4,6 @@ description = "Runs acceptance criteria for Tower in clean checkouts: process gr
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
 
 [dependencies]
 tokio.workspace = true

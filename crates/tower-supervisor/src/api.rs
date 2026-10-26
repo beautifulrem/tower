@@ -1,9 +1,9 @@
 //! Inputs and updates crossing the UI boundary.
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use tower_core::contract::Contract;
 use tower_core::view::{GoalSummary, InboxItem, ProjectView, TraceEntry};
+use ts_rs::TS;
 
 #[derive(Debug, Clone, Deserialize, TS)]
 #[ts(export)]
@@ -39,13 +39,27 @@ pub enum ToastLevel {
 #[serde(rename_all = "snake_case", tag = "type")]
 #[ts(export)]
 pub enum UiUpdate {
-    Goal { goal: GoalSummary },
-    Inbox { items: Vec<InboxItem> },
-    Trace { entry: TraceEntry },
+    Goal {
+        goal: GoalSummary,
+    },
+    Inbox {
+        items: Vec<InboxItem>,
+    },
+    Trace {
+        entry: TraceEntry,
+    },
     /// Assistant text being streamed, for Watch mode. Not persisted.
-    Stream { goal_id: String, text: String },
-    Projects { projects: Vec<ProjectView> },
-    Toast { level: ToastLevel, text: String },
+    Stream {
+        goal_id: String,
+        text: String,
+    },
+    Projects {
+        projects: Vec<ProjectView>,
+    },
+    Toast {
+        level: ToastLevel,
+        text: String,
+    },
 }
 
 pub trait UiSink: Send + Sync + 'static {

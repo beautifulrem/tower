@@ -34,7 +34,12 @@ pub struct RunSpec {
 }
 
 impl RunSpec {
-    pub fn new(command: impl Into<String>, cwd: impl Into<PathBuf>, env: Vec<(String, String)>, timeout: Duration) -> Self {
+    pub fn new(
+        command: impl Into<String>,
+        cwd: impl Into<PathBuf>,
+        env: Vec<(String, String)>,
+        timeout: Duration,
+    ) -> Self {
         Self { command: command.into(), cwd: cwd.into(), env, timeout, shell: PathBuf::from("/bin/sh") }
     }
 }
@@ -113,7 +118,12 @@ pub async fn run(spec: &RunSpec, cancel: &Cancel) -> RunResult {
     let started = Instant::now();
     let elapsed = |s: Instant| s.elapsed().as_millis() as i64;
     if cancel.is_cancelled() {
-        return RunResult { termination: Termination::Cancelled, duration_ms: 0, output_tail: String::new(), truncated: false };
+        return RunResult {
+            termination: Termination::Cancelled,
+            duration_ms: 0,
+            output_tail: String::new(),
+            truncated: false,
+        };
     }
 
     let mut cmd = Command::new(&spec.shell);
@@ -226,7 +236,12 @@ mod tests {
     use super::*;
 
     fn spec(cmd: &str, timeout_ms: u64) -> RunSpec {
-        RunSpec::new(cmd, std::env::temp_dir(), vec![("PATH".into(), "/usr/bin:/bin".into())], Duration::from_millis(timeout_ms))
+        RunSpec::new(
+            cmd,
+            std::env::temp_dir(),
+            vec![("PATH".into(), "/usr/bin:/bin".into())],
+            Duration::from_millis(timeout_ms),
+        )
     }
 
     #[tokio::test]

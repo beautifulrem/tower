@@ -48,7 +48,9 @@ pub fn contract_brief(title: &str, c: &Contract) -> String {
     }
     for cr in &c.criteria {
         match &cr.kind {
-            CriterionKind::Exec { command, .. } => s.push_str(&format!("- {} {}: `{}` exits 0\n", cr.id, cr.title, command)),
+            CriterionKind::Exec { command, .. } => {
+                s.push_str(&format!("- {} {}: `{}` exits 0\n", cr.id, cr.title, command))
+            }
             CriterionKind::Human => s.push_str(&format!("- {} {} (checked by the human)\n", cr.id, cr.title)),
         }
     }
@@ -70,7 +72,10 @@ pub fn contract_brief(title: &str, c: &Contract) -> String {
 }
 
 pub fn initial(title: &str, c: &Contract) -> String {
-    format!("{}\nStart by reading the relevant code. Log the cause or plan as soon as you have one.", contract_brief(title, c))
+    format!(
+        "{}\nStart by reading the relevant code. Log the cause or plan as soon as you have one.",
+        contract_brief(title, c)
+    )
 }
 
 /// One failed criterion, as evidence for rework.
@@ -96,9 +101,8 @@ fn tail_chars(s: &str, n: usize) -> &str {
 }
 
 pub fn rework(cycle: u32, max: u32, failures: &[Failure]) -> String {
-    let mut s = format!(
-        "Tower verified your submission in a clean checkout and it did not pass (rework {cycle}/{max}).\n"
-    );
+    let mut s =
+        format!("Tower verified your submission in a clean checkout and it did not pass (rework {cycle}/{max}).\n");
     for f in failures {
         s.push_str(&format!(
             "\n### {} {} — `{}` exited {}\n```\n{}\n```\n",

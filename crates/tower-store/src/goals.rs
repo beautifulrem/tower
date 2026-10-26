@@ -183,7 +183,15 @@ impl Store {
         let mut out = Vec::new();
         for row in rows {
             let (rec, project_name, live_line, diffstat, created_at, updated_at, last_viewed_at) = row?;
-            out.push(self.build_summary(rec, project_name, live_line, diffstat, created_at, updated_at, last_viewed_at)?);
+            out.push(self.build_summary(
+                rec,
+                project_name,
+                live_line,
+                diffstat,
+                created_at,
+                updated_at,
+                last_viewed_at,
+            )?);
         }
         Ok(out)
     }
@@ -256,7 +264,9 @@ impl Store {
         let human: Vec<&str> = rec.contract.human_criteria().map(|c| c.id.as_str()).collect();
         let mut p = Progress { machine: machine.len() as u32, human: human.len() as u32, ..Default::default() };
         let mut stmt = self.conn.prepare("SELECT criterion, passed, pin FROM criterion_results WHERE goal_id = ?1")?;
-        for row in stmt.query_map([&rec.id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?, r.get::<_, String>(2)?)))? {
+        for row in
+            stmt.query_map([&rec.id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?, r.get::<_, String>(2)?)))?
+        {
             let (c, passed, pin) = row?;
             if passed && machine.contains(&c.as_str()) && rec.pin.as_deref() == Some(pin.as_str()) {
                 p.verified += 1;
@@ -307,9 +317,9 @@ impl Store {
         }
         let mut observed = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare("SELECT criterion, passed, at FROM observations WHERE goal_id = ?1")?;
-        for row in stmt.query_map([id], |r| {
-            Ok((r.get::<_, String>(0)?, ObservationView { passed: r.get(1)?, at: r.get(2)? }))
-        })? {
+        for row in stmt
+            .query_map([id], |r| Ok((r.get::<_, String>(0)?, ObservationView { passed: r.get(1)?, at: r.get(2)? })))?
+        {
             let (c, v) = row?;
             observed.insert(c, v);
         }
@@ -456,9 +466,7 @@ mod tests {
         let (mut s, _, id) = seeded();
         assert_eq!(id, "G-0001");
         let g = s.goal(&id).unwrap();
-        let g2 = s
-            .create_goal(NewGoal { project_id: g.project_id, title: "b".into(), contract: g.contract })
-            .unwrap();
+        let g2 = s.create_goal(NewGoal { project_id: g.project_id, title: "b".into(), contract: g.contract }).unwrap();
         assert_eq!(g2.id, "G-0002");
         assert_eq!(s.summaries().unwrap().len(), 2);
     }
@@ -525,10 +533,19 @@ mod tests {
     fn claims_with_the_same_engine_id_in_different_goals_do_not_collide() {
         let (mut s, _, a) = seeded();
         let g = s.goal(&a).unwrap();
-        let b = s.create_goal(NewGoal { project_id: g.project_id, title: "b".into(), contract: g.contract }).unwrap().id;
+        let b =
+            s.create_goal(NewGoal { project_id: g.project_id, title: "b".into(), contract: g.contract }).unwrap().id;
         for (goal, text) in [(&a, "a 的原因"), (&b, "b 的原因")] {
-            s.append(goal, EventKind::Claim { claim_id: "r1:call_1".into(), claim: ClaimKind::Cause, text: text.into(), criterion: None })
-                .unwrap();
+            s.append(
+                goal,
+                EventKind::Claim {
+                    claim_id: "r1:call_1".into(),
+                    claim: ClaimKind::Cause,
+                    text: text.into(),
+                    criterion: None,
+                },
+            )
+            .unwrap();
         }
         assert_eq!(s.detail(&a).unwrap().claims[0].text, "a 的原因");
         assert_eq!(s.detail(&b).unwrap().claims[0].text, "b 的原因");

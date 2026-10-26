@@ -42,9 +42,10 @@ pub fn parse(text: &str) -> Vec<DiffFile> {
             } else if line.starts_with("Binary files ") || line == "GIT binary patch" {
                 f.binary = true;
             } else if let Some(p) = line.strip_prefix("+++ ")
-                && p != "/dev/null" {
-                    f.path = unquote(p.strip_prefix("b/").unwrap_or(p));
-                }
+                && p != "/dev/null"
+            {
+                f.path = unquote(p.strip_prefix("b/").unwrap_or(p));
+            }
         }
 
         if line.starts_with("@@") {
@@ -63,7 +64,8 @@ pub fn parse(text: &str) -> Vec<DiffFile> {
             None => (LineKind::Context, ""),
             _ => continue,
         };
-        let text: String = if body.len() > MAX_LINE_CHARS { body.chars().take(MAX_LINE_CHARS).collect() } else { body.into() };
+        let text: String =
+            if body.len() > MAX_LINE_CHARS { body.chars().take(MAX_LINE_CHARS).collect() } else { body.into() };
         let (o, n) = match kind {
             LineKind::Add => {
                 f.additions += 1;
@@ -92,9 +94,8 @@ pub fn parse(text: &str) -> Vec<DiffFile> {
 fn parse_hunk_header(h: &str) -> (u32, u32) {
     // @@ -a,b +c,d @@ ...
     let mut parts = h.split_whitespace().skip(1);
-    let num = |s: Option<&str>| -> u32 {
-        s.and_then(|s| s[1..].split(',').next()).and_then(|n| n.parse().ok()).unwrap_or(1)
-    };
+    let num =
+        |s: Option<&str>| -> u32 { s.and_then(|s| s[1..].split(',').next()).and_then(|n| n.parse().ok()).unwrap_or(1) };
     let o = num(parts.next());
     let n = num(parts.next());
     (o, n)
@@ -123,12 +124,14 @@ fn unquote(p: &str) -> String {
         while i < bytes.len() {
             if bytes[i] == b'\\' && i + 1 < bytes.len() {
                 let c = bytes[i + 1];
-                if c.is_ascii_digit() && i + 3 < bytes.len()
-                    && let Ok(v) = u8::from_str_radix(&inner[i + 1..i + 4], 8) {
-                        out.push(v);
-                        i += 4;
-                        continue;
-                    }
+                if c.is_ascii_digit()
+                    && i + 3 < bytes.len()
+                    && let Ok(v) = u8::from_str_radix(&inner[i + 1..i + 4], 8)
+                {
+                    out.push(v);
+                    i += 4;
+                    continue;
+                }
                 out.push(match c {
                     b'n' => b'\n',
                     b't' => b'\t',

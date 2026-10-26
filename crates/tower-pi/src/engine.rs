@@ -87,7 +87,10 @@ pub enum EngineOutput {
     /// A stdout line that was not valid JSON.
     ProtocolError(String),
     /// The process ended. `stderr_tail` holds its last diagnostics.
-    Exited { code: Option<i32>, stderr_tail: String },
+    Exited {
+        code: Option<i32>,
+        stderr_tail: String,
+    },
 }
 
 type Pending = Arc<Mutex<HashMap<String, oneshot::Sender<Response>>>>;
@@ -134,11 +137,8 @@ impl Engine {
         let (kill_tx, kill_rx) = oneshot::channel();
 
         tokio::spawn(write_loop(child.stdin.take().expect("piped stdin"), in_rx));
-        let reader = tokio::spawn(read_loop(
-            child.stdout.take().expect("piped stdout"),
-            pending.clone(),
-            out_tx.clone(),
-        ));
+        let reader =
+            tokio::spawn(read_loop(child.stdout.take().expect("piped stdout"), pending.clone(), out_tx.clone()));
         let stderr_task = tokio::spawn(stderr_loop(child.stderr.take().expect("piped stderr"), stderr.clone()));
         tokio::spawn(wait_loop(
             child,
@@ -278,11 +278,7 @@ async fn write_loop(mut stdin: tokio::process::ChildStdin, mut rx: mpsc::Unbound
     // Dropping stdin sends EOF: Pi's signal for an orderly shutdown.
 }
 
-async fn read_loop(
-    stdout: tokio::process::ChildStdout,
-    pending: Pending,
-    out: mpsc::UnboundedSender<EngineOutput>,
-) {
+async fn read_loop(stdout: tokio::process::ChildStdout, pending: Pending, out: mpsc::UnboundedSender<EngineOutput>) {
     let mut reader = BufReader::new(stdout);
     let mut buf = Vec::with_capacity(8 * 1024);
     loop {

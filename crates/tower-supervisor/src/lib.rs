@@ -255,7 +255,8 @@ impl Supervisor {
         for g in running {
             inner.withdraw(&g.id, &[InboxKind::Question, InboxKind::Approval], "Tower 重新启动");
             let _ = inner.set_mode(&g.id, Mode::Idle);
-            let _ = inner.transition(&g.id, Transition::Pause { reason: PauseReason::AppQuit }, None, "上次退出时仍在运行");
+            let _ =
+                inner.transition(&g.id, Transition::Pause { reason: PauseReason::AppQuit }, None, "上次退出时仍在运行");
         }
         for state in [LifecycleState::Claimed, LifecycleState::Verifying] {
             for g in inner.store(|s| s.goals_in_state(state)).unwrap_or_default() {
@@ -291,18 +292,16 @@ impl Supervisor {
         let inner = &self.inner;
         let pi = inner.pi_program();
         let pi_version = pi.as_ref().and_then(|p| {
-            let out = std::process::Command::new(p)
-                .arg("--version")
-                .env_clear()
-                .envs(inner.env.pairs())
-                .output()
-                .ok()?;
+            let out =
+                std::process::Command::new(p).arg("--version").env_clear().envs(inner.env.pairs()).output().ok()?;
             out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
         });
         let git_version = inner.git.version().ok();
         let mut problems = Vec::new();
         if pi.is_none() {
-            problems.push("没有找到 pi。请先安装 Pi（npm i -g @earendil-works/pi-coding-agent），或在设置中指定路径。".into());
+            problems.push(
+                "没有找到 pi。请先安装 Pi（npm i -g @earendil-works/pi-coding-agent），或在设置中指定路径。".into(),
+            );
         } else if pi_version.is_none() {
             problems.push("pi 无法运行。请检查设置中的路径。".into());
         }
@@ -427,7 +426,8 @@ impl Supervisor {
     }
 
     pub fn update_project(&self, id: &str, base_branch: &str, test_command: Option<&str>) -> Result<ProjectView> {
-        let p = self.inner.store(|s| s.update_project(id, base_branch, test_command.filter(|t| !t.trim().is_empty())))?;
+        let p =
+            self.inner.store(|s| s.update_project(id, base_branch, test_command.filter(|t| !t.trim().is_empty())))?;
         self.emit_projects();
         Ok(p)
     }

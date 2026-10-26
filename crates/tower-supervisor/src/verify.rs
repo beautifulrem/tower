@@ -33,12 +33,13 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
         let result = verify(&inner, &goal, &cancel).await;
         inner.verifications.lock().expect("verify lock").remove(&goal);
         if let Err(e) = result
-            && !cancel.is_cancelled() {
-                tracing::warn!(goal = %goal, error = %e, "verification failed to run");
-                let _ = inner.append(&goal, EventKind::EngineError { message: format!("验证没能完成：{e}") });
-                let _ = inner.set_mode(&goal, Mode::Idle);
-                let _ = to_paused(&inner, &goal, PauseReason::VerifyEnvError, &e.to_string());
-            }
+            && !cancel.is_cancelled()
+        {
+            tracing::warn!(goal = %goal, error = %e, "verification failed to run");
+            let _ = inner.append(&goal, EventKind::EngineError { message: format!("验证没能完成：{e}") });
+            let _ = inner.set_mode(&goal, Mode::Idle);
+            let _ = to_paused(&inner, &goal, PauseReason::VerifyEnvError, &e.to_string());
+        }
     });
 }
 
@@ -194,13 +195,19 @@ async fn run_criteria(
     env.push(("CI".into(), "1".into()));
     env.push(("TMPDIR".into(), tmp_real.display().to_string()));
 
-    let setup = if contract.setup.trim().is_empty() { Git::detect_setup_command(dir) } else { Some(contract.setup.clone()) };
+    let setup =
+        if contract.setup.trim().is_empty() { Git::detect_setup_command(dir) } else { Some(contract.setup.clone()) };
     if let Some(setup) = setup {
         let spec = RunSpec::new(command_for(&setup, profile.as_deref()), dir, env.clone(), SETUP_TIMEOUT);
         let r = tower_verify::run(&spec, cancel).await;
         inner.append(
             goal,
-            EventKind::SetupFinished { command: setup.clone(), ok: r.passed(), exit_code: r.exit_code(), duration_ms: r.duration_ms },
+            EventKind::SetupFinished {
+                command: setup.clone(),
+                ok: r.passed(),
+                exit_code: r.exit_code(),
+                duration_ms: r.duration_ms,
+            },
         )?;
         if !r.passed() {
             return Ok(Outcome::EnvError(format!("准备命令 `{setup}` 失败：\n{}", tail_lines(&r.output_tail, 20))));

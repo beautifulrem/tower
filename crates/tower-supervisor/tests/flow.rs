@@ -78,7 +78,9 @@ fn contract() -> Contract {
 async fn create(h: &Harness) -> String {
     let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
     h.sup
-        .create_goal(NewGoalInput { project_id: p.id, title: "创建文件".into(), contract: contract(), ratify: true })
+        .create_goal(NewGoalInput {
+            project_id: p.id, title: "创建文件".into(), contract: contract(), ratify: true
+        })
         .await
         .unwrap()
         .id

@@ -12,10 +12,29 @@ use std::time::Duration;
 /// can authenticate; the tower-goal extension strips them again before the
 /// agent's shell sees them.
 const PASS: &[&str] = &[
-    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "TMPDIR", "TZ",
-    "JAVA_HOME", "GOPATH", "NVM_DIR", "PNPM_HOME", "CARGO_HOME", "RUSTUP_HOME", "VOLTA_HOME",
-    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
-    "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE",
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LANG",
+    "TMPDIR",
+    "TZ",
+    "JAVA_HOME",
+    "GOPATH",
+    "NVM_DIR",
+    "PNPM_HOME",
+    "CARGO_HOME",
+    "RUSTUP_HOME",
+    "VOLTA_HOME",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    "NODE_EXTRA_CA_CERTS",
+    "SSL_CERT_FILE",
 ];
 
 fn passes(name: &str) -> bool {
@@ -74,7 +93,12 @@ impl ShellEnv {
     pub fn without_credentials(&self) -> Vec<(String, String)> {
         self.vars
             .iter()
-            .filter(|(k, _)| !(k.ends_with("_API_KEY") || k.starts_with("AWS_") || k.starts_with("GOOGLE_") || k.starts_with("AZURE_")))
+            .filter(|(k, _)| {
+                !(k.ends_with("_API_KEY")
+                    || k.starts_with("AWS_")
+                    || k.starts_with("GOOGLE_")
+                    || k.starts_with("AZURE_"))
+            })
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }

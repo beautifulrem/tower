@@ -21,7 +21,7 @@ import { useKeys } from "../lib/keys";
 import { useMenu } from "../lib/menu";
 import { pauseLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
-import { act, onTrace, state } from "../lib/store";
+import { act, onTrace, state, toast } from "../lib/store";
 
 export function GoalPage(props: { id: string }) {
   const [detail, { refetch, mutate }] = createResource(() => props.id, api.goal);
@@ -183,6 +183,14 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
       { label: "在终端中打开工作区", run: () => void act(() => api.openWorkspace(id(), "terminal")), enabled: !["draft", "ready"].includes(s()) },
       { label: "在 Finder 中显示工作区", run: () => void act(() => api.openWorkspace(id(), "finder")), enabled: !["draft", "ready"].includes(s()) },
       { label: "只推送分支", run: () => confirmPush(false), separatorBefore: true, enabled: ["accepted", "integrated"].includes(s()) && !!props.goal.branch },
+      {
+        label: "复制推送命令",
+        run: () => {
+          void navigator.clipboard.writeText(`git push -u origin ${props.goal.branch}`);
+          toast("info", "已复制：在你的终端中运行即可推送");
+        },
+        enabled: !!props.goal.branch,
+      },
       { label: "归档", run: () => void act(() => api.archive(id()), "已归档"), enabled: ["accepted", "integrated", "in_review"].includes(s()) },
       {
         label: "删除工作区…",

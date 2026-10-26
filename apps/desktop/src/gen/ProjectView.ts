@@ -13,4 +13,9 @@ local_files: Array<string>,
 /**
  * Project memory: notes injected into every goal of this project.
  */
-memory: string, created_at: number, };
+memory: string, 
+/**
+ * Run once in each new workspace (e.g. `pnpm install`), sandboxed, so
+ * the agent starts with dependencies in place. Empty means none.
+ */
+setup_command: string, created_at: number, };

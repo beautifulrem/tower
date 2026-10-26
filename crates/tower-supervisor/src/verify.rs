@@ -66,7 +66,7 @@ fn to_paused(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str) 
 }
 
 /// The command a criterion runs, wrapped in the sandbox when available.
-fn command_for(raw: &str, profile: Option<&Path>) -> String {
+pub(crate) fn command_for(raw: &str, profile: Option<&Path>) -> String {
     match profile {
         Some(p) => format!(
             "exec /usr/bin/sandbox-exec -f {} /bin/sh -c {}",

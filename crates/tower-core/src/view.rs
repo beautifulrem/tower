@@ -25,6 +25,9 @@ pub struct ProjectView {
     pub local_files: Vec<String>,
     /// Project memory: notes injected into every goal of this project.
     pub memory: String,
+    /// Run once in each new workspace (e.g. `pnpm install`), sandboxed, so
+    /// the agent starts with dependencies in place. Empty means none.
+    pub setup_command: String,
     pub created_at: Millis,
 }
 
@@ -272,6 +275,9 @@ pub struct ReviewUnit {
 pub struct ReviewView {
     pub goal_id: String,
     pub base_commit: String,
+    /// The snapshot the diff starts from: the base, or an earlier pin when
+    /// reviewing only what changed since a previous review.
+    pub from: String,
     pub pin: String,
     pub stat: DiffStat,
     pub units: Vec<ReviewUnit>,

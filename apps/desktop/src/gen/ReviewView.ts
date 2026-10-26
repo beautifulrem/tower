@@ -3,4 +3,9 @@ import type { DiffFile } from "./DiffFile";
 import type { DiffStat } from "./DiffStat";
 import type { ReviewUnit } from "./ReviewUnit";
 
-export type ReviewView = { goal_id: string, base_commit: string, pin: string, stat: DiffStat, units: Array<ReviewUnit>, files: Array<DiffFile>, };
+export type ReviewView = { goal_id: string, base_commit: string, 
+/**
+ * The snapshot the diff starts from: the base, or an earlier pin when
+ * reviewing only what changed since a previous review.
+ */
+from: string, pin: string, stat: DiffStat, units: Array<ReviewUnit>, files: Array<DiffFile>, };

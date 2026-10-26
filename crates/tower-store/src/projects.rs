@@ -12,6 +12,8 @@ pub struct ProjectPatch {
     pub test_command: Option<String>,
     pub local_files: Vec<String>,
     pub memory: String,
+    #[serde(default)]
+    pub setup_command: String,
 }
 
 #[derive(Debug, Clone)]
@@ -31,6 +33,7 @@ fn row_to_project(r: &Row<'_>) -> rusqlite::Result<ProjectView> {
         test_command: r.get("test_command")?,
         local_files: json_col(r, "local_files")?,
         memory: r.get("memory")?,
+        setup_command: r.get("setup_command")?,
         created_at: r.get("created_at")?,
     })
 }
@@ -69,13 +72,15 @@ impl Store {
 
     pub fn update_project(&mut self, id: &str, patch: &ProjectPatch) -> Result<ProjectView> {
         let n = self.conn.execute(
-            "UPDATE projects SET base_branch = ?2, test_command = ?3, local_files = ?4, memory = ?5 WHERE id = ?1",
+            "UPDATE projects SET base_branch = ?2, test_command = ?3, local_files = ?4, memory = ?5, setup_command = ?6
+             WHERE id = ?1",
             params![
                 id,
                 patch.base_branch,
                 patch.test_command.as_deref().filter(|t| !t.trim().is_empty()),
                 serde_json::to_string(&patch.local_files)?,
-                patch.memory
+                patch.memory,
+                patch.setup_command.trim()
             ],
         )?;
         if n == 0 {
@@ -133,6 +138,7 @@ mod tests {
             test_command: Some("pnpm test".into()),
             local_files: vec![".env".into()],
             memory: "金额一律用 Money 类型".into(),
+            setup_command: "pnpm install".into(),
         };
         let updated = s.update_project(&created.id, &patch).unwrap();
         assert_eq!(updated.local_files, [".env"]);

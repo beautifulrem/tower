@@ -132,8 +132,13 @@ fn inbox(sup: Sup<'_>) -> Res<Vec<InboxItem>> {
 }
 
 #[tauri::command]
-async fn review(sup: Sup<'_>, id: String) -> Res<ReviewView> {
-    sup.review(&id).await
+async fn review(sup: Sup<'_>, id: String, since: Option<String>) -> Res<ReviewView> {
+    sup.review(&id, since).await
+}
+
+#[tauri::command]
+fn open_file(sup: Sup<'_>, id: String, path: String, line: Option<u32>) -> Res<()> {
+    sup.open_file(&id, &path, line)
 }
 
 #[tauri::command]
@@ -331,6 +336,7 @@ pub fn run() {
             remove_workspace,
             push,
             open_workspace,
+            open_file,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Tower");

@@ -135,6 +135,7 @@ async fn local_files_reach_the_workspace_and_the_verifier() {
                 test_command: None,
                 local_files: vec![".env".into()],
                 memory: "回答一律用中文".into(),
+                setup_command: "echo ready > .setup-done".into(),
             },
         )
         .unwrap();
@@ -145,8 +146,11 @@ async fn local_files_reach_the_workspace_and_the_verifier() {
     wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
     let d = h.sup.goal(&id).unwrap();
     assert_eq!(d.local_files, [".env"]);
+    // The project's setup command ran in the workspace, sandboxed.
+    let ws = d.workspace.clone().unwrap();
+    assert_eq!(std::fs::read_to_string(Path::new(&ws).join(".setup-done")).unwrap(), "ready\n");
     // Ignored, so never part of a snapshot or the review.
-    assert!(h.sup.review(&id).await.unwrap().files.iter().all(|f| f.path != ".env"));
+    assert!(h.sup.review(&id, None).await.unwrap().files.iter().all(|f| f.path != ".env"));
 }
 
 /// The pause and its Needs-You item are written one after the other.
@@ -188,7 +192,7 @@ async fn a_goal_goes_from_intent_to_a_branch() {
     let inbox = h.sup.inbox().unwrap();
     assert!(inbox.iter().any(|i| i.kind == InboxKind::ReviewReady));
 
-    let review = h.sup.review(&id).await.unwrap();
+    let review = h.sup.review(&id, None).await.unwrap();
     assert_eq!(review.files.len(), 1);
     assert_eq!(review.files[0].path, "done.txt");
 

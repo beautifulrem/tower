@@ -1767,3 +1767,51 @@ input[type="radio"] {
 .project-head b {
   font-weight: 500;
 }
+
+.scope-switch {
+  display: inline-flex;
+  gap: 2px;
+}
+.viewed-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.checks {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+}
+.checks .section-title {
+  margin-bottom: var(--sp-2);
+}
+.checks .link {
+  justify-self: start;
+  margin-top: var(--sp-2);
+}
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: 6px 0;
+  min-width: 0;
+}
+.check-mark {
+  width: 14px;
+  flex: 0 0 14px;
+  text-align: center;
+  color: var(--text-3);
+}
+.fix {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: var(--kbd-bg);
+  color: var(--text-1);
+}
+.fix:hover {
+  background: var(--bg-selected);
+}

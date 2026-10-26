@@ -3,7 +3,7 @@
  * ~300 lines. A comment on a line is a steering instruction; "要求修改" sends
  * them all back to the agent. Accepting writes a local branch, never a push.
  */
-import { For, Show, createMemo, createResource, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
 
 import type { Hunk } from "../gen/Hunk";
 import { highlight, languageOf } from "../lib/highlight";
@@ -19,14 +19,38 @@ import { api } from "../lib/api";
 import { count, short } from "../lib/format";
 import { useKeys } from "../lib/keys";
 import { back } from "../lib/nav";
+import { drafts, fileHash, lastReviewed, viewed } from "../lib/reviewState";
 import { act, state } from "../lib/store";
 
 export function Review(props: { id: string }) {
-  const [view] = createResource(() => props.id, api.review);
+  // Scope: the whole change, or only what changed since you last reviewed.
+  const previous = lastReviewed.get(props.id);
+  const [sinceLast, setSinceLast] = createSignal(false);
+  const [view] = createResource(
+    () => ({ id: props.id, since: sinceLast() ? previous : null }),
+    ({ id, since }) => api.review(id, since),
+  );
   const [detail, { refetch: refetchDetail }] = createResource(() => props.id, api.goal);
   const [unitIdx, setUnitIdx] = createSignal(0);
   const [seen, setSeen] = createSignal<Set<string>>(new Set());
-  const [comments, setComments] = createSignal<ReviewComment[]>([]);
+  const [viewedMap, setViewedMap] = createSignal(viewed.get(props.id));
+  const isViewed = (f: DiffFile) => viewedMap()[f.path] === fileHash(f);
+  const toggleViewed = (f: DiffFile, on = !isViewed(f)) => {
+    viewed.set(props.id, f.path, on ? fileHash(f) : null);
+    setViewedMap(viewed.get(props.id));
+  };
+  const unitViewed = (u: ReviewUnit) => {
+    const v = view();
+    return !!v && v.files.filter((f) => u.files.includes(f.path)).every(isViewed);
+  };
+  // Draft comments survive a restart until they are sent.
+  const [comments, setComments] = createSignal<ReviewComment[]>(drafts.get(props.id));
+  createEffect(() => drafts.set(props.id, comments()));
+  const markReviewed = () => {
+    const v = view();
+    if (v) lastReviewed.set(props.id, v.pin);
+    drafts.set(props.id, []);
+  };
   const [composer, setComposer] = createSignal<{ path: string; line: number | null } | null>(null);
   const [panel, setPanel] = createSignal<"accept" | "changes" | null>(null);
   const g = () => state.goals[props.id];
@@ -47,9 +71,28 @@ export function Review(props: { id: string }) {
     document.querySelector(".review-diff")?.scrollTo({ top: 0 });
   };
 
+  /** Scrolls to the next or previous hunk in the diff pane. */
+  const jumpHunk = (dir: 1 | -1) => {
+    const pane = document.querySelector<HTMLElement>(".review-diff");
+    if (!pane) return;
+    const heads = [...pane.querySelectorAll<HTMLElement>(".hunk-head")];
+    const top = pane.scrollTop + 48;
+    const target = dir > 0 ? heads.find((h) => h.offsetTop > top + 4) : [...heads].reverse().find((h) => h.offsetTop < top - 4);
+    if (target) pane.scrollTo({ top: target.offsetTop - 40 });
+  };
+
   useKeys([
     { key: "j", run: () => selectUnit(unitIdx() + 1) },
     { key: "k", run: () => selectUnit(unitIdx() - 1) },
+    { key: "]", run: () => jumpHunk(1) },
+    { key: "[", run: () => jumpHunk(-1) },
+    {
+      key: "v",
+      run: () => {
+        files().forEach((f) => toggleViewed(f, true));
+        selectUnit(unitIdx() + 1);
+      },
+    },
     { key: "mod+shift+enter", run: () => setPanel("accept"), inInputs: true },
     { key: "c", run: () => setPanel("changes") },
     { key: "escape", run: () => (panel() ? setPanel(null) : composer() ? setComposer(null) : back()) },
@@ -80,9 +123,19 @@ export function Review(props: { id: string }) {
                 {units().length} 个评审单元
                 <span class="sep">·</span>
                 <span class="code-val">
-                  @{short(view()!.base_commit)} → @{short(view()!.pin)}
+                  @{short(view()!.from)} → @{short(view()!.pin)}
                 </span>
               </span>
+              <Show when={previous && previous !== view()!.pin}>
+                <span class="scope-switch">
+                  <button class="pill" classList={{ active: !sinceLast() }} onClick={() => setSinceLast(false)}>
+                    全部改动
+                  </button>
+                  <button class="pill" classList={{ active: sinceLast() }} onClick={() => setSinceLast(true)}>
+                    自上次评审
+                  </button>
+                </span>
+              </Show>
               <Show when={g()}>
                 <CriteriaBar progress={g()!.progress} compact />
               </Show>
@@ -106,11 +159,11 @@ export function Review(props: { id: string }) {
               <aside class="review-units">
                 <For each={units()}>
                   {(u, i) => (
-                    <UnitItem u={u} active={i() === unitIdx()} seen={seen().has(u.id)} onClick={() => selectUnit(i())} />
+                    <UnitItem u={u} active={i() === unitIdx()} seen={unitViewed(u) || seen().has(u.id)} viewed={unitViewed(u)} onClick={() => selectUnit(i())} />
                   )}
                 </For>
                 <div class="review-units-foot meta">
-                  <Kbd k="j" /> <Kbd k="k" /> 切换单元 · 点行号写批注
+                  J / K 单元 · ] / [ 区块 · V 标为已看 · 点行号写批注 · ⌘ 点行号在编辑器中打开
                 </div>
               </aside>
               <div class="review-diff">
@@ -135,6 +188,9 @@ export function Review(props: { id: string }) {
                   {(f) => (
                     <FileDiff
                       file={f}
+                      viewed={isViewed(f)}
+                      onViewed={(on) => toggleViewed(f, on)}
+                      onOpen={(line) => void act(() => api.openFile(props.id, f.path, line))}
                       comments={comments().filter((c) => c.path === f.path)}
                       composer={composer()}
                       onLine={(line) => setComposer({ path: f.path, line })}
@@ -160,16 +216,17 @@ export function Review(props: { id: string }) {
             await refetchDetail();
           }}
           onClose={() => setPanel(null)}
+          onDone={markReviewed}
         />
       </Show>
       <Show when={panel() === "changes"}>
-        <ChangesPanel id={props.id} comments={comments()} onClose={() => setPanel(null)} onRemove={(i) => setComments((l) => l.filter((_, j) => j !== i))} />
+        <ChangesPanel id={props.id} comments={comments()} onSent={markReviewed} onClose={() => setPanel(null)} onRemove={(i) => setComments((l) => l.filter((_, j) => j !== i))} />
       </Show>
     </div>
   );
 }
 
-function UnitItem(props: { u: ReviewUnit; active: boolean; seen: boolean; onClick: () => void }) {
+function UnitItem(props: { u: ReviewUnit; active: boolean; seen: boolean; viewed: boolean; onClick: () => void }) {
   return (
     <button class="unit" classList={{ active: props.active }} onClick={props.onClick}>
       <div class="row">
@@ -178,7 +235,9 @@ function UnitItem(props: { u: ReviewUnit; active: boolean; seen: boolean; onClic
         </span>
         <span class="unit-title ellipsis grow">{props.u.title}</span>
         <span class="meta num">{props.u.lines} 行</span>
-        <span class="t3">{props.seen ? "◦" : ""}</span>
+        <span class="t3" title={props.viewed ? "已看" : props.seen ? "看过（之后可能有变化）" : ""}>
+          {props.viewed ? "✓" : props.seen ? "◦" : ""}
+        </span>
       </div>
       <div class="unit-files ellipsis">{props.u.files.map((f) => f.split("/").pop()).join("  ")}</div>
     </button>
@@ -187,6 +246,9 @@ function UnitItem(props: { u: ReviewUnit; active: boolean; seen: boolean; onClic
 
 function FileDiff(props: {
   file: DiffFile;
+  viewed: boolean;
+  onViewed: (on: boolean) => void;
+  onOpen: (line: number | null) => void;
   comments: ReviewComment[];
   composer: { path: string; line: number | null } | null;
   onLine: (line: number | null) => void;
@@ -210,8 +272,15 @@ function FileDiff(props: {
           <span class="diff-add">+{props.file.additions}</span> <span class="diff-del">−{props.file.deletions}</span>
         </span>
         <button class="link meta" onClick={() => props.onLine(null)}>
-          批注整个文件
+          批注
         </button>
+        <button class="link meta" onClick={() => props.onOpen(null)}>
+          在编辑器中打开
+        </button>
+        <label class="viewed-check meta">
+          <input type="checkbox" checked={props.viewed} onChange={(e) => props.onViewed(e.currentTarget.checked)} />
+          已看
+        </label>
       </header>
       <Show when={composingAt(null)}>
         <Composer onSubmit={props.onComment} onCancel={props.onCancel} />
@@ -236,7 +305,7 @@ function FileDiff(props: {
                   <HunkRows
                     hunk={h}
                     path={props.file.path}
-                    onLine={props.onLine}
+                    onLine={(n, meta) => (meta ? props.onOpen(n) : props.onLine(n))}
                     composingAt={composingAt}
                     commentAt={commentAt}
                     onComment={props.onComment}
@@ -260,7 +329,7 @@ function FileDiff(props: {
 function HunkRows(props: {
   hunk: Hunk;
   path: string;
-  onLine: (n: number | null) => void;
+  onLine: (n: number | null, meta?: boolean) => void;
   composingAt: (n: number | null) => boolean;
   commentAt: (n: number | null) => ReviewComment[];
   onComment: (t: string) => void;
@@ -317,14 +386,18 @@ function HunkRows(props: {
 function DiffRow(props: {
   l: DiffLine;
   tokens?: Tokens[number];
-  onLine: (n: number | null) => void;
+  onLine: (n: number | null, meta?: boolean) => void;
   hasComment: boolean;
 }) {
   const sign = { add: "+", del: "−", context: " " }[props.l.kind];
   return (
     <tr class={`dl dl-${props.l.kind}`} classList={{ commented: props.hasComment }}>
       <td class="ln num">{props.l.old_no ?? ""}</td>
-      <td class="ln num ln-new" onClick={() => props.l.new_no && props.onLine(props.l.new_no)} title="写批注">
+      <td
+        class="ln num ln-new"
+        onClick={(e) => props.l.new_no && props.onLine(props.l.new_no, e.metaKey)}
+        title="点击写批注 · ⌘ 点击在编辑器中打开"
+      >
         {props.l.new_no ?? ""}
       </td>
       <td class="code mono">
@@ -376,6 +449,7 @@ function AcceptPanel(props: {
   detail: Awaited<ReturnType<typeof api.goal>> | undefined;
   onHumanCheck: (criterion: string, v: boolean) => void;
   onClose: () => void;
+  onDone: () => void;
 }) {
   const [busy, setBusy] = createSignal(false);
   const g = () => state.goals[props.id];
@@ -391,6 +465,7 @@ function AcceptPanel(props: {
     const branch = await act(() => api.accept(props.id));
     setBusy(false);
     if (branch) {
+      props.onDone();
       props.onClose();
       back();
     }
@@ -446,7 +521,13 @@ function AcceptPanel(props: {
   );
 }
 
-function ChangesPanel(props: { id: string; comments: ReviewComment[]; onClose: () => void; onRemove: (i: number) => void }) {
+function ChangesPanel(props: {
+  id: string;
+  comments: ReviewComment[];
+  onClose: () => void;
+  onSent: () => void;
+  onRemove: (i: number) => void;
+}) {
   const [summary, setSummary] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const send = async () => {
@@ -454,6 +535,7 @@ function ChangesPanel(props: { id: string; comments: ReviewComment[]; onClose: (
     const ok = await act(() => api.requestChanges(props.id, summary(), props.comments), "已发回给 Agent");
     setBusy(false);
     if (ok !== undefined) {
+      props.onSent();
       props.onClose();
       back();
     }

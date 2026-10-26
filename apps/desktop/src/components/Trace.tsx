@@ -44,7 +44,13 @@ async function remember(goalId: string, text: string) {
   if (!p) return;
   const memory = p.memory.trim() ? `${p.memory.trim()}\n${text.trim()}` : text.trim();
   await act(
-    () => api.updateProject(p.id, { base_branch: p.base_branch, test_command: p.test_command, local_files: p.local_files, memory }),
+    () => api.updateProject(p.id, {
+        base_branch: p.base_branch,
+        test_command: p.test_command,
+        local_files: p.local_files,
+        memory,
+        setup_command: p.setup_command,
+      }),
     "已存为项目记忆，之后的目标都会看到它",
   );
   await refreshProjects();

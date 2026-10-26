@@ -97,6 +97,8 @@ pub(crate) struct Inner {
     pub verifications: Mutex<HashMap<String, Cancel>>,
     dirty: Mutex<HashSet<String>>,
     models: Mutex<Option<(std::time::Instant, Vec<ModelInfo>)>>,
+    /// `caffeinate` while any engine runs, so a sleeping Mac does not stall goals.
+    keep_awake: Mutex<Option<std::process::Child>>,
 }
 
 impl Inner {
@@ -201,6 +203,31 @@ impl Inner {
         list
     }
 
+    /// Keeps the Mac awake exactly while engines run (macOS `caffeinate`,
+    /// tied to this process so it never outlives Tower).
+    pub fn update_keep_awake(&self) {
+        let running = self.running_count() > 0;
+        let mut guard = self.keep_awake.lock().expect("keep-awake lock");
+        match (running, guard.is_some()) {
+            (true, false) if cfg!(target_os = "macos") => {
+                *guard = std::process::Command::new("/usr/bin/caffeinate")
+                    .args(["-i", "-w", &std::process::id().to_string()])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .ok();
+            }
+            (false, true) => {
+                if let Some(mut c) = guard.take() {
+                    let _ = c.kill();
+                    let _ = c.wait();
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub fn running_count(&self) -> usize {
         self.runs.lock().expect("runs lock").len()
     }
@@ -232,6 +259,7 @@ impl Supervisor {
             verifications: Mutex::default(),
             dirty: Mutex::default(),
             models: Mutex::default(),
+            keep_awake: Mutex::default(),
         });
         let sup = Self { inner };
         sup.spawn_loops();
@@ -365,7 +393,9 @@ impl Supervisor {
         self.inner.store(|s| s.open_inbox_items())
     }
 
-    pub async fn review(&self, id: &str) -> Result<ReviewView> {
+    /// The diff for review: from the base, or from `since` (an earlier pin)
+    /// to show only what changed since the human last reviewed.
+    pub async fn review(&self, id: &str, since: Option<String>) -> Result<ReviewView> {
         let rec = self.inner.store(|s| s.goal(id))?;
         let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else {
             return Err(invalid("这个目标还没有工作区"));
@@ -385,16 +415,22 @@ impl Supervisor {
         };
         let git = self.inner.git.clone();
         let (base2, pin2) = (base.clone(), pin.clone());
-        let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws), &base2, &pin2))
-            .await
-            .map_err(|e| invalid(e.to_string()))??;
+        let files_and_from = tokio::task::spawn_blocking(move || -> Result<_> {
+            let ws = Path::new(&ws);
+            // An earlier pin only counts if it still exists in the workspace.
+            let from = since.filter(|s| git.resolve(ws, s).is_ok()).unwrap_or(base2);
+            Ok((git.diff(ws, &from, &pin2)?, from))
+        })
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+        let (files, from) = files_and_from;
         let stat = tower_core::view::DiffStat {
             files: files.len() as u32,
             additions: files.iter().map(|f| f.additions).sum(),
             deletions: files.iter().map(|f| f.deletions).sum(),
         };
         let units = build_units(&files, Some(&rec.contract.scope));
-        Ok(ReviewView { goal_id: id.into(), base_commit: base, pin, stat, units, files })
+        Ok(ReviewView { goal_id: id.into(), base_commit: base, from, pin, stat, units, files })
     }
 
     pub fn settings(&self) -> Settings {
@@ -655,6 +691,47 @@ impl Supervisor {
                     None => (PathBuf::from("/usr/bin/open"), vec!["-t".into(), ws.clone()]),
                 }
             }
+        };
+        std::process::Command::new(program)
+            .args(args)
+            .env_clear()
+            .envs(self.inner.env.pairs())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
+        Ok(())
+    }
+
+    /// Opens one file of a goal's workspace in the editor, at a line when the
+    /// editor supports it (`code`/`cursor -g file:line`, `zed file:line`).
+    pub fn open_file(&self, id: &str, path: &str, line: Option<u32>) -> Result<()> {
+        let rec = self.inner.store(|s| s.goal(id))?;
+        let ws = PathBuf::from(rec.workspace.ok_or_else(|| invalid("这个目标还没有工作区"))?);
+        let file = ws.join(path);
+        if !paths::real(&file).starts_with(paths::real(&ws)) {
+            return Err(invalid("路径不在工作区内"));
+        }
+        let configured = self.inner.settings().editor;
+        let candidates: Vec<String> = if configured.trim().is_empty() {
+            ["cursor", "code", "zed", "subl"].iter().map(|s| s.to_string()).collect()
+        } else {
+            vec![configured.trim().to_string()]
+        };
+        let target = match line {
+            Some(l) => format!("{}:{l}", file.display()),
+            None => file.display().to_string(),
+        };
+        let (program, args): (PathBuf, Vec<String>) = match candidates.iter().find_map(|c| self.inner.env.which(c)) {
+            Some(p) => {
+                let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                if matches!(name.as_str(), "code" | "cursor" | "codium") {
+                    (p, vec![ws.display().to_string(), "-g".into(), target])
+                } else {
+                    (p, vec![target])
+                }
+            }
+            None => (PathBuf::from("/usr/bin/open"), vec!["-t".into(), file.display().to_string()]),
         };
         std::process::Command::new(program)
             .args(args)

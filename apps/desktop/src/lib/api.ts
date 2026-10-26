@@ -38,7 +38,8 @@ export const api = {
   trace: (id: string, before: number | null, limit: number) =>
     invoke<TraceEntry[]>("trace", { id, before, limit }),
   inbox: () => invoke<InboxItem[]>("inbox"),
-  review: (id: string) => invoke<ReviewView>("review", { id }),
+  review: (id: string, since: string | null = null) => invoke<ReviewView>("review", { id, since }),
+  openFile: (id: string, path: string, line: number | null) => invoke<void>("open_file", { id, path, line }),
 
   settings: () => invoke<Settings>("settings"),
   saveSettings: (settings: Settings) => invoke<void>("save_settings", { settings }),

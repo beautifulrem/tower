@@ -532,7 +532,7 @@ pub(crate) fn short(sha: &str) -> &str {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use tower_core::contract::Contract;
 
     use super::*;

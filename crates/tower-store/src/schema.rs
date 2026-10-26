@@ -165,6 +165,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE goals ADD COLUMN pr TEXT;
     "#,
+    // 7: the variable part of an inbox title, so titles are written at read time
+    r#"
+    ALTER TABLE inbox ADD COLUMN subject TEXT NOT NULL DEFAULT '';
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

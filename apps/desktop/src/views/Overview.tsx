@@ -9,9 +9,10 @@
  * j/k walk one list through both; ↩ opens; r reviews. The same page reads
  * at 0 goals (one statement and a way to start), at 1 and at 12.
  */
-import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Show, createMemo, createSignal, lazy, onCleanup } from "solid-js";
 
 import { DecisionCard, chooseOption } from "../components/DecisionCard";
+import { DemoButton } from "../components/Demo";
 import { GoalRow } from "../components/GoalRow";
 import { BaseTestsNotice } from "../components/TestCheck";
 import { Button, Empty, Select } from "../components/ui";
@@ -24,7 +25,9 @@ import { t } from "../lib/i18n";
 import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
-import { DemoButton, Welcome } from "./Welcome";
+
+// The first-run screen is reached once; it loads then, not at every launch.
+const Welcome = lazy(() => import("./Welcome").then((m) => ({ default: m.Welcome })));
 
 const ORDER: Group[] = ["running", "verifying", "review", "ready", "paused", "done"];
 const FILTER_KEY = "tower.overviewProject";

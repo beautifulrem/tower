@@ -49,6 +49,14 @@ export interface Pulse {
   tool: { name: string; since: number } | null;
 }
 
+/** A decision you put aside this session: where it went and when it comes back. */
+export interface Snoozed {
+  id: string;
+  goalId: string;
+  title: string;
+  until: number;
+}
+
 interface State {
   loaded: boolean;
   loadError: string | null;
@@ -57,6 +65,12 @@ interface State {
   projects: ProjectView[];
   goals: Record<string, GoalSummary>;
   inbox: InboxItem[];
+  /**
+   * Decisions put aside with "remind me later", so the inbox can say where
+   * a card went. Kept here for the session; an entry leaves when its item is
+   * back in the inbox (the supervisor keeps the authoritative list).
+   */
+  snoozed: Snoozed[];
   /** Assistant text currently streaming, per goal (Watch mode). */
   streams: Record<string, string>;
   /**
@@ -82,6 +96,7 @@ const [state, setState] = createStore<State>({
   projects: [],
   goals: {},
   inbox: [],
+  snoozed: [],
   streams: {},
   pulse: {},
   toasts: [],
@@ -139,6 +154,35 @@ export function dismissToast(id: number) {
   setTimeout(() => setState("toasts", (t) => t.filter((x) => x.id !== id)), 110);
 }
 
+/**
+ * The same question asked twice (a pause event the supervisor sent again)
+ * is one card: the newest of each (goal, kind, subject) stands, in the
+ * original order. Insurance on the reading side; the fix belongs upstream.
+ */
+export function dedupeInbox(items: InboxItem[]): InboxItem[] {
+  const newest = new Map<string, InboxItem>();
+  for (const i of items) {
+    const k = `${i.goal_id}\u0000${i.kind}\u0000${i.subject.trim()}`;
+    const have = newest.get(k);
+    if (!have || i.created_at >= have.created_at) newest.set(k, i);
+  }
+  return items.filter((i) => newest.get(`${i.goal_id}\u0000${i.kind}\u0000${i.subject.trim()}`) === i);
+}
+
+/** Remembers a decision you put aside, so the inbox can say so. */
+export function rememberSnoozed(item: InboxItem, until: number) {
+  setState("snoozed", (s) => [...s.filter((x) => x.id !== item.id), { id: item.id, goalId: item.goal_id, title: item.subject || item.title, until }]);
+}
+
+export function forgetSnoozed(id: string) {
+  setState("snoozed", (s) => s.filter((x) => x.id !== id));
+}
+
+/** Snoozed entries whose items are back (or long overdue) leave the list. */
+function reconcileSnoozed(open: InboxItem[], now = Date.now()) {
+  setState("snoozed", (s) => s.filter((x) => !open.some((i) => i.id === x.id) && x.until + 5 * 60_000 > now));
+}
+
 /** Runs an action, surfacing failures as an error toast. */
 export async function act<T>(fn: () => Promise<T>, success?: string): Promise<T | undefined> {
   try {
@@ -191,9 +235,12 @@ function subscribe() {
       case "goal":
         setState("goals", u.goal.id, reconcile(u.goal));
         break;
-      case "inbox":
-        setState("inbox", reconcile(u.items, { key: "id" }));
+      case "inbox": {
+        const items = dedupeInbox(u.items);
+        setState("inbox", reconcile(items, { key: "id" }));
+        reconcileSnoozed(items);
         break;
+      }
       case "projects":
         setState("projects", reconcile(u.projects, { key: "id" }));
         break;
@@ -255,7 +302,7 @@ export async function init() {
     setState(
       produce((s) => {
         s.goals = Object.fromEntries(goals.map((g) => [g.id, g]));
-        s.inbox = inbox;
+        s.inbox = dedupeInbox(inbox);
         s.projects = projects;
         s.loaded = true;
       }),

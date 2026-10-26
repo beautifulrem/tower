@@ -1,13 +1,17 @@
 /**
  * Needs-You (docs/04 §4.8): every item is actionable, most urgent first.
  * Two scale-style groups say the order: what blocks a run, then what is
- * ready to accept. j/k move; 1–9 pick an option on the focused card, and a
- * destructive option asks for the key twice.
+ * ready to accept. j/k move; 1–9 pick an option on the focused card, h puts
+ * it aside, and a destructive option asks for the key twice. A card put
+ * aside is not gone: the footer says how many and when they come back, and
+ * opens to bring one back now.
  */
 import { For, type JSX, Show, createMemo, createSignal } from "solid-js";
 
-import { DecisionCard, chooseOption } from "../components/DecisionCard";
+import { DecisionCard, chooseOption, snoozeMenu, unsnooze } from "../components/DecisionCard";
+import { Icon } from "../components/Glyph";
 import { Button, Empty, Kbd } from "../components/ui";
+import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { isBlocking } from "../lib/labels";
@@ -47,6 +51,8 @@ export function Inbox() {
         },
         desc: () => t("keys.reviewSelected"),
       },
+      // Linear's H: the selected decision steps aside until later.
+      { key: "h", run: () => current() && void snoozeMenu(current()!), desc: () => t("keys.snooze") },
       ...Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), run: () => pick(i), desc: i === 0 ? () => t("keys.choose") : undefined, hint: i === 0 ? "1–9" : undefined })),
     ],
     () => t("common.needsYou"),
@@ -116,9 +122,47 @@ export function Inbox() {
           <span>
             <Kbd k="1–9" /> {t("inbox.keyChoose")}
           </span>
+          <span>
+            <Kbd k="h" /> {t("inbox.keySnooze")}
+          </span>
           <span>{t("inbox.keyTwice")}</span>
         </p>
       </Show>
+      <SnoozedFooter />
     </div>
+  );
+}
+
+/** Where the put-aside cards went: a count with the next return time; open, each one with its way back. */
+function SnoozedFooter() {
+  const [open, setOpen] = createSignal(false);
+  const list = () => [...state.snoozed].sort((a, b) => a.until - b.until);
+  return (
+    <Show when={list().length > 0}>
+      <div class="snoozed" classList={{ open: open() }}>
+        <button class="snoozed-head link-plain meta t3 halt" aria-expanded={open()} onClick={() => setOpen((o) => !o)} title={t("inbox.snoozedTitle")}>
+          <Icon name={open() ? "caret-down" : "caret-right"} size={10} />
+          <Icon name="bell" size={10} />
+          <span class="num">{t("inbox.snoozedCount", { n: list().length, time: clock(list()[0].until) })}</span>
+        </button>
+        <Show when={open()}>
+          <ul class="snoozed-list">
+            <For each={list()}>
+              {(s) => (
+                <li class="snoozed-item meta">
+                  <button class="link-quiet ellipsis" onClick={() => go({ name: "goal", id: s.goalId })} title={s.title}>
+                    <span class="code-val t3">{s.goalId}</span> {s.title}
+                  </button>
+                  <span class="t3 num">{t("inbox.snoozedUntil", { time: clock(s.until) })}</span>
+                  <Button size="s" variant="ghost" onClick={() => void unsnooze(s.id)}>
+                    {t("decision.unsnooze")}
+                  </Button>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
+      </div>
+    </Show>
   );
 }

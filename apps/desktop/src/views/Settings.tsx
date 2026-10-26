@@ -18,7 +18,7 @@ import { engineLabel, envIssueLabel, modelsFor } from "../lib/labels";
 import { ask } from "../lib/native";
 import { act, quietNow, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 import { type SizeChoice, type ThemeChoice, setSizeChoice, setThemeChoice, sizeChoice, themeChoice } from "../lib/theme";
-import { openPiLogin, pickProject } from "./Welcome";
+import { openPiLogin, pickProject } from "../components/Demo";
 
 /** Thinking levels; call inside a reactive scope so "Pi default" follows the locale. */
 export const thinkingOptions = () =>

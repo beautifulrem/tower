@@ -253,6 +253,11 @@ fn reset_remote_token(sup: Sup<'_>) -> Res<()> {
 }
 
 #[tauri::command]
+fn set_git_identity(sup: Sup<'_>, name: String, email: String) -> Res<()> {
+    sup.set_git_identity(&name, &email)
+}
+
+#[tauri::command]
 async fn test_push(sup: Sup<'_>) -> Res<()> {
     sup.test_push().await
 }
@@ -533,6 +538,7 @@ pub fn run() {
             remote_info,
             reset_remote_token,
             test_push,
+            set_git_identity,
             push_status,
             undo_rollback,
             write_file,

@@ -739,6 +739,7 @@ export const en: Dict = {
     networkOn: "Network on",
     networkOff: "No network",
     engine: "Engine",
+    engineName: "Name",
     model: "Model",
     localFiles: "Local files",
     workspace: "Workspace",

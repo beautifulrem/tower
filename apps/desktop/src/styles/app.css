@@ -149,14 +149,27 @@
 .gauge-stale {
   color: var(--text-1);
 }
+/* The bell is a 22pt target around a 12px glyph (never the glyph alone), the same square as the ⌕ beside it. */
 .gauge-quiet {
+  justify-content: center;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border-radius: var(--radius-s);
   color: var(--text-2);
+  transition: background-color var(--dur-hover-out) linear;
+}
+.gauge-quiet:hover {
+  background: var(--bg-hover);
+  transition-duration: 0ms;
 }
 .gauge-quiet .icon {
   color: var(--text-3);
 }
+/* A half-screen window: an engine that is fine needs no reading (its label alone would hang there); a problem still shows. */
 @media (max-width: 1200px) {
-  .gauge-version {
+  .gauge-engine {
     display: none;
   }
 }
@@ -675,10 +688,12 @@
   background: var(--text-2);
   border-color: var(--text-2);
 }
+/* A disabled primary keeps the primary's form at less than half strength: "this is the main action, it just cannot be pressed yet" stays readable. */
 .btn-primary:disabled {
-  background: var(--bg-selected);
-  border-color: var(--border);
-  color: var(--text-3);
+  background: var(--text-1);
+  border-color: var(--text-1);
+  color: var(--bg-app);
+  opacity: 0.45;
 }
 .btn-ghost {
   background: transparent;
@@ -778,6 +793,14 @@
   text-decoration: underline;
   text-decoration-color: var(--link-underline);
   text-underline-offset: 3px;
+}
+/* A text button is still a target: 20pt tall (the Mac's pointer minimum), its words centred in it. */
+.text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 2px 0;
 }
 
 /* Text tabs: a label with a selected ground, 4px radius like every chip. */

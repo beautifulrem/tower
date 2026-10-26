@@ -447,6 +447,26 @@ impl Git {
         Ok(())
     }
 
+    /// Lines matching `pattern` (extended regex) in the files of `rev`, as
+    /// (path, line); empty when nothing matches.
+    pub fn grep_at(&self, root: &Path, rev: &str, pattern: &str) -> Result<Vec<(String, String)>> {
+        let out = match self.run(root, &["grep", "-I", "-E", "--no-color", pattern, rev, "--"]) {
+            Ok(out) => out,
+            // git grep exits 1 when nothing matches.
+            Err(GitError::Failed { stderr, .. }) if stderr.is_empty() => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
+        let prefix = format!("{rev}:");
+        Ok(out
+            .lines()
+            .filter_map(|l| {
+                let rest = l.strip_prefix(&prefix)?;
+                let (path, line) = rest.split_once(':')?;
+                Some((path.to_string(), line.to_string()))
+            })
+            .collect())
+    }
+
     /// The tracked files of a checkout.
     pub fn ls_files(&self, dir: &Path) -> Result<Vec<String>> {
         let out = self.run(dir, &["ls-files", "-z"])?;

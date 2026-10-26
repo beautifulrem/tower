@@ -138,6 +138,24 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
         })
         .collect();
     let mut hits = tower_core::sentinel::scan_with(&files, &rec.contract.scope, &commands, lang);
+    // Special cases for the values the base's tests use (read from your
+    // repository at the base, so the agent's edits to tests do not count).
+    let git = inner.git.clone();
+    let (root6, base6) = (rec.project_root.clone(), base.clone());
+    let lines = tokio::task::spawn_blocking(move || git.grep_at(Path::new(&root6), &base6, "assert|expect\\("))
+        .await
+        .map_err(|e| invalid(e.to_string()))?
+        .unwrap_or_default();
+    let literals = tower_core::sentinel::assertion_literals(
+        lines
+            .iter()
+            .filter(|(p, _)| tower_core::roles::role(p) == tower_core::roles::Role::Test)
+            .map(|(_, l)| l.as_str()),
+    );
+    let has_held_out = inner.store(|s| s.project(&rec.project_id))?.holdout_files.iter().any(|p| !p.trim().is_empty());
+    if let Some(h) = tower_core::sentinel::special_cases(&files, &literals, has_held_out, lang) {
+        hits.push(h);
+    }
     // Repeated refusals by the sandbox: the agent looked for something
     // outside its workspace (often the held-out tests).
     let denied = inner.store(|s| s.denied_tools(goal))?;

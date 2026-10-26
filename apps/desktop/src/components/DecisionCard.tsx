@@ -107,6 +107,39 @@ export function bodyParts(item: InboxItem): { prose: string; tail: string } {
   return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
 }
 
+/** One held-out criterion's failure as the supervisor lists it: `C2 · title` on a line of its own, then the output. */
+export interface HeldOutFailure {
+  id: string;
+  title: string;
+  tail: string;
+}
+
+const HELD_OUT_HEAD = /^(\S{1,12}) · (.+)$/;
+
+/**
+ * A held-out card's body: the supervisor's sentence, then one block per
+ * failed held-out criterion (`\n\nC2 · title\n<output>`). The output is
+ * machine text for you alone, so it is never run through the prose/tail
+ * split, which could mistake a test runner's lines for the start of a tail.
+ */
+export function heldOutParts(body: string): { prose: string; failures: HeldOutFailure[] } {
+  const lines = body.trim().split("\n");
+  const prose: string[] = [];
+  const failures: HeldOutFailure[] = [];
+  let current: HeldOutFailure | null = null;
+  lines.forEach((line, i) => {
+    const m = HELD_OUT_HEAD.exec(line);
+    // A header stands after a blank line (or opens the body); a `·` inside test output does not.
+    if (m && (i === 0 || lines[i - 1].trim() === "")) {
+      current = { id: m[1], title: m[2], tail: "" };
+      failures.push(current);
+    } else if (current) current.tail += (current.tail ? "\n" : "") + line;
+    else prose.push(line);
+  });
+  for (const f of failures) f.tail = f.tail.trim();
+  return { prose: prose.join("\n").trim(), failures };
+}
+
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean; ref?: (el: HTMLElement) => void }) {
   const [text, setText] = createSignal("");
   const [busy, setBusy] = createSignal(false);
@@ -124,7 +157,10 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   };
   // Letting the verification setup reach the network is a security decision: the card says so.
   const networkDecision = () => it().kind === "paused" && goal()?.pause_reason === "dependencies_changed";
+  // Held-out tests failed: the output is for you alone, a hint is the way that keeps it so, and showing the agent the failure is a deliberate second choice.
+  const heldOut = () => it().kind === "paused" && goal()?.pause_reason === "held_out_failed";
   const parts = () => bodyParts(it());
+  const held = () => heldOutParts(it().body);
 
   const send = async (i: number) => {
     setBusy(true);
@@ -147,11 +183,44 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   };
   const isAssumption = () => it().kind === "assumption";
 
+  /** The free-text field and its button: the usual note under the options, or a held-out card's hint — its primary path. */
+  const TextBox = () => (
+    <div class="decision-text">
+      <textarea
+        ref={(el) => autogrow(el, 1, 6)}
+        rows={1}
+        aria-label={heldOut() ? t("decision.hintPlaceholder") : isAssumption() ? t("decision.assumptionNotePlaceholder") : it().kind === "question" ? t("decision.answerPlaceholder") : t("decision.notePlaceholder")}
+        placeholder={
+          heldOut()
+            ? t("decision.hintPlaceholder")
+            : isAssumption()
+              ? t("decision.assumptionNotePlaceholder")
+              : it().kind === "question"
+                ? t("decision.answerPlaceholder")
+                : t("decision.notePlaceholder")
+        }
+        value={text()}
+        onInput={(e) => setText(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text().trim() && !isAssumption()) {
+            e.preventDefault();
+            void reply();
+          }
+        }}
+      />
+      <Show when={!isAssumption()}>
+        <Button size="s" variant={heldOut() ? "primary" : "default"} disabled={!text().trim()} busy={busy()} onClick={reply}>
+          {heldOut() ? t("decision.sendHint") : t("decision.reply")} <Kbd k="mod+enter" />
+        </Button>
+      </Show>
+    </div>
+  );
+
   return (
     <article
       ref={props.ref}
       class="decision"
-      classList={{ focused: !!props.focused, quiet: !!props.quiet && !props.focused, leaving: leaving() }}
+      classList={{ focused: !!props.focused, quiet: !!props.quiet && !props.focused, leaving: leaving(), "decision-heldout": heldOut() }}
       data-new={fresh ? "true" : undefined}
       tabindex="-1"
       aria-label={`${kindLabel(it().kind)} · ${it().goal_id} · ${it().subject}`}
@@ -217,11 +286,45 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <span class="code-val">{it().subject}</span>
             </Show>
           </p>
-          <Show when={parts().prose}>
-            <p class="decision-body">{parts().prose}</p>
+          <Show when={!heldOut()}>
+            <Show when={parts().prose}>
+              <p class="decision-body">{parts().prose}</p>
+            </Show>
+            <Show when={parts().tail}>
+              <pre class="output-tail decision-tail">{parts().tail}</pre>
+            </Show>
           </Show>
-          <Show when={parts().tail}>
-            <pre class="output-tail decision-tail">{parts().tail}</pre>
+          {/* Held-out: the sentence, then the output in your register — a solid rule, "for you only" in the source gutter — then the hint field first. */}
+          <Show when={heldOut()}>
+            <Show when={held().prose}>
+              <p class="decision-body">{held().prose}</p>
+            </Show>
+            <Show when={held().failures.length}>
+              <div class="heldout">
+                <span class="heldout-label halt" title={t("goal.heldOutLong")}>
+                  {t("decision.heldOutForYou")}
+                </span>
+                <For each={held().failures}>
+                  {(f) => (
+                    <div class="heldout-fail">
+                      <div class="heldout-head">
+                        <span class="num t3">{f.id}</span>
+                        <span class="t1">{f.title}</span>
+                      </div>
+                      <Show when={f.tail}>
+                        <pre class="output-tail decision-tail">{f.tail}</pre>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <Show when={it().allow_text}>
+              <TextBox />
+            </Show>
+            <p class="decision-note heldout-note">
+              <NoticeMark /> <span>{t("decision.heldOutNote")}</span>
+            </p>
           </Show>
           <Show when={networkDecision()}>
             <p class="decision-caution meta t1">
@@ -253,34 +356,8 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               }}
             </For>
           </div>
-          <Show when={it().allow_text}>
-            <div class="decision-text">
-              <textarea
-                ref={(el) => autogrow(el, 1, 6)}
-                rows={1}
-                aria-label={isAssumption() ? t("decision.assumptionNotePlaceholder") : it().kind === "question" ? t("decision.answerPlaceholder") : t("decision.notePlaceholder")}
-                placeholder={
-                  isAssumption()
-                    ? t("decision.assumptionNotePlaceholder")
-                    : it().kind === "question"
-                      ? t("decision.answerPlaceholder")
-                      : t("decision.notePlaceholder")
-                }
-                value={text()}
-                onInput={(e) => setText(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text().trim() && !isAssumption()) {
-                    e.preventDefault();
-                    void reply();
-                  }
-                }}
-              />
-              <Show when={!isAssumption()}>
-                <Button size="s" disabled={!text().trim()} busy={busy()} onClick={reply}>
-                  {t("decision.reply")} <Kbd k="mod+enter" />
-                </Button>
-              </Show>
-            </div>
+          <Show when={it().allow_text && !heldOut()}>
+            <TextBox />
             <Show when={isAssumption()}>
               <p class="decision-note">{t("decision.assumptionNote")}</p>
             </Show>

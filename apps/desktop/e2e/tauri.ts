@@ -83,6 +83,12 @@ export async function openTower(
               return F.lookImages?.[a.file] ?? null;
             case "remote_info":
               return F.remoteInfo ?? null;
+            case "push_status":
+              return F.pushStatus ?? null;
+            case "test_push":
+              if (F.testPushError) throw F.testPushError;
+              F.pushStatus = { at: Date.now(), error: null };
+              return null;
             case "models":
               return [];
             case "validate_contract":

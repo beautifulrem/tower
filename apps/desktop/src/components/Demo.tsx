@@ -4,8 +4,6 @@
  * in. They live apart from the welcome view so that view can load on first
  * run only and the start-up bundle stays small.
  */
-import { open } from "@tauri-apps/plugin-dialog";
-
 import { api } from "../lib/api";
 import { t } from "../lib/i18n";
 import { installHint } from "../lib/labels";
@@ -19,6 +17,8 @@ import { Button } from "./ui";
  * and Settings keeps the same offer.
  */
 export async function pickProject() {
+  // The dialog plugin loads with the first picker, not at start-up.
+  const { open } = await import("@tauri-apps/plugin-dialog");
   const dir = await open({ directory: true, multiple: false, title: t("welcome.pickRepo") });
   if (typeof dir !== "string") return;
   const p = await act(() => api.addProject(dir));

@@ -48,3 +48,9 @@ if (!("ResizeObserver" in window)) {
   };
 }
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+
+// The app loads one dictionary at a time; tests have both at once, synchronously. Imported after the shims above,
+// since the dictionary module reaches the store and the theme, which read `matchMedia` as they load.
+const [{ registerDict }, { en }, { zh }] = await Promise.all([import("../lib/i18n"), import("../lib/locales/en"), import("../lib/locales/zh-CN")]);
+registerDict("en", en);
+registerDict("zh-CN", zh);

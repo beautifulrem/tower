@@ -1,37 +1,30 @@
 /**
  * Activity & errors (⌘⇧L): the last 200 errors and warnings that went by
  * as toasts, each copyable, newest first. A missed toast is never lost.
+ * Loaded on first open; the key lives in App.
  */
-import { For, Show, createSignal } from "solid-js";
+import { For, Show } from "solid-js";
 
 import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
-import { useKeys } from "../lib/keys";
+import { closeActivity } from "../lib/layers";
 import { go } from "../lib/nav";
-import { ACTIVITY_MAX, type ActivityEntry, clearActivity, markActivitySeen, state, toast } from "../lib/store";
+import { ACTIVITY_MAX, type ActivityEntry, clearActivity, state, toast } from "../lib/store";
 import { DangerMark, NeedsYouMark } from "./Glyph";
 import { Button, Empty, IconButton, Overlay } from "./ui";
-
-const [open, setOpen] = createSignal(false);
-export const openActivity = () => {
-  markActivitySeen();
-  setOpen(true);
-};
 
 function line(e: ActivityEntry): string {
   return `${new Date(e.at).toISOString()}  ${e.level}${e.goalId ? `  ${e.goalId}` : ""}  ${e.text}`;
 }
 
 export function ActivityPanel() {
-  useKeys([{ key: "mod+shift+l", run: () => (open() ? setOpen(false) : openActivity()), inInputs: true, desc: () => t("keys.activity") }], () => t("keys.everywhere"));
   const entries = () => [...state.activity].reverse();
   const copy = (text: string) => {
     void navigator.clipboard.writeText(text);
     toast("success", t("activity.copied"));
   };
   return (
-    <Show when={open()}>
-      <Overlay onClose={() => setOpen(false)} label={t("activity.title")} title={t("activity.title")} instant class="panel panel-wide">
+    <Overlay onClose={closeActivity} label={t("activity.title")} title={t("activity.title")} instant class="panel panel-wide">
         <div class="activity-head meta">
           <span class="t3">{t("activity.keeps", { n: ACTIVITY_MAX })}</span>
           <span class="grow" />
@@ -55,7 +48,7 @@ export function ActivityPanel() {
                 <span class="activity-text">
                   <Show when={e.goalId}>
                     {(id) => (
-                      <button class="link-quiet code-val t2 activity-goal" onClick={() => (setOpen(false), go({ name: "goal", id: id() }))}>
+                      <button class="link-quiet code-val t2 activity-goal" onClick={() => (closeActivity(), go({ name: "goal", id: id() }))}>
                         {id()}
                       </button>
                     )}
@@ -68,6 +61,5 @@ export function ActivityPanel() {
           </For>
         </div>
       </Overlay>
-    </Show>
   );
 }

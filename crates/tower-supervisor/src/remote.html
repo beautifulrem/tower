@@ -67,9 +67,9 @@
   .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); flex: 0 0 auto; }
   .error .btn { margin-left: auto; }
 
-  /* A decision card: amber lives only in its 28px strip. */
-  .card { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); margin-bottom: 10px; overflow: hidden; }
-  .strip { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+  /* A decision card: amber lives only in its 32px strip — the tint, and a 2px rule on its left edge, the desk's focused card in miniature. */
+  .card { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); margin-bottom: 12px; overflow: hidden; }
+  .strip { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px; border-left: 2px solid var(--st-attention); background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
   .strip .mark { width: 9px; height: 9px; flex: 0 0 auto; }
   .strip .kind { color: var(--text-1); font-weight: 500; }
   .strip .goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -118,6 +118,8 @@
   .row .live .detail.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .live .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--text-3); flex: 0 0 auto; }
   .row .live .sep { color: var(--text-4); flex: 0 0 auto; }
+  /* How long the run has been going: the desk's reading, in the desk's units, one register down. */
+  .row .live .elapsed { color: var(--text-3); flex: 0 0 auto; }
   .row .seal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .seal .pin { color: var(--text-2); font-weight: 400; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
@@ -141,6 +143,7 @@ const T = {
         updated: "updated", every: "every 5 s", offline: "Can't reach Tower", retry: "Retry", you: "you", atDesk: "At your Mac",
         later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00", putAside: "Put aside until",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
+        runningFor: (d) => `running ${d}`,
         acceptOnDesk: "Review and accept on your Mac", claim: "Agent says", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
         foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
         states: { draft: "Draft", ready: "Ready", running: "Running", paused: "Paused", claimed: "Claimed done", verifying: "Verifying", in_review: "Ready to accept", accepted: "Accepted", integrated: "Merged", archived: "Archived", abandoned: "Abandoned" },
@@ -151,6 +154,7 @@ const T = {
         updated: "更新于", every: "每 5 秒", offline: "连不上 Tower", retry: "重试", you: "你", atDesk: "在电脑上",
         later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00", putAside: "已收起，再提醒于",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
+        runningFor: (d) => `已运行 ${d}`,
         acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 称", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
         foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
         states: { draft: "草稿", ready: "就绪", running: "运行中", paused: "已暂停", claimed: "自称完成", verifying: "验证中", in_review: "待验收", accepted: "已验收", integrated: "已合入", archived: "已归档", abandoned: "已放弃" },
@@ -235,6 +239,8 @@ let lastOk = 0;
 const ago = (at) => t("ago")(Math.round((Date.now() - at) / 60000));
 // 24-hour "HH:MM" in both languages, as on the desk.
 const clock = (at) => { const d = new Date(at); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+// Elapsed time in the desk's units ("42s", "3m", "1h 20m"), the same letters in both languages.
+const dur = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 // "updated 03:05 · every 5 s"; once a minute has passed without a fresh read, the age is added and the line steps up a register.
 function showStatus() {
   if (status.className === "off" || !lastOk) return;
@@ -294,8 +300,9 @@ function render(s) {
     const l = g.live_line;
     const badge = t("modes")[g.mode] ?? g.mode;
     const detail = l ? `${l.action}${l.target ? " · " + l.target : ""}` : "";
+    const elapsed = g.run_started_at ? `<span class="sep">·</span><span class="elapsed num">${esc(t("runningFor")(dur(Math.max(0, Date.now() - g.run_started_at))))}</span>` : "";
     const isArmed = armed === "pause" + g.id;
-    h += `<div class="row">${G.state("running")}<div><div class="title">${esc(g.title)}</div><div class="live"><span class="badge">${esc(badge)}</span><span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span></div></div>
+    h += `<div class="row">${G.state("running")}<div><div class="title">${esc(g.title)}</div><div class="live"><span class="badge">${esc(badge)}</span><span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span>${elapsed}</div></div>
       <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
   }
   app.innerHTML = h;
@@ -317,8 +324,9 @@ async function load() {
   try { last = await api("/api/state"); lastOk = Date.now(); render(last); }
   catch (e) {
     // The sentence is the page's; the browser's own words stay in the tooltip, and the way back is one button.
+    // It is said once, in the body; the status line keeps the one reading it still has — when the page last got through.
     app.innerHTML = `<p class="error" title="${esc(e.message)}"><span>${t("offline")}</span><button class="btn ghost" data-retry>${t("retry")}</button></p>`;
-    status.className = "off"; statusText.textContent = t("offline");
+    status.className = "off"; statusText.textContent = lastOk ? `${t("updated")} ${clock(lastOk)}` : "";
   }
 }
 load();

@@ -48,6 +48,11 @@ export function clock(at: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/** Two moments the clock would write the same way: a log writes the minute once and leaves the rows under it quiet. */
+export function sameMinute(a: number, b: number): boolean {
+  return Math.floor(a / MIN) === Math.floor(b / MIN);
+}
+
 export function usd(v: number): string {
   if (v === 0) return "$0";
   if (v < 0.01) return "<$0.01";

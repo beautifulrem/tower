@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
+import { enrichCi, enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -8,6 +8,18 @@ const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (wi
 test("every decision card offers to be put aside", async ({ page }) => {
   const { fixtures } = await openTower(page, "inbox");
   await expect(page.getByRole("button", { name: "Remind me later" })).toHaveCount((fixtures.inbox as unknown[]).length);
+});
+
+test("answering a card closes the loop: the card sits in a folding slot and the receipt rises in", async ({ page }) => {
+  await openTower(page, "inbox");
+  const slot = page.locator(".decision-slot").first();
+  await expect(slot).toBeVisible();
+  await expect(slot.locator(".decision")).toBeVisible();
+  await slot.locator(".decision-actions .btn").first().click();
+  const toast = page.locator(".toast").first();
+  await expect(toast).toBeVisible();
+  expect(await toast.evaluate((el) => getComputedStyle(el).animationName)).toBe("rise");
+  await expect(slot.locator(".decision")).toHaveClass(/leaving/);
 });
 
 test("a put-aside card is still accounted for in the inbox, with its way back", async ({ page }) => {
@@ -67,12 +79,91 @@ test("the board's identity column keeps the project name legible beside the engi
   expect(await project.evaluate((el) => el.getBoundingClientRect().width >= el.scrollWidth - 1)).toBe(true);
 });
 
+test("on a crowded row the engine mark is two letters or gone, never a letter and a half; the age column holds its longest reading", async ({ page }) => {
+  const crowd = (F: Record<string, any>) => {
+    enrichEngines(F);
+    for (const g of F.goals) {
+      if (g.id === "G-0002") g.rework_cycles = 1;
+      if (g.id === "G-0001") g.updated_at = Date.now() - 100 * 60_000;
+    }
+  };
+  await openTower(page, "overview", { enrich: crowd });
+  const row = page.locator('.g-row[data-goal="G-0002"]');
+  await expect(row).toHaveAttribute("data-crowded", "true");
+  // 1440: id · shop · ⟳ 1/3 · CC would not fit whole, so the mark leaves and the project name stays legible.
+  await expect(row.locator(".g-engine")).toBeHidden();
+  await expect(row.locator(".g-project")).toHaveText("shop");
+  await expect(row.locator(".g-title")).toHaveAttribute("title", /Claude Code/);
+  const age = page.locator('.g-row[data-goal="G-0001"] .g-age');
+  await expect(age).toHaveText("1h 40m ago");
+  expect(await age.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  // Wider, the mark comes back whole.
+  await page.setViewportSize({ width: 1700, height: 900 });
+  await expect(row.locator(".g-engine")).toHaveText("CC");
+});
+
+test("in a half-screen window the live line keeps its verb and lets the elapsed time go, with no two words touching", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      for (const g of F.goals) if (g.state === "running") g.run_started_at = Date.now() - 109 * 60_000;
+    },
+  });
+  const running = page.locator(".g-row").filter({ has: page.locator(".live-elapsed") }).first();
+  await expect(running).toBeAttached();
+  await expect(running.locator(".live-elapsed")).toBeHidden();
+  await expect(running.locator(".live-elapsed-sep")).toBeHidden();
+  await expect(running.locator(".live-detail")).toHaveAttribute("title", /1h 49m/);
+});
+
+test("with a decision card on a ready-to-accept goal, the card's first option is the page's one primary action", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCi });
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Review \d+ files?/ })).toBeVisible();
+  const primaries = page.locator(".goal-page .btn-primary");
+  await expect(primaries).toHaveCount(1);
+  await expect(primaries).toHaveText(/Send the failures to the agent/);
+});
+
+test("the title bar's runs gauge fills the ring by the slots in use, and silence beats once", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      F.settings = { ...F.settings, max_concurrent: 4 };
+      // One goal has been silent for twenty minutes: the hollow square shows, and beats once as it appears.
+      for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now() - 20 * 60_000;
+    },
+  });
+  const gauge = page.locator(".gauge-runs");
+  await expect(gauge).toBeVisible();
+  // One of four running: a quarter wedge, counter-clockwise from the top to the left.
+  await expect(gauge.locator("path")).toHaveAttribute("d", "M5 5 L5 1 A4 4 0 0 0 1 5 Z");
+  await expect(page.locator(".gauge-active")).toContainText("1/4");
+  const hollow = page.locator(".gauge-dot.hollow");
+  await expect(hollow).toBeVisible();
+  expect(await hollow.evaluate((el) => getComputedStyle(el).animationName)).toBe("beat");
+  expect(await hollow.evaluate((el) => getComputedStyle(el).animationIterationCount)).toBe("1");
+});
+
+test("the title bar's bell is a 22pt target, and a half-screen window drops a healthy engine's label rather than hanging it empty", async ({ page }) => {
+  await openTower(page, "overview");
+  const bell = page.locator(".gauge-quiet");
+  const box = await bell.boundingBox();
+  expect(box!.width).toBeGreaterThanOrEqual(22);
+  expect(box!.height).toBeGreaterThanOrEqual(22);
+  await expect(page.locator(".gauge-engine")).toBeVisible();
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(page.locator(".gauge-engine")).toBeHidden();
+});
+
 test("a paused goal that was never verified shows one primary action and no 'verify again'", async ({ page }) => {
   await openTower(page, "goal/G-0004", { enrich: enrichRollback });
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.locator(".goal-page .btn-primary")).toHaveCount(1);
   await expect(page.getByText("Verify again")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Undo rollback" })).toBeVisible();
+  const undo = page.getByRole("button", { name: "Undo rollback" });
+  await expect(undo).toBeVisible();
+  // A text button is still a 20pt target.
+  expect((await undo.boundingBox())!.height).toBeGreaterThanOrEqual(20);
 });
 
 test("the look comparison answers the keyboard: modes, slider, held space", async ({ page }) => {
@@ -86,6 +177,15 @@ test("the look comparison answers the keyboard: modes, slider, held space", asyn
   await expect(slider).toHaveValue("50");
   await page.keyboard.press("ArrowRight");
   await expect(slider).toHaveValue("55");
+  // Laid over each other, a 390×640 page keeps its proportions (tall, centred) instead of being stretched to the sheet's width.
+  const stage = await dialog.locator(".look-onion").evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const p = el.parentElement!.getBoundingClientRect();
+    return { w: r.width, h: r.height, centred: Math.abs(r.left + r.width / 2 - (p.left + p.width / 2)) < 2 };
+  });
+  expect(stage.w).toBeLessThan(stage.h);
+  expect(stage.w).toBeLessThan(500);
+  expect(stage.centred).toBe(true);
   await page.keyboard.press("3");
   await expect(dialog.locator(".look-diff")).toBeVisible();
   await page.keyboard.down("Space");
@@ -95,6 +195,42 @@ test("the look comparison answers the keyboard: modes, slider, held space", asyn
   await expect(dialog).toBeHidden();
   // Focus returns to the thumbnail that opened it.
   expect(await page.evaluate(() => document.activeElement?.className)).toContain("look-img-btn");
+});
+
+test("a look thumbnail is as tall as its frame and no wider than its page; the verification sheet says when there is more below", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichLook });
+  const img = page.locator(".look-img").first();
+  await expect(img).toBeVisible();
+  const box = await img.boundingBox();
+  expect(Math.round(box!.height)).toBe(96);
+  expect(box!.width).toBeLessThan(80);
+  await page.keyboard.press("r");
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("e");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  // Four criteria with their output tails run past 80vh: the fade is on, and goes once the sheet is scrolled to its end.
+  await expect(dialog.locator(".panel-more")).toHaveClass(/on/);
+  await dialog.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect(dialog.locator(".panel-more")).not.toHaveClass(/on/);
+});
+
+test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
+  await openTower(page, "goal/G-0002");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await page.keyboard.press("w");
+  const times = page.locator(".trace-row .trace-time");
+  await expect(times.first()).toBeVisible();
+  expect(await times.count()).toBeGreaterThan(3);
+  // The demo's run lands in one or two minutes: most rows repeat the one above and go quiet.
+  expect(await page.locator(".trace-row .trace-time.repeat").count()).toBeGreaterThan(0);
+  await expect(times.first()).not.toHaveClass(/repeat/);
+  await openTower(page, "review/G-0001");
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("c");
+  const area = page.getByRole("dialog").locator("textarea");
+  await area.focus();
+  expect(await area.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("none");
 });
 
 test("⌘P jumps to a file by path", async ({ page }) => {
@@ -147,6 +283,48 @@ test("with the phone page on, each link is named by its network", async ({ page 
   await expect(links.nth(0)).toContainText("100.101.102.103:7317");
   await expect(links.nth(1)).toContainText("Local network");
   await expect(page.locator(".phone-links")).not.toContainText("http://");
+});
+
+test("an empty board shows its own grid: column heads and three hollow lines, no pretend data", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      F.goals = [];
+      F.inbox = [];
+    },
+  });
+  await expect(page.getByText("No active goals")).toBeVisible();
+  const ghost = page.locator(".board-ghost");
+  await expect(ghost).toBeVisible();
+  await expect(ghost.locator(".g-row")).toHaveCount(4);
+  await expect(ghost.locator(".board-ghost-head")).toContainText("Goal");
+  await expect(ghost.locator(".board-ghost-row .seg")).toHaveCount(9);
+  // Hollow: no digits, no words in the rows.
+  expect(await ghost.locator(".board-ghost-row").allInnerTexts()).toEqual(["", "", ""]);
+  // The heads sit in the same columns the rows use (the title's and the live line's left edges, the age's right edge).
+  for (const [i, edge] of [[1, "x"], [2, "x"], [6, "right"]] as const) {
+    const h = await ghost.locator(".board-ghost-head > span").nth(i).boundingBox();
+    const r = await ghost.locator(".board-ghost-row").first().locator("> span").nth(i).boundingBox();
+    const at = (b: { x: number; width: number }) => (edge === "x" ? b.x : b.x + b.width);
+    expect(Math.abs(at(h!) - at(r!))).toBeLessThan(1);
+  }
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/overview-empty-ghost.png` });
+});
+
+test("at 1800 wide the decision queue and the board share one centred container", async ({ page }) => {
+  await page.setViewportSize({ width: 1800, height: 1100 });
+  await openTower(page, "overview");
+  const board = page.locator(".overview");
+  await expect(board).toBeVisible();
+  const r = await board.evaluate((el) => {
+    const b = el.getBoundingClientRect();
+    const v = el.parentElement!.getBoundingClientRect();
+    return { w: b.width, leftGap: b.left - v.left, rightGap: v.right - b.right };
+  });
+  expect(Math.round(r.w)).toBe(1280);
+  expect(Math.abs(r.leftGap - r.rightGap)).toBeLessThan(2);
+  const card = page.locator(".board-queue .decision").first();
+  const row = page.locator(".g-row").first();
+  expect(Math.abs((await card.boundingBox())!.x - (await row.boundingBox())!.x)).toBeLessThan(8);
 });
 
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {

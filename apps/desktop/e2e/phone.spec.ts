@@ -73,7 +73,7 @@ test("decisions that widen what the agent may do are named as desk-only, not off
   await expect(page.getByRole("button", { name: /redo it/ })).toBeVisible();
 });
 
-test("offline, the page says so in its own words and offers a retry", async ({ page }) => {
+test("offline, the page says so once in its own words and offers a retry; the status line does not repeat it", async ({ page }) => {
   await openPhone(page, { state: null });
   const error = page.locator(".error");
   await expect(error).toContainText("Can't reach Tower");
@@ -81,6 +81,32 @@ test("offline, the page says so in its own words and offers a retry", async ({ p
   await expect(error.getByRole("button", { name: "Retry" })).toBeVisible();
   const h = await error.getByRole("button").evaluate((el) => el.getBoundingClientRect().height);
   expect(h).toBeGreaterThanOrEqual(44);
+  await expect(page.locator("#status")).toHaveClass("off");
+  await expect(page.locator("#status")).not.toContainText("Can't reach Tower");
+  const shown = (await page.locator("header").innerText()) + (await page.locator("main").innerText());
+  expect(shown.match(/Can't reach Tower/g)?.length).toBe(1);
+});
+
+test("the phone card is drawn with the desk's pen: a 32px strip with an amber edge, 12px between cards, the run's elapsed time", async ({ page }) => {
+  await openPhone(page, {
+    state: {
+      goals: [{ id: "G-0002", title: "Align discount rules", state: "running", mode: "executing", run_started_at: Date.now() - 109 * 60_000, live_line: { action: "bash", target: "npm test", at: Date.now() }, pause_reason: null, verified_pin: null }],
+      inbox: [
+        { id: "q", goal_id: "G-0002", goal_title: "Align discount rules", kind: "question", title: "", subject: "Which discount applies first?", body: "", options: ["Percentage", "Fixed"], tones: ["primary", "neutral"], allow_text: true, created_at: Date.now() },
+        { id: "p", goal_id: "G-0004", goal_title: "Find out why checkout is slow", kind: "paused", title: "", subject: "The agent stopped", body: "", options: ["Continue"], tones: ["primary"], allow_text: false, created_at: Date.now() },
+      ],
+      lang: "en",
+    },
+  });
+  const strip = page.locator(".strip").first();
+  const box = await strip.boundingBox();
+  expect(Math.round(box!.height)).toBe(32);
+  expect(await strip.evaluate((el) => getComputedStyle(el).borderLeftWidth)).toBe("2px");
+  const cards = page.locator(".card");
+  const a = await cards.nth(0).boundingBox();
+  const b = await cards.nth(1).boundingBox();
+  expect(Math.round(b!.y - (a!.y + a!.height))).toBe(12);
+  await expect(page.locator(".row .live .elapsed")).toHaveText("running 1h 49m");
 });
 
 // Preview screens of the phone page, with the desktop's (SHOTS=<dir>).

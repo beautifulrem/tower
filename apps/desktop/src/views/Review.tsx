@@ -583,12 +583,12 @@ export function Review(props: { id: string }) {
   );
 }
 
-/** A unit as a group row of the tree: its title, line count; risk bars only when present. Its files are named once, under it. */
+/** A unit as a group row of the tree: its title, line count; risk bars only when present. Its files are named once, under it.
+    The current unit is the one on the selected ground; no caret, because nothing here folds. */
 function UnitItem(props: { u: ReviewUnit; active: boolean; viewed: boolean; onClick: () => void }) {
   return (
     <button class="unit" classList={{ active: props.active }} aria-current={props.active ? "true" : undefined} onClick={props.onClick} title={props.u.risk_reasons.join("\n") || props.u.title}>
       <span class="unit-name">
-        <Icon name={props.active ? "caret-down" : "caret-right"} size={10} class="unit-caret" />
         {props.u.title}
         <span class="unit-dir"> {t("common.files", { n: props.u.files.length })}</span>
       </span>

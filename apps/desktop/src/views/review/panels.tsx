@@ -3,7 +3,7 @@
  * requesting changes. Each is an `Overlay` opened from the keyboard, so none
  * animates in.
  */
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
 import { BaselineLine, CriteriaBar, ObsChip } from "../../components/Honesty";
@@ -43,13 +43,30 @@ function OutputTail(props: { text: string }) {
   );
 }
 
+/** Whether a scrolling sheet has more below the fold; re-read on scroll and whenever its content changes. */
+function useMoreBelow(): [() => boolean, (el: HTMLDivElement) => void, () => void] {
+  const [more, setMore] = createSignal(false);
+  let el: HTMLDivElement | undefined;
+  const measure = () => el && setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+  const bind = (panel: HTMLDivElement) => {
+    el = panel;
+    panel.addEventListener("scroll", measure, { passive: true });
+    measure();
+  };
+  onCleanup(() => el?.removeEventListener("scroll", measure));
+  return [more, bind, () => requestAnimationFrame(measure)];
+}
+
 /** Every criterion with its last verifier reading and output tail, in one sheet. */
 export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined; loading: boolean; onClose: () => void }) {
   const g = () => state.goals[props.id];
   const criteria = () => props.detail?.criteria ?? [];
   const mark = (c: CriterionView) => (!c.verified ? "pending" : c.verified.stale ? "stale" : c.verified.passed ? "pass" : "fail");
+  // The sheet is taller than the window on a goal with several criteria: a fade at its foot says there is more, and leaves once you are there.
+  const [more, bindPanel, remeasure] = useMoreBelow();
+  createEffect(on(() => [props.loading, criteria().length], remeasure, { defer: true }));
   return (
-    <Overlay onClose={props.onClose} label={t("review.verifyTitle", { id: props.id })} title={t("review.verifyTitle", { id: props.id })} instant initialFocus="panel" class="panel panel-wide">
+    <Overlay onClose={props.onClose} label={t("review.verifyTitle", { id: props.id })} title={t("review.verifyTitle", { id: props.id })} instant initialFocus="panel" class="panel panel-wide" panelRef={bindPanel}>
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
@@ -126,6 +143,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
           </For>
         </div>
       </Show>
+      <div class="panel-more" classList={{ on: more() }} aria-hidden="true" />
       <div class="panel-actions">
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.close")}

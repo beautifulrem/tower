@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../store", () => ({ state: { settings: { language: "en" } } }));
 
-const { ago, agoShort, duration, usd, usdLimit, short } = await import("../format");
+const { ago, agoShort, duration, usd, usdLimit, short, sameMinute } = await import("../format");
 
 describe("formats", () => {
   it("rounds time quietly", () => {
@@ -18,6 +18,12 @@ describe("formats", () => {
     expect(agoShort(now - 100 * 60_000, now)).toBe("1h 40m ago");
     expect(agoShort(now - 5 * 60_000, now)).toBe("5m ago");
     expect(agoShort(now - 4 * 3600_000, now)).toBe(ago(now - 4 * 3600_000, now));
+  });
+
+  it("knows when two moments share a clock minute", () => {
+    const t = new Date(2026, 9, 27, 4, 29, 10).getTime();
+    expect(sameMinute(t, t + 40_000)).toBe(true);
+    expect(sameMinute(t, t + 60_000)).toBe(false);
   });
 
   it("shows durations with one unit system", () => {

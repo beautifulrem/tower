@@ -287,6 +287,8 @@ export function Overlay(props: {
    * control, and no focus ring sits on a secondary button mid-panel.
    */
   initialFocus?: "first" | "panel";
+  /** The panel element itself, for a sheet that scrolls and wants to say so. */
+  panelRef?: (el: HTMLDivElement) => void;
   children: JSX.Element;
 }) {
   const previous = document.activeElement as HTMLElement | null;
@@ -294,6 +296,7 @@ export function Overlay(props: {
   let panel!: HTMLDivElement;
   useKeys([{ key: "escape", run: () => props.onClose(), inInputs: true }]);
   onMount(() => {
+    props.panelRef?.(panel);
     const first = props.initialFocus === "panel" ? null : panel.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? panel).focus({ preventScroll: true });
   });

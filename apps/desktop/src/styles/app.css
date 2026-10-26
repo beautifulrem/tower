@@ -3259,6 +3259,29 @@ input[type="radio"] {
   max-height: 80vh;
   overflow: auto;
 }
+/* "There is more below": a functional fade at the sheet's foot, above the actions, gone once the end is in view. */
+.panel-more {
+  position: sticky;
+  bottom: calc(16px + 26px + var(--sp-4));
+  height: 0;
+  margin-top: calc(-1 * var(--sp-4));
+  pointer-events: none;
+  z-index: 1;
+}
+.panel-more::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  right: -18px;
+  bottom: 0;
+  height: 32px;
+  background: linear-gradient(to bottom, transparent, var(--bg-overlay));
+  opacity: 0;
+  transition: opacity var(--dur-fast) linear;
+}
+.panel-more.on::before {
+  opacity: 1;
+}
 .overlay-top {
   padding-top: 14vh;
 }
@@ -3671,12 +3694,12 @@ input[type="radio"] {
   background: transparent;
   line-height: 0;
 }
-/* The whole page, small, on an inset ground: a tall page is not reduced to its header. */
+/* The whole page, small, at its own proportions: a tall page is a tall thumbnail (58×96), a wide one fills 160 — never a page inside a black frame. */
 .look-img {
   display: block;
   height: 96px;
-  width: 160px;
-  max-width: 220px;
+  width: auto;
+  max-width: 160px;
   object-fit: contain;
   object-position: top center;
   border: 1px solid var(--border);
@@ -3689,7 +3712,7 @@ input[type="radio"] {
   height: 72px;
 }
 .verify-item .look-img {
-  width: 120px;
+  max-width: 120px;
 }
 .look-img-btn:hover .look-img {
   border-color: var(--border-strong);
@@ -3746,20 +3769,35 @@ input[type="radio"] {
 .look-side .look-missing {
   height: 120px;
 }
+/* Laid over each other: the stage takes the "before" picture's own size (a phone page stands tall in the
+   middle, a desktop page runs wide), and the "after" is fitted onto exactly that box, so the two align and
+   neither is ever stretched to the column. */
+.look-stage {
+  text-align: center;
+  line-height: 0;
+}
 .look-onion {
   position: relative;
+  display: inline-block;
+  max-width: 100%;
   max-height: 64vh;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
+  vertical-align: top;
 }
 .look-onion img {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 64vh;
 }
 .look-onion img + img {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 /* Difference: what did not move goes black, what did lights up — a one-pixel shift is visible. */
 .look-diff img + img {

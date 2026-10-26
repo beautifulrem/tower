@@ -123,6 +123,15 @@ test("the look comparison answers the keyboard: modes, slider, held space", asyn
   await expect(slider).toHaveValue("50");
   await page.keyboard.press("ArrowRight");
   await expect(slider).toHaveValue("55");
+  // Laid over each other, a 390×640 page keeps its proportions (tall, centred) instead of being stretched to the sheet's width.
+  const stage = await dialog.locator(".look-onion").evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const p = el.parentElement!.getBoundingClientRect();
+    return { w: r.width, h: r.height, centred: Math.abs(r.left + r.width / 2 - (p.left + p.width / 2)) < 2 };
+  });
+  expect(stage.w).toBeLessThan(stage.h);
+  expect(stage.w).toBeLessThan(500);
+  expect(stage.centred).toBe(true);
   await page.keyboard.press("3");
   await expect(dialog.locator(".look-diff")).toBeVisible();
   await page.keyboard.down("Space");
@@ -132,6 +141,24 @@ test("the look comparison answers the keyboard: modes, slider, held space", asyn
   await expect(dialog).toBeHidden();
   // Focus returns to the thumbnail that opened it.
   expect(await page.evaluate(() => document.activeElement?.className)).toContain("look-img-btn");
+});
+
+test("a look thumbnail is as tall as its frame and no wider than its page; the verification sheet says when there is more below", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichLook });
+  const img = page.locator(".look-img").first();
+  await expect(img).toBeVisible();
+  const box = await img.boundingBox();
+  expect(Math.round(box!.height)).toBe(96);
+  expect(box!.width).toBeLessThan(80);
+  await page.keyboard.press("r");
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("e");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  // Four criteria with their output tails run past 80vh: the fade is on, and goes once the sheet is scrolled to its end.
+  await expect(dialog.locator(".panel-more")).toHaveClass(/on/);
+  await dialog.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect(dialog.locator(".panel-more")).not.toHaveClass(/on/);
 });
 
 test("⌘P jumps to a file by path", async ({ page }) => {

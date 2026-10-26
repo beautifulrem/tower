@@ -574,6 +574,35 @@ impl Supervisor {
         actions::check_integrations(&self.inner).await
     }
 
+    /// Deletes an ended goal's workspace, verification checkout and scratch
+    /// directories. The event log, trace and Pi session stay; nothing in the
+    /// user's repository is touched.
+    pub async fn remove_workspace(&self, id: &str) -> Result<()> {
+        let rec = self.inner.store(|s| s.goal(id))?;
+        if !rec.state.is_terminal() {
+            return Err(invalid("只有已归档或已放弃的目标可以删除工作区"));
+        }
+        let paths = self.inner.paths.clone();
+        let goal = id.to_string();
+        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+            for dir in
+                [paths.workspace(&goal), paths.verify(&goal), paths.tmp(&goal), paths.tmp(&format!("{goal}-verify"))]
+            {
+                if dir.exists() {
+                    std::fs::remove_dir_all(&dir)?;
+                }
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+        if rec.workspace.is_some() {
+            self.inner.append(id, EventKind::WorkspaceRemoved)?;
+        }
+        self.inner.emit_goal_now(id);
+        Ok(())
+    }
+
     pub fn human_check(&self, id: &str, criterion: &str, checked: bool) -> Result<()> {
         self.inner.append(id, EventKind::HumanCheck { criterion: criterion.into(), checked })?;
         self.inner.emit_goal_now(id);

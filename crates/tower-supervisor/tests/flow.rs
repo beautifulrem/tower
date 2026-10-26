@@ -203,4 +203,12 @@ async fn pausing_stops_the_engine_and_resume_continues() {
     wait_for(&h, &id, |g| g.state == LifecycleState::Running && g.run_no == 2).await;
     h.sup.abandon(&id).await.unwrap();
     wait_for(&h, &id, |g| g.state == LifecycleState::Abandoned).await;
+
+    // An ended goal's workspace can be deleted; the record stays.
+    let ws = h.sup.goal(&id).unwrap().workspace.unwrap();
+    assert!(Path::new(&ws).exists());
+    h.sup.remove_workspace(&id).await.unwrap();
+    assert!(!Path::new(&ws).exists());
+    assert!(h.sup.goal(&id).unwrap().workspace.is_none());
+    assert!(!h.sup.trace(&id, None, 10).unwrap().is_empty());
 }

@@ -5,6 +5,7 @@ import { Button, Field } from "../components/ui";
 import type { ProjectView } from "../gen/ProjectView";
 import type { Settings as SettingsT } from "../gen/Settings";
 import { api } from "../lib/api";
+import { type ThemeChoice, setThemeChoice, themeChoice } from "../lib/theme";
 import { act, refreshEnvironment, refreshProjects, state } from "../lib/store";
 import { pickProject } from "./Welcome";
 
@@ -38,6 +39,18 @@ export function Settings() {
           <dd class="mono">{state.env?.data_dir}</dd>
         </dl>
         <For each={state.env?.problems ?? []}>{(p) => <p class="meta">◇ {p}</p>}</For>
+      </section>
+
+      <section class="settings-block">
+        <h2 class="section-title">外观</h2>
+        <div class="row">
+          {(["system", "light", "dark"] as ThemeChoice[]).map((t) => (
+            <label class="radio">
+              <input type="radio" name="theme" checked={themeChoice() === t} onChange={() => setThemeChoice(t)} />
+              <span>{{ system: "跟随系统", light: "浅色", dark: "深色" }[t]}</span>
+            </label>
+          ))}
+        </div>
       </section>
 
       <Show when={s()}>

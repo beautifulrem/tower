@@ -190,6 +190,18 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
           归档
         </Button>
       </Show>
+      <Show when={["archived", "abandoned"].includes(s())}>
+        <Button
+          size="s"
+          variant="ghost"
+          onClick={() => {
+            if (confirm(`删除 ${props.goal.id} 的工作区？轨迹与记录保留；你的仓库不受影响。`))
+              void act(() => api.removeWorkspace(props.goal.id), "工作区已删除");
+          }}
+        >
+          删除工作区
+        </Button>
+      </Show>
       <Show when={!["archived", "abandoned"].includes(s())}>
         <Button
           size="s"

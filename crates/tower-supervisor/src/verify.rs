@@ -608,7 +608,7 @@ impl Drop for RemoveOnDrop {
     }
 }
 
-pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, body: &str) -> Result<()> {
+pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, _verdict: &str) -> Result<()> {
     let rec = inner.store(|s| s.goal(goal))?;
     inner.open_inbox(NewInboxItem {
         goal_id: goal.into(),
@@ -618,9 +618,9 @@ pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, body: &str) -> Result
             tr!(inner.lang(), "待验收：{title}", "Ready to accept: {title}")
         },
         subject: rec.title.clone(),
-        // What changed, in the agent's words (a claim: the card marks it so);
-        // Tower's own sentence when the agent wrote none.
-        body: rec.submit_summary.clone().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| body.into()),
+        // Always the agent's own words (a claim: the card marks it so), or
+        // empty; Tower's verdict is shown from facts, not from this text.
+        body: rec.submit_summary.clone().unwrap_or_default(),
         options: Vec::new(),
         allow_text: false,
         urgency: 3,

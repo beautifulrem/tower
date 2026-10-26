@@ -97,6 +97,8 @@ pub(crate) struct Inner {
     pub runs: Mutex<HashMap<String, Arc<Run>>>,
     pub verifications: Mutex<HashMap<String, Cancel>>,
     dirty: Mutex<HashSet<String>>,
+    /// Trace entries not yet sent to the interface.
+    traces: Mutex<Vec<TraceEntry>>,
     models: Mutex<Option<(std::time::Instant, Vec<ModelInfo>)>>,
     /// `caffeinate` while any engine runs, so a sleeping Mac does not stall goals.
     keep_awake: Mutex<Option<std::process::Child>>,
@@ -111,7 +113,7 @@ impl Inner {
 
     pub fn append(&self, goal: &str, e: EventKind) -> Result<TraceEntry> {
         let entry = self.store(|s| s.append(goal, e))?;
-        self.sink.emit(UiUpdate::Trace { entry: entry.clone() });
+        self.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry.clone());
         self.mark_dirty(goal);
         Ok(entry)
     }
@@ -137,7 +139,16 @@ impl Inner {
         self.sink.emit(UiUpdate::Toast { level, text: text.into() });
     }
 
+    /// Sends pending trace entries in one update.
+    fn flush_traces(&self) {
+        let entries = std::mem::take(&mut *self.traces.lock().unwrap_or_else(PoisonError::into_inner));
+        if !entries.is_empty() {
+            self.sink.emit(UiUpdate::Traces { entries });
+        }
+    }
+
     fn flush_dirty(&self) {
+        self.flush_traces();
         let ids: Vec<String> = self.dirty.lock().unwrap_or_else(PoisonError::into_inner).drain().collect();
         for id in ids {
             if let Ok(g) = self.store(|s| s.summary(&id)) {
@@ -149,7 +160,8 @@ impl Inner {
     /// Applies a lifecycle transition and pushes the result immediately.
     pub fn transition(&self, goal: &str, t: Transition, reason: Option<PauseReason>, note: &str) -> Result<()> {
         let entry = self.store(|s| s.transition(goal, t, reason, note))?;
-        self.sink.emit(UiUpdate::Trace { entry });
+        self.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
+        self.flush_traces();
         self.emit_goal_now(goal);
         Ok(())
     }
@@ -265,6 +277,7 @@ impl Supervisor {
             runs: Mutex::default(),
             verifications: Mutex::default(),
             dirty: Mutex::default(),
+            traces: Mutex::default(),
             models: Mutex::default(),
             keep_awake: Mutex::default(),
         });

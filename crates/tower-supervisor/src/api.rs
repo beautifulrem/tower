@@ -55,8 +55,9 @@ pub enum UiUpdate {
     Inbox {
         items: Vec<InboxItem>,
     },
-    Trace {
-        entry: TraceEntry,
+    /// New trace entries, in order, batched (at most ten batches a second).
+    Traces {
+        entries: Vec<TraceEntry>,
     },
     /// Assistant text being streamed, for Watch mode. Not persisted.
     Stream {

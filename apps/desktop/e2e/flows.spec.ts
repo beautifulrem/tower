@@ -476,6 +476,77 @@ test("start-up failure is Tower's own strip with the power off: dashes for readi
   await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible();
 });
 
+test("a field shows its focus: a darker edge for the pointer, a second line inside for the keyboard", async ({ page }) => {
+  await openTower(page, "goal/G-0004", { enrich: enrichHeldOut });
+  const area = page.locator(".decision-heldout textarea");
+  await expect(area).toBeVisible();
+  const text3 = await area.evaluate((el) => getComputedStyle(el).getPropertyValue("--text-3").trim());
+  const resting = await area.evaluate((el) => getComputedStyle(el).borderTopColor);
+  await area.click();
+  const focused = await area.evaluate((el) => ({ border: getComputedStyle(el).borderTopColor, outline: getComputedStyle(el).outlineStyle }));
+  expect(focused.border).not.toBe(resting);
+  expect(focused.outline).toBe("none");
+  // The edge is text-3 itself, not a lighter hairline: the same colour the labels are set in.
+  expect(await area.evaluate((el, c) => { el.style.color = c; return getComputedStyle(el).color; }, text3)).toBe(focused.border);
+  // Reached from the keyboard, the field gets its inner line as well.
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("TEXTAREA");
+  expect(await area.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe("none");
+});
+
+test("a review with nothing to review is a poster in the middle of the page, and the status bar stays at the foot", async ({ page }) => {
+  await openTower(page, "review/G-0002", {
+    enrich: (F) => {
+      F["review-G-0002"] = { ...F["review-G-0001"], units: [], files: [], stat: { files: 0, additions: 0, deletions: 0 } };
+    },
+  });
+  const poster = page.locator(".review .empty-poster");
+  await expect(poster).toBeVisible();
+  await expect(poster).toContainText("No changes");
+  const box = (await poster.boundingBox())!;
+  expect(box.x).toBeGreaterThan(24);
+  expect(box.y).toBeGreaterThan(150);
+  const status = (await page.locator(".review-status").boundingBox())!;
+  expect(Math.round(status.y + status.height)).toBe(900);
+  await expect(page.getByRole("button", { name: "Open the goal page" })).toHaveClass(/btn-default/);
+});
+
+test("the briefing is one line: three goals, a count, a pause said once without nested parentheses", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("tower.overviewSeenAt", String(Date.now() - 3 * 3_600_000)));
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      for (const g of F.goals) g.updated_at = Date.now() - 60_000;
+      enrichHeldOut(F);
+    },
+  });
+  const bar = page.locator(".today-bar");
+  await expect(bar).toBeVisible();
+  await expect(bar.locator(".briefing-item")).toHaveCount(4);
+  await expect(bar.locator(".briefing-more")).toHaveText("1 more");
+  const paused = bar.locator(".briefing-item").filter({ hasText: "G-0004" });
+  await expect(paused).toHaveAttribute("title", /Paused \(Held-out tests failed\)$/);
+  expect(await bar.innerText()).not.toMatch(/\(\(|（（/);
+  expect((await bar.boundingBox())!.height).toBeLessThanOrEqual(24);
+  // The dismissal is a 20pt target.
+  expect((await page.getByRole("button", { name: "Got it" }).boundingBox())!.height).toBeGreaterThanOrEqual(20);
+});
+
+test("in Settings the phone's problem stands under its switch and above the port; the pairing link is a plain button", async ({ page }) => {
+  await openTower(page, "settings", { enrich: enrichPhoneProblem });
+  const problem = page.locator(".phone-problem");
+  await expect(problem).toBeVisible();
+  const problemY = (await problem.boundingBox())!.y;
+  const switchY = (await page.getByLabel("Enable the phone page").boundingBox())!.y;
+  const portY = (await page.getByRole("spinbutton", { name: "Port" }).boundingBox())!.y;
+  expect(switchY).toBeLessThan(problemY);
+  expect(problemY).toBeLessThan(portY);
+  await expect(page.getByRole("button", { name: "New pairing link" })).toHaveClass(/btn-default/);
+  // The state word is a state: "On", not a verb.
+  await expect(page.getByRole("button", { name: /^Notifications: / })).toHaveText("On");
+});
+
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
   await openTower(page, "goal/G-0001");

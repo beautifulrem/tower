@@ -10,6 +10,7 @@ import { For, Show, createEffect, createResource, createSignal, on, onMount } fr
 import { createStore, produce, unwrap } from "solid-js/store";
 
 import { Icon } from "../components/Glyph";
+import { BaseTestsNotice } from "../components/TestCheck";
 import { Button, Field, IconButton, Select, Toggle } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import type { ContractIssue } from "../gen/ContractIssue";
@@ -141,6 +142,9 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <Field label={t("contract.title")}>
             <input value={title()} onInput={(e) => setTitle(e.currentTarget.value)} placeholder={t("contract.titlePlaceholder")} disabled={!!props.amendId} />
           </Field>
+          <Show when={!editingId}>
+            <BaseTestsNotice projectId={projectId()} />
+          </Show>
           <Field label={t("contract.intent")} hint={t("contract.intentHint")} error={issueFor("intent")}>
             <textarea rows={2} class="reading" value={c.intent} onInput={(e) => setC("intent", e.currentTarget.value)} placeholder={t("contract.intentPlaceholder")} />
           </Field>
@@ -265,15 +269,17 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       <aside class="editor-side">
         <div class="editor-block">
           <h2 class="section-title">{t("contract.autonomy")}</h2>
-          <For each={["cautious", "standard", "autonomous"] as const}>
-            {(v) => (
-              <label class="radio">
-                <input type="radio" name="autonomy" checked={c.autonomy === v} onChange={() => setC("autonomy", v)} />
-                <b>{t(`contract.${v}`)}</b>
-                <span class="radio-desc">{t(`contract.${v}Desc`)}</span>
-              </label>
-            )}
-          </For>
+          <div class="autonomy-choices" role="radiogroup" aria-label={t("contract.autonomy")}>
+            <For each={["cautious", "standard", "autonomous"] as const}>
+              {(v) => (
+                <label class="radio">
+                  <input type="radio" name="autonomy" checked={c.autonomy === v} onChange={() => setC("autonomy", v)} />
+                  <b>{t(`contract.${v}`)}</b>
+                  <span class="radio-desc">{t(`contract.${v}Desc`)}</span>
+                </label>
+              )}
+            </For>
+          </div>
           <p class="field-hint">{t("contract.oneWayNote")}</p>
         </div>
         <div class="editor-block">

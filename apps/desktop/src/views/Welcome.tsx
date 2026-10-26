@@ -2,6 +2,9 @@
  * First run: what Tower is, the grammar shown on a sample card, an
  * environment check that says how to fix each problem, and adding a
  * repository. Two columns: the idea on the left, the checklist on the right.
+ *
+ * Without Pi the demo is the only path that works, so it is the primary
+ * action; with Pi, adding a repository is.
  */
 import { open } from "@tauri-apps/plugin-dialog";
 import { For, type JSX, Show, createResource } from "solid-js";
@@ -12,7 +15,7 @@ import { Button } from "../components/ui";
 import type { EnvIssue } from "../gen/EnvIssue";
 import { api } from "../lib/api";
 import { t } from "../lib/i18n";
-import { hasIssue } from "../lib/labels";
+import { envIssueLabel, hasIssue, installHint } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 
@@ -31,11 +34,32 @@ export async function startDemo() {
   go({ name: "goal", id: g.id });
 }
 
+/** Opens Terminal running Pi, where `/login` connects a model account. */
+export const openPiLogin = () => void act(api.openPiLogin);
+
+/** Programs the demo needs and does not find (`EnvironmentStatus.demo_missing`). */
+export const demoMissing = () => state.env?.demo_missing ?? [];
+
+/**
+ * The demo button, disabled with the reason and the install command when a
+ * program it needs is missing. Primary when Pi is not usable.
+ */
+export function DemoButton(props: { size?: "s" | "m"; variant?: "primary" | "default" | "ghost" }) {
+  const missing = () => demoMissing();
+  const reason = () => (missing().length ? `${t("welcome.demoNeeds", { tools: missing().join(", ") })} ${missing().map(installHint).join(" · ")}` : t("welcome.demoHint"));
+  return (
+    <Button size={props.size} variant={props.variant} disabled={missing().length > 0} title={reason()} onClick={() => void startDemo()}>
+      {t("welcome.tryDemo")}
+    </Button>
+  );
+}
+
 /**
  * A check row. Tower's own self-tests are facts, not verifier verdicts, so a
- * passing check is a quiet mark — green stays with the verifier.
+ * passing check is a quiet mark — green stays with the verifier. A fix (a
+ * command to copy, or an action) always takes its own line under the text.
  */
-function Check(props: { ok: boolean | null; blocking?: boolean; title: string; detail?: JSX.Element; fix?: string | null }) {
+function Check(props: { ok: boolean | null; blocking?: boolean; title: string; detail?: JSX.Element; fix?: string | null; action?: JSX.Element }) {
   return (
     <div class="check-row">
       <span class="check-mark" classList={{ pending: props.ok === null }}>
@@ -63,6 +87,9 @@ function Check(props: { ok: boolean | null; blocking?: boolean; title: string; d
           {props.fix}
         </button>
       </Show>
+      <Show when={props.action}>
+        <div class="check-action">{props.action}</div>
+      </Show>
     </div>
   );
 }
@@ -81,6 +108,19 @@ function SampleCard() {
   );
 }
 
+/** The mark: a ring with the verifier's check, drawn with the same pen as every glyph. */
+function Wordmark() {
+  return (
+    <div class="wordmark" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter">
+        <circle cx="5" cy="5" r="4" />
+        <path d="M3.1 5.2 L4.5 6.6 L7 3.7" />
+      </svg>
+      TOWER
+    </div>
+  );
+}
+
 export function Welcome() {
   const [models, { refetch }] = createResource(() => api.models().catch(() => null));
   const env = () => state.env;
@@ -92,10 +132,13 @@ export function Welcome() {
   const sandbox = () => (env() ? !hasIssue(env(), "no_sandbox") : null);
   const other = () => issues().filter((i) => !["pi_missing", "pi_broken", "pi_too_old", "pi_untested", "git_missing", "no_sandbox"].includes(i.kind));
   const fixFor = (i: EnvIssue | undefined) => i?.fix ?? undefined;
+  // Without a working Pi, the demo is the way in.
+  const demoPrimary = () => piOk() === false || (piOk() === true && modelCount() === 0);
 
   return (
     <div class="welcome">
       <div class="welcome-main">
+        <Wordmark />
         <h1 class="welcome-title">{t("welcome.title")}</h1>
         <p class="welcome-lede">{t("welcome.lede")}</p>
         <SampleCard />
@@ -120,22 +163,33 @@ export function Welcome() {
           <h2 class="section-title">{t("welcome.envCheck")}</h2>
           <Check
             ok={piOk()}
-            title={piOk() ? `Pi ${env()?.pi_version ?? ""}` : (piIssue()?.text ?? t("welcome.piMissing"))}
-            detail={piOk() ? (piNote()?.text ?? env()?.pi_path ?? undefined) : t("welcome.piWhat")}
+            title={piOk() ? `Pi ${env()?.pi_version ?? ""}` : piIssue() ? envIssueLabel(piIssue()!, env()) : t("welcome.piMissing")}
+            detail={piOk() ? (piNote() ? envIssueLabel(piNote()!, env()) : env()?.pi_path ?? undefined) : t("welcome.piWhat")}
             fix={piOk() === false ? (fixFor(piIssue()) ?? "npm i -g @earendil-works/pi-coding-agent") : undefined}
           />
-          <Check
-            ok={modelCount() === null ? null : modelCount()! > 0}
-            title={
-              modelCount() === null
-                ? t("welcome.modelsLoading")
-                : modelCount()! > 0
-                  ? t("welcome.models", { n: modelCount()! })
-                  : t("welcome.noModels")
-            }
-            detail={modelCount() === 0 ? t("welcome.noModelsHint") : undefined}
-            fix={modelCount() === 0 ? "pi" : undefined}
-          />
+          <Show when={piOk()}>
+            <Check
+              ok={modelCount() === null ? null : modelCount()! > 0}
+              title={
+                modelCount() === null
+                  ? t("welcome.modelsLoading")
+                  : modelCount()! > 0
+                    ? t("welcome.models", { n: modelCount()! })
+                    : t("welcome.noModels")
+              }
+              detail={modelCount() === 0 ? t("welcome.noModelsHint") : undefined}
+              action={
+                modelCount() === 0 ? (
+                  <>
+                    <Button size="s" onClick={openPiLogin}>
+                      {t("welcome.openPiLogin")}
+                    </Button>
+                    <span>{t("welcome.openPiLoginHint")}</span>
+                  </>
+                ) : undefined
+              }
+            />
+          </Show>
           <Check
             ok={env() ? !!env()!.git_version : null}
             title={env()?.git_version ?? t("welcome.gitMissing")}
@@ -147,7 +201,15 @@ export function Welcome() {
             title={sandbox() ? t("welcome.sandboxOk") : t("welcome.sandboxMissing")}
             detail={sandbox() ? t("welcome.sandboxOkDetail") : t("welcome.sandboxMissingDetail")}
           />
-          <For each={other()}>{(i) => <Check ok={false} blocking={i.blocking} title={i.text} fix={i.fix} />}</For>
+          <For each={other()}>{(i) => <Check ok={false} blocking={i.blocking} title={envIssueLabel(i, env())} fix={i.fix} />}</For>
+          <Show when={demoMissing().length}>
+            <Check
+              ok={false}
+              blocking={false}
+              title={t("welcome.demoNeeds", { tools: demoMissing().join(", ") })}
+              fix={demoMissing().map(installHint).join(" && ")}
+            />
+          </Show>
         </section>
         <div class="welcome-actions">
           <Button
@@ -160,10 +222,8 @@ export function Welcome() {
             {t("welcome.recheck")}
           </Button>
           <span class="row">
-            <Button variant="ghost" onClick={() => void startDemo()} title={t("welcome.demoHint")}>
-              {t("welcome.tryDemo")}
-            </Button>
-            <Button variant="primary" onClick={pickProject}>
+            <DemoButton variant={demoPrimary() ? "primary" : "ghost"} />
+            <Button variant={demoPrimary() ? "default" : "primary"} onClick={pickProject}>
               {t("welcome.addRepo")}
             </Button>
           </span>

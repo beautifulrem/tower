@@ -7,7 +7,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { DecisionCard, chooseOption } from "../components/DecisionCard";
-import { Button, Empty } from "../components/ui";
+import { Button, Empty, Kbd } from "../components/ui";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { isBlocking } from "../lib/labels";
@@ -46,7 +46,7 @@ export function Inbox() {
         },
         desc: () => t("keys.reviewSelected"),
       },
-      ...Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), run: () => pick(i), desc: i === 0 ? () => t("keys.choose") : undefined, hint: i === 0 ? "1 9" : undefined })),
+      ...Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), run: () => pick(i), desc: i === 0 ? () => t("keys.choose") : undefined, hint: i === 0 ? "1–9" : undefined })),
     ],
     () => t("common.needsYou"),
   );
@@ -88,7 +88,15 @@ export function Inbox() {
       >
         <Group title={t("inbox.blocking")} list={blocking()} offset={0} />
         <Group title={t("inbox.toReview")} list={review()} offset={blocking().length} />
-        <p class="meta t3 halt">{t("inbox.keys")}</p>
+        <p class="key-hints halt" aria-hidden="true">
+          <span>
+            <Kbd k="j k" /> {t("inbox.keyMove")}
+          </span>
+          <span>
+            <Kbd k="1–9" /> {t("inbox.keyChoose")}
+          </span>
+          <span>{t("inbox.keyTwice")}</span>
+        </p>
       </Show>
     </div>
   );

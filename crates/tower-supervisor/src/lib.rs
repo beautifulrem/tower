@@ -10,6 +10,7 @@ pub mod api;
 mod caches;
 mod demo;
 pub mod paths;
+mod project_check;
 pub mod prompts;
 mod run;
 pub mod sandbox;
@@ -130,6 +131,12 @@ impl Inner {
         self.dirty.lock().unwrap_or_else(PoisonError::into_inner).remove(goal);
         if let Ok(g) = self.store(|s| s.summary(goal)) {
             self.sink.emit(UiUpdate::Goal { goal: g });
+        }
+    }
+
+    pub fn emit_projects(&self) {
+        if let Ok(projects) = self.store(|s| s.projects()) {
+            self.sink.emit(UiUpdate::Projects { projects });
         }
     }
 
@@ -715,7 +722,15 @@ impl Supervisor {
             s.add_project(NewProject { name, root: root.display().to_string(), base_branch: branch, test_command })
         })?;
         self.emit_projects();
+        project_check::spawn(self.inner.clone(), project.id.clone());
         Ok(project)
+    }
+
+    /// Runs the project's test command on its base branch again.
+    pub fn check_project(&self, id: &str) -> Result<()> {
+        self.inner.store(|s| s.project(id))?;
+        project_check::spawn(self.inner.clone(), id.to_string());
+        Ok(())
     }
 
     pub fn update_project(&self, id: &str, patch: &ProjectPatch) -> Result<ProjectView> {

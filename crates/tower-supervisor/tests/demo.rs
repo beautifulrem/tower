@@ -66,6 +66,19 @@ async fn the_demo_runs_without_pi() {
     assert_eq!(state, LifecycleState::InReview, "trace: {:#?}", sup.trace(&goal.id, None, 100).unwrap());
     assert!(sup.goal(&goal.id).unwrap().criteria.iter().all(|c| c.verified.as_ref().is_some_and(|v| v.passed)));
 
+    // Adding the project ran its tests on the base branch: they fail there
+    // (that is the demo's bug), and the project says so.
+    let mut check = None;
+    for _ in 0..400 {
+        check = sup.projects().unwrap()[0].test_check.clone().filter(|c| c.passed.is_some());
+        if check.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let check = check.expect("the base check finishes");
+    assert_eq!((check.passed, check.env_error), (Some(false), false), "{}", check.output_tail);
+
     // A second click reuses the project.
     sup.start_demo().await.unwrap();
     assert_eq!(sup.projects().unwrap().len(), 1);

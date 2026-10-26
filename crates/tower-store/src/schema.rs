@@ -169,6 +169,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE inbox ADD COLUMN subject TEXT NOT NULL DEFAULT '';
     "#,
+    // 8: the result of running a project's test command on its base branch
+    r#"
+    ALTER TABLE projects ADD COLUMN test_check TEXT;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

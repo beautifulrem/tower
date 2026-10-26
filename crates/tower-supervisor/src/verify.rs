@@ -478,8 +478,9 @@ async fn run_criteria(
     let _cleanup = RemoveOnDrop(cache.clone());
     // Setup may download dependencies (see `setup_may_use_network`); the
     // criteria get the network only when the contract allows it.
-    let setup_jail = run::verifier_jail(inner, &rec, dir, &tmp, &cache, &format!("{name}-setup"), setup_network)?;
-    let jail = run::verifier_jail(inner, &rec, dir, &tmp, &cache, name, contract.network)?;
+    let goal_dir = inner.paths.goal_dir(goal);
+    let setup_jail = run::verifier_jail(inner, &goal_dir, dir, &tmp, &cache, &format!("{name}-setup"), setup_network)?;
+    let jail = run::verifier_jail(inner, &goal_dir, dir, &tmp, &cache, name, contract.network)?;
     let profile = jail.profile.clone();
     let mut env = inner.env.without_credentials();
     env.push(("CI".into(), "1".into()));

@@ -30,6 +30,23 @@ pub struct ProjectView {
     /// the agent starts with dependencies in place. Empty means none.
     pub setup_command: String,
     pub created_at: Millis,
+    /// The test command run on a clean copy of the base branch, so the
+    /// first goal does not discover a broken test setup.
+    pub test_check: Option<TestCheck>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TestCheck {
+    pub command: String,
+    /// `None` while it runs.
+    pub passed: Option<bool>,
+    /// Setup or the command could not run at all (not a test failure).
+    pub env_error: bool,
+    pub base: String,
+    pub duration_ms: i64,
+    pub output_tail: String,
+    pub at: Millis,
 }
 
 /// One line telling you the goal is alive and what kind of thing it is doing.

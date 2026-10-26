@@ -36,6 +36,7 @@ fn row_to_project(r: &Row<'_>) -> rusqlite::Result<ProjectView> {
         local_files: json_col(r, "local_files")?,
         memory: r.get("memory")?,
         setup_command: r.get("setup_command")?,
+        test_check: r.get::<_, Option<String>>("test_check")?.and_then(|j| serde_json::from_str(&j).ok()),
         created_at: r.get("created_at")?,
     })
 }
@@ -71,6 +72,12 @@ impl Store {
         let mut stmt = self.conn.prepare("SELECT * FROM projects ORDER BY name COLLATE NOCASE")?;
         let rows = stmt.query_map([], row_to_project)?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    pub fn set_test_check(&mut self, id: &str, check: &tower_core::view::TestCheck) -> Result<()> {
+        self.conn
+            .execute("UPDATE projects SET test_check = ?2 WHERE id = ?1", params![id, serde_json::to_string(check)?])?;
+        Ok(())
     }
 
     pub fn update_project(&mut self, id: &str, patch: &ProjectPatch) -> Result<ProjectView> {

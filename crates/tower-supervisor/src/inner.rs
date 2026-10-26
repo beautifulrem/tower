@@ -134,14 +134,15 @@ impl Inner {
     /// text — and the link opens the phone page without its token (a
     /// paired phone keeps it).
     fn push(&self, item: &InboxItem) {
-        if matches!(item.kind, InboxKind::ReviewReady | InboxKind::Assumption) {
+        let s = self.settings();
+        if item.kind == InboxKind::Assumption || (item.kind == InboxKind::ReviewReady && !s.push_ready) {
             return;
         }
-        let s = self.settings();
         let url = s.push_url.trim().to_string();
         if url.is_empty()
             || s.quiet_until.is_some_and(|t| t > tower_store::system_now())
             || s.muted_goals.contains(&item.goal_id)
+            || s.quiet_hours.is_some_and(|q| local_minute().is_some_and(|m| q.contains(m)))
         {
             return;
         }
@@ -293,6 +294,14 @@ pub(crate) async fn refresh_touched(inner: &Arc<Inner>) -> Result<()> {
         inner.mark_dirty(&g.id);
     }
     Ok(())
+}
+
+/// Minutes after local midnight, now.
+fn local_minute() -> Option<u16> {
+    let out = std::process::Command::new("/bin/date").arg("+%H %M").output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut it = text.split_whitespace().map(|p| p.parse::<u16>().ok());
+    Some(it.next()?? * 60 + it.next()??)
 }
 
 /// The fixed sentence a push carries for each kind of item.

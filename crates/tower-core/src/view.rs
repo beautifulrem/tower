@@ -465,6 +465,34 @@ pub struct Settings {
     /// nothing else. Empty: no pushes.
     #[serde(default)]
     pub push_url: String,
+    /// Daily quiet hours in local time: pushes and system notifications
+    /// wait (the inbox and the badge still update).
+    #[serde(default)]
+    pub quiet_hours: Option<QuietHours>,
+    /// Also push when a goal is ready to accept (not only when one is
+    /// blocked).
+    #[serde(default)]
+    pub push_ready: bool,
+}
+
+/// A daily quiet window, in minutes after local midnight; it may cross
+/// midnight (22:00–08:00).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct QuietHours {
+    pub start: u16,
+    pub end: u16,
+}
+
+impl QuietHours {
+    /// Whether `minute` (after local midnight) falls inside the window.
+    pub fn contains(self, minute: u16) -> bool {
+        match self.start.cmp(&self.end) {
+            std::cmp::Ordering::Less => (self.start..self.end).contains(&minute),
+            std::cmp::Ordering::Greater => minute >= self.start || minute < self.end,
+            std::cmp::Ordering::Equal => false,
+        }
+    }
 }
 
 fn default_remote_port() -> u16 {
@@ -501,6 +529,20 @@ pub struct PushStatus {
 
 fn default_engine() -> String {
     "pi".into()
+}
+
+#[cfg(test)]
+mod quiet_tests {
+    use super::QuietHours;
+
+    #[test]
+    fn quiet_hours_may_cross_midnight() {
+        let night = QuietHours { start: 22 * 60, end: 8 * 60 };
+        assert!(night.contains(23 * 60) && night.contains(3 * 60) && !night.contains(12 * 60));
+        let lunch = QuietHours { start: 12 * 60, end: 13 * 60 };
+        assert!(lunch.contains(12 * 60 + 30) && !lunch.contains(13 * 60));
+        assert!(!QuietHours { start: 60, end: 60 }.contains(60));
+    }
 }
 
 /// The engines Tower can drive.
@@ -543,6 +585,8 @@ impl Default for Settings {
             remote_token: String::new(),
             remote_local_network: false,
             push_url: String::new(),
+            quiet_hours: None,
+            push_ready: false,
         }
     }
 }

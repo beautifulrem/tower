@@ -2,7 +2,7 @@
 //! snapshot in a clean checkout, record each result as a fact, then decide
 //! between review, automatic rework and pausing.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -15,9 +15,8 @@ use tower_git::Git;
 use tower_store::NewInboxItem;
 use tower_verify::{Cancel, RunSpec};
 
-use crate::paths::real;
 use crate::prompts::{self, Failure};
-use crate::{Inner, Result, invalid, run, sandbox};
+use crate::{Inner, Result, invalid, run};
 
 const SETUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
@@ -227,27 +226,27 @@ async fn run_criteria(
     cancel: &Cancel,
 ) -> Result<Outcome> {
     let lang = inner.lang();
-    let dir_real = real(dir);
+    let rec = inner.store(|s| s.goal(goal))?;
     let tmp = inner.paths.tmp(&format!("{goal}-verify"));
-    std::fs::create_dir_all(&tmp)?;
-    let tmp_real = real(&tmp);
-    let profile: Option<PathBuf> = if sandbox::available() {
-        let home = inner.env.get("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
-        let p = inner.paths.goal_dir(goal).join("verify.sb");
-        std::fs::create_dir_all(inner.paths.goal_dir(goal))?;
-        std::fs::write(&p, sandbox::profile(&dir_real, &tmp_real, &real(&home)))?;
-        Some(p)
-    } else {
-        None
-    };
+    // Setup may download dependencies; the criteria get the network only
+    // when the contract allows it.
+    let setup_jail = run::jail(inner, &rec, dir, &tmp, "verify-setup", true)?;
+    let jail = run::jail(inner, &rec, dir, &tmp, "verify", contract.network)?;
+    let profile = jail.profile.clone();
     let mut env = inner.env.without_credentials();
     env.push(("CI".into(), "1".into()));
-    env.push(("TMPDIR".into(), tmp_real.display().to_string()));
+    env.extend(jail.env);
 
-    let setup =
-        if contract.setup.trim().is_empty() { Git::detect_setup_command(dir) } else { Some(contract.setup.clone()) };
+    let project_setup = inner.store(|s| s.project(&rec.project_id))?.setup_command;
+    let setup = if !contract.setup.trim().is_empty() {
+        Some(contract.setup.clone())
+    } else if !project_setup.trim().is_empty() {
+        Some(project_setup)
+    } else {
+        Git::detect_setup_command(dir)
+    };
     if let Some(setup) = setup {
-        let spec = RunSpec::new(command_for(&setup, profile.as_deref()), dir, env.clone(), SETUP_TIMEOUT);
+        let spec = RunSpec::new(command_for(&setup, setup_jail.profile.as_deref()), dir, env.clone(), SETUP_TIMEOUT);
         let r = tower_verify::run(&spec, cancel).await;
         inner.append(
             goal,

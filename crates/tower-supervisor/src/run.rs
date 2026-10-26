@@ -105,6 +105,48 @@ fn human_notes_since_last_run(inner: &Inner, goal: &str) -> Vec<String> {
         .collect()
 }
 
+/// The sandbox profile and environment for one process of a goal: the
+/// directory it works in, the goal's private TMPDIR and package caches, and
+/// whether it may use the network.
+pub(crate) struct Jail {
+    pub profile: Option<PathBuf>,
+    pub env: Vec<(String, String)>,
+}
+
+pub(crate) fn jail(
+    inner: &Inner,
+    goal: &tower_store::GoalRecord,
+    dir: &Path,
+    tmp: &Path,
+    purpose: &str,
+    network: bool,
+) -> Result<Jail> {
+    let home = real(&inner.env.get("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")));
+    let goal_dir = inner.paths.goal_dir(&goal.id);
+    std::fs::create_dir_all(&goal_dir)?;
+    std::fs::create_dir_all(tmp)?;
+    let cache = crate::caches::prepare(&goal_dir.join("cache"), &home, dir)?;
+    let mut env = crate::caches::env(&cache);
+    env.push(("TMPDIR".into(), real(tmp).display().to_string()));
+    let profile = if sandbox::available() {
+        let path = goal_dir.join(format!("{purpose}.sb"));
+        let spec = sandbox::Spec {
+            workspace: real(dir),
+            tmp: real(tmp),
+            cache,
+            home,
+            read: Vec::new(),
+            network,
+            proxy_ports: sandbox::proxy_ports(&inner.env.pairs()),
+        };
+        std::fs::write(&path, sandbox::profile(&spec))?;
+        Some(path)
+    } else {
+        None
+    };
+    Ok(Jail { profile, env })
+}
+
 fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Result<EngineConfig> {
     let program = inner.pi_program().ok_or_else(|| {
         invalid(tr!(inner.lang(), "没有找到 pi，请在设置中指定路径", "Pi was not found; set its path in Settings"))
@@ -128,12 +170,14 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
         ("TOWER_TMP".into(), tmp_real.display().to_string()),
         // The language of the extension's approval reasons and options.
         ("TOWER_LANG".into(), settings.lang().code().into()),
+        // Whether the agent's shell keeps proxy variables (off: stripped).
+        ("TOWER_NETWORK".into(), if goal.contract.network { "1" } else { "0" }.into()),
         ("PI_OFFLINE".into(), "1".into()),
     ]);
-    if sandbox::available() {
-        let home = inner.env.get("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
-        let profile = goal_dir.join("sandbox.sb");
-        std::fs::write(&profile, sandbox::profile(&ws_real, &tmp_real, &real(&home)))?;
+    let jail = jail(inner, goal, ws, &tmp, "agent", goal.contract.network)?;
+    // The agent's shell and file tools inherit the private caches.
+    env.extend(jail.env.into_iter().filter(|(k, _)| k != "TMPDIR"));
+    if let Some(profile) = jail.profile {
         env.push(("TOWER_SANDBOX_PROFILE".into(), profile.display().to_string()));
     }
     let model = Some(goal.contract.model.clone())
@@ -293,19 +337,12 @@ async fn setup_workspace(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, ws:
         return Ok(());
     }
     inner.set_mode(&goal.id, Mode::Starting)?;
-    let tmp = inner.paths.tmp(&goal.id);
-    std::fs::create_dir_all(&tmp)?;
-    let shell_command = if sandbox::available() {
-        let home = inner.env.get("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
-        let profile = inner.paths.goal_dir(&goal.id).join("setup.sb");
-        std::fs::create_dir_all(inner.paths.goal_dir(&goal.id))?;
-        std::fs::write(&profile, sandbox::profile(&real(ws), &real(&tmp), &real(&home)))?;
-        crate::verify::command_for(&command, Some(&profile))
-    } else {
-        command.clone()
-    };
+    // Setup installs dependencies, so it has the network; it still cannot
+    // read the user's files or write outside the workspace and caches.
+    let jail = jail(inner, goal, ws, &inner.paths.tmp(&goal.id), "setup", true)?;
+    let shell_command = crate::verify::command_for(&command, jail.profile.as_deref());
     let mut env = inner.env.without_credentials();
-    env.push(("TMPDIR".into(), real(&tmp).display().to_string()));
+    env.extend(jail.env);
     let spec = tower_verify::RunSpec::new(shell_command, ws, env, Duration::from_secs(15 * 60));
     let r = tower_verify::run(&spec, &tower_verify::Cancel::default()).await;
     inner.append(

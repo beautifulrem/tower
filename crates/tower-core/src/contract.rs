@@ -46,6 +46,11 @@ pub struct Contract {
     /// evaluate them.
     #[serde(default)]
     pub stop_conditions: Vec<String>,
+    /// Let the agent's commands and the criteria reach the network beyond
+    /// loopback. Off by default: reading the workspace plus sending data out
+    /// is how code and secrets leak. Setup commands always have the network.
+    #[serde(default)]
+    pub network: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -151,6 +156,7 @@ impl Contract {
             model: String::new(),
             thinking: String::new(),
             stop_conditions: Vec::new(),
+            network: false,
         }
     }
 

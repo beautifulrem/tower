@@ -39,4 +39,10 @@ thinking: string,
  * (`docs/00` R7). Injected into the first message; Tower does not
  * evaluate them.
  */
-stop_conditions: Array<string>, };
+stop_conditions: Array<string>, 
+/**
+ * Let the agent's commands and the criteria reach the network beyond
+ * loopback. Off by default: reading the workspace plus sending data out
+ * is how code and secrets leak. Setup commands always have the network.
+ */
+network: boolean, };

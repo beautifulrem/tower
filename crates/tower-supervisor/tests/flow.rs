@@ -602,3 +602,27 @@ async fn diagnostics_leave_secrets_out() {
     assert!(text.contains("\"tower\""), "the archive has content");
     assert!(token.is_empty() || !text.contains(&token), "no pairing token");
 }
+
+/// Pushes (ntfy): an item that blocks a goal sends its goal's and its own
+/// title to the configured topic, and nothing for items that block nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn blocking_items_are_pushed_to_the_configured_topic() {
+    use std::io::Read;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let received = std::thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut buf = vec![0u8; 8192];
+        let n = s.read(&mut buf).unwrap_or(0);
+        let _ = std::io::Write::write_all(&mut s, b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+        String::from_utf8_lossy(&buf[..n]).into_owned()
+    });
+    let h = harness("ask").await;
+    h.sup.save_settings(Settings { push_url: format!("http://127.0.0.1:{port}/tower"), ..h.sup.settings() }).unwrap();
+    let id = create(&h).await;
+    wait_inbox(&h, &id, InboxKind::Question).await;
+    let request = tokio::task::spawn_blocking(move || received.join().unwrap()).await.unwrap();
+    assert!(request.starts_with("POST /tower"), "{request}");
+    assert!(request.contains(&format!("Title: {id}")), "{request}");
+}

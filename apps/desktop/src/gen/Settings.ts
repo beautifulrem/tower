@@ -62,4 +62,10 @@ remote_token: string,
  * Also listen on the local network (unencrypted). Off: only on
  * Tailscale's address when there is one.
  */
-remote_local_network: boolean, };
+remote_local_network: boolean, 
+/**
+ * An ntfy topic URL (e.g. on your own ntfy server) that gets a push for
+ * every item that blocks a goal: the goal's and the item's titles,
+ * nothing else. Empty: no pushes.
+ */
+push_url: string, };

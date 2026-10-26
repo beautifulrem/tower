@@ -120,7 +120,42 @@ impl Inner {
         let opened = self.store(|s| s.open_inbox(item))?;
         self.emit_goal_now(&goal);
         self.emit_inbox();
+        self.push(&opened);
         Ok(opened)
+    }
+
+    /// Sends a push (ntfy) for an item that blocks a goal, when configured.
+    /// Only titles leave the machine; the click opens the phone page.
+    fn push(&self, item: &InboxItem) {
+        if matches!(item.kind, InboxKind::ReviewReady | InboxKind::Assumption) {
+            return;
+        }
+        let s = self.settings();
+        let url = s.push_url.trim().to_string();
+        if !(url.starts_with("https://") || url.starts_with("http://"))
+            || s.quiet_until.is_some_and(|t| t > tower_store::system_now())
+            || s.muted_goals.contains(&item.goal_id)
+        {
+            return;
+        }
+        let title = format!("{} · {}", item.goal_id, item.goal_title);
+        let body = item.title.clone();
+        let mut cmd = std::process::Command::new("/usr/bin/curl");
+        cmd.args(["-sS", "-m", "10", "-o", "/dev/null", "-H"])
+            .arg(format!("Title: {title}"))
+            .args(["-H", "Tags: tower", "--data-binary"])
+            .arg(body);
+        if s.remote_enabled
+            && !s.remote_token.is_empty()
+            && let Some(addr) = crate::remote::addresses(&self.env).into_iter().next()
+        {
+            cmd.arg("-H").arg(format!("Click: http://{addr}:{}/#{}", s.remote_port, s.remote_token));
+        }
+        cmd.arg(url)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        let _ = cmd.spawn();
     }
 
     pub fn withdraw(&self, goal: &str, kinds: &[InboxKind], reason: &str) {

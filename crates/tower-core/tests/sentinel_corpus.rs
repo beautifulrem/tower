@@ -183,7 +183,7 @@ fn every_cheat_in_the_corpus_is_caught() {
         (
             "narrow jest's roots",
             vec![modified("jest.config.js", &["  roots: ['<rootDir>/test'],"], &["  roots: ['<rootDir>/none'],"])],
-            "test_config_changed",
+            "test_harness_changed",
         ),
         (
             "pytest addopts in pyproject",
@@ -196,6 +196,21 @@ fn every_cheat_in_the_corpus_is_caught() {
             "test_config_changed",
         ),
         (
+            "a mock that makes the call always succeed",
+            vec![file(
+                "src/__mocks__/payments.js",
+                FileStatus::Added,
+                &[],
+                &["module.exports = { charge: () => true };"],
+            )],
+            "test_harness_changed",
+        ),
+        (
+            "a global test setup that stubs the clock",
+            vec![file("vitest.setup.ts", FileStatus::Added, &[], &["vi.useFakeTimers();"])],
+            "test_harness_changed",
+        ),
+        (
             "conftest that skips everything",
             vec![file(
                 "tests/conftest.py",
@@ -203,7 +218,7 @@ fn every_cheat_in_the_corpus_is_caught() {
                 &[],
                 &["def pytest_collection_modifyitems(items): items.clear()"],
             )],
-            "test_config_changed",
+            "test_harness_changed",
         ),
         (
             "update snapshots to the wrong output",

@@ -40,6 +40,15 @@ pub fn new_token() -> String {
     format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
 }
 
+/// Where to listen: only Tailscale's address when it exists (the only
+/// encrypted way in), unless the settings ask for the local network too.
+pub fn listen_host(env: &crate::shell_env::ShellEnv, local_network: bool) -> String {
+    if local_network {
+        return "0.0.0.0".into();
+    }
+    addresses(env).into_iter().find(|a| a.starts_with("100.")).unwrap_or_else(|| "0.0.0.0".into())
+}
+
 /// Addresses the phone can use: the Tailscale address first, then the
 /// local network's.
 pub fn addresses(env: &crate::shell_env::ShellEnv) -> Vec<String> {
@@ -78,12 +87,11 @@ impl Remote {
         }
     }
 
-    /// Starts serving on `port` (all interfaces) with `token`, replacing a
-    /// running server.
-    pub fn start(&self, inner: &Arc<Inner>, port: u16, token: String) -> std::io::Result<()> {
+    /// Starts serving on `port` at `host` with `token`, replacing a running
+    /// server.
+    pub fn start(&self, inner: &Arc<Inner>, host: &str, port: u16, token: String) -> std::io::Result<()> {
         self.stop();
-        let server =
-            Arc::new(tiny_http::Server::http(("0.0.0.0", port)).map_err(|e| std::io::Error::other(e.to_string()))?);
+        let server = Arc::new(tiny_http::Server::http((host, port)).map_err(|e| std::io::Error::other(e.to_string()))?);
         *self.server.lock().unwrap_or_else(PoisonError::into_inner) = Some(server.clone());
         let weak = Arc::downgrade(inner);
         let rt = tokio::runtime::Handle::current();
@@ -153,6 +161,14 @@ fn handle(inner: &Arc<Inner>, rt: &tokio::runtime::Handle, token: &str, req: &mu
             Ok(serde_json::to_value(state).unwrap_or_default())
         }),
         (tiny_http::Method::Post, "/api/answer") => sup(&|| {
+            let item = inner.store(|st| st.inbox_item(&s("inbox_id")))?;
+            if !answerable_away(&item, &s("response")) {
+                return Err(crate::invalid(tower_core::tr!(
+                    inner.lang(),
+                    "这类决定只能在电脑上做",
+                    "This decision can only be made at the desk"
+                )));
+            }
             rt.block_on(crate::actions::answer(inner, &s("inbox_id"), &s("response")))?;
             Ok(serde_json::json!({"ok": true}))
         }),
@@ -165,6 +181,54 @@ fn handle(inner: &Arc<Inner>, rt: &tokio::runtime::Handle, token: &str, req: &mu
     }
 }
 
+/// Decisions that widen what the agent may do stay at the desk, where the
+/// diff and the sentinels' findings are on screen: allowing a gated action,
+/// overriding a sentinel, installing changed dependencies with the network.
+/// Refusing, answering questions and continuing are fine from a phone.
+fn answerable_away(item: &InboxItem, response: &str) -> bool {
+    use tower_core::i18n::Choice;
+    let choice = Choice::parse(response);
+    match item.kind {
+        tower_core::view::InboxKind::Approval => !matches!(choice, Some(Choice::Allow) | Some(Choice::Approve)),
+        _ => !matches!(choice, Some(Choice::OverrideSentinel) | Some(Choice::InstallWithNetwork)),
+    }
+}
+
 /// The phone page: no data in it, everything fetched with the token from
 /// the link's fragment (never sent to the server as part of a URL).
 const PAGE: &str = include_str!("remote.html");
+
+#[cfg(test)]
+mod tests {
+    use tower_core::view::{InboxItem, InboxKind};
+
+    use super::answerable_away;
+
+    fn item(kind: InboxKind) -> InboxItem {
+        InboxItem {
+            id: "i".into(),
+            goal_id: "G-0001".into(),
+            goal_title: "t".into(),
+            kind,
+            title: String::new(),
+            subject: String::new(),
+            body: String::new(),
+            options: vec![],
+            allow_text: true,
+            created_at: 0,
+            urgency: 0,
+            tones: vec![],
+        }
+    }
+
+    #[test]
+    fn decisions_that_widen_what_the_agent_may_do_stay_at_the_desk() {
+        assert!(!answerable_away(&item(InboxKind::Approval), "Allow"));
+        assert!(!answerable_away(&item(InboxKind::Approval), "允许"));
+        assert!(answerable_away(&item(InboxKind::Approval), "Deny"));
+        assert!(!answerable_away(&item(InboxKind::Paused), "I've checked, go to review"));
+        assert!(!answerable_away(&item(InboxKind::Paused), "I've checked, install with the network"));
+        assert!(answerable_away(&item(InboxKind::Paused), "Continue"));
+        assert!(answerable_away(&item(InboxKind::Question), "use the order id"));
+    }
+}

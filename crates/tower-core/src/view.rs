@@ -447,6 +447,10 @@ pub struct Settings {
     /// The pairing secret every phone request must carry.
     #[serde(default)]
     pub remote_token: String,
+    /// Also listen on the local network (unencrypted). Off: only on
+    /// Tailscale's address when there is one.
+    #[serde(default)]
+    pub remote_local_network: bool,
 }
 
 fn default_remote_port() -> u16 {
@@ -509,6 +513,7 @@ impl Default for Settings {
             remote_enabled: false,
             remote_port: default_remote_port(),
             remote_token: String::new(),
+            remote_local_network: false,
         }
     }
 }

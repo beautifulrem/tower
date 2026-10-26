@@ -41,6 +41,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 ### Interface
 - English and Simplified Chinese throughout: interface, native menu, notifications, Needs-You cards, errors, briefings, review risk reasons, sentinel titles and the extension's approval prompts. A new install follows the macOS language; Settings → Language switches everything at once, including the menu bar.
 - Needs-You options are matched by meaning, not text: a card written in one language can be answered in the other.
+- Review: accept a hunk (A) as your reading mark — it folds to its header and the review moves on; paired with undo (U), which changes the workspace. Marks are kept with the review per snapshot; the status bar counts them. Entering review, the file tree slides in while the diff crossfades.
+- Each criterion the must-fail canary checked says what it saw — assertions checked, not checked (and why that matters), or a test that must fail having passed — on the goal page and in the verification readout. Sentinel details read as sentence and list.
+- Held-out failures name the failing tests on the card, on the desk and on the phone, and offer to tell the agent only those names; the phone's card has the desk's grammar and every reply box a placeholder. The phone page's empty state is its own skeleton; axe runs on it.
+- A missing git identity can be set from the welcome screen and Settings, with the command kept beside the fields.
+- Fields show their focus (a text-3 edge, an inner line for the keyboard); an answered card folds the moment its receipt rises; toasts carry Tower's left rule (yours, needs you, error); the runs gauge sweeps to its reading; the briefing is one line; the palette groups actions and goals when you type.
 
 ## [0.1.0] — 2026-10-26
 

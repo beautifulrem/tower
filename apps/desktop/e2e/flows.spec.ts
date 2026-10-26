@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichCi, enrichEngines, enrichHeldOut, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
+import { enrichCanary, enrichCi, enrichEngines, enrichHeldOut, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -10,7 +10,7 @@ test("every decision card offers to be put aside", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Remind me later" })).toHaveCount((fixtures.inbox as unknown[]).length);
 });
 
-test("answering a card closes the loop: the card sits in a folding slot and the receipt rises in", async ({ page }) => {
+test("answering a card closes the loop: the card sits in a folding slot that folds with it, and the receipt rises in with your rule", async ({ page }) => {
   await openTower(page, "inbox");
   const slot = page.locator(".decision-slot").first();
   await expect(slot).toBeVisible();
@@ -19,7 +19,19 @@ test("answering a card closes the loop: the card sits in a folding slot and the 
   const toast = page.locator(".toast").first();
   await expect(toast).toBeVisible();
   expect(await toast.evaluate((el) => getComputedStyle(el).animationName)).toBe("rise");
+  // The receipt of your own action carries the solid text-1 rule at its left edge: the same pen as "for you only".
+  const rule = await toast.evaluate((el) => {
+    const s = getComputedStyle(el, "::before");
+    el.style.color = getComputedStyle(el).getPropertyValue("--text-1");
+    return { width: s.width, background: s.backgroundColor, text1: getComputedStyle(el).color };
+  });
+  expect(rule.width).toBe("2px");
+  expect(rule.background).toBe(rule.text1);
   await expect(slot.locator(".decision")).toHaveClass(/leaving/);
+  // The slot folds on the card's own leaving, before any write-back (the shim never answers with a new inbox).
+  // (The row cannot go under the card's own two hairlines, so it settles at 2px.)
+  await expect.poll(async () => slot.evaluate((el) => parseFloat(getComputedStyle(el).gridTemplateRows))).toBeLessThanOrEqual(2);
+  await expect.poll(async () => slot.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
 });
 
 test("a put-aside card is still accounted for in the inbox, with its way back", async ({ page }) => {
@@ -245,6 +257,64 @@ test("⌘P jumps to a file by path", async ({ page }) => {
   await expect(dialog).toBeHidden();
 });
 
+test("A accepts the current hunk as a reading mark: it folds to its header, the review moves on, the count says so, and the mark is kept with the review", async ({ page }) => {
+  await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await expect(page.locator("table").first()).toBeVisible();
+  const heads = page.locator(".hunk-head[data-hunk-index]");
+  const before = await heads.count();
+  expect(before).toBeGreaterThanOrEqual(2);
+  const linesBefore = await page.locator(".dl").count();
+  // Undo and accept stand together on a hunk's header while the workspace is yours.
+  await expect(heads.first().getByRole("button", { name: "Undo this hunk" })).toBeVisible();
+  const accept = heads.first().getByRole("button", { name: "Accept this hunk" });
+  await expect(accept).toHaveAttribute("title", /workspace is unchanged/);
+  await page.keyboard.press("a");
+  const marked = page.locator(".hunk-head.hunk-accepted");
+  await expect(marked).toHaveCount(1);
+  await expect(marked.getByRole("button", { name: /Accepted · \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(marked.getByRole("button", { name: "Undo this hunk" })).toHaveCount(0);
+  expect(await page.locator(".dl").count()).toBeLessThan(linesBefore);
+  // Your register: the solid rule, not green.
+  expect(await marked.locator("td").first().evaluate((el) => getComputedStyle(el).boxShadow)).toMatch(/inset/);
+  const status = page.locator(".review-accepted");
+  await expect(status).toHaveText(/1\/\d+ hunks accepted/);
+  await expect(status).toHaveAttribute("title", /reading mark/);
+  // Kept with the review, for this diff, never sent to the agent.
+  await expect.poll(async () => (await calls(page)).find(([cmd, args]) => cmd === "set_ui_state" && (args as { key: string }).key === "accepted")?.[1]).toMatchObject({ key: "accepted", value: expect.stringMatching(/"range":".+\.\..+"/) });
+  // Taken back by its button: the hunk unfolds.
+  await marked.getByRole("button", { name: /Accepted/ }).click();
+  await expect(page.locator(".hunk-head.hunk-accepted")).toHaveCount(0);
+  expect(await page.locator(".dl").count()).toBe(linesBefore);
+  // Every hunk of a file accepted: the file is viewed.
+  const file = page.locator(".file").first();
+  const fileHunks = await file.locator(".hunk-head[data-hunk-index]").count();
+  for (let i = 0; i < fileHunks; i++) await file.locator(".accept-hunk").nth(i).click();
+  await expect(file.getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a sheet opened inside a sheet gives focus back where it came from, and the first sheet stays", async ({ page }) => {
+  await openTower(page, "review/G-0001", { enrich: enrichLook });
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("Meta+Shift+Enter");
+  const accept = page.getByRole("dialog");
+  await expect(accept).toBeVisible();
+  // The look criterion's thumbnail sits on the accept sheet; opening it is a second layer.
+  const thumb = accept.locator(".look-img-btn").first();
+  await expect(thumb).toBeVisible();
+  await thumb.click();
+  await expect(page.getByRole("dialog")).toHaveCount(2);
+  const compare = page.getByRole("dialog").last();
+  await expect(compare.locator(".look-side, .look-onion").first()).toBeVisible();
+  // Esc closes only the inner one; focus lands back on the thumbnail that opened it, inside the sheet that stays.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await expect(accept).toBeVisible();
+  expect(await page.evaluate(() => document.activeElement?.className)).toContain("look-img-btn");
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
 test("the accept sheet opens with focus on the sheet, not a button, and asks for the human check on its row", async ({ page }) => {
   await openTower(page, "review/G-0001");
   await expect(page.locator("table").first()).toBeVisible();
@@ -373,10 +443,14 @@ test("a held-out failure's card keeps the output for you, makes the hint the one
   await expect(card).toBeVisible();
   await expect(card.locator(".heldout-label")).toHaveText("For you only");
   await expect(card.locator(".heldout .output-tail")).toContainText("AssertionError");
-  // One primary action on the page, and it is the hint; showing the agent the failure is a plain button, abandoning asks twice.
+  // The failing tests are named, as machine values, above the output; the sentence does not repeat them.
+  await expect(card.locator(".heldout-names code")).toHaveText(["total rounds half-cents up", "applies tax once"]);
+  await expect(card.locator(".decision-body")).not.toContainText("Failing in");
+  // One primary action on the page, and it is the hint; telling only the names and showing the failure are plain buttons, abandoning asks twice.
   const primaries = page.locator(".goal-page .btn-primary");
   await expect(primaries).toHaveCount(1);
   await expect(primaries).toHaveText(/Send the hint and resume/);
+  await expect(card.getByRole("button", { name: "Tell the agent only which tests failed" })).toHaveClass(/btn-default/);
   await expect(card.getByRole("button", { name: /Show the agent the failure/ })).toHaveClass(/btn-default/);
   await expect(card.getByRole("button", { name: "Abandon this goal" })).toHaveClass(/btn-danger/);
   // The output stands above the field, the field above the agent-facing choices.
@@ -405,6 +479,36 @@ test("a result produced with the held-out tests present is marked for you only, 
   await expect(page.getByRole("dialog").locator(".chip-you")).toHaveCount(1);
 });
 
+test("what the canary saw stands under each criterion, quietly or in the attention register, on the goal page and in the readout; the two newer sentinels read as sentence and list", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCanary });
+  const lines = page.locator(".goal-page .canary-line");
+  await expect(lines).toHaveCount(3);
+  const intact = page.locator('.goal-page .canary-line[data-canary="intact"]');
+  await expect(intact).toHaveText(/assertions checked/);
+  expect(await intact.locator(".mark-attention").count()).toBe(0);
+  const unchecked = page.locator('.goal-page .canary-line[data-canary="not_checked"]');
+  await expect(unchecked).toContainText("assertions not checked");
+  await expect(unchecked).toContainText("a pass proves less here");
+  const tampered = page.locator('.goal-page .canary-line[data-canary="tampered"]');
+  await expect(tampered).toContainText("a test that must fail passed");
+  await expect(tampered.locator(".mark-attention")).toBeVisible();
+  // The sentinels: the high one is a square, the medium one a hollow diamond; the probing detail is a sentence over a list of paths.
+  const sentinels = page.locator(".sentinel");
+  await expect(sentinels).toHaveCount(2);
+  const probing = sentinels.filter({ hasText: "outside its workspace" });
+  await expect(probing.locator(".sentinel-prose")).toHaveCount(1);
+  await expect(probing.locator(".sentinel-machine")).toHaveCount(5);
+  await expect(probing.locator(".sentinel-machine").first()).toHaveText("/Users/you/shop/test/holdout/rounding.test.js");
+  const unchecked2 = sentinels.filter({ hasText: "could not be checked" });
+  await expect(unchecked2.locator(".sentinel-machine")).toHaveCount(0);
+  await expect(unchecked2.locator(".mark-danger")).toBeVisible();
+  // The same three lines in the verification readout.
+  await page.keyboard.press("r");
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("e");
+  await expect(page.getByRole("dialog").locator(".canary-line")).toHaveCount(3);
+});
+
 test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {
   const identity = (F: Record<string, any>) => {
     // The dumping supervisor may itself lack an identity: one row either way.
@@ -423,11 +527,22 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   await expect(fix).toHaveText(/user\.name .* && git config --global user\.email you@example\.com$/);
   // Whole, not clipped: the button shows all of its text.
   expect(await fix.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+  // The form stands above the command: a name, an email, one button, disabled until both are there.
+  const save = row.getByRole("button", { name: "Set in git" });
+  await expect(save).toBeDisabled();
+  expect((await row.locator(".identity-form").boundingBox())!.y).toBeLessThan((await fix.boundingBox())!.y);
+  await row.getByLabel("Your name").fill("Ada Lovelace");
+  await row.getByLabel("you@example.com").fill("ada@example.com");
+  await save.click();
+  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "set_git_identity")?.[1]).toEqual({ name: "Ada Lovelace", email: "ada@example.com" });
+  await expect(page.locator(".toast")).toContainText("git now commits as Ada Lovelace");
   // The welcome screen's route: six stations, joined, the last two green.
   await expect(page.locator(".welcome-station")).toHaveCount(6);
   await expect(page.locator(".welcome-station").nth(2)).toContainText("Claimed done");
   await openTower(page, "settings", { enrich: identity });
-  await expect(page.locator(".check-row").filter({ hasText: "git has no name and email" }).locator(".fix")).toBeVisible();
+  const settingsRow = page.locator(".check-row").filter({ hasText: "git has no name and email" });
+  await expect(settingsRow.locator(".fix")).toBeVisible();
+  await expect(settingsRow.getByRole("button", { name: "Set in git" })).toBeVisible();
 });
 
 test("the command palette can put the page's card aside, and H does the same", async ({ page }) => {
@@ -474,6 +589,77 @@ test("start-up failure is Tower's own strip with the power off: dashes for readi
   await expect(failed.locator(".boot-error")).toContainText("database locked");
   await expect(failed.locator(".empty-rules")).toHaveCount(0);
   await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible();
+});
+
+test("a field shows its focus: a darker edge for the pointer, a second line inside for the keyboard", async ({ page }) => {
+  await openTower(page, "goal/G-0004", { enrich: enrichHeldOut });
+  const area = page.locator(".decision-heldout textarea");
+  await expect(area).toBeVisible();
+  const text3 = await area.evaluate((el) => getComputedStyle(el).getPropertyValue("--text-3").trim());
+  const resting = await area.evaluate((el) => getComputedStyle(el).borderTopColor);
+  await area.click();
+  const focused = await area.evaluate((el) => ({ border: getComputedStyle(el).borderTopColor, outline: getComputedStyle(el).outlineStyle }));
+  expect(focused.border).not.toBe(resting);
+  expect(focused.outline).toBe("none");
+  // The edge is text-3 itself, not a lighter hairline: the same colour the labels are set in.
+  expect(await area.evaluate((el, c) => { el.style.color = c; return getComputedStyle(el).color; }, text3)).toBe(focused.border);
+  // Reached from the keyboard, the field gets its inner line as well.
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("TEXTAREA");
+  expect(await area.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe("none");
+});
+
+test("a review with nothing to review is a poster in the middle of the page, and the status bar stays at the foot", async ({ page }) => {
+  await openTower(page, "review/G-0002", {
+    enrich: (F) => {
+      F["review-G-0002"] = { ...F["review-G-0001"], units: [], files: [], stat: { files: 0, additions: 0, deletions: 0 } };
+    },
+  });
+  const poster = page.locator(".review .empty-poster");
+  await expect(poster).toBeVisible();
+  await expect(poster).toContainText("No changes");
+  const box = (await poster.boundingBox())!;
+  expect(box.x).toBeGreaterThan(24);
+  expect(box.y).toBeGreaterThan(150);
+  const status = (await page.locator(".review-status").boundingBox())!;
+  expect(Math.round(status.y + status.height)).toBe(900);
+  await expect(page.getByRole("button", { name: "Open the goal page" })).toHaveClass(/btn-default/);
+});
+
+test("the briefing is one line: three goals, a count, a pause said once without nested parentheses", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("tower.overviewSeenAt", String(Date.now() - 3 * 3_600_000)));
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      for (const g of F.goals) g.updated_at = Date.now() - 60_000;
+      enrichHeldOut(F);
+    },
+  });
+  const bar = page.locator(".today-bar");
+  await expect(bar).toBeVisible();
+  await expect(bar.locator(".briefing-item")).toHaveCount(4);
+  await expect(bar.locator(".briefing-more")).toHaveText("1 more");
+  const paused = bar.locator(".briefing-item").filter({ hasText: "G-0004" });
+  await expect(paused).toHaveAttribute("title", /Paused \(Held-out tests failed\)$/);
+  expect(await bar.innerText()).not.toMatch(/\(\(|（（/);
+  expect((await bar.boundingBox())!.height).toBeLessThanOrEqual(24);
+  // The dismissal is a 20pt target.
+  expect((await page.getByRole("button", { name: "Got it" }).boundingBox())!.height).toBeGreaterThanOrEqual(20);
+});
+
+test("in Settings the phone's problem stands under its switch and above the port; the pairing link is a plain button", async ({ page }) => {
+  await openTower(page, "settings", { enrich: enrichPhoneProblem });
+  const problem = page.locator(".phone-problem");
+  await expect(problem).toBeVisible();
+  const problemY = (await problem.boundingBox())!.y;
+  const switchY = (await page.getByLabel("Enable the phone page").boundingBox())!.y;
+  const portY = (await page.getByRole("spinbutton", { name: "Port" }).boundingBox())!.y;
+  expect(switchY).toBeLessThan(problemY);
+  expect(problemY).toBeLessThan(portY);
+  await expect(page.getByRole("button", { name: "New pairing link" })).toHaveClass(/btn-default/);
+  // The state word is a state: "On", not a verb.
+  await expect(page.getByRole("button", { name: /^Notifications: / })).toHaveText("On");
 });
 
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {

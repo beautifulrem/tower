@@ -135,15 +135,22 @@ export function enrichPhone(F: F) {
   };
 }
 
-/** The held-out output the supervisor puts on a card: its sentence, then `C2 · title` and the runner's lines, for the human only. */
+/** The held-out output the supervisor puts on a card: its sentence, the failing tests' names, then `C2 · title` and the runner's lines, for the human only. */
 export const HELD_OUT_BODY = [
   "Every visible criterion passed; the held-out tests did not. The agent does not know these tests and has not seen the output below.",
   "",
+  "Failing in C2: total rounds half-cents up, applies tax once",
+  "",
   "C2 · Rounding edge cases",
   "✖ total rounds half-cents up (0.4ms)",
+  "✖ applies tax once (0.2ms)",
   "  AssertionError: expected 10.01 to equal 10.02",
-  "ℹ fail 1",
+  "ℹ fail 2",
 ].join("\n");
+
+/** The three ways out of a held-out failure, as the supervisor offers them: names only, the failure itself, or giving up. */
+export const HELD_OUT_OPTIONS = ["Tell the agent only which tests failed", "Show the agent the failure (it will see the held-out tests)", "Abandon this goal"];
+export const HELD_OUT_TONES = ["neutral", "neutral", "destructive"];
 
 /**
  * G-0004 is paused because the held-out tests failed (the card offers a hint, showing the agent, or abandoning), and G-0001's
@@ -158,8 +165,8 @@ export function enrichHeldOut(F: F) {
       title: "Paused: Held-out tests failed (the agent cannot see them)",
       subject: "Held-out tests failed (the agent cannot see them)",
       body: HELD_OUT_BODY,
-      options: ["Show the agent the failure (it will see the held-out tests)", "Abandon this goal"],
-      tones: ["neutral", "destructive"],
+      options: HELD_OUT_OPTIONS,
+      tones: HELD_OUT_TONES,
       allow_text: true,
     });
   const c2 = F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C2");
@@ -177,6 +184,43 @@ export function enrichPhoneProblem(F: F) {
     tailscale: false,
     problem: "Tailscale is not connected, so the phone page is off. Open Tailscale, or allow the local network below (the token then crosses it unencrypted).",
   };
+}
+
+/**
+ * What the canary saw on G-0001: C1's assertions were checked (intact), C2's could not be (a test style Tower does not
+ * know), and a fourth, executable criterion's canary passed when it must have failed. The goal page then carries the
+ * two newer sentinels: program code reaching into the tests with assertions unchecked (high), and repeated sandbox
+ * refusals (medium).
+ */
+export function enrichCanary(F: F) {
+  const d = F["goal-G-0001"];
+  if (!d) return;
+  const by = (id: string) => d.criteria.find((c: any) => c.criterion.id === id);
+  if (by("C1")) by("C1").canary = "intact";
+  if (by("C2")) by("C2").canary = "not_checked";
+  const c2 = by("C2");
+  if (c2?.verified && !by("C4")) {
+    const criterion = { id: "C4", title: "Rounding tests pass", kind: { type: "exec", command: "node --test test/rounding.test.js", timeout_secs: 120 } };
+    d.contract.criteria.push(criterion);
+    d.criteria.push({ ...structuredClone(c2), criterion, canary: "tampered", passed_on_base: null, base_error: null });
+    d.summary.progress.machine += 1;
+    d.summary.progress.verified += 1;
+    for (const g of F.goals) if (g.id === "G-0001") (g.progress.machine += 1, (g.progress.verified += 1));
+  }
+  d.sentinels.push(
+    {
+      sentinel: "assertions_unchecked",
+      severity: 3,
+      title: "Program code reaches into the tests, and the assertions could not be checked",
+      detail: "Program code reaches into the assertion library or test runner, and the assertions of C2 could not be checked with the canary (a language or test style Tower does not know). Check yourself that these tests really test.",
+    },
+    {
+      sentinel: "sandbox_probing",
+      severity: 2,
+      title: "The agent repeatedly tried to read outside its workspace",
+      detail: "The sandbox refused 7 accesses outside the workspace; the latest:\n/Users/you/shop/test/holdout/rounding.test.js\n~/.ssh/config\n../other-project/src/index.ts\n/etc/hosts\n/Users/you/shop/.env",
+    },
+  );
 }
 
 /** Pushes are configured to a topic, the last one failed, and quiet hours run 22:00–08:00. */
@@ -198,5 +242,6 @@ export function enrichRich(F: F) {
   enrichPhone(F);
   enrichSnoozed(F);
   enrichHeldOut(F);
+  enrichCanary(F);
   enrichPushes(F);
 }

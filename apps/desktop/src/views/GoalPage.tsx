@@ -212,7 +212,7 @@ export function GoalPage(props: { id: string }) {
                 <div class="goal-overlaps meta halt">
                   <For each={g().overlaps}>
                     {(o) => (
-                      <button class="link-quiet row" style={{ gap: "5px" }} onClick={() => go({ name: "goal", id: o.goal_id })} title={o.title}>
+                      <button class="link-quiet row text-btn" style={{ gap: "5px" }} onClick={() => go({ name: "goal", id: o.goal_id })} title={o.title}>
                         <NoticeMark />
                         <span>{t("goal.overlaps", { id: o.goal_id })}</span>
                         <span class="sep">·</span>

@@ -272,18 +272,23 @@ function BoardGhost() {
 }
 
 const SEEN_KEY = "tower.overviewSeenAt";
+/** The briefing names this many goals; the rest are a count. */
+const BRIEFING_MAX = 3;
+
+/** A pause reason's short form: the label without its trailing aside, so "Paused (…)" never nests two parentheses. */
+export const shortPauseLabel = (r: NonNullable<GoalSummary["pause_reason"]>): string => pauseLabel(r).replace(/\s*[(（][^()（）]*[)）]\s*$/, "");
 
 /** The re-entry briefing (docs/04 §4.9.1): what moved since you last looked, one line, dismissable. */
 function Briefing() {
   const since = Number(localStorage.getItem(SEEN_KEY) ?? 0);
   onCleanup(() => localStorage.setItem(SEEN_KEY, String(Date.now())));
   const [open, setOpen] = createSignal(true);
-  const changed = createMemo(() =>
-    since ? goalList().filter((g) => g.updated_at > since && g.state !== "archived").slice(0, 4) : [],
-  );
+  const changed = createMemo(() => (since ? goalList().filter((g) => g.updated_at > since && g.state !== "archived") : []));
+  const shown = () => changed().slice(0, BRIEFING_MAX);
+  const more = () => changed().length - shown().length;
   const describe = (g: GoalSummary) =>
     g.state === "paused" && g.pause_reason
-      ? t("overview.pausedWith", { reason: pauseLabel(g.pause_reason) })
+      ? t("overview.pausedWith", { reason: shortPauseLabel(g.pause_reason) })
       : g.needs_you > 0 && g.state === "running"
         ? modeLabel("waiting_on_you")
         : stateLabel(g.state);
@@ -291,14 +296,17 @@ function Briefing() {
     <Show when={open() && changed().length > 0}>
       <div class="today-bar halt" role="status">
         <span class="briefing-title">{t("overview.since", { time: clock(since) })}</span>
-        <For each={changed()}>
+        <For each={shown()}>
           {(g) => (
-            <button class="briefing-item link-plain" onClick={() => go({ name: "goal", id: g.id })}>
+            <button class="briefing-item link-plain" onClick={() => go({ name: "goal", id: g.id })} title={`${g.id} · ${describe(g)}`}>
               <span class="num t3">{g.id}</span> {describe(g)}
             </button>
           )}
         </For>
-        <button class="link meta" onClick={() => setOpen(false)}>
+        <Show when={more() > 0}>
+          <span class="briefing-item briefing-more t3">{t("overview.moreGoals", { n: more() })}</span>
+        </Show>
+        <button class="link meta text-btn" onClick={() => setOpen(false)}>
           {t("overview.gotIt")}
         </button>
       </div>

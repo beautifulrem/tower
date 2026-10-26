@@ -1,5 +1,5 @@
 /** Title bar (breadcrumb and gauges) and toasts. The command palette is `Palette.tsx`, loaded on first open. */
-import { For, Show, createSignal, onCleanup } from "solid-js";
+import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import { clock, duration, usd } from "../lib/format";
 import { wedgePath } from "../lib/gauge";
@@ -69,17 +69,41 @@ export function Heartbeat(props: { running: number }) {
   );
 }
 
+/** The base duration (--dur-base, 160ms), zero under reduced motion. */
+const baseMs = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160);
+
 /**
  * The runs gauge: the running glyph's ring, filled by how many of the slots
  * are in use — one of four a quarter, two of four the glyph's own half-disc,
  * all of them a full disc. A reading, not an icon: it says "1/4" before the
- * numbers do.
+ * numbers do. A gauge turns to its reading: when a run starts or ends the
+ * wedge sweeps to the new fraction over 160ms (eased out) instead of
+ * jumping, and it sweeps up from nothing when it first appears.
  */
 export function RunsGauge(props: { n: number; max: number }) {
+  const target = () => (props.max > 0 ? Math.max(0, Math.min(1, props.n / props.max)) : 0);
+  const [shown, setShown] = createSignal(baseMs() ? 0 : target());
+  let frame = 0;
+  const sweep = (to: number) => {
+    cancelAnimationFrame(frame);
+    const ms = baseMs();
+    const from = shown();
+    if (!ms || from === to) return setShown(to);
+    const start = performance.now();
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / ms);
+      const eased = 1 - (1 - p) ** 3;
+      setShown(p < 1 ? from + (to - from) * eased : to);
+      if (p < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+  };
+  createEffect(on(target, sweep));
+  onCleanup(() => cancelAnimationFrame(frame));
   return (
     <svg class="glyph gauge-runs" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" aria-hidden="true">
       <circle cx="5" cy="5" r="4" />
-      <path d={wedgePath(props.max > 0 ? props.n / props.max : 0)} fill="var(--st-active)" stroke="none" />
+      <path d={wedgePath(shown())} fill="var(--st-active)" stroke="none" />
     </svg>
   );
 }

@@ -88,7 +88,7 @@ fn redact_assignments(text: &str) -> String {
             if value.len() < 8 || value.contains(' ') {
                 return line.to_string();
             }
-            format!("{}{MASK}", &line[..value_start].trim_end_matches(' ').to_string())
+            format!("{}{MASK}", line[..value_start].trim_end_matches(' '))
         })
         .collect::<Vec<_>>()
         .join("\n")

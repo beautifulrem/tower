@@ -307,7 +307,7 @@ function GoalBlocks(props: { d: GoalDetail }) {
                   <span class="num">{duration(r.ended_at! - r.started_at)}</span>
                 </Show>
                 <span class="grow" />
-                <span>{({ submitted: "自称完成", paused: "已暂停", crashed: "引擎退出", abandoned: "已放弃" } as Record<string, string>)[r.outcome ?? ""] ?? (r.ended_at ? r.outcome : "进行中")}</span>
+                <span>{({ submitted: "自称完成", paused: "已暂停", crashed: "引擎退出", abandoned: "已放弃", interrupted: "被中断" } as Record<string, string>)[r.outcome ?? ""] ?? (r.ended_at ? r.outcome : "进行中")}</span>
               </div>
             )}
           </For>
@@ -432,7 +432,7 @@ function BudgetMeter(props: { g: GoalDetail["summary"] }) {
       <div class="meta num">
         预算 {usd(props.g.cost_usd)} / 软 {usdLimit(props.g.budget.soft_usd)} · 硬 {usdLimit(props.g.budget.hard_usd)}
         <Show when={props.g.run_started_at}>
-          <span class="sep">·</span>墙钟 {duration(state.now - props.g.run_started_at!)} / 软 {props.g.budget.wall_minutes} 分
+          <span class="sep">·</span>墙钟 {duration(state.now - props.g.run_started_at!, false)} / 软 {props.g.budget.wall_minutes} 分
         </Show>
       </div>
     </div>

@@ -1,6 +1,7 @@
 /**
- * Sidebar (docs/04 §4.3.2): only goals and the Needs-You inbox. Sessions are
- * traces inside goals, never a list of their own.
+ * Sidebar (docs/04 §4.3.2): goals and the Needs-You inbox, nothing else.
+ * Sessions are traces inside goals, never a list of their own. The foot
+ * carries one sign of life, so "quiet" never has to mean "dead".
  */
 import { For, Show, createMemo } from "solid-js";
 
@@ -28,58 +29,62 @@ export function Sidebar() {
     const r = route();
     return r.name === "goal" || r.name === "review" ? r.id : null;
   };
-  const next = () => state.inbox[0];
+  const engineOk = () => !!state.env?.pi_version;
 
   return (
-    <nav class="sidebar">
+    <nav class="sidebar" aria-label="目标">
       <div class="sidebar-drag" data-tauri-drag-region />
-      <button
-        class="side-inbox"
-        classList={{ active: route().name === "inbox", "has-items": state.inbox.length > 0 }}
-        onClick={() => go({ name: "inbox" })}
-      >
-        <div class="row">
-          <Show when={state.inbox.length > 0} fallback={<span class="side-inbox-dot" />}>
-            <NeedsYouMark />
-          </Show>
-          <span class="side-inbox-title">需要你</span>
-          <span class="grow" />
-          <span class="num side-count">{state.inbox.length}</span>
-          <Kbd k="mod+2" />
-        </div>
-        <Show
-          when={next()}
-          fallback={<div class="side-inbox-next t3">没有需要你决定的事</div>}
+      <div class="side-top">
+        <button class="side-row" classList={{ active: route().name === "new" }} onClick={() => go({ name: "new" })}>
+          <span class="side-icon" aria-hidden="true">
+            ＋
+          </span>
+          <span class="grow">新目标</span>
+          <Kbd k="mod+n" />
+        </button>
+        <button class="side-row" classList={{ active: route().name === "inbox" }} onClick={() => go({ name: "inbox" })}>
+          <span class="side-icon">
+            <Show when={state.inbox.length > 0} fallback={<span class="dot-quiet" />}>
+              <NeedsYouMark />
+            </Show>
+          </span>
+          <span class="grow">需要你</span>
+          <span class="num side-count" classList={{ t1: state.inbox.length > 0 }}>
+            {state.inbox.length || ""}
+          </span>
+        </button>
+        <button
+          class="side-row"
+          classList={{ active: route().name === "overview" }}
+          onClick={() => go({ name: "overview" })}
         >
-          <div class="side-inbox-next ellipsis">
-            下一件：{next()!.goal_id} · {next()!.title}
-          </div>
-        </Show>
-      </button>
-
-      <button class="side-link" classList={{ active: route().name === "overview" }} onClick={() => go({ name: "overview" })}>
-        <span>概览</span>
-        <span class="grow" />
-        <Kbd k="mod+1" />
-      </button>
+          <span class="side-icon" aria-hidden="true">
+            ▦
+          </span>
+          <span class="grow">概览</span>
+          <Kbd k="mod+1" />
+        </button>
+      </div>
 
       <div class="side-scroll">
         <For each={groups()}>
           {(grp) => (
             <div class="side-group">
-              <div class="side-group-title">
+              <div class="side-group-title halt">
                 <span>{groupLabel[grp.key]}</span>
-                <span class="num t3">{grp.goals.length}</span>
+                <span class="num">{grp.goals.length}</span>
               </div>
               <For each={grp.goals}>
                 {(g) => (
                   <button
-                    class="side-goal"
+                    class="side-row side-goal"
                     classList={{ active: activeId() === g.id }}
                     onClick={() => go({ name: "goal", id: g.id })}
                     title={`${g.id} ${g.title}`}
                   >
-                    <LifecycleGlyph goal={g} />
+                    <span class="side-icon">
+                      <LifecycleGlyph goal={g} />
+                    </span>
                     <span class="ellipsis grow">{g.title}</span>
                     <Show when={g.needs_you > 0}>
                       <NeedsYouMark />
@@ -91,30 +96,29 @@ export function Sidebar() {
           )}
         </For>
         <Show when={ended() > 0}>
-          <div class="side-group-title t3">
+          <div class="side-group-title">
             <span>已结束</span>
             <span class="num">{ended()}</span>
           </div>
         </Show>
       </div>
 
-      <div class="side-foot">
-        <button class="side-link" onClick={() => go({ name: "new" })}>
-          <span>新目标</span>
-          <span class="grow" />
-          <Kbd k="n" />
-        </button>
-        <button class="side-link" classList={{ active: route().name === "settings" }} onClick={() => go({ name: "settings" })}>
-          <span>设置</span>
-          <span class="grow" />
-          <Kbd k="mod+," />
-        </button>
-        <div class="side-version hint">
-          <Show when={state.env?.pi_version} fallback="Pi 未就绪">
-            Pi {state.env!.pi_version}
-          </Show>
-        </div>
-      </div>
+      <button class="side-foot halt" onClick={() => go({ name: "settings" })} title={state.env?.pi_path ?? ""}>
+        <Show
+          when={engineOk()}
+          fallback={
+            <>
+              <span class="mark-danger">■</span>
+              <span class="t1">引擎未就绪</span>
+            </>
+          }
+        >
+          <span class="pulse" aria-hidden="true" />
+          <span>引擎正常</span>
+          <span class="sep">·</span>
+          <span class="ellipsis">Pi {state.env!.pi_version!.split(" ")[0]}</span>
+        </Show>
+      </button>
     </nav>
   );
 }

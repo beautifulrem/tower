@@ -6,7 +6,7 @@
 import { For, Show, createEffect, createResource, createSignal, on, onMount } from "solid-js";
 import { createStore, produce, unwrap } from "solid-js/store";
 
-import { Button, Field, Kbd } from "../components/ui";
+import { Button, Field, Kbd, Select } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import type { ContractIssue } from "../gen/ContractIssue";
 import type { Criterion } from "../gen/Criterion";
@@ -14,6 +14,7 @@ import { api } from "../lib/api";
 import { useKeys } from "../lib/keys";
 import { back, go } from "../lib/nav";
 import { act, state } from "../lib/store";
+import { THINKING } from "./Settings";
 
 function blank(intent = "", testCommand: string | null = null): Contract {
   return {
@@ -122,9 +123,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       <div class="editor-main">
         <Show when={!editingId && state.projects.length > 1}>
           <Field label="项目">
-            <select value={projectId()} onChange={(e) => setProjectId(e.currentTarget.value)}>
-              <For each={state.projects}>{(p) => <option value={p.id}>{p.name}</option>}</For>
-            </select>
+            <Select value={projectId()} options={state.projects.map((p) => ({ value: p.id, label: p.name }))} onChange={setProjectId} />
           </Field>
         </Show>
         <Field label="标题">
@@ -251,15 +250,14 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         <div class="editor-block">
           <h2 class="section-title">引擎</h2>
           <Field label="模型" hint="来自你的 Pi 配置。">
-            <select value={c.model} onChange={(e) => setC("model", e.currentTarget.value)}>
-              <option value="">Pi 默认</option>
-              <For each={models() ?? []}>{(m) => <option value={`${m.provider}/${m.id}`}>{m.provider}/{m.id}</option>}</For>
-            </select>
+            <Select
+              value={c.model}
+              options={[{ value: "", label: "Pi 默认" }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
+              onChange={(v) => setC("model", v)}
+            />
           </Field>
           <Field label="思考强度">
-            <select value={c.thinking} onChange={(e) => setC("thinking", e.currentTarget.value)}>
-              <For each={["", "off", "minimal", "low", "medium", "high", "xhigh"]}>{(t) => <option value={t}>{t || "Pi 默认"}</option>}</For>
-            </select>
+            <Select value={c.thinking} options={THINKING} onChange={(v) => setC("thinking", v)} />
           </Field>
         </div>
         <div class="editor-actions">
@@ -268,15 +266,18 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <For each={errors()}>{(e) => <div>■ {e.message}</div>}</For>
             </div>
           </Show>
+          <Button variant="ghost" onClick={back}>
+            取消
+          </Button>
           <Show
             when={props.amendId}
             fallback={
               <>
-                <Button variant="primary" busy={busy()} disabled={errors().length > 0} onClick={() => save(true)}>
-                  批准并开始 <Kbd k="mod+enter" />
-                </Button>
                 <Button busy={busy()} onClick={() => save(false)}>
                   保存为草稿
+                </Button>
+                <Button variant="primary" busy={busy()} disabled={errors().length > 0} onClick={() => save(true)}>
+                  批准并开始 <Kbd k="mod+enter" />
                 </Button>
               </>
             }
@@ -285,9 +286,6 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               批准修订 <Kbd k="mod+enter" />
             </Button>
           </Show>
-          <Button variant="ghost" onClick={back}>
-            取消
-          </Button>
         </div>
       </aside>
     </div>

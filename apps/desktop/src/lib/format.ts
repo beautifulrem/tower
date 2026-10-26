@@ -4,15 +4,15 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
-/** "刚刚", "3分", "2时", "昨天", "3天" — a glanceable age. */
+/** "刚刚", "5 分钟前", "3 小时前", "昨天", "3 天前" — a glanceable age. */
 export function ago(at: number | null | undefined, now = Date.now()): string {
   if (!at) return "—";
   const d = Math.max(0, now - at);
   if (d < 45_000) return "刚刚";
-  if (d < HOUR) return `${Math.round(d / MIN)}分`;
-  if (d < DAY) return `${Math.round(d / HOUR)}时`;
+  if (d < HOUR) return `${Math.round(d / MIN)} 分钟前`;
+  if (d < DAY) return `${Math.round(d / HOUR)} 小时前`;
   if (d < 2 * DAY) return "昨天";
-  return `${Math.round(d / DAY)}天`;
+  return `${Math.round(d / DAY)} 天前`;
 }
 
 /** Elapsed duration as "42s", "3m", "1h 20m"; sub-second only when `precise`. */

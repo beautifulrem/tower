@@ -7,6 +7,7 @@ import { For, Match, Show, Switch, createSignal, onCleanup, onMount } from "soli
 import type { TraceEntry } from "../gen/TraceEntry";
 import { api } from "../lib/api";
 import { clock, duration, short } from "../lib/format";
+import { Claim } from "./Honesty";
 import { act, onTrace, refreshProjects, state } from "../lib/store";
 
 type Filter = "all" | "tools" | "words" | "facts" | "errors";
@@ -124,26 +125,16 @@ function TraceRow(props: { e: TraceEntry }) {
           </Match>
           <Match when={ev().kind === "assistant_message" && ev()}>
             {(t) => (
-              <div class="claim">
-                <div class="claim-body">
-                  <span class="claim-label">Agent 称</span>
-                  <span class="claim-text pre">{(t() as { text: string }).text}</span>
-                </div>
-              </div>
+              <Claim>
+                <span class="pre">{(t() as { text: string }).text}</span>
+              </Claim>
             )}
           </Match>
           <Match when={ev().kind === "claim" && ev()}>
             {(t) => {
               const c = t() as Extract<TraceEntry["event"], { kind: "claim" }>;
               const label = { cause: "原因", decision: "决定", assumption: "假设", next: "下一步", progress: "进展", criterion_met: "标准已满足", done: "完成" }[c.claim];
-              return (
-                <div class="claim">
-                  <div class="claim-body">
-                    <span class="claim-label">Agent 称（{label}）</span>
-                    <span class="claim-text">{c.text}</span>
-                  </div>
-                </div>
-              );
+              return <Claim kind={label}>{c.text}</Claim>;
             }}
           </Match>
           <Match when={ev().kind === "injected" && ev()}>
@@ -275,12 +266,7 @@ function TraceRow(props: { e: TraceEntry }) {
           <Match when={ev().kind === "note" && ev()}>{(t) => <span class="t2">{(t() as { text: string }).text}</span>}</Match>
           <Match when={ev().kind === "submitted" && ev()}>
             {(t) => (
-              <div class="claim">
-                <div class="claim-body">
-                  <span class="claim-label">Agent 称已完成</span>
-                  <span class="claim-text">{(t() as { summary: string }).summary}</span>
-                </div>
-              </div>
+              <Claim kind="已完成">{(t() as { summary: string }).summary}</Claim>
             )}
           </Match>
         </Switch>

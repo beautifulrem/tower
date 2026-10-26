@@ -64,16 +64,20 @@ export function liveDetail(g: GoalSummary): { action: string; target: string } {
   }
 }
 
+/** Machine values (tool names, paths, commands) are set in mono; words are not. */
+const machine = (s: string) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
+
 export function LiveLine(props: { goal: GoalSummary; large?: boolean }) {
   const d = () => liveDetail(props.goal);
   return (
-    <div class="live-line" classList={{ "live-line-large": !!props.large }}>
+    <div class="live-line halt" classList={{ "live-line-large": !!props.large }}>
       <ModeBadge goal={props.goal} />
-      <span class="sep">·</span>
-      <span class="live-action mono">{d().action}</span>
+      <span class="live-action" classList={{ "code-val": machine(d().action) }}>
+        {d().action}
+      </span>
       <Show when={d().target}>
         <span class="sep">·</span>
-        <span class="live-target mono ellipsis" title={d().target}>
+        <span class="live-target ellipsis" classList={{ "code-val": machine(d().target) }} title={d().target}>
           {d().target}
         </span>
       </Show>

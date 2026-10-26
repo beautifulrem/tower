@@ -1,13 +1,18 @@
 /** Settings: engine, defaults, memory, projects, appearance, environment. */
 import { For, Show, createResource, createSignal, onMount } from "solid-js";
 
-import { Button, Field } from "../components/ui";
+import { Button, Field, Select } from "../components/ui";
 import type { ProjectView } from "../gen/ProjectView";
 import type { Settings as SettingsT } from "../gen/Settings";
 import { api } from "../lib/api";
 import { act, refreshEnvironment, refreshProjects, state } from "../lib/store";
 import { type ThemeChoice, setThemeChoice, themeChoice } from "../lib/theme";
 import { pickProject } from "./Welcome";
+
+export const THINKING = ["", "off", "minimal", "low", "medium", "high", "xhigh"].map((t) => ({
+  value: t,
+  label: t || "Pi 默认",
+}));
 
 const lines = (s: string) =>
   s
@@ -56,24 +61,31 @@ export function Settings() {
           </Field>
           <div class="editor-grid2">
             <Field label="默认模型">
-              <select value={s()!.default_model} onChange={(e) => patch({ default_model: e.currentTarget.value })}>
-                <option value="">Pi 默认</option>
-                <For each={models() ?? []}>{(m) => <option value={`${m.provider}/${m.id}`}>{m.provider}/{m.id}</option>}</For>
-              </select>
+              <Select
+                value={s()!.default_model}
+                options={[{ value: "", label: "Pi 默认" }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
+                onChange={(v) => patch({ default_model: v })}
+              />
             </Field>
             <Field label="默认思考强度">
-              <select value={s()!.default_thinking} onChange={(e) => patch({ default_thinking: e.currentTarget.value })}>
-                <For each={["", "off", "minimal", "low", "medium", "high", "xhigh"]}>{(t) => <option value={t}>{t || "Pi 默认"}</option>}</For>
-              </select>
+              <Select
+                value={s()!.default_thinking}
+                options={THINKING}
+                onChange={(v) => patch({ default_thinking: v })}
+              />
             </Field>
             <Field label="同时运行的目标上限" hint="超出的目标排队等待。">
               <input class="num" type="number" min="1" max="10" value={s()!.max_concurrent} onInput={(e) => patch({ max_concurrent: Number(e.currentTarget.value) || 1 })} />
             </Field>
             <Field label="Agent 写给你的语言">
-              <select value={s()!.language} onChange={(e) => patch({ language: e.currentTarget.value })}>
-                <option value="zh-CN">简体中文</option>
-                <option value="en">English</option>
-              </select>
+              <Select
+                value={s()!.language}
+                options={[
+                  { value: "zh-CN", label: "简体中文" },
+                  { value: "en", label: "English" },
+                ]}
+                onChange={(v) => patch({ language: v })}
+              />
             </Field>
           </div>
           <Field label="额外加载的 Pi 扩展（每行一个文件）" hint="只加载这里列出的扩展，例如提供模型的扩展包。它们在沙箱之外运行。">

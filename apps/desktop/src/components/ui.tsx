@@ -64,16 +64,46 @@ export function Field(props: { label: string; hint?: string; children: JSX.Eleme
   );
 }
 
-export function Empty(props: { title: string; children?: JSX.Element; icon?: JSX.Element }) {
+/** An empty state is one quiet line where the content would appear. */
+export function Empty(props: { title: string; children?: JSX.Element }) {
   return (
     <div class="empty">
-      <Show when={props.icon}>{props.icon}</Show>
-      <p class="empty-title">{props.title}</p>
-      <div class="empty-body">{props.children}</div>
+      <span class="empty-title">{props.title}</span>
+      <Show when={props.children}>
+        <span class="sep">·</span>
+        <span class="empty-body">{props.children}</span>
+      </Show>
     </div>
   );
 }
 
-export function Spinner() {
-  return <span class="spinner" aria-label="加载中" />;
+/** A native popup "select": a button that opens a macOS menu. */
+export function Select<T extends string>(props: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+  class?: string;
+}) {
+  const label = () => props.options.find((o) => o.value === props.value)?.label ?? props.value;
+  return (
+    <button
+      type="button"
+      class={`select ${props.class ?? ""}`}
+      onClick={async () => {
+        const { popupChoice } = await import("../lib/native");
+        const v = await popupChoice(props.options, props.value);
+        if (v !== null && v !== props.value) props.onChange(v);
+      }}
+    >
+      <span class="ellipsis grow">{label()}</span>
+      <svg width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
+        <path d="M1 3.5 L4 1 L7 3.5 M1 6.5 L4 9 L7 6.5" fill="none" stroke="currentColor" stroke-width="1.2" />
+      </svg>
+    </button>
+  );
+}
+
+/** Waiting is stated, not animated (docs/12 §12.7: motion is a signal). */
+export function Loading(props: { text?: string }) {
+  return <p class="loading">{props.text ?? "载入中…"}</p>;
 }

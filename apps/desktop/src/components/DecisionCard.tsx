@@ -107,36 +107,50 @@ export function bodyParts(item: InboxItem): { prose: string; tail: string } {
   return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
 }
 
-/** One held-out criterion's failure as the supervisor lists it: `C2 · title` on a line of its own, then the output. */
+/** One held-out criterion's failure as the supervisor lists it: the names of its failing tests, then `C2 · title` on a line of its own and the output. */
 export interface HeldOutFailure {
   id: string;
   title: string;
   tail: string;
+  /** The failing tests' names, as the runner printed them — what "tell the agent only which tests failed" sends. */
+  names: string[];
 }
 
 const HELD_OUT_HEAD = /^(\S{1,12}) · (.+)$/;
+/** `Failing in C2: a, b` (English) or `C2 失败的测试：a、b` (Chinese): the supervisor's line naming the failing tests. */
+const HELD_OUT_NAMES = /^(?:Failing in (\S{1,12}): (.+)|(\S{1,12}) 失败的测试：(.+))$/;
 
 /**
- * A held-out card's body: the supervisor's sentence, then one block per
- * failed held-out criterion (`\n\nC2 · title\n<output>`). The output is
- * machine text for you alone, so it is never run through the prose/tail
- * split, which could mistake a test runner's lines for the start of a tail.
+ * A held-out card's body: the supervisor's sentence, then a line per failed
+ * criterion naming its failing tests, then one block per failed held-out
+ * criterion (`\n\nC2 · title\n<output>`). The output is machine text for you
+ * alone, so it is never run through the prose/tail split, which could
+ * mistake a test runner's lines for the start of a tail.
  */
 export function heldOutParts(body: string): { prose: string; failures: HeldOutFailure[] } {
   const lines = body.trim().split("\n");
   const prose: string[] = [];
   const failures: HeldOutFailure[] = [];
+  const names = new Map<string, string[]>();
   let current: HeldOutFailure | null = null;
   lines.forEach((line, i) => {
+    const afterBlank = i === 0 || lines[i - 1].trim() === "";
+    const n = current ? null : HELD_OUT_NAMES.exec(line);
+    if (n && afterBlank) {
+      names.set(n[1] ?? n[3], (n[2] ?? n[4]).split(/, |、/).map((s) => s.trim()).filter(Boolean));
+      return;
+    }
     const m = HELD_OUT_HEAD.exec(line);
     // A header stands after a blank line (or opens the body); a `·` inside test output does not.
-    if (m && (i === 0 || lines[i - 1].trim() === "")) {
-      current = { id: m[1], title: m[2], tail: "" };
+    if (m && afterBlank) {
+      current = { id: m[1], title: m[2], tail: "", names: names.get(m[1]) ?? [] };
       failures.push(current);
     } else if (current) current.tail += (current.tail ? "\n" : "") + line;
     else prose.push(line);
   });
   for (const f of failures) f.tail = f.tail.trim();
+  // Names without an output block (a runner that printed nothing) still get their row.
+  for (const [id, list] of names) if (!failures.some((f) => f.id === id)) failures.push({ id, title: "", tail: "", names: list });
   return { prose: prose.join("\n").trim(), failures };
 }
 
@@ -311,6 +325,13 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                         <span class="num t3">{f.id}</span>
                         <span class="t1">{f.title}</span>
                       </div>
+                      {/* The failing tests by name — machine values, the one part of this block the agent may be told. */}
+                      <Show when={f.names.length}>
+                        <div class="heldout-names meta">
+                          <span class="t3">{t("decision.heldOutFailing")}</span>
+                          <For each={f.names}>{(n) => <code class="code-val t1">{n}</code>}</For>
+                        </div>
+                      </Show>
                       <Show when={f.tail}>
                         <pre class="output-tail decision-tail">{f.tail}</pre>
                       </Show>

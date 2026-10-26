@@ -583,7 +583,8 @@ function RunRow(props: { goalId: string; r: RunView; editable: boolean }) {
       <span class="num">{clock(r().started_at)}</span>
       <span class="col-dur">{r().ended_at ? duration(r().ended_at! - r().started_at) : ""}</span>
       <span class="run-outcome row" style={{ "justify-content": "flex-end" }}>
-        <Show when={props.editable && r().ended_at}>
+        {/* Only runs that recorded their starting snapshot can be rolled back to. */}
+        <Show when={props.editable && r().ended_at && r().start_pin}>
           <button class="link-plain run-rollback t3" onClick={() => void rollback()} title={t("goal.rollbackTitle")}>
             <Icon name="undo" size={10} /> {t("goal.rollback")}
           </button>

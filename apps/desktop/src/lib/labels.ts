@@ -85,7 +85,7 @@ export function hasIssue(env: EnvironmentStatus | null | undefined, kind: EnvIss
   return !!env?.issues?.some((i) => i.kind === kind);
 }
 
-/** Tower's oldest supported Pi; the supervisor checks the same bound. */
+/** Tower's oldest supported Pi, used only until the environment reports `min_pi_version`. */
 export const MIN_PI = "1.4.0";
 
 /**
@@ -102,7 +102,7 @@ export function envIssueLabel(issue: EnvIssue, env: EnvironmentStatus | null | u
     case "no_sandbox":
       return t(`envIssue.${issue.kind}`);
     case "pi_too_old":
-      return t("envIssue.pi_too_old", { v, want: MIN_PI });
+      return t("envIssue.pi_too_old", { v, want: env?.min_pi_version || MIN_PI });
     case "pi_untested":
       return t("envIssue.pi_untested", { v });
     default:

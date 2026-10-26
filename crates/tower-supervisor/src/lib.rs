@@ -8,8 +8,14 @@
 mod actions;
 pub mod api;
 mod caches;
+mod control;
 mod demo;
+mod edits;
+mod environment;
+mod inner;
+mod jail;
 pub mod paths;
+mod pr;
 mod project_check;
 pub mod prompts;
 mod run;
@@ -18,7 +24,6 @@ pub mod shell_env;
 mod summarize;
 mod verify;
 
-use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -29,18 +34,17 @@ use tower_core::contract::{Contract, ContractIssue};
 use tower_core::lifecycle::Transition;
 use tower_core::review::build_units;
 use tower_core::view::{
-    EnvIssue, EnvIssueKind, EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView,
-    ReviewView, Settings, TraceEntry,
+    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
+    TraceEntry,
 };
 use tower_core::{EventKind, Lang, LifecycleState, Mode, PauseReason, tr};
 use tower_git::{Git, GitError};
 use tower_pi::EngineError;
-use tower_store::{NewGoal, NewInboxItem, NewProject, ProjectPatch, Store, StoreError};
-use tower_verify::Cancel;
+use tower_store::{NewGoal, NewProject, ProjectPatch, Store, StoreError};
 
 pub use api::{NewGoalInput, NullSink, OpenTarget, ReviewComment, ToastLevel, UiSink, UiUpdate};
+pub(crate) use inner::Inner;
 pub use paths::Paths;
-use run::Run;
 use shell_env::ShellEnv;
 
 #[derive(Debug, Error)]
@@ -91,215 +95,6 @@ impl std::fmt::Debug for Supervisor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Supervisor").finish_non_exhaustive()
     }
-}
-
-pub(crate) struct Inner {
-    pub paths: Paths,
-    pub env: ShellEnv,
-    pub git: Git,
-    store: Mutex<Store>,
-    pub sink: Arc<dyn UiSink>,
-    pub runs: Mutex<HashMap<String, Arc<Run>>>,
-    pub verifications: Mutex<HashMap<String, Cancel>>,
-    dirty: Mutex<HashSet<String>>,
-    /// Trace entries not yet sent to the interface.
-    traces: Mutex<Vec<TraceEntry>>,
-    models: Mutex<Option<(std::time::Instant, Vec<ModelInfo>)>>,
-    /// `caffeinate` while any engine runs, so a sleeping Mac does not stall goals.
-    keep_awake: Mutex<Option<std::process::Child>>,
-}
-
-impl Inner {
-    /// Runs `f` with the store locked. Never hold across an await.
-    pub fn store<T>(&self, f: impl FnOnce(&mut Store) -> Result<T, StoreError>) -> Result<T> {
-        let mut s = self.store.lock().unwrap_or_else(PoisonError::into_inner);
-        Ok(f(&mut s)?)
-    }
-
-    pub fn append(&self, goal: &str, e: EventKind) -> Result<TraceEntry> {
-        let entry = self.store(|s| s.append(goal, e))?;
-        self.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry.clone());
-        self.mark_dirty(goal);
-        Ok(entry)
-    }
-
-    pub fn mark_dirty(&self, goal: &str) {
-        self.dirty.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.to_string());
-    }
-
-    pub fn emit_goal_now(&self, goal: &str) {
-        self.dirty.lock().unwrap_or_else(PoisonError::into_inner).remove(goal);
-        if let Ok(g) = self.store(|s| s.summary(goal)) {
-            self.sink.emit(UiUpdate::Goal { goal: g });
-        }
-    }
-
-    pub fn emit_projects(&self) {
-        if let Ok(projects) = self.store(|s| s.projects()) {
-            self.sink.emit(UiUpdate::Projects { projects });
-        }
-    }
-
-    pub fn emit_inbox(&self) {
-        if let Ok(items) = self.store(|s| s.open_inbox_items()) {
-            self.sink.emit(UiUpdate::Inbox { items });
-        }
-    }
-
-    /// A transient message about one goal.
-    pub fn toast(&self, goal: &str, level: ToastLevel, text: impl Into<String>) {
-        self.sink.emit(UiUpdate::Toast { level, text: text.into(), goal_id: Some(goal.into()) });
-    }
-
-    /// Sends pending trace entries in one update.
-    fn flush_traces(&self) {
-        let entries = std::mem::take(&mut *self.traces.lock().unwrap_or_else(PoisonError::into_inner));
-        if !entries.is_empty() {
-            self.sink.emit(UiUpdate::Traces { entries });
-        }
-    }
-
-    fn flush_dirty(&self) {
-        self.flush_traces();
-        let ids: Vec<String> = self.dirty.lock().unwrap_or_else(PoisonError::into_inner).drain().collect();
-        for id in ids {
-            if let Ok(g) = self.store(|s| s.summary(&id)) {
-                self.sink.emit(UiUpdate::Goal { goal: g });
-            }
-        }
-    }
-
-    /// Applies a lifecycle transition and pushes the result immediately.
-    pub fn transition(&self, goal: &str, t: Transition, reason: Option<PauseReason>, note: &str) -> Result<()> {
-        let entry = self.store(|s| s.transition(goal, t, reason, note))?;
-        self.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
-        self.flush_traces();
-        self.emit_goal_now(goal);
-        Ok(())
-    }
-
-    pub fn set_mode(&self, goal: &str, mode: Mode) -> Result<()> {
-        let current = self.store(|s| s.goal(goal))?.mode;
-        if current != mode {
-            self.append(goal, EventKind::ModeChanged { mode })?;
-        }
-        Ok(())
-    }
-
-    pub fn open_inbox(&self, item: NewInboxItem) -> Result<InboxItem> {
-        let goal = item.goal_id.clone();
-        let opened = self.store(|s| s.open_inbox(item))?;
-        self.emit_goal_now(&goal);
-        self.emit_inbox();
-        Ok(opened)
-    }
-
-    pub fn withdraw(&self, goal: &str, kinds: &[InboxKind], reason: &str) {
-        if self.store(|s| s.withdraw_inbox(goal, kinds, reason)).unwrap_or(0) > 0 {
-            self.emit_goal_now(goal);
-            self.emit_inbox();
-        }
-    }
-
-    pub fn settings(&self) -> Settings {
-        self.store(|s| s.settings()).unwrap_or_default()
-    }
-
-    /// The interface language, for text created now (inbox items, notes,
-    /// toasts, errors). Stored text keeps the language it was written in.
-    pub fn lang(&self) -> Lang {
-        self.settings().lang()
-    }
-
-    /// The engine for a goal: the demo engine for demo projects, Pi otherwise.
-    pub fn engine_program(&self, project_root: &str) -> Option<PathBuf> {
-        if Path::new(project_root).starts_with(paths::real(&self.paths.demo_projects())) {
-            let demo = self.paths.demo_engine();
-            return demo.is_file().then_some(demo);
-        }
-        self.pi_program()
-    }
-
-    pub fn pi_program(&self) -> Option<PathBuf> {
-        let configured = self.settings().pi_path;
-        if !configured.trim().is_empty() {
-            return Some(PathBuf::from(configured.trim()));
-        }
-        self.env.which("pi")
-    }
-
-    /// Extensions every engine loads: tower-goal first, then the ones the
-    /// user listed explicitly (`~` expanded).
-    pub fn extensions(&self, settings: &Settings) -> Vec<PathBuf> {
-        let home = self.env.get("HOME").map(PathBuf::from);
-        let mut list = vec![self.paths.extension_dir().join("index.ts")];
-        for raw in settings.extra_extensions.iter().map(|s| s.trim()).filter(|s| !s.is_empty()) {
-            let path = match (raw.strip_prefix("~/"), &home) {
-                (Some(rest), Some(h)) => h.join(rest),
-                _ => PathBuf::from(raw),
-            };
-            list.push(path);
-        }
-        list
-    }
-
-    /// Keeps the Mac awake exactly while engines run (macOS `caffeinate`,
-    /// tied to this process so it never outlives Tower).
-    pub fn update_keep_awake(&self) {
-        let running = self.running_count() > 0;
-        let mut guard = self.keep_awake.lock().unwrap_or_else(PoisonError::into_inner);
-        match (running, guard.is_some()) {
-            (true, false) if cfg!(target_os = "macos") => {
-                *guard = std::process::Command::new("/usr/bin/caffeinate")
-                    .args(["-i", "-w", &std::process::id().to_string()])
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                    .ok();
-            }
-            (false, true) => {
-                if let Some(mut c) = guard.take() {
-                    let _ = c.kill();
-                    let _ = c.wait();
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub fn running_count(&self) -> usize {
-        self.runs.lock().unwrap_or_else(PoisonError::into_inner).len()
-    }
-
-    pub fn run_of(&self, goal: &str) -> Option<Arc<Run>> {
-        self.runs.lock().unwrap_or_else(PoisonError::into_inner).get(goal).cloned()
-    }
-}
-
-/// Updates the files each unfinished goal changes; when any list changed,
-/// every unfinished goal of that project is re-sent (overlaps are mutual).
-async fn refresh_touched(inner: &Arc<Inner>) -> Result<()> {
-    let goals = inner.store(|s| s.unmerged_goals())?;
-    let mut changed_projects = HashSet::new();
-    for g in &goals {
-        let (Some(ws), Some(base)) = (g.workspace.clone(), g.base_commit.clone()) else { continue };
-        if !Path::new(&ws).is_dir() {
-            continue;
-        }
-        let git = inner.git.clone();
-        let files = match tokio::task::spawn_blocking(move || git.touched(Path::new(&ws), &base)).await {
-            Ok(Ok(f)) => f,
-            _ => continue,
-        };
-        if inner.store(|s| s.set_touched(&g.id, &files))? {
-            changed_projects.insert(g.project_id.clone());
-        }
-    }
-    for g in goals.iter().filter(|g| changed_projects.contains(&g.project_id)) {
-        inner.mark_dirty(&g.id);
-    }
-    Ok(())
 }
 
 impl Supervisor {
@@ -355,7 +150,7 @@ impl Supervisor {
             loop {
                 tick.tick().await;
                 let Some(inner) = weak.upgrade() else { break };
-                if let Err(e) = refresh_touched(&inner).await {
+                if let Err(e) = inner::refresh_touched(&inner).await {
                     tracing::warn!(error = %e, "overlap radar failed");
                 }
             }
@@ -367,7 +162,7 @@ impl Supervisor {
             loop {
                 tick.tick().await;
                 let Some(inner) = weak.upgrade() else { break };
-                if let Err(e) = actions::check_integrations(&inner).await {
+                if let Err(e) = pr::check_integrations(&inner).await {
                     tracing::warn!(error = %e, "integration check failed");
                 }
             }
@@ -426,104 +221,7 @@ impl Supervisor {
     // ---- reads --------------------------------------------------------------
 
     pub fn environment(&self) -> EnvironmentStatus {
-        let inner = &self.inner;
-        let pi = inner.pi_program();
-        let pi_version = pi.as_ref().and_then(|p| {
-            let out =
-                std::process::Command::new(p).arg("--version").env_clear().envs(inner.env.pairs()).output().ok()?;
-            out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
-        });
-        let git_version = inner.git.version().ok();
-        let lang = inner.lang();
-        let mut issues = Vec::new();
-        let mut issue = |kind, blocking, text: String, fix: Option<&str>| {
-            issues.push(EnvIssue { kind, blocking, text, fix: fix.map(String::from) })
-        };
-        const INSTALL_PI: &str = "npm i -g @earendil-works/pi-coding-agent";
-        if pi.is_none() {
-            issue(
-                EnvIssueKind::PiMissing,
-                true,
-                tr!(
-                    lang,
-                    "没有找到 pi。请先安装 Pi，或在设置中指定路径。",
-                    "Pi was not found. Install it or set its path in Settings."
-                ),
-                Some(INSTALL_PI),
-            );
-        } else if let Some(v) = pi_version.as_deref() {
-            let (min, tested) = (tower_core::view::PI_MIN, tower_core::view::PI_TESTED);
-            match tower_core::view::parse_version(v) {
-                Some(found) if found < min => {
-                    let want = format!("{}.{}.{}", min.0, min.1, min.2);
-                    issue(
-                        EnvIssueKind::PiTooOld,
-                        true,
-                        tr!(
-                            lang,
-                            "Pi {v} 太旧，Tower 需要 {want} 或更新的版本。",
-                            "Pi {v} is too old; Tower needs {want} or newer."
-                        ),
-                        Some(INSTALL_PI),
-                    )
-                }
-                Some(found) if (found.0, found.1) > tested => {
-                    let t = format!("{}.{}", tested.0, tested.1);
-                    issue(
-                        EnvIssueKind::PiUntested,
-                        false,
-                        tr!(
-                            lang,
-                            "Pi {v} 比 Tower 测试过的版本（{t}.x）更新，大概率可用。",
-                            "Pi {v} is newer than the versions Tower was tested with ({t}.x); it will most likely work."
-                        ),
-                        None,
-                    )
-                }
-                _ => {}
-            }
-        } else {
-            issue(
-                EnvIssueKind::PiBroken,
-                true,
-                tr!(lang, "pi 无法运行。请检查设置中的路径。", "Pi does not run. Check its path in Settings."),
-                Some(INSTALL_PI),
-            );
-        }
-        if git_version.is_none() {
-            issue(
-                EnvIssueKind::GitMissing,
-                true,
-                tr!(lang, "没有找到 git。", "git was not found."),
-                Some("xcode-select --install"),
-            );
-        }
-        if !sandbox::available() {
-            issue(
-                EnvIssueKind::NoSandbox,
-                false,
-                tr!(
-                    lang,
-                    "这台机器上没有 OS 沙箱：Agent 的命令以你的权限运行，读写只按路径限制。",
-                    "No OS sandbox on this machine: the agent's commands run with your permissions, fenced by path only."
-                ),
-                None,
-            );
-        }
-        let problems = issues.iter().map(|i| i.text.clone()).collect();
-        EnvironmentStatus {
-            pi_path: pi.map(|p| p.display().to_string()),
-            pi_version,
-            git_version,
-            data_dir: inner.paths.root.display().to_string(),
-            demo_missing: ["node", "python3"]
-                .into_iter()
-                .filter(|p| inner.env.which(p).is_none())
-                .map(String::from)
-                .collect(),
-            problems,
-            issues,
-        }
+        environment::status(&self.inner)
     }
 
     pub fn projects(&self) -> Result<Vec<ProjectView>> {
@@ -870,12 +568,12 @@ impl Supervisor {
 
     /// Puts the workspace back to where run `run_no` started.
     pub async fn rollback(&self, id: &str, run_no: u32) -> Result<()> {
-        actions::rollback(&self.inner, id, run_no).await
+        edits::rollback(&self.inner, id, run_no).await
     }
 
     /// Undoes one hunk (0-based, as in the review's base → snapshot diff).
     pub async fn revert_hunk(&self, id: &str, path: &str, hunk: usize) -> Result<()> {
-        actions::revert_hunk(&self.inner, id, path, hunk).await
+        edits::revert_hunk(&self.inner, id, path, hunk).await
     }
 
     pub async fn answer_assumption(&self, inbox_id: &str, approved: bool, note: &str) -> Result<()> {
@@ -916,7 +614,7 @@ impl Supervisor {
     }
 
     pub async fn check_integration(&self) -> Result<()> {
-        actions::check_integrations(&self.inner).await
+        pr::check_integrations(&self.inner).await
     }
 
     /// Deletes an ended goal's workspace, verification checkout and scratch
@@ -955,7 +653,7 @@ impl Supervisor {
     /// Pushes an accepted goal's branch to `origin`, optionally opening a pull
     /// request with the GitHub CLI. Returns the PR URL when one was opened.
     pub async fn push(&self, id: &str, open_pr: bool) -> Result<Option<String>> {
-        actions::push(&self.inner, id, open_pr).await
+        pr::push(&self.inner, id, open_pr).await
     }
 
     /// Opens a goal's workspace in the user's editor, a terminal, or Finder.

@@ -3,19 +3,18 @@
 //! Closed by default: the base policy (adapted from OpenAI Codex) denies
 //! everything and allows only process basics. Tower then adds:
 //!
-//! - **reads**: the system and toolchains, but nothing under the user's home
-//!   or other volumes except the workspace, the goal's private directories,
-//!   toolchain locations and explicitly allowed paths; credential stores are
-//!   denied even inside those;
+//! - **reads**: an allow-list: system locations and toolchains (without
+//!   package managers' configuration), the workspace, the goal's private
+//!   directories and explicitly allowed paths; credential stores are denied
+//!   even inside those; shared temporary folders are not readable;
 //! - **writes**: only the workspace, the goal's private TMPDIR and cache
-//!   directory, and the per-user temporary folder;
+//!   directory;
 //! - **network**: loopback only, unless the contract allows the network;
 //! - **git**: the satellite's configuration and hooks are read-only, because
 //!   Tower itself runs git there outside the sandbox.
 //!
-//! The keychain service is reachable only when the network is allowed (TLS
-//! trust evaluation needs it), and never together with read access to the
-//! keychain files.
+//! The keychain service is never reachable. With the network allowed, TLS
+//! trust evaluation goes through `trustd` and `ocspd` only.
 
 use std::path::{Path, PathBuf};
 
@@ -77,6 +76,43 @@ fn toolchains_under(path: &str, home: &Path, closed: &[&Path]) -> Vec<PathBuf> {
     }
     out
 }
+
+/// System locations every tool may read. Everything else is unreadable unless
+/// listed for the goal: not `/private/tmp` or the per-user temporary folders
+/// (shared with the user's own processes), not other apps' data in
+/// `/Library/Application Support`, not package managers' configuration.
+const SYSTEM_READ: &[&str] = &[
+    "/System",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/dev",
+    "/private/etc",
+    "/private/var/db/timezone",
+    "/private/var/select",
+    "/Applications/Xcode.app",
+    "/Applications/Xcode-beta.app",
+    "/Library/Developer",
+    "/Library/Frameworks",
+    "/Library/Java",
+    "/Library/Apple",
+    "/Library/Fonts",
+    "/Library/Perl",
+    "/Library/Python",
+    "/Library/Ruby",
+    "/Library/Preferences",
+    "/opt/homebrew",
+    "/opt/local",
+    "/usr/local",
+    "/nix",
+];
+
+/// Inside the package managers' trees above, their configuration directories
+/// may hold tokens (registry or proxy configs); only what TLS and compilers
+/// need stays readable.
+const PREFIX_ETC: &[&str] = &["/opt/homebrew/etc", "/usr/local/etc", "/opt/local/etc"];
+const PREFIX_ETC_ALLOWED: &[&str] =
+    &["ca-certificates", "openssl@3", "openssl@4", "openssl@1.1", "openssl", "gnutls", "gitconfig", "paths", "clang"];
 
 /// Credential stores: denied even when a parent is allowed.
 const SECRETS: &[&str] = &[
@@ -170,10 +206,24 @@ pub fn profile(spec: &Spec) -> String {
     }
     s.push_str(")\n");
 
-    // Reads: the system, minus every user's files, plus the allow-list.
-    s.push_str("(allow file-read*)\n");
-    s.push_str(&format!("(deny file-read* (subpath \"/Users\") (subpath \"/Volumes\") (subpath {}))\n", q(home)));
-    s.push_str("(allow file-read*\n");
+    // Reads: an allow-list. System locations and toolchains, minus package
+    // managers' configuration, then the goal's own directories.
+    // dyld reads the root directory itself (its entries, not their contents).
+    s.push_str("(allow file-read* (literal \"/\"))\n(allow file-read*\n");
+    for p in SYSTEM_READ {
+        s.push_str(&format!("  (subpath \"{p}\")\n"));
+    }
+    s.push_str(")\n(deny file-read*\n");
+    for p in PREFIX_ETC {
+        s.push_str(&format!("  (subpath \"{p}\")\n"));
+    }
+    s.push_str(")\n(allow file-read*\n");
+    for p in PREFIX_ETC {
+        for a in PREFIX_ETC_ALLOWED {
+            s.push_str(&format!("  (subpath \"{p}/{a}\")\n"));
+        }
+    }
+    s.push_str(")\n(allow file-read*\n");
     for p in rw {
         s.push_str(&format!("  (subpath {})\n", q(p)));
     }
@@ -184,8 +234,11 @@ pub fn profile(spec: &Spec) -> String {
         s.push_str(&format!("  (subpath {})\n", q(p)));
     }
     s.push_str(")\n");
-    // Ancestors of allowed paths must be traversable (metadata only).
+    // Ancestors of allowed paths must be traversable (metadata only), and the
+    // usual symlinks at the root resolvable.
     s.push_str("(allow file-read-metadata\n  (literal \"/Users\")\n  (literal \"/Volumes\")\n");
+    s.push_str("  (literal \"/private\")\n  (literal \"/private/var\")\n  (literal \"/etc\")\n  (literal \"/tmp\")\n  (literal \"/var\")\n");
+    s.push_str("  (literal \"/Library\")\n  (literal \"/Applications\")\n  (literal \"/opt\")\n");
     s.push_str(&format!("  (literal {})\n", q(home)));
     for p in rw.iter().copied().chain(spec.read.iter()) {
         for a in p.ancestors().skip(1) {
@@ -204,8 +257,10 @@ pub fn profile(spec: &Spec) -> String {
     for p in rw {
         s.push_str(&format!("  (subpath {})\n", q(p)));
     }
+    // Not `/private/var/folders`: the per-user temporary folders are shared
+    // with the user's own, unsandboxed processes.
     s.push_str(
-        "  (subpath \"/private/var/folders\")\n  (literal \"/dev/null\")\n  (literal \"/dev/zero\")\n  (literal \"/dev/tty\")\n  (regex #\"^/dev/fd/\"))\n",
+        "  (literal \"/dev/null\")\n  (literal \"/dev/zero\")\n  (literal \"/dev/tty\")\n  (regex #\"^/dev/fd/\"))\n",
     );
     let git = spec.workspace.join(".git");
     s.push_str(&format!(
@@ -297,7 +352,9 @@ mod tests {
         assert!(p.contains("(deny default)"));
         assert!(p.contains("(subpath \"/Users/a/.ssh\")"));
         assert!(p.contains("(literal \"/w/ws/.git/config\")"));
-        assert!(!p.contains("com.apple.SecurityServer"), "no keychain service without network");
+        assert!(!p.contains("com.apple.SecurityServer"), "no keychain service");
+        let with_network = profile(&spec(Path::new("/w"), Path::new("/Users/a"), true));
+        assert!(!with_network.contains("com.apple.SecurityServer"), "not even with the network");
         assert!(profile(&spec(Path::new("/w"), Path::new("/Users/a"), true)).contains("(allow network-outbound)"));
     }
 
@@ -355,5 +412,52 @@ mod tests {
             !run("/usr/bin/curl -s -m 3 --unix-socket /var/run/docker.sock http://x/version >/dev/null 2>&1"),
             "no docker socket"
         );
+        // Reads are an allow-list: a file next to the goal's directories (in
+        // the shared /tmp) and the user's shared temporary folder are closed.
+        std::fs::write(root.join("neighbour.txt"), "n").unwrap();
+        assert!(!run(&format!("cat {}/neighbour.txt", root.display())), "shared /tmp is unreadable");
+        let user_tmp = crate::paths::real(&std::env::temp_dir());
+        if user_tmp.starts_with("/private/var/folders") {
+            assert!(!run(&format!("touch {}/tower-sandbox-probe", user_tmp.display())), "shared temp is not writable");
+            assert!(!run(&format!("ls {}", user_tmp.display())), "shared temp is unreadable");
+        }
+        if Path::new("/opt/homebrew/etc").is_dir() {
+            assert!(!run("ls /opt/homebrew/etc >/dev/null"), "package manager configuration is unreadable");
+        }
+        assert!(run("/bin/ls / >/dev/null && /usr/bin/env true"), "the system still works");
+    }
+
+    /// With the network allowed, TLS works without the keychain service.
+    /// Needs internet access; skipped (passes) when the host has none.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn tls_works_with_network_and_without_keychain() {
+        if !available() {
+            return;
+        }
+        let reachable = std::process::Command::new("/usr/bin/curl")
+            .args(["-sS", "-m", "5", "-o", "/dev/null", "https://example.com"])
+            .status()
+            .is_ok_and(|s| s.success());
+        if !reachable {
+            return;
+        }
+        let tmp = tempfile::tempdir_in("/tmp").unwrap();
+        let root = crate::paths::real(tmp.path());
+        for d in ["ws/.git", "tmp", "cache", "home"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        let sb = root.join("p.sb");
+        let p = profile(&spec(&root, &root.join("home"), true));
+        assert!(!p.contains("com.apple.SecurityServer"));
+        std::fs::write(&sb, p).unwrap();
+        let ok = std::process::Command::new("/usr/bin/sandbox-exec")
+            .arg("-f")
+            .arg(&sb)
+            .args(["/usr/bin/curl", "-sS", "-m", "10", "-o", "/dev/null", "https://example.com"])
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "TLS through trustd only");
     }
 }

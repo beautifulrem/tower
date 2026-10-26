@@ -37,6 +37,9 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
         ("PIP_CACHE_DIR".into(), p("pip")),
         ("UV_CACHE_DIR".into(), p("uv")),
         ("XDG_CACHE_HOME".into(), p("xdg")),
+        // Tools look for their configuration under the home directory, which
+        // the sandbox does not let them read (git warns on every command).
+        ("XDG_CONFIG_HOME".into(), p("config")),
         // The user's global git config is outside the sandbox (and may hold
         // credential helpers); git treats an unreadable one as fatal.
         ("GIT_CONFIG_GLOBAL".into(), "/dev/null".into()),

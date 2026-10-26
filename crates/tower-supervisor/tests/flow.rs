@@ -146,6 +146,7 @@ async fn local_files_reach_the_workspace_and_the_verifier() {
                 local_files: vec![".env".into()],
                 memory: "回答一律用中文".into(),
                 setup_command: "echo ready > .setup-done".into(),
+                holdout_files: vec![],
             },
         )
         .unwrap();
@@ -445,4 +446,38 @@ async fn passing_only_with_edited_tests_holds_the_goal() {
     assert_eq!(crit.passed_on_base, Some(false), "it failed on the base");
     assert_eq!(crit.passes_with_original_tests, Some(false), "and fails with the original test");
     assert!(d.sentinels.iter().any(|s| s.sentinel == "passes_only_with_edited_tests"));
+}
+
+/// Held-out tests: git-ignored files of your repository copied into
+/// verification only. The agent's workspace never has them, and the
+/// criterion that runs them passes only if the code really works.
+#[tokio::test(flavor = "multi_thread")]
+async fn held_out_tests_run_in_verification_only() {
+    let h = harness("pass").await;
+    std::fs::write(h.repo.join(".gitignore"), "holdout/\n").unwrap();
+    git(&h.repo, &["add", ".gitignore"]);
+    git(&h.repo, &["commit", "--quiet", "-m", "ignore holdout"]);
+    std::fs::create_dir_all(h.repo.join("holdout")).unwrap();
+    std::fs::write(h.repo.join("holdout/check.sh"), "grep -qx ok done.txt\n").unwrap();
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![],
+                memory: String::new(),
+                setup_command: String::new(),
+                holdout_files: vec!["holdout/**".into()],
+            },
+        )
+        .unwrap();
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec { command: "sh holdout/check.sh".into(), timeout_secs: 30 };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!(g.state, LifecycleState::InReview);
+    let ws = h.sup.goal(&id).unwrap().workspace.unwrap();
+    assert!(!Path::new(&ws).join("holdout").exists(), "the agent never had the held-out tests");
 }

@@ -12,6 +12,12 @@ test_command: string | null,
  */
 local_files: Array<string>, 
 /**
+ * Held-out tests: git-ignored files (globs, relative to the root) that
+ * are copied into verification only. The agent never sees them, so it
+ * cannot write to them; criteria can run them.
+ */
+holdout_files: Array<string>, 
+/**
  * Project memory: notes injected into every goal of this project.
  */
 memory: string, 

@@ -446,7 +446,7 @@ impl Supervisor {
         if patch.base_branch.trim().is_empty() {
             return Err(invalid(tr!(lang, "基线分支不能为空", "The base branch cannot be empty")));
         }
-        for p in &patch.local_files {
+        for p in patch.local_files.iter().chain(&patch.holdout_files) {
             globset::Glob::new(p).map_err(|e| {
                 invalid(tr!(lang, "无效的本地文件模式 {p}：{e}", "Invalid local file pattern {p}: {e}"))
             })?;

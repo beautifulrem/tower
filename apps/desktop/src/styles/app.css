@@ -186,6 +186,10 @@
 .gauge-quiet .icon {
   color: var(--text-3);
 }
+/* The phone page, on but not served: the one background failure that has a reading in the strip, and it opens its way out. */
+.gauge-phone .glyph {
+  flex: 0 0 auto;
+}
 /* A half-screen window: an engine that is fine needs no reading (its label alone would hang there); a problem still shows. */
 @media (max-width: 1200px) {
   .gauge-engine {
@@ -4008,6 +4012,59 @@ input[type="radio"] {
 .phone-transport .glyph,
 .phone-transport .icon {
   align-self: center;
+}
+/* Switched on but not served: the attention register — ◆ and primary text — and the supervisor's own sentence,
+   which already names the way out. Nothing amber beyond the mark: the page is off, not on fire. */
+.phone-problem {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  max-width: 60ch;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-1);
+}
+.phone-problem .glyph {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+/* ---------- notifications and pushes ---------- */
+
+/* The daily window reads as one sentence: "from 22:00 to 08:00", two time fields with their words. */
+.quiet-hours {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.quiet-hours label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.quiet-time {
+  width: 7.5ch !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+.quiet-time::-webkit-calendar-picker-indicator {
+  display: none;
+}
+/* The last push's outcome beside the test button: a sent one is a quiet check, a failed one carries its ■, time and reason. */
+.push-test {
+  gap: var(--sp-3);
+  min-height: 28px;
+  flex-wrap: wrap;
+}
+.push-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.push-status .glyph,
+.push-status .icon {
+  flex: 0 0 auto;
 }
 .panel-awaiting {
   white-space: nowrap;

@@ -11,7 +11,7 @@ import { back, canGoBack, go, route } from "../lib/nav";
 import { popupActions } from "../lib/native";
 import { bumpRecent, recentIds } from "../lib/recent";
 import { startQueue } from "../lib/reviewQueue";
-import { act, dismissToast, goalList, livenessOf, patchSettings, quietNow, state } from "../lib/store";
+import { act, dismissToast, goalList, livenessOf, patchSettings, quietNow, quietUntil, state } from "../lib/store";
 import { hasIssue, heartbeatState, isBlocking, stateLabel } from "../lib/labels";
 import { openActivity } from "./Activity";
 import { Icon, type IconName, LifecycleGlyph, NeedsYouMark } from "./Glyph";
@@ -139,16 +139,26 @@ export function TitleBar(props: { title: string }) {
         <span class="gauge" title={t("chrome.spent", { usd: usd(spent()) })}>
           {usd(spent())}
         </span>
+        {/* One reading whichever rule silences: "quiet until 08:00" from the daily hours reads the same as from the menu. */}
         <button
           class="gauge gauge-quiet link-plain"
           onClick={() => void pickQuiet()}
           aria-haspopup="menu"
-          aria-label={quietNow() ? t("quiet.until", { time: clock(state.settings!.quiet_until!) }) : t("quiet.menuTitle")}
-          title={quietNow() ? t("quiet.until", { time: clock(state.settings!.quiet_until!) }) : t("quiet.hint")}
+          aria-label={quietNow() ? t("quiet.until", { time: clock(quietUntil()!) }) : t("quiet.menuTitle")}
+          title={quietNow() ? t("quiet.until", { time: clock(quietUntil()!) }) : t("quiet.hint")}
         >
           <Icon name="bell" size={12} />
-          <Show when={quietNow()}>{t("quiet.until", { time: clock(state.settings!.quiet_until!) })}</Show>
+          <Show when={quietNow()}>{t("quiet.until", { time: clock(quietUntil()!) })}</Show>
         </button>
+        {/* The phone page is on but not served: a background failure is said where the other readings are, and opens its way out. */}
+        <Show when={state.remoteProblem}>
+          {(problem) => (
+            <button class="gauge gauge-down gauge-phone link-plain" onClick={() => go({ name: "settings" })} title={problem()}>
+              <NeedsYouMark />
+              {t("chrome.phoneOff")}
+            </button>
+          )}
+        </Show>
         <Show
           when={engineOk()}
           fallback={

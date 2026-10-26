@@ -135,6 +135,27 @@ export function enrichPhone(F: F) {
   };
 }
 
+/** The phone page is switched on but Tailscale is disconnected: the supervisor keeps the reason, and serves nothing. */
+export function enrichPhoneProblem(F: F) {
+  F.settings = { ...F.settings, remote_enabled: true, remote_local_network: false };
+  F.remoteInfo = {
+    enabled: true,
+    links: [],
+    kinds: [],
+    qr_svg: "",
+    tailscale: false,
+    problem: "Tailscale is not connected, so the phone page is off. Open Tailscale, or allow the local network below (the token then crosses it unencrypted).",
+  };
+}
+
+/** Pushes are configured to a topic, the last one failed, and quiet hours run 22:00–08:00. */
+export function enrichPushes(F: F) {
+  F.settings = { ...F.settings, push_url: "https://ntfy.example.net/tower", push_ready: true, quiet_hours: { start: 22 * 60, end: 8 * 60 } };
+  const at = new Date();
+  at.setHours(21, 3, 0, 0);
+  F.pushStatus = { at: at.getTime(), error: "ntfy.example.net could not be reached" };
+}
+
 /** Every enrichment at once: the preview harness's world. */
 export function enrichRich(F: F) {
   enrichEngines(F);

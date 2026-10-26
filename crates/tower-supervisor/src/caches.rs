@@ -25,7 +25,10 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
     let p = |sub: &str| cache.join(sub).display().to_string();
     vec![
         ("npm_config_cache".into(), p("npm")),
-        ("npm_config_store_dir".into(), p("pnpm-store")),
+        // pnpm 11 reads only `pnpm_config_*` (and npm warns about unknown
+        // `npm_config_*` keys).
+        ("pnpm_config_store_dir".into(), p("pnpm-store")),
+        ("pnpm_config_cache_dir".into(), p("pnpm-cache")),
         ("YARN_CACHE_FOLDER".into(), p("yarn")),
         ("BUN_INSTALL_CACHE_DIR".into(), p("bun")),
         ("CARGO_HOME".into(), p("cargo")),

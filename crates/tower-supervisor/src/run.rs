@@ -130,6 +130,8 @@ pub(crate) fn jail(
     let cache = crate::caches::prepare(&goal_dir.join("cache"), &home, dir)?;
     let mut env = crate::caches::env(&cache);
     env.push(("TMPDIR".into(), real(tmp).display().to_string()));
+    // pnpm keeps its store locks here (default /tmp, not writable in the sandbox).
+    env.push(("XDG_RUNTIME_DIR".into(), real(tmp).display().to_string()));
     let profile = if sandbox::available() {
         let path = goal_dir.join(format!("{purpose}.sb"));
         let spec = sandbox::Spec {

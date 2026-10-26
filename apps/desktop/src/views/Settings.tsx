@@ -14,7 +14,7 @@ import type { Settings as SettingsT } from "../gen/Settings";
 import { api } from "../lib/api";
 import { clock } from "../lib/format";
 import { locale, t } from "../lib/i18n";
-import { envIssueLabel, modelsFor } from "../lib/labels";
+import { engineLabel, envIssueLabel, modelsFor } from "../lib/labels";
 import { ask } from "../lib/native";
 import { act, quietNow, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 import { type SizeChoice, type ThemeChoice, setSizeChoice, setThemeChoice, sizeChoice, themeChoice } from "../lib/theme";
@@ -83,7 +83,7 @@ export function Settings() {
   const noModels = () => !!state.env?.pi_version && !models.loading && models() !== null && models()!.length === 0;
   const engine = () => s()?.engine || "pi";
   const modelOptions = () => [
-    { value: "", label: engine() === "claude-code" ? t("common.engineDefault") : t("common.piDefault") },
+    { value: "", label: t("common.engineDefault", { engine: engineLabel(engine()) }) },
     ...modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` })),
   ];
 
@@ -208,8 +208,8 @@ export function Settings() {
                 </svg>
               </button>
             </Field>
-            {/* The engine: which agent new goals run on. The trust model is one sentence, said once. */}
-            <Field label={t("settings.engine")} hint={t("settings.engineTrust")}>
+            {/* The engine: which agent new goals run on. The hint belongs to the chosen engine: Claude Code's trust model, or Pi in one line. */}
+            <Field label={t("settings.engine")} hint={engine() === "claude-code" ? t("settings.engineTrust") : t("settings.engineHintPi")}>
               <Select value={engine()} options={engineOptions()} onChange={(v) => void patchNow({ engine: v, default_model: "" })} />
             </Field>
             <Show when={engine() === "claude-code"}>

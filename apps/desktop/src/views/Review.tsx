@@ -273,6 +273,8 @@ export function Review(props: { id: string }) {
           if (editable() && h) void undoHunk(h.f, h.index);
         },
         desc: () => t("keys.undoHunk"),
+        // Listed in the sheet exactly when the status bar lists it: while the workspace is yours to touch.
+        when: editable,
       },
       { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("keys.pathJump") },
       { key: "mod+shift+enter", run: () => setPanel("accept"), inInputs: true, desc: () => t("review.accept") },

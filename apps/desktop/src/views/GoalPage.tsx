@@ -227,7 +227,7 @@ export function GoalPage(props: { id: string }) {
               </Show>
             </div>
             <div class="goal-actions">
-              <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} />
+              <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
             </div>
           </header>
 
@@ -301,7 +301,7 @@ function GoalSkeleton() {
  * everything else in a native "…" menu (destructive actions live only there).
  * The three header buttons share one form: words, no icons.
  */
-function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; onWatch: () => void; onPause: () => void }) {
+function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; onWatch: () => void; onPause: () => void; hasDecision: boolean }) {
   const s = () => props.goal.state;
   const id = () => props.goal.id;
   const muted = () => !!state.settings?.muted_goals.includes(id());
@@ -371,10 +371,11 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
 
   return (
     <>
-      {/* Ready to accept: the "next" block below carries the one primary action (R); the header does not say it twice. */}
+      {/* Ready to accept: the "next" block below carries the one primary action (R); the header does not say it twice.
+          Paused with a decision card on the page: the card's first option is the primary "continue"; the header's steps back to a plain button. */}
       <Switch>
         <Match when={s() === "paused"}>
-          <Button size="s" variant="primary" kbd="p" onClick={props.onPause}>
+          <Button size="s" variant={props.hasDecision ? "default" : "primary"} kbd="p" onClick={props.onPause}>
             {t("goal.resume")}
           </Button>
         </Match>
@@ -442,26 +443,22 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: bool
 
   return (
     <>
-      {/* After your own edit the next step is fixed: verify again (and, after a rollback, the way back). */}
-      <Show when={editedSinceVerify() || props.undoable}>
+      {/* After your own edit of a verified goal the next step is fixed: verify again. Ready to accept, that is the page's one primary action;
+          paused, the header's "resume" (or the decision card) already is, so the button here is a plain one and the sentence says what resuming does.
+          A goal that was never verified has nothing to verify "again": no block. The way back from a rollback lives on the runs section. */}
+      <Show when={editedSinceVerify()}>
         <Section title={t("goal.next")}>
           <div class="section-cta">
-            <Button variant="primary" size="s" onClick={() => void act(() => api.retryVerify(g().id))}>
+            <Button variant={g().state === "in_review" ? "primary" : "default"} size="s" onClick={() => void act(() => api.retryVerify(g().id))}>
               {t("goal.reverify")}
             </Button>
-            <Show when={props.undoable}>
-              <Button size="s" variant="ghost" onClick={props.onUndoRollback}>
-                <Icon name="undo" size={10} />
-                {t("goal.undoRollback")}
-              </Button>
-            </Show>
-            <span class="meta">{t("goal.editedNeedsVerify")}</span>
+            <span class="meta">{g().state === "in_review" ? t("goal.editedNeedsVerify") : t("goal.editedPaused")}</span>
           </div>
         </Section>
       </Show>
 
       {/* Ready to accept: the next step is yours, in one line. */}
-      <Show when={g().state === "in_review" && !editedSinceVerify() && !props.undoable}>
+      <Show when={g().state === "in_review" && !editedSinceVerify()}>
         <Section title={t("goal.next")}>
           <div class="section-cta">
             <Button variant="primary" size="s" kbd="r" onClick={() => go({ name: "review", id: g().id })}>
@@ -524,7 +521,7 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: bool
       </Show>
 
       <Section title={t("goal.criteria")} aside={<CriteriaBar progress={g().progress} />}>
-        <For each={d().criteria}>{(c) => <CriterionRow goalId={g().id} c={c} state={g().state} />}</For>
+        <For each={d().criteria}>{(c) => <CriterionRow goalId={g().id} c={c} state={g().state} base={d().base_commit} />}</For>
         <Show when={d().criteria.length === 0}>
           <Empty
             title={t("goal.noCriteria")}
@@ -611,8 +608,18 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: bool
           minor
           aside={
             <span class="meta num row" style={{ gap: "var(--sp-3)" }}>
+              {/* A rollback that can still be undone is said here, where the runs are, with its one way back; no block of its own. */}
+              <Show when={props.undoable}>
+                <span class="row" style={{ gap: "var(--sp-2)" }}>
+                  <span class="t2">{t("goal.rolledBackState")}</span>
+                  <button class="link-plain t3 row" style={{ gap: "4px" }} onClick={props.onUndoRollback} title={t("goal.undoRollback")}>
+                    <Icon name="undo" size={10} />
+                    {t("goal.undoRollback")}
+                  </button>
+                </span>
+              </Show>
               {/* The rollback shows on hover of a row; the heading says so, for the keyboard and the eye. */}
-              <Show when={editable(g().state) && d().runs.some((r) => r.ended_at && r.start_pin)}>
+              <Show when={!props.undoable && editable(g().state) && d().runs.some((r) => r.ended_at && r.start_pin)}>
                 <span class="t4">{t("goal.rollbackHint")}</span>
               </Show>
               {t("goal.runCount", { n: d().runs.length })}
@@ -670,7 +677,7 @@ function RunRow(props: { goalId: string; r: RunView; editable: boolean; onUndo: 
  * One criterion as an instrument row: mark · id · title and command, then
  * the readings — result · duration · pin · age — each in its own column.
  */
-function CriterionRow(props: { goalId: string; c: CriterionView; state: string }) {
+function CriterionRow(props: { goalId: string; c: CriterionView; state: string; base?: string | null }) {
   const c = () => props.c;
   const v = () => c().verified;
   const [open, setOpen] = createSignal(false);
@@ -735,7 +742,7 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
           <span class="col-age">{ago(v()!.at, state.now)}</span>
         </Show>
       </div>
-      <BaselineLine c={c()} />
+      <BaselineLine c={c()} base={props.base} />
       <Show when={c().look}>{(l) => <LookStrip look={l()} title={`${c().criterion.id} ${c().criterion.title}`} />}</Show>
       <Show when={c().observed}>
         <div class="criterion-row criterion-obs">
@@ -760,8 +767,9 @@ function LedgerRow(props: { c: ClaimView; testDependent?: boolean }) {
   // A claim about a criterion that passes only with edited tests is contradicted by that measurement, whatever the linked fact says.
   const value = () => (props.testDependent ? "contradicted" : props.c.consistency);
   const evidence = () => (props.testDependent ? t("goal.dependsOnEditedTestsLong") : props.c.evidence);
+  // A refuted claim is not set as heavily as one that stands: its kind label steps back a register.
   return (
-    <Claim bare kind={t("claimKind.criterion_met")} aside={<ConsistencyBadge value={value()} evidence={evidence()} />}>
+    <Claim bare dim={value() === "contradicted"} kind={t("claimKind.criterion_met")} aside={<ConsistencyBadge value={value()} evidence={evidence()} />}>
       <Show when={props.c.criterion}>
         <span class="num t3">{props.c.criterion} </span>
       </Show>
@@ -819,17 +827,18 @@ function BudgetMeter(props: { g: GoalDetail["summary"] }) {
         <span class="budget-fill" classList={{ over: over(), some: props.g.cost_usd > 0 }} style={{ width: `${fill()}%` }} />
         <span class="budget-soft" style={{ left: `${softPct()}%` }} />
       </div>
-      {/* Each reading is one unbreakable segment with its separator in front, so a wrap never leaves a dot at a line's end. */}
+      {/* Two fixed lines, money then time: no wrap can ever leave a dot leading or trailing a line. */}
       <div class="meta num budget-line">
-        <span class="t1">{t("goal.budgetLine", { spent: usd(props.g.cost_usd), soft: usdLimit(props.g.budget.soft_usd), pct: pct(props.g.cost_usd, props.g.budget.soft_usd) })}</span>
-        <span>
+        <span class="budget-money">
+          <span class="t1">{t("goal.budgetLine", { spent: usd(props.g.cost_usd), soft: usdLimit(props.g.budget.soft_usd), pct: pct(props.g.cost_usd, props.g.budget.soft_usd) })}</span>
           <span class="sep">·</span>
           {t("goal.hardCap", { v: usdLimit(props.g.budget.hard_usd) })}
         </span>
         <Show when={props.g.run_started_at}>
-          <span classList={{ "over-wall": overWallClock() }} title={overWallClock() ? t("goal.overWallTitle") : undefined}>
-            <span class="sep">·</span>
-            {t("goal.wallLine", { elapsed: elapsedMin(), minutes: props.g.budget.wall_minutes })}
+          <span class="budget-time">
+            <span classList={{ "over-wall": overWallClock() }} title={overWallClock() ? t("goal.overWallTitle") : undefined}>
+              {t("goal.wallLine", { elapsed: elapsedMin(), minutes: props.g.budget.wall_minutes })}
+            </span>
           </span>
         </Show>
       </div>
@@ -908,13 +917,13 @@ function ContractRail(props: { d: GoalDetail }) {
       <div class="rail-block">
         <div class="rail-head">{t("goal.engine")}</div>
         <dl class="rail-dl">
-          {/* The engine is a reading only when the contract overrides the default. */}
+          {/* The engine is a reading only when the contract overrides the default; one concept, one name: "engine". */}
           <Show when={c().engine && c().engine !== effectiveEngine("", state.settings?.engine)}>
-            <dt>{t("goal.agent")}</dt>
+            <dt>{t("goal.engine")}</dt>
             <dd>{engineLabel(c().engine)}</dd>
           </Show>
           <dt>{t("goal.model")}</dt>
-          <dd classList={{ mono: isModelId(model()) }}>{model() || (effectiveEngine(c().engine, state.settings?.engine) === "claude-code" ? t("common.engineDefault") : t("common.piDefault"))}</dd>
+          <dd classList={{ mono: isModelId(model()) }}>{model() || t("common.engineDefault", { engine: engineLabel(effectiveEngine(c().engine, state.settings?.engine)) })}</dd>
           <Show when={props.d.local_files.length}>
             <dt>{t("goal.localFiles")}</dt>
             <dd class="mono">{props.d.local_files.join("  ")}</dd>

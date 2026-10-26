@@ -494,7 +494,7 @@
 /* Claim: the source gutter (6em), secondary text, never green. */
 .claim {
   display: grid;
-  grid-template-columns: 7.5em minmax(0, 1fr) auto;
+  grid-template-columns: 8.5em minmax(0, 1fr) auto;
   column-gap: var(--sp-3);
   align-items: baseline;
   padding: 2px 0;
@@ -513,8 +513,17 @@
 .claim-rule {
   color: var(--text-4);
 }
+/* The kind fits its column in both languages; an English label that still overflows ends in an ellipsis, never a cut. */
 .claim-kind {
   color: var(--text-3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A refuted claim's kind steps back a register: it is not set as heavily as one that stands. */
+.claim-dim .claim-kind,
+.claim-dim .claim-rule {
+  color: var(--text-4);
 }
 .claim-text {
   color: var(--text-2);
@@ -1606,13 +1615,15 @@ input[type="radio"] {
   right: 0;
   background: var(--text-3);
 }
+/* Two readings on two lines — money, then time — so no wrap ever decides where a dot lands. */
 .budget-line {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 2px 0;
 }
 .budget-line > span {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* Past the wall clock: the reading wears the attention tint, like the badge when it needs you. */
 .over-wall {
@@ -1620,9 +1631,6 @@ input[type="radio"] {
   border-radius: var(--radius-s);
   background: var(--attention-bg);
   color: var(--text-1);
-}
-.budget-line .over-wall .sep {
-  padding-left: 0;
 }
 
 .run-row {
@@ -1843,9 +1851,16 @@ input[type="radio"] {
   margin: 0;
   max-height: 200px;
 }
+/* The bell is quieter than the time beside it until the pointer finds it. */
 .decision-snooze {
   color: var(--text-3);
   margin-right: -4px;
+  opacity: 0.7;
+}
+.decision-snooze:hover,
+.decision-snooze:focus-visible,
+.decision.focused .decision-snooze {
+  opacity: 1;
 }
 .decision-caution-open {
   flex: 0 0 auto;
@@ -2107,7 +2122,7 @@ input[type="radio"] {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   column-gap: var(--sp-2);
-  height: 28px;
+  height: 26px;
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-m);
@@ -2623,8 +2638,10 @@ input[type="radio"] {
     gap: var(--sp-3);
   }
 }
+/* Room under the last block, so the sticky action bar never covers a hint's last line. */
 .editor-main {
   min-width: 0;
+  padding-bottom: 56px;
 }
 .editor-block {
   padding: var(--sp-5) 0 var(--sp-2);
@@ -2671,6 +2688,13 @@ input[type="radio"] {
 }
 .criterion-edit .timeout {
   width: 9ch;
+}
+/* A look criterion's unit is a phrase ("秒内可访问"); the field widens to carry it. */
+.criterion-edit .timeout-look {
+  width: 15ch;
+}
+.criterion-edit .timeout-look input {
+  padding-right: 9ch !important;
 }
 .editor-grid2 {
   display: grid;
@@ -3006,6 +3030,9 @@ input[type="radio"] {
 .g-spend {
   color: var(--text-2);
 }
+/* Identity: nothing in it is squeezed by the browser's own proportions. The id,
+   separators and readings keep their width; the project name may shorten but
+   stays legible (3.5em); the engine mark gives way first, and leaves at 1400. */
 .g-id {
   display: flex;
   align-items: center;
@@ -3013,8 +3040,30 @@ input[type="radio"] {
   overflow: hidden;
   white-space: nowrap;
 }
+.g-id > * {
+  flex: 0 0 auto;
+}
+.g-id .g-project {
+  flex: 0 1 auto;
+  min-width: 3.5em;
+}
+.g-id .g-engine {
+  flex: 0 10 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .g-id .sep {
   padding: 0 0.25em;
+}
+.g-engine-narrow {
+  display: none;
+}
+@media (max-width: 1400px) {
+  .g-id .g-engine,
+  .g-id .g-engine-sep {
+    display: none;
+  }
 }
 .g-act {
   display: flex;
@@ -3033,6 +3082,21 @@ input[type="radio"] {
   .g-live .live-target,
   .g-live .live-detail .sep {
     display: none;
+  }
+  /* The identity column is gone; the engine mark rides in front of the live line instead. */
+  .g-live {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .g-live .live-line {
+    flex: 1;
+    min-width: 0;
+  }
+  .g-engine-narrow {
+    display: inline;
+    flex: 0 0 auto;
+    font-size: var(--fs-hint);
   }
 }
 
@@ -3062,7 +3126,7 @@ input[type="radio"] {
 .empty-poster {
   flex-direction: column;
   gap: var(--sp-5);
-  margin-top: 24vh;
+  margin-top: clamp(120px, 24vh, 280px);
   padding-top: 0;
 }
 .empty-poster .wordmark {
@@ -3428,7 +3492,7 @@ input[type="radio"] {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 8px 2px;
+  padding: 8px 8px 2px;
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
   color: var(--text-3);
@@ -3445,7 +3509,7 @@ input[type="radio"] {
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: 24px;
+  height: 26px;
   padding: 0 8px 0 calc(8px + var(--depth, 0) * 12px);
   border: 0;
   border-radius: var(--radius-s);
@@ -3504,6 +3568,12 @@ input[type="radio"] {
   overflow: auto;
   tab-size: 4;
 }
+/* An editor the width of the diff is a field, not a button: focus is its border, not a ring around 1600px. */
+.file-editor-text:focus,
+.file-editor-text:focus-visible {
+  outline: none;
+  border-color: var(--border-strong);
+}
 .file-editor-foot {
   gap: var(--sp-2);
 }
@@ -3515,15 +3585,17 @@ input[type="radio"] {
 .suggestion-label {
   margin-top: 2px;
 }
+/* One ground inside the amber comment, not a green one laid over it; the verifier's colour is one rule on the left. Code never folds: it scrolls. */
 .suggestion {
   margin: 0;
   padding: 6px 10px;
   border-radius: var(--radius-s);
-  background: var(--diff-add-bg);
+  background: var(--bg-inset);
+  border-left: 2px solid var(--st-verified);
   font-size: var(--fs-code);
   line-height: var(--lh-code);
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  overflow-x: auto;
   color: var(--text-1);
 }
 
@@ -3531,10 +3603,14 @@ input[type="radio"] {
    Look criteria: before and after
    ====================================================================== */
 
+/* The strip starts where the criterion's title starts (mark · id · gaps), not under the id. */
 .look-strip {
   display: flex;
   gap: var(--sp-3);
-  margin: 2px 0 8px 22px;
+  margin: 2px 0 8px calc(14px + 2.5em + 2 * var(--sp-2));
+}
+.panel-section .look-strip {
+  margin-left: calc(14px + 2.5em + 2 * var(--sp-2));
 }
 .look-shot {
   margin: 0;
@@ -3548,15 +3624,25 @@ input[type="radio"] {
   background: transparent;
   line-height: 0;
 }
+/* The whole page, small, on an inset ground: a tall page is not reduced to its header. */
 .look-img {
   display: block;
   height: 96px;
+  width: 160px;
   max-width: 220px;
-  object-fit: cover;
-  object-position: top left;
+  object-fit: contain;
+  object-position: top center;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
   background: var(--bg-inset);
+}
+/* Inside the verification sheet the strip is a reading among readings: shorter. */
+.verify-item .look-img,
+.verify-item .look-missing {
+  height: 72px;
+}
+.verify-item .look-img {
+  width: 120px;
 }
 .look-img-btn:hover .look-img {
   border-color: var(--border-strong);
@@ -3600,11 +3686,12 @@ input[type="radio"] {
   grid-template-columns: 1fr 1fr;
   gap: var(--sp-4);
 }
+/* Large: the picture at its own proportions, never stretched to the column; a tall page simply stands taller. */
 .look-side .look-img,
 .look-side .look-missing {
   height: auto;
-  max-width: none;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   max-height: 60vh;
   object-fit: contain;
   object-position: top left;

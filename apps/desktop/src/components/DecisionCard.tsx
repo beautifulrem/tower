@@ -161,8 +161,8 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             <span class="code-val t2">{it().goal_id}</span> {it().goal_title}
           </button>
         </Show>
-        {/* The PR reading belongs with the goal's name; the right edge is the time's alone. */}
-        <Show when={it().kind === "ci_failed" && goal()?.pr}>
+        {/* The PR reading belongs with the goal's name; the right edge is the time's alone. On the goal's own page the identity line already carries it. */}
+        <Show when={it().kind === "ci_failed" && props.showGoal !== false && goal()?.pr}>
           {(pr) => (
             <>
               <span class="sep">·</span>
@@ -199,8 +199,9 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               </Show>
               <Show when={submitClaim(it())}>{(text) => <Claim kind={t("goal.submitSummary")}>{text()}</Claim>}</Show>
               <div class="decision-actions">
+                {/* The same words as the goal page's call to action: "review n files". */}
                 <Button variant="primary" onClick={() => go({ name: "review", id: it().goal_id })} kbd={props.focused ? "r" : undefined}>
-                  {t("decision.openReview")}
+                  {goal()?.diffstat ? t("goal.reviewUnits", { n: goal()!.diffstat!.files }) : t("decision.openReview")}
                 </Button>
               </div>
             </>

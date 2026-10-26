@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../store", () => ({ state: { settings: { language: "en" } } }));
 
-const { ago, duration, usd, usdLimit, short } = await import("../format");
+const { ago, agoShort, duration, usd, usdLimit, short } = await import("../format");
 
 describe("formats", () => {
   it("rounds time quietly", () => {
@@ -10,6 +10,14 @@ describe("formats", () => {
     expect(ago(null, now)).toBe("—");
     expect(ago(now - 10_000, now)).not.toMatch(/\d/);
     expect(ago(now - 5 * 60_000, now)).toMatch(/5/);
+  });
+
+  it("gives the board the heartbeat's units under three hours, then words", () => {
+    const now = 10 * 24 * 3600_000;
+    expect(agoShort(now - 10_000, now)).toBe(ago(now - 10_000, now));
+    expect(agoShort(now - 100 * 60_000, now)).toBe("1h 40m ago");
+    expect(agoShort(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(agoShort(now - 4 * 3600_000, now)).toBe(ago(now - 4 * 3600_000, now));
   });
 
   it("shows durations with one unit system", () => {

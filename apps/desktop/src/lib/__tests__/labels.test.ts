@@ -6,7 +6,7 @@ import type { TraceEntry } from "../../gen/TraceEntry";
 
 vi.mock("../store", () => ({ state: { settings: { language: "en" } } }));
 
-const { envIssueLabel, installHint } = await import("../labels");
+const { envIssueLabel, installHint, engineMark, engineLabel } = await import("../labels");
 const { matches } = await import("../../components/Trace");
 const { matchGoal } = await import("../../components/Chrome");
 
@@ -24,6 +24,15 @@ describe("environment problems", () => {
   it("know how to install the demo's programs", () => {
     expect(installHint("python3")).toBe("xcode-select --install");
     expect(installHint("node")).toMatch(/brew/);
+  });
+});
+
+describe("engine names", () => {
+  it("have a two-letter mark for tight columns and a full name for the tooltip", () => {
+    expect(engineMark("claude-code")).toBe("CC");
+    expect(engineMark("pi")).toBe("Pi");
+    expect(engineMark("zed")).toBe("ze");
+    expect(engineLabel("claude-code")).toBe("Claude Code");
   });
 });
 

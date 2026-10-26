@@ -20,6 +20,8 @@ const isEnded = (g: GoalSummary) => g.state === "archived" || g.state === "aband
 
 export function Sidebar() {
   const [endedOpen, setEndedOpen] = createSignal(false);
+  // Accepted and merged goals need nothing from you most days: folded by default, the count stays.
+  const [doneOpen, setDoneOpen] = createSignal(false);
   // One source for "needs you": the blocking items. The top row counts them; the group lists their goals and counts them too.
   const blockingItems = createMemo(() => state.inbox.filter(isBlocking));
   const blockedGoals = createMemo(() => new Set(blockingItems().map((i) => i.goal_id)));
@@ -103,11 +105,26 @@ export function Sidebar() {
         <For each={groups()}>
           {(grp) => (
             <div class="side-group">
-              <div class="side-group-title halt">
-                <span>{groupLabel(grp.key)}</span>
-                <span class="num">{grp.count}</span>
-              </div>
-              <For each={grp.goals}>{(g) => <GoalRow g={g} />}</For>
+              <Show
+                when={grp.key === "done"}
+                fallback={
+                  <div class="side-group-title halt">
+                    <span>{groupLabel(grp.key)}</span>
+                    <span class="num">{grp.count}</span>
+                  </div>
+                }
+              >
+                <button class="side-group-title side-group-toggle halt" aria-expanded={doneOpen()} onClick={() => setDoneOpen((o) => !o)}>
+                  <span>
+                    <Icon name={doneOpen() ? "caret-down" : "caret-right"} size={10} />
+                    {groupLabel(grp.key)}
+                  </span>
+                  <span class="num">{grp.count}</span>
+                </button>
+              </Show>
+              <Show when={grp.key !== "done" || doneOpen() || grp.goals.some((g) => activeId() === g.id)}>
+                <For each={grp.goals}>{(g) => <GoalRow g={g} />}</For>
+              </Show>
             </div>
           )}
         </For>

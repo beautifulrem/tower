@@ -62,7 +62,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   // The engine the goal will run on: the contract's, else the settings' default.
   const engine = () => effectiveEngine(c.engine, state.settings?.engine);
   const modelOptions = () => [
-    { value: "", label: engine() === "claude-code" ? t("common.engineDefault") : t("common.piDefault") },
+    { value: "", label: t("common.engineDefault", { engine: engineLabel(engine()) }) },
     ...modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` })),
   ];
 
@@ -203,9 +203,15 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             {(cr, i) => (
               <div class="criterion-edit" classList={{ "criterion-edit-look": cr.kind.type === "look" }}>
                 <span class="num">{cr.id}</span>
-                <input value={cr.title} aria-label={`${cr.id} ${t("contract.criterionTitle")}`} placeholder={t("contract.criterionTitle")} onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)} />
+                <input
+                  value={cr.title}
+                  aria-label={`${cr.id} ${t("contract.criterionTitle")}`}
+                  placeholder={cr.kind.type === "look" ? t("contract.lookTitlePlaceholder") : t("contract.criterionTitle")}
+                  onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)}
+                />
+                {/* A look criterion's timeout is how long Tower waits for the page, not how long a command may run: its unit says so. */}
                 <Show when={cr.kind.type !== "human"} fallback={<span class="meta">{t("contract.humanCheck")}</span>}>
-                  <span class="unit-wrap timeout">
+                  <span class="unit-wrap timeout" classList={{ "timeout-look": cr.kind.type === "look" }}>
                     <input
                       class="num"
                       type="number"
@@ -215,7 +221,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                       aria-label={`${cr.id} ${t("contract.timeout")}`}
                       onInput={(e) => setKind(i(), (k) => { if (k.type !== "human") k.timeout_secs = Number(e.currentTarget.value) || 1; })}
                     />
-                    <span class="unit">{t("contract.seconds")}</span>
+                    <span class="unit">{cr.kind.type === "look" ? t("contract.secondsReachable") : t("contract.seconds")}</span>
                   </span>
                 </Show>
                 <IconButton icon="cross" size={24} label={t("common.delete")} onClick={() => setC("criteria", (l) => l.filter((_, j) => j !== i()))} />
@@ -349,7 +355,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         <div class="editor-block">
           <h2 class="section-title">{t("contract.engine")}</h2>
           {/* The engine picker filters the model list: Pi's providers for Pi, Claude Code's aliases for Claude Code. */}
-          <Field label={t("contract.agent")} hint={engine() === "claude-code" ? t("settings.engineTrust") : undefined}>
+          <Field label={t("contract.engine")} hint={engine() === "claude-code" ? t("settings.engineTrust") : undefined}>
             <Select
               value={c.engine}
               options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]}

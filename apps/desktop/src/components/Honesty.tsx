@@ -54,15 +54,16 @@ export function ObsChip(props: { title?: string }) {
  * layer is enough: the gutter says the kind (cause, next step…) when there
  * is one, and "Agent 称" otherwise. The text column starts clean.
  */
-export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX.Element; bare?: boolean }) {
+export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX.Element; bare?: boolean; dim?: boolean }) {
+  const kind = () => props.kind ?? t("honesty.agentSaysPlain");
   return (
-    <div class="claim">
-      <span class="claim-label halt" title={t("honesty.agentSaysPlain")}>
+    <div class="claim" classList={{ "claim-dim": !!props.dim }}>
+      <span class="claim-label halt" title={props.kind ? `${kind()} · ${t("honesty.agentSaysPlain")}` : t("honesty.agentSaysPlain")}>
         <span class="claim-rule" aria-hidden="true">
           ┆
         </span>
         <span class="sr-only">{t("honesty.srClaim")} </span>
-        <span class="claim-kind">{props.kind ?? t("honesty.agentSaysPlain")}</span>
+        <span class="claim-kind">{kind()}</span>
       </span>
       <div class="claim-text">{props.children}</div>
       <Show when={props.aside}>
@@ -155,18 +156,20 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean; tiny
  * existing tests undone. A pass that depends on edited tests is said in the
  * attention register — it is the opposite of evidence.
  */
-export function BaselineLine(props: { c: CriterionView }) {
+export function BaselineLine(props: { c: CriterionView; base?: string | null }) {
   const c = () => props.c;
   const passed = () => !!c().verified?.passed;
   const dependent = () => c().passes_with_original_tests === false;
   const redToGreen = () => c().passed_on_base === false && !dependent();
+  // The base could not be checked at all: said quietly, in neither the fact nor the attention register.
+  const uncheckable = () => c().passed_on_base === null && !!c().base_error;
   return (
-    <Show when={passed() && (c().passed_on_base !== null || dependent())}>
+    <Show when={passed() && (c().passed_on_base !== null || dependent() || uncheckable())}>
       <div class="criterion-row criterion-obs">
         <span />
         <span />
         <span />
-        <span class="col-span" classList={{ t1: c().passed_on_base === true, t3: redToGreen(), "baseline-dependent": dependent() }}>
+        <span class="col-span" classList={{ t1: c().passed_on_base === true, t3: redToGreen() || (uncheckable() && !dependent()), "baseline-dependent": dependent() }}>
           <Switch>
             <Match when={dependent()}>
               <NeedsYouMark title={t("goal.dependsOnEditedTestsLong")} />
@@ -181,6 +184,11 @@ export function BaselineLine(props: { c: CriterionView }) {
               <Show when={c().passes_with_original_tests === true}>
                 <span class="t4">· {t("goal.withOriginalTests")}</span>
               </Show>
+            </Match>
+            <Match when={uncheckable()}>
+              <span class="t4" title={c().base_error ?? undefined}>
+                {t("goal.baseUncheckable", { base: short(props.base) })}
+              </span>
             </Match>
           </Switch>
         </span>

@@ -165,7 +165,7 @@ export function Welcome() {
           <Check
             ok={piOk()}
             title={piOk() ? `Pi ${env()?.pi_version ?? ""}` : piIssue() ? envIssueLabel(piIssue()!, env()) : t("welcome.piMissing")}
-            detail={piOk() ? (piNote() ? envIssueLabel(piNote()!, env()) : env()?.pi_path ?? undefined) : t("welcome.piWhat")}
+            detail={piOk() ? (piNote() ? envIssueLabel(piNote()!, env()) : env()?.pi_path ?? undefined) : state.settings?.engine === "claude-code" ? t("welcome.piNotEngine") : t("welcome.piWhat")}
             fix={piOk() === false ? (fixFor(piIssue()) ?? "npm i -g @earendil-works/pi-coding-agent") : undefined}
           />
           <Show when={piOk()}>

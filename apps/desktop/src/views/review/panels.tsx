@@ -104,7 +104,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                     )}
                   </Show>
                 </div>
-                <BaselineLine c={c} />
+                <BaselineLine c={c} base={props.detail?.base_commit} />
                 <Show when={c.look}>{(l) => <LookStrip look={l()} title={`${c.criterion.id} ${c.criterion.title}`} />}</Show>
                 <Show when={c.observed}>
                   <div class="criterion-row criterion-obs">

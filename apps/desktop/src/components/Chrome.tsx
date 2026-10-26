@@ -141,11 +141,21 @@ export function TitleBar(props: { title: string }) {
             </button>
           }
         >
-          <span class="gauge" title={`Pi ${state.env!.pi_version!} · ${state.env?.pi_path ?? ""}`}>
+          <span
+            class="gauge"
+            title={
+              state.settings?.engine === "claude-code"
+                ? `Claude Code · ${state.settings.claude_acp_command || "claude-agent-acp"}`
+                : `Pi ${state.env?.pi_version ?? ""} · ${state.env?.pi_path ?? ""}`
+            }
+          >
             <span class="gauge-dot" />
             {t("chrome.engine")}
+            {/* Each engine has a readable version slot: Pi's number, Claude Code's adapter. */}
             <span class="t3 gauge-version">
-              {state.settings?.engine === "claude-code" ? "Claude Code" : `Pi ${state.env!.pi_version!.split(" ")[0]}`}
+              {state.settings?.engine === "claude-code"
+                ? `Claude Code ${(state.settings.claude_acp_command || "claude-agent-acp").split("/").pop()!.split(" ")[0]}`
+                : `Pi ${state.env?.pi_version?.split(" ")[0] ?? ""}`}
             </span>
           </span>
         </Show>

@@ -17,6 +17,19 @@ export function ago(at: number | null | undefined, now = Date.now()): string {
 }
 
 /**
+ * The board's age: under three hours it uses the same `duration` form as the
+ * heartbeat and the run's elapsed time ("1h 40m 前" / "1h 40m ago"), so one
+ * screen does not say "1h 40m", "1h 49m" and "2 小时前" about the same
+ * minutes; beyond that it is `ago`.
+ */
+export function agoShort(at: number | null | undefined, now = Date.now()): string {
+  if (!at) return "—";
+  const d = Math.max(0, now - at);
+  if (d < 45_000 || d >= 3 * HOUR) return ago(at, now);
+  return t("format.durationAgo", { d: duration(d, false) });
+}
+
+/**
  * Elapsed duration as "42s", "3m", "1h 20m"; sub-second only when `precise`.
  * The unit letters read the same in both interface languages.
  */

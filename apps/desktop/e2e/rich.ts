@@ -188,8 +188,9 @@ export function enrichPhoneProblem(F: F) {
 
 /**
  * What the canary saw on G-0001: C1's assertions were checked (intact), C2's could not be (a test style Tower does not
- * know), and C3's canary passed when it must have failed. The goal page then carries the two newer sentinels: program
- * code reaching into the tests with assertions unchecked (high), and repeated sandbox refusals (medium).
+ * know), and a fourth, executable criterion's canary passed when it must have failed. The goal page then carries the
+ * two newer sentinels: program code reaching into the tests with assertions unchecked (high), and repeated sandbox
+ * refusals (medium).
  */
 export function enrichCanary(F: F) {
   const d = F["goal-G-0001"];
@@ -197,7 +198,15 @@ export function enrichCanary(F: F) {
   const by = (id: string) => d.criteria.find((c: any) => c.criterion.id === id);
   if (by("C1")) by("C1").canary = "intact";
   if (by("C2")) by("C2").canary = "not_checked";
-  if (by("C3")) by("C3").canary = "tampered";
+  const c2 = by("C2");
+  if (c2?.verified && !by("C4")) {
+    const criterion = { id: "C4", title: "Rounding tests pass", kind: { type: "exec", command: "node --test test/rounding.test.js", timeout_secs: 120 } };
+    d.contract.criteria.push(criterion);
+    d.criteria.push({ ...structuredClone(c2), criterion, canary: "tampered", passed_on_base: null, base_error: null });
+    d.summary.progress.machine += 1;
+    d.summary.progress.verified += 1;
+    for (const g of F.goals) if (g.id === "G-0001") (g.progress.machine += 1, (g.progress.verified += 1));
+  }
   d.sentinels.push(
     {
       sentinel: "assertions_unchecked",

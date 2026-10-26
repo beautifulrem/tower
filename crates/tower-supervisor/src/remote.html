@@ -169,7 +169,7 @@ const T = {
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
         runningFor: (d) => `running ${d}`,
         answerPlaceholder: "Write your answer…", notePlaceholder: "A note for the agent (optional)…",
-        forYou: "For you only", failing: "failing", hintPlaceholder: "A hint for the agent, in your words — it does not see the output above…", sendHint: "Send the hint and resume",
+        forYou: "For you only", failing: "failing", hintPlaceholder: "A hint for the agent, in your words…", sendHint: "Send the hint and resume",
         heldOutNote: "The agent does not know these tests exist. A hint, or only the names of what failed, keeps it that way; showing it the failure does not.",
         acceptOnDesk: "Review and accept on your Mac", claim: "Agent says", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
         foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
@@ -183,7 +183,7 @@ const T = {
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
         runningFor: (d) => `已运行 ${d}`,
         answerPlaceholder: "写下你的回答…", notePlaceholder: "写给 Agent 的话（可选）…",
-        forYou: "只给你看", failing: "失败", hintPlaceholder: "用你的话给 Agent 一句提示——它看不到上面的输出…", sendHint: "发送提示并继续",
+        forYou: "只给你看", failing: "失败", hintPlaceholder: "用你的话给 Agent 一句提示…", sendHint: "发送提示并继续",
         heldOutNote: "Agent 不知道这些测试存在。给它提示，或只告诉它哪些测试失败，都能保住这一点；把失败给它看则不能。",
         acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 称", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
         foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
@@ -266,7 +266,8 @@ const heldHtml = (h) => `<div class="heldout"><span class="label">${t("forYou")}
 // What the reply box asks for: a question wants an answer, a held-out card a hint, anything else a note.
 const replyHtml = (i, held) => {
   const ph = held ? t("hintPlaceholder") : i.kind === "question" ? t("answerPlaceholder") : t("notePlaceholder");
-  return `<div class="reply ${held ? "hint" : ""}"><textarea id="t-${esc(i.id)}" rows="1" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></textarea><button class="btn ${held ? "primary" : ""}" data-send="${esc(i.id)}">${held ? t("sendHint") : t("send")}</button></div>`;
+  // The hint is a sentence or two, so its field opens two rows deep; a note or an answer starts at one.
+  return `<div class="reply ${held ? "hint" : ""}"><textarea id="t-${esc(i.id)}" rows="${held ? 2 : 1}" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></textarea><button class="btn ${held ? "primary" : ""}" data-send="${esc(i.id)}">${held ? t("sendHint") : t("send")}</button></div>`;
 };
 // Mirrors the supervisor's `answerable_away`: allowing a gated action, overriding a sentinel and
 // installing changed dependencies with the network widen what the agent may do, so they are

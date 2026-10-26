@@ -266,14 +266,16 @@ export function Review(props: { id: string }) {
     });
   };
 
+  /** A row's top in the pane's scroll space (a table row's offsetTop is relative to its table, not the pane). */
+  const topIn = (pane: HTMLElement, el: HTMLElement) => el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
   /** Scrolls to the next or previous hunk in the diff pane. */
   const jumpHunk = (dir: 1 | -1) => {
     const pane = document.querySelector<HTMLElement>(".review-diff");
     if (!pane) return;
-    const heads = [...pane.querySelectorAll<HTMLElement>(".hunk-head")];
+    const heads = [...pane.querySelectorAll<HTMLElement>(".hunk-head")].map((h) => ({ h, top: topIn(pane, h) }));
     const top = pane.scrollTop + 48;
-    const target = dir > 0 ? heads.find((h) => h.offsetTop > top + 4) : [...heads].reverse().find((h) => h.offsetTop < top - 4);
-    if (target) pane.scrollTo({ top: target.offsetTop - 40 });
+    const target = dir > 0 ? heads.find((x) => x.top > top + 4) : [...heads].reverse().find((x) => x.top < top - 4);
+    if (target) pane.scrollTo({ top: target.top - 40 });
   };
   /** The hunk whose header is at (or last passed) the top of the pane: what ] and [ land on. */
   const currentHunk = (): { f: DiffFile; index: number } | null => {
@@ -281,7 +283,7 @@ export function Review(props: { id: string }) {
     if (!pane) return null;
     const heads = [...pane.querySelectorAll<HTMLElement>(".hunk-head[data-hunk-index]")];
     const top = pane.scrollTop + 48;
-    const head = [...heads].reverse().find((h) => h.offsetTop <= top + 4) ?? heads[0];
+    const head = [...heads].reverse().find((h) => topIn(pane, h) <= top + 4) ?? heads[0];
     const f = head && fileByPath(head.dataset.hunkPath ?? "");
     return head && f ? { f, index: Number(head.dataset.hunkIndex) } : null;
   };

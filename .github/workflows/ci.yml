@@ -35,6 +35,7 @@ jobs:
         run: |
           pnpm --dir apps/desktop check
           pnpm --dir apps/desktop build
+          tools/bundle-budget.sh
 
       - name: Rust formatting
         run: cargo fmt --all --check

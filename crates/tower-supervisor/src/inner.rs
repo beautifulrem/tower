@@ -210,11 +210,13 @@ impl Inner {
         if let Some(p) = self.env.which("claude-agent-acp") {
             return p.display().to_string();
         }
+        // The copy Tower installed from its lockfile (`acp_adapter::ensure`
+        // runs before every Claude Code run); never a download at run time.
         let installed = crate::acp_adapter::entry(&self.paths);
-        match (installed.is_file(), self.env.which("node")) {
-            (true, Some(node)) => format!("{} {}", node.display(), installed.display()),
-            _ => "npx -y @agentclientprotocol/claude-agent-acp@0.97.0".into(),
-        }
+        let node = self.env.which("node").map_or_else(|| "node".to_string(), |n| n.display().to_string());
+        // A shell command line (the bridge runs it with `sh -c`).
+        let q = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+        format!("{} {}", q(&node), q(&installed.display().to_string()))
     }
 
     pub fn pi_program(&self) -> Option<PathBuf> {

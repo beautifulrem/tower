@@ -101,9 +101,11 @@ pub(crate) async fn capture(
     let confined = crate::sandbox::available().then(|| {
         let sb = profile_dir.join("browser.sb");
         let home = env.iter().find(|(k, _)| k == "HOME").map(|(_, v)| PathBuf::from(v)).unwrap_or_default();
+        // Seatbelt matches resolved paths (`/var` is `/private/var`).
+        let (profile_real, out_real) = (crate::paths::real(&profile_dir), crate::paths::real(&out_dir));
         let text = crate::sandbox::browser_profile(
             &home,
-            &[&profile_dir, &out_dir],
+            &[&profile_real, &out_real],
             network,
             &crate::sandbox::proxy_ports(env),
         );
@@ -149,7 +151,13 @@ pub(crate) async fn capture(
         .args(if network {
             vec![]
         } else {
-            vec!["--proxy-server=http://127.0.0.1:9".to_string(), "--proxy-bypass-list=<local>".to_string()]
+            vec![
+                "--proxy-server=http://127.0.0.1:9".to_string(),
+                "--proxy-bypass-list=<local>".to_string(),
+                // No name resolution beyond this machine, no direct UDP.
+                "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1".to_string(),
+                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp".to_string(),
+            ]
         })
         .arg(format!("--screenshot={}", out.display()))
         .arg(url)

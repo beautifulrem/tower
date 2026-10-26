@@ -368,6 +368,13 @@ export const en: Dict = {
     keyHold: "hold for before",
   },
   overview: {
+    colGoal: "Goal",
+    colLive: "Live",
+    colCriteria: "Criteria",
+    colChange: "Change",
+    colSpend: "Spend",
+    colAge: "Updated",
+    colIdentity: "Identity",
     emptyTitle: "No active goals",
     emptyProject: "No active goals in {project}",
     emptyBody: "Describe the result you want above and press ↵; Tower writes a minimal contract and starts. Or write the contract yourself.",

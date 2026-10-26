@@ -3023,9 +3023,62 @@ input[type="radio"] {
 .overview > .empty {
   margin-top: var(--sp-6);
 }
-.overview > .empty-poster,
 .inbox > .empty-poster {
   margin-top: 24vh;
+}
+/* The empty board: the poster sits higher, and under it the board's own grid waits — heads, then three hollow lines. */
+.overview > .empty-poster {
+  margin-top: clamp(72px, 14vh, 180px);
+}
+.board-ghost {
+  margin-top: var(--sp-10);
+}
+.board-ghost .g-row {
+  pointer-events: none;
+}
+.board-ghost .g-row > span {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.board-ghost .g-diff,
+.board-ghost .g-spend,
+.board-ghost .g-age {
+  justify-content: flex-end;
+  text-align: right;
+}
+/* The heads: the wordmark's voice — small, tracked, the quietest grey — one line above the hairline.
+   The size goes on the cells, not the row: the row's em-sized tracks must stay the rows' own. */
+.board-ghost-head {
+  height: 24px;
+  border-bottom-color: var(--border);
+}
+.board-ghost-head > span {
+  overflow: visible;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+:root[lang="zh-CN"] .board-ghost-head > span {
+  letter-spacing: 0.2em;
+  font-size: 11px;
+}
+.board-ghost-row .g-glyph {
+  color: var(--text-4);
+}
+.board-ghost-row .seg {
+  border-color: var(--border-strong);
+}
+/* Where a reading will be: a 6px rule in the selection grey, never a word. */
+.ghost-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-selected);
 }
 .overview-top .quick {
   flex: 1 1 auto;

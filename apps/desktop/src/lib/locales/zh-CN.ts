@@ -367,6 +367,13 @@ export const zh = {
     keyHold: "按住看改动前",
   },
   overview: {
+    colGoal: "目标",
+    colLive: "实况",
+    colCriteria: "标准",
+    colChange: "改动",
+    colSpend: "花费",
+    colAge: "更新",
+    colIdentity: "身份",
     emptyTitle: "没有进行中的目标",
     emptyProject: "{project} 里没有进行中的目标",
     emptyBody: "在上面写一句你想要的结果按 ↵，Tower 会生成最小合同并开始；或自己写一份合同。",

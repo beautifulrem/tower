@@ -13,6 +13,7 @@ import { For, Show, createMemo, createSignal, lazy, onCleanup } from "solid-js";
 
 import { DecisionCard, chooseOption } from "../components/DecisionCard";
 import { DemoButton } from "../components/Demo";
+import { Icon } from "../components/Glyph";
 import { GoalRow } from "../components/GoalRow";
 import { BaseTestsNotice } from "../components/TestCheck";
 import { Button, Empty, Select } from "../components/ui";
@@ -131,23 +132,26 @@ export function Overview() {
         <Show
           when={total() > 0}
           fallback={
-            <Empty
-              title={project() === ALL ? t("overview.emptyTitle") : t("overview.emptyProject", { project: state.projects.find((p) => p.id === project())?.name ?? "" })}
-              poster
-              action={
-                <span class="row">
-                  <DemoButton size="s" />
-                  <Button size="s" variant="ghost" kbd="mod+n" onClick={() => go({ name: "new", projectId: project() === ALL ? undefined : project() })}>
-                    {t("overview.writeContract")}
-                  </Button>
-                  <Show when={ended() > 0}>
-                    <span class="meta t3">{t("overview.endedCount", { n: ended() })}</span>
-                  </Show>
-                </span>
-              }
-            >
-              {t("overview.emptyBody")}
-            </Empty>
+            <>
+              <Empty
+                title={project() === ALL ? t("overview.emptyTitle") : t("overview.emptyProject", { project: state.projects.find((p) => p.id === project())?.name ?? "" })}
+                poster
+                action={
+                  <span class="row">
+                    <DemoButton size="s" />
+                    <Button size="s" variant="ghost" kbd="mod+n" onClick={() => go({ name: "new", projectId: project() === ALL ? undefined : project() })}>
+                      {t("overview.writeContract")}
+                    </Button>
+                    <Show when={ended() > 0}>
+                      <span class="meta t3">{t("overview.endedCount", { n: ended() })}</span>
+                    </Show>
+                  </span>
+                }
+              >
+                {t("overview.emptyBody")}
+              </Empty>
+              <BoardGhost />
+            </>
           }
         >
           <Show when={shownDecisions.list().length > 0}>
@@ -189,6 +193,71 @@ export function Overview() {
         </Show>
       </div>
     </Show>
+  );
+}
+
+/** Ghost rows: where each reading will land, as bar widths per column (title, live, change, spend, age, identity). */
+const GHOST_ROWS: number[][] = [
+  [62, 44, 60, 72, 48, 70],
+  [48, 58, 40, 72, 36, 56],
+  [70, 36, 52, 72, 56, 64],
+];
+
+/**
+ * The board before anything stands on it: its column heads and three empty
+ * lines in the real row grid, every hairline where a goal's will be. The
+ * emptiest screen already says what this place is for — a departures board
+ * with no departures yet — and the rows are hollow (the "not yet" segment,
+ * the draft ring), never pretend data.
+ */
+function BoardGhost() {
+  return (
+    <div class="board-ghost" aria-hidden="true">
+      <div class="g-row board-ghost-head halt">
+        <span />
+        <span>{t("overview.colGoal")}</span>
+        <span>{t("overview.colLive")}</span>
+        <span>{t("overview.colCriteria")}</span>
+        <span class="g-diff">{t("overview.colChange")}</span>
+        <span class="g-spend">{t("overview.colSpend")}</span>
+        <span class="g-age">{t("overview.colAge")}</span>
+        <span class="g-id">{t("overview.colIdentity")}</span>
+        <span />
+      </div>
+      <For each={GHOST_ROWS}>
+        {(w) => (
+          <div class="g-row board-ghost-row">
+            <span class="g-glyph">
+              <Icon name="ring" size={10} />
+            </span>
+            <span>
+              <i class="ghost-bar" style={{ width: `${w[0]}%` }} />
+            </span>
+            <span>
+              <i class="ghost-bar" style={{ width: `${w[1]}%` }} />
+            </span>
+            <span class="segs">
+              <i class="seg" />
+              <i class="seg" />
+              <i class="seg" />
+            </span>
+            <span class="g-diff">
+              <i class="ghost-bar" style={{ width: `${w[2]}%` }} />
+            </span>
+            <span class="g-spend">
+              <i class="ghost-bar" style={{ width: `${w[3]}%` }} />
+            </span>
+            <span class="g-age">
+              <i class="ghost-bar" style={{ width: `${w[4]}%` }} />
+            </span>
+            <span class="g-id">
+              <i class="ghost-bar" style={{ width: `${w[5]}%` }} />
+            </span>
+            <span />
+          </div>
+        )}
+      </For>
+    </div>
   );
 }
 

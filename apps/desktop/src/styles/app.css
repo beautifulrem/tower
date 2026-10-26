@@ -1299,8 +1299,9 @@ input[type="radio"] {
   gap: 6px;
   padding: 10px 12px;
   border-radius: var(--radius-m);
-  border: 1px solid var(--border);
+  border: 1px solid var(--card-edge);
   background: var(--bg-raised);
+  box-shadow: var(--card-lift);
   font-size: var(--fs-meta);
 }
 .welcome-sample .claim {
@@ -1785,13 +1786,11 @@ input[type="radio"] {
 
 .decision {
   border-radius: var(--radius-m);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--card-edge);
   background: var(--bg-raised);
+  box-shadow: var(--card-lift);
   overflow: hidden;
   transition: opacity var(--dur-base) var(--ease-in), transform var(--dur-base) var(--ease-in);
-}
-:root[data-theme="light"] .decision {
-  border-color: var(--border);
 }
 .decision.leaving {
   opacity: 0;
@@ -2013,9 +2012,10 @@ input[type="radio"] {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--card-edge);
   border-radius: var(--radius-m);
   background: var(--bg-raised);
+  box-shadow: var(--card-lift);
 }
 .trace-filters {
   display: flex;
@@ -2317,13 +2317,11 @@ input[type="radio"] {
 
 .file {
   margin-bottom: var(--sp-4);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--card-edge);
   border-radius: var(--radius-m);
   overflow: hidden;
   background: var(--bg-raised);
-}
-:root[data-theme="light"] .file {
-  border-color: var(--border);
+  box-shadow: var(--card-lift);
 }
 .file-head {
   position: sticky;

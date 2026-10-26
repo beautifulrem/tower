@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { enrichEngines, enrichLook, enrichReview, enrichRollback, enrichSecondReady } from "./rich";
+import { enrichEngines, enrichLook, enrichPhone, enrichReview, enrichRollback, enrichSecondReady } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -114,6 +114,29 @@ test("the phone page can be switched on from Settings", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Phone" })).toBeVisible();
   await page.getByLabel("Enable the phone page").check();
   await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { remote_enabled: boolean } }).settings.remote_enabled)).toBe(true);
+});
+
+test("the phone block waits while the page is off, names its networks, and saves the push topic", async ({ page }) => {
+  await openTower(page, "settings");
+  await expect(page.getByRole("heading", { name: "Phone" })).toBeVisible();
+  // Off: the port and the network switch are not live.
+  await expect(page.getByRole("spinbutton", { name: "Port" })).toBeDisabled();
+  await expect(page.getByLabel("Also serve on the local network")).toBeDisabled();
+  const push = page.getByLabel("Push to (ntfy topic URL)");
+  await push.fill("https://ntfy.example.net/tower");
+  await push.blur();
+  await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { push_url: string } }).settings.push_url === "https://ntfy.example.net/tower")).toBe(true);
+});
+
+test("with the phone page on, each link is named by its network", async ({ page }) => {
+  await openTower(page, "settings", { enrich: enrichPhone });
+  await expect(page.getByLabel("Also serve on the local network")).toBeEnabled();
+  const links = page.locator(".phone-link");
+  await expect(links).toHaveCount(2);
+  await expect(links.nth(0)).toContainText("Tailscale");
+  await expect(links.nth(0)).toContainText("100.101.102.103:7317");
+  await expect(links.nth(1)).toContainText("Local network");
+  await expect(page.locator(".phone-links")).not.toContainText("http://");
 });
 
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {

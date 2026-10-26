@@ -221,6 +221,41 @@ pub fn proxy_ports(env: &[(String, String)]) -> Vec<u16> {
     ports
 }
 
+/// The profile for the browser that screenshots a `look` criterion. The
+/// page is the agent's code, so the browser (run with its own sandbox off,
+/// which cannot nest) is confined here instead: it reads like any app, but
+/// writes only to its own profile, the screenshot's folder and the per-user
+/// temporary folders Chromium needs, never reads credential stores, and —
+/// unless the contract allows the network — reaches only this machine:
+/// no DNS, no UDP, no proxy listening on loopback.
+pub fn browser_profile(home: &Path, writable: &[&Path], network: bool, proxy_ports: &[u16]) -> String {
+    let mut s = String::from("(version 1)\n(allow default)\n");
+    s.push_str("(deny file-read* file-write*\n");
+    for secret in SECRETS {
+        s.push_str(&format!("  (subpath {})\n", q(&home.join(secret))));
+    }
+    s.push_str(")\n(deny file-write*)\n(allow file-write*\n");
+    for w in writable {
+        s.push_str(&format!("  (subpath {})\n", q(w)));
+    }
+    s.push_str(
+        "  (subpath \"/private/var/folders\")\n  (literal \"/dev/null\")\n  (literal \"/dev/dtracehelper\")\n  (regex #\"^/dev/fd/\"))\n",
+    );
+    if !network {
+        s.push_str("(deny network-outbound)\n");
+        s.push_str("(allow network-outbound (remote ip \"localhost:*\") (remote unix-socket))\n");
+        s.push_str("(deny network-outbound (remote unix-socket (path-literal \"/private/var/run/mDNSResponder\")))\n");
+        if !proxy_ports.is_empty() {
+            s.push_str("(deny network-outbound\n");
+            for port in proxy_ports {
+                s.push_str(&format!("  (remote ip \"localhost:{port}\")\n"));
+            }
+            s.push_str(")\n");
+        }
+    }
+    s
+}
+
 fn q(p: &Path) -> String {
     format!("\"{}\"", p.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\""))
 }
@@ -411,6 +446,53 @@ mod tests {
 
     /// Enforcement, checked against the real sandbox-exec, with a fake home
     /// under /tmp holding a fake secret, another project and a shared cache.
+    /// The screenshot browser's confinement: loopback only (no DNS, no
+    /// outside address, no loopback proxy), writes only where it must.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_browser_profile_keeps_pages_on_this_machine() {
+        if !available() {
+            return;
+        }
+        let tmp = tempfile::tempdir_in("/tmp").unwrap();
+        let root = crate::paths::real(tmp.path());
+        let own = root.join("own");
+        std::fs::create_dir_all(&own).unwrap();
+        let sb = root.join("b.sb");
+        // The proxies this machine uses (Tower passes the same list).
+        let ports = proxy_ports(&std::env::vars().collect::<Vec<_>>());
+        std::fs::write(&sb, browser_profile(&root.join("home"), &[&own], false, &ports)).unwrap();
+        let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in server.incoming().flatten() {
+                use std::io::Write;
+                let mut s = s;
+                let _ = s.write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok");
+            }
+        });
+        let run = |cmd: &str| {
+            std::process::Command::new("/usr/bin/sandbox-exec")
+                .arg("-f")
+                .arg(&sb)
+                .args(["/bin/sh", "-c", cmd])
+                .output()
+                .unwrap()
+                .status
+                .success()
+        };
+        assert!(
+            run(&format!("/usr/bin/curl -sS -m 5 --noproxy '*' http://127.0.0.1:{port}/ >/dev/null")),
+            "this machine answers"
+        );
+        assert!(!run("/usr/bin/curl -sS -m 5 https://example.com >/dev/null 2>&1"), "the outside does not");
+        assert!(!run("/usr/bin/curl -sS -m 5 --noproxy '*' https://example.com >/dev/null 2>&1"), "nor directly");
+        assert!(!run("/usr/bin/curl -sS -m 5 --noproxy '*' http://1.1.1.1 >/dev/null 2>&1"), "not even by address");
+        assert!(!run("/usr/bin/curl -sS -m 3 -x http://127.0.0.1:7890 http://x >/dev/null 2>&1"), "nor via a proxy");
+        assert!(run(&format!("echo a > {}/x", own.display())), "its own folder is writable");
+        assert!(!run(&format!("echo a > {}/x", root.display())), "nothing else is");
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn profile_is_enforced_by_sandbox_exec() {

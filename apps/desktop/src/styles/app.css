@@ -2452,13 +2452,18 @@ input[type="radio"] {
 }
 .check-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: var(--sp-3);
+  gap: 6px var(--sp-3);
   padding: 6px 0;
   min-width: 0;
 }
+/* A long fix command takes its own line under the text instead of squeezing it. */
 .check-row > .col {
-  flex: 1 1 10em;
+  flex: 1 1 16em;
+}
+.check-row > .fix {
+  margin-left: calc(14px + var(--sp-3));
 }
 .check-mark {
   width: 14px;
@@ -2473,7 +2478,7 @@ input[type="radio"] {
 }
 .fix {
   flex: 0 1 auto;
-  max-width: 55%;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2534,7 +2539,7 @@ input[type="radio"] {
 .g-row {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(10em, 1fr) minmax(14em, 1.35fr) 11em 4.5em 7em 5em 11.5em 5em;
+  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 5em 11.5em 5em;
   column-gap: var(--sp-3);
   align-items: center;
   height: var(--row-goal-h);

@@ -368,5 +368,61 @@ pub struct EnvironmentStatus {
     pub pi_version: Option<String>,
     pub git_version: Option<String>,
     pub data_dir: String,
+    /// The same problems as `issues`, as plain sentences.
     pub problems: Vec<String>,
+    pub issues: Vec<EnvIssue>,
+}
+
+/// One environment problem, typed so the interface never has to parse text.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct EnvIssue {
+    pub kind: EnvIssueKind,
+    /// Whether goals cannot run until it is fixed.
+    pub blocking: bool,
+    pub text: String,
+    /// A command that fixes it, when there is one.
+    pub fix: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum EnvIssueKind {
+    PiMissing,
+    PiBroken,
+    /// Older than the oldest Pi version Tower supports.
+    PiTooOld,
+    /// Newer than the versions Tower was tested with; probably fine.
+    PiUntested,
+    GitMissing,
+    NoSandbox,
+}
+
+/// The Pi versions Tower supports: at least `PI_MIN`, tested up to the
+/// `PI_TESTED` minor release.
+pub const PI_MIN: (u32, u32, u32) = (1, 4, 0);
+pub const PI_TESTED: (u32, u32) = (1, 4);
+
+/// Parses the first `x.y.z` in `pi --version` output.
+pub fn parse_version(s: &str) -> Option<(u32, u32, u32)> {
+    s.split(|c: char| !(c.is_ascii_digit() || c == '.')).find_map(|w| {
+        let mut it = w.split('.').map(|p| p.parse::<u32>().ok());
+        Some((it.next()??, it.next()??, it.next().flatten().unwrap_or(0)))
+    })
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn pi_versions_parse_and_compare() {
+        assert_eq!(parse_version("1.4.0"), Some((1, 4, 0)));
+        assert_eq!(parse_version("pi v1.12.3-beta"), Some((1, 12, 3)));
+        assert_eq!(parse_version("2.0"), Some((2, 0, 0)));
+        assert_eq!(parse_version("unknown"), None);
+        assert!(parse_version("1.3.9").unwrap() < PI_MIN);
+        assert!((1, 5) > PI_TESTED);
+    }
 }

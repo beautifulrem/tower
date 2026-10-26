@@ -22,42 +22,85 @@ use tower_store::ProjectPatch;
 use tower_supervisor::{Config, Error, NewGoalInput, OpenTarget, Paths, ReviewComment, Supervisor, UiSink, UiUpdate};
 
 const UPDATE_EVENT: &str = "tower://update";
+/// Asks the interface to open a route (e.g. `goal/G-0001`).
+const OPEN_EVENT: &str = "tower://open";
 
+#[derive(Default)]
 struct TauriSink {
-    app: AppHandle,
+    app: Option<AppHandle>,
     /// Inbox items already announced, so each one notifies at most once.
     seen: Mutex<HashSet<String>>,
+    /// The goal of the latest notification. Notifications on macOS cannot
+    /// carry a click action here, so the next time Tower comes to the front
+    /// it opens that goal.
+    pending_open: Mutex<Option<String>>,
+}
+
+/// Items that hold up a goal until the human acts. Review-ready items wait
+/// for you but block nothing; they are counted separately in the interface.
+fn blocking(kind: InboxKind) -> bool {
+    !matches!(kind, InboxKind::ReviewReady)
+}
+
+fn badge(window: &tauri::WebviewWindow, items: &[InboxItem]) {
+    let n = items.iter().filter(|i| blocking(i.kind)).count();
+    let _ = window.set_badge_count((n > 0).then_some(n as i64));
+}
+
+/// At most `max` columns (CJK counts two), with an ellipsis when cut.
+fn clip(s: &str, max: usize) -> String {
+    let mut out = String::new();
+    let mut w = 0;
+    for c in s.chars() {
+        let cw = if (c as u32) >= 0x2E80 { 2 } else { 1 };
+        if w + cw > max {
+            return format!("{}…", out.trim_end());
+        }
+        out.push(c);
+        w += cw;
+    }
+    out
 }
 
 impl TauriSink {
-    /// The attention ladder (docs/08): the Dock badge always counts open
-    /// items; a system notification is sent only for items that block a run
+    /// The attention ladder (docs/08): the Dock badge counts items that block
+    /// a goal; a system notification is sent only for items that block a run
     /// or need a way out, and only when Tower is not in front.
     fn on_inbox(&self, items: &[InboxItem]) {
-        if let Some(window) = self.app.get_webview_window("main") {
-            let _ = window.set_badge_count((!items.is_empty()).then_some(items.len() as i64));
-            let focused = window.is_focused().unwrap_or(false);
-            let mut seen = self.seen.lock().expect("seen lock");
-            for item in items {
-                if !seen.insert(item.id.clone()) || focused {
-                    continue;
-                }
-                let urgent = matches!(
-                    item.kind,
-                    InboxKind::Question | InboxKind::Approval | InboxKind::Paused | InboxKind::Stalled
-                );
-                if urgent {
-                    let lang = self.app.try_state::<Supervisor>().map(|s| s.lang()).unwrap_or_default();
-                    let goal = &item.goal_id;
-                    let _ = self
-                        .app
-                        .notification()
-                        .builder()
-                        .title(tr!(lang, "{goal} 需要你", "{goal} needs you"))
-                        .body(&item.title)
-                        .show();
-                }
+        let Some(app) = &self.app else { return };
+        let Some(window) = app.get_webview_window("main") else { return };
+        badge(&window, items);
+        let focused = window.is_focused().unwrap_or(false);
+        let mut seen = self.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        for item in items {
+            if !seen.insert(item.id.clone()) || focused {
+                continue;
             }
+            let urgent =
+                matches!(item.kind, InboxKind::Question | InboxKind::Approval | InboxKind::Paused | InboxKind::Stalled);
+            if !urgent {
+                continue;
+            }
+            let lang = app.try_state::<Supervisor>().map(|s| s.lang()).unwrap_or_default();
+            // People remember goals by what they are about, not by number.
+            let title =
+                if item.goal_title.trim().is_empty() { item.goal_id.clone() } else { clip(&item.goal_title, 40) };
+            let what = match item.kind {
+                InboxKind::Question => tr!(lang, "提问", "Question"),
+                InboxKind::Approval => tr!(lang, "需要批准", "Approval"),
+                InboxKind::Paused => tr!(lang, "已暂停", "Paused"),
+                _ => tr!(lang, "可能卡住", "May be stuck"),
+            };
+            let _ = app.notification().builder().title(title).body(format!("{what} · {}", item.title)).show();
+            *self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+                Some(format!("goal/{}", item.goal_id));
+        }
+    }
+
+    fn on_focus(&self) {
+        let route = self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        if let (Some(app), Some(route)) = (&self.app, route) {
+            let _ = app.emit(OPEN_EVENT, route);
         }
     }
 }
@@ -67,7 +110,9 @@ impl UiSink for TauriSink {
         if let UiUpdate::Inbox { items } = &update {
             self.on_inbox(items);
         }
-        let _ = self.app.emit(UPDATE_EVENT, update);
+        if let Some(app) = &self.app {
+            let _ = app.emit(UPDATE_EVENT, update);
+        }
     }
 }
 
@@ -309,17 +354,28 @@ pub fn run() {
                 extension_source: extension_source(&handle),
                 env: None,
             };
-            let sink = Arc::new(TauriSink { app: handle.clone(), seen: Mutex::default() });
+            let sink = Arc::new(TauriSink { app: Some(handle.clone()), ..TauriSink::default() });
             let sup = tauri::async_runtime::block_on(Supervisor::start(config, sink.clone() as Arc<dyn UiSink>))?;
             // The menu speaks the settings language, so it is built once they are readable.
             app.set_menu(menu::build(&handle, sup.lang())?)?;
             app.on_menu_event(|app, event| menu::forward(app, event.id().as_ref()));
             // Items already open at launch were announced before: badge them, don't notify again.
             if let Ok(items) = sup.inbox() {
-                sink.seen.lock().expect("seen lock").extend(items.iter().map(|i| i.id.clone()));
+                sink.seen
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .extend(items.iter().map(|i| i.id.clone()));
                 if let Some(window) = handle.get_webview_window("main") {
-                    let _ = window.set_badge_count((!items.is_empty()).then_some(items.len() as i64));
+                    badge(&window, &items);
                 }
+            }
+            if let Some(window) = handle.get_webview_window("main") {
+                let sink = sink.clone();
+                window.on_window_event(move |e| {
+                    if let tauri::WindowEvent::Focused(true) = e {
+                        sink.on_focus();
+                    }
+                });
             }
             app.manage(sup);
             Ok(())

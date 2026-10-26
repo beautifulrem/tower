@@ -13,6 +13,7 @@ import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 
 import { DecisionCard, chooseOption } from "../components/DecisionCard";
 import { GoalRow } from "../components/GoalRow";
+import { BaseTestsNotice } from "../components/TestCheck";
 import { Button, Empty, Select } from "../components/ui";
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { InboxItem } from "../gen/InboxItem";
@@ -23,7 +24,7 @@ import { t } from "../lib/i18n";
 import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
-import { Welcome, startDemo } from "./Welcome";
+import { DemoButton, Welcome } from "./Welcome";
 
 const ORDER: Group[] = ["running", "review", "ready", "paused", "done"];
 const FILTER_KEY = "tower.overviewProject";
@@ -95,7 +96,7 @@ export function Overview() {
       { key: "enter", run: openCurrent, desc: () => t("keys.open") },
       { key: "r", run: reviewCurrent, desc: () => t("keys.reviewSelected") },
       { key: "/", run: () => document.querySelector<HTMLInputElement>(".quick-input")?.focus(), desc: () => t("keys.quick") },
-      ...Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), run: () => pick(i), desc: i === 0 ? () => t("keys.choose") : undefined, hint: i === 0 ? "1 9" : undefined })),
+      ...Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), run: () => pick(i), desc: i === 0 ? () => t("keys.choose") : undefined, hint: i === 0 ? "1–9" : undefined })),
     ],
     () => t("app.overview"),
   );
@@ -126,8 +127,9 @@ export function Overview() {
               title={project() === ALL ? t("overview.emptyTitle") : t("overview.emptyProject", { project: state.projects.find((p) => p.id === project())?.name ?? "" })}
               action={
                 <span class="row">
-                  <Button size="s" onClick={() => void startDemo()} title={t("welcome.demoHint")}>
-                    {t("welcome.tryDemo")}
+                  <DemoButton size="s" />
+                  <Button size="s" variant="ghost" kbd="mod+n" onClick={() => go({ name: "new", projectId: project() === ALL ? undefined : project() })}>
+                    {t("overview.writeContract")}
                   </Button>
                   <Show when={ended() > 0}>
                     <span class="meta t3">{t("overview.endedCount", { n: ended() })}</span>
@@ -274,6 +276,7 @@ function QuickPath(props: { project?: string }) {
           </Button>
         </div>
       </Show>
+      <BaseTestsNotice projectId={current()?.id} />
     </div>
   );
 }

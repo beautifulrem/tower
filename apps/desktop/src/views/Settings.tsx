@@ -5,17 +5,20 @@
  */
 import { For, Show, createResource, createSignal, onMount } from "solid-js";
 
+import { pickQuiet } from "../components/Chrome";
 import { DangerMark, NoticeMark } from "../components/Glyph";
+import { TestCheckLine } from "../components/TestCheck";
 import { Button, Empty, Field, Loading, Select } from "../components/ui";
 import type { ProjectView } from "../gen/ProjectView";
 import type { Settings as SettingsT } from "../gen/Settings";
 import { api } from "../lib/api";
 import { clock } from "../lib/format";
-import { t } from "../lib/i18n";
+import { locale, t } from "../lib/i18n";
+import { envIssueLabel } from "../lib/labels";
 import { ask } from "../lib/native";
-import { act, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
+import { act, quietNow, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 import { type SizeChoice, type ThemeChoice, setSizeChoice, setThemeChoice, sizeChoice, themeChoice } from "../lib/theme";
-import { pickProject } from "./Welcome";
+import { openPiLogin, pickProject } from "./Welcome";
 
 /** Thinking levels; call inside a reactive scope so "Pi default" follows the locale. */
 export const thinkingOptions = () =>
@@ -23,6 +26,8 @@ export const thinkingOptions = () =>
     value: level,
     label: level || t("common.piDefault"),
   }));
+
+const MEMORY_MAX = 800;
 
 const lines = (s: string) =>
   s
@@ -49,11 +54,12 @@ function useSavedStamp() {
 
 export function Settings() {
   const [s, setS] = createSignal<SettingsT | null>(null);
-  const [models] = createResource(() => api.models().catch(() => []));
+  const [models] = createResource(() => api.models().catch(() => null));
   const [theme, setTheme] = createSignal<ThemeChoice>(themeChoice());
   const [size, setSize] = createSignal<SizeChoice>(sizeChoice());
   const saved = useSavedStamp();
   onMount(async () => setS(await api.settings()));
+  const noModels = () => !!state.env?.pi_version && !models.loading && models() !== null && models()!.length === 0;
 
   let last = "";
   /** Writes the form when a field is left; no-op when nothing changed. */
@@ -72,7 +78,8 @@ export function Settings() {
   /**
    * The language applies at once: only the language is saved (other unsaved
    * edits stay in the form), and reloading the settings re-renders the
-   * interface in the new language.
+   * interface in the new language. The environment is fetched again too,
+   * since the supervisor words its problems in the language it was asked in.
    */
   const setLanguage = async (language: string) => {
     patch({ language });
@@ -87,6 +94,7 @@ export function Settings() {
     patch(p);
     void commit();
   };
+  const quietLabel = () => (quietNow() ? t("quiet.until", { time: clock(state.settings!.quiet_until!) }) : t("quiet.on"));
 
   return (
     <div class="settings">
@@ -114,7 +122,7 @@ export function Settings() {
                   <DangerMark />
                 </Show>
               </span>
-              <span class="grow meta t1">{i.text}</span>
+              <span class="grow meta t1">{envIssueLabel(i, state.env)}</span>
               <Show when={i.fix}>
                 <button
                   class="fix code-val"
@@ -130,6 +138,20 @@ export function Settings() {
             </div>
           )}
         </For>
+        <Show when={noModels()}>
+          <div class="check-row">
+            <span class="check-mark">
+              <DangerMark />
+            </span>
+            <span class="grow meta t1">{t("welcome.noModels")}</span>
+            <div class="check-action">
+              <Button size="s" onClick={openPiLogin}>
+                {t("welcome.openPiLogin")}
+              </Button>
+              <span>{t("welcome.openPiLoginHint")}</span>
+            </div>
+          </div>
+        </Show>
       </section>
 
       <Show when={s()} fallback={<Loading text={t("settings.loading")} />}>
@@ -149,6 +171,14 @@ export function Settings() {
                 onChange={(v) => void setLanguage(v)}
               />
             </Field>
+            <Field label={t("settings.notifications")} hint={t("quiet.hint")}>
+              <button type="button" class="select" aria-haspopup="menu" aria-label={`${t("settings.notifications")}: ${quietLabel()}`} onClick={() => void pickQuiet()}>
+                <span class="ellipsis grow">{quietLabel()}</span>
+                <svg width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
+                  <path d="M1 3.5 L4 1 L7 3.5 M1 6.5 L4 9 L7 6.5" fill="none" stroke="currentColor" stroke-width="1.2" />
+                </svg>
+              </button>
+            </Field>
             <Field label={t("settings.defaultModel")}>
               <Select
                 value={s()!.default_model}
@@ -159,7 +189,8 @@ export function Settings() {
             <Field label={t("settings.defaultThinking")}>
               <Select value={s()!.default_thinking} options={thinkingOptions()} onChange={(v) => patchNow({ default_thinking: v })} />
             </Field>
-            <Field label={t("settings.maxConcurrent")} hint={t("settings.maxConcurrentHint")}>
+            {/* A count takes a measure word in Chinese and nothing in English. */}
+            <Field label={t("settings.maxConcurrent")} hint={t("settings.maxConcurrentHint")} unit={locale() === "zh-CN" ? "个" : undefined} class="field-narrow">
               <input class="num narrow" type="number" min="1" max="10" value={s()!.max_concurrent} onInput={(e) => patch({ max_concurrent: Number(e.currentTarget.value) || 1 })} />
             </Field>
             <Field label={t("settings.piPath")} hint={t("settings.piPathHint")}>
@@ -191,6 +222,9 @@ export function Settings() {
             {t("settings.memoryHint")}
           </p>
           <textarea rows={4} value={s()!.user_memory} onInput={(e) => patch({ user_memory: e.currentTarget.value })} placeholder={t("settings.memoryPlaceholder")} />
+          <span class="char-count num" classList={{ over: s()!.user_memory.length > MEMORY_MAX }} aria-live="polite">
+            {s()!.user_memory.length} / {MEMORY_MAX}
+          </span>
         </section>
       </Show>
 
@@ -314,6 +348,7 @@ function ProjectRow(props: { p: ProjectView }) {
           {t("common.remove")}
         </Button>
       </div>
+      <TestCheckLine p={props.p} />
       <div class="settings-form">
         <Field label={t("settings.baseBranch")} hint={t("settings.baseBranchHint")}>
           <input class="mono" value={branch()} onInput={(e) => setBranch(e.currentTarget.value)} />

@@ -4,8 +4,8 @@
  * facts agree. The stream is one keystroke away (W).
  *
  * The page trims itself to the state: ready to accept, the "next" block is
- * one call to action; paused, the decision card owns the only text box;
- * running, the steer box sits at the bottom.
+ * one call to action; paused, the decision card owns the only text box and
+ * the "next" block steps aside; running, the steer box sits at the bottom.
  */
 import { For, Match, Show, Switch, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
 
@@ -19,6 +19,7 @@ import { Button, Empty, IconButton, Kbd, Section, Loading } from "../components/
 import type { ClaimView } from "../gen/ClaimView";
 import type { CriterionView } from "../gen/CriterionView";
 import type { GoalDetail } from "../gen/GoalDetail";
+import type { RunView } from "../gen/RunView";
 import { api, errorText } from "../lib/api";
 import { ask, popupActions } from "../lib/native";
 import { ago, clock, count, duration, short, usd, usdLimit } from "../lib/format";
@@ -27,21 +28,39 @@ import { useMenu } from "../lib/menu";
 import { t } from "../lib/i18n";
 import { hasIssue, pauseLabel, runOutcomeLabel, runPurposeLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
-import { act, onTrace, state, toast } from "../lib/store";
+import { act, onTrace, setGoalMuted, state, toast } from "../lib/store";
+
+/** Trace kinds that change nothing the detail shows; the summary update covers them. */
+const DETAIL_IRRELEVANT = new Set([
+  "tool_started",
+  "tool_ended",
+  "mode_changed",
+  "assistant_message",
+  "cost_updated",
+  "inbox_opened",
+  "inbox_resolved",
+  "steered",
+  "injected",
+  "note",
+  "pr_checked",
+]);
+
+/** The workspace can be edited by hand only while the agent is not in it. */
+const editable = (s: string) => s === "paused" || s === "in_review";
 
 export function GoalPage(props: { id: string }) {
   const [detail, { refetch, mutate }] = createResource(() => props.id, api.goal);
   const [watch, setWatch] = createSignal(false);
   const summary = () => state.goals[props.id] ?? detail()?.summary;
 
-  // Refetch the detail when facts arrive, at most every 400 ms.
+  // Refetch the detail when facts arrive, at most every 800 ms.
   let timer: number | undefined;
   const soon = () => {
     clearTimeout(timer);
-    timer = window.setTimeout(() => void refetch(), 400);
+    timer = window.setTimeout(() => void refetch(), 800);
   };
   const off = onTrace(props.id, (e) => {
-    if (!["tool_started", "tool_ended", "mode_changed", "assistant_message"].includes(e.event.kind)) soon();
+    if (!DETAIL_IRRELEVANT.has(e.event.kind)) soon();
   });
   createEffect(on(() => summary()?.state, soon, { defer: true }));
   onCleanup(() => {
@@ -150,9 +169,13 @@ export function GoalPage(props: { id: string }) {
                       <span>{t("live.notMachineVerified")}</span>
                     </Show>
                   </Show>
+                  <Show when={state.settings?.muted_goals.includes(g().id)}>
+                    <span class="sep">·</span>
+                    <span class="t3">{t("quiet.muted")}</span>
+                  </Show>
                 </div>
                 <span class="grow" />
-                <Seal pin={g().verified_pin} />
+                <Seal pin={g().verified_pin} large />
               </div>
               <Show when={g().pr}>{(pr) => <div class="goal-overlaps meta"><PrLine pr={pr()} /></div>}</Show>
               {/* The conflict radar: other unfinished goals touching the same files. */}
@@ -207,8 +230,8 @@ export function GoalPage(props: { id: string }) {
           <Show when={!watch()} fallback={<WatchPanel id={props.id} />}>
             <div class="goal-body">
               <div class="goal-main">
-                <Show when={detail()} fallback={<Loading text={t("goal.loadingDetail")} />}>
-                  {(d) => <GoalBlocks d={d()} />}
+                <Show when={detail()} fallback={<GoalSkeleton />}>
+                  {(d) => <GoalBlocks d={d()} hasDecision={inbox().length > 0} />}
                 </Show>
               </div>
               <aside class="goal-rail">
@@ -227,17 +250,36 @@ export function GoalPage(props: { id: string }) {
   );
 }
 
+/** While the detail loads the page keeps its shape: the section titles stand, their bodies are empty. */
+function GoalSkeleton() {
+  return (
+    <>
+      <Section title={t("goal.criteria")} class="section-skeleton">
+        <Loading text={t("goal.loadingDetail")} />
+      </Section>
+      <Section title={t("goal.changes")} class="section-skeleton">
+        <span />
+      </Section>
+      <Section title={t("goal.next")} class="section-skeleton">
+        <span />
+      </Section>
+    </>
+  );
+}
+
 /**
  * One primary action for the current state, at most two secondary ones, and
  * everything else in a native "…" menu (destructive actions live only there).
+ * The three header buttons share one form: words, no icons.
  */
 function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; onWatch: () => void; onPause: () => void }) {
   const s = () => props.goal.state;
   const id = () => props.goal.id;
+  const muted = () => !!state.settings?.muted_goals.includes(id());
   const confirmPush = async (pr: boolean) => {
     const ok = await ask(t("goal.confirmPush", { branch: props.goal.branch ?? "", pr }), {
-      title: pr ? t("goal.pushPr") : t("goal.pushOnly"),
-      ok: pr ? t("goal.pushPrVerb") : t("goal.pushVerb"),
+      title: pr ? (props.goal.pr ? t("goal.pushUpdatePr") : t("goal.pushPr")) : t("goal.pushOnly"),
+      ok: pr ? (props.goal.pr ? t("goal.pushVerb") : t("goal.pushPrVerb")) : t("goal.pushVerb"),
       cancel: t("common.cancel"),
       kind: "warning",
     });
@@ -248,6 +290,14 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
       { label: props.watching ? t("goal.backToStatus") : t("goal.watch"), run: props.onWatch },
       { label: t("goal.amend"), run: () => go({ name: "new", amendId: id() }), enabled: !["draft", "archived", "abandoned", "accepted", "integrated"].includes(s()) },
       { label: t("goal.reverify"), run: () => void act(() => api.retryVerify(id())), enabled: ["in_review", "paused"].includes(s()) },
+      {
+        label: muted() ? t("quiet.unmuteGoal") : t("quiet.muteGoal"),
+        separatorBefore: true,
+        run: async () => {
+          const next = !muted();
+          if (await setGoalMuted(id(), next)) toast("info", next ? t("quiet.mutedToast", { id: id() }) : t("quiet.unmutedToast", { id: id() }));
+        },
+      },
       { label: t("goal.openEditor"), run: () => void act(() => api.openWorkspace(id(), "editor")), separatorBefore: true, enabled: !["draft", "ready"].includes(s()) },
       { label: t("goal.openTerminal"), run: () => void act(() => api.openWorkspace(id(), "terminal")), enabled: !["draft", "ready"].includes(s()) },
       { label: t("goal.showFinder"), run: () => void act(() => api.openWorkspace(id(), "finder")), enabled: !["draft", "ready"].includes(s()) },
@@ -310,7 +360,7 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
         </Match>
         <Match when={["accepted", "integrated"].includes(s()) && props.goal.branch}>
           <Button size="s" variant="primary" onClick={() => void confirmPush(true)}>
-            {t("goal.pushPr")}
+            {props.goal.pr ? t("goal.pushUpdatePr") : t("goal.pushPr")}
           </Button>
         </Match>
       </Switch>
@@ -325,7 +375,7 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
         </Button>
       </Show>
       <Button size="s" variant="ghost" kbd="w" aria-pressed={props.watching} onClick={props.onWatch}>
-        <Icon name="pulse" /> {t("goal.trace")}
+        {t("goal.trace")}
       </Button>
       <IconButton icon="ellipsis" label={t("goal.moreActions")} aria-haspopup="menu" onClick={() => void more()} />
     </>
@@ -345,7 +395,7 @@ function dedupe(claims: ClaimView[], keep: number): { shown: ClaimView[]; hidden
   return { shown: unique.slice(0, keep).reverse(), hidden: claims.length - Math.min(unique.length, keep) };
 }
 
-function GoalBlocks(props: { d: GoalDetail }) {
+function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean }) {
   const d = () => props.d;
   const g = () => d().summary;
   const causes = createMemo(() => dedupe(d().claims.filter((c) => c.kind === "cause"), 3));
@@ -456,23 +506,21 @@ function GoalBlocks(props: { d: GoalDetail }) {
         }
       >
         <Show when={g().diffstat} fallback={<Empty title={t("goal.noSnapshotTitle")} inline>{t("goal.noSnapshot")}</Empty>}>
-          <div class="criterion-row num">
+          {/* The change readout has its own grid: nothing here is a criterion. */}
+          <div class="changes-row num meta">
             <span />
             <span />
-            <span class="criterion-main">
-              <span class="diff-add">+{count(g().diffstat!.additions)}</span>
-              <span class="diff-del">−{count(g().diffstat!.deletions)}</span>
+            <span class="t1">
+              <span class="diff-add">+{count(g().diffstat!.additions)}</span> <span class="diff-del">−{count(g().diffstat!.deletions)}</span>
               <span class="sep">·</span>
-              <span>{t("common.files", { n: g().diffstat!.files })}</span>
+              <span class="t2">{t("common.files", { n: g().diffstat!.files })}</span>
               <span class="sep">·</span>
               <span class="t2">{t("goal.relativeToBase", { sha: short(d().base_commit) })}</span>
             </span>
             <span class="col-result col-quiet">{t("goal.snapshot")}</span>
-            <span />
             <span class="col-pin">
               <Icon name="harness" size={10} />@{short(d().pin)}
             </span>
-            <span />
           </div>
         </Show>
         <Show when={d().submit_summary}>
@@ -480,7 +528,8 @@ function GoalBlocks(props: { d: GoalDetail }) {
         </Show>
       </Section>
 
-      <Show when={!settled()}>
+      {/* A decision card already says what happens next; the block would only repeat it. */}
+      <Show when={!settled() && !props.hasDecision}>
         <Section title={t("goal.next")}>
           <Show when={next()} fallback={<Empty title={t("goal.noNext")} inline>{g().state === "running" ? t("goal.noNextRunning") : t("goal.noNextIdle")}</Empty>}>
             <Claim>{next()!.text}</Claim>
@@ -502,17 +551,7 @@ function GoalBlocks(props: { d: GoalDetail }) {
 
       <Show when={d().runs.length}>
         <Section title={t("goal.runs")} minor aside={<span class="meta num">{t("goal.runCount", { n: d().runs.length })}</span>}>
-          <For each={runs()}>
-            {(r) => (
-              <div class="run-row meta">
-                <span class="num t1">R-{String(r.run_no).padStart(2, "0")}</span>
-                <span>{runPurposeLabel(r.purpose)}</span>
-                <span class="num">{clock(r.started_at)}</span>
-                <span class="col-dur">{r.ended_at ? duration(r.ended_at - r.started_at) : ""}</span>
-                <span class="run-outcome">{r.ended_at ? runOutcomeLabel(r.outcome) : t("goal.inProgress")}</span>
-              </div>
-            )}
-          </For>
+          <For each={runs()}>{(r) => <RunRow goalId={g().id} r={r} editable={editable(g().state)} />}</For>
           <Show when={d().runs.length > 3}>
             <button class="more-link" onClick={() => setAllRuns((a) => !a)}>
               <Icon name={allRuns() ? "caret-down" : "caret-right"} size={10} />
@@ -522,6 +561,36 @@ function GoalBlocks(props: { d: GoalDetail }) {
         </Section>
       </Show>
     </>
+  );
+}
+
+/** One run; while the goal is paused or in review the workspace can be put back to where it started. */
+function RunRow(props: { goalId: string; r: RunView; editable: boolean }) {
+  const r = () => props.r;
+  const rollback = async () => {
+    const ok = await ask(t("goal.rollbackConfirm", { id: props.goalId, n: r().run_no }), {
+      title: t("goal.rollbackTitle"),
+      ok: t("goal.rollbackVerb"),
+      cancel: t("common.cancel"),
+      kind: "warning",
+    });
+    if (ok) await act(() => api.rollback(props.goalId, r().run_no), t("goal.rolledBack", { n: r().run_no }));
+  };
+  return (
+    <div class="run-row meta">
+      <span class="num t1">R-{String(r().run_no).padStart(2, "0")}</span>
+      <span>{runPurposeLabel(r().purpose)}</span>
+      <span class="num">{clock(r().started_at)}</span>
+      <span class="col-dur">{r().ended_at ? duration(r().ended_at! - r().started_at) : ""}</span>
+      <span class="run-outcome row" style={{ "justify-content": "flex-end" }}>
+        <Show when={props.editable && r().ended_at}>
+          <button class="link-plain run-rollback t3" onClick={() => void rollback()} title={t("goal.rollbackTitle")}>
+            <Icon name="undo" size={10} /> {t("goal.rollback")}
+          </button>
+        </Show>
+        <span>{r().ended_at ? runOutcomeLabel(r().outcome) : t("goal.inProgress")}</span>
+      </span>
+    </div>
   );
 }
 
@@ -573,7 +642,13 @@ function CriterionRow(props: { goalId: string; c: CriterionView; state: string }
             </span>
           }
         >
-          <button class="col-click col-result" onClick={() => setOpen((o) => !o)} title={t("goal.viewOutput")} aria-expanded={open()}>
+          <button
+            class="col-click col-result"
+            onClick={() => setOpen((o) => !o)}
+            title={`${t("goal.viewOutput")} · ${duration(v()!.duration_ms)} · @${short(v()!.pin)}`}
+            aria-expanded={open()}
+          >
+            <span class="sr-only">{t("honesty.srVerified")} </span>
             {v()!.passed ? t("common.passed") : t("common.failed")}
           </button>
           <button class="col-click col-dur" onClick={() => setOpen((o) => !o)} title={t("goal.viewOutput")} tabindex="-1" aria-hidden="true">
@@ -659,27 +734,32 @@ function DecisionClaim(props: { goalId: string; c: ClaimView }) {
   );
 }
 
+/** A percentage that stays honest at the low end: "<1%" rather than "0%". */
+const pct = (part: number, whole: number) => {
+  if (whole <= 0 || part <= 0) return "0%";
+  const p = (part / whole) * 100;
+  return p < 1 ? "<1%" : `${Math.round(p)}%`;
+};
+
 function BudgetMeter(props: { g: GoalDetail["summary"] }) {
-  const pct = () => Math.min(100, (props.g.cost_usd / Math.max(props.g.budget.hard_usd, 0.01)) * 100);
+  const fill = () => Math.min(100, (props.g.cost_usd / Math.max(props.g.budget.hard_usd, 0.01)) * 100);
   const softPct = () => Math.min(100, (props.g.budget.soft_usd / Math.max(props.g.budget.hard_usd, 0.01)) * 100);
   const over = () => props.g.cost_usd >= props.g.budget.soft_usd;
   return (
     <div class="budget">
       <div class="budget-bar" title={t("goal.budgetTitle")}>
-        <span class="budget-fill" classList={{ over: over() }} style={{ width: `${pct()}%` }} />
+        <span class="budget-fill" classList={{ over: over(), some: props.g.cost_usd > 0 }} style={{ width: `${fill()}%` }} />
         <span class="budget-soft" style={{ left: `${softPct()}%` }} />
       </div>
       <div class="meta num budget-line">
-        <span class="t1">{usd(props.g.cost_usd)}</span>
-        <span class="sep">·</span>
-        <span>{t("goal.softCap", { v: usdLimit(props.g.budget.soft_usd) })}</span>
+        <span class="t1">{t("goal.budgetLine", { spent: usd(props.g.cost_usd), soft: usdLimit(props.g.budget.soft_usd), pct: pct(props.g.cost_usd, props.g.budget.soft_usd) })}</span>
         <span class="sep">·</span>
         <span>{t("goal.hardCap", { v: usdLimit(props.g.budget.hard_usd) })}</span>
         <Show when={props.g.run_started_at}>
           <span class="sep">·</span>
           <span>
             {t("goal.wallLine", {
-              elapsed: duration(state.now - props.g.run_started_at!, false),
+              elapsed: Math.floor((state.now - props.g.run_started_at!) / 60_000),
               minutes: props.g.budget.wall_minutes,
             })}
           </span>
@@ -694,13 +774,11 @@ const isModelId = (s: string) => /^[\w.-]+\/[\w.:-]+$/.test(s);
 
 function ContractRail(props: { d: GoalDetail }) {
   const c = () => props.d.contract;
-  const autonomy = () =>
-    ({
-      cautious: t("goal.autonomyCautious"),
-      standard: t("goal.autonomyStandard"),
-      autonomous: t("goal.autonomyAutonomous"),
-    })[c().autonomy];
+  const autonomyWord = () => ({ cautious: t("contract.cautious"), standard: t("contract.standard"), autonomous: t("contract.autonomous") })[c().autonomy];
+  const autonomyTitle = () =>
+    ({ cautious: t("goal.autonomyCautious"), standard: t("goal.autonomyStandard"), autonomous: t("goal.autonomyAutonomous") })[c().autonomy];
   const model = () => c().model || state.settings?.default_model || "";
+  const branch = () => props.d.summary.branch;
   return (
     <div class="rail">
       <div class="rail-block">
@@ -726,7 +804,7 @@ function ContractRail(props: { d: GoalDetail }) {
       </div>
       <div class="rail-block">
         <div class="rail-head">{t("goal.scope")}</div>
-        <dl class="rail-dl mono">
+        <dl class="rail-dl rail-dl-code">
           <dt>{t("goal.include")}</dt>
           <dd>{c().scope.include.length ? c().scope.include.join("  ") : t("goal.wholeRepo")}</dd>
           <Show when={c().scope.exclude.length}>
@@ -743,15 +821,21 @@ function ContractRail(props: { d: GoalDetail }) {
         <div class="rail-head">{t("goal.budget")}</div>
         <BudgetMeter g={props.d.summary} />
       </div>
+      {/* Three readings, not three sentences; the long form is one hover away. */}
       <div class="rail-block">
         <div class="rail-head">{t("goal.autonomy")}</div>
-        <p class="meta">{autonomy()}</p>
-        <p class="meta">{t("goal.oneWayDoors")}</p>
-        <p class="meta">
-          {t("goal.sandbox", { value: hasIssue(state.env, "no_sandbox") ? t("goal.noSandbox") : t("goal.sandboxOn") })}
-          <span class="sep">·</span>
-          {c().network ? t("goal.networkOn") : t("goal.networkOff")}
-        </p>
+        <dl class="rail-dl">
+          <dt>{t("goal.autonomyLevel")}</dt>
+          <dd title={autonomyTitle()}>{autonomyWord()}</dd>
+          <dt>{t("goal.oneWayShort")}</dt>
+          <dd title={t("goal.oneWayDoors")}>{t("goal.askFirst")}</dd>
+          <dt>{t("goal.sandboxShort")}</dt>
+          <dd title={hasIssue(state.env, "no_sandbox") ? t("goal.noSandbox") : t("goal.sandboxOn")}>
+            {hasIssue(state.env, "no_sandbox") ? t("goal.noSandbox") : t("goal.sandboxOnShort")}
+            <span class="sep">·</span>
+            {c().network ? t("goal.networkOn") : t("goal.networkOff")}
+          </dd>
+        </dl>
       </div>
       <div class="rail-block">
         <div class="rail-head">{t("goal.engine")}</div>
@@ -762,9 +846,20 @@ function ContractRail(props: { d: GoalDetail }) {
             <dt>{t("goal.localFiles")}</dt>
             <dd class="mono">{props.d.local_files.join("  ")}</dd>
           </Show>
-          <Show when={props.d.summary.branch}>
+          <Show when={branch()}>
             <dt>{t("goal.branch")}</dt>
-            <dd class="mono break">{props.d.summary.branch}</dd>
+            <dd class="mono break">
+              {branch()}
+              <IconButton
+                icon="copy"
+                size={22}
+                label={t("goal.copyBranch")}
+                onClick={() => {
+                  void navigator.clipboard.writeText(branch()!);
+                  toast("info", t("common.copied"));
+                }}
+              />
+            </dd>
           </Show>
         </dl>
       </div>
@@ -817,7 +912,9 @@ function SteerBox(props: { id: string; running: boolean }) {
         }}
       />
       <Show when={receipt()}>
-        <span class="meta">{receipt()}</span>
+        <span class="meta saved-stamp" role="status">
+          {receipt()}
+        </span>
       </Show>
       <Button size="s" disabled={!text().trim()} onClick={send} kbd="mod+enter">
         {t("common.send")}

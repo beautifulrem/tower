@@ -67,6 +67,43 @@ test("the board's identity column keeps the project name legible beside the engi
   expect(await project.evaluate((el) => el.getBoundingClientRect().width >= el.scrollWidth - 1)).toBe(true);
 });
 
+test("on a crowded row the engine mark is two letters or gone, never a letter and a half; the age column holds its longest reading", async ({ page }) => {
+  const crowd = (F: Record<string, any>) => {
+    enrichEngines(F);
+    for (const g of F.goals) {
+      if (g.id === "G-0002") g.rework_cycles = 1;
+      if (g.id === "G-0001") g.updated_at = Date.now() - 100 * 60_000;
+    }
+  };
+  await openTower(page, "overview", { enrich: crowd });
+  const row = page.locator('.g-row[data-goal="G-0002"]');
+  await expect(row).toHaveAttribute("data-crowded", "true");
+  // 1440: id · shop · ⟳ 1/3 · CC would not fit whole, so the mark leaves and the project name stays legible.
+  await expect(row.locator(".g-engine")).toBeHidden();
+  await expect(row.locator(".g-project")).toHaveText("shop");
+  await expect(row.locator(".g-title")).toHaveAttribute("title", /Claude Code/);
+  const age = page.locator('.g-row[data-goal="G-0001"] .g-age');
+  await expect(age).toHaveText("1h 40m ago");
+  expect(await age.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  // Wider, the mark comes back whole.
+  await page.setViewportSize({ width: 1700, height: 900 });
+  await expect(row.locator(".g-engine")).toHaveText("CC");
+});
+
+test("in a half-screen window the live line keeps its verb and lets the elapsed time go, with no two words touching", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      for (const g of F.goals) if (g.state === "running") g.run_started_at = Date.now() - 109 * 60_000;
+    },
+  });
+  const running = page.locator(".g-row").filter({ has: page.locator(".live-elapsed") }).first();
+  await expect(running).toBeAttached();
+  await expect(running.locator(".live-elapsed")).toBeHidden();
+  await expect(running.locator(".live-elapsed-sep")).toBeHidden();
+  await expect(running.locator(".live-detail")).toHaveAttribute("title", /1h 49m/);
+});
+
 test("a paused goal that was never verified shows one primary action and no 'verify again'", async ({ page }) => {
   await openTower(page, "goal/G-0004", { enrich: enrichRollback });
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

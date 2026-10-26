@@ -586,3 +586,27 @@ pub fn run() {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    /// Every command the interface invokes is registered with the shell
+    /// (a missing one fails only at run time, as "command not found").
+    #[test]
+    fn every_command_the_interface_calls_is_registered() {
+        let api = include_str!("../../src/lib/api.ts");
+        let shell = include_str!("lib.rs");
+        let start = shell.find("generate_handler![").expect("handler list");
+        let list = &shell[start..start + shell[start..].find("])").expect("end of list")];
+        let registered: Vec<&str> =
+            list.trim_start_matches("generate_handler![").split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+        let mut missing = Vec::new();
+        for part in api.split("invoke<").skip(1) {
+            let Some(name) = part.split("(\"").nth(1).and_then(|r| r.split('"').next()) else { continue };
+            if !registered.contains(&name) {
+                missing.push(name.to_string());
+            }
+        }
+        assert!(missing.is_empty(), "not registered: {missing:?}");
+        assert!(registered.len() >= 40, "the list was read: {}", registered.len());
+    }
+}

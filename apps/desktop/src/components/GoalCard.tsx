@@ -14,7 +14,8 @@ import { LiveLine } from "./Live";
 
 export function GoalCard(props: { goal: GoalSummary; selected?: boolean; onSelect?: () => void }) {
   const g = () => props.goal;
-  const elapsed = () => (g().run_started_at ? duration(state.now - g().run_started_at!) : ago(g().updated_at, state.now));
+  const elapsed = () =>
+    g().run_started_at ? `已运行 ${duration(state.now - g().run_started_at!)}` : `${ago(g().updated_at, state.now)}前`.replace("刚刚前", "刚刚");
   const overSoft = () => g().cost_usd >= g().budget.soft_usd;
   return (
     <article

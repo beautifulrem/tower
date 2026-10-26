@@ -43,7 +43,8 @@ export function GoalPage(props: { id: string }) {
     mutate(undefined);
   });
 
-  const inbox = () => state.inbox.filter((i) => i.goal_id === props.id);
+  // Review-ready items live in the inbox; on the goal page the header says it.
+  const inbox = () => state.inbox.filter((i) => i.goal_id === props.id && i.kind !== "review_ready");
 
   useKeys([
     { key: "w", run: () => setWatch((w) => !w) },

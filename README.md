@@ -32,7 +32,9 @@ Tower speaks English and Simplified Chinese. A new install follows your macOS la
 
 ## Install
 
-Download the latest build from [Releases](https://github.com/beautifulrem/tower/releases) (macOS 13+). Builds are not notarized yet: the first time, right-click Tower.app and choose **Open**.
+There is no signed release yet: build from source (below, about five minutes on a recent Mac). When releases appear under [Releases](https://github.com/beautifulrem/tower/releases) (macOS 13+), the first unsigned builds will need right-click → **Open** once.
+
+To see what Tower does before installing Pi, open it and choose **Try a demo goal** on the welcome screen: a small project and a scripted agent run the whole arc — a question, a claim, a clean verification and a review — without any model or credentials (Node.js is needed for the demo's tests).
 
 You also need [Pi](https://github.com/earendil-works/pi) with a model you are logged in to:
 
@@ -54,7 +56,7 @@ pnpm build      # .app / .dmg in target/release/bundle
 pnpm check      # type-check, clippy, all tests (what CI runs)
 ```
 
-### Try it without model credentials
+### The demo from the command line
 
 `tools/demo-engine` is a scripted stand-in for Pi that speaks its RPC protocol and edits a demo repository like an agent would.
 

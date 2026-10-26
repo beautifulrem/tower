@@ -39,7 +39,7 @@
 
 ## 运行
 
-需要：macOS 13+、Rust（版本固定在 `rust-toolchain.toml`）、Node 22+、pnpm、git，以及已登录模型的 [Pi](https://github.com/earendil-works/pi)（`npm i -g @earendil-works/pi-coding-agent`，然后运行 `pi` 并 `/login`）。
+目前还没有签名的发行版，请从源码构建（较新的 Mac 上约五分钟）。需要：macOS 13+、Rust（版本固定在 `rust-toolchain.toml`）、Node 22+、pnpm、git，以及已登录模型的 [Pi](https://github.com/earendil-works/pi)（`npm i -g @earendil-works/pi-coding-agent`，然后运行 `pi` 并 `/login`）。
 
 ```sh
 pnpm install
@@ -61,7 +61,9 @@ TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
 
 ### 不需要模型凭据的演示
 
-`tools/demo-engine` 是一个按 Pi 的 RPC 协议应答的脚本化引擎。它不调用模型，但会像 Agent 一样在演示仓库里读代码、跑测试、记录原因、提问、修改并提交。
+最快的方式：打开 Tower，在欢迎页选择“试一个演示目标”。Tower 会创建一个小项目，由脚本化的 Agent 走完整个过程（提问、声称完成、干净环境验证、评审），不需要任何模型或凭据（演示项目的测试需要 Node.js）。
+
+也可以从命令行准备演示数据。`tools/demo-engine` 是一个按 Pi 的 RPC 协议应答的脚本化引擎。它不调用模型，但会像 Agent 一样在演示仓库里读代码、跑测试、记录原因、提问、修改并提交。
 
 ```sh
 tools/demo-engine/make_demo_repo.sh /tmp/tower-demo/shop

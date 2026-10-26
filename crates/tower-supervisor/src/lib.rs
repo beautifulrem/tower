@@ -853,6 +853,16 @@ impl Supervisor {
         actions::answer(&self.inner, inbox_id, response).await
     }
 
+    /// Puts the workspace back to where run `run_no` started.
+    pub async fn rollback(&self, id: &str, run_no: u32) -> Result<()> {
+        actions::rollback(&self.inner, id, run_no).await
+    }
+
+    /// Undoes one hunk (0-based, as in the review's base → snapshot diff).
+    pub async fn revert_hunk(&self, id: &str, path: &str, hunk: usize) -> Result<()> {
+        actions::revert_hunk(&self.inner, id, path, hunk).await
+    }
+
     pub async fn answer_assumption(&self, inbox_id: &str, approved: bool, note: &str) -> Result<()> {
         actions::answer_assumption(&self.inner, inbox_id, approved, note).await
     }

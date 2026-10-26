@@ -56,7 +56,7 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
         EventKind::SessionAttached { session_file } => {
             tx.execute("UPDATE goals SET session_file = ?2 WHERE id = ?1", params![goal_id, session_file])?;
         }
-        EventKind::RunStarted { run_no, purpose } => {
+        EventKind::RunStarted { run_no, purpose, .. } => {
             tx.execute(
                 "INSERT INTO runs (goal_id, run_no, purpose, started_at) VALUES (?1, ?2, ?3, ?4)",
                 params![goal_id, run_no, purpose, at],
@@ -322,8 +322,8 @@ mod tests {
     fn rework_runs_are_counted() {
         let (mut s, _) = store();
         let id = goal(&mut s);
-        s.append(&id, EventKind::RunStarted { run_no: 1, purpose: "initial".into() }).unwrap();
-        s.append(&id, EventKind::RunStarted { run_no: 2, purpose: "rework".into() }).unwrap();
+        s.append(&id, EventKind::RunStarted { run_no: 1, purpose: "initial".into(), start_pin: None }).unwrap();
+        s.append(&id, EventKind::RunStarted { run_no: 2, purpose: "rework".into(), start_pin: None }).unwrap();
         let g = s.goal(&id).unwrap();
         assert_eq!((g.run_no, g.rework_cycles), (2, 1));
     }

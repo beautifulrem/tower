@@ -381,6 +381,47 @@ impl Git {
         }
     }
 
+    /// Points `refname` at `commit`, so the snapshot outlives garbage collection.
+    pub fn keep(&self, ws: &Path, refname: &str, commit: &str) -> Result<()> {
+        self.run(ws, &["update-ref", refname, commit])?;
+        Ok(())
+    }
+
+    /// Makes the working tree of `ws` exactly the snapshot `commit`: files
+    /// it does not have are removed, ignored files (e.g. `.env`) are kept.
+    pub fn restore(&self, ws: &Path, commit: &str) -> Result<()> {
+        self.run(ws, &["checkout", "--no-overlay", commit, "--", "."])?;
+        self.run(ws, &["clean", "-fdq"])?;
+        // The index goes back to HEAD; snapshots never use it.
+        self.run(ws, &["reset", "-q"])?;
+        Ok(())
+    }
+
+    /// Undoes hunk number `hunk` (0-based) of `path` in the diff `from → to`
+    /// in the working tree of `ws`, which must still hold `to` for that file.
+    pub fn revert_hunk(&self, ws: &Path, from: &str, to: &str, path: &str, hunk: usize) -> Result<()> {
+        let patch = self.run(ws, &["diff", "-U3", "--no-color", "--no-ext-diff", from, to, "--", path])?;
+        let mut header = String::new();
+        let mut hunks: Vec<String> = Vec::new();
+        for line in patch.split_inclusive('\n') {
+            if line.starts_with("@@") {
+                hunks.push(line.to_string());
+            } else if let Some(h) = hunks.last_mut() {
+                h.push_str(line);
+            } else {
+                header.push_str(line);
+            }
+        }
+        let Some(chosen) = hunks.get(hunk) else {
+            return Err(GitError::Invalid(format!("{path} has no hunk {hunk}")));
+        };
+        let file = ws.join(".git").join("tower-revert.patch");
+        std::fs::write(&file, format!("{header}{chosen}"))?;
+        let r = self.run(ws, &["apply", "-R", "--whitespace=nowarn", &file.to_string_lossy()]);
+        let _ = std::fs::remove_file(&file);
+        r.map(|_| ())
+    }
+
     /// The content of `path` at `rev`, as text (lossy), or `None` when the
     /// file does not exist there.
     pub fn file_at(&self, repo: &Path, rev: &str, path: &str) -> Option<String> {

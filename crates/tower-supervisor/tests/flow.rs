@@ -353,3 +353,27 @@ async fn changed_dependencies_need_the_human_before_setup_goes_online() {
     let trace = h.sup.trace(&id, None, 200).unwrap();
     assert!(trace.iter().any(|e| matches!(e.event, EventKind::SetupNetworkApproved { .. })));
 }
+
+/// The human can undo one hunk of the change, or put the workspace back to
+/// where a run started; both are recorded as the human's edits and leave
+/// the goal needing verification again.
+#[tokio::test(flavor = "multi_thread")]
+async fn hunks_can_be_undone_and_runs_rolled_back() {
+    let h = harness("pass").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+    let ws = PathBuf::from(h.sup.goal(&id).unwrap().workspace.clone().unwrap());
+    assert!(ws.join("done.txt").exists());
+
+    h.sup.revert_hunk(&id, "done.txt", 0).await.unwrap();
+    assert!(!ws.join("done.txt").exists(), "the only hunk of done.txt was its creation");
+    let trace = h.sup.trace(&id, None, 200).unwrap();
+    assert!(trace.iter().any(|e| matches!(&e.event, EventKind::HumanEdited { files } if files == &["done.txt"])));
+    assert!(h.sup.accept(&id).await.is_err(), "the reviewed snapshot is no longer what is in the workspace");
+
+    std::fs::write(ws.join("done.txt"), "by hand\n").unwrap();
+    std::fs::write(ws.join("scratch.txt"), "x\n").unwrap();
+    h.sup.rollback(&id, 1).await.unwrap();
+    assert!(!ws.join("done.txt").exists() && !ws.join("scratch.txt").exists(), "back to where run 1 started");
+    assert!(ws.join("README.md").exists());
+}

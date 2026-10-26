@@ -204,6 +204,16 @@ fn open_pi_login(sup: Sup<'_>) -> Res<()> {
 }
 
 #[tauri::command]
+async fn rollback(sup: Sup<'_>, id: String, run_no: u32) -> Res<()> {
+    sup.rollback(&id, run_no).await
+}
+
+#[tauri::command]
+async fn revert_hunk(sup: Sup<'_>, id: String, path: String, hunk: usize) -> Res<()> {
+    sup.revert_hunk(&id, &path, hunk).await
+}
+
+#[tauri::command]
 async fn start_demo(sup: Sup<'_>) -> Res<GoalSummary> {
     sup.start_demo().await
 }
@@ -438,6 +448,8 @@ pub fn run() {
             ui_state,
             set_ui_state,
             start_demo,
+            rollback,
+            revert_hunk,
             open_pi_login,
             file_text,
             trace,

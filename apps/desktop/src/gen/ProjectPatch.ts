@@ -3,4 +3,4 @@
 /**
  * Editable project settings.
  */
-export type ProjectPatch = { base_branch: string, test_command: string | null, local_files: Array<string>, memory: string, };
+export type ProjectPatch = { base_branch: string, test_command: string | null, local_files: Array<string>, memory: string, setup_command: string, };

@@ -169,11 +169,13 @@ function ProjectRow(props: { p: ProjectView }) {
   const [test, setTest] = createSignal(props.p.test_command ?? "");
   const [local, setLocal] = createSignal(props.p.local_files.join("\n"));
   const [memory, setMemory] = createSignal(props.p.memory);
+  const [setup, setSetup] = createSignal(props.p.setup_command);
   const dirty = () =>
     branch() !== props.p.base_branch ||
     test() !== (props.p.test_command ?? "") ||
     local() !== props.p.local_files.join("\n") ||
-    memory() !== props.p.memory;
+    memory() !== props.p.memory ||
+    setup() !== props.p.setup_command;
   const save = async () => {
     await act(
       () =>
@@ -182,6 +184,7 @@ function ProjectRow(props: { p: ProjectView }) {
           test_command: test().trim() || null,
           local_files: lines(local()),
           memory: memory(),
+          setup_command: setup(),
         }),
       "项目已保存",
     );
@@ -218,6 +221,9 @@ function ProjectRow(props: { p: ProjectView }) {
         </Field>
         <Field label="测试命令" hint="快速开始的目标用它作为验收标准。">
           <input class="mono" value={test()} onInput={(e) => setTest(e.currentTarget.value)} placeholder="pnpm test" />
+        </Field>
+        <Field label="工作区准备命令" hint="每个新工作区先运行一次（在沙箱中），例如安装依赖。验证时也会用它。">
+          <input class="mono" value={setup()} onInput={(e) => setSetup(e.currentTarget.value)} placeholder="pnpm install --frozen-lockfile" />
         </Field>
         <Field label="本地文件（每行一个模式）" hint="被 git 忽略、但测试需要的文件，如 .env。会复制进工作区与验证检出，对 Agent 可见。">
           <textarea class="mono" rows={3} value={local()} onInput={(e) => setLocal(e.currentTarget.value)} placeholder={".env\nconfig/*.local.json"} />

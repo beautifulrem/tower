@@ -196,6 +196,7 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
                 if !copied.is_empty() {
                     inner.append(goal_id, EventKind::LocalFilesCopied { files: copied })?;
                 }
+                setup_workspace(inner, &goal, &ws).await?;
                 goal = inner.store(|s| s.goal(goal_id))?;
             }
             Err(e) => {
@@ -237,6 +238,7 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
         flags: Mutex::default(),
     });
     inner.runs.lock().expect("runs lock").insert(goal_id.into(), run.clone());
+    inner.update_keep_awake();
     tokio::spawn(pump(inner.clone(), run.clone(), rx));
     tokio::spawn(watchdog(inner.clone(), run.clone()));
 
@@ -268,6 +270,46 @@ pub async fn copy_local_files(inner: &Arc<Inner>, goal: &tower_store::GoalRecord
         .await
         .map_err(|e| invalid(e.to_string()))??;
     Ok(copied)
+}
+
+/// Runs the project's setup command (e.g. `pnpm install`) once in a new
+/// workspace, under the agent's sandbox. A failure is recorded and does not
+/// block the run: the agent can still install what it needs.
+async fn setup_workspace(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, ws: &Path) -> Result<()> {
+    let project = inner.store(|s| s.project(&goal.project_id))?;
+    let command = project.setup_command.trim().to_string();
+    if command.is_empty() {
+        return Ok(());
+    }
+    inner.set_mode(&goal.id, Mode::Starting)?;
+    let tmp = inner.paths.tmp(&goal.id);
+    std::fs::create_dir_all(&tmp)?;
+    let shell_command = if sandbox::available() {
+        let home = inner.env.get("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+        let profile = inner.paths.goal_dir(&goal.id).join("setup.sb");
+        std::fs::create_dir_all(inner.paths.goal_dir(&goal.id))?;
+        std::fs::write(&profile, sandbox::profile(&real(ws), &real(&tmp), &real(&home)))?;
+        crate::verify::command_for(&command, Some(&profile))
+    } else {
+        command.clone()
+    };
+    let mut env = inner.env.without_credentials();
+    env.push(("TMPDIR".into(), real(&tmp).display().to_string()));
+    let spec = tower_verify::RunSpec::new(shell_command, ws, env, Duration::from_secs(15 * 60));
+    let r = tower_verify::run(&spec, &tower_verify::Cancel::default()).await;
+    inner.append(
+        &goal.id,
+        EventKind::SetupFinished { command, ok: r.passed(), exit_code: r.exit_code(), duration_ms: r.duration_ms },
+    )?;
+    if !r.passed() {
+        inner.append(
+            &goal.id,
+            EventKind::Note {
+                text: format!("准备命令失败，Agent 会在没有它的情况下开始：\n{}", r.output_tail)
+            },
+        )?;
+    }
+    Ok(())
 }
 
 /// Watches a run for stalls the event stream cannot reveal: no activity for
@@ -692,10 +734,13 @@ async fn on_exit(inner: &Arc<Inner>, run: &Arc<Run>, code: Option<i32>, stderr_t
 }
 
 fn remove_run(inner: &Inner, run: &Run) {
-    let mut runs = inner.runs.lock().expect("runs lock");
-    if runs.get(&run.goal_id).is_some_and(|r| r.run_no == run.run_no) {
-        runs.remove(&run.goal_id);
+    {
+        let mut runs = inner.runs.lock().expect("runs lock");
+        if runs.get(&run.goal_id).is_some_and(|r| r.run_no == run.run_no) {
+            runs.remove(&run.goal_id);
+        }
     }
+    inner.update_keep_awake();
 }
 
 async fn stop_engine(inner: &Arc<Inner>, run: &Arc<Run>, why: Stop) {

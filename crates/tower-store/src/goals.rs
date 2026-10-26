@@ -425,6 +425,14 @@ impl Store {
             session_file: rec.session_file,
             submit_summary: rec.submit_summary,
             briefing,
+            sentinels: self.sentinel_hits(id)?,
+            local_files: self
+                .last_event(id, "local_files_copied")?
+                .and_then(|e| match e.event {
+                    EventKind::LocalFilesCopied { files } => Some(files),
+                    _ => None,
+                })
+                .unwrap_or_default(),
         })
     }
 }

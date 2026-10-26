@@ -7,7 +7,7 @@ import { For, Match, Show, Switch, createSignal, onCleanup, onMount } from "soli
 import type { TraceEntry } from "../gen/TraceEntry";
 import { api } from "../lib/api";
 import { clock, duration, short } from "../lib/format";
-import { onTrace } from "../lib/store";
+import { act, onTrace, refreshProjects, state } from "../lib/store";
 
 type Filter = "all" | "tools" | "words" | "facts" | "errors";
 
@@ -34,6 +34,19 @@ function matches(e: TraceEntry, f: Filter): boolean {
     case "errors":
       return k === "engine_error" || (k === "tool_ended" && e.event.is_error) || (k === "criterion_result" && !e.event.passed);
   }
+}
+
+/** The learning loop (docs/09): a correction you gave once becomes a rule. */
+async function remember(goalId: string, text: string) {
+  const g = state.goals[goalId];
+  const p = state.projects.find((x) => x.id === g?.project_id);
+  if (!p) return;
+  const memory = p.memory.trim() ? `${p.memory.trim()}\n${text.trim()}` : text.trim();
+  await act(
+    () => api.updateProject(p.id, { base_branch: p.base_branch, test_command: p.test_command, local_files: p.local_files, memory }),
+    "已存为项目记忆，之后的目标都会看到它",
+  );
+  await refreshProjects();
 }
 
 export function Trace(props: { id: string; live?: boolean }) {
@@ -190,10 +203,54 @@ function TraceRow(props: { e: TraceEntry }) {
           </Match>
           <Match when={ev().kind === "steered" && ev()}>
             {(t) => (
-              <div class="human-line">
-                <span class="human-stamp">你</span> {(t() as { text: string }).text}
+              <div class="human-line row">
+                <span class="human-stamp">你</span>
+                <span class="grow pre">{(t() as { text: string }).text}</span>
+                <button class="link meta" onClick={() => void remember(props.e.goal_id, (t() as { text: string }).text)}>
+                  存为项目记忆
+                </button>
               </div>
             )}
+          </Match>
+          <Match when={ev().kind === "sentinel_hit" && ev()}>
+            {(t) => {
+              const c = t() as Extract<TraceEntry["event"], { kind: "sentinel_hit" }>;
+              return (
+                <div class="col">
+                  <span class="t1">
+                    <span class={c.severity >= 3 ? "mark-danger" : ""}>{c.severity >= 3 ? "■" : "◇"}</span> 哨兵 · {c.title}
+                  </span>
+                  <span class="meta mono pre">{c.detail}</span>
+                </div>
+              );
+            }}
+          </Match>
+          <Match when={ev().kind === "stalled" && ev()}>
+            {(t) => <span class="t1">◇ 可能卡住 · {(t() as { detail: string }).detail}</span>}
+          </Match>
+          <Match when={ev().kind === "human_edited" && ev()}>
+            {(t) => (
+              <div class="human-line">
+                <span class="human-stamp">你改了</span> <span class="mono t2">{(t() as { files: string[] }).files.join("  ")}</span>
+              </div>
+            )}
+          </Match>
+          <Match when={ev().kind === "local_files_copied" && ev()}>
+            {(t) => <span class="t2">复制本地文件 · <span class="mono">{(t() as { files: string[] }).files.join("  ")}</span></span>}
+          </Match>
+          <Match when={ev().kind === "branch_pushed" && ev()}>
+            {(t) => {
+              const c = t() as Extract<TraceEntry["event"], { kind: "branch_pushed" }>;
+              return (
+                <span class="t1">
+                  已推送 <span class="mono">{c.branch}</span>
+                  <Show when={c.pr_url}>
+                    <span class="sep">·</span>
+                    <span class="mono t2">{c.pr_url}</span>
+                  </Show>
+                </span>
+              );
+            }}
           </Match>
           <Match when={ev().kind === "inbox_resolved" && ev()}>
             {(t) => (

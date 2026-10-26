@@ -1,7 +1,18 @@
 use rusqlite::{OptionalExtension, Row, params};
 use tower_core::view::ProjectView;
 
+use crate::goals::json_col;
 use crate::{Result, Store, StoreError, new_id};
+
+/// Editable project settings.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, ts_rs::TS)]
+#[ts(export)]
+pub struct ProjectPatch {
+    pub base_branch: String,
+    pub test_command: Option<String>,
+    pub local_files: Vec<String>,
+    pub memory: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct NewProject {
@@ -18,6 +29,8 @@ fn row_to_project(r: &Row<'_>) -> rusqlite::Result<ProjectView> {
         root: r.get("root")?,
         base_branch: r.get("base_branch")?,
         test_command: r.get("test_command")?,
+        local_files: json_col(r, "local_files")?,
+        memory: r.get("memory")?,
         created_at: r.get("created_at")?,
     })
 }
@@ -54,10 +67,16 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    pub fn update_project(&mut self, id: &str, base_branch: &str, test_command: Option<&str>) -> Result<ProjectView> {
+    pub fn update_project(&mut self, id: &str, patch: &ProjectPatch) -> Result<ProjectView> {
         let n = self.conn.execute(
-            "UPDATE projects SET base_branch = ?2, test_command = ?3 WHERE id = ?1",
-            params![id, base_branch, test_command],
+            "UPDATE projects SET base_branch = ?2, test_command = ?3, local_files = ?4, memory = ?5 WHERE id = ?1",
+            params![
+                id,
+                patch.base_branch,
+                patch.test_command.as_deref().filter(|t| !t.trim().is_empty()),
+                serde_json::to_string(&patch.local_files)?,
+                patch.memory
+            ],
         )?;
         if n == 0 {
             return Err(StoreError::NotFound(format!("project {id}")));
@@ -106,7 +125,17 @@ mod tests {
             test_command: Some("pnpm test".into()),
         };
         let created = s.add_project(p.clone()).unwrap();
-        assert_eq!(s.projects().unwrap(), vec![created]);
+        assert_eq!(s.projects().unwrap(), vec![created.clone()]);
         assert!(matches!(s.add_project(p), Err(StoreError::Conflict(_))));
+
+        let patch = ProjectPatch {
+            base_branch: "dev".into(),
+            test_command: Some("pnpm test".into()),
+            local_files: vec![".env".into()],
+            memory: "金额一律用 Money 类型".into(),
+        };
+        let updated = s.update_project(&created.id, &patch).unwrap();
+        assert_eq!(updated.local_files, [".env"]);
+        assert_eq!(updated.memory, patch.memory);
     }
 }

@@ -20,6 +20,11 @@ pub struct ProjectView {
     pub base_branch: String,
     /// Detected from the repository (package.json scripts, Cargo, ...).
     pub test_command: Option<String>,
+    /// Git-ignored files (globs, relative to the root) copied into each
+    /// workspace and verification checkout, e.g. `.env`.
+    pub local_files: Vec<String>,
+    /// Project memory: notes injected into every goal of this project.
+    pub memory: String,
     pub created_at: Millis,
 }
 
@@ -141,6 +146,10 @@ pub struct GoalDetail {
     pub session_file: Option<String>,
     pub submit_summary: Option<String>,
     pub briefing: Vec<BriefingItem>,
+    /// Sentinel findings on the latest verified snapshot.
+    pub sentinels: Vec<crate::sentinel::SentinelHit>,
+    /// Git-ignored files copied into the workspace (e.g. `.env`).
+    pub local_files: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -175,6 +184,9 @@ pub enum InboxKind {
     Paused,
     /// Verified and waiting for review.
     ReviewReady,
+    /// The run may be stuck (repeated failures, no progress). It keeps
+    /// running; the human decides whether to wait, steer or pause.
+    Stalled,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -293,6 +305,27 @@ pub struct Settings {
     /// package), even when the user's extensions are not loaded.
     #[serde(default)]
     pub extra_extensions: Vec<String>,
+    /// User memory: notes injected into every goal.
+    #[serde(default)]
+    pub user_memory: String,
+    /// Command used to open a workspace in an editor (e.g. `code`, `zed`,
+    /// `cursor`). Empty means detect.
+    #[serde(default)]
+    pub editor: String,
+    /// Interface and agent language: `zh-CN` or `en`.
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    "zh-CN".into()
+}
+
+impl Settings {
+    /// The language the agent writes human-facing text in.
+    pub fn agent_language(&self) -> &'static str {
+        if self.language.starts_with("en") { "English" } else { "Simplified Chinese" }
+    }
 }
 
 impl Default for Settings {
@@ -304,6 +337,9 @@ impl Default for Settings {
             max_concurrent: 3,
             load_user_extensions: false,
             extra_extensions: Vec::new(),
+            user_memory: String::new(),
+            editor: String::new(),
+            language: default_language(),
         }
     }
 }

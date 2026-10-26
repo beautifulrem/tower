@@ -28,10 +28,14 @@ def out(obj):
 def respond(cid, command, data=None, ok=True):
     out({"id": cid, "type": "response", "command": command, "success": ok, "data": data or {}})
 
-def tool(name, args, result="ok"):
-    out({"type": "tool_execution_start", "toolCallId": f"c{name}{prompts[0]}", "toolName": name, "args": args})
-    out({"type": "tool_execution_end", "toolCallId": f"c{name}{prompts[0]}", "toolName": name,
-         "result": {"content": [{"type": "text", "text": result}]}, "isError": False})
+calls = [0]
+
+def tool(name, args, result="ok", error=False):
+    calls[0] += 1
+    cid = f"c{name}{prompts[0]}_{calls[0]}"
+    out({"type": "tool_execution_start", "toolCallId": cid, "toolName": name, "args": args})
+    out({"type": "tool_execution_end", "toolCallId": cid, "toolName": name,
+         "result": {"content": [{"type": "text", "text": result}]}, "isError": error})
 
 def dialog(title):
     ev = threading.Event()
@@ -68,6 +72,16 @@ def run(message):
         answer = dialog('tower:' + json.dumps({"tower": "question", "question": "写什么？", "options": ["a", "b"], "why": ""}))
         open("done.txt", "w").write((answer or "none") + "\n")
         tool("submit", {"summary": "写入了答案", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
+    elif scenario == "cheat":
+        open("done.txt", "w").write("ok\n")
+        os.makedirs("test", exist_ok=True)
+        open("test/cart.test.js", "w").write("test.skip('total', () => {});\n")
+        tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
+    elif scenario == "flaky":
+        for _ in range(4):
+            tool("bash", {"command": "npm run build"}, "error: build failed", error=True)
+        open("done.txt", "w").write("ok\n")
+        tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
     elif scenario == "idle":
         out({"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "嗯"}], "stopReason": "stop"}})
     settle()

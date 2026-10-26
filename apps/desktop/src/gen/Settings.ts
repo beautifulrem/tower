@@ -17,4 +17,17 @@ load_user_extensions: boolean,
  * Specific Pi extensions to load explicitly (e.g. a model provider
  * package), even when the user's extensions are not loaded.
  */
-extra_extensions: Array<string>, };
+extra_extensions: Array<string>, 
+/**
+ * User memory: notes injected into every goal.
+ */
+user_memory: string, 
+/**
+ * Command used to open a workspace in an editor (e.g. `code`, `zed`,
+ * `cursor`). Empty means detect.
+ */
+editor: string, 
+/**
+ * Interface and agent language: `zh-CN` or `en`.
+ */
+language: string, };

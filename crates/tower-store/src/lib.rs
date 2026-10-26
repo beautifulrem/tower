@@ -20,7 +20,7 @@ use tower_core::Millis;
 
 pub use goals::{GoalRecord, NewGoal};
 pub use inbox::NewInboxItem;
-pub use projects::NewProject;
+pub use projects::{NewProject, ProjectPatch};
 
 #[derive(Debug, Error)]
 pub enum StoreError {

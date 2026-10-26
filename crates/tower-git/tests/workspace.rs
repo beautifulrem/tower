@@ -95,3 +95,35 @@ fn detects_test_and_setup_commands() {
     assert_eq!(Git::detect_test_command(d).as_deref(), Some("pnpm test"));
     assert_eq!(Git::detect_setup_command(d).as_deref(), Some("pnpm install --frozen-lockfile --prefer-offline"));
 }
+
+#[test]
+fn local_files_and_push() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+    user_repo(&repo);
+    // secret.env is ignored by the repo's .gitignore; README is tracked.
+    fs::write(repo.join("secret.env"), "KEY=1\n").unwrap();
+    let git = Git::default();
+    let ws = tmp.path().join("ws");
+    let base = git.prepare_workspace(&repo, "main", &ws, "G-0001").unwrap();
+    let copied = git.copy_local_files(&repo, &ws, &["*.env".into(), "a.txt".into()]).unwrap();
+    assert_eq!(copied, ["secret.env"], "tracked a.txt is not a local file");
+    assert_eq!(fs::read_to_string(ws.join("secret.env")).unwrap(), "KEY=1\n");
+    // Local files are ignored in the workspace too, so they never reach a snapshot.
+    let snap = git.snapshot(&ws, &base).unwrap();
+    assert!(snap.changed.is_empty());
+
+    fs::write(ws.join("a.txt"), "changed\n").unwrap();
+    let after = git.snapshot(&ws, &base).unwrap();
+    assert_eq!(git.changed_between(&ws, &snap.pin, &after.pin).unwrap(), ["a.txt"]);
+
+    // Pushing goes to origin.
+    let remote = tmp.path().join("remote.git");
+    sh(tmp.path(), &["init", "--quiet", "--bare", remote.to_str().unwrap()]);
+    sh(&repo, &["remote", "add", "origin", remote.to_str().unwrap()]);
+    let (branch, commit) = git.seal(&repo, &ws, &base, &after.pin, "tower/g-0001", "msg").unwrap();
+    git.push_branch(&repo, &branch).unwrap();
+    assert_eq!(sh(&remote, &["rev-parse", &branch]), commit);
+    assert!(git.origin_url(&repo).unwrap().ends_with("remote.git"));
+}

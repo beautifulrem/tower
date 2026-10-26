@@ -15,7 +15,8 @@ use tower_core::view::{
     EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
     TraceEntry,
 };
-use tower_supervisor::{Config, Error, NewGoalInput, Paths, ReviewComment, Supervisor, UiSink, UiUpdate};
+use tower_store::ProjectPatch;
+use tower_supervisor::{Config, Error, NewGoalInput, OpenTarget, Paths, ReviewComment, Supervisor, UiSink, UiUpdate};
 
 const UPDATE_EVENT: &str = "tower://update";
 
@@ -38,7 +39,10 @@ impl TauriSink {
                 if !seen.insert(item.id.clone()) || focused {
                     continue;
                 }
-                let urgent = matches!(item.kind, InboxKind::Question | InboxKind::Approval | InboxKind::Paused);
+                let urgent = matches!(
+                    item.kind,
+                    InboxKind::Question | InboxKind::Approval | InboxKind::Paused | InboxKind::Stalled
+                );
                 if urgent {
                     let _ = self
                         .app
@@ -81,8 +85,18 @@ async fn add_project(sup: Sup<'_>, path: String) -> Res<ProjectView> {
 }
 
 #[tauri::command]
-fn update_project(sup: Sup<'_>, id: String, base_branch: String, test_command: Option<String>) -> Res<ProjectView> {
-    sup.update_project(&id, &base_branch, test_command.as_deref())
+fn update_project(sup: Sup<'_>, id: String, patch: ProjectPatch) -> Res<ProjectView> {
+    sup.update_project(&id, &patch)
+}
+
+#[tauri::command]
+async fn push(sup: Sup<'_>, id: String, open_pr: bool) -> Res<Option<String>> {
+    sup.push(&id, open_pr).await
+}
+
+#[tauri::command]
+fn open_workspace(sup: Sup<'_>, id: String, target: OpenTarget) -> Res<()> {
+    sup.open_workspace(&id, target)
 }
 
 #[tauri::command]
@@ -311,6 +325,8 @@ pub fn run() {
             human_check,
             review_claim,
             remove_workspace,
+            push,
+            open_workspace,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Tower");

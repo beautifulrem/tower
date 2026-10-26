@@ -110,6 +110,18 @@ export function Review(props: { id: string }) {
                 </div>
               </aside>
               <div class="review-diff">
+                <Show when={detail()?.sentinels.length}>
+                  <div class="sentinel-banner">
+                    <For each={detail()!.sentinels}>
+                      {(h) => (
+                        <span class="risk-reason">
+                          <span class={h.severity >= 3 ? "mark-danger" : ""}>{h.severity >= 3 ? "■ " : "◇ "}</span>
+                          哨兵 · {h.title}
+                        </span>
+                      )}
+                    </For>
+                  </div>
+                </Show>
                 <Show when={unit()?.risk_reasons.length}>
                   <div class="risk-banner">
                     <For each={unit()!.risk_reasons}>{(r) => <span class="risk-reason">{r}</span>}</For>

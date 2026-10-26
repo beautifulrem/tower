@@ -19,6 +19,9 @@ use crate::api::{ToastLevel, UiUpdate};
 use crate::paths::real;
 use crate::{Error, Inner, Result, actions, invalid, prompts, sandbox, summarize, verify};
 
+/// The same failing call this many times in one run raises a stall (S1).
+const REPEATED_FAILURES: u32 = 4;
+
 /// Why Tower itself is stopping a run, so the exit is not mistaken for a crash.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stop {
@@ -36,6 +39,11 @@ struct ToolCall {
 #[derive(Debug, Default)]
 pub struct Flags {
     pub stopping: Option<Stop>,
+    /// Failing tool calls by signature, for the repeated-failure detector.
+    failures: HashMap<String, u32>,
+    /// Stall detectors already reported in this run (once each).
+    stalls_reported: std::collections::HashSet<String>,
+    last_activity: Option<Instant>,
     submitted: bool,
     nudged: bool,
     last_error: Option<String>,
@@ -50,6 +58,7 @@ pub struct Flags {
 pub struct Run {
     pub goal_id: String,
     pub run_no: u32,
+    pub started: Instant,
     pub engine: Engine,
     pub workspace: String,
     pub flags: Mutex<Flags>,
@@ -72,7 +81,7 @@ pub async fn schedule(inner: &Arc<Inner>) {
         let (purpose, message) = if g.run_no == 0 {
             ("initial", prompts::initial(&g.title, &g.contract))
         } else {
-            ("resume", prompts::resume("等待执行槽位", &human_notes_since_last_run(inner, &g.id)))
+            ("resume", prompts::resume("等待执行槽位", &human_notes_since_last_run(inner, &g.id), &[]))
         };
         if let Err(e) = start_run(inner, &g.id, purpose, message).await {
             tracing::warn!(goal = %g.id, error = %e, "could not start run");
@@ -137,7 +146,14 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
         load_user_extensions: settings.load_user_extensions,
         model,
         thinking,
-        append_system_prompt: Some(prompts::system_section(&goal.id)),
+        append_system_prompt: Some({
+            let project = inner.store(|s| s.project(&goal.project_id))?;
+            prompts::system_section(
+                &goal.id,
+                &[("User memory", settings.user_memory.as_str()), ("Project memory", project.memory.as_str())],
+                settings.agent_language(),
+            )
+        }),
         env,
     })
 }
@@ -176,6 +192,10 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
                     goal_id,
                     EventKind::WorkspacePrepared { workspace: ws.display().to_string(), base_commit: base },
                 )?;
+                let copied = copy_local_files(inner, &goal, &ws).await?;
+                if !copied.is_empty() {
+                    inner.append(goal_id, EventKind::LocalFilesCopied { files: copied })?;
+                }
                 goal = inner.store(|s| s.goal(goal_id))?;
             }
             Err(e) => {
@@ -211,12 +231,14 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
     let run = Arc::new(Run {
         goal_id: goal_id.into(),
         run_no,
+        started: Instant::now(),
         engine,
         workspace: real(&ws).display().to_string(),
         flags: Mutex::default(),
     });
     inner.runs.lock().expect("runs lock").insert(goal_id.into(), run.clone());
     tokio::spawn(pump(inner.clone(), run.clone(), rx));
+    tokio::spawn(watchdog(inner.clone(), run.clone()));
 
     if let Ok(state) = run.engine.state().await
         && let Some(file) = state.get("sessionFile").and_then(Value::as_str)
@@ -232,6 +254,69 @@ async fn start_run_inner(inner: &Arc<Inner>, goal_id: &str, purpose: &str, messa
     }
     inner.set_mode(goal_id, Mode::Thinking)?;
     Ok(())
+}
+
+/// Copies the project's git-ignored local files (e.g. `.env`) into `dest`.
+pub async fn copy_local_files(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, dest: &Path) -> Result<Vec<String>> {
+    let project = inner.store(|s| s.project(&goal.project_id))?;
+    if project.local_files.is_empty() {
+        return Ok(Vec::new());
+    }
+    let git = inner.git.clone();
+    let (root, dest2, patterns) = (PathBuf::from(&project.root), dest.to_path_buf(), project.local_files.clone());
+    let copied = tokio::task::spawn_blocking(move || git.copy_local_files(&root, &dest2, &patterns))
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+    Ok(copied)
+}
+
+/// Watches a run for stalls the event stream cannot reveal: no activity for
+/// a long time, or the wall-clock cap passing (`docs/07` §7.6).
+async fn watchdog(inner: Arc<Inner>, run: Arc<Run>) {
+    const QUIET: Duration = Duration::from_secs(10 * 60);
+    let mut tick = tokio::time::interval(Duration::from_secs(30));
+    loop {
+        tick.tick().await;
+        if run.flags().stopping.is_some() || inner.run_of(&run.goal_id).is_none_or(|r| r.run_no != run.run_no) {
+            break;
+        }
+        let Ok(goal) = inner.store(|s| s.goal(&run.goal_id)) else { break };
+        let cap = Duration::from_secs(u64::from(goal.contract.budget.wall_minutes.max(1)) * 60);
+        if run.started.elapsed() > cap {
+            let inner2 = inner.clone();
+            let g = run.goal_id.clone();
+            let minutes = goal.contract.budget.wall_minutes;
+            tokio::spawn(async move {
+                let _ = pause(&inner2, &g, PauseReason::WallClockCap, &format!("本次运行已超过 {minutes} 分钟")).await;
+            });
+            break;
+        }
+        let quiet = run.flags().last_activity.unwrap_or(run.started).elapsed();
+        let waiting = !run.flags().dialogs.is_empty();
+        if quiet > QUIET && !waiting {
+            report_stall(&inner, &run, "no_progress", &format!("{} 分钟没有任何工具调用", quiet.as_secs() / 60));
+        }
+    }
+}
+
+/// Raises a stall once per detector per run. The run keeps going; the
+/// Needs-You item lets the human wait, steer or pause.
+fn report_stall(inner: &Arc<Inner>, run: &Arc<Run>, detector: &str, detail: &str) {
+    if !run.flags().stalls_reported.insert(detector.to_string()) {
+        return;
+    }
+    let g = run.goal_id.as_str();
+    let _ = inner.append(g, EventKind::Stalled { detector: detector.into(), detail: detail.into() });
+    let _ = inner.open_inbox(NewInboxItem {
+        goal_id: g.into(),
+        kind: InboxKind::Stalled,
+        title: format!("可能卡住：{detail}"),
+        body: "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。".into(),
+        options: vec![actions::KEEP_WAITING.into(), actions::PAUSE.into()],
+        allow_text: true,
+        urgency: 2,
+        engine_ref: None,
+    });
 }
 
 fn fail_to_start(inner: &Arc<Inner>, goal_id: &str, detail: &str) -> Result<()> {
@@ -307,6 +392,28 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                     duration_ms,
                 },
             )?;
+            run.flags().last_activity = Some(Instant::now());
+            if let Some(call) = &call {
+                let signature = format!("{tool} · {}", summarize::tool_call(&tool, &call.args, &run.workspace));
+                if is_error {
+                    let n = {
+                        let mut f = run.flags();
+                        let n = f.failures.entry(signature.clone()).or_insert(0);
+                        *n += 1;
+                        *n
+                    };
+                    if n == REPEATED_FAILURES {
+                        report_stall(
+                            inner,
+                            run,
+                            &format!("repeat:{signature}"),
+                            &format!("{signature} 连续失败 {n} 次"),
+                        );
+                    }
+                } else {
+                    run.flags().failures.remove(&signature);
+                }
+            }
             if let (Some(call), "bash") = (call, tool.as_str()) {
                 observe(inner, g, &call.args, !is_error)?;
             }
@@ -650,6 +757,8 @@ pub async fn pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: 
     }
     if let Some(run) = inner.run_of(goal) {
         stop_engine(inner, &run, Stop::Pause(reason)).await;
+        // The agent's last state, so edits made while paused are the human's.
+        let _ = repin(inner, goal).await;
     }
     if let Some(c) = inner.verifications.lock().expect("verify lock").remove(goal) {
         c.cancel();
@@ -672,12 +781,53 @@ pub async fn resume(inner: &Arc<Inner>, goal: &str) -> Result<()> {
         verify::spawn(inner.clone(), goal.into());
         return Ok(());
     }
-    let message = prompts::resume(tower_core::briefing::pause_label(reason), &human_notes_since_last_run(inner, goal));
+    let edits = human_edits(inner, goal).await.unwrap_or_default();
+    let message =
+        prompts::resume(tower_core::briefing::pause_label(reason), &human_notes_since_last_run(inner, goal), &edits);
     if inner.running_count() >= inner.settings().max_concurrent as usize {
         inner.transition(goal, Transition::Resume, None, "等待执行槽位")?;
         return Ok(());
     }
     start_run(inner, goal, "resume", message).await
+}
+
+/// Snapshots the workspace; returns the new pin when it changed.
+pub async fn repin(inner: &Arc<Inner>, goal: &str) -> Result<Option<(String, Option<String>)>> {
+    let rec = inner.store(|s| s.goal(goal))?;
+    let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else { return Ok(None) };
+    let git = inner.git.clone();
+    let snap = tokio::task::spawn_blocking(move || git.snapshot(Path::new(&ws), &base))
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+    if rec.pin.as_deref() == Some(snap.pin.as_str()) {
+        return Ok(None);
+    }
+    inner.append(
+        goal,
+        EventKind::Pinned {
+            pin: snap.pin.clone(),
+            files: snap.stat.files,
+            additions: snap.stat.additions,
+            deletions: snap.stat.deletions,
+        },
+    )?;
+    Ok(Some((snap.pin, rec.pin)))
+}
+
+/// Files the human changed in the workspace since the pause snapshot,
+/// recorded as a fact and handed to the agent on resume (`我来改`).
+async fn human_edits(inner: &Arc<Inner>, goal: &str) -> Result<Vec<String>> {
+    let Some((new, Some(old))) = repin(inner, goal).await? else { return Ok(Vec::new()) };
+    let rec = inner.store(|s| s.goal(goal))?;
+    let Some(ws) = rec.workspace else { return Ok(Vec::new()) };
+    let git = inner.git.clone();
+    let files = tokio::task::spawn_blocking(move || git.changed_between(Path::new(&ws), &old, &new))
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+    if !files.is_empty() {
+        inner.append(goal, EventKind::HumanEdited { files: files.clone() })?;
+    }
+    Ok(files)
 }
 
 pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {

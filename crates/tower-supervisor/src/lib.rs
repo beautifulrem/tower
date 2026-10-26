@@ -491,6 +491,21 @@ impl Supervisor {
         RemoteInfo { enabled: true, links, qr_svg, tailscale, kinds, problem }
     }
 
+    /// Sets your git name and email (global configuration), at your request
+    /// from the environment check, so accepted work is committed as you.
+    pub fn set_git_identity(&self, name: &str, email: &str) -> Result<()> {
+        let lang = self.inner.lang();
+        let (name, email) = (name.trim(), email.trim());
+        if name.is_empty() || name.contains(['\n', '\r']) {
+            return Err(invalid(tr!(lang, "写下你的名字", "Enter your name")));
+        }
+        if !email.contains('@') || email.contains(char::is_whitespace) {
+            return Err(invalid(tr!(lang, "写下有效的邮箱", "Enter a valid email address")));
+        }
+        self.inner.git.set_global_identity(name, email)?;
+        Ok(())
+    }
+
     /// Sends a test push to the configured address and says how it went.
     pub async fn test_push(&self) -> Result<()> {
         let s = self.inner.settings();

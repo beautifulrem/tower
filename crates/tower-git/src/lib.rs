@@ -121,6 +121,14 @@ impl Git {
         self.run_trim(root, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")])
     }
 
+    /// Sets your name and email in git's global configuration (what every
+    /// repository uses unless it sets its own).
+    pub fn set_global_identity(&self, name: &str, email: &str) -> Result<()> {
+        self.run(Path::new("/"), &["config", "--global", "user.name", name])?;
+        self.run(Path::new("/"), &["config", "--global", "user.email", email])?;
+        Ok(())
+    }
+
     /// Whether commits in `root` would carry a configured name and email.
     pub fn has_identity(&self, root: &Path) -> bool {
         let get = |k: &str| self.run_trim(root, &["config", "--get", k]).unwrap_or_default();

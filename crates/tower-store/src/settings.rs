@@ -1,4 +1,5 @@
 use rusqlite::{OptionalExtension, params};
+use tower_core::Lang;
 use tower_core::view::Settings;
 
 use crate::{Result, Store};
@@ -15,6 +16,12 @@ impl Store {
             Some(json) => serde_json::from_str(&json)?,
             None => Settings::default(),
         })
+    }
+
+    /// The interface language, for text the store writes. English if the
+    /// settings cannot be read.
+    pub fn lang(&self) -> Lang {
+        self.settings().map(|s| s.lang()).unwrap_or_default()
     }
 
     pub fn save_settings(&mut self, settings: &Settings) -> Result<()> {
@@ -39,5 +46,16 @@ mod tests {
         cfg.max_concurrent = 5;
         s.save_settings(&cfg).unwrap();
         assert_eq!(s.settings().unwrap().max_concurrent, 5);
+    }
+
+    #[test]
+    fn language_follows_the_setting() {
+        let (mut s, _) = store();
+        for (code, lang) in [("zh-CN", tower_core::Lang::Zh), ("en", tower_core::Lang::En)] {
+            let mut cfg = s.settings().unwrap();
+            cfg.language = code.into();
+            s.save_settings(&cfg).unwrap();
+            assert_eq!(s.lang(), lang);
+        }
     }
 }

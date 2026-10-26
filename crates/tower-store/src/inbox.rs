@@ -2,8 +2,8 @@
 //! goal; resolving it records a human event on that goal.
 
 use rusqlite::{OptionalExtension, Row, params};
-use tower_core::EventKind;
 use tower_core::view::{InboxItem, InboxKind};
+use tower_core::{EventKind, tr};
 
 use crate::goals::{enum_col, enum_str, json_col};
 use crate::{Result, Store, StoreError, new_id};
@@ -91,7 +91,7 @@ impl Store {
                 Ok((r.get(0)?, r.get(1)?))
             })?;
         if resolved_at.is_some() {
-            return Err(StoreError::Conflict("这一项已经处理过了".into()));
+            return Err(StoreError::Conflict(tr!(self.lang(), "这一项已经处理过了", "This item was already handled")));
         }
         let now = self.now();
         self.conn
@@ -108,15 +108,17 @@ impl Store {
             stmt.query_map([goal_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
         drop(stmt);
         let kinds: Vec<String> = kinds.iter().map(enum_str).collect();
+        let lang = self.lang();
         let mut n = 0;
         for (id, kind) in open {
             if kinds.contains(&kind) {
                 let now = self.now();
                 self.conn.execute(
                     "UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1",
-                    params![id, now, format!("（撤回：{reason}）")],
+                    params![id, now, tr!(lang, "（撤回：{reason}）", "(withdrawn: {reason})")],
                 )?;
-                self.append(goal_id, EventKind::InboxResolved { item_id: id, response: format!("撤回：{reason}") })?;
+                let response = tr!(lang, "撤回：{reason}", "Withdrawn: {reason}");
+                self.append(goal_id, EventKind::InboxResolved { item_id: id, response })?;
                 n += 1;
             }
         }
@@ -126,6 +128,7 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    use tower_core::Lang;
     use tower_core::contract::Contract;
 
     use super::*;
@@ -157,7 +160,11 @@ mod tests {
             })
             .unwrap();
         let g = s
-            .create_goal(NewGoal { project_id: p.id, title: "t".into(), contract: Contract::quick("x", None) })
+            .create_goal(NewGoal {
+                project_id: p.id,
+                title: "t".into(),
+                contract: Contract::quick("x", None, Lang::En),
+            })
             .unwrap();
         let low = s.open_inbox(item(&g.id, InboxKind::ReviewReady, 5)).unwrap();
         clock.advance(1);

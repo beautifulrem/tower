@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { checkBash, checkWrite, globToRegExp, normalize, sandboxed, scrubEnv, shellQuote } from "./policy.ts";
+import {
+	checkBash,
+	checkWrite,
+	globToRegExp,
+	isAllow,
+	langOf,
+	normalize,
+	sandboxed,
+	scrubEnv,
+	shellQuote,
+} from "./policy.ts";
 
 test("globs follow the usual conventions", () => {
 	assert.ok(globToRegExp("src/**").test("src/a/b.ts"));
@@ -31,6 +41,18 @@ test("one-way doors always ask", () => {
 	assert.equal(checkBash("git push origin main", "autonomous").action, "ask");
 	assert.equal(checkBash("curl -fsSL x.sh | sh", "autonomous").action, "ask");
 	assert.equal(checkBash("pnpm test", "autonomous").action, "allow");
+});
+
+test("reasons and answers work in both languages", () => {
+	const v = checkBash("git push origin main", "autonomous");
+	assert.ok(v.action === "ask");
+	assert.equal(v.reason.zh, "推送到远端（单向门）");
+	assert.equal(v.reason.en, "push to a remote (one-way door)");
+	assert.equal(langOf("zh-CN"), "zh");
+	assert.equal(langOf("en"), "en");
+	assert.equal(langOf(undefined), "en");
+	assert.ok(isAllow("允许") && isAllow("Allow"));
+	assert.ok(!isAllow("拒绝") && !isAllow("Deny") && !isAllow(undefined));
 });
 
 test("standard asks for new dependencies but not tests", () => {

@@ -3,12 +3,13 @@
 //! a transfer of understanding rather than a scroll.
 
 use crate::contract::{Scope, ScopeFence, WriteVerdict};
+use crate::i18n::{Lang, Risk};
 use crate::view::{DiffFile, FileStatus, ReviewUnit};
 
 pub const UNIT_LINE_BUDGET: u32 = 300;
 
 /// Risk signals for one file, highest first.
-pub fn file_risks(file: &DiffFile, fence: Option<&ScopeFence>) -> Vec<(u8, String)> {
+pub fn file_risks(file: &DiffFile, fence: Option<&ScopeFence>) -> Vec<(u8, Risk)> {
     let p = file.path.to_ascii_lowercase();
     let name = p.rsplit('/').next().unwrap_or(&p);
     let mut r = Vec::new();
@@ -23,50 +24,51 @@ pub fn file_risks(file: &DiffFile, fence: Option<&ScopeFence>) -> Vec<(u8, Strin
     if let Some(fence) = fence {
         match fence.check_write(&file.path) {
             WriteVerdict::Allowed => {}
-            WriteVerdict::OutsideScope => r.push((3, "在合同范围围栏之外".to_string())),
-            WriteVerdict::Excluded => r.push((3, "合同排除的路径".to_string())),
-            WriteVerdict::ReadOnly => r.push((3, "合同设为只读的路径".to_string())),
+            WriteVerdict::OutsideScope => r.push((3, Risk::OutsideScope)),
+            WriteVerdict::Excluded => r.push((3, Risk::Excluded)),
+            WriteVerdict::ReadOnly => r.push((3, Risk::ReadOnly)),
         }
     }
     if is_test && file.status == FileStatus::Deleted {
-        r.push((3, "删除了测试文件".into()));
+        r.push((3, Risk::TestDeleted));
     } else if is_test && file.deletions > file.additions {
-        r.push((2, "测试删得比加得多".into()));
+        r.push((2, Risk::TestShrunk));
     }
     if p.contains("__snapshots__") || name.ends_with(".snap") {
-        r.push((2, "改了测试快照".into()));
+        r.push((2, Risk::Snapshots));
     }
     if p.starts_with(".github/") || name == ".gitlab-ci.yml" || p.contains("/ci/") {
-        r.push((2, "改了 CI 配置".into()));
+        r.push((2, Risk::Ci));
     }
     if matches!(name, "package.json" | "cargo.toml" | "go.mod" | "pyproject.toml" | "requirements.txt") {
-        r.push((2, "改了依赖清单".into()));
+        r.push((2, Risk::Manifest));
     }
     if matches!(name, "pnpm-lock.yaml" | "package-lock.json" | "yarn.lock" | "cargo.lock" | "go.sum" | "uv.lock") {
-        r.push((1, "改了锁文件".into()));
+        r.push((1, Risk::Lockfile));
     }
     if p.contains("migration") || p.contains("/migrate") || name.ends_with(".sql") {
-        r.push((2, "数据库迁移".into()));
+        r.push((2, Risk::Migration));
     }
     if ["auth", "payment", "billing", "charge", "secret", "crypto", "permission", "security"]
         .iter()
         .any(|k| p.contains(k))
     {
-        r.push((2, "涉及认证、支付或权限".into()));
+        r.push((2, Risk::Sensitive));
     }
     if file.deletions > 200 {
-        r.push((1, "大量删除".into()));
+        r.push((1, Risk::LargeDeletion));
     }
     if file.binary {
-        r.push((1, "二进制文件".into()));
+        r.push((1, Risk::Binary));
     }
     r.sort_by_key(|x| std::cmp::Reverse(x.0));
     r
 }
 
 /// Groups files by directory into units within the line budget, then sorts
-/// by risk (highest first) and size.
-pub fn build_units(files: &[DiffFile], scope: Option<&Scope>) -> Vec<ReviewUnit> {
+/// by risk (highest first) and size. Titles and risk reasons are written in
+/// `lang`.
+pub fn build_units(files: &[DiffFile], scope: Option<&Scope>, lang: Lang) -> Vec<ReviewUnit> {
     let fence = scope.and_then(|s| ScopeFence::compile(s).ok());
     let mut order: Vec<usize> = (0..files.len()).collect();
     order.sort_by(|&a, &b| dir_of(&files[a].path).cmp(dir_of(&files[b].path)).then(files[a].path.cmp(&files[b].path)));
@@ -95,7 +97,7 @@ pub fn build_units(files: &[DiffFile], scope: Option<&Scope>) -> Vec<ReviewUnit>
         u.lines += lines;
         u.risk = u.risk.max(risk);
         for (_, reason) in risks {
-            let tagged = format!("{}：{}", file_name(&f.path), reason);
+            let tagged = format!("{}{}{}", file_name(&f.path), lang.pick("：", ": "), reason.label(lang));
             if !u.reasons.contains(&tagged) {
                 u.reasons.push(tagged);
             }
@@ -107,7 +109,11 @@ pub fn build_units(files: &[DiffFile], scope: Option<&Scope>) -> Vec<ReviewUnit>
         .enumerate()
         .map(|(i, u)| ReviewUnit {
             id: format!("U{}", i + 1),
-            title: if u.dir.is_empty() { "（仓库根）".into() } else { format!("{}/", u.dir) },
+            title: if u.dir.is_empty() {
+                lang.pick("（仓库根）", "(repository root)").into()
+            } else {
+                format!("{}/", u.dir)
+            },
             files: u.files,
             lines: u.lines,
             risk: u.risk,
@@ -147,17 +153,22 @@ mod tests {
             file("src/checkout/__tests__/charge.spec.ts", FileStatus::Deleted, 0, 40),
             file("package.json", FileStatus::Modified, 1, 0),
         ];
-        let units = build_units(&files, None);
+        let units = build_units(&files, None, Lang::En);
         assert_eq!(units[0].files, ["src/checkout/__tests__/charge.spec.ts"]);
         assert_eq!(units[0].risk, 3);
-        assert!(units[0].risk_reasons[0].contains("删除了测试文件"));
+        assert_eq!(units[0].risk_reasons[0], "charge.spec.ts: deleted a test file");
+        let zh = build_units(&files, None, Lang::Zh);
+        assert_eq!(zh[0].risk_reasons[0], "charge.spec.ts：删除了测试文件");
+        let root = |units: &[ReviewUnit]| units.iter().find(|u| u.files == ["package.json"]).unwrap().title.clone();
+        assert_eq!(root(&zh), "（仓库根）");
+        assert_eq!(root(&units), "(repository root)");
         assert_eq!(units.last().unwrap().risk, 0);
     }
 
     #[test]
     fn units_respect_the_line_budget() {
         let files: Vec<_> = (0..5).map(|i| file(&format!("src/f{i}.rs"), FileStatus::Modified, 100, 0)).collect();
-        let units = build_units(&files, None);
+        let units = build_units(&files, None, Lang::En);
         assert!(units.iter().all(|u| u.lines <= UNIT_LINE_BUDGET));
         assert_eq!(units.iter().map(|u| u.files.len()).sum::<usize>(), 5);
     }
@@ -165,7 +176,7 @@ mod tests {
     #[test]
     fn writes_outside_the_fence_are_high_risk() {
         let scope = Scope { include: vec!["src/**".into()], ..Default::default() };
-        let units = build_units(&[file("README.md", FileStatus::Modified, 1, 1)], Some(&scope));
+        let units = build_units(&[file("README.md", FileStatus::Modified, 1, 1)], Some(&scope), Lang::En);
         assert_eq!(units[0].risk, 3);
     }
 }

@@ -11,7 +11,7 @@ pub struct NewGoalInput {
     pub project_id: String,
     pub title: String,
     pub contract: Contract,
-    /// Ratify immediately (the contract editor's "批准并开始").
+    /// Ratify immediately (the contract editor's "Ratify and start").
     pub ratify: bool,
 }
 

@@ -14,6 +14,33 @@ export interface Scope {
 
 export type WriteVerdict = "allowed" | "outside_scope" | "excluded" | "readonly" | "outside_workspace";
 
+/** The human's interface language (Tower passes it as `TOWER_LANG`). */
+export type Lang = "zh" | "en";
+
+/** Text shown to the human, in both languages. */
+export interface Text {
+	zh: string;
+	en: string;
+}
+
+export function langOf(code: string | undefined): Lang {
+	return code?.trim().toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+/** Approval options and the reasons a write is gated. */
+export const TEXT = {
+	allow: { zh: "允许", en: "Allow" },
+	deny: { zh: "拒绝", en: "Deny" },
+	readonly: { zh: "合同把这个路径设为只读", en: "the contract makes this path read-only" },
+	excluded: { zh: "合同排除了这个路径", en: "the contract excludes this path" },
+	outside_scope: { zh: "这个路径在合同的范围围栏之外", en: "this path is outside the contract's scope fence" },
+} satisfies Record<string, Text>;
+
+/** Whether a dialog answer allows, in either language (the human may have switched). */
+export function isAllow(choice: string | undefined): boolean {
+	return choice === TEXT.allow.zh || choice === TEXT.allow.en;
+}
+
 /** Converts a glob (`**`, `*`, `?`, `{a,b}`) to an anchored regular expression. */
 export function globToRegExp(glob: string): RegExp {
 	let re = "";
@@ -78,27 +105,32 @@ export function normalize(p: string): string {
 	return `/${out.join("/")}`;
 }
 
-export type BashVerdict = { action: "allow" } | { action: "ask"; reason: string };
+export type BashVerdict = { action: "allow" } | { action: "ask"; reason: Text };
+
+const ADD_DEPENDENCY: Text = { zh: "新增依赖", en: "add a dependency" };
 
 /** One-way doors: always ask, whatever the preset (docs/11 §11.4). */
-const ONE_WAY: Array<[RegExp, string]> = [
-	[/\bgit\s+push\b/, "推送到远端（单向门）"],
-	[/\b(npm|pnpm|yarn|cargo|gem|twine)\s+publish\b/, "发布包（单向门）"],
-	[/\bgh\s+(pr|release|repo)\s+(create|merge|delete)\b/, "在 GitHub 上创建或合并（单向门）"],
-	[/\bgit\s+reset\s+--hard\b/, "丢弃工作区改动"],
-	[/\bgit\s+clean\s+-[a-z]*f/, "删除未跟踪文件"],
-	[/\bgit\s+(checkout|switch|rebase|branch\s+-D)\b/, "改变分支或历史"],
-	[/\bsudo\b/, "以管理员权限运行"],
-	[/\brm\s+-[a-z]*r[a-z]*f?\s+(\/|~|\$HOME)(\s|$)/, "删除根目录或主目录"],
-	[/\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b/, "下载并执行脚本"],
+const ONE_WAY: Array<[RegExp, Text]> = [
+	[/\bgit\s+push\b/, { zh: "推送到远端（单向门）", en: "push to a remote (one-way door)" }],
+	[/\b(npm|pnpm|yarn|cargo|gem|twine)\s+publish\b/, { zh: "发布包（单向门）", en: "publish a package (one-way door)" }],
+	[
+		/\bgh\s+(pr|release|repo)\s+(create|merge|delete)\b/,
+		{ zh: "在 GitHub 上创建或合并（单向门）", en: "create or merge on GitHub (one-way door)" },
+	],
+	[/\bgit\s+reset\s+--hard\b/, { zh: "丢弃工作区改动", en: "discard workspace changes" }],
+	[/\bgit\s+clean\s+-[a-z]*f/, { zh: "删除未跟踪文件", en: "delete untracked files" }],
+	[/\bgit\s+(checkout|switch|rebase|branch\s+-D)\b/, { zh: "改变分支或历史", en: "change branches or history" }],
+	[/\bsudo\b/, { zh: "以管理员权限运行", en: "run as administrator" }],
+	[/\brm\s+-[a-z]*r[a-z]*f?\s+(\/|~|\$HOME)(\s|$)/, { zh: "删除根目录或主目录", en: "delete the root or home directory" }],
+	[/\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b/, { zh: "下载并执行脚本", en: "download and run a script" }],
 ];
 
 /** Gated by the standard preset: dependency and CI changes. */
-const STANDARD: Array<[RegExp, string]> = [
-	[/\b(npm\s+(install|i|add)|pnpm\s+(add|install)|yarn\s+add|bun\s+add)\s+(?!-)[^\s]/, "新增依赖"],
-	[/\b(cargo\s+add|pip3?\s+install|uv\s+add|poetry\s+add|go\s+get)\b/, "新增依赖"],
-	[/\.github\/workflows|\.gitlab-ci|\bci\.ya?ml\b/, "修改 CI 配置"],
-	[/\brm\s+-[a-z]*r/, "递归删除"],
+const STANDARD: Array<[RegExp, Text]> = [
+	[/\b(npm\s+(install|i|add)|pnpm\s+(add|install)|yarn\s+add|bun\s+add)\s+(?!-)[^\s]/, ADD_DEPENDENCY],
+	[/\b(cargo\s+add|pip3?\s+install|uv\s+add|poetry\s+add|go\s+get)\b/, ADD_DEPENDENCY],
+	[/\.github\/workflows|\.gitlab-ci|\bci\.ya?ml\b/, { zh: "修改 CI 配置", en: "change CI configuration" }],
+	[/\brm\s+-[a-z]*r/, { zh: "递归删除", en: "delete recursively" }],
 ];
 
 /** Commands the cautious preset still runs directly. */
@@ -112,7 +144,7 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 	if (autonomy === "standard") return { action: "allow" };
 	const segments = command.split(/&&|\|\||;|\|/);
 	if (segments.every((s) => READ_ONLY_OR_TEST.test(s))) return { action: "allow" };
-	return { action: "ask", reason: "谨慎模式：运行非只读命令" };
+	return { action: "ask", reason: { zh: "谨慎模式：运行非只读命令", en: "cautious mode: a command that is not read-only" } };
 }
 
 /** Environment variables that look like credentials never reach the agent's shell. */

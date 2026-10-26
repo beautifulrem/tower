@@ -1,8 +1,11 @@
 //! Everything Tower injects into the model (`docs/05` §5.6). Kept small and
 //! fully visible: each injected text is also recorded in the trace as
-//! "Tower 注入".
+//! injected by Tower. Always English; only the language the agent writes to
+//! the human follows the settings.
 
+use tower_core::Lang;
 use tower_core::contract::{Autonomy, Contract, CriterionKind};
+use tower_core::i18n::sentinel_title;
 
 /// Appended to Pi's system prompt for every run of a goal. Stays well under
 /// the 650-token resident budget (`ADR-009`); the full contract travels in
@@ -187,7 +190,8 @@ pub fn sentinel_rework(hits: &[tower_core::sentinel::SentinelHit]) -> String {
 The human asked you to redo the work without them:\n",
     );
     for h in hits {
-        s.push_str(&format!("\n- {}:\n{}\n", h.title, h.detail));
+        let title = sentinel_title(&h.sentinel, Lang::En).unwrap_or(&h.title);
+        s.push_str(&format!("\n- {title}:\n{}\n", h.detail));
     }
     s.push_str("\nRestore the tests and the test command, fix the cause, log what you changed, then submit again.");
     s
@@ -211,7 +215,7 @@ mod tests {
 
     #[test]
     fn brief_lists_criteria_and_scope() {
-        let mut c = Contract::quick("同一订单只扣款一次", Some("pnpm test".into()));
+        let mut c = Contract::quick("同一订单只扣款一次", Some("pnpm test".into()), Lang::Zh);
         c.scope.include = vec!["src/**".into()];
         let b = contract_brief("修复重复扣款", &c);
         assert!(b.contains("C1"));
@@ -229,5 +233,18 @@ mod tests {
             output_tail: "é".repeat(10_000),
         };
         assert!(rework(1, 3, &[f]).chars().count() < EVIDENCE_CHARS + 500);
+    }
+
+    #[test]
+    fn sentinel_rework_names_hits_in_english_whatever_the_interface_language() {
+        let hit = tower_core::sentinel::SentinelHit {
+            sentinel: "test_deleted".into(),
+            severity: 3,
+            title: "删除了测试文件".into(),
+            detail: "test/a.test.js".into(),
+        };
+        let s = sentinel_rework(&[hit]);
+        assert!(s.contains("- Deleted test files:\ntest/a.test.js"));
+        assert!(!s.contains("删除"));
     }
 }

@@ -3,6 +3,6 @@ import type { Contract } from "./Contract";
 
 export type NewGoalInput = { project_id: string, title: string, contract: Contract, 
 /**
- * Ratify immediately (the contract editor's "批准并开始").
+ * Ratify immediately (the contract editor's "Ratify and start").
  */
 ratify: boolean, };

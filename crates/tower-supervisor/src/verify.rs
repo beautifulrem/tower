@@ -7,9 +7,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tower_core::contract::CriterionKind;
+use tower_core::i18n::plural;
 use tower_core::lifecycle::Transition;
 use tower_core::view::InboxKind;
-use tower_core::{EventKind, LifecycleState, Mode, PauseReason};
+use tower_core::{EventKind, Lang, LifecycleState, Mode, PauseReason, tr};
 use tower_git::Git;
 use tower_store::NewInboxItem;
 use tower_verify::{Cancel, RunSpec};
@@ -36,7 +37,8 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
             && !cancel.is_cancelled()
         {
             tracing::warn!(goal = %goal, error = %e, "verification failed to run");
-            let _ = inner.append(&goal, EventKind::EngineError { message: format!("验证没能完成：{e}") });
+            let message = tr!(inner.lang(), "验证没能完成：{e}", "Verification could not finish: {e}");
+            let _ = inner.append(&goal, EventKind::EngineError { message });
             let _ = inner.set_mode(&goal, Mode::Idle);
             let _ = to_paused(&inner, &goal, PauseReason::VerifyEnvError, &e.to_string());
         }
@@ -49,16 +51,7 @@ fn to_paused(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str) 
         // The edge out of verifying for a non-rework outcome.
         inner.transition(goal, Transition::VerifyFailed { rework: false }, Some(reason), detail)?;
         let rec = inner.store(|s| s.goal(goal))?;
-        inner.open_inbox(NewInboxItem {
-            goal_id: goal.into(),
-            kind: InboxKind::Paused,
-            title: format!("已暂停：{}", tower_core::briefing::pause_label(reason)),
-            body: detail.into(),
-            options: crate::actions::pause_options(reason, &rec).iter().map(|s| s.to_string()).collect(),
-            allow_text: false,
-            urgency: 2,
-            engine_ref: None,
-        })?;
+        inner.open_inbox(run::paused_item(&rec, reason, detail, inner.lang(), false))?;
         Ok(())
     } else {
         run::pause_after_stop(inner, goal, reason, detail)
@@ -83,8 +76,9 @@ fn shell_quote(s: &str) -> String {
 
 async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     let rec = inner.store(|s| s.goal(goal))?;
+    let lang = inner.lang();
     let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else {
-        return Err(invalid("没有工作区，无法验证"));
+        return Err(invalid(tr!(lang, "没有工作区，无法验证", "There is no workspace to verify")));
     };
     inner.set_mode(goal, Mode::Verifying)?;
 
@@ -114,7 +108,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws5), &base5, &pin5))
         .await
         .map_err(|e| invalid(e.to_string()))??;
-    let hits = tower_core::sentinel::scan(&files, &rec.contract.scope);
+    let hits = tower_core::sentinel::scan(&files, &rec.contract.scope, lang);
     for h in &hits {
         inner.append(
             goal,
@@ -134,10 +128,19 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
         inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
         inner.set_mode(goal, Mode::Idle)?;
         if !high.is_empty() {
-            return to_paused(inner, goal, PauseReason::SentinelHigh, &high.join("；"));
+            return to_paused(inner, goal, PauseReason::SentinelHigh, &high.join(lang.pick("；", "; ")));
         }
-        inner.transition(goal, Transition::VerifyPassed, None, "未经机器验证：合同没有可执行的标准")?;
-        review_ready(inner, goal, "没有可执行的标准：请你判断结果")?;
+        let note = tr!(
+            lang,
+            "未经机器验证：合同没有可执行的标准",
+            "Not machine-verified: the contract has no executable criteria"
+        );
+        inner.transition(goal, Transition::VerifyPassed, None, &note)?;
+        review_ready(
+            inner,
+            goal,
+            &tr!(lang, "没有可执行的标准：请你判断结果", "No executable criteria: judge the result yourself"),
+        )?;
         return Ok(());
     }
 
@@ -166,12 +169,15 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     match outcome {
         Outcome::Passed if !high.is_empty() => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
-            to_paused(inner, goal, PauseReason::SentinelHigh, &format!("机器标准都通过了，但{}", high.join("；")))?;
+            let hits = high.join(lang.pick("；", "; "));
+            let detail = tr!(lang, "机器标准都通过了，但{hits}", "Every machine criterion passed, but: {hits}");
+            to_paused(inner, goal, PauseReason::SentinelHigh, &detail)?;
         }
         Outcome::Passed => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
             inner.transition(goal, Transition::VerifyPassed, None, "")?;
-            review_ready(inner, goal, "全部机器标准在干净环境中通过")?;
+            let body = tr!(lang, "全部机器标准在干净环境中通过", "Every machine criterion passed in a clean checkout");
+            review_ready(inner, goal, &body)?;
         }
         Outcome::EnvError(detail) => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
@@ -182,7 +188,8 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
             let rec = inner.store(|s| s.goal(goal))?;
             let can_rework = rec.rework_cycles < rec.contract.max_rework && rec.cost_usd < rec.contract.budget.hard_usd;
             if can_rework {
-                inner.transition(goal, Transition::VerifyFailed { rework: true }, None, "自动返工")?;
+                let note = tr!(lang, "自动返工", "Automatic rework");
+                inner.transition(goal, Transition::VerifyFailed { rework: true }, None, &note)?;
                 let mut msg = prompts::rework(rec.rework_cycles + 1, rec.contract.max_rework, &failures);
                 if !hits.is_empty() {
                     msg.push_str("\n\n");
@@ -193,7 +200,11 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
                 }
             } else {
                 let ids: Vec<_> = failures.iter().map(|f| f.id.as_str()).collect();
-                let detail = format!("{} 未通过；已返工 {} 次", ids.join("、"), rec.rework_cycles);
+                let n = rec.rework_cycles;
+                let detail = match lang {
+                    Lang::Zh => format!("{} 未通过；已返工 {n} 次", ids.join("、")),
+                    Lang::En => format!("{} failed after {}", ids.join(", "), plural(n as usize, "rework", "reworks")),
+                };
                 to_paused(inner, goal, PauseReason::VerifyFailedLimit, &detail)?;
             }
         }
@@ -215,6 +226,7 @@ async fn run_criteria(
     pin: &str,
     cancel: &Cancel,
 ) -> Result<Outcome> {
+    let lang = inner.lang();
     let dir_real = real(dir);
     let tmp = inner.paths.tmp(&format!("{goal}-verify"));
     std::fs::create_dir_all(&tmp)?;
@@ -247,14 +259,16 @@ async fn run_criteria(
             },
         )?;
         if !r.passed() {
-            return Ok(Outcome::EnvError(format!("准备命令 `{setup}` 失败：\n{}", tail_lines(&r.output_tail, 20))));
+            let tail = tail_lines(&r.output_tail, 20);
+            let detail = tr!(lang, "准备命令 `{setup}` 失败：\n{tail}", "The setup command `{setup}` failed:\n{tail}");
+            return Ok(Outcome::EnvError(detail));
         }
     }
 
     let mut failures = Vec::new();
     for c in contract.machine_criteria() {
         if cancel.is_cancelled() {
-            return Ok(Outcome::EnvError("验证被取消".into()));
+            return Ok(Outcome::EnvError(tr!(lang, "验证被取消", "Verification was cancelled")));
         }
         let CriterionKind::Exec { command, timeout_secs } = &c.kind else { continue };
         let spec = RunSpec::new(
@@ -265,11 +279,16 @@ async fn run_criteria(
         );
         let r = tower_verify::run(&spec, cancel).await;
         if r.is_environment_failure() {
-            return Ok(Outcome::EnvError(format!(
-                "{} 的命令 `{command}` 无法运行（{}）：\n{}",
-                c.id,
-                r.exit_code().map(|c| format!("退出码 {c}")).unwrap_or_else(|| "未启动".into()),
-                tail_lines(&r.output_tail, 20)
+            let id = &c.id;
+            let how = match r.exit_code() {
+                Some(code) => tr!(lang, "退出码 {code}", "exit code {code}"),
+                None => tr!(lang, "未启动", "did not start"),
+            };
+            let tail = tail_lines(&r.output_tail, 20);
+            return Ok(Outcome::EnvError(tr!(
+                lang,
+                "{id} 的命令 `{command}` 无法运行（{how}）：\n{tail}",
+                "The command `{command}` of {id} could not run ({how}):\n{tail}"
             )));
         }
         inner.append(
@@ -301,7 +320,10 @@ pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, body: &str) -> Result
     inner.open_inbox(NewInboxItem {
         goal_id: goal.into(),
         kind: InboxKind::ReviewReady,
-        title: format!("待验收：{}", rec.title),
+        title: {
+            let title = &rec.title;
+            tr!(inner.lang(), "待验收：{title}", "Ready to accept: {title}")
+        },
         body: body.into(),
         options: Vec::new(),
         allow_text: false,

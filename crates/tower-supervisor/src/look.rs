@@ -14,6 +14,20 @@ const BROWSERS: &[&str] = &[
     "/Applications/Arc.app/Contents/MacOS/Arc",
 ];
 
+/// Where each browser keeps its default data, under Application Support.
+fn app_support_dir(browser: &str) -> Option<&'static str> {
+    [
+        ("Google Chrome", "Google/Chrome"),
+        ("Chromium", "Chromium"),
+        ("Microsoft Edge", "Microsoft Edge"),
+        ("Brave Browser", "BraveSoftware/Brave-Browser"),
+        ("Arc", "Arc/User Data"),
+    ]
+    .into_iter()
+    .find(|(name, _)| browser.ends_with(&format!("/{name}")))
+    .map(|(_, dir)| dir)
+}
+
 pub(crate) fn browser() -> Option<&'static str> {
     BROWSERS.iter().copied().find(|b| Path::new(b).is_file())
 }
@@ -123,10 +137,16 @@ pub(crate) async fn capture(
         }
         None => tokio::process::Command::new(browser),
     };
-    // Its application-support folders go in its own throwaway home (on a
-    // Mac that never ran this browser they would otherwise be created in
-    // yours, which the profile does not allow).
     cmd.env("HOME", &profile_dir);
+    // Chromium looks up its default data folder (in your real home) before
+    // reading --user-data-dir, and aborts if it cannot create it — which the
+    // profile forbids. On a Mac that never opened this browser, Tower makes
+    // the empty folder first.
+    if let Some(sub) = app_support_dir(browser)
+        && let Some((_, home)) = env.iter().find(|(k, _)| k == "HOME")
+    {
+        let _ = std::fs::create_dir_all(Path::new(home).join("Library/Application Support").join(sub));
+    }
     let shot = tokio::time::timeout(
         Duration::from_secs(45),
         cmd.args([
@@ -174,7 +194,7 @@ pub(crate) async fn capture(
             // Chromium's last words, without its noise about displays.
             let err = String::from_utf8_lossy(&o.stderr);
             let mut tail: Vec<&str> =
-                err.lines().filter(|l| !l.contains("DisplayLink") && !l.trim().is_empty()).rev().take(3).collect();
+                err.lines().filter(|l| !l.contains("DisplayLink") && !l.trim().is_empty()).rev().take(6).collect();
             tail.reverse();
             Err(format!("the browser could not take the screenshot ({}): {}", o.status, tail.join(" / ")))
         }

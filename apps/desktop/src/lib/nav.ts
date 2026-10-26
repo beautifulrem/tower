@@ -24,10 +24,11 @@ export function route(): Route {
  */
 function transition(from: Route, to: Route, apply: () => void) {
   const crosses = (from.name === "review") !== (to.name === "review");
-  const dvt = document as Document & { startViewTransition?: (cb: () => void) => { finished: Promise<void> } };
+  const dvt = document as Document & { startViewTransition?: (cb: () => void) => { finished?: Promise<void> } | undefined };
   if (!dvt.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
   document.documentElement.dataset.transition = crosses ? "space" : "view";
-  dvt.startViewTransition(apply).finished.finally(() => delete document.documentElement.dataset.transition);
+  const vt = dvt.startViewTransition(apply);
+  void vt?.finished?.finally(() => delete document.documentElement.dataset.transition);
 }
 
 export function go(r: Route) {

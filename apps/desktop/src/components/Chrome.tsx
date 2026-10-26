@@ -191,7 +191,7 @@ export function CommandPalette() {
   });
   const groups = createMemo(() => {
     const list = scored();
-    if (needle()) return [{ title: "", items: list, offset: 0 }];
+    if (needle()) return list.length ? [{ title: "", items: list, offset: 0 }] : [];
     const recent = list.filter((s) => s.recent > 0).sort((a, b) => b.recent - a.recent).slice(0, 4);
     const ids = new Set(recent.map((s) => s.c.id));
     const cmds = list.filter((s) => !s.c.goalId && !ids.has(s.c.id));

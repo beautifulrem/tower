@@ -377,6 +377,16 @@ async fn hunks_can_be_undone_and_runs_rolled_back() {
     h.sup.rollback(&id, 1).await.unwrap();
     assert!(!ws.join("done.txt").exists() && !ws.join("scratch.txt").exists(), "back to where run 1 started");
     assert!(ws.join("README.md").exists());
+
+    // The rollback itself can be undone.
+    h.sup.undo_rollback(&id).await.unwrap();
+    assert_eq!(std::fs::read_to_string(ws.join("done.txt")).unwrap(), "by hand\n");
+    assert!(ws.join("scratch.txt").exists());
+
+    // A small edit made in the review is the human's.
+    h.sup.write_file(&id, "done.txt", "edited in review\n").await.unwrap();
+    assert_eq!(std::fs::read_to_string(ws.join("done.txt")).unwrap(), "edited in review\n");
+    assert!(h.sup.write_file(&id, "../escape.txt", "x").await.is_err());
 }
 
 /// Claude Code (or any ACP agent) runs behind the ACP bridge: Tower's own

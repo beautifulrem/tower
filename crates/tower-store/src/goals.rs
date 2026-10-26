@@ -142,6 +142,17 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// The snapshot run `run_no` of a goal started from, if recorded.
+    pub fn run_start_pin(&self, goal: &str, run_no: u32) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT start_pin FROM runs WHERE goal_id = ?1 AND run_no = ?2", params![goal, run_no], |r| {
+                r.get::<_, Option<String>>(0)
+            })
+            .optional()?
+            .flatten())
+    }
+
     /// Goals that are started but not merged yet (see
     /// [`LifecycleState::is_unmerged_work`]).
     pub fn unmerged_goals(&self) -> Result<Vec<GoalRecord>> {

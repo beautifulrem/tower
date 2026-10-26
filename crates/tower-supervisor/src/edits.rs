@@ -35,48 +35,90 @@ fn editable_workspace(inner: &Arc<Inner>, goal: &str) -> Result<(GoalRecord, Pat
     Ok((rec, ws))
 }
 
-/// Puts the workspace back to where run `run_no` started. The undone work
-/// stays in the trace and in that run's snapshots; the change is the
+/// Puts the workspace back to where run `run_no` started. What was there
+/// is saved first, so the rollback itself can be undone; the undone work
+/// also stays in the trace and that run's snapshots. The change is the
 /// human's, recorded as such, and needs verifying again.
 pub async fn rollback(inner: &Arc<Inner>, goal: &str, run_no: u32) -> Result<()> {
     let (_, ws) = editable_workspace(inner, goal)?;
     let lang = inner.lang();
-    let start = inner
-        .store(|s| s.trace(goal, None, 10_000))?
-        .into_iter()
-        .find_map(|e| match e.event {
-            EventKind::RunStarted { run_no: n, start_pin: Some(pin), .. } if n == run_no => Some(pin),
-            _ => None,
-        })
-        .ok_or_else(|| {
-            invalid(tr!(
-                lang,
-                "没有第 {run_no} 次运行开始时的快照",
-                "There is no snapshot from the start of run {run_no}"
-            ))
-        })?;
+    let start = inner.store(|s| s.run_start_pin(goal, run_no))?.ok_or_else(|| {
+        invalid(tr!(lang, "没有第 {run_no} 次运行开始时的快照", "There is no snapshot from the start of run {run_no}"))
+    })?;
+    let saved = save_workspace(inner, goal, &ws).await?;
+    restore(inner, goal, &ws, &start).await?;
+    inner.append(goal, EventKind::RolledBack { run_no, saved })?;
+    inner.emit_goal_now(goal);
+    Ok(())
+}
+
+/// Undoes the latest rollback: the workspace is as it was just before it.
+pub async fn undo_rollback(inner: &Arc<Inner>, goal: &str) -> Result<()> {
+    let (_, ws) = editable_workspace(inner, goal)?;
+    let lang = inner.lang();
+    let saved = match inner.store(|s| s.last_event(goal, "rolled_back"))?.map(|e| e.event) {
+        Some(EventKind::RolledBack { saved, .. }) => saved,
+        _ => return Err(invalid(tr!(lang, "没有可以撤销的回退", "There is no rollback to undo"))),
+    };
+    restore(inner, goal, &ws, &saved).await?;
+    inner.append(goal, EventKind::Note { text: tr!(lang, "你撤销了上一次回退", "You undid the last rollback") })?;
+    inner.emit_goal_now(goal);
+    Ok(())
+}
+
+/// Snapshots the workspace as it is now and keeps it (a ref, so git never
+/// collects it).
+async fn save_workspace(inner: &Arc<Inner>, goal: &str, ws: &std::path::Path) -> Result<String> {
+    let rec = inner.store(|s| s.goal(goal))?;
+    let base = rec.base_commit.ok_or_else(|| invalid("no base commit"))?;
     let git = inner.git.clone();
-    let (ws2, start2) = (ws.clone(), start.clone());
-    tokio::task::spawn_blocking(move || git.restore(&ws2, &start2)).await.map_err(|e| invalid(e.to_string()))??;
-    inner.append(
-        goal,
-        EventKind::Note {
-            text: tr!(
-                lang,
-                "你把工作区回退到了第 {run_no} 次运行开始时",
-                "You rolled the workspace back to the start of run {run_no}"
-            ),
-        },
-    )?;
+    let ws2 = ws.to_path_buf();
+    let at = tower_store::system_now();
+    tokio::task::spawn_blocking(move || -> Result<String> {
+        let snap = git.snapshot(&ws2, &base)?;
+        git.keep(&ws2, &format!("refs/tower/saved/{at}"), &snap.pin)?;
+        Ok(snap.pin)
+    })
+    .await
+    .map_err(|e| invalid(e.to_string()))?
+}
+
+async fn restore(inner: &Arc<Inner>, goal: &str, ws: &std::path::Path, commit: &str) -> Result<()> {
+    let git = inner.git.clone();
+    let (ws2, commit2) = (ws.to_path_buf(), commit.to_string());
+    tokio::task::spawn_blocking(move || git.restore(&ws2, &commit2)).await.map_err(|e| invalid(e.to_string()))??;
     if let Some((_, Some(old))) = run::repin(inner, goal).await? {
         let git = inner.git.clone();
         let new = inner.store(|s| s.goal(goal))?.pin.unwrap_or_default();
+        let ws = ws.to_path_buf();
         if let Ok(Ok(files)) = tokio::task::spawn_blocking(move || git.changed_between(&ws, &old, &new)).await
             && !files.is_empty()
         {
             inner.append(goal, EventKind::HumanEdited { files })?;
         }
     }
+    Ok(())
+}
+
+/// Replaces one file of the workspace with the human's own text (a small
+/// edit made in the review). Recorded as the human's edit.
+pub async fn write_file(inner: &Arc<Inner>, goal: &str, path: &str, text: &str) -> Result<()> {
+    let (_, ws) = editable_workspace(inner, goal)?;
+    let lang = inner.lang();
+    let rel = std::path::Path::new(path);
+    if rel.is_absolute()
+        || rel.components().any(|c| matches!(c, std::path::Component::ParentDir))
+        || path.starts_with(".git")
+    {
+        return Err(invalid(tr!(lang, "只能修改工作区里的文件", "Only files inside the workspace can be edited")));
+    }
+    let target = ws.join(rel);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&target, text)?;
+    inner.append(goal, EventKind::HumanEdited { files: vec![path.to_string()] })?;
+    run::repin(inner, goal).await?;
     inner.emit_goal_now(goal);
     Ok(())
 }

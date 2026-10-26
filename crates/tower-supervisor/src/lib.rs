@@ -127,6 +127,7 @@ impl Supervisor {
         });
         let sup = Self { inner };
         sup.spawn_loops();
+        sweep(&sup.inner.paths);
         sup.recover().await;
         Ok(sup)
     }
@@ -162,6 +163,8 @@ impl Supervisor {
             loop {
                 tick.tick().await;
                 let Some(inner) = weak.upgrade() else { break };
+                // Snoozed items whose time came show up again.
+                inner.emit_inbox();
                 if let Err(e) = pr::check_integrations(&inner).await {
                     tracing::warn!(error = %e, "integration check failed");
                 }
@@ -379,7 +382,7 @@ impl Supervisor {
                 "The demo project's tests need Node.js; install Node first"
             )));
         }
-        if self.inner.env.which("python3").is_none() {
+        if !environment::usable(&self.inner, "python3") {
             return Err(invalid(tr!(
                 lang,
                 "演示引擎需要 python3（安装 Xcode 命令行工具即可：xcode-select --install）",
@@ -395,7 +398,11 @@ impl Supervisor {
         let root = paths::real(&dir).display().to_string();
         let project = match self.inner.store(|s| s.project_by_root(&root))? {
             Some(p) => p,
-            None => self.add_project(&root).await?,
+            None => {
+                let p = self.add_project(&root).await?;
+                project_check::spawn(self.inner.clone(), p.id.clone());
+                p
+            }
         };
         let (title, contract) = demo::goal(lang);
         self.create_goal(NewGoalInput { project_id: project.id, title, contract, ratify: true }).await
@@ -422,7 +429,8 @@ impl Supervisor {
             s.add_project(NewProject { name, root: root.display().to_string(), base_branch: branch, test_command })
         })?;
         self.emit_projects();
-        project_check::spawn(self.inner.clone(), project.id.clone());
+        // The base check runs your setup with the network, so it waits for
+        // you to ask for it (check_project); the demo asks for itself.
         Ok(project)
     }
 
@@ -573,9 +581,27 @@ impl Supervisor {
         edits::rollback(&self.inner, id, run_no).await
     }
 
+    /// Undoes the latest rollback.
+    pub async fn undo_rollback(&self, id: &str) -> Result<()> {
+        edits::undo_rollback(&self.inner, id).await
+    }
+
+    /// Writes one workspace file with the human's text (an edit in review).
+    pub async fn write_file(&self, id: &str, path: &str, text: &str) -> Result<()> {
+        edits::write_file(&self.inner, id, path, text).await
+    }
+
     /// Undoes one hunk (0-based, as in the review's base → snapshot diff).
     pub async fn revert_hunk(&self, id: &str, path: &str, hunk: usize) -> Result<()> {
         edits::revert_hunk(&self.inner, id, path, hunk).await
+    }
+
+    /// "Remind me later": hides a Needs-You item until `until` (ms since
+    /// the epoch); it comes back, and notifies again, then.
+    pub fn snooze(&self, inbox_id: &str, until: Option<i64>) -> Result<()> {
+        self.inner.store(|s| s.snooze_inbox(inbox_id, until))?;
+        self.inner.emit_inbox();
+        Ok(())
     }
 
     pub async fn answer_assumption(&self, inbox_id: &str, approved: bool, note: &str) -> Result<()> {
@@ -744,6 +770,22 @@ impl Supervisor {
 
     fn no_workspace(&self) -> Error {
         invalid(tr!(self.inner.lang(), "这个目标还没有工作区", "This goal has no workspace yet"))
+    }
+}
+
+/// Removes what an interrupted verification or check left behind (Tower
+/// quit or crashed mid-way). Nothing runs yet at this point.
+fn sweep(paths: &Paths) {
+    for dir in ["verify", "verify-cache", "checks"] {
+        let _ = std::fs::remove_dir_all(paths.root.join(dir));
+    }
+    if let Ok(entries) = std::fs::read_dir(paths.root.join("tmp")) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.ends_with("-verify") || name.ends_with("-base") || name.ends_with("-orig") {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
     }
 }
 

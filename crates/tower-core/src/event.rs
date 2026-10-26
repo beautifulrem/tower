@@ -235,6 +235,12 @@ pub enum EventKind {
         files: Vec<String>,
     },
     /// The human pushed the accepted branch (and maybe opened a PR).
+    /// The human put the workspace back to where run `run_no` started;
+    /// `saved` is the snapshot of what was there, for undoing it.
+    RolledBack {
+        run_no: u32,
+        saved: String,
+    },
     /// The human allowed verification's setup to use the network for the
     /// dependency changes with this fingerprint.
     SetupNetworkApproved {
@@ -265,7 +271,8 @@ impl EventKind {
             | Self::Steered { .. }
             | Self::HumanCheck { .. }
             | Self::ClaimReviewed { .. }
-            | Self::SetupNetworkApproved { .. } => Source::Human,
+            | Self::SetupNetworkApproved { .. }
+            | Self::RolledBack { .. } => Source::Human,
             Self::SentinelHit { .. }
             | Self::Stalled { .. }
             | Self::HumanEdited { .. }
@@ -330,6 +337,7 @@ impl EventKind {
             Self::BranchPushed { .. } => "branch_pushed",
             Self::PrChecked { .. } => "pr_checked",
             Self::SetupNetworkApproved { .. } => "setup_network_approved",
+            Self::RolledBack { .. } => "rolled_back",
         }
     }
 }

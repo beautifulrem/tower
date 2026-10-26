@@ -130,13 +130,28 @@ impl Store {
             .ok_or_else(|| StoreError::NotFound(format!("inbox item {id}")))
     }
 
-    /// Open items, most urgent first, then oldest first.
+    /// Open items, most urgent first, then oldest first; items snoozed
+    /// until later are left out until then.
     pub fn open_inbox_items(&self) -> Result<Vec<InboxItem>> {
-        let mut stmt =
-            self.conn.prepare(&format!("{ITEM_SQL} WHERE i.resolved_at IS NULL ORDER BY i.urgency, i.created_at"))?;
+        let mut stmt = self.conn.prepare(&format!(
+            "{ITEM_SQL} WHERE i.resolved_at IS NULL AND (i.snoozed_until IS NULL OR i.snoozed_until <= ?1)
+             ORDER BY i.urgency, i.created_at"
+        ))?;
         let lang = self.lang();
-        let rows = stmt.query_map([], |r| row_to_item(r, lang))?;
+        let rows = stmt.query_map([self.now()], |r| row_to_item(r, lang))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Hides an open item until `until` (ms since the epoch), or shows it
+    /// again with `None`.
+    pub fn snooze_inbox(&mut self, id: &str, until: Option<tower_core::Millis>) -> Result<()> {
+        let n = self
+            .conn
+            .execute("UPDATE inbox SET snoozed_until = ?2 WHERE id = ?1 AND resolved_at IS NULL", params![id, until])?;
+        if n == 0 {
+            return Err(StoreError::NotFound(format!("open inbox item {id}")));
+        }
+        Ok(())
     }
 
     pub fn resolve_inbox(&mut self, id: &str, response: &str) -> Result<Resolved> {

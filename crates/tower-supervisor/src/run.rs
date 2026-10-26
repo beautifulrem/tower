@@ -388,22 +388,28 @@ fn report_stall(inner: &Arc<Inner>, run: &Arc<Run>, detector: &str, detail: &str
     }
     let g = run.goal_id.as_str();
     let lang = inner.lang();
-    let _ = inner.append(g, EventKind::Stalled { detector: detector.into(), detail: detail.into() });
-    let _ = inner.open_inbox(NewInboxItem {
-        goal_id: g.into(),
-        kind: InboxKind::Stalled,
-        title: tr!(lang, "可能卡住：{detail}", "May be stuck: {detail}"),
-        subject: detail.into(),
-        body: tr!(
-            lang,
-            "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。",
-            "The agent is still running. You can keep waiting, write a steer, or pause it."
-        ),
-        options: Choice::labels(&[Choice::KeepWaiting, Choice::Pause], lang),
-        allow_text: true,
-        urgency: 2,
-        engine_ref: None,
-    });
+    let opened =
+        inner.append(g, EventKind::Stalled { detector: detector.into(), detail: detail.into() }).and_then(|_| {
+            inner.open_inbox(NewInboxItem {
+                goal_id: g.into(),
+                kind: InboxKind::Stalled,
+                title: tr!(lang, "可能卡住：{detail}", "May be stuck: {detail}"),
+                subject: detail.into(),
+                body: tr!(
+                    lang,
+                    "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。",
+                    "The agent is still running. You can keep waiting, write a steer, or pause it."
+                ),
+                options: Choice::labels(&[Choice::KeepWaiting, Choice::Pause], lang),
+                allow_text: true,
+                urgency: 2,
+                engine_ref: None,
+            })
+        });
+    // A stall that cannot be shown is still worth a trace line.
+    if let Err(e) = opened {
+        tracing::error!(goal = g, error = %e, "could not raise a stall");
+    }
 }
 
 fn fail_to_start(inner: &Arc<Inner>, goal_id: &str, detail: &str) -> Result<()> {
@@ -633,12 +639,24 @@ fn observe(inner: &Inner, goal: &str, args: &Value, passed: bool) -> Result<()> 
     for c in &contract.criteria {
         if let CriterionKind::Exec { command: crit, .. } = &c.kind
             && !crit.trim().is_empty()
-            && command.contains(crit.trim())
+            && same_command(command, crit)
         {
             inner.append(goal, EventKind::Observed { criterion: c.id.clone(), passed })?;
         }
     }
     Ok(())
+}
+
+/// Whether the agent ran exactly a criterion's command: after leading
+/// `cd …&&` steps, nothing else — a pipe, `;` or `||` can change the exit
+/// status, so such a run says nothing about the criterion.
+fn same_command(ran: &str, criterion: &str) -> bool {
+    let norm = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut parts: Vec<&str> = ran.split("&&").map(str::trim).collect();
+    while parts.len() > 1 && parts[0].starts_with("cd ") {
+        parts.remove(0);
+    }
+    norm(&parts.join(" && ")) == norm(criterion)
 }
 
 async fn check_budget(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
@@ -873,5 +891,19 @@ fn head(s: &str, n: usize) -> &str {
     match s.char_indices().nth(n) {
         Some((i, _)) => &s[..i],
         None => s,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::same_command;
+
+    #[test]
+    fn only_the_exact_criterion_command_is_an_observation() {
+        assert!(same_command("npm test", "npm test"));
+        assert!(same_command("cd /w/G-1 && npm  test", "npm test"));
+        assert!(!same_command("npm test | tail -5", "npm test"), "a pipe hides the exit status");
+        assert!(!same_command("npm test || true", "npm test"));
+        assert!(!same_command("npm test -- --grep cart", "npm test"));
     }
 }

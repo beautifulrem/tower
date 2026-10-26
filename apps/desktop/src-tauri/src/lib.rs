@@ -75,6 +75,9 @@ impl TauriSink {
         let now = tower_store::system_now();
         let quiet = settings.as_ref().and_then(|s| s.quiet_until).is_some_and(|until| until > now);
         let mut seen = self.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Forget items no longer open (answered, or snoozed): a snoozed item
+        // that comes back is announced again.
+        seen.retain(|id| items.iter().any(|i| &i.id == id));
         for item in items {
             let muted = settings.as_ref().is_some_and(|s| s.muted_goals.contains(&item.goal_id));
             if !seen.insert(item.id.clone()) || focused || quiet || muted {
@@ -223,6 +226,21 @@ async fn revert_hunk(sup: Sup<'_>, id: String, path: String, hunk: usize) -> Res
 #[tauri::command]
 fn check_project(sup: Sup<'_>, id: String) -> Res<()> {
     sup.check_project(&id)
+}
+
+#[tauri::command]
+fn snooze(sup: Sup<'_>, inbox_id: String, until: Option<i64>) -> Res<()> {
+    sup.snooze(&inbox_id, until)
+}
+
+#[tauri::command]
+async fn undo_rollback(sup: Sup<'_>, id: String) -> Res<()> {
+    sup.undo_rollback(&id).await
+}
+
+#[tauri::command]
+async fn write_file(sup: Sup<'_>, id: String, path: String, text: String) -> Res<()> {
+    sup.write_file(&id, &path, &text).await
 }
 
 #[tauri::command]
@@ -460,6 +478,9 @@ pub fn run() {
             ui_state,
             set_ui_state,
             start_demo,
+            undo_rollback,
+            write_file,
+            snooze,
             check_project,
             rollback,
             revert_hunk,

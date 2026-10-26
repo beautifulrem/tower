@@ -187,6 +187,10 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (goal_id, criterion)
     );
     "#,
+    // 11: "remind me later" on Needs-You items
+    r#"
+    ALTER TABLE inbox ADD COLUMN snoozed_until INTEGER;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

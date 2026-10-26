@@ -16,7 +16,12 @@ start_pin?: string, } | { "kind": "run_ended", run_no: number, outcome: string, 
  * What the call was about (its start summary), so the trace can
  * show it without pairing start and end.
  */
-target?: string, } | { "kind": "assistant_message", text: string, } | { "kind": "claim", claim_id: string, claim: ClaimKind, text: string, criterion?: string | null, } | { "kind": "submitted", summary: string, } | { "kind": "pinned", pin: string, files: number, additions: number, deletions: number, } | { "kind": "verify_started", pin: string, } | { "kind": "setup_finished", command: string, ok: boolean, exit_code: number | null, duration_ms: number, } | { "kind": "criterion_result", criterion: string, pin: string, passed: boolean, exit_code: number | null, duration_ms: number, output_tail: string, 
+target?: string, 
+/**
+ * The sandbox refused something the call tried (a read or write
+ * outside the goal's directories).
+ */
+denied: boolean, } | { "kind": "assistant_message", text: string, } | { "kind": "claim", claim_id: string, claim: ClaimKind, text: string, criterion?: string | null, } | { "kind": "submitted", summary: string, } | { "kind": "pinned", pin: string, files: number, additions: number, deletions: number, } | { "kind": "verify_started", pin: string, } | { "kind": "setup_finished", command: string, ok: boolean, exit_code: number | null, duration_ms: number, } | { "kind": "criterion_result", criterion: string, pin: string, passed: boolean, exit_code: number | null, duration_ms: number, output_tail: string, 
 /**
  * Run with the held-out tests present: the output is for the human
  * only, never the agent.

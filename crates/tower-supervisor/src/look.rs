@@ -96,33 +96,59 @@ pub(crate) async fn capture(
         return Err(format!("{url} did not answer within {}s", timeout.as_secs()));
     }
     let profile_dir = tempfile_dir();
+    let out_dir = out.parent().unwrap_or(Path::new("/nonexistent")).to_path_buf();
+    // Confined by Tower's own profile on macOS (see `sandbox::browser_profile`).
+    let confined = crate::sandbox::available().then(|| {
+        let sb = profile_dir.join("browser.sb");
+        let home = env.iter().find(|(k, _)| k == "HOME").map(|(_, v)| PathBuf::from(v)).unwrap_or_default();
+        let text = crate::sandbox::browser_profile(
+            &home,
+            &[&profile_dir, &out_dir],
+            network,
+            &crate::sandbox::proxy_ports(env),
+        );
+        std::fs::write(&sb, text).map(|_| sb)
+    });
+    let mut cmd = match &confined {
+        Some(Ok(sb)) => {
+            let mut c = tokio::process::Command::new("/usr/bin/sandbox-exec");
+            c.arg("-f").arg(sb).arg(browser).arg("--no-sandbox");
+            c
+        }
+        Some(Err(e)) => {
+            stop();
+            return Err(format!("could not prepare the browser's sandbox: {e}"));
+        }
+        None => tokio::process::Command::new(browser),
+    };
     let shot = tokio::time::timeout(
         Duration::from_secs(45),
-        tokio::process::Command::new(browser)
-            .args([
-                "--headless=new",
-                "--disable-gpu",
-                "--hide-scrollbars",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--force-device-scale-factor=2",
-                "--window-size=1280,800",
-                "--virtual-time-budget=3000",
-            ])
-            .arg(format!("--user-data-dir={}", profile_dir.display()))
-            // The page is the agent's code, and the browser runs outside the
-            // sandbox: without the network, everything but this machine goes
-            // to a proxy that does not exist.
-            .args(if network {
-                vec![]
-            } else {
-                vec!["--proxy-server=http://127.0.0.1:9".to_string(), "--proxy-bypass-list=<local>".to_string()]
-            })
-            .arg(format!("--screenshot={}", out.display()))
-            .arg(url)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status(),
+        cmd.args([
+            "--headless=new",
+            "--disable-breakpad",
+            "--disable-crash-reporter",
+            "--disable-gpu",
+            "--hide-scrollbars",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--force-device-scale-factor=2",
+            "--window-size=1280,800",
+            "--virtual-time-budget=3000",
+        ])
+        .arg(format!("--user-data-dir={}", profile_dir.display()))
+        // The page is the agent's code, and the browser runs outside the
+        // sandbox: without the network, everything but this machine goes
+        // to a proxy that does not exist.
+        .args(if network {
+            vec![]
+        } else {
+            vec!["--proxy-server=http://127.0.0.1:9".to_string(), "--proxy-bypass-list=<local>".to_string()]
+        })
+        .arg(format!("--screenshot={}", out.display()))
+        .arg(url)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status(),
     )
     .await;
     stop();

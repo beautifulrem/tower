@@ -189,7 +189,9 @@ impl Contract {
                 "没有可执行的验收标准：Agent 的“完成”无法被机器验证，只能由你人工判断",
             ));
         }
-        if !(self.budget.soft_usd > 0.0) || !(self.budget.hard_usd > 0.0) {
+        // Written so that NaN also fails.
+        let positive = |v: f64| v.partial_cmp(&0.0) == Some(std::cmp::Ordering::Greater);
+        if !positive(self.budget.soft_usd) || !positive(self.budget.hard_usd) {
             issues.push(err("budget", "预算必须大于 0"));
         } else if self.budget.soft_usd > self.budget.hard_usd {
             issues.push(err("budget", "软上限不能高于硬上限"));

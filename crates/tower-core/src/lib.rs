@@ -8,6 +8,7 @@
 //! Design references: `docs/02-domain-model.md`, `docs/03-goal-lifecycle.md`,
 //! `docs/07-verification-and-honesty.md`.
 
+pub mod briefing;
 pub mod contract;
 pub mod event;
 pub mod honesty;

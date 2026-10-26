@@ -180,6 +180,11 @@ fn set_ui_state(sup: Sup<'_>, id: String, key: String, value: Option<String>) ->
 }
 
 #[tauri::command]
+async fn file_text(sup: Sup<'_>, id: String, path: String, old: bool, pin: Option<String>) -> Res<Option<String>> {
+    sup.file_text(&id, &path, old, pin).await
+}
+
+#[tauri::command]
 async fn start_demo(sup: Sup<'_>) -> Res<GoalSummary> {
     sup.start_demo().await
 }
@@ -414,6 +419,7 @@ pub fn run() {
             ui_state,
             set_ui_state,
             start_demo,
+            file_text,
             trace,
             inbox,
             review,

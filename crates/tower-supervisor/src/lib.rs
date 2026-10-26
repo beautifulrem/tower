@@ -534,6 +534,27 @@ impl Supervisor {
         Ok(())
     }
 
+    /// One file of a goal as it was on the base commit (`old`) or is in the
+    /// reviewed snapshot, for expanding context around a hunk. Large files
+    /// are refused.
+    pub async fn file_text(&self, id: &str, path: &str, old: bool, pin: Option<String>) -> Result<Option<String>> {
+        let rec = self.inner.store(|s| s.goal(id))?;
+        let lang = self.inner.lang();
+        let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else {
+            return Err(invalid(tr!(lang, "这个目标还没有工作区", "This goal has no workspace yet")));
+        };
+        let rev = if old { base } else { pin.or(rec.pin).ok_or_else(|| invalid("no snapshot"))? };
+        let git = self.inner.git.clone();
+        let path = path.to_string();
+        let text = tokio::task::spawn_blocking(move || git.file_at(Path::new(&ws), &rev, &path))
+            .await
+            .map_err(|e| invalid(e.to_string()))?;
+        if text.as_ref().is_some_and(|t| t.len() > 2 * 1024 * 1024) {
+            return Err(invalid(tr!(lang, "文件太大，无法展开", "The file is too large to expand")));
+        }
+        Ok(text)
+    }
+
     /// The interface's per-goal state (viewed files, draft comments, last
     /// reviewed snapshot), as stored JSON strings by key.
     pub fn ui_state(&self, id: &str) -> Result<std::collections::BTreeMap<String, String>> {

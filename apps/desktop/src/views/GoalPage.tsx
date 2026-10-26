@@ -26,6 +26,7 @@ import { useKeys } from "../lib/keys";
 import { useMenu } from "../lib/menu";
 import { t } from "../lib/i18n";
 import { effectiveEngine, engineLabel, hasIssue, pauseLabel, runOutcomeLabel, runPurposeLabel, stateLabel } from "../lib/labels";
+import { linger } from "../lib/linger";
 import { go } from "../lib/nav";
 import { act, onTrace, setGoalMuted, state, toast } from "../lib/store";
 
@@ -74,7 +75,9 @@ export function GoalPage(props: { id: string }) {
   });
 
   // Review-ready items live in the inbox; on the goal page the header says it.
-  const inbox = () => state.inbox.filter((i) => i.goal_id === props.id && i.kind !== "review_ready");
+  const inbox = createMemo(() => state.inbox.filter((i) => i.goal_id === props.id && i.kind !== "review_ready"));
+  // An answered card folds away over 160ms instead of vanishing on the next update.
+  const shownInbox = linger(inbox, (i) => i.id);
 
   // A rollback can be undone until the next run starts; the detail says so, and a fresh event updates it at once.
   const [undone, setUndone] = createSignal(false);
@@ -250,9 +253,15 @@ export function GoalPage(props: { id: string }) {
             </div>
           </Show>
 
-          <Show when={inbox().length > 0}>
+          <Show when={shownInbox.list().length > 0}>
             <div class="goal-decisions">
-              <For each={inbox()}>{(it) => <DecisionCard item={it} showGoal={false} />}</For>
+              <For each={shownInbox.list()}>
+                {(it) => (
+                  <div class="decision-slot" classList={{ leaving: shownInbox.leaving(it.id) }}>
+                    <DecisionCard item={it} showGoal={false} />
+                  </div>
+                )}
+              </For>
             </div>
           </Show>
 

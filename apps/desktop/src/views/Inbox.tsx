@@ -16,6 +16,7 @@ import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { isBlocking } from "../lib/labels";
+import { type Lingering, linger } from "../lib/linger";
 import { go } from "../lib/nav";
 import { startQueue } from "../lib/reviewQueue";
 import { goalList, state } from "../lib/store";
@@ -68,16 +69,20 @@ export function Inbox() {
   };
   useKeys([{ key: "shift+r", run: reviewAll, desc: () => t("inbox.reviewAll") }], () => t("common.needsYou"));
 
-  const Group = (props: { title: string; list: ReturnType<typeof blocking>; offset: number; aside?: JSX.Element }) => (
-    <Show when={props.list.length > 0}>
+  // An answered card folds away over 160ms instead of vanishing on the next update.
+  const shownBlocking = linger(blocking, (i) => i.id);
+  const shownReview = linger(review, (i) => i.id);
+
+  const Group = (props: { title: string; count: number; shown: Lingering<InboxItem>; offset: number; aside?: JSX.Element }) => (
+    <Show when={props.shown.list().length > 0}>
       <h2 class="scale-title halt">
         {props.title}
-        <span class="num">{props.list.length}</span>
+        <span class="num">{props.count}</span>
         {props.aside}
       </h2>
-      <For each={props.list}>
+      <For each={props.shown.list()}>
         {(it, i) => (
-          <div data-decision={it.id} onMouseEnter={() => setFocus(props.offset + i())} onFocusIn={() => setFocus(props.offset + i())}>
+          <div class="decision-slot" classList={{ leaving: props.shown.leaving(it.id) }} data-decision={it.id} onMouseEnter={() => setFocus(props.offset + i())} onFocusIn={() => setFocus(props.offset + i())}>
             <DecisionCard item={it} focused={current()?.id === it.id} quiet />
           </div>
         )}
@@ -88,7 +93,7 @@ export function Inbox() {
   return (
     <div class="inbox">
       <Show
-        when={items().length > 0}
+        when={items().length > 0 || shownBlocking.list().length > 0 || shownReview.list().length > 0}
         fallback={
           <Empty
             title={t("inbox.emptyTitle")}
@@ -103,10 +108,11 @@ export function Inbox() {
           </Empty>
         }
       >
-        <Group title={t("inbox.blocking")} list={blocking()} offset={0} />
+        <Group title={t("inbox.blocking")} count={blocking().length} shown={shownBlocking} offset={0} />
         <Group
           title={t("inbox.toReview")}
-          list={review()}
+          count={review().length}
+          shown={shownReview}
           offset={blocking().length}
           aside={
             <Show when={review().length > 1}>

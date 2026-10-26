@@ -23,6 +23,7 @@ import { useKeys } from "../lib/keys";
 import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
+import { linger } from "../lib/linger";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 
@@ -45,6 +46,8 @@ export function Overview() {
   const projectOk = (projectId: string) => project() === ALL || project() === projectId || !state.projects.some((p) => p.id === project());
 
   const decisions = createMemo(() => state.inbox.filter((i) => isBlocking(i) && projectOk(state.goals[i.goal_id]?.project_id ?? "")));
+  // An answered card folds away over 160ms instead of vanishing on the next update.
+  const shownDecisions = linger(decisions, (i) => i.id);
   const decided = createMemo(() => new Set(decisions().map((d) => d.goal_id)));
   const live = createMemo(() =>
     goalList().filter((g) => g.state !== "archived" && g.state !== "abandoned" && projectOk(g.project_id) && !decided().has(g.id)),
@@ -147,16 +150,16 @@ export function Overview() {
             </Empty>
           }
         >
-          <Show when={decisions().length > 0}>
+          <Show when={shownDecisions.list().length > 0}>
             <section class="board-group">
               <h2 class="scale-title halt">
                 {t("group.needs_you")}
                 <span class="num">{decisions().length}</span>
               </h2>
               <div class="board-queue">
-                <For each={decisions()}>
+                <For each={shownDecisions.list()}>
                   {(it) => (
-                    <div data-decision={it.id} onMouseEnter={() => setSelected(it.id)} onFocusIn={() => setSelected(it.id)}>
+                    <div class="decision-slot" classList={{ leaving: shownDecisions.leaving(it.id) }} data-decision={it.id} onMouseEnter={() => setSelected(it.id)} onFocusIn={() => setSelected(it.id)}>
                       <DecisionCard item={it} focused={selected() === it.id} quiet />
                     </div>
                   )}

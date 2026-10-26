@@ -477,6 +477,82 @@ pub fn scan_with(files: &[DiffFile], scope: &Scope, commands: &[String], lang: L
     hits
 }
 
+/// The literals the base's tests expect or feed in (quoted strings of two
+/// or more characters, numbers of two or more digits), from assertion lines.
+pub fn assertion_literals<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in lines {
+        if !is_assertion(line) {
+            continue;
+        }
+        for lit in shape(line).1 {
+            let digits = lit.chars().filter(char::is_ascii_digit).count();
+            let numeric = lit.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '_');
+            let keep = if numeric { digits >= 2 } else { lit.chars().count() >= 2 && !lit.trim().is_empty() };
+            if keep && !out.contains(&lit) {
+                out.push(lit);
+            }
+            if out.len() >= 500 {
+                return out;
+            }
+        }
+    }
+    out
+}
+
+/// Program code that branches on the very values the tests use: the shape
+/// of a special case written to pass a known test rather than a fix.
+/// `held_out` says whether held-out tests would have caught it.
+pub fn special_cases(files: &[DiffFile], literals: &[String], held_out: bool, lang: Lang) -> Option<SentinelHit> {
+    if literals.is_empty() {
+        return None;
+    }
+    let branches = |l: &str| {
+        let t = l.trim_start();
+        t.starts_with("if ")
+            || t.starts_with("if(")
+            || t.starts_with("elif ")
+            || t.starts_with("case ")
+            || t.starts_with("when ")
+            || t.contains("===")
+            || t.contains("==")
+            || t.contains(" ? ")
+    };
+    let mut found = Vec::new();
+    for f in files.iter().filter(|f| crate::roles::role(&f.path) == crate::roles::Role::Source) {
+        for line in added_lines(f).filter(|l| branches(l)) {
+            let numbers: Vec<String> = shape(line).1;
+            let hit = literals.iter().any(|lit| {
+                let numeric = lit.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '_');
+                if numeric {
+                    numbers.contains(lit)
+                } else {
+                    [format!("\"{lit}\""), format!("'{lit}'"), format!("`{lit}`")]
+                        .iter()
+                        .any(|q| line.contains(q.as_str()))
+                }
+            });
+            if hit {
+                found.push(format!("{}: {}", f.path, line.trim()));
+            }
+            if found.len() >= 8 {
+                break;
+            }
+        }
+    }
+    if found.is_empty() {
+        return None;
+    }
+    let mut detail = found.join("\n");
+    if !held_out {
+        detail.push_str(lang.pick(
+            "\n这个项目没有保留测试，可见测试之外没有东西能发现这种写法。",
+            "\nThis project has no held-out tests, so nothing beyond the visible tests could catch it.",
+        ));
+    }
+    Some(hit("special_cases_test_inputs", 2, detail, lang))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -506,6 +582,24 @@ mod tests {
 
     fn ids(hits: &[SentinelHit]) -> Vec<&str> {
         hits.iter().map(|h| h.sentinel.as_str()).collect()
+    }
+
+    #[test]
+    fn code_that_branches_on_the_tests_values_is_flagged() {
+        let literals = assertion_literals([
+            "  assert.equal(total([{ price: 17, qty: 3 }]), 51);",
+            "expect(greet('Ada')).toBe('Hello, Ada')",
+        ]);
+        assert!(literals.contains(&"51".to_string()) && literals.contains(&"Hello, Ada".to_string()), "{literals:?}");
+        let files = vec![
+            file("src/cart.js", FileStatus::Modified, &["  if (items[0].price === 17) return 51;"], &[]),
+            file("src/greet.js", FileStatus::Modified, &["  return 'Hello, ' + name;"], &[]),
+        ];
+        let hit = special_cases(&files, &literals, false, Lang::En).expect("flagged");
+        assert!(
+            hit.detail.contains("src/cart.js") && !hit.detail.contains("greet") && hit.detail.contains("no held-out")
+        );
+        assert!(special_cases(&files[1..], &literals, true, Lang::En).is_none());
     }
 
     #[test]

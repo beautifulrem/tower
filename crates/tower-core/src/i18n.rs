@@ -294,6 +294,9 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
             "源码触及断言库、测试框架或模块加载",
             "Program code reaches into assertion libraries, test runners or the module loader",
         ),
+        "special_cases_test_inputs" => {
+            lang.pick("源码针对测试用到的值写了特例", "Program code special-cases the values the tests use")
+        }
         "assertions_unchecked" => lang.pick(
             "源码触及测试框架，而断言没能检查",
             "Program code reaches into the tests, and the assertions could not be checked",

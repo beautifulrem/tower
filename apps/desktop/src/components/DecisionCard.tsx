@@ -4,6 +4,8 @@
  * a page of decisions does not become a page of amber. In lists, only the
  * focused card lights its strip; the others stay quiet with their ◆.
  *
+ * The strip says the kind (`item.kind`), the question line says only the
+ * variable part (`item.subject`); both arrive in the interface language.
  * A newly arrived card decays from a brighter amber once (700ms): the only
  * motion Tower makes on its own. Destructive options never fire from one
  * press: the first arms the button for two seconds, the second confirms.
@@ -17,20 +19,13 @@ import { ago, count } from "../lib/format";
 import { t } from "../lib/i18n";
 import { approves, optionTone } from "../lib/labels";
 import { go } from "../lib/nav";
-import { act, state } from "../lib/store";
-import { NeedsYouMark, Seal } from "./Glyph";
+import { act, state, toast } from "../lib/store";
+import { NeedsYouMark, NoticeMark, Seal } from "./Glyph";
 import { CriteriaBar } from "./Honesty";
+import { PrLine } from "./Pr";
 import { Button, Kbd } from "./ui";
 
 const kindLabel = (k: InboxItem["kind"]): string => t(`inboxKind.${k}`);
-
-/**
- * Titles carry the kind in their prefix; the strip already says it. Items
- * keep the language they were created in, so both languages are stripped.
- */
-function bareTitle(title: string): string {
-  return title.replace(/^(已暂停|需要你批准|可能卡住|待验收|Paused|Approval needed|May be stuck|Ready to accept)\s*[：:]\s*/, "");
-}
 
 /** The one armed destructive option, shared so the keyboard and the mouse agree. */
 const [armed, setArmed] = createSignal<{ item: string; option: number; until: number } | null>(null);
@@ -60,6 +55,10 @@ export async function chooseOption(item: InboxItem, index: number, text = ""): P
   return (await act(() => api.answer(item.id, option))) !== undefined;
 }
 
+/** Items whose body is machine text (a command to approve, changed manifests, failing checks). */
+const codeBody = (item: InboxItem, pauseReason: string | null | undefined) =>
+  item.kind === "approval" || item.kind === "ci_failed" || (item.kind === "paused" && pauseReason === "dependencies_changed");
+
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean; ref?: (el: HTMLElement) => void }) {
   const [text, setText] = createSignal("");
   const [busy, setBusy] = createSignal(false);
@@ -75,19 +74,27 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
     const a = armed();
     return a && a.item === it().id && a.option === i && a.until > tick() ? Math.ceil((a.until - tick()) / 1000) : null;
   };
+  // Letting the verification setup reach the network is a security decision: the card says so.
+  const networkDecision = () => it().kind === "paused" && goal()?.pause_reason === "dependencies_changed";
 
   const send = async (i: number) => {
     setBusy(true);
     const sent = await chooseOption(it(), i, text());
     setBusy(false);
-    if (sent) setLeaving(true);
+    if (sent) {
+      setLeaving(true);
+      toast("success", t("decision.replied"), { ttl: 2000 });
+    }
   };
   const reply = async () => {
     if (!text().trim()) return;
     setBusy(true);
     const ok = await act(() => api.answer(it().id, text().trim()));
     setBusy(false);
-    if (ok !== undefined) setLeaving(true);
+    if (ok !== undefined) {
+      setLeaving(true);
+      toast("success", t("decision.replied"), { ttl: 2000 });
+    }
   };
   const isAssumption = () => it().kind === "assumption";
 
@@ -98,7 +105,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
       classList={{ focused: !!props.focused, quiet: !!props.quiet && !props.focused, leaving: leaving() }}
       data-new={fresh ? "true" : undefined}
       tabindex="-1"
-      aria-label={`${kindLabel(it().kind)} · ${it().goal_id} · ${bareTitle(it().title)}`}
+      aria-label={`${kindLabel(it().kind)} · ${it().goal_id} · ${it().subject}`}
     >
       <header class="decision-head halt">
         <NeedsYouMark />
@@ -110,6 +117,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
           </button>
         </Show>
         <span class="grow" />
+        <Show when={it().kind === "ci_failed" && goal()?.pr}>{(pr) => <PrLine pr={pr()} compact />}</Show>
         <span class="meta num">{ago(it().created_at, state.now)}</span>
       </header>
       <div class="decision-main">
@@ -117,10 +125,10 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
           when={it().kind !== "review_ready"}
           fallback={
             <>
-              <Show when={goal()} fallback={<p class="decision-question">{it().goal_title}</p>}>
+              <Show when={goal()} fallback={<p class="decision-question">{it().subject}</p>}>
                 {(g) => (
                   <div class="decision-readout decision-readout-main halt">
-                    <Seal pin={g().verified_pin} />
+                    <Seal pin={g().verified_pin} large />
                     <Show when={g().diffstat}>
                       <span class="sep">·</span>
                       <span class="num">
@@ -143,10 +151,15 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </>
           }
         >
-          <p class="decision-question">{bareTitle(it().title)}</p>
+          <p class="decision-question">{it().subject}</p>
           <Show when={it().body}>
-            <p class="decision-body" classList={{ "code-val": it().kind === "approval" }}>
+            <p class="decision-body" classList={{ "code-val": codeBody(it(), goal()?.pause_reason) }}>
               {it().body}
+            </p>
+          </Show>
+          <Show when={networkDecision()}>
+            <p class="decision-caution meta t1">
+              <NoticeMark /> {t("decision.networkCaution")}
             </p>
           </Show>
           <div class="decision-actions">

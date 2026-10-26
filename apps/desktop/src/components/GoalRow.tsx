@@ -12,7 +12,7 @@ import { t } from "../lib/i18n";
 import { stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { state } from "../lib/store";
-import { LifecycleGlyph, NeedsYouMark, NoticeMark } from "./Glyph";
+import { Icon, LifecycleGlyph, NeedsYouMark, NoticeMark } from "./Glyph";
 import { CriteriaBar } from "./Honesty";
 import { LiveLine } from "./Live";
 import { PrLine } from "./Pr";
@@ -52,8 +52,9 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
       <div class="g-crit">
         <CriteriaBar progress={g().progress} tiny />
       </div>
+      {/* No change yet is not a reading: the column stays empty rather than drawing a dash. */}
       <span class="g-diff num meta halt">
-        <Show when={g().diffstat?.files} fallback={<span class="t4">—</span>}>
+        <Show when={g().diffstat?.files}>
           <span class="t1">+{count(g().diffstat!.additions)}</span>
           <span class="diff-del"> −{count(g().diffstat!.deletions)}</span>
         </Show>
@@ -68,9 +69,14 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         <span class="t3 ellipsis">{g().project_name}</span>
         <Show when={g().rework_cycles > 0}>
           <span class="sep">·</span>
-          <span class="t3 num" title={t("card.rework", { n: g().rework_cycles, max: g().max_rework })}>
-            ↻{g().rework_cycles}/{g().max_rework}
+          <span class="t3 num row" style={{ gap: "3px" }} title={t("card.rework", { n: g().rework_cycles, max: g().max_rework })}>
+            <Icon name="rework" size={10} label={t("card.rework", { n: g().rework_cycles, max: g().max_rework })} />
+            {g().rework_cycles}/{g().max_rework}
           </span>
+        </Show>
+        <Show when={state.settings?.muted_goals.includes(g().id)}>
+          <span class="sep">·</span>
+          <span class="t3">{t("quiet.muted")}</span>
         </Show>
         <Show when={g().overlaps?.length}>
           <span class="sep">·</span>

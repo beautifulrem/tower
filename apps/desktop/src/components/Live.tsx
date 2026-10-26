@@ -5,9 +5,10 @@
  *
  * The line is a fixed grid — `[badge 4em][action · target][age]` — so on
  * the board every card's action starts at the same x, like a departures
- * board: one goal per row, one changing word per goal.
+ * board: one goal per row, one changing word per goal. When the word
+ * changes it settles in 100ms, the flight board's flap in miniature.
  */
-import { Show } from "solid-js";
+import { Show, createEffect, on } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import { ago } from "../lib/format";
@@ -25,8 +26,20 @@ export function ModeBadge(props: { goal: GoalSummary }) {
     if (g.state === "paused") return stateLabel("paused");
     return stateLabel(g.state);
   };
+  let el!: HTMLSpanElement;
+  createEffect(
+    on(
+      text,
+      () => {
+        el.classList.remove("swap");
+        void el.offsetWidth;
+        el.classList.add("swap");
+      },
+      { defer: true },
+    ),
+  );
   return (
-    <span class="mode-badge halt" classList={{ "mode-attention": attention() }}>
+    <span ref={el} class="mode-badge halt" classList={{ "mode-attention": attention() }}>
       <Show when={attention()}>
         <NeedsYouMark />
       </Show>
@@ -53,9 +66,12 @@ const machine = (s: string) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
 
 export function liveDetail(g: GoalSummary): LiveDetail {
   if (g.state === "paused" && g.pause_reason) return { action: pauseLabel(g.pause_reason), target: "" };
-  if (g.state === "running" && g.needs_you > 0) {
-    const item = state.inbox.find((i) => i.goal_id === g.id);
-    if (item) return { action: item.kind === "approval" ? t("live.approval") : t("live.question"), target: item.title };
+  if (g.needs_you > 0 && (g.state === "running" || g.state === "accepted")) {
+    const item = state.inbox.find((i) => i.goal_id === g.id && i.kind !== "review_ready");
+    if (item) {
+      const action = item.kind === "approval" ? t("live.approval") : item.kind === "ci_failed" ? t("live.ciFailed") : t("live.question");
+      return { action, target: item.subject };
+    }
   }
   if (g.live_line && g.state === "running") {
     const tool = g.live_line.action;
@@ -68,10 +84,10 @@ export function liveDetail(g: GoalSummary): LiveDetail {
   }
   switch (g.state) {
     case "running":
-      return {
-        action: g.mode === "starting" ? t("live.starting") : t("live.currentStep"),
-        target: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : t("live.getStarted"),
-      };
+      // No tool in flight: the badge already says what kind of step it is; the detail says which run.
+      return g.mode === "starting"
+        ? { action: t("live.starting"), target: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : "" }
+        : { action: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : t("live.getStarted"), target: "" };
     case "verifying":
       return { action: t("live.criteria"), target: t("live.passedOf", { v: g.progress.verified, m: g.progress.machine }) };
     case "claimed":
@@ -98,20 +114,23 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
   return (
     <div class="live-line halt" classList={{ "live-line-large": !!props.large }}>
       <ModeBadge goal={props.goal} />
-      <span class="live-detail ellipsis">
-        <Show when={d().seal} fallback={
-          <>
-            <span class="live-action" classList={{ "code-val": !!d().code?.action }}>
-              {d().action}
-            </span>
-            <Show when={d().target && !props.hideTarget}>
-              <span class="sep">·</span>
-              <span class="live-target" classList={{ "code-val": !!d().code?.target }} title={d().target}>
-                {d().target}
+      <span class="live-detail ellipsis" title={d().target || undefined}>
+        <Show
+          when={d().seal}
+          fallback={
+            <>
+              <span class="live-action" classList={{ "code-val": !!d().code?.action }}>
+                {d().action}
               </span>
-            </Show>
-          </>
-        }>
+              <Show when={d().target && !props.hideTarget}>
+                <span class="sep">·</span>
+                <span class="live-target" classList={{ "code-val": !!d().code?.target }}>
+                  {d().target}
+                </span>
+              </Show>
+            </>
+          }
+        >
           <Seal pin={d().seal} compact />
         </Show>
       </span>

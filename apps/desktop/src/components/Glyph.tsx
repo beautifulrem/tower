@@ -219,7 +219,12 @@ export type IconName =
   | "keyboard"
   | "list"
   | "folder"
-  | "expand";
+  | "expand"
+  | "arrow-right"
+  | "rework"
+  | "ring"
+  | "bell"
+  | "undo";
 
 const PATHS: Record<IconName, () => JSX.Element> = {
   plus: () => <path d="M6 2.25 V9.75 M2.25 6 H9.75" />,
@@ -317,6 +322,24 @@ const PATHS: Record<IconName, () => JSX.Element> = {
   list: () => <path d="M1.5 3 H10.5 M1.5 6 H10.5 M1.5 9 H7.5" />,
   folder: () => <path d="M1.5 3 H5 L6.25 4.25 H10.5 V9.75 H1.5 Z" />,
   expand: () => <path d="M6 1.5 V10.5 M3.5 4 L6 1.5 L8.5 4 M3.5 8 L6 10.5 L8.5 8" />,
+  "arrow-right": () => <path d="M1.75 6 H10 M7 2.75 L10.25 6 L7 9.25" />,
+  /* Rework: two arcs chasing each other — distinct from `stale`, which is one arc and a return. */
+  rework: () => (
+    <>
+      <path d="M2.4 5 A3.6 3.6 0 0 1 9.1 3.6" />
+      <path d="M9.6 7 A3.6 3.6 0 0 1 2.9 8.4" />
+      <path d="M9.4 1.2 V3.8 H6.8 M2.6 10.8 V8.2 H5.2" />
+    </>
+  ),
+  /* A hollow ring: not yet measured. */
+  ring: () => <circle cx="6" cy="6" r="3" />,
+  bell: () => (
+    <>
+      <path d="M3 8.5 V5.5 A3 3 0 0 1 9 5.5 V8.5 L10 9.5 H2 Z" />
+      <path d="M5 10.5 H7" />
+    </>
+  ),
+  undo: () => <path d="M4.5 3.25 L1.75 6 L4.5 8.75 M1.75 6 H7.5 A2.75 2.75 0 0 1 7.5 11.5 H5.5" />,
 };
 
 /** One of Tower's own line icons; 12px by default, 16px for toolbar buttons. */
@@ -349,7 +372,7 @@ const RESULT_ICON: Record<ResultKind, IconName> = {
   stale: "stale",
   "obs-pass": "ring-check",
   "obs-fail": "ring-cross",
-  pending: "dot",
+  pending: "ring",
   env: "warn",
 };
 
@@ -380,11 +403,17 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
  * The verified seal (docs/12 §4.4): green never appears without the pin it
  * was measured on. One component, used everywhere the verdict is shown.
  */
-export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean }) {
+export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean }) {
+  const s = () => (props.large ? 12 : 10);
   return (
     <Show when={props.pin}>
-      <span class="seal" classList={{ "seal-compact": !!props.compact }} title={t("honesty.sealTitle", { pin: props.pin!.slice(0, 7) })}>
-        <svg class="glyph" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <span
+        class="seal"
+        classList={{ "seal-compact": !!props.compact, "seal-large": !!props.large }}
+        title={t("honesty.sealTitle", { pin: props.pin!.slice(0, 7) })}
+      >
+        <span class="sr-only">{t("honesty.srVerified")} </span>
+        <svg class="glyph" width={s()} height={s()} viewBox="0 0 10 10" aria-hidden="true">
           <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
           <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.25" />
         </svg>

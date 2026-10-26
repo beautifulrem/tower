@@ -1,4 +1,5 @@
 /** UI vocabulary. Mirrors tower-core's labels; the words live in i18n.ts. */
+import type { EnvIssue } from "../gen/EnvIssue";
 import type { EnvIssueKind } from "../gen/EnvIssueKind";
 import type { EnvironmentStatus } from "../gen/EnvironmentStatus";
 import type { GoalSummary } from "../gen/GoalSummary";
@@ -82,6 +83,36 @@ export const approves = (item: InboxItem, index: number): boolean => optionTone(
 /** Whether the environment reports an issue of this kind. */
 export function hasIssue(env: EnvironmentStatus | null | undefined, kind: EnvIssueKind): boolean {
   return !!env?.issues?.some((i) => i.kind === kind);
+}
+
+/** Tower's oldest supported Pi; the supervisor checks the same bound. */
+export const MIN_PI = "1.4.0";
+
+/**
+ * An environment problem in the interface language. The supervisor's own
+ * sentence (`text`) is fixed at fetch time, so it is only the fallback for a
+ * kind this build does not know.
+ */
+export function envIssueLabel(issue: EnvIssue, env: EnvironmentStatus | null | undefined): string {
+  const v = env?.pi_version?.split(" ")[0] ?? "";
+  switch (issue.kind) {
+    case "pi_missing":
+    case "pi_broken":
+    case "git_missing":
+    case "no_sandbox":
+      return t(`envIssue.${issue.kind}`);
+    case "pi_too_old":
+      return t("envIssue.pi_too_old", { v, want: MIN_PI });
+    case "pi_untested":
+      return t("envIssue.pi_untested", { v });
+    default:
+      return issue.text;
+  }
+}
+
+/** Programs the demo may need, with the command that installs each. */
+export function installHint(tool: string): string {
+  return ({ python3: "xcode-select --install", node: "brew install node", git: "xcode-select --install" } as Record<string, string>)[tool] ?? `brew install ${tool}`;
 }
 
 /** Why a run started, in words. Unknown purposes pass through. */

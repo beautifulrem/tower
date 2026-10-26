@@ -10,7 +10,7 @@ test("every decision card offers to be put aside", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Remind me later" })).toHaveCount((fixtures.inbox as unknown[]).length);
 });
 
-test("answering a card closes the loop: the card sits in a folding slot and the receipt rises in", async ({ page }) => {
+test("answering a card closes the loop: the card sits in a folding slot that folds with it, and the receipt rises in with your rule", async ({ page }) => {
   await openTower(page, "inbox");
   const slot = page.locator(".decision-slot").first();
   await expect(slot).toBeVisible();
@@ -19,7 +19,19 @@ test("answering a card closes the loop: the card sits in a folding slot and the 
   const toast = page.locator(".toast").first();
   await expect(toast).toBeVisible();
   expect(await toast.evaluate((el) => getComputedStyle(el).animationName)).toBe("rise");
+  // The receipt of your own action carries the solid text-1 rule at its left edge: the same pen as "for you only".
+  const rule = await toast.evaluate((el) => {
+    const s = getComputedStyle(el, "::before");
+    el.style.color = getComputedStyle(el).getPropertyValue("--text-1");
+    return { width: s.width, background: s.backgroundColor, text1: getComputedStyle(el).color };
+  });
+  expect(rule.width).toBe("2px");
+  expect(rule.background).toBe(rule.text1);
   await expect(slot.locator(".decision")).toHaveClass(/leaving/);
+  // The slot folds on the card's own leaving, before any write-back (the shim never answers with a new inbox).
+  // (The row cannot go under the card's own two hairlines, so it settles at 2px.)
+  await expect.poll(async () => slot.evaluate((el) => parseFloat(getComputedStyle(el).gridTemplateRows))).toBeLessThanOrEqual(2);
+  await expect.poll(async () => slot.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
 });
 
 test("a put-aside card is still accounted for in the inbox, with its way back", async ({ page }) => {
@@ -278,6 +290,29 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   const fileHunks = await file.locator(".hunk-head[data-hunk-index]").count();
   for (let i = 0; i < fileHunks; i++) await file.locator(".accept-hunk").nth(i).click();
   await expect(file.getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a sheet opened inside a sheet gives focus back where it came from, and the first sheet stays", async ({ page }) => {
+  await openTower(page, "review/G-0001", { enrich: enrichLook });
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("Meta+Shift+Enter");
+  const accept = page.getByRole("dialog");
+  await expect(accept).toBeVisible();
+  // The look criterion's thumbnail sits on the accept sheet; opening it is a second layer.
+  const thumb = accept.locator(".look-img-btn").first();
+  await expect(thumb).toBeVisible();
+  await thumb.click();
+  await expect(page.getByRole("dialog")).toHaveCount(2);
+  const compare = page.getByRole("dialog").last();
+  await expect(compare.locator(".look-side, .look-onion").first()).toBeVisible();
+  // Esc closes only the inner one; focus lands back on the thumbnail that opened it, inside the sheet that stays.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await expect(accept).toBeVisible();
+  expect(await page.evaluate(() => document.activeElement?.className)).toContain("look-img-btn");
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test("the accept sheet opens with focus on the sheet, not a button, and asks for the human check on its row", async ({ page }) => {

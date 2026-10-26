@@ -509,6 +509,11 @@ impl Supervisor {
             pi_version,
             git_version,
             data_dir: inner.paths.root.display().to_string(),
+            demo_missing: ["node", "python3"]
+                .into_iter()
+                .filter(|p| inner.env.which(p).is_none())
+                .map(String::from)
+                .collect(),
             problems,
             issues,
         }
@@ -665,6 +670,13 @@ impl Supervisor {
                 lang,
                 "演示项目的测试需要 Node.js，请先安装 Node",
                 "The demo project's tests need Node.js; install Node first"
+            )));
+        }
+        if self.inner.env.which("python3").is_none() {
+            return Err(invalid(tr!(
+                lang,
+                "演示引擎需要 python3（安装 Xcode 命令行工具即可：xcode-select --install）",
+                "The demo engine needs python3 (install the Xcode command line tools: xcode-select --install)"
             )));
         }
         let dir = self.inner.paths.demo_projects().join("shop");

@@ -31,4 +31,13 @@ editor: string,
  * Interface and agent language: `zh-CN` or `en`. A new install follows
  * the system language ([`crate::i18n::system_language`]).
  */
-language: string, };
+language: string, 
+/**
+ * No system notifications until this time (ms since the epoch). The
+ * inbox and the badge still update.
+ */
+quiet_until: number | null, 
+/**
+ * Goals whose items never notify.
+ */
+muted_goals: Array<string>, };

@@ -379,6 +379,13 @@ pub struct Settings {
     /// the system language ([`crate::i18n::system_language`]).
     #[serde(default = "default_language")]
     pub language: String,
+    /// No system notifications until this time (ms since the epoch). The
+    /// inbox and the badge still update.
+    #[serde(default)]
+    pub quiet_until: Option<Millis>,
+    /// Goals whose items never notify.
+    #[serde(default)]
+    pub muted_goals: Vec<String>,
 }
 
 fn default_language() -> String {
@@ -409,6 +416,8 @@ impl Default for Settings {
             user_memory: String::new(),
             editor: String::new(),
             language: default_language(),
+            quiet_until: None,
+            muted_goals: Vec::new(),
         }
     }
 }
@@ -421,6 +430,8 @@ pub struct EnvironmentStatus {
     pub pi_version: Option<String>,
     pub git_version: Option<String>,
     pub data_dir: String,
+    /// Programs the in-app demo needs that are missing (e.g. `node`).
+    pub demo_missing: Vec<String>,
     /// The same problems as `issues`, as plain sentences.
     pub problems: Vec<String>,
     pub issues: Vec<EnvIssue>,

@@ -409,10 +409,12 @@ export function Review(props: { id: string }) {
             when={units().length > 0}
             fallback={
               <div class="page-loading">
+                {/* Nothing to review is a whole-screen empty state like the inbox's: the poster, a third of the way down, with its one way out. */}
                 <Empty
                   title={t("review.noChanges")}
+                  poster
                   action={
-                    <Button size="s" variant="ghost" onClick={() => go({ name: "goal", id: props.id })}>
+                    <Button size="s" onClick={() => go({ name: "goal", id: props.id })}>
                       {t("review.openGoal")}
                     </Button>
                   }

@@ -77,6 +77,7 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
         .collect();
     Ok(InboxItem {
         tones,
+        snoozed_until: r.get("snoozed_until")?,
         title,
         subject,
         goal_title,
@@ -136,6 +137,16 @@ impl Store {
         let mut stmt = self.conn.prepare(&format!(
             "{ITEM_SQL} WHERE i.resolved_at IS NULL AND (i.snoozed_until IS NULL OR i.snoozed_until <= ?1)
              ORDER BY i.urgency, i.created_at"
+        ))?;
+        let lang = self.lang();
+        let rows = stmt.query_map([self.now()], |r| row_to_item(r, lang))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Open items put aside until later, soonest first.
+    pub fn snoozed_inbox_items(&self) -> Result<Vec<InboxItem>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "{ITEM_SQL} WHERE i.resolved_at IS NULL AND i.snoozed_until > ?1 ORDER BY i.snoozed_until"
         ))?;
         let lang = self.lang();
         let rows = stmt.query_map([self.now()], |r| row_to_item(r, lang))?;
@@ -217,6 +228,36 @@ mod tests {
             urgency,
             engine_ref: Some("ui-1".into()),
         }
+    }
+
+    #[test]
+    fn snoozed_items_step_aside_until_their_time() {
+        let (mut s, clock) = store();
+        let p = s
+            .add_project(NewProject {
+                name: "w".into(),
+                root: "/r/w".into(),
+                base_branch: "main".into(),
+                test_command: None,
+            })
+            .unwrap();
+        let g = s
+            .create_goal(NewGoal {
+                project_id: p.id,
+                title: "t".into(),
+                contract: tower_core::contract::Contract::quick("x", None, Lang::En),
+            })
+            .unwrap();
+        let it = s.open_inbox(item(&g.id, InboxKind::Question, 1)).unwrap();
+        s.snooze_inbox(&it.id, Some(clock.0.load(std::sync::atomic::Ordering::SeqCst) + 60_000)).unwrap();
+        assert!(s.open_inbox_items().unwrap().is_empty());
+        assert_eq!(
+            s.snoozed_inbox_items().unwrap()[0].snoozed_until,
+            Some(clock.0.load(std::sync::atomic::Ordering::SeqCst) + 60_000)
+        );
+        clock.advance(61_000);
+        assert_eq!(s.open_inbox_items().unwrap().len(), 1);
+        assert!(s.snoozed_inbox_items().unwrap().is_empty());
     }
 
     #[test]

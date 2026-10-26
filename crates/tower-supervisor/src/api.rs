@@ -60,6 +60,8 @@ pub enum UiUpdate {
     },
     Inbox {
         items: Vec<InboxItem>,
+        /// Open items put aside until later.
+        snoozed: Vec<InboxItem>,
     },
     /// New trace entries, in order, batched (at most ten batches a second).
     Traces {

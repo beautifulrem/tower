@@ -70,8 +70,8 @@ impl Inner {
     }
 
     pub fn emit_inbox(&self) {
-        if let Ok(items) = self.store(|s| s.open_inbox_items()) {
-            self.sink.emit(UiUpdate::Inbox { items });
+        if let Ok((items, snoozed)) = self.store(|s| Ok((s.open_inbox_items()?, s.snoozed_inbox_items()?))) {
+            self.sink.emit(UiUpdate::Inbox { items, snoozed });
         }
     }
 

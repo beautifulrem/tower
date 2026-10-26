@@ -16,4 +16,8 @@ qr_svg: string,
 /**
  * Whether a Tailscale address is among the links (encrypted transport).
  */
-tailscale: boolean, };
+tailscale: boolean, 
+/**
+ * One per link: "tailscale" or "lan".
+ */
+kinds: Array<string>, };

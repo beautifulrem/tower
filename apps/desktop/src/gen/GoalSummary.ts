@@ -6,6 +6,7 @@ import type { LiveLine } from "./LiveLine";
 import type { Mode } from "./Mode";
 import type { Overlap } from "./Overlap";
 import type { PauseReason } from "./PauseReason";
+import type { PrView } from "./PrView";
 import type { Progress } from "./Progress";
 
 export type GoalSummary = { id: string, project_id: string, project_name: string, title: string, state: LifecycleState, pause_reason: PauseReason | null, mode: Mode, live_line: LiveLine | null, progress: Progress, diffstat: DiffStat | null, cost_usd: number, budget: Budget, run_no: number, rework_cycles: number, max_rework: number, 
@@ -21,4 +22,8 @@ run_started_at: number | null, last_viewed_at: number | null,
  * Other unfinished goals of the same project that change some of the
  * same files: they will likely conflict when both are merged.
  */
-overlaps: Array<Overlap>, };
+overlaps: Array<Overlap>, 
+/**
+ * The pull request opened from Tower, once there is one.
+ */
+pr: PrView | null, };

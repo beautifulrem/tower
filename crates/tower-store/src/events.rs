@@ -2,7 +2,7 @@
 
 use rusqlite::{Transaction, params};
 use tower_core::lifecycle::{self, Transition};
-use tower_core::view::{DiffStat, LiveLine, TraceEntry};
+use tower_core::view::{DiffStat, LiveLine, PrStatus, PrView, TraceEntry};
 use tower_core::{EventKind, LifecycleState, Millis, Mode, PauseReason, Source};
 
 use crate::goals::{enum_str, parse_state};
@@ -112,6 +112,17 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![goal_id, criterion, pin, passed, exit_code, duration_ms, output_tail, at],
             )?;
+        }
+        EventKind::BranchPushed { pr_url: Some(url), .. } => {
+            let pr = PrView {
+                url: url.clone(),
+                status: PrStatus { state: "open".into(), passed: 0, failed: 0, pending: 0, failing: Vec::new() },
+            };
+            tx.execute("UPDATE goals SET pr = ?2 WHERE id = ?1", params![goal_id, serde_json::to_string(&pr)?])?;
+        }
+        EventKind::PrChecked { url, status } => {
+            let pr = PrView { url: url.clone(), status: status.clone() };
+            tx.execute("UPDATE goals SET pr = ?2 WHERE id = ?1", params![goal_id, serde_json::to_string(&pr)?])?;
         }
         EventKind::BaselineResult { criterion, command, base, passed } => {
             tx.execute(

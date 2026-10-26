@@ -81,6 +81,28 @@ pub struct GoalSummary {
     /// Other unfinished goals of the same project that change some of the
     /// same files: they will likely conflict when both are merged.
     pub overlaps: Vec<Overlap>,
+    /// The pull request opened from Tower, once there is one.
+    pub pr: Option<PrView>,
+}
+
+/// A pull request as GitHub reports it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PrStatus {
+    /// `open`, `merged` or `closed`.
+    pub state: String,
+    pub passed: u32,
+    pub failed: u32,
+    pub pending: u32,
+    /// Names of failing checks (at most a few).
+    pub failing: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PrView {
+    pub url: String,
+    pub status: PrStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

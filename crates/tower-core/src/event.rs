@@ -11,6 +11,7 @@ use crate::contract::Contract;
 use crate::honesty::ClaimKind;
 use crate::lifecycle::{LifecycleState, PauseReason};
 use crate::mode::Mode;
+use crate::view::PrStatus;
 
 /// Who produced an event. Maps onto the honesty grammar's registers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -222,6 +223,12 @@ pub enum EventKind {
         files: Vec<String>,
     },
     /// The human pushed the accepted branch (and maybe opened a PR).
+    /// The pull request's state and checks as GitHub reports them, recorded
+    /// when they change.
+    PrChecked {
+        url: String,
+        status: PrStatus,
+    },
     BranchPushed {
         remote: String,
         branch: String,
@@ -246,6 +253,7 @@ impl EventKind {
             | Self::HumanEdited { .. }
             | Self::LocalFilesCopied { .. }
             | Self::BranchPushed { .. }
+            | Self::PrChecked { .. }
             | Self::ToolStarted { .. }
             | Self::ToolEnded { .. }
             | Self::Pinned { .. }
@@ -300,6 +308,7 @@ impl EventKind {
             Self::HumanEdited { .. } => "human_edited",
             Self::LocalFilesCopied { .. } => "local_files_copied",
             Self::BranchPushed { .. } => "branch_pushed",
+            Self::PrChecked { .. } => "pr_checked",
         }
     }
 }

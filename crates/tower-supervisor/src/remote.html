@@ -216,7 +216,8 @@ async function pause(goal) {
 let last = null;
 let lastOk = 0;
 const ago = (at) => t("ago")(Math.round((Date.now() - at) / 60000));
-const clock = (at) => new Date(at).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" });
+// 24-hour "HH:MM" in both languages, as on the desk.
+const clock = (at) => { const d = new Date(at); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 // "updated 03:05 · every 5 s"; once a minute has passed without a fresh read, the age is added and the line steps up a register.
 function showStatus() {
   if (status.className === "off" || !lastOk) return;

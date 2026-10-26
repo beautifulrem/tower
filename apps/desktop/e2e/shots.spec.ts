@@ -69,6 +69,6 @@ for (const s of screens) {
     await s.after?.(page);
     await page.waitForTimeout(300);
     if (s.element) await page.locator(s.element).first().screenshot({ path: join(OUT!, `${s.name}.png`) });
-    else await page.screenshot({ path: join(OUT!, `${s.name}.png`), fullPage: s.name.startsWith("goal") });
+    else await page.screenshot({ path: join(OUT!, `${s.name}.png`) });
   });
 }

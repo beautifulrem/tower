@@ -38,6 +38,11 @@ pub struct Contract {
     /// Pi thinking level. Empty means the Pi default.
     #[serde(default)]
     pub thinking: String,
+    /// Situations in which the agent must stop and ask instead of deciding
+    /// (`docs/00` R7). Injected into the first message; Tower does not
+    /// evaluate them.
+    #[serde(default)]
+    pub stop_conditions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -141,6 +146,7 @@ impl Contract {
             setup: String::new(),
             model: String::new(),
             thinking: String::new(),
+            stop_conditions: Vec::new(),
         }
     }
 

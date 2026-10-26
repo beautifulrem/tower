@@ -180,6 +180,29 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
           重新验证
         </Button>
       </Show>
+      <Show when={["accepted", "integrated"].includes(s()) && props.goal.branch}>
+        <Button
+          size="s"
+          variant="primary"
+          onClick={() => {
+            if (confirm(`把 ${props.goal.branch} 推送到 origin 并创建 PR？推送无法撤回。`))
+              void act(() => api.push(props.goal.id, true));
+          }}
+        >
+          推送并开 PR
+        </Button>
+        <Button
+          size="s"
+          onClick={() => {
+            if (confirm(`把 ${props.goal.branch} 推送到 origin？推送无法撤回。`)) void act(() => api.push(props.goal.id, false));
+          }}
+        >
+          只推送
+        </Button>
+      </Show>
+      <Show when={!["draft", "ready", "archived", "abandoned"].includes(s())}>
+        <OpenMenu id={props.goal.id} />
+      </Show>
       <Show when={!["draft", "archived", "abandoned", "integrated", "accepted"].includes(s())}>
         <Button size="s" variant="ghost" kbd="shift+e" onClick={() => go({ name: "new", amendId: props.goal.id })}>
           修订合同
@@ -217,6 +240,30 @@ function GoalActions(props: { goal: GoalDetail["summary"]; watching: boolean; on
   );
 }
 
+/** "打开" — the workspace in an editor, a terminal or Finder (我来改). */
+function OpenMenu(props: { id: string }) {
+  const [open, setOpen] = createSignal(false);
+  const go = (target: "editor" | "terminal" | "finder") => {
+    setOpen(false);
+    void act(() => api.openWorkspace(props.id, target));
+  };
+  return (
+    <div class="menu-anchor" onFocusOut={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOpen(false)}>
+      <Button size="s" variant="ghost" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open()}>
+        打开 ▾
+      </Button>
+      <Show when={open()}>
+        <div class="menu" role="menu">
+          <button role="menuitem" onClick={() => go("editor")}>在编辑器中打开</button>
+          <button role="menuitem" onClick={() => go("terminal")}>在终端中打开</button>
+          <button role="menuitem" onClick={() => go("finder")}>在 Finder 中显示</button>
+          <p class="menu-note">暂停时改动工作区，继续时 Agent 会被告知你改了哪些文件。</p>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
 function GoalBlocks(props: { d: GoalDetail }) {
   const d = () => props.d;
   const g = () => d().summary;
@@ -246,6 +293,24 @@ function GoalBlocks(props: { d: GoalDetail }) {
             )}
           </For>
           <For each={causes()}>{(c) => <Claim label="Agent 称（原因）">{c.text}</Claim>}</For>
+        </Section>
+      </Show>
+
+      <Show when={d().sentinels.length}>
+        <Section title="哨兵">
+          <For each={d().sentinels}>
+            {(h) => (
+              <div class="sentinel">
+                <div class="fact-row">
+                  <span class={h.severity >= 3 ? "mark-danger" : "t1"}>{h.severity >= 3 ? "■" : "◇"}</span>
+                  <span class="t1">{h.title}</span>
+                  <span class="grow" />
+                  <span class="meta">{h.severity >= 3 ? "需要你确认" : "评审时留意"}</span>
+                </div>
+                <pre class="sentinel-detail mono">{h.detail}</pre>
+              </div>
+            )}
+          </For>
         </Section>
       </Show>
 
@@ -504,6 +569,10 @@ function ContractRail(props: { d: GoalDetail }) {
         <dl class="rail-dl">
           <dt>模型</dt>
           <dd class="mono">{c().model || state.settings?.default_model || "Pi 默认"}</dd>
+          <Show when={props.d.local_files.length}>
+            <dt>本地文件</dt>
+            <dd class="mono">{props.d.local_files.join("  ")}</dd>
+          </Show>
           <Show when={props.d.workspace}>
             <dt>工作区</dt>
             <dd class="mono t2 break">{props.d.workspace}</dd>

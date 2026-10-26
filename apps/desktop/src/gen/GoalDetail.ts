@@ -5,9 +5,18 @@ import type { Contract } from "./Contract";
 import type { CriterionView } from "./CriterionView";
 import type { GoalSummary } from "./GoalSummary";
 import type { RunView } from "./RunView";
+import type { SentinelHit } from "./SentinelHit";
 
 export type GoalDetail = { summary: GoalSummary, contract: Contract, criteria: Array<CriterionView>, claims: Array<ClaimView>, runs: Array<RunView>, workspace: string | null, base_commit: string | null, 
 /**
  * The latest snapshot of the workspace (`pinCommit`).
  */
-pin: string | null, session_file: string | null, submit_summary: string | null, briefing: Array<BriefingItem>, };
+pin: string | null, session_file: string | null, submit_summary: string | null, briefing: Array<BriefingItem>, 
+/**
+ * Sentinel findings on the latest verified snapshot.
+ */
+sentinels: Array<SentinelHit>, 
+/**
+ * Git-ignored files copied into the workspace (e.g. `.env`).
+ */
+local_files: Array<string>, };

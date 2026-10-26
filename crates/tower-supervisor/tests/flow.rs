@@ -76,14 +76,77 @@ fn contract() -> Contract {
 }
 
 async fn create(h: &Harness) -> String {
-    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    create_with(h, contract()).await
+}
+
+async fn create_with(h: &Harness, contract: Contract) -> String {
+    let p = match h.sup.projects().unwrap().into_iter().next() {
+        Some(p) => p,
+        None => h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap(),
+    };
     h.sup
-        .create_goal(NewGoalInput {
-            project_id: p.id, title: "创建文件".into(), contract: contract(), ratify: true
-        })
+        .create_goal(NewGoalInput { project_id: p.id, title: "创建文件".into(), contract, ratify: true })
         .await
         .unwrap()
         .id
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn sentinels_hold_a_passing_but_suspicious_snapshot() {
+    let h = harness("cheat").await;
+    let id = create(&h).await;
+    let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
+    assert_eq!(g.pause_reason, Some(PauseReason::SentinelHigh));
+    let d = h.sup.goal(&id).unwrap();
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "test_skipped"), "{:?}", d.sentinels);
+    assert!(d.criteria[0].verified.as_ref().unwrap().passed, "the criteria themselves passed");
+
+    // The human looks and decides it is fine.
+    let item = h.sup.inbox().unwrap().into_iter().find(|i| i.goal_id == id && i.kind == InboxKind::Paused).unwrap();
+    h.sup.answer(&item.id, "我已确认，进入评审").await.unwrap();
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn repeated_failures_raise_a_stall_without_stopping_the_run() {
+    let h = harness("flaky").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+    let stall = h.sup.trace(&id, None, 200).unwrap().into_iter().find_map(|e| match e.event {
+        tower_core::EventKind::Stalled { detail, .. } => Some(detail),
+        _ => None,
+    });
+    assert!(stall.expect("a stall").contains("npm run build"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn local_files_reach_the_workspace_and_the_verifier() {
+    let h = harness("pass").await;
+    std::fs::write(h.repo.join(".gitignore"), ".env\n").unwrap();
+    git(&h.repo, &["add", ".gitignore"]);
+    git(&h.repo, &["commit", "--quiet", "-m", "ignore env"]);
+    std::fs::write(h.repo.join(".env"), "API_TOKEN=local\n").unwrap();
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![".env".into()],
+                memory: "回答一律用中文".into(),
+            },
+        )
+        .unwrap();
+    let mut c = contract();
+    c.criteria[0].kind =
+        CriterionKind::Exec { command: "test -f done.txt && grep -q API_TOKEN .env".into(), timeout_secs: 30 };
+    let id = create_with(&h, c).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(d.local_files, [".env"]);
+    // Ignored, so never part of a snapshot or the review.
+    assert!(h.sup.review(&id).await.unwrap().files.iter().all(|f| f.path != ".env"));
 }
 
 async fn wait_for(h: &Harness, id: &str, pred: impl Fn(&GoalSummary) -> bool) -> GoalSummary {

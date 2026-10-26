@@ -18,6 +18,7 @@ const kindLabel: Record<InboxItem["kind"], string> = {
   assumption: "假设",
   paused: "已暂停",
   review_ready: "待验收",
+  stalled: "可能卡住",
 };
 
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; compact?: boolean }) {

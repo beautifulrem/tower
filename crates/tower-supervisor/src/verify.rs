@@ -108,10 +108,34 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     }
     inner.append(goal, EventKind::VerifyStarted { pin: snap.pin.clone() })?;
 
+    // Sentinels look at what changed, which a passing run would hide.
+    let git = inner.git.clone();
+    let (ws5, base5, pin5) = (ws.clone(), base.clone(), snap.pin.clone());
+    let files = tokio::task::spawn_blocking(move || git.diff(Path::new(&ws5), &base5, &pin5))
+        .await
+        .map_err(|e| invalid(e.to_string()))??;
+    let hits = tower_core::sentinel::scan(&files, &rec.contract.scope);
+    for h in &hits {
+        inner.append(
+            goal,
+            EventKind::SentinelHit {
+                sentinel: h.sentinel.clone(),
+                severity: h.severity,
+                title: h.title.clone(),
+                detail: h.detail.clone(),
+            },
+        )?;
+    }
+    let high: Vec<&str> =
+        hits.iter().filter(|h| h.severity >= tower_core::sentinel::HIGH).map(|h| h.title.as_str()).collect();
+
     let machine: Vec<_> = rec.contract.machine_criteria().cloned().collect();
     if machine.is_empty() {
         inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
         inner.set_mode(goal, Mode::Idle)?;
+        if !high.is_empty() {
+            return to_paused(inner, goal, PauseReason::SentinelHigh, &high.join("；"));
+        }
         inner.transition(goal, Transition::VerifyPassed, None, "未经机器验证：合同没有可执行的标准")?;
         review_ready(inner, goal, "没有可执行的标准：请你判断结果")?;
         return Ok(());
@@ -124,6 +148,11 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     tokio::task::spawn_blocking(move || git.add_verify_checkout(Path::new(&ws3), &pin3, &dir3))
         .await
         .map_err(|e| invalid(e.to_string()))??;
+    // Ignored local files (e.g. `.env`) are not in the snapshot; tests may need them.
+    let copied = run::copy_local_files(inner, &rec, &dir).await?;
+    if !copied.is_empty() {
+        inner.append(goal, EventKind::LocalFilesCopied { files: copied })?;
+    }
     let outcome = run_criteria(inner, goal, &rec.contract, &dir, &snap.pin, cancel).await;
     let git = inner.git.clone();
     let (ws4, dir4) = (ws.clone(), dir.clone());
@@ -135,6 +164,10 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     }
     inner.set_mode(goal, Mode::Idle)?;
     match outcome {
+        Outcome::Passed if !high.is_empty() => {
+            inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
+            to_paused(inner, goal, PauseReason::SentinelHigh, &format!("机器标准都通过了，但{}", high.join("；")))?;
+        }
         Outcome::Passed => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
             inner.transition(goal, Transition::VerifyPassed, None, "")?;
@@ -150,7 +183,11 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
             let can_rework = rec.rework_cycles < rec.contract.max_rework && rec.cost_usd < rec.contract.budget.hard_usd;
             if can_rework {
                 inner.transition(goal, Transition::VerifyFailed { rework: true }, None, "自动返工")?;
-                let msg = prompts::rework(rec.rework_cycles + 1, rec.contract.max_rework, &failures);
+                let mut msg = prompts::rework(rec.rework_cycles + 1, rec.contract.max_rework, &failures);
+                if !hits.is_empty() {
+                    msg.push_str("\n\n");
+                    msg.push_str(&prompts::sentinel_rework(&hits));
+                }
                 if let Err(e) = run::start_run(inner, goal, "rework", msg).await {
                     tracing::warn!(goal, error = %e, "rework did not start");
                 }
@@ -259,7 +296,7 @@ async fn run_criteria(
     Ok(if failures.is_empty() { Outcome::Passed } else { Outcome::Failed(failures) })
 }
 
-fn review_ready(inner: &Arc<Inner>, goal: &str, body: &str) -> Result<()> {
+pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, body: &str) -> Result<()> {
     let rec = inner.store(|s| s.goal(goal))?;
     inner.open_inbox(NewInboxItem {
         goal_id: goal.into(),

@@ -29,6 +29,8 @@ export const pauseLabel: Record<PauseReason, string> = {
   verify_env_error: "验证环境出错",
   prepare_failed: "准备或启动失败",
   provider_error: "模型服务出错",
+  sentinel_high: "哨兵命中，等你确认",
+  wall_clock_cap: "超过单次运行时长",
 };
 
 /** Mode badge text (§12.6.3): 2–4 characters, attention only when it needs you. */

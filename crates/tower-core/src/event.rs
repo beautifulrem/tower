@@ -187,6 +187,35 @@ pub enum EventKind {
     Note {
         text: String,
     },
+    /// A sentinel found something in the verified snapshot that a passing
+    /// test run would hide (deleted tests, skipped tests, a changed test
+    /// command, writes outside the scope).
+    SentinelHit {
+        sentinel: String,
+        severity: u8,
+        title: String,
+        detail: String,
+    },
+    /// A stall detector fired while the agent kept running.
+    Stalled {
+        detector: String,
+        detail: String,
+    },
+    /// Files the human changed in the workspace while the goal was paused.
+    HumanEdited {
+        files: Vec<String>,
+    },
+    /// Git-ignored local files copied into a workspace or checkout.
+    LocalFilesCopied {
+        files: Vec<String>,
+    },
+    /// The human pushed the accepted branch (and maybe opened a PR).
+    BranchPushed {
+        remote: String,
+        branch: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pr_url: Option<String>,
+    },
 }
 
 impl EventKind {
@@ -200,7 +229,12 @@ impl EventKind {
             | Self::Steered { .. }
             | Self::HumanCheck { .. }
             | Self::ClaimReviewed { .. } => Source::Human,
-            Self::ToolStarted { .. }
+            Self::SentinelHit { .. }
+            | Self::Stalled { .. }
+            | Self::HumanEdited { .. }
+            | Self::LocalFilesCopied { .. }
+            | Self::BranchPushed { .. }
+            | Self::ToolStarted { .. }
             | Self::ToolEnded { .. }
             | Self::Pinned { .. }
             | Self::VerifyStarted { .. }
@@ -247,6 +281,11 @@ impl EventKind {
             Self::BranchWritten { .. } => "branch_written",
             Self::EngineError { .. } => "engine_error",
             Self::Note { .. } => "note",
+            Self::SentinelHit { .. } => "sentinel_hit",
+            Self::Stalled { .. } => "stalled",
+            Self::HumanEdited { .. } => "human_edited",
+            Self::LocalFilesCopied { .. } => "local_files_copied",
+            Self::BranchPushed { .. } => "branch_pushed",
         }
     }
 }

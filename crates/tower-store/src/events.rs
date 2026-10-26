@@ -205,6 +205,26 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Sentinel findings since the latest verification started.
+    pub fn sentinel_hits(&self, goal_id: &str) -> Result<Vec<tower_core::sentinel::SentinelHit>> {
+        let since: i64 = self.conn.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM events WHERE goal_id = ?1 AND kind = 'verify_started'",
+            [goal_id],
+            |r| r.get(0),
+        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM events WHERE goal_id = ?1 AND kind = 'sentinel_hit' AND seq > ?2 ORDER BY seq")?;
+        let rows = stmt.query_map(params![goal_id, since], row_to_trace)?;
+        let mut out = Vec::new();
+        for r in rows {
+            if let EventKind::SentinelHit { sentinel, severity, title, detail } = r?.event {
+                out.push(tower_core::sentinel::SentinelHit { sentinel, severity, title, detail });
+            }
+        }
+        Ok(out)
+    }
+
     /// The most recent event of a kind, used e.g. to find the last failure.
     pub fn last_event(&self, goal_id: &str, kind: &str) -> Result<Option<TraceEntry>> {
         use rusqlite::OptionalExtension;

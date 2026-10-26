@@ -102,6 +102,11 @@ pub enum PauseReason {
     PrepareFailed,
     /// The model provider reported an error the engine could not retry past.
     ProviderError,
+    /// Verification passed but a high-severity sentinel fired (e.g. tests were
+    /// deleted or the test command was changed). Needs a human override.
+    SentinelHigh,
+    /// The run exceeded the contract's wall-clock cap.
+    WallClockCap,
 }
 
 impl PauseReason {

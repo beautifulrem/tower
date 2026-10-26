@@ -7,8 +7,11 @@ use tower_core::contract::{Autonomy, Contract, CriterionKind};
 /// Appended to Pi's system prompt for every run of a goal. Stays well under
 /// the 650-token resident budget (`ADR-009`); the full contract travels in
 /// the first prompt instead.
-pub fn system_section(goal_id: &str) -> String {
-    format!(
+///
+/// `memory` holds the human's user and project notes (`docs/09`), already
+/// bounded by the caller; `language` is the language the human reads.
+pub fn system_section(goal_id: &str, memory: &[(&str, &str)], language: &str) -> String {
+    let mut s = format!(
         "## Tower goal {goal_id}\n\
 You are working on one goal supervised by a human through Tower. The workspace is a private clone; \
 the human sees your work as a goal page, not as this chat.\n\
@@ -18,8 +21,19 @@ assumption that needs confirming, your next step. One sentence each.\n\
 - When every acceptance criterion is met, call `submit` once and stop. Tower re-runs the criteria in a \
 clean checkout; your own word does not complete the goal.\n\
 - Stay inside the contract's scope. Writes outside it, new dependencies and one-way actions need approval.\n\
-- Write log, ask_user and submit text in Simplified Chinese."
-    )
+- Write log, ask_user and submit text in {language}."
+    );
+    for (label, text) in memory.iter().filter(|(_, t)| !t.trim().is_empty()) {
+        s.push_str(&format!("\n\n### {label} (written by the human; follow it)\n{}", clip(text.trim(), MEMORY_CHARS)));
+    }
+    s
+}
+
+/// Each memory block is bounded so the resident prompt stays small.
+pub const MEMORY_CHARS: usize = 800;
+
+fn clip(s: &str, n: usize) -> String {
+    if s.chars().count() <= n { s.to_string() } else { format!("{}…", s.chars().take(n).collect::<String>()) }
 }
 
 fn autonomy_label(a: Autonomy) -> &'static str {
@@ -68,6 +82,12 @@ pub fn contract_brief(title: &str, c: &Contract) -> String {
         }
     }
     s.push_str(&format!("\n## Autonomy\n{}\n", autonomy_label(c.autonomy)));
+    if !c.stop_conditions.is_empty() {
+        s.push_str("\n## Stop and ask the human (ask_user) when\n");
+        for k in &c.stop_conditions {
+            s.push_str(&format!("- {k}\n"));
+        }
+    }
     s
 }
 
@@ -117,8 +137,17 @@ pub fn rework(cycle: u32, max: u32, failures: &[Failure]) -> String {
     s
 }
 
-pub fn resume(reason: &str, human_notes: &[String]) -> String {
+pub fn resume(reason: &str, human_notes: &[String], human_edits: &[String]) -> String {
     let mut s = format!("The goal was paused ({reason}) and the human resumed it. Continue from where you stopped.");
+    if !human_edits.is_empty() {
+        s.push_str(
+            "\n\nWhile paused, the human edited these files in your workspace. Read them before continuing \
+and keep their changes unless they conflict with the contract:\n",
+        );
+        for f in human_edits.iter().take(50) {
+            s.push_str(&format!("- {f}\n"));
+        }
+    }
     if !human_notes.is_empty() {
         s.push_str("\n\nWhile paused, the human wrote:\n");
         for n in human_notes {
@@ -151,6 +180,19 @@ pub fn request_changes(summary: &str, comments: &[Comment]) -> String {
     s
 }
 
+/// Rework after sentinels fired on a snapshot that otherwise passed.
+pub fn sentinel_rework(hits: &[tower_core::sentinel::SentinelHit]) -> String {
+    let mut s = String::from(
+        "Tower's checks found changes that can make tests pass without fixing the problem. \
+The human asked you to redo the work without them:\n",
+    );
+    for h in hits {
+        s.push_str(&format!("\n- {}:\n{}\n", h.title, h.detail));
+    }
+    s.push_str("\nRestore the tests and the test command, fix the cause, log what you changed, then submit again.");
+    s
+}
+
 pub const NUDGE: &str = "You stopped without calling `submit`. If the goal is done, call `submit`. \
 If you are blocked, ask the human with `ask_user`. Otherwise continue.";
 
@@ -161,7 +203,10 @@ mod tests {
     #[test]
     fn system_section_is_small() {
         // Rough token estimate: 4 chars per token.
-        assert!(system_section("G-0001").len() / 4 < 300);
+        assert!(system_section("G-0001", &[], "Simplified Chinese").len() / 4 < 300);
+        let with = system_section("G-0001", &[("Project memory", "金额一律用 Money 类型")], "English");
+        assert!(with.contains("Project memory"));
+        assert!(with.contains("in English."));
     }
 
     #[test]

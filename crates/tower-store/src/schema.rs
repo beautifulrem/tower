@@ -130,6 +130,11 @@ const MIGRATIONS: &[&str] = &[
         value  TEXT NOT NULL
     );
     "#,
+    // 2: local files and project memory
+    r#"
+    ALTER TABLE projects ADD COLUMN local_files TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE projects ADD COLUMN memory TEXT NOT NULL DEFAULT '';
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

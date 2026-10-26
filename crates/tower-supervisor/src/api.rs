@@ -23,6 +23,16 @@ pub struct ReviewComment {
     pub text: String,
 }
 
+/// Where to open a goal's workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum OpenTarget {
+    Editor,
+    Terminal,
+    Finder,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]

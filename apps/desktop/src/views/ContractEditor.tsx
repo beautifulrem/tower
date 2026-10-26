@@ -31,6 +31,7 @@ function blank(intent = "", testCommand: string | null = null): Contract {
     setup: "",
     model: state.settings?.default_model ?? "",
     thinking: state.settings?.default_thinking ?? "",
+    stop_conditions: [],
   };
 }
 
@@ -134,6 +135,14 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         </Field>
         <Field label="终态（可选）" hint="验收标准之外，“完成”还意味着什么。">
           <textarea rows={2} value={c.done_when} onInput={(e) => setC("done_when", e.currentTarget.value)} />
+        </Field>
+        <Field label="停止条件（每行一条，可选）" hint="遇到这些情况时，Agent 必须停下来问你，而不是自己决定。">
+          <textarea
+            rows={2}
+            value={c.stop_conditions.join("\n")}
+            onInput={(e) => setC("stop_conditions", lines(e.currentTarget.value))}
+            placeholder={"需要改数据库结构时\n需要删除公开接口时"}
+          />
         </Field>
         <Field label="约束（每行一条）">
           <textarea rows={2} value={c.constraints.join("\n")} onInput={(e) => setC("constraints", lines(e.currentTarget.value))} placeholder={"不改公共 API\n不加新依赖"} />

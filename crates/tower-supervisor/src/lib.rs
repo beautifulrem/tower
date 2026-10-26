@@ -32,10 +32,10 @@ use tower_core::view::{
 use tower_core::{EventKind, LifecycleState, Mode, PauseReason};
 use tower_git::{Git, GitError};
 use tower_pi::EngineError;
-use tower_store::{NewGoal, NewInboxItem, NewProject, Store, StoreError};
+use tower_store::{NewGoal, NewInboxItem, NewProject, ProjectPatch, Store, StoreError};
 use tower_verify::Cancel;
 
-pub use api::{NewGoalInput, NullSink, ReviewComment, ToastLevel, UiSink, UiUpdate};
+pub use api::{NewGoalInput, NullSink, OpenTarget, ReviewComment, ToastLevel, UiSink, UiUpdate};
 pub use paths::Paths;
 use run::Run;
 use shell_env::ShellEnv;
@@ -447,9 +447,14 @@ impl Supervisor {
         Ok(project)
     }
 
-    pub fn update_project(&self, id: &str, base_branch: &str, test_command: Option<&str>) -> Result<ProjectView> {
-        let p =
-            self.inner.store(|s| s.update_project(id, base_branch, test_command.filter(|t| !t.trim().is_empty())))?;
+    pub fn update_project(&self, id: &str, patch: &ProjectPatch) -> Result<ProjectView> {
+        if patch.base_branch.trim().is_empty() {
+            return Err(invalid("基线分支不能为空"));
+        }
+        for p in &patch.local_files {
+            globset::Glob::new(p).map_err(|e| invalid(format!("无效的本地文件模式 {p}：{e}")))?;
+        }
+        let p = self.inner.store(|s| s.update_project(id, patch))?;
         self.emit_projects();
         Ok(p)
     }
@@ -620,6 +625,45 @@ impl Supervisor {
             self.inner.append(id, EventKind::WorkspaceRemoved)?;
         }
         self.inner.emit_goal_now(id);
+        Ok(())
+    }
+
+    /// Pushes an accepted goal's branch to `origin`, optionally opening a pull
+    /// request with the GitHub CLI. Returns the PR URL when one was opened.
+    pub async fn push(&self, id: &str, open_pr: bool) -> Result<Option<String>> {
+        actions::push(&self.inner, id, open_pr).await
+    }
+
+    /// Opens a goal's workspace in the user's editor, a terminal, or Finder.
+    /// Editing while the goal is paused is the "我来改" path: the next resume
+    /// tells the agent which files the human changed.
+    pub fn open_workspace(&self, id: &str, target: OpenTarget) -> Result<()> {
+        let rec = self.inner.store(|s| s.goal(id))?;
+        let ws = rec.workspace.ok_or_else(|| invalid("这个目标还没有工作区"))?;
+        let (program, args): (PathBuf, Vec<String>) = match target {
+            OpenTarget::Finder => (PathBuf::from("/usr/bin/open"), vec![ws.clone()]),
+            OpenTarget::Terminal => (PathBuf::from("/usr/bin/open"), vec!["-a".into(), "Terminal".into(), ws.clone()]),
+            OpenTarget::Editor => {
+                let configured = self.inner.settings().editor;
+                let candidates: Vec<String> = if configured.trim().is_empty() {
+                    ["cursor", "code", "zed", "subl"].iter().map(|s| s.to_string()).collect()
+                } else {
+                    vec![configured.trim().to_string()]
+                };
+                match candidates.iter().find_map(|c| self.inner.env.which(c)) {
+                    Some(p) => (p, vec![ws.clone()]),
+                    None => (PathBuf::from("/usr/bin/open"), vec!["-t".into(), ws.clone()]),
+                }
+            }
+        };
+        std::process::Command::new(program)
+            .args(args)
+            .env_clear()
+            .envs(self.inner.env.pairs())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?;
         Ok(())
     }
 

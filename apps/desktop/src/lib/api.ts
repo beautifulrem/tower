@@ -13,6 +13,8 @@ import type { GoalSummary } from "../gen/GoalSummary";
 import type { InboxItem } from "../gen/InboxItem";
 import type { ModelInfo } from "../gen/ModelInfo";
 import type { NewGoalInput } from "../gen/NewGoalInput";
+import type { OpenTarget } from "../gen/OpenTarget";
+import type { ProjectPatch } from "../gen/ProjectPatch";
 import type { ProjectView } from "../gen/ProjectView";
 import type { ReviewComment } from "../gen/ReviewComment";
 import type { ReviewView } from "../gen/ReviewView";
@@ -25,8 +27,9 @@ export const api = {
   environment: () => invoke<EnvironmentStatus>("environment"),
   projects: () => invoke<ProjectView[]>("projects"),
   addProject: (path: string) => invoke<ProjectView>("add_project", { path }),
-  updateProject: (id: string, baseBranch: string, testCommand: string | null) =>
-    invoke<ProjectView>("update_project", { id, baseBranch, testCommand }),
+  updateProject: (id: string, patch: ProjectPatch) => invoke<ProjectView>("update_project", { id, patch }),
+  push: (id: string, openPr: boolean) => invoke<string | null>("push", { id, openPr }),
+  openWorkspace: (id: string, target: OpenTarget) => invoke<void>("open_workspace", { id, target }),
   removeProject: (id: string) => invoke<void>("remove_project", { id }),
 
   goals: () => invoke<GoalSummary[]>("goals"),

@@ -4,4 +4,13 @@ export type ProjectView = { id: string, name: string, root: string, base_branch:
 /**
  * Detected from the repository (package.json scripts, Cargo, ...).
  */
-test_command: string | null, created_at: number, };
+test_command: string | null, 
+/**
+ * Git-ignored files (globs, relative to the root) copied into each
+ * workspace and verification checkout, e.g. `.env`.
+ */
+local_files: Array<string>, 
+/**
+ * Project memory: notes injected into every goal of this project.
+ */
+memory: string, created_at: number, };

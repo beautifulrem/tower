@@ -33,4 +33,10 @@ model: string,
 /**
  * Pi thinking level. Empty means the Pi default.
  */
-thinking: string, };
+thinking: string, 
+/**
+ * Situations in which the agent must stop and ask instead of deciding
+ * (`docs/00` R7). Injected into the first message; Tower does not
+ * evaluate them.
+ */
+stop_conditions: Array<string>, };

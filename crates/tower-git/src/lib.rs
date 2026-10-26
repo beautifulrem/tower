@@ -303,6 +303,61 @@ impl Git {
         self.run(project_root, &args).is_ok()
     }
 
+    /// Copies git-ignored files of the user's repository that match
+    /// `patterns` (e.g. `.env`, `config/*.local.json`) into `dest`, keeping
+    /// their relative paths. Tracked files never qualify: they arrive with
+    /// the clone. Returns the copied paths.
+    pub fn copy_local_files(&self, project_root: &Path, dest: &Path, patterns: &[String]) -> Result<Vec<String>> {
+        const MAX_BYTES: u64 = 5 * 1024 * 1024;
+        if patterns.iter().all(|p| p.trim().is_empty()) {
+            return Ok(Vec::new());
+        }
+        let mut b = globset::GlobSetBuilder::new();
+        for p in patterns.iter().map(|p| p.trim()).filter(|p| !p.is_empty()) {
+            b.add(globset::Glob::new(p).map_err(|e| GitError::Invalid(format!("无效的本地文件模式 {p}：{e}")))?);
+        }
+        let set = b.build().map_err(|e| GitError::Invalid(e.to_string()))?;
+        let listed = self.run(project_root, &["ls-files", "-z", "--others", "--ignored", "--exclude-standard"])?;
+        let mut copied = Vec::new();
+        for rel in listed.split('\0').filter(|r| !r.is_empty() && set.is_match(r)) {
+            let from = project_root.join(rel);
+            let Ok(meta) = std::fs::symlink_metadata(&from) else { continue };
+            // Only regular files, and nothing large: local config, not data.
+            if !meta.is_file() || meta.len() > MAX_BYTES {
+                continue;
+            }
+            let to = dest.join(rel);
+            if let Some(parent) = to.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&from, &to)?;
+            copied.push(rel.to_string());
+        }
+        copied.sort();
+        Ok(copied)
+    }
+
+    /// Paths that differ between two snapshots.
+    pub fn changed_between(&self, repo: &Path, from: &str, to: &str) -> Result<Vec<String>> {
+        let out = self.run(repo, &["diff", "--name-only", "-z", "--no-renames", from, to])?;
+        Ok(out.split('\0').filter(|p| !p.is_empty()).map(String::from).collect())
+    }
+
+    /// The URL of `origin` in the user's repository, if any.
+    pub fn origin_url(&self, project_root: &Path) -> Option<String> {
+        self.run_trim(project_root, &["remote", "get-url", "origin"]).ok().filter(|u| !u.is_empty())
+    }
+
+    /// Pushes a local branch of the user's repository to `origin`. A
+    /// one-way door: only ever called on an explicit human action.
+    pub fn push_branch(&self, project_root: &Path, branch: &str) -> Result<()> {
+        self.run(
+            project_root,
+            &["push", "--set-upstream", "origin", &format!("refs/heads/{branch}:refs/heads/{branch}")],
+        )?;
+        Ok(())
+    }
+
     /// Detects the project's test command from conventional manifests.
     pub fn detect_test_command(root: &Path) -> Option<String> {
         let pkg = root.join("package.json");

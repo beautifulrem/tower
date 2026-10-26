@@ -34,6 +34,8 @@ pub fn pause_label(r: PauseReason) -> &'static str {
         PauseReason::VerifyEnvError => "验证环境出错（不是标准失败）",
         PauseReason::PrepareFailed => "准备工作区或启动引擎失败",
         PauseReason::ProviderError => "模型服务出错",
+        PauseReason::SentinelHigh => "哨兵命中：需要你确认",
+        PauseReason::WallClockCap => "超过单次运行的墙钟上限",
     }
 }
 
@@ -56,6 +58,10 @@ pub fn describe(event: &EventKind) -> Option<String> {
         EventKind::InboxOpened { title, .. } => format!("需要你：{title}"),
         EventKind::BranchWritten { branch, .. } => format!("已写入分支 {branch}"),
         EventKind::EngineError { message } => format!("引擎错误：{message}"),
+        EventKind::SentinelHit { title, .. } => format!("哨兵：{title}"),
+        EventKind::Stalled { detail, .. } => format!("可能卡住：{detail}"),
+        EventKind::HumanEdited { files } => format!("你在暂停期间改了 {} 个文件", files.len()),
+        EventKind::BranchPushed { branch, .. } => format!("已推送 {branch}"),
         _ => return None,
     })
 }

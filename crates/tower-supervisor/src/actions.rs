@@ -24,6 +24,11 @@ const ONE_MORE_REWORK: &str = "让 Agent 再返工一次";
 const RAISE_SOFT: &str = "把软上限提高到硬上限并继续";
 const DOUBLE_BUDGET: &str = "预算翻倍并继续";
 const ABANDON: &str = "放弃这个目标";
+const OVERRIDE_SENTINEL: &str = "我已确认，进入评审";
+const SENTINEL_REWORK: &str = "让 Agent 去掉这些改动后重做";
+const MORE_TIME: &str = "再给 30 分钟";
+pub const KEEP_WAITING: &str = "继续等待";
+pub const PAUSE: &str = "暂停";
 
 /// The ways out of each pause reason, offered on its Needs-You card.
 pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<&'static str> {
@@ -34,6 +39,8 @@ pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<&'static st
         PauseReason::BudgetHardCap => vec![DOUBLE_BUDGET, ABANDON],
         PauseReason::IdleWithoutSubmit => vec![CONTINUE, ABANDON],
         PauseReason::EngineCrash | PauseReason::ProviderError | PauseReason::PrepareFailed => vec![RETRY, ABANDON],
+        PauseReason::SentinelHigh => vec![SENTINEL_REWORK, OVERRIDE_SENTINEL, ABANDON],
+        PauseReason::WallClockCap => vec![MORE_TIME, ABANDON],
         PauseReason::Human | PauseReason::AppQuit => vec![CONTINUE],
     }
 }
@@ -63,6 +70,13 @@ pub async fn answer(inner: &Arc<Inner>, inbox_id: &str, response: &str) -> Resul
             review_claim(inner, goal, &claim_id, approved, note).await?;
         }
         InboxKind::Paused => on_pause_choice(inner, goal, response).await?,
+        InboxKind::Stalled => match response {
+            KEEP_WAITING => {}
+            PAUSE => run::pause(inner, goal, PauseReason::Human, "你在卡住提醒中暂停了它").await?,
+            text => {
+                run::steer(inner, goal, text).await?;
+            }
+        },
         InboxKind::ReviewReady => {}
     }
     Ok(())
@@ -84,6 +98,25 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, choice: &str) -> Result
             let failures = last_failures(inner, &rec)?;
             let msg = prompts::rework(rec.rework_cycles + 1, c.max_rework, &failures);
             run::start_run(inner, goal, "rework", msg).await
+        }
+        OVERRIDE_SENTINEL => {
+            // The human looked at what the sentinels found and accepts it:
+            // the verified snapshot goes to review, with the override on record.
+            inner.append(goal, EventKind::Note { text: "你确认了哨兵命中的改动，目标进入评审".into() })?;
+            inner.transition(goal, Transition::VerifyStarted, None, "")?;
+            inner.transition(goal, Transition::VerifyPassed, None, "哨兵命中已由你确认")?;
+            verify::review_ready(inner, goal, "全部机器标准通过；哨兵命中已由你确认")
+        }
+        SENTINEL_REWORK => {
+            let hits = inner.store(|s| s.sentinel_hits(goal))?;
+            run::start_run(inner, goal, "rework", prompts::sentinel_rework(&hits)).await
+        }
+        MORE_TIME => {
+            let mut c = rec.contract.clone();
+            c.budget.wall_minutes += 30;
+            c.version += 1;
+            inner.append(goal, EventKind::ContractRatified { contract: c })?;
+            run::resume(inner, goal).await
         }
         RAISE_SOFT | DOUBLE_BUDGET => {
             let mut c = rec.contract.clone();
@@ -233,6 +266,84 @@ fn slug(title: &str) -> String {
     let s = s.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");
     let s: String = s.chars().take(32).collect();
     if s.is_empty() { "goal".into() } else { s }
+}
+
+/// Pushes the accepted branch to `origin` and, when asked and the GitHub
+/// CLI is available, opens a pull request. Both are one-way doors: they run
+/// only on this explicit human action.
+pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Option<String>> {
+    let rec = inner.store(|s| s.goal(goal))?;
+    if !matches!(rec.state, LifecycleState::Accepted | LifecycleState::Integrated) {
+        return Err(invalid("只有已验收的目标可以推送"));
+    }
+    let branch = rec.branch.clone().ok_or_else(|| invalid("还没有写入分支"))?;
+    let root = PathBuf::from(&rec.project_root);
+    let git = inner.git.clone();
+    let (root2, branch2) = (root.clone(), branch.clone());
+    let remote = tokio::task::spawn_blocking(move || -> Result<String> {
+        let url = git.origin_url(&root2).ok_or_else(|| invalid("你的仓库没有 origin 远端"))?;
+        git.push_branch(&root2, &branch2)?;
+        Ok(url)
+    })
+    .await
+    .map_err(|e| invalid(e.to_string()))??;
+
+    let mut pr_url = None;
+    if open_pr {
+        let gh = inner.env.which("gh").ok_or_else(|| invalid("已推送；没有找到 GitHub CLI（gh），无法创建 PR"))?;
+        let detail = inner.store(|s| s.detail(goal))?;
+        let mut body = format!("{}\n\n", rec.contract.intent.trim());
+        for c in &detail.criteria {
+            let mark = match &c.verified {
+                Some(v) if v.passed && !v.stale => "✅ 已由 Tower 在干净环境中验证",
+                _ if matches!(c.criterion.kind, tower_core::CriterionKind::Human) && c.human_checked => "☑️ 人工确认",
+                _ => "—",
+            };
+            body.push_str(&format!("- **{}** {} — {mark}\n", c.criterion.id, c.criterion.title));
+        }
+        if let Some(s) = &rec.submit_summary {
+            body.push_str(&format!("\n> Agent 的说明（声明，未经验证）：{s}\n"));
+        }
+        body.push_str(&format!(
+            "\n<sub>Tower goal {} · verified snapshot {}</sub>\n",
+            rec.id,
+            rec.verified_pin.clone().unwrap_or_default()
+        ));
+        let out = tokio::process::Command::new(gh)
+            .args([
+                "pr",
+                "create",
+                "--head",
+                &branch,
+                "--base",
+                &rec.base_branch,
+                "--title",
+                &rec.title,
+                "--body",
+                &body,
+            ])
+            .current_dir(&root)
+            .env_clear()
+            .envs(inner.env.pairs())
+            .output()
+            .await?;
+        if !out.status.success() {
+            return Err(invalid(format!(
+                "已推送 {branch}；创建 PR 失败：{}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            )));
+        }
+        pr_url = String::from_utf8_lossy(&out.stdout).lines().rev().find(|l| l.starts_with("http")).map(String::from);
+    }
+    inner.append(goal, EventKind::BranchPushed { remote, branch: branch.clone(), pr_url: pr_url.clone() })?;
+    inner.toast(
+        ToastLevel::Success,
+        match &pr_url {
+            Some(u) => format!("已推送并创建 PR：{u}"),
+            None => format!("已推送 {branch}"),
+        },
+    );
+    Ok(pr_url)
 }
 
 /// Moves accepted goals to integrated once their commit is in the local

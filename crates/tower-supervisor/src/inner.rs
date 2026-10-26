@@ -39,6 +39,8 @@ pub(crate) struct Inner {
     pub(crate) starting: Mutex<HashSet<String>>,
     /// The phone page's server, when enabled.
     pub(crate) remote: crate::remote::Remote,
+    /// When the current quiet period began (pushes waiting for a digest).
+    pub(crate) quiet_since: Mutex<Option<tower_core::Millis>>,
     /// The outcome of the last push.
     pub(crate) push_status: Arc<Mutex<Option<tower_core::view::PushStatus>>>,
     /// The port and token the phone page was last started with.
@@ -299,6 +301,44 @@ pub(crate) async fn refresh_touched(inner: &Arc<Inner>) -> Result<()> {
         inner.mark_dirty(&g.id);
     }
     Ok(())
+}
+
+/// When a quiet period ends, one push says how many items waited in it
+/// (each was held back while it was quiet).
+pub(crate) fn quiet_digest(inner: &Inner, s: &Settings) {
+    let quiet = crate::is_quiet(s);
+    let mut since = inner.quiet_since.lock().unwrap_or_else(PoisonError::into_inner);
+    match (*since, quiet) {
+        (None, true) => *since = Some(tower_store::system_now()),
+        (Some(start), false) => {
+            *since = None;
+            let url = s.push_url.trim().to_string();
+            if url.is_empty() {
+                return;
+            }
+            let waited = inner
+                .store(|st| st.open_inbox_items())
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|i| i.created_at >= start && !matches!(i.kind, InboxKind::Assumption))
+                .filter(|i| i.kind != InboxKind::ReviewReady || s.push_ready)
+                .filter(|i| !s.muted_goals.contains(&i.goal_id))
+                .count();
+            if waited == 0 {
+                return;
+            }
+            let lang = s.lang();
+            let body =
+                tr!(lang, "安静时段里有 {waited} 件事在等你", "{waited} item(s) waited for you while it was quiet");
+            let status = inner.push_status.clone();
+            std::thread::spawn(move || {
+                let result = send_push(&url, "Tower", &body, None, lang);
+                *status.lock().unwrap_or_else(PoisonError::into_inner) =
+                    Some(tower_core::view::PushStatus { at: tower_store::system_now(), error: result.err() });
+            });
+        }
+        _ => {}
+    }
 }
 
 /// Minutes after local midnight, now.

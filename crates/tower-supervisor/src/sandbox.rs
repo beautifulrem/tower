@@ -205,9 +205,33 @@ pub struct Spec {
 pub const COMMON_PROXY_PORTS: &[u16] =
     &[1080, 1086, 1087, 6152, 6153, 7890, 7891, 7897, 8118, 9050, 9150, 10808, 10809];
 
-/// Ports of proxies named in `*_proxy` environment variables.
+/// Ports of loopback proxies in the system's network settings (`scutil
+/// --proxy`), which apps use even without `*_proxy` variables.
+fn system_proxy_ports() -> Vec<u16> {
+    let Ok(out) = std::process::Command::new("/usr/sbin/scutil").arg("--proxy").output() else { return Vec::new() };
+    parse_scutil_proxy(&String::from_utf8_lossy(&out.stdout))
+}
+
+fn parse_scutil_proxy(text: &str) -> Vec<u16> {
+    let field = |k: &str| {
+        text.lines().find_map(|l| l.trim().strip_prefix(k).and_then(|r| r.trim().strip_prefix(':')).map(str::trim))
+    };
+    let mut ports = Vec::new();
+    for kind in ["HTTP", "HTTPS", "SOCKS"] {
+        let host = field(&format!("{kind}Proxy ")).unwrap_or_default();
+        let local = host == "127.0.0.1" || host == "localhost" || host == "::1";
+        if local && let Some(p) = field(&format!("{kind}Port ")).and_then(|p| p.parse().ok()) {
+            ports.push(p);
+        }
+    }
+    ports
+}
+
+/// Ports of proxies named in `*_proxy` environment variables or the
+/// system's proxy settings, plus common proxy apps'.
 pub fn proxy_ports(env: &[(String, String)]) -> Vec<u16> {
     let mut ports: Vec<u16> = COMMON_PROXY_PORTS.to_vec();
+    ports.extend(system_proxy_ports());
     for (k, v) in env {
         if k.to_ascii_lowercase().ends_with("_proxy") && !k.eq_ignore_ascii_case("no_proxy") {
             let host_port = v.rsplit("://").next().unwrap_or(v).rsplit('@').next().unwrap_or(v);
@@ -228,8 +252,20 @@ pub fn proxy_ports(env: &[(String, String)]) -> Vec<u16> {
 /// temporary folders Chromium needs, never reads credential stores, and —
 /// unless the contract allows the network — reaches only this machine:
 /// no DNS, no UDP, no proxy listening on loopback.
-pub fn browser_profile(home: &Path, writable: &[&Path], network: bool, proxy_ports: &[u16]) -> String {
+pub fn browser_profile(
+    home: &Path,
+    readable: &[&Path],
+    writable: &[&Path],
+    network: bool,
+    proxy_ports: &[u16],
+) -> String {
     let mut s = String::from("(version 1)\n(allow default)\n");
+    // Nothing of your home but what a browser needs to start.
+    s.push_str(&format!("(deny file-read* (subpath {}))\n(allow file-read*\n", q(home)));
+    for r in readable.iter().chain(writable) {
+        s.push_str(&format!("  (subpath {})\n", q(r)));
+    }
+    s.push_str(&format!("  (literal {}))\n", q(home)));
     s.push_str("(deny file-read* file-write*\n");
     for secret in SECRETS {
         s.push_str(&format!("  (subpath {})\n", q(&home.join(secret))));
@@ -446,6 +482,12 @@ mod tests {
 
     /// Enforcement, checked against the real sandbox-exec, with a fake home
     /// under /tmp holding a fake secret, another project and a shared cache.
+    #[test]
+    fn system_proxies_on_loopback_are_found() {
+        let text = "<dictionary> {\n  HTTPEnable : 1\n  HTTPPort : 6152\n  HTTPProxy : 127.0.0.1\n  SOCKSPort : 6153\n  SOCKSProxy : 127.0.0.1\n  HTTPSPort : 8080\n  HTTPSProxy : proxy.corp\n}";
+        assert_eq!(parse_scutil_proxy(text), [6152, 6153]);
+    }
+
     /// The screenshot browser's confinement: loopback only (no DNS, no
     /// outside address, no loopback proxy), writes only where it must.
     #[cfg(target_os = "macos")]
@@ -461,7 +503,10 @@ mod tests {
         let sb = root.join("b.sb");
         // The proxies this machine uses (Tower passes the same list).
         let ports = proxy_ports(&std::env::vars().collect::<Vec<_>>());
-        std::fs::write(&sb, browser_profile(&root.join("home"), &[&own], false, &ports)).unwrap();
+        let home = root.join("home");
+        std::fs::create_dir_all(home.join("notes")).unwrap();
+        std::fs::write(home.join("notes/private.txt"), "x").unwrap();
+        std::fs::write(&sb, browser_profile(&home, &[], &[&own], false, &ports)).unwrap();
         let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = server.local_addr().unwrap().port();
         std::thread::spawn(move || {
@@ -491,6 +536,7 @@ mod tests {
         assert!(!run("/usr/bin/curl -sS -m 3 -x http://127.0.0.1:7890 http://x >/dev/null 2>&1"), "nor via a proxy");
         assert!(run(&format!("echo a > {}/x", own.display())), "its own folder is writable");
         assert!(!run(&format!("echo a > {}/x", root.display())), "nothing else is");
+        assert!(!run(&format!("cat {}/notes/private.txt", home.display())), "your home is not readable");
     }
 
     #[cfg(target_os = "macos")]

@@ -132,6 +132,7 @@ impl Supervisor {
             remote: remote::Remote::default(),
             remote_applied: Mutex::default(),
             push_status: Arc::default(),
+            quiet_since: Mutex::default(),
             starting: Mutex::default(),
         });
         let sup = Self { inner };
@@ -165,7 +166,9 @@ impl Supervisor {
             loop {
                 tick.tick().await;
                 let Some(inner) = weak.upgrade() else { break };
-                if inner.settings().remote_enabled {
+                let s = inner.settings();
+                inner::quiet_digest(&inner, &s);
+                if s.remote_enabled {
                     let sup = Supervisor { inner };
                     let _ = tokio::task::spawn_blocking(move || sup.apply_remote()).await;
                 }

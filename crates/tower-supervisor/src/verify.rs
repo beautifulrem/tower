@@ -212,6 +212,21 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
             };
             to_paused(inner, goal, PauseReason::DependenciesChanged, &detail)?;
         }
+        Outcome::HeldOutFailed(failures) => {
+            inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: false })?;
+            // For you: which ones and how they failed. The agent hears
+            // nothing until you decide what it should.
+            let mut detail = tr!(
+                lang,
+                "可见的标准都通过了，保留测试没有通过。Agent 不知道这些测试，也没有看到下面的输出。",
+                "Every visible criterion passed; the held-out tests did not. The agent does not know these tests and has not seen the output below."
+            );
+            for f in &failures {
+                let tail = tail_lines(&f.output_tail, 12);
+                detail.push_str(&format!("\n\n{} · {}\n{tail}", f.id, f.title));
+            }
+            to_paused(inner, goal, PauseReason::HeldOutFailed, &detail)?;
+        }
         Outcome::Failed(failures) => {
             inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: false })?;
             let rec = inner.store(|s| s.goal(goal))?;
@@ -268,6 +283,8 @@ enum Outcome {
     /// Setup failed without the network on the agent's snapshot; the
     /// output tail.
     SetupNeedsNetwork(String),
+    /// The visible criteria passed and the held-out tests did not.
+    HeldOutFailed(Vec<Failure>),
 }
 
 /// The result of one command in the verification checkout.
@@ -288,14 +305,20 @@ struct Ran {
 ///    (red → green evidence);
 /// 2. switched to the agent's snapshot — setup runs again, offline unless
 ///    the contract allows the network or you approved this snapshot —
-///    then the criteria: the verdict;
-/// 3. if the agent edited existing tests and everything passed, those
-///    tests are put back as they were on the base and the criteria run
-///    once more: passing only with the edits holds the goal.
+///    then the criteria, without the held-out tests: the verdict the agent
+///    may hear about;
+/// 3. the held-out tests copied in, offline: their results go to you only;
+/// 4. the agent's changes outside the source (tests, configuration,
+///    scripts, package settings) put back as on the base, and the criteria
+///    once more: a pass must come from the source;
+/// 5. a test that must fail added to the test files, and the criteria that
+///    proved the change once more: it must fail.
 ///
-/// Nothing the agent wrote influences step 1, and nothing from any step
-/// survives the verification. Local files such as `.env` are present only
-/// while criteria run, never during setup.
+/// Every tracked file is reset to the snapshot between steps. The paths are
+/// new for every verification, and whatever it started is stopped when it
+/// ends, so nothing from one run reaches the next. Nothing the agent wrote
+/// influences step 1. Local files such as `.env` are present only while
+/// criteria run, never during setup.
 struct Bench<'a> {
     inner: &'a Arc<Inner>,
     goal: &'a str,
@@ -303,16 +326,24 @@ struct Bench<'a> {
     ws: String,
     base: String,
     dir: std::path::PathBuf,
+    tmp: std::path::PathBuf,
     env: Vec<(String, String)>,
     online: Option<std::path::PathBuf>,
     offline: Option<std::path::PathBuf>,
     criteria: Option<std::path::PathBuf>,
+    /// Criteria with the held-out tests present: never the network.
+    held_out_profile: Option<std::path::PathBuf>,
     setup: Option<String>,
     /// The project's held-out test patterns.
     holdout: Vec<String>,
     cancel: &'a Cancel,
     _cache: RemoveOnDrop,
 }
+
+/// What a step found besides the verdict.
+type Found = Vec<tower_core::sentinel::SentinelHit>;
+
+type Exec = (tower_core::contract::Criterion, String, u32);
 
 impl<'a> Bench<'a> {
     async fn open(
@@ -323,25 +354,35 @@ impl<'a> Bench<'a> {
         base: &str,
         cancel: &'a Cancel,
     ) -> Result<Bench<'a>> {
-        let dir = inner.paths.verify(goal);
+        let run_id = uuid::Uuid::new_v4().simple().to_string();
+        let short = &run_id[..12];
+        // New paths every time: a process that outlived an earlier
+        // verification can only reach that one's (deleted) directories.
+        let roots = [
+            inner.paths.verify(goal),
+            inner.paths.tmp(&format!("{goal}-verify")),
+            inner.paths.root.join("verify-cache").join(goal),
+        ];
+        for r in &roots {
+            let _ = std::fs::remove_dir_all(r);
+        }
+        let [dir, tmp, cache] = roots.map(|r| r.join(short));
         let git = inner.git.clone();
         let (root1, base1, dir1) = (rec.project_root.clone(), base.to_string(), dir.clone());
         tokio::task::spawn_blocking(move || git.trusted_checkout(Path::new(&root1), &base1, &dir1))
             .await
             .map_err(|e| invalid(e.to_string()))??;
-        let tmp = inner.paths.tmp(&format!("{goal}-verify"));
-        let cache = inner.paths.root.join("verify-cache").join(goal);
-        let _ = std::fs::remove_dir_all(&cache);
         let cleanup = RemoveOnDrop(cache.clone());
         let goal_dir = inner.paths.goal_dir(goal);
         let online = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify-setup", true)?;
         let offline = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify-setup-offline", false)?;
         let criteria = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify", rec.contract.network)?;
+        let held_out = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify-held-out", false)?;
         let mut env = inner.env.without_credentials();
         env.push(("CI".into(), "1".into()));
         env.extend(criteria.env);
         let project = inner.store(|s| s.project(&rec.project_id))?;
-        let holdout = project.holdout_files.clone();
+        let holdout: Vec<String> = project.holdout_files.iter().filter(|p| !p.trim().is_empty()).cloned().collect();
         let project_setup = project.setup_command;
         let setup = if !rec.contract.setup.trim().is_empty() {
             Some(rec.contract.setup.clone())
@@ -357,10 +398,12 @@ impl<'a> Bench<'a> {
             ws: ws.to_string(),
             base: base.to_string(),
             dir,
+            tmp,
             env,
             online: online.profile,
             offline: offline.profile,
             criteria: criteria.profile,
+            held_out_profile: held_out.profile,
             setup,
             holdout,
             cancel,
@@ -369,8 +412,13 @@ impl<'a> Bench<'a> {
     }
 
     async fn close(&self) {
-        let dir = self.dir.clone();
-        let _ = tokio::task::spawn_blocking(move || std::fs::remove_dir_all(&dir)).await;
+        let (dir, tmp) = (self.dir.clone(), self.tmp.clone());
+        let _ = tokio::task::spawn_blocking(move || {
+            stop_survivors(&[dir.clone(), tmp.clone()]);
+            let _ = std::fs::remove_dir_all(&dir);
+            let _ = std::fs::remove_dir_all(&tmp);
+        })
+        .await;
     }
 
     async fn exec(&self, command: &str, profile: Option<&Path>, timeout: Duration) -> Ran {
@@ -393,21 +441,28 @@ impl<'a> Bench<'a> {
         (!r.passed).then_some(r)
     }
 
-    /// Copies the project's local files, and its held-out tests, in for the
-    /// criteria; returns them so they can be removed before the next setup.
-    async fn local_files(&self) -> Result<Vec<String>> {
+    /// Copies the project's local files in for the criteria (and its
+    /// held-out tests, when asked); returns them so they can be removed
+    /// before the next setup.
+    async fn local_files(&self, held_out: bool) -> Result<Vec<String>> {
         let mut files = run::copy_local_files(self.inner, &self.rec, &self.dir).await?;
-        let project = self.inner.store(|s| s.project(&self.rec.project_id))?;
-        if !project.holdout_files.is_empty() {
-            let git = self.inner.git.clone();
-            let (root, dest, patterns) =
-                (std::path::PathBuf::from(&project.root), self.dir.clone(), project.holdout_files.clone());
-            let held = tokio::task::spawn_blocking(move || git.copy_local_files(&root, &dest, &patterns))
-                .await
-                .map_err(|e| invalid(e.to_string()))??;
-            files.extend(held);
+        if held_out {
+            files.extend(self.copy_held_out().await?);
         }
         Ok(files)
+    }
+
+    async fn copy_held_out(&self) -> Result<Vec<String>> {
+        if self.holdout.is_empty() {
+            return Ok(Vec::new());
+        }
+        let git = self.inner.git.clone();
+        let (root, dest, patterns) =
+            (std::path::PathBuf::from(&self.rec.project_root), self.dir.clone(), self.holdout.clone());
+        let held = tokio::task::spawn_blocking(move || git.copy_local_files(&root, &dest, &patterns))
+            .await
+            .map_err(|e| invalid(e.to_string()))??;
+        Ok(held)
     }
 
     fn remove(&self, files: &[String]) {
@@ -416,7 +471,17 @@ impl<'a> Bench<'a> {
         }
     }
 
-    fn criteria_list(&self) -> Vec<(tower_core::contract::Criterion, String, u32)> {
+    /// Puts every tracked file back to `rev`.
+    async fn reset(&self, rev: &str) -> Result<()> {
+        let git = self.inner.git.clone();
+        let (dir, rev) = (self.dir.clone(), rev.to_string());
+        tokio::task::spawn_blocking(move || git.reset_tracked(&dir, &rev))
+            .await
+            .map_err(|e| invalid(e.to_string()))??;
+        Ok(())
+    }
+
+    fn criteria_list(&self) -> Vec<Exec> {
         self.rec
             .contract
             .machine_criteria()
@@ -457,11 +522,21 @@ impl<'a> Bench<'a> {
         Ok(())
     }
 
-    async fn run_all(
-        &self,
-        pin: &str,
-        files: &[tower_core::view::DiffFile],
-    ) -> Result<(Outcome, Vec<tower_core::sentinel::SentinelHit>)> {
+    fn env_error(&self, id: &str, command: &str, r: &Ran) -> Outcome {
+        let lang = self.inner.lang();
+        let how = match r.exit_code {
+            Some(code) => tr!(lang, "退出码 {code}", "exit code {code}"),
+            None => tr!(lang, "未启动", "did not start"),
+        };
+        let tail = tail_lines(&r.output_tail, 20);
+        Outcome::EnvError(tr!(
+            lang,
+            "{id} 的命令 `{command}` 无法运行（{how}）：\n{tail}",
+            "The command `{command}` of {id} could not run ({how}):\n{tail}"
+        ))
+    }
+
+    async fn run_all(&self, pin: &str, files: &[tower_core::view::DiffFile]) -> Result<(Outcome, Found)> {
         let (inner, goal) = (self.inner, self.goal);
         let lang = inner.lang();
         let criteria = self.criteria_list();
@@ -490,12 +565,19 @@ impl<'a> Bench<'a> {
             .map(|c| c.criterion.id.clone())
             .collect();
         if !looks_missing.is_empty() {
-            let copied = self.local_files().await?;
+            let copied = self.local_files(false).await?;
             self.capture_looks(&looks_missing, "base", &self.base.clone()).await?;
             self.remove(&copied);
         }
+        let mut red_on_base: Vec<String> = detail
+            .criteria
+            .iter()
+            .filter(|c| c.passed_on_base == Some(false))
+            .map(|c| c.criterion.id.clone())
+            .collect();
         if criteria.iter().any(|(c, ..)| missing.contains(&c.id.as_str())) {
-            let copied = self.local_files().await?;
+            // Your content: the held-out tests may be present.
+            let copied = self.local_files(true).await?;
             for (c, command, timeout) in criteria.iter().filter(|(c, ..)| missing.contains(&c.id.as_str())) {
                 let r =
                     self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
@@ -504,6 +586,9 @@ impl<'a> Bench<'a> {
                     let code = r.exit_code.map_or_else(|| "did not start".to_string(), |c| format!("exit code {c}"));
                     format!("could not run on the base ({code}): {}", tail_lines(&r.output_tail, 3))
                 });
+                if !r.passed && error.is_none() {
+                    red_on_base.push(c.id.clone());
+                }
                 inner.append(
                     goal,
                     EventKind::BaselineResult {
@@ -552,31 +637,20 @@ impl<'a> Bench<'a> {
                 return Ok((Outcome::EnvError(detail), Vec::new()));
             }
         }
-        let copied = self.local_files().await?;
+        // What is verified is the snapshot, not what setup made of it.
+        self.reset(pin).await?;
+        let copied = self.local_files(false).await?;
         if !copied.is_empty() {
             inner.append(goal, EventKind::LocalFilesCopied { files: copied.clone() })?;
         }
         let mut failures = Vec::new();
-        for (c, command, timeout) in &criteria {
+        for (c, command, timeout) in criteria.iter().filter(|(_, command, _)| !names_held_out(&self.holdout, command)) {
             if self.cancel.is_cancelled() {
                 return Ok((Outcome::EnvError(tr!(lang, "验证被取消", "Verification was cancelled")), Vec::new()));
             }
             let r = self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
             if r.environment_failure {
-                let id = &c.id;
-                let how = match r.exit_code {
-                    Some(code) => tr!(lang, "退出码 {code}", "exit code {code}"),
-                    None => tr!(lang, "未启动", "did not start"),
-                };
-                let tail = tail_lines(&r.output_tail, 20);
-                return Ok((
-                    Outcome::EnvError(tr!(
-                        lang,
-                        "{id} 的命令 `{command}` 无法运行（{how}）：\n{tail}",
-                        "The command `{command}` of {id} could not run ({how}):\n{tail}"
-                    )),
-                    Vec::new(),
-                ));
+                return Ok((self.env_error(&c.id, command, &r), Vec::new()));
             }
             inner.append(
                 goal,
@@ -587,6 +661,7 @@ impl<'a> Bench<'a> {
                     exit_code: r.exit_code,
                     duration_ms: r.duration_ms,
                     output_tail: r.output_tail.clone(),
+                    held_out: false,
                 },
             )?;
             if !r.passed {
@@ -595,7 +670,7 @@ impl<'a> Bench<'a> {
                     title: c.title.clone(),
                     command: command.clone(),
                     exit_code: r.exit_code,
-                    output_tail: withhold_if_held_out(&self.holdout, command, r.output_tail),
+                    output_tail: r.output_tail,
                 });
             }
         }
@@ -612,100 +687,231 @@ impl<'a> Bench<'a> {
             return Ok((Outcome::Failed(failures), Vec::new()));
         }
 
-        // 3. The same snapshot with the agent's edits to existing tests undone.
-        let edited: Vec<&str> = files
-            .iter()
-            .filter(|f| {
-                f.status == tower_core::view::FileStatus::Modified && tower_core::sentinel::is_test_path(&f.path)
-            })
-            .map(|f| f.path.as_str())
-            .collect();
-        if edited.is_empty() {
-            return Ok((Outcome::Passed, Vec::new()));
-        }
-        for path in &edited {
-            let git = inner.git.clone();
-            // From your repository, not the agent's workspace.
-            let (root, base, p) = (self.rec.project_root.clone(), self.base.clone(), path.to_string());
-            let text = tokio::task::spawn_blocking(move || git.file_at(Path::new(&root), &base, &p))
-                .await
-                .map_err(|e| invalid(e.to_string()))?;
-            if let Some(text) = text {
-                tower_git::write_inside(&self.dir, path, text.as_bytes())?;
-            }
-        }
-        let mut depends = Vec::new();
-        for (c, command, timeout) in &criteria {
-            let r = self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
-            if r.environment_failure {
-                continue;
-            }
-            inner.append(
-                goal,
-                EventKind::OriginalTestsResult { criterion: c.id.clone(), pin: pin.into(), passed: r.passed },
-            )?;
-            if !r.passed {
-                depends.push(c.id.clone());
-            }
-        }
-        if depends.is_empty() {
-            return Ok((Outcome::Passed, Vec::new()));
-        }
-        let detail = tr!(
-            lang,
-            "{ids} 只有在 Agent 改过的测试下才通过；恢复原来的测试后失败。被改的测试：{files}",
-            "{ids} pass only with the agent's edits to existing tests and fail with the originals. Edited tests: {files}",
-            ids = depends.join(", "),
-            files = edited.join(", ")
-        );
-        let hit = tower_core::sentinel::SentinelHit {
-            sentinel: "passes_only_with_edited_tests".into(),
-            severity: tower_core::sentinel::HIGH,
-            title: tower_core::i18n::sentinel_title("passes_only_with_edited_tests", lang).unwrap_or_default().into(),
-            detail,
+        let mut found = Vec::new();
+        // 3. The held-out tests, for you only.
+        let held_set: Vec<&Exec> = if self.holdout.is_empty() {
+            Vec::new()
+        } else if criteria.iter().any(|(_, command, _)| names_held_out(&self.holdout, command)) {
+            criteria.iter().filter(|(_, command, _)| names_held_out(&self.holdout, command)).collect()
+        } else {
+            // The project's own test command finds them where they are.
+            criteria.iter().collect()
         };
-        append_hit(inner, goal, &hit)?;
-        Ok((Outcome::Passed, vec![hit]))
+        let mut held_files = Vec::new();
+        if !held_set.is_empty() {
+            self.reset(pin).await?;
+            held_files = self.copy_held_out().await?;
+            let mut held_failures = Vec::new();
+            for (c, command, timeout) in &held_set {
+                let r = self
+                    .exec(command, self.held_out_profile.as_deref(), Duration::from_secs((*timeout).max(1) as u64))
+                    .await;
+                if r.environment_failure {
+                    return Ok((self.env_error(&c.id, command, &r), found));
+                }
+                inner.append(
+                    goal,
+                    EventKind::CriterionResult {
+                        criterion: c.id.clone(),
+                        pin: pin.into(),
+                        passed: r.passed,
+                        exit_code: r.exit_code,
+                        duration_ms: r.duration_ms,
+                        output_tail: r.output_tail.clone(),
+                        held_out: true,
+                    },
+                )?;
+                if !r.passed {
+                    held_failures.push(Failure {
+                        id: c.id.clone(),
+                        title: c.title.clone(),
+                        command: command.clone(),
+                        exit_code: r.exit_code,
+                        output_tail: r.output_tail,
+                    });
+                }
+            }
+            // The tests themselves must come out as they went in.
+            let root = Path::new(&self.rec.project_root);
+            let changed = held_files
+                .iter()
+                .filter(|f| std::fs::read(root.join(f)).ok() != std::fs::read(self.dir.join(f)).ok())
+                .count();
+            if changed > 0 {
+                let detail = tr!(
+                    lang,
+                    "运行期间有 {changed} 个保留测试文件被改写（为了不让 Agent 知道，这里不列出文件名）",
+                    "{changed} held-out test file(s) were rewritten while the criteria ran (not named here, so the agent cannot learn them)"
+                );
+                let hit = sentinel_hit("held_out_tests_changed", detail, lang);
+                append_hit(inner, goal, &hit)?;
+                found.push(hit);
+            }
+            if !held_failures.is_empty() {
+                return Ok((Outcome::HeldOutFailed(held_failures), found));
+            }
+        }
+
+        // 4. Only the source changes kept.
+        let mut paths: Vec<&str> = Vec::new();
+        for f in files {
+            for p in std::iter::once(f.path.as_str()).chain(f.old_path.as_deref()) {
+                if !tower_core::roles::role(p).kept_in_source_only_run(p) && !paths.contains(&p) {
+                    paths.push(p);
+                }
+            }
+        }
+        if !paths.is_empty() {
+            self.reset(pin).await?;
+            if !held_files.is_empty() {
+                held_files = self.copy_held_out().await?;
+            }
+            for path in &paths {
+                let git = inner.git.clone();
+                // From your repository, not the agent's workspace.
+                let (root, base, p) = (self.rec.project_root.clone(), self.base.clone(), path.to_string());
+                let text = tokio::task::spawn_blocking(move || git.file_at(Path::new(&root), &base, &p))
+                    .await
+                    .map_err(|e| invalid(e.to_string()))?;
+                match text {
+                    Some(text) => tower_git::write_inside(&self.dir, path, text.as_bytes())?,
+                    None => {
+                        let _ = std::fs::remove_file(self.dir.join(path));
+                    }
+                }
+            }
+            let profile =
+                if held_files.is_empty() { self.criteria.as_deref() } else { self.held_out_profile.as_deref() };
+            let mut depends = Vec::new();
+            for (c, command, timeout) in &criteria {
+                // A command that runs a file no longer there says nothing.
+                if paths_gone(&self.dir, command) || (held_files.is_empty() && names_held_out(&self.holdout, command)) {
+                    continue;
+                }
+                let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;
+                if r.environment_failure {
+                    continue;
+                }
+                inner.append(
+                    goal,
+                    EventKind::OriginalTestsResult { criterion: c.id.clone(), pin: pin.into(), passed: r.passed },
+                )?;
+                if !r.passed {
+                    depends.push(c.id.clone());
+                }
+            }
+            if !depends.is_empty() {
+                let shown: Vec<&str> = paths.iter().take(12).copied().collect();
+                let more = paths.len() - shown.len();
+                let mut list = shown.join(", ");
+                if more > 0 {
+                    list.push_str(&tr!(lang, " 等另外 {more} 个", " and {more} more"));
+                }
+                let detail = tr!(
+                    lang,
+                    "{ids} 只有在 Agent 对源码之外的改动下才通过；这些文件恢复成基线版本后失败：{list}",
+                    "{ids} pass only with the agent's changes outside the source code, and fail with these files as they were on the base: {list}",
+                    ids = depends.join(", ")
+                );
+                let hit = sentinel_hit("passes_only_with_non_source_changes", detail, lang);
+                append_hit(inner, goal, &hit)?;
+                found.push(hit);
+            }
+        }
+
+        // 5. A test that must fail.
+        let proving: Vec<&Exec> = criteria
+            .iter()
+            .filter(|(c, ..)| held_set.iter().any(|(h, ..)| h.id == c.id) || red_on_base.contains(&c.id))
+            .collect();
+        if !proving.is_empty() {
+            let git = inner.git.clone();
+            let dir = self.dir.clone();
+            let mut candidates =
+                tokio::task::spawn_blocking(move || git.ls_files(&dir)).await.map_err(|e| invalid(e.to_string()))??;
+            candidates.extend(held_files.iter().cloned());
+            let canary = crate::canary::plant(&self.dir, &candidates, &self.tmp)?;
+            let profile =
+                if held_files.is_empty() { self.criteria.as_deref() } else { self.held_out_profile.as_deref() };
+            let mut tripped = Vec::new();
+            for (c, command, timeout) in proving.iter().filter(|_| !canary.files.is_empty()) {
+                if paths_gone(&self.dir, command) || (held_files.is_empty() && names_held_out(&self.holdout, command)) {
+                    continue;
+                }
+                canary.clear();
+                let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;
+                if r.passed && canary.ran() {
+                    tripped.push(c.id.clone());
+                }
+            }
+            canary.clear();
+            if !tripped.is_empty() {
+                let detail = tr!(
+                    lang,
+                    "Tower 在测试文件末尾加了一个必然失败的测试，{ids} 仍然报告通过。断言、测试框架或结果报告在运行时被改动了，这次验证的“通过”都不能当作事实。",
+                    "Tower added a test that must fail to the end of the test files, and {ids} still reported success. Assertions, the test runner or its reporting were altered at run time; none of this verification's passes count as evidence.",
+                    ids = tripped.join(", ")
+                );
+                let hit = sentinel_hit("assertions_disabled", detail, lang);
+                append_hit(inner, goal, &hit)?;
+                found.push(hit);
+            }
+        }
+        Ok((Outcome::Passed, found))
     }
 }
 
-/// Manifests, lockfiles and package-manager configuration: what decides
-/// which third-party code an install downloads and runs.
-const DEPENDENCY_FILES: &[&str] = &[
-    "package.json",
-    "package-lock.json",
-    "npm-shrinkwrap.json",
-    "pnpm-lock.yaml",
-    "pnpm-workspace.yaml",
-    "yarn.lock",
-    ".yarnrc",
-    ".yarnrc.yml",
-    ".npmrc",
-    "bun.lock",
-    "bun.lockb",
-    "Cargo.toml",
-    "Cargo.lock",
-    "pyproject.toml",
-    "setup.py",
-    "setup.cfg",
-    "Pipfile",
-    "Pipfile.lock",
-    "poetry.lock",
-    "uv.lock",
-    "go.mod",
-    "go.sum",
-    "Gemfile",
-    "Gemfile.lock",
-    "composer.json",
-    "composer.lock",
-];
+/// A command names a file that is not in the checkout (`node --test x.test.js`
+/// after the agent's new test was taken out): running it proves nothing.
+fn paths_gone(dir: &Path, command: &str) -> bool {
+    command
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c| c == '\'' || c == '"'))
+        .filter(|w| w.contains('/') && !w.starts_with('-') && !w.starts_with('/') && !w.contains(['*', '=']))
+        .any(|w| !dir.join(w.trim_start_matches("./")).exists())
+}
+
+fn sentinel_hit(id: &str, detail: String, lang: Lang) -> tower_core::sentinel::SentinelHit {
+    tower_core::sentinel::SentinelHit {
+        sentinel: id.into(),
+        severity: tower_core::sentinel::HIGH,
+        title: tower_core::i18n::sentinel_title(id, lang).unwrap_or(id).into(),
+        detail,
+    }
+}
+
+/// Stops whatever a verification started and left running (a server, a
+/// daemonised watcher): every process whose working directory or open
+/// files are inside the verification's directories. (One that leaves them
+/// entirely can only write to those directories, which are deleted and
+/// never reused.)
+fn stop_survivors(dirs: &[std::path::PathBuf]) {
+    let prefixes: Vec<String> =
+        dirs.iter().map(|d| format!("{}/", crate::paths::real(d).display())).filter(|p| p.len() > 2).collect();
+    let Ok(out) = std::process::Command::new("/usr/sbin/lsof").args(["-n", "-P", "-w", "-F", "pn"]).output() else {
+        return;
+    };
+    let me = std::process::id();
+    let mut pid = 0u32;
+    let mut doomed = std::collections::BTreeSet::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        if let Some(p) = line.strip_prefix('p') {
+            pid = p.parse().unwrap_or(0);
+        } else if let Some(name) = line.strip_prefix('n')
+            && pid > 1
+            && pid != me
+            && prefixes.iter().any(|p| name.starts_with(p.as_str()) || format!("{name}/") == *p)
+        {
+            doomed.insert(pid);
+        }
+    }
+    for pid in doomed {
+        let _ = std::process::Command::new("/bin/kill").args(["-KILL", &pid.to_string()]).status();
+    }
+}
 
 pub(crate) fn is_dependency_file(path: &str) -> bool {
-    let name = path.rsplit('/').next().unwrap_or(path);
-    DEPENDENCY_FILES.contains(&name)
-        || (name.starts_with("requirements") && name.ends_with(".txt"))
-        || path.starts_with(".cargo/config")
-        || path.contains("/.cargo/config")
+    tower_core::roles::is_dependency_file(path)
 }
 
 /// Whether setup on the agent's snapshot may use the network: when the
@@ -725,17 +931,18 @@ fn setup_may_use_network(
     Ok(matches!(approved.map(|e| e.event), Some(EventKind::SetupNetworkApproved { fingerprint }) if fingerprint == fp))
 }
 
-/// The output of a criterion that runs held-out tests goes to the human,
-/// not back to the agent: it would describe the tests the agent must not
-/// see. A criterion runs them when its command names a path under one of
-/// the held-out patterns' fixed prefixes (`holdout/**` → `holdout/`).
-pub(crate) fn withhold_if_held_out(patterns: &[String], command: &str, output: String) -> String {
-    let runs = patterns.iter().any(|p| {
+/// Whether a criterion's command names a path under one of the held-out
+/// patterns' fixed prefixes (`holdout/**` → `holdout/`): it runs held-out
+/// tests, so it runs only while they are present, for the human.
+pub(crate) fn names_held_out(patterns: &[String], command: &str) -> bool {
+    patterns.iter().any(|p| {
         let prefix: String = p.chars().take_while(|c| !matches!(c, '*' | '?' | '[' | '{')).collect();
         !prefix.trim().is_empty() && command.contains(prefix.trim_end_matches('/'))
-    });
-    if runs { "(output withheld: this criterion runs held-out tests, which you cannot see)".into() } else { output }
+    })
 }
+
+/// What the agent hears of a result produced with the held-out tests present.
+pub(crate) const WITHHELD: &str = "(output withheld: this result comes from held-out tests, which you cannot see)";
 
 /// Removes a directory when dropped (best effort).
 struct RemoveOnDrop(std::path::PathBuf);
@@ -774,13 +981,23 @@ fn tail_lines(s: &str, n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::withhold_if_held_out;
+    use super::*;
 
     #[test]
-    fn held_out_output_never_goes_back_to_the_agent() {
+    fn criteria_naming_held_out_paths_are_known() {
         let p = vec!["holdout/**".to_string()];
-        assert!(withhold_if_held_out(&p, "sh holdout/check.sh", "secret expectation".into()).contains("withheld"));
-        assert_eq!(withhold_if_held_out(&p, "npm test", "visible".into()), "visible");
-        assert_eq!(withhold_if_held_out(&[], "sh holdout/check.sh", "visible".into()), "visible");
+        assert!(names_held_out(&p, "sh holdout/check.sh"));
+        assert!(!names_held_out(&p, "npm test"));
+        assert!(!names_held_out(&[], "sh holdout/check.sh"));
+    }
+
+    #[test]
+    fn commands_naming_missing_files_are_not_evidence() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("test")).unwrap();
+        std::fs::write(tmp.path().join("test/a.test.js"), "").unwrap();
+        assert!(!paths_gone(tmp.path(), "node --test test/a.test.js"));
+        assert!(paths_gone(tmp.path(), "node --test ./test/new.test.js"));
+        assert!(!paths_gone(tmp.path(), "npm test -- --reporter=dot"));
     }
 }

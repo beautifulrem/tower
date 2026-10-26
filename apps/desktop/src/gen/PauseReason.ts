@@ -3,4 +3,4 @@
 /**
  * Why a goal is paused. Each reason has exactly one way out (`03` §3.2.1).
  */
-export type PauseReason = "human" | "budget_soft_cap" | "budget_hard_cap" | "idle_without_submit" | "engine_crash" | "app_quit" | "verify_failed_limit" | "verify_env_error" | "prepare_failed" | "provider_error" | "sentinel_high" | "wall_clock_cap" | "internal" | "dependencies_changed";
+export type PauseReason = "human" | "budget_soft_cap" | "budget_hard_cap" | "idle_without_submit" | "engine_crash" | "app_quit" | "verify_failed_limit" | "verify_env_error" | "prepare_failed" | "provider_error" | "sentinel_high" | "wall_clock_cap" | "internal" | "dependencies_changed" | "held_out_failed";

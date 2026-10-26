@@ -380,7 +380,7 @@ impl Store {
 
         let mut results = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare(
-            "SELECT criterion, pin, passed, exit_code, duration_ms, output_tail, at FROM criterion_results WHERE goal_id = ?1",
+            "SELECT criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out FROM criterion_results WHERE goal_id = ?1",
         )?;
         for row in stmt.query_map([id], |r| {
             Ok((
@@ -393,6 +393,7 @@ impl Store {
                     output_tail: r.get(5)?,
                     at: r.get(6)?,
                     stale: false,
+                    held_out: r.get(7)?,
                 },
             ))
         })? {
@@ -464,7 +465,7 @@ impl Store {
                     CriterionKind::Exec { .. } => results.get(&c.id).cloned(),
                     CriterionKind::Human | CriterionKind::Look { .. } => None,
                 },
-                passes_with_original_tests: original.get(&c.id).copied(),
+                passes_with_source_only: original.get(&c.id).copied(),
                 look: looks.get(&c.id).cloned(),
                 passed_on_base: match &c.kind {
                     CriterionKind::Exec { command, .. } => baseline
@@ -671,6 +672,7 @@ pub(crate) mod tests {
                 exit_code: Some(0),
                 duration_ms: 5,
                 output_tail: String::new(),
+                held_out: false,
             },
         )
         .unwrap();
@@ -708,6 +710,7 @@ pub(crate) mod tests {
                 exit_code: Some(1),
                 duration_ms: 5,
                 output_tail: "1 failed".into(),
+                held_out: false,
             },
         )
         .unwrap();

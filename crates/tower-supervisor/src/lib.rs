@@ -8,6 +8,7 @@
 mod actions;
 pub mod api;
 mod caches;
+mod canary;
 mod control;
 mod demo;
 mod edits;

@@ -427,7 +427,7 @@ function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: bool
   // You changed the workspace after the last verification (an undone hunk, a rollback, an edit): the next step is to verify again.
   const editedSinceVerify = () => editable(g().state) && d().criteria.some((c) => c.verified?.stale);
   // Criteria that pass only with the agent's edits to existing tests make their "criterion met" claims inconsistent.
-  const testDependent = createMemo(() => new Set(d().criteria.filter((c) => c.passes_with_original_tests === false).map((c) => c.criterion.id)));
+  const testDependent = createMemo(() => new Set(d().criteria.filter((c) => c.passes_with_source_only === false).map((c) => c.criterion.id)));
   const causes = createMemo(() => dedupe(d().claims.filter((c) => c.kind === "cause"), 3));
   const assumptions = () => d().claims.filter((c) => c.kind === "assumption");
   const decisions = () => d().claims.filter((c) => c.kind === "decision");

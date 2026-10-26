@@ -433,6 +433,20 @@ impl Git {
         Ok(())
     }
 
+    /// Puts every tracked file of a verification checkout back to `rev`
+    /// (whatever setup or a criterion changed), keeping untracked and
+    /// ignored files.
+    pub fn reset_tracked(&self, dir: &Path, rev: &str) -> Result<()> {
+        self.run(dir, &["reset", "--quiet", "--hard", rev])?;
+        Ok(())
+    }
+
+    /// The tracked files of a checkout.
+    pub fn ls_files(&self, dir: &Path) -> Result<Vec<String>> {
+        let out = self.run(dir, &["ls-files", "-z"])?;
+        Ok(out.split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect())
+    }
+
     /// Removes untracked, non-ignored files (`git clean -fd`).
     pub fn clean_untracked(&self, dir: &Path) -> Result<()> {
         self.run(dir, &["clean", "-fdq"])?;

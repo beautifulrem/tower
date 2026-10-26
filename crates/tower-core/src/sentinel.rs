@@ -26,38 +26,8 @@ pub struct SentinelHit {
 
 pub const HIGH: u8 = 3;
 
-pub fn is_test_path(path: &str) -> bool {
-    let p = path.to_ascii_lowercase();
-    let name = p.rsplit('/').next().unwrap_or(&p);
-    p.starts_with("test/")
-        || p.starts_with("tests/")
-        || p.contains("/test/")
-        || p.contains("/tests/")
-        || p.contains("__tests__")
-        || p.starts_with("spec/")
-        || p.starts_with("testdata/")
-        || p.contains("/testdata/")
-        || p.contains("fixtures/")
-        || p.contains("__snapshots__/")
-        || p.contains("/golden/")
-        || name.ends_with(".golden")
-        || name.contains(".test.")
-        || name.contains(".spec.")
-        || name.starts_with("test_")
-        || name.ends_with("_test.go")
-        || name.ends_with("_test.py")
-        || name.ends_with("_test.rs")
-}
-
-/// Test inputs and expected outputs kept as data.
-fn is_test_data(path: &str) -> bool {
-    let p = path.to_ascii_lowercase();
-    p.starts_with("testdata/")
-        || p.contains("/testdata/")
-        || p.contains("fixtures/")
-        || p.contains("/golden/")
-        || p.ends_with(".golden")
-}
+use crate::roles::is_test_data;
+pub use crate::roles::{is_test_harness, is_test_path};
 
 /// Files that may contain tests: test paths, and Rust sources, whose unit
 /// tests live next to the code (`#[cfg(test)] mod tests`). For Rust
@@ -139,35 +109,6 @@ fn disables_body(line: &str) -> bool {
 }
 
 const TEST_CONFIGS: &[&str] = &["vite.config", "setup.cfg", "tox.ini"];
-
-/// The test harness: what decides which tests run and what they run
-/// against (runner configuration, global setup, mocks). Adding or changing
-/// any of it can make every test pass; it holds the goal for the human.
-const TEST_HARNESS: &[&str] = &[
-    "jest.config",
-    "jest.setup",
-    "vitest.config",
-    "vitest.setup",
-    "vitest.workspace",
-    "playwright.config",
-    "karma.conf",
-    ".mocharc",
-    "pytest.ini",
-    "conftest.py",
-    "phpunit.xml",
-    "setupTests",
-    "test-setup",
-    "setup-tests",
-];
-
-/// Whether `path` is part of the test harness.
-pub fn is_test_harness(path: &str) -> bool {
-    let name = path.rsplit('/').next().unwrap_or(path);
-    TEST_HARNESS.iter().any(|h| name.starts_with(h))
-        || path.contains("__mocks__/")
-        || path.starts_with("spec/support/")
-        || path.contains("/spec/support/")
-}
 
 /// Test configuration inside general manifests: lines that decide which
 /// tests run or how.
@@ -482,7 +423,27 @@ pub fn scan_with(files: &[DiffFile], scope: &Scope, commands: &[String], lang: L
         .map(|f| f.path.as_str())
         .collect();
     if !configs.is_empty() {
-        hits.push(hit("test_config_changed", 2, configs.join("\n"), lang));
+        // A manifest the source-only re-run keeps (Cargo.toml) is not
+        // checked by it, so its test settings hold the goal.
+        let kept = configs.iter().any(|p| crate::roles::role(p).kept_in_source_only_run(p));
+        hits.push(hit("test_config_changed", if kept { HIGH } else { 2 }, configs.join("\n"), lang));
+    }
+
+    // Program code reaching into the assertion libraries, the runners or the
+    // module loader: how a change can make tests pass without touching them.
+    let mut machinery = Vec::new();
+    for f in files
+        .iter()
+        .filter(|f| f.status != FileStatus::Deleted && crate::roles::role(&f.path) == crate::roles::Role::Source)
+    {
+        for line in added_lines(f) {
+            if crate::roles::touches_test_machinery(line).is_some() {
+                machinery.push(format!("{}: {}", f.path, line.trim()));
+            }
+        }
+    }
+    if !machinery.is_empty() {
+        hits.push(hit("source_touches_tests", 2, machinery.join("\n"), lang));
     }
 
     let snapshots: Vec<&str> = files

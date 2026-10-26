@@ -61,6 +61,7 @@ export const en: Dict = {
     wall_clock_cap: "Run time limit passed",
     internal: "Tower ran into an internal error",
     dependencies_changed: "The agent changed dependencies; verification setup needs the network",
+    held_out_failed: "Held-out tests failed (the agent cannot see them)",
   },
   mode: {
     idle: "Idle",
@@ -760,9 +761,9 @@ export const en: Dict = {
     noChangesTitle: "No changes yet",
     noChangesBody: "The snapshot is the same as base @{sha}.",
     rollbackHint: "Hover a run to roll back to its start",
-    dependsOnEditedTests: "depends on edited tests",
-    dependsOnEditedTestsLong: "Passes only with the agent's edits to existing tests; fails once the original tests are restored. This is not red → green.",
-    withOriginalTests: "passes with the original tests too",
+    dependsOnEditedTests: "depends on changes outside the code",
+    dependsOnEditedTestsLong: "Passes only with the agent's changes outside the source code (tests, configuration, scripts or package settings); fails once those are put back as they were. This is not red → green.",
+    withOriginalTests: "passes from the code changes alone",
   },
   review: {
     units: (p) => `${p.n} review ${plural(p.n, "unit", "units")}`,

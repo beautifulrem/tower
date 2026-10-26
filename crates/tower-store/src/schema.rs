@@ -215,6 +215,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE baseline_results ADD COLUMN error TEXT;
     "#,
+    // 16: results from runs with the held-out tests present go to the human only
+    r#"
+    ALTER TABLE criterion_results ADD COLUMN held_out INTEGER NOT NULL DEFAULT 0;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

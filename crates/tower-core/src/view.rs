@@ -158,6 +158,9 @@ pub struct CriterionResultView {
     pub at: Millis,
     /// The workspace changed after this result; it needs re-verification.
     pub stale: bool,
+    /// Run with the held-out tests present: the output was shown to you
+    /// only, never to the agent.
+    pub held_out: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -180,9 +183,11 @@ pub struct CriterionView {
     /// For `look` criteria: the screenshots before (base) and after (the
     /// current snapshot), or why one is missing.
     pub look: Option<LookView>,
-    /// On the current snapshot, whether it also passes with the agent's
-    /// edits to existing tests undone (`None` when no test was edited).
-    pub passes_with_original_tests: Option<bool>,
+    /// On the current snapshot, whether it also passes with only the
+    /// agent's source changes kept — its tests, configuration, scripts and
+    /// package settings put back as on the base (`None` when it changed
+    /// nothing outside the source).
+    pub passes_with_source_only: Option<bool>,
     pub observed: Option<ObservationView>,
     pub human_checked: bool,
 }

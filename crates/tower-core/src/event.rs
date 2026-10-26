@@ -158,6 +158,10 @@ pub enum EventKind {
         exit_code: Option<i32>,
         duration_ms: i64,
         output_tail: String,
+        /// Run with the held-out tests present: the output is for the human
+        /// only, never the agent.
+        #[serde(default)]
+        held_out: bool,
     },
     VerifyFinished {
         pin: String,
@@ -188,8 +192,10 @@ pub enum EventKind {
         file: Option<String>,
         error: Option<String>,
     },
-    /// The criterion run on the verified snapshot with the agent's edits to
-    /// existing tests undone.
+    /// The criterion run on the verified snapshot with only the agent's
+    /// source changes kept (tests, configuration, scripts and package
+    /// settings as they were on the base). Older events: with the agent's
+    /// edits to existing tests undone.
     OriginalTestsResult {
         criterion: String,
         pin: String,
@@ -377,6 +383,7 @@ mod tests {
             exit_code: Some(0),
             duration_ms: 12,
             output_tail: "ok".into(),
+            held_out: false,
         };
         let json = serde_json::to_string(&e).unwrap();
         assert!(json.contains("\"kind\":\"criterion_result\""));

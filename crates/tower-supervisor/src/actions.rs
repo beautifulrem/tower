@@ -30,6 +30,7 @@ pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<Choice> {
         PauseReason::SentinelHigh => vec![SentinelRework, OverrideSentinel, Abandon],
         PauseReason::WallClockCap => vec![MoreTime, Abandon],
         PauseReason::DependenciesChanged => vec![InstallWithNetwork, Abandon],
+        PauseReason::HeldOutFailed => vec![ShowHeldOutFailure, Abandon],
         PauseReason::Human | PauseReason::AppQuit => vec![Continue],
     }
 }
@@ -140,7 +141,7 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
             c.max_rework = rec.rework_cycles + 1;
             c.version += 1;
             inner.append(goal, EventKind::ContractRatified { contract: c.clone() })?;
-            let failures = last_failures(inner, &rec)?;
+            let failures = last_failures(inner, &rec, false)?;
             let msg = prompts::rework(rec.rework_cycles + 1, c.max_rework, &failures);
             run::start_run(inner, goal, "rework", msg).await
         }
@@ -162,6 +163,16 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
                 "Every machine criterion passed; you confirmed the sentinel hits"
             );
             verify::review_ready(inner, goal, &body)
+        }
+        Some(Choice::ShowHeldOutFailure) => {
+            // The human's call: the agent sees the held-out failures, and so
+            // learns about those tests. On record.
+            let text = tr!(lang, "你把保留测试的失败输出给了 Agent", "You showed the agent the held-out test failures");
+            inner.append(goal, EventKind::Note { text })?;
+            let failures = last_failures(inner, &rec, true)?;
+            let msg =
+                prompts::rework(rec.rework_cycles + 1, rec.contract.max_rework.max(rec.rework_cycles + 1), &failures);
+            run::start_run(inner, goal, "rework", msg).await
         }
         Some(Choice::SentinelRework) => {
             let hits = inner.store(|s| s.sentinel_hits(goal))?;
@@ -196,10 +207,11 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
     }
 }
 
-/// The most recent failing results, as rework evidence.
-fn last_failures(inner: &Inner, rec: &GoalRecord) -> Result<Vec<prompts::Failure>> {
+/// The most recent failing results, as rework evidence. Results from runs
+/// with the held-out tests present are withheld unless the human chose to
+/// `reveal` them.
+fn last_failures(inner: &Inner, rec: &GoalRecord, reveal: bool) -> Result<Vec<prompts::Failure>> {
     let detail = inner.store(|s| s.detail(&rec.id))?;
-    let holdout = inner.store(|s| s.project(&rec.project_id))?.holdout_files;
     Ok(detail
         .criteria
         .iter()
@@ -211,7 +223,7 @@ fn last_failures(inner: &Inner, rec: &GoalRecord) -> Result<Vec<prompts::Failure
                 title: cv.criterion.title.clone(),
                 command: command.clone(),
                 exit_code: v.exit_code,
-                output_tail: verify::withhold_if_held_out(&holdout, command, v.output_tail.clone()),
+                output_tail: if v.held_out && !reveal { verify::WITHHELD.into() } else { v.output_tail.clone() },
             })
         })
         .collect())

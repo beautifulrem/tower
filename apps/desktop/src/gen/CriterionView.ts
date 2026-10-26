@@ -20,7 +20,9 @@ base_error: string | null,
  */
 look: LookView | null, 
 /**
- * On the current snapshot, whether it also passes with the agent's
- * edits to existing tests undone (`None` when no test was edited).
+ * On the current snapshot, whether it also passes with only the
+ * agent's source changes kept — its tests, configuration, scripts and
+ * package settings put back as on the base (`None` when it changed
+ * nothing outside the source).
  */
-passes_with_original_tests: boolean | null, observed: ObservationView | null, human_checked: boolean, };
+passes_with_source_only: boolean | null, observed: ObservationView | null, human_checked: boolean, };

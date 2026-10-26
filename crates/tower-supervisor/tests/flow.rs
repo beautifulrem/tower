@@ -452,8 +452,67 @@ async fn passing_only_with_edited_tests_holds_the_goal() {
     let crit = &d.criteria[0];
     assert!(crit.verified.as_ref().unwrap().passed, "the edited test passes");
     assert_eq!(crit.passed_on_base, Some(false), "it failed on the base");
-    assert_eq!(crit.passes_with_original_tests, Some(false), "and fails with the original test");
-    assert!(d.sentinels.iter().any(|s| s.sentinel == "passes_only_with_edited_tests"));
+    assert_eq!(crit.passes_with_source_only, Some(false), "and fails with the original test");
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "passes_only_with_non_source_changes"));
+}
+
+/// A pass that comes from a settings file rather than the code: no name
+/// list knows the file, but with only the source changes kept the
+/// criterion fails, and the goal is held.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pass_must_come_from_the_source() {
+    let h = harness("config_cheat").await;
+    std::fs::create_dir_all(h.repo.join("test")).unwrap();
+    std::fs::write(h.repo.join("test/check.sh"), "test -f .pass || grep -qx fixed done.txt\n").unwrap();
+    git(&h.repo, &["add", "."]);
+    git(&h.repo, &["commit", "--quiet", "-m", "a failing check"]);
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec { command: "sh test/check.sh".into(), timeout_secs: 30 };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::SentinelHigh)));
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(d.criteria[0].passes_with_source_only, Some(false));
+    let hit = d.sentinels.iter().find(|s| s.sentinel == "passes_only_with_non_source_changes").expect("held");
+    assert!(hit.detail.contains(".pass"), "{}", hit.detail);
+}
+
+/// Program code that disables the assertion library when it is loaded makes
+/// every test pass, held-out ones included. A test that must fail is added
+/// to the test files: it passes too, and the goal is held.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_test_that_must_fail_catches_disabled_assertions() {
+    let probe = Command::new("node").args(["-e", "process.exit(process.getBuiltinModule ? 0 : 1)"]).status();
+    if !probe.is_ok_and(|s| s.success()) {
+        eprintln!("skipped: needs Node 22.3 or later");
+        return;
+    }
+    let h = harness("assert_cheat").await;
+    std::fs::create_dir_all(h.repo.join("src")).unwrap();
+    std::fs::create_dir_all(h.repo.join("test")).unwrap();
+    std::fs::write(h.repo.join("src/lib.mjs"), "export const add = () => 0\n").unwrap();
+    std::fs::write(
+        h.repo.join("test/add.test.mjs"),
+        "import test from 'node:test'\nimport assert from 'node:assert'\nimport { add } from '../src/lib.mjs'\n\
+         test('add', () => assert.equal(add(2, 2), 4))\n",
+    )
+    .unwrap();
+    git(&h.repo, &["add", "."]);
+    git(&h.repo, &["commit", "--quiet", "-m", "add() is wrong"]);
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec { command: "node --test test/".into(), timeout_secs: 60 };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base");
+    assert_eq!(
+        (g.state, g.pause_reason),
+        (LifecycleState::Paused, Some(PauseReason::SentinelHigh)),
+        "{:?}",
+        d.sentinels
+    );
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "assertions_disabled"), "{:?}", d.sentinels);
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "source_touches_tests"));
 }
 
 /// Held-out tests: git-ignored files of your repository copied into
@@ -488,6 +547,50 @@ async fn held_out_tests_run_in_verification_only() {
     assert_eq!(g.state, LifecycleState::InReview);
     let ws = h.sup.goal(&id).unwrap().workspace.unwrap();
     assert!(!Path::new(&ws).join("holdout").exists(), "the agent never had the held-out tests");
+}
+
+/// When the held-out tests fail, the agent is not sent back with their
+/// output (that would show it the tests): the human decides what it hears.
+#[tokio::test(flavor = "multi_thread")]
+async fn failing_held_out_tests_go_to_the_human() {
+    let h = harness("pass").await;
+    std::fs::write(h.repo.join(".gitignore"), "holdout/\n").unwrap();
+    git(&h.repo, &["add", ".gitignore"]);
+    git(&h.repo, &["commit", "--quiet", "-m", "ignore holdout"]);
+    std::fs::create_dir_all(h.repo.join("holdout")).unwrap();
+    std::fs::write(h.repo.join("holdout/check.sh"), "echo 'SECRET-EXPECTATION'; grep -qx other done.txt\n").unwrap();
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![],
+                memory: String::new(),
+                setup_command: String::new(),
+                holdout_files: vec!["holdout/**".into()],
+            },
+        )
+        .unwrap();
+    let mut c = contract();
+    c.criteria.push(Criterion {
+        id: "C2".into(),
+        title: "held-out".into(),
+        kind: CriterionKind::Exec { command: "sh holdout/check.sh".into(), timeout_secs: 30 },
+    });
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::HeldOutFailed)));
+    let d = h.sup.goal(&id).unwrap();
+    let c2 = d.criteria.iter().find(|c| c.criterion.id == "C2").unwrap().verified.clone().unwrap();
+    assert!(!c2.passed && c2.held_out, "the result is marked as held-out");
+    assert_eq!(d.summary.rework_cycles, 0, "no automatic rework");
+    let item = wait_inbox(&h, &id, InboxKind::Paused).await;
+    assert!(item.allow_text && item.body.contains("SECRET-EXPECTATION"), "you see the output");
+    // Nothing the agent was told contains it.
+    let trace = h.sup.trace(&id, None, 1000).unwrap();
+    assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::Steered { text } if text.contains("SECRET"))));
 }
 
 fn http(port: u16, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, String) {
@@ -633,4 +736,25 @@ async fn blocking_items_are_pushed_to_the_configured_topic() {
     let request = tokio::task::spawn_blocking(move || received.join().unwrap()).await.unwrap();
     assert!(request.starts_with("POST /tower"), "{request}");
     assert!(request.contains(&format!("Title: {id}")), "{request}");
+}
+
+/// Whatever a verification starts and leaves running is stopped when it
+/// ends, so it cannot reach the next one.
+#[tokio::test(flavor = "multi_thread")]
+async fn verification_leaves_nothing_running() {
+    let h = harness("pass").await;
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec {
+        command:
+            "(perl -e 'use POSIX; setsid(); exec \"sleep\", \"4321\"' >/dev/null 2>&1 &) ; sleep 1; test -f done.txt"
+                .into(),
+        timeout_secs: 30,
+    };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!(g.state, LifecycleState::InReview);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let ps = Command::new("/bin/ps").args(["-axww", "-o", "command="]).output().unwrap();
+    let left = String::from_utf8_lossy(&ps.stdout).lines().filter(|l| l.trim() == "sleep 4321").count();
+    assert_eq!(left, 0, "a process from the verification survived it");
 }

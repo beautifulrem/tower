@@ -119,6 +119,10 @@ pub enum PauseReason {
     /// The agent changed dependency manifests, so verification's setup
     /// would run its choices with the network; that needs the human.
     DependenciesChanged,
+    /// Every visible criterion passed but the held-out tests failed. The
+    /// agent is not told why (that would show it the tests); the human
+    /// decides what it hears.
+    HeldOutFailed,
 }
 
 impl PauseReason {

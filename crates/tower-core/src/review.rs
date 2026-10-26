@@ -13,14 +13,8 @@ pub fn file_risks(file: &DiffFile, fence: Option<&ScopeFence>) -> Vec<(u8, Risk)
     let p = file.path.to_ascii_lowercase();
     let name = p.rsplit('/').next().unwrap_or(&p);
     let mut r = Vec::new();
-    let is_test = p.contains("/test")
-        || p.contains("__tests__")
-        || name.contains(".test.")
-        || name.contains(".spec.")
-        || name.starts_with("test_")
-        || name.ends_with("_test.go")
-        || name.ends_with("_test.rs");
-
+    let role = crate::roles::role(&file.path);
+    let is_test = crate::roles::is_test_path(&file.path);
     if let Some(fence) = fence {
         match fence.check_write(&file.path) {
             WriteVerdict::Allowed => {}
@@ -41,6 +35,26 @@ pub fn file_risks(file: &DiffFile, fence: Option<&ScopeFence>) -> Vec<(u8, Risk)
     }
     if crate::sentinel::changes_expectations(file) {
         r.push((3, Risk::ExpectationChanged));
+    }
+    // Configuration decides how code and tests run; the verdict was
+    // re-checked without it, but a reader should still see it first.
+    if role == crate::roles::Role::Config
+        || matches!(name, ".npmrc" | ".yarnrc" | ".yarnrc.yml" | ".pnpmfile.cjs" | "bunfig.toml")
+        || p.contains(".cargo/config")
+    {
+        r.push((3, Risk::RunConfig));
+    }
+    if role == crate::roles::Role::Build && !p.starts_with(".github/") {
+        r.push((2, Risk::BuildScript));
+    }
+    if role == crate::roles::Role::Source
+        && file
+            .hunks
+            .iter()
+            .flat_map(|h| &h.lines)
+            .any(|l| l.kind == crate::view::LineKind::Add && crate::roles::touches_test_machinery(&l.text).is_some())
+    {
+        r.push((3, Risk::TouchesTests));
     }
     if p.contains("__snapshots__") || name.ends_with(".snap") {
         r.push((2, Risk::Snapshots));

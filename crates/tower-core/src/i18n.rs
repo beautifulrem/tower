@@ -134,6 +134,9 @@ pub fn pause_label(r: PauseReason, lang: Lang) -> &'static str {
             "Agent 改了依赖，验证的准备步骤需要联网",
             "The agent changed dependencies; verification setup needs the network",
         ),
+        HeldOutFailed => {
+            lang.pick("保留测试没有通过（Agent 看不到它们）", "Held-out tests failed (the agent cannot see them)")
+        }
     }
 }
 
@@ -166,10 +169,11 @@ pub enum Choice {
     InstallWithNetwork,
     SendCiFailures,
     Dismiss,
+    ShowHeldOutFailure,
 }
 
 impl Choice {
-    pub const ALL: [Choice; 21] = [
+    pub const ALL: [Choice; 22] = [
         Choice::Approve,
         Choice::Reject,
         Choice::Retry,
@@ -191,6 +195,7 @@ impl Choice {
         Choice::InstallWithNetwork,
         Choice::SendCiFailures,
         Choice::Dismiss,
+        Choice::ShowHeldOutFailure,
     ];
 
     pub fn label(self, lang: Lang) -> &'static str {
@@ -217,6 +222,10 @@ impl Choice {
             InstallWithNetwork => lang.pick("我看过改动，这次联网安装", "I've checked, install with the network"),
             SendCiFailures => lang.pick("把失败发给 Agent 修复", "Send the failures to the agent"),
             Dismiss => lang.pick("先不管", "Leave it"),
+            ShowHeldOutFailure => lang.pick(
+                "把失败输出给 Agent 看（它会看到保留测试）",
+                "Show the agent the failure (it will see the held-out tests)",
+            ),
         }
     }
 
@@ -268,6 +277,23 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
             "Changed the test harness (runner config, global setup or mocks)",
         ),
         "test_data_changed" => lang.pick("改了测试数据或期望输出", "Changed test data or expected outputs"),
+        "passes_only_with_non_source_changes" => {
+            lang.pick("只有在源码之外的改动下才通过", "Passes only with changes outside the source code")
+        }
+        "assertions_disabled" => lang.pick(
+            "一个必然失败的测试通过了：断言或测试框架被改动",
+            "A test that must fail passed: assertions or the test runner were tampered with",
+        ),
+        "held_out_tests_changed" => {
+            lang.pick("验证期间保留测试被改动了", "Held-out tests were modified while they ran")
+        }
+        "source_touches_tests" => lang.pick(
+            "源码触及断言库、测试框架或模块加载",
+            "Program code reaches into assertion libraries, test runners or the module loader",
+        ),
+        "sandbox_probing" => {
+            lang.pick("Agent 反复尝试读取工作区之外的内容", "The agent repeatedly tried to read outside its workspace")
+        }
         "passes_only_with_edited_tests" => {
             lang.pick("只有在改过的测试下才通过", "Passes only with the agent's edits to existing tests")
         }
@@ -301,6 +327,12 @@ pub enum Risk {
     TestHarness,
     /// An assertion now expects a different value.
     ExpectationChanged,
+    /// Tool, runtime or package-manager configuration.
+    RunConfig,
+    /// A task runner or build script.
+    BuildScript,
+    /// Program code reaching into assertion libraries, runners or the loader.
+    TouchesTests,
 }
 
 impl Risk {
@@ -323,6 +355,14 @@ impl Risk {
             TestEdited => lang.pick("改了已有的测试", "edits an existing test"),
             TestHarness => lang.pick("测试框架的配置、准备或 mock", "test harness: runner config, setup or mocks"),
             ExpectationChanged => lang.pick("断言的期望值变了", "an assertion now expects something else"),
+            RunConfig => {
+                lang.pick("改了决定代码和测试如何运行的配置", "configuration that decides how code and tests run")
+            }
+            BuildScript => lang.pick("改了任务或构建脚本", "a task runner or build script"),
+            TouchesTests => lang.pick(
+                "源码触及断言库、测试框架或模块加载",
+                "program code reaching into assertions, test runners or the module loader",
+            ),
         }
     }
 }

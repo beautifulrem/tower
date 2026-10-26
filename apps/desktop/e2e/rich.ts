@@ -46,7 +46,7 @@ export function enrichLook(F: F) {
     passed_on_base: null,
     base_error: null,
     look: { base: "looks/G-0001/C4-base.png", pin: "looks/G-0001/C4-pin.png", base_error: null, pin_error: null },
-    passes_with_original_tests: null,
+    passes_with_source_only: null,
     observed: null,
     human_checked: false,
   });

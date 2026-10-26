@@ -51,7 +51,8 @@ pub fn paused_item(
         subject: why.into(),
         body: detail.into(),
         options: Choice::labels(&actions::pause_options(reason, rec), lang),
-        allow_text,
+        // A held-out failure is answered with a hint in your own words.
+        allow_text: allow_text || reason == PauseReason::HeldOutFailed,
         urgency: 2,
         engine_ref: None,
     }

@@ -159,7 +159,7 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean; tiny
 export function BaselineLine(props: { c: CriterionView; base?: string | null }) {
   const c = () => props.c;
   const passed = () => !!c().verified?.passed;
-  const dependent = () => c().passes_with_original_tests === false;
+  const dependent = () => c().passes_with_source_only === false;
   const redToGreen = () => c().passed_on_base === false && !dependent();
   // The base could not be checked at all: said quietly, in neither the fact nor the attention register.
   const uncheckable = () => c().passed_on_base === null && !!c().base_error;
@@ -181,7 +181,7 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
             </Match>
             <Match when={redToGreen()}>
               <span class="num">{t("goal.redToGreen")}</span>
-              <Show when={c().passes_with_original_tests === true}>
+              <Show when={c().passes_with_source_only === true}>
                 <span class="t4">· {t("goal.withOriginalTests")}</span>
               </Show>
             </Match>

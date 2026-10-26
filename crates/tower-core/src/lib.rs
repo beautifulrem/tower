@@ -17,6 +17,7 @@ pub mod i18n;
 pub mod lifecycle;
 pub mod mode;
 pub mod review;
+pub mod roles;
 pub mod sentinel;
 pub mod text;
 pub mod view;

@@ -4,4 +4,9 @@ export type CriterionResultView = { pin: string, passed: boolean, exit_code: num
 /**
  * The workspace changed after this result; it needs re-verification.
  */
-stale: boolean, };
+stale: boolean, 
+/**
+ * Run with the held-out tests present: the output was shown to you
+ * only, never to the agent.
+ */
+held_out: boolean, };

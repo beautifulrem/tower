@@ -61,6 +61,7 @@ export const zh = {
     wall_clock_cap: "超过单次运行时长",
     internal: "Tower 内部出错",
     dependencies_changed: "Agent 改了依赖，验证的准备步骤需要联网",
+    held_out_failed: "保留测试没有通过（Agent 看不到它们）",
   },
   mode: {
     idle: "空闲",
@@ -760,9 +761,9 @@ export const zh = {
     noChangesTitle: "还没有改动",
     noChangesBody: "快照与 base @{sha} 相同。",
     rollbackHint: "悬停一行可回退到它开始时",
-    dependsOnEditedTests: "依赖被改的测试",
-    dependsOnEditedTestsLong: "只有在 Agent 改过的测试下才通过；恢复原测试后失败。这不是红 → 绿。",
-    withOriginalTests: "原测试下也通过",
+    dependsOnEditedTests: "依赖源码之外的改动",
+    dependsOnEditedTestsLong: "只有在 Agent 对源码之外的改动（测试、配置、脚本或包管理设置）下才通过；把这些恢复原样后失败。这不是红 → 绿。",
+    withOriginalTests: "只靠源码改动也通过",
   },
   review: {
     units: (p: { n: number }) => `${p.n} 个评审单元`,

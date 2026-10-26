@@ -49,4 +49,12 @@ engine: string,
  * How to start Claude Code's ACP adapter; empty means
  * `claude-agent-acp` if installed, else `npx` with a pinned version.
  */
-claude_acp_command: string, };
+claude_acp_command: string, 
+/**
+ * Serve the phone page (Needs-You and pausing) on your network.
+ */
+remote_enabled: boolean, remote_port: number, 
+/**
+ * The pairing secret every phone request must carry.
+ */
+remote_token: string, };

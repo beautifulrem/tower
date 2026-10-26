@@ -481,3 +481,55 @@ async fn held_out_tests_run_in_verification_only() {
     let ws = h.sup.goal(&id).unwrap().workspace.unwrap();
     assert!(!Path::new(&ws).join("holdout").exists(), "the agent never had the held-out tests");
 }
+
+fn http(port: u16, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, String) {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let auth = token.map(|t| format!("Authorization: Bearer {t}\r\n")).unwrap_or_default();
+    write!(
+        s,
+        "{method} {path} HTTP/1.1\r\nHost: x\r\n{auth}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+    .unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    let status = out.split_whitespace().nth(1).unwrap_or("0").parse().unwrap_or(0);
+    (status, out.split("\r\n\r\n").nth(1).unwrap_or_default().to_string())
+}
+
+/// The phone page: off by default; when on, every API request needs the
+/// pairing token, and a question can be answered from it.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_phone_page_answers_with_the_pairing_token_only() {
+    let h = harness("ask").await;
+    assert!(!h.sup.remote_info().enabled);
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    h.sup.save_settings(Settings { remote_enabled: true, remote_port: port, ..h.sup.settings() }).unwrap();
+    let info = h.sup.remote_info();
+    assert!(info.enabled && info.qr_svg.contains("<svg"));
+    let token = h.sup.settings().remote_token;
+    assert!(token.len() >= 64);
+
+    let id = create(&h).await;
+    let q = wait_inbox(&h, &id, InboxKind::Question).await;
+    let p = port;
+    let (status, _) = tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", None, "")).await.unwrap();
+    assert_eq!(status, 401, "no token, no data");
+    let (status, _) = tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", Some("wrong"), "")).await.unwrap();
+    assert_eq!(status, 401);
+    let t = token.clone();
+    let (status, body) = tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", Some(&t), "")).await.unwrap();
+    assert_eq!(status, 200);
+    assert!(body.contains(&q.id));
+    let t = token.clone();
+    let answer = format!(r#"{{"inbox_id":"{}","response":"b"}}"#, q.id);
+    let (status, body) =
+        tokio::task::spawn_blocking(move || http(p, "POST", "/api/answer", Some(&t), &answer)).await.unwrap();
+    assert_eq!(status, 200, "{body}");
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!(g.state, LifecycleState::InReview);
+
+    h.sup.save_settings(Settings { remote_enabled: false, ..h.sup.settings() }).unwrap();
+    assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err() || !h.sup.remote_info().enabled);
+}

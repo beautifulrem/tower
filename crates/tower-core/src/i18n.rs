@@ -367,6 +367,51 @@ impl Risk {
     }
 }
 
+/// What a stall card is about, stored without a language and put into
+/// words when the card is read, so it follows the interface language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Stall {
+    /// No tool call for a while.
+    NoProgress { minutes: u64 },
+    /// The same call failed again and again.
+    Repeated { signature: String, times: u32 },
+}
+
+impl Stall {
+    const MARK: char = '\u{1f}';
+
+    pub fn encode(&self) -> String {
+        match self {
+            Stall::NoProgress { minutes } => format!("{}no_progress {minutes}", Self::MARK),
+            Stall::Repeated { signature, times } => format!("{}repeated {times} {signature}", Self::MARK),
+        }
+    }
+
+    pub fn decode(s: &str) -> Option<Stall> {
+        let rest = s.strip_prefix(Self::MARK)?;
+        let (kind, rest) = rest.split_once(' ')?;
+        match kind {
+            "no_progress" => Some(Stall::NoProgress { minutes: rest.parse().ok()? }),
+            "repeated" => {
+                let (times, signature) = rest.split_once(' ')?;
+                Some(Stall::Repeated { signature: signature.into(), times: times.parse().ok()? })
+            }
+            _ => None,
+        }
+    }
+
+    pub fn text(&self, lang: Lang) -> String {
+        match self {
+            Stall::NoProgress { minutes } => {
+                tr!(lang, "{minutes} 分钟没有任何工具调用", "No tool calls for {minutes} minutes")
+            }
+            Stall::Repeated { signature, times } => {
+                tr!(lang, "{signature} 连续失败 {times} 次", "{signature} failed {times} times in a row")
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,6 +436,19 @@ mod tests {
         }
         assert_eq!(Choice::parse("  abandon this goal "), Some(Choice::Abandon));
         assert_eq!(Choice::parse("请先看一下 README"), None);
+    }
+
+    #[test]
+    fn stalls_are_put_into_words_on_read() {
+        let s = Stall::Repeated { signature: "bash · npm test".into(), times: 3 };
+        let back = Stall::decode(&s.encode()).unwrap();
+        assert_eq!(back, s);
+        assert_eq!(back.text(Lang::En), "bash · npm test failed 3 times in a row");
+        assert_eq!(
+            Stall::decode(&Stall::NoProgress { minutes: 12 }.encode()).unwrap().text(Lang::Zh),
+            "12 分钟没有任何工具调用"
+        );
+        assert_eq!(Stall::decode("plain words"), None);
     }
 
     #[test]

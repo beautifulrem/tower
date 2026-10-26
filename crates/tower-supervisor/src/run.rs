@@ -425,27 +425,27 @@ async fn watchdog(inner: Arc<Inner>, run: Arc<Run>) {
         let waiting = !run.flags().dialogs.is_empty();
         if quiet > QUIET && !waiting {
             let minutes = quiet.as_secs() / 60;
-            let detail = tr!(inner.lang(), "{minutes} 分钟没有任何工具调用", "No tool calls for {minutes} minutes");
-            report_stall(&inner, &run, "no_progress", &detail);
+            report_stall(&inner, &run, "no_progress", tower_core::i18n::Stall::NoProgress { minutes });
         }
     }
 }
 
 /// Raises a stall once per detector per run. The run keeps going; the
 /// Needs-You item lets the human wait, steer or pause.
-fn report_stall(inner: &Arc<Inner>, run: &Arc<Run>, detector: &str, detail: &str) {
+fn report_stall(inner: &Arc<Inner>, run: &Arc<Run>, detector: &str, stall: tower_core::i18n::Stall) {
     if !run.flags().stalls_reported.insert(detector.to_string()) {
         return;
     }
     let g = run.goal_id.as_str();
     let lang = inner.lang();
+    let detail = &stall.text(lang);
     let opened =
         inner.append(g, EventKind::Stalled { detector: detector.into(), detail: detail.into() }).and_then(|_| {
             inner.open_inbox(NewInboxItem {
                 goal_id: g.into(),
                 kind: InboxKind::Stalled,
                 title: tr!(lang, "可能卡住：{detail}", "May be stuck: {detail}"),
-                subject: detail.into(),
+                subject: stall.encode(),
                 body: tr!(
                     lang,
                     "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。",
@@ -568,7 +568,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                             inner,
                             run,
                             &format!("repeat:{signature}"),
-                            &tr!(inner.lang(), "{signature} 连续失败 {n} 次", "{signature} failed {n} times in a row"),
+                            tower_core::i18n::Stall::Repeated { signature: signature.clone(), times: n },
                         );
                     }
                 } else {

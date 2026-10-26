@@ -79,7 +79,8 @@
   color-scheme: dark;
   --bg-sidebar: oklch(0.155 0.004 70);
   --bg-app: oklch(0.180 0.004 70);
-  --bg-raised: oklch(0.205 0.005 70);
+  /* Raised stands 0.035 L above the page: a difference the eye sees before it finds the hairline. */
+  --bg-raised: oklch(0.215 0.005 70);
   --bg-hover: oklch(0.235 0.005 70);
   --bg-selected: oklch(0.265 0.006 70);
   --bg-overlay: oklch(0.225 0.005 70 / 0.96);
@@ -90,6 +91,10 @@
   --border-subtle: oklch(1 0 0 / 0.06);
   --border: oklch(1 0 0 / 0.10);
   --border-strong: oklch(1 0 0 / 0.16);
+  /* A card's material: its hairline, and in the dark one line of shadow under its foot — a thing set on the
+     page, not drawn on it. Glass is not attempted. */
+  --card-edge: var(--border-subtle);
+  --card-lift: 0 1px 0 oklch(0 0 0 / 0.30);
 
   /* Contrast on --bg-app (0.180): text-1 ≈ 16:1, text-2 ≈ 12:1, text-3 ≈ 7.6:1, text-4 ≈ 5.2:1. */
   --text-1: oklch(0.945 0.003 70);
@@ -149,6 +154,9 @@
   --border-subtle: oklch(0.20 0.01 70 / 0.08);
   --border: oklch(0.20 0.01 70 / 0.14);
   --border-strong: oklch(0.20 0.01 70 / 0.22);
+  /* On the warm white page a card's edge is cream, not grey: the same hue a touch warmer, no shadow. */
+  --card-edge: oklch(0.42 0.035 80 / 0.20);
+  --card-lift: none;
 
   /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.2:1,
      text-4 ≈ 4.6:1 (AA), so a line number or an empty segment drawn in it

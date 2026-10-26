@@ -128,6 +128,7 @@ export function Sidebar() {
             </div>
           )}
         </For>
+        {/* Archived and abandoned goals: closed out, named apart from the accepted ones above (each row's glyph tells the two states apart). */}
         <Show when={ended().length > 0}>
           <div class="side-group">
             <button

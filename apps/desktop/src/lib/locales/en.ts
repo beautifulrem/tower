@@ -82,7 +82,7 @@ export const en: Dict = {
     verifying: "Verifying",
     ready: "Ready and drafts",
     paused: "Paused",
-    done: "Accepted · ended",
+    done: "Accepted",
   },
   tool: {
     ask_user: "question",
@@ -223,7 +223,7 @@ export const en: Dict = {
   },
   sidebar: {
     label: "Goals",
-    ended: "Ended",
+    ended: "Archived",
     toReview: "To review",
   },
   decision: {
@@ -370,7 +370,7 @@ export const en: Dict = {
     emptyProject: "No active goals in {project}",
     emptyBody: "Describe the result you want above and press ↵; Tower writes a minimal contract and starts. Or write the contract yourself.",
     writeContract: "Write a contract",
-    endedCount: (p) => `${p.n} ended ${plural(p.n, "goal is", "goals are")} under “Ended” in the sidebar`,
+    endedCount: (p) => `${p.n} ${plural(p.n, "goal is", "goals are")} under “Archived” in the sidebar`,
     filterLabel: "Filter by project",
     allProjects: "All projects",
     pausedWith: "Paused ({reason})",

@@ -82,7 +82,7 @@ export const zh = {
     verifying: "验证中",
     ready: "就绪与草稿",
     paused: "已暂停",
-    done: "已验收 · 已结束",
+    done: "已验收",
   },
   tool: {
     ask_user: "问题",
@@ -223,7 +223,7 @@ export const zh = {
   },
   sidebar: {
     label: "目标",
-    ended: "已结束",
+    ended: "已归档",
     toReview: "待验收",
   },
   decision: {
@@ -369,7 +369,7 @@ export const zh = {
     emptyProject: "{project} 里没有进行中的目标",
     emptyBody: "在上面写一句你想要的结果按 ↵，Tower 会生成最小合同并开始；或自己写一份合同。",
     writeContract: "写合同",
-    endedCount: (p: { n: number }) => `${p.n} 个已结束的目标在侧栏“已结束”里`,
+    endedCount: (p: { n: number }) => `${p.n} 个目标在侧栏“已归档”里`,
     filterLabel: "按项目筛选",
     allProjects: "全部项目",
     pausedWith: "已暂停（{reason}）",

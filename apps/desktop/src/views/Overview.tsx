@@ -9,7 +9,7 @@
  * j/k walk one list through both; ↩ opens; r reviews. The same page reads
  * at 0 goals (one statement and a way to start), at 1 and at 12.
  */
-import { For, Show, createMemo, createSignal, lazy, onCleanup } from "solid-js";
+import { For, Show, createComputed, createEffect, createMemo, createSignal, lazy, on, onCleanup } from "solid-js";
 
 import { DecisionCard, chooseOption } from "../components/DecisionCard";
 import { DemoButton } from "../components/Demo";
@@ -20,6 +20,7 @@ import { Button, Empty, Select } from "../components/ui";
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
+import { type Box, play, snapshot } from "../lib/flip";
 import { useKeys } from "../lib/keys";
 import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
@@ -33,6 +34,8 @@ const Welcome = lazy(() => import("./Welcome").then((m) => ({ default: m.Welcome
 
 const ORDER: Group[] = ["running", "verifying", "review", "ready", "paused", "done"];
 const FILTER_KEY = "tower.overviewProject";
+/** The spatial duration (--dur-space, 220ms), zero under reduced motion. */
+const spaceMs = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220);
 const ALL = "__all__";
 
 type Item = { kind: "decision"; id: string; item: InboxItem } | { kind: "goal"; id: string; goal: GoalSummary };
@@ -68,6 +71,13 @@ export function Overview() {
     ...groups().flatMap((g) => g.goals.map<Item>((goal) => ({ kind: "goal", id: goal.id, goal }))),
   ]);
   const current = () => flat().find((i) => i.id === selected()) ?? null;
+
+  // A row that changes group slides to its new line (220ms) rather than reappearing there: the rows'
+  // places are read in the pure phase, before the DOM changes, and the move is played after it.
+  let board!: HTMLDivElement;
+  let placesBefore = new Map<string, Box>();
+  createComputed(on(groups, () => board && (placesBefore = snapshot(board, "goal")), { defer: true }));
+  createEffect(on(groups, () => board && play(board, "goal", placesBefore, spaceMs(), "cubic-bezier(0.23, 1, 0.32, 1)"), { defer: true }));
 
   const move = (d: number) => {
     const list = flat();
@@ -115,7 +125,7 @@ export function Overview() {
 
   return (
     <Show when={state.projects.length > 0} fallback={<Welcome />}>
-      <div class="overview">
+      <div class="overview" ref={board}>
         <Briefing />
         <div class="overview-top">
           <QuickPath project={project() === ALL ? undefined : project()} />

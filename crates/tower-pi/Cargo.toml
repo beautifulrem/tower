@@ -4,6 +4,7 @@ description = "Pi coding agent engine adapter for Tower, over Pi's JSONL RPC mod
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 
 [dependencies]
 serde.workspace = true

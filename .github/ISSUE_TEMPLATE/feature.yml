@@ -1,0 +1,14 @@
+name: Feature request
+description: A problem Tower could solve better.
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: The problem
+      description: What are you trying to do, and where does Tower get in the way? Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Ideas
+      description: Optional. How you imagine it could work.

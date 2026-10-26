@@ -4,6 +4,7 @@ description = "Tower desktop shell (Tauri)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 
 [lib]
 name = "tower_desktop_lib"

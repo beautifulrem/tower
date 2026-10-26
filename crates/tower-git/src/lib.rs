@@ -254,6 +254,33 @@ impl Git {
         let who = self.identity(project_root);
         let tree = self.run_trim(ws, &["rev-parse", &format!("{pin}^{{tree}}")])?;
         let commit = self.commit_tree_with_message(ws, &tree, base, message, &who)?;
+        self.publish(project_root, ws, &commit, branch)
+    }
+
+    /// Adds one commit with `pin`'s tree on top of `previous` and moves
+    /// `branch` to it (a fast-forward), e.g. a fix after the pushed
+    /// branch failed CI, so the open pull request updates.
+    pub fn seal_update(
+        &self,
+        project_root: &Path,
+        ws: &Path,
+        previous: &str,
+        pin: &str,
+        branch: &str,
+        message: &str,
+    ) -> Result<String> {
+        let who = self.identity(project_root);
+        // The previous seal lives in the user's repository; bring it here.
+        self.run(ws, &["fetch", "--quiet", "--no-tags", &project_root.to_string_lossy(), previous])?;
+        let tree = self.run_trim(ws, &["rev-parse", &format!("{pin}^{{tree}}")])?;
+        let commit = self.commit_tree_with_message(ws, &tree, previous, message, &who)?;
+        let refspec = format!("{commit}:refs/heads/{branch}");
+        self.run(project_root, &["fetch", "--quiet", "--no-tags", &ws.to_string_lossy(), &refspec])?;
+        Ok(commit)
+    }
+
+    fn publish(&self, project_root: &Path, ws: &Path, commit: &str, branch: &str) -> Result<(String, String)> {
+        let commit = commit.to_string();
         let mut name = branch.to_string();
         let mut n = 2;
         while self.resolve(project_root, &format!("refs/heads/{name}")).is_ok() {

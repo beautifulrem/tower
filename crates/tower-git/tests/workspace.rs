@@ -158,3 +158,27 @@ fn touched_files_and_predicted_conflicts() {
     assert_eq!(git.merge_conflicts(repo, "main", "feature"), Some(vec!["a.txt".to_string()]));
     assert_eq!(git.merge_conflicts(repo, "main", "main"), Some(vec![]));
 }
+
+#[test]
+fn a_fix_after_acceptance_updates_the_same_branch() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    user_repo(&repo);
+    let git = Git::default();
+    let ws = tmp.path().join("ws/G-0001");
+    let base = git.prepare_workspace(&repo, "main", &ws, "G-0001").unwrap();
+
+    fs::write(ws.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+    let s1 = git.snapshot(&ws, &base).unwrap();
+    let (branch, first) = git.seal(&repo, &ws, &base, &s1.pin, "tower/g-0001", "first").unwrap();
+
+    // CI failed; the agent fixed it in the same workspace.
+    fs::write(ws.join("a.txt"), "one\ntwo\nthree\nfour\n").unwrap();
+    let s2 = git.snapshot(&ws, &base).unwrap();
+    let second = git.seal_update(&repo, &ws, &first, &s2.pin, &branch, "fix CI").unwrap();
+
+    assert_eq!(sh(&repo, &["rev-parse", &branch]), second, "the same branch moved");
+    assert_eq!(sh(&repo, &["rev-parse", &format!("{second}^")]), first, "a fast-forward on top of the first seal");
+    assert_eq!(sh(&repo, &["show", &format!("{branch}:a.txt")]), "one\ntwo\nthree\nfour");
+}

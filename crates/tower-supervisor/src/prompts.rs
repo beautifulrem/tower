@@ -185,6 +185,14 @@ pub fn request_changes(summary: &str, comments: &[Comment]) -> String {
     s
 }
 
+/// The PR's CI failed after the human accepted and pushed the change.
+pub fn ci_failures(url: &str, report: &str) -> String {
+    format!(
+        "The change you made was accepted and pushed as a pull request ({url}), but its CI checks failed. \
+Fix the causes in this workspace. Do not weaken or skip tests or checks to make them pass.\n\nFailing checks:\n{report}\n\nThen submit again."
+    )
+}
+
 /// Rework after sentinels fired on a snapshot that otherwise passed.
 pub fn sentinel_rework(hits: &[tower_core::sentinel::SentinelHit]) -> String {
     let mut s = String::from(

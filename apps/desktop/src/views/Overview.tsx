@@ -12,7 +12,8 @@ import type { GoalSummary } from "../gen/GoalSummary";
 import { api } from "../lib/api";
 import { useKeys } from "../lib/keys";
 import { clock } from "../lib/format";
-import { type Group, groupLabel, groupOf, pauseLabel, stateLabel } from "../lib/labels";
+import { t } from "../lib/i18n";
+import { type Group, groupLabel, groupOf, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 import { Welcome } from "./Welcome";
@@ -55,7 +56,7 @@ export function Overview() {
           {(it) => (
             <button class="next-line halt" onClick={() => go({ name: "goal", id: it().goal_id })}>
               <NeedsYouMark />
-              <span>下一件</span>
+              <span>{t("overview.next")}</span>
               <span class="sep">·</span>
               <span class="code-val t3">{it().goal_id}</span>
               <span class="ellipsis">{it().title}</span>
@@ -67,14 +68,14 @@ export function Overview() {
         <Show
           when={live().length > 0}
           fallback={
-            <Empty title="没有进行中的目标">在上面写一句你想要的结果按 ↵，或按 ⌘N 写合同</Empty>
+            <Empty title={t("overview.emptyTitle")}>{t("overview.emptyBody")}</Empty>
           }
         >
           <For each={groups()}>
             {(grp) => (
               <section class="board-group">
                 <h2 class="board-group-title">
-                  {groupLabel[grp.key]}
+                  {groupLabel(grp.key)}
                   <span class="num t3">{grp.goals.length}</span>
                 </h2>
                 <div class="board-grid">
@@ -109,11 +110,15 @@ function AppBriefing() {
     since ? goalList().filter((g) => g.updated_at > since && g.state !== "archived").slice(0, 8) : [],
   );
   const describe = (g: GoalSummary) =>
-    g.state === "paused" && g.pause_reason ? `已暂停（${pauseLabel[g.pause_reason]}）` : g.needs_you > 0 && g.state === "running" ? "等你" : stateLabel[g.state];
+    g.state === "paused" && g.pause_reason
+      ? t("overview.pausedWith", { reason: pauseLabel(g.pause_reason) })
+      : g.needs_you > 0 && g.state === "running"
+        ? modeLabel("waiting_on_you")
+        : stateLabel(g.state);
   return (
     <Show when={open() && changed().length > 0}>
       <div class="briefing app-briefing">
-        <span class="briefing-title">自 {clock(since)} 起</span>
+        <span class="briefing-title">{t("overview.since", { time: clock(since) })}</span>
         <For each={changed()}>
           {(g) => (
             <button class="briefing-item link-plain" onClick={() => go({ name: "goal", id: g.id })}>
@@ -123,7 +128,7 @@ function AppBriefing() {
         </For>
         <span class="grow" />
         <button class="link meta" onClick={() => setOpen(false)}>
-          知道了
+          {t("overview.gotIt")}
         </button>
       </div>
     </Show>
@@ -166,18 +171,18 @@ function QuickPath() {
       </span>
       <input
         class="quick-input"
-        placeholder={`在 ${current()?.name ?? "项目"} 中，一句话描述你想要的结果…`}
+        placeholder={t("overview.quickPlaceholder", { project: current()?.name ?? t("overview.project") })}
         value={intent()}
         disabled={busy()}
         onInput={(e) => setIntent(e.currentTarget.value)}
         onKeyDown={submit}
       />
-      <div class="quick-hints">↵ 快速开始 · ⌥↵ 写合同</div>
+      <div class="quick-hints">{t("overview.quickHints")}</div>
       <Show when={current() && !current()!.test_command}>
         <div class="quick-warn meta">
-          这个项目没有检测到测试命令：快速开始的目标将没有可执行的验收标准。
+          {t("overview.noTestCommand")}
           <Button size="s" variant="ghost" onClick={() => go({ name: "settings" })}>
-            设置测试命令
+            {t("overview.setTestCommand")}
           </Button>
         </div>
       </Show>

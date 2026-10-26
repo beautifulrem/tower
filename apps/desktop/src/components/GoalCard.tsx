@@ -7,6 +7,7 @@ import { Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import { ago, count, duration, usd, usdLimit } from "../lib/format";
+import { t } from "../lib/i18n";
 import { go } from "../lib/nav";
 import { state } from "../lib/store";
 import { LifecycleGlyph, NeedsYouMark } from "./Glyph";
@@ -16,7 +17,9 @@ import { LiveLine } from "./Live";
 export function GoalCard(props: { goal: GoalSummary; selected?: boolean; onSelect?: () => void }) {
   const g = () => props.goal;
   const elapsed = () =>
-    g().run_started_at ? `已运行 ${duration(state.now - g().run_started_at!, false)}` : ago(g().updated_at, state.now);
+    g().run_started_at
+      ? t("card.ranFor", { d: duration(state.now - g().run_started_at!, false) })
+      : ago(g().updated_at, state.now);
   const overSoft = () => g().cost_usd >= g().budget.soft_usd;
   return (
     <article
@@ -44,12 +47,12 @@ export function GoalCard(props: { goal: GoalSummary; selected?: boolean; onSelec
         </span>
       </div>
       <div class="card-row card-split meta">
-        <Show when={g().diffstat?.files} fallback={<span class="t3">还没有改动</span>}>
+        <Show when={g().diffstat?.files} fallback={<span class="t3">{t("card.noChanges")}</span>}>
           <span class="num">
             <span class="t1">+{count(g().diffstat!.additions)}</span>
             <span class="diff-del"> −{count(g().diffstat!.deletions)}</span>
             <span class="sep">·</span>
-            {g().diffstat!.files} 个文件
+            {t("common.files", { n: g().diffstat!.files })}
           </span>
         </Show>
         <span class="num">{elapsed()}</span>
@@ -60,9 +63,7 @@ export function GoalCard(props: { goal: GoalSummary; selected?: boolean; onSelec
         <span class="t3 ellipsis">{g().project_name}</span>
         <Show when={g().rework_cycles > 0}>
           <span class="sep">·</span>
-          <span class="t2">
-            返工 {g().rework_cycles} / {g().max_rework}
-          </span>
+          <span class="t2">{t("card.rework", { n: g().rework_cycles, max: g().max_rework })}</span>
         </Show>
         <Show when={g().branch}>
           <span class="sep">·</span>

@@ -1,6 +1,6 @@
 /**
  * Review (docs/04 §4.6): full-screen, risk-ordered review units of at most
- * ~300 lines. A comment on a line is a steering instruction; "要求修改" sends
+ * ~300 lines. A comment on a line is a steering instruction; "request changes" sends
  * them all back to the agent. Accepting writes a local branch, never a push.
  */
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js";
@@ -17,6 +17,7 @@ import type { ReviewComment } from "../gen/ReviewComment";
 import type { ReviewUnit } from "../gen/ReviewUnit";
 import { api } from "../lib/api";
 import { count, short } from "../lib/format";
+import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { back } from "../lib/nav";
 import { drafts, fileHash, lastReviewed, viewed } from "../lib/reviewState";
@@ -118,9 +119,9 @@ export function Review(props: { id: string }) {
               <span class="num">
                 <span class="t1">+{count(view()!.stat.additions)}</span> −{count(view()!.stat.deletions)}
                 <span class="sep">·</span>
-                {view()!.stat.files} 个文件
+                {t("common.files", { n: view()!.stat.files })}
                 <span class="sep">·</span>
-                {units().length} 个评审单元
+                {t("review.units", { n: units().length })}
                 <span class="sep">·</span>
                 <span class="code-val">
                   @{short(view()!.from)} → @{short(view()!.pin)}
@@ -129,10 +130,10 @@ export function Review(props: { id: string }) {
               <Show when={previous && previous !== view()!.pin}>
                 <span class="scope-switch">
                   <button class="pill" classList={{ active: !sinceLast() }} onClick={() => setSinceLast(false)}>
-                    全部改动
+                    {t("review.allChanges")}
                   </button>
                   <button class="pill" classList={{ active: sinceLast() }} onClick={() => setSinceLast(true)}>
-                    自上次评审
+                    {t("review.sinceLast")}
                   </button>
                 </span>
               </Show>
@@ -143,18 +144,19 @@ export function Review(props: { id: string }) {
           </Show>
         </div>
         <Button onClick={() => setPanel("changes")} kbd="c">
-          要求修改{comments().length ? `（${comments().length} 条批注）` : ""}
+          {t("review.requestChanges")}
+          {comments().length ? t("review.commentCount", { n: comments().length }) : ""}
         </Button>
         <Show when={g()?.state === "in_review"}>
           <Button variant="primary" onClick={() => setPanel("accept")} kbd="mod+shift+enter">
-            验收
+            {t("review.accept")}
           </Button>
         </Show>
       </header>
 
       <Show when={!view.loading} fallback={<div class="page-loading"><Loading /></div>}>
-        <Show when={!view.error} fallback={<Empty title="无法载入改动">{String(view.error)}</Empty>}>
-          <Show when={units().length > 0} fallback={<Empty title="没有改动">Agent 还没有改动任何被跟踪的文件。</Empty>}>
+        <Show when={!view.error} fallback={<Empty title={t("review.loadFailed")}>{String(view.error)}</Empty>}>
+          <Show when={units().length > 0} fallback={<Empty title={t("review.noChanges")}>{t("review.noChangesBody")}</Empty>}>
             <div class="review-body">
               <aside class="review-units">
                 <For each={units()}>
@@ -163,7 +165,7 @@ export function Review(props: { id: string }) {
                   )}
                 </For>
                 <div class="review-units-foot meta">
-                  J / K 单元 · ] / [ 区块 · V 标为已看 · 点行号写批注 · ⌘ 点行号在编辑器中打开
+                  {t("review.unitsFoot")}
                 </div>
               </aside>
               <div class="review-diff">
@@ -173,7 +175,7 @@ export function Review(props: { id: string }) {
                       {(h) => (
                         <span class="risk-reason">
                           <span class={h.severity >= 3 ? "mark-danger" : ""}>{h.severity >= 3 ? "■ " : "◇ "}</span>
-                          哨兵 · {h.title}
+                          {t("review.sentinel", { title: h.title })}
                         </span>
                       )}
                     </For>
@@ -230,12 +232,12 @@ function UnitItem(props: { u: ReviewUnit; active: boolean; seen: boolean; viewed
   return (
     <button class="unit" classList={{ active: props.active }} onClick={props.onClick}>
       <div class="row">
-        <span class="unit-risk" aria-label={`风险 ${props.u.risk}`}>
+        <span class="unit-risk" aria-label={t("review.risk", { n: props.u.risk })}>
           {props.u.risk >= 3 ? "▪▪" : props.u.risk >= 2 ? "▪" : ""}
         </span>
         <span class="unit-title ellipsis grow">{props.u.title}</span>
-        <span class="meta num">{props.u.lines} 行</span>
-        <span class="t3" title={props.viewed ? "已看" : props.seen ? "看过（之后可能有变化）" : ""}>
+        <span class="meta num">{t("review.lines", { n: props.u.lines })}</span>
+        <span class="t3" title={props.viewed ? t("review.viewed") : props.seen ? t("review.seenMaybeChanged") : ""}>
           {props.viewed ? "✓" : props.seen ? "◦" : ""}
         </span>
       </div>
@@ -255,13 +257,13 @@ function FileDiff(props: {
   onComment: (text: string) => void;
   onCancel: () => void;
 }) {
-  const statusLabel = { added: "新建", modified: "修改", deleted: "删除", renamed: "重命名" };
+  const statusLabel = (s: DiffFile["status"]) => t(`review.${s}`);
   const commentAt = (n: number | null) => props.comments.filter((c) => c.line === n);
   const composingAt = (n: number | null) => props.composer?.path === props.file.path && props.composer.line === n;
   return (
     <section class="file">
       <header class="file-head">
-        <span class="file-status meta">{statusLabel[props.file.status]}</span>
+        <span class="file-status meta">{statusLabel(props.file.status)}</span>
         <span class="mono ellipsis grow">
           <Show when={props.file.old_path}>
             <span class="t3">{props.file.old_path} → </span>
@@ -272,21 +274,21 @@ function FileDiff(props: {
           <span class="diff-add">+{props.file.additions}</span> <span class="diff-del">−{props.file.deletions}</span>
         </span>
         <button class="link meta" onClick={() => props.onLine(null)}>
-          批注
+          {t("review.comment")}
         </button>
         <button class="link meta" onClick={() => props.onOpen(null)}>
-          在编辑器中打开
+          {t("review.openInEditor")}
         </button>
         <label class="viewed-check meta">
           <input type="checkbox" checked={props.viewed} onChange={(e) => props.onViewed(e.currentTarget.checked)} />
-          已看
+          {t("review.viewed")}
         </label>
       </header>
       <Show when={composingAt(null)}>
         <Composer onSubmit={props.onComment} onCancel={props.onCancel} />
       </Show>
       <For each={commentAt(null)}>{(c) => <div class="inline-comment">{c.text}</div>}</For>
-      <Show when={!props.file.binary} fallback={<div class="meta file-binary">二进制文件，不显示内容</div>}>
+      <Show when={!props.file.binary} fallback={<div class="meta file-binary">{t("review.binary")}</div>}>
         <table class="diff">
           <colgroup>
             <col class="col-ln" />
@@ -396,7 +398,7 @@ function DiffRow(props: {
       <td
         class="ln num ln-new"
         onClick={(e) => props.l.new_no && props.onLine(props.l.new_no, e.metaKey)}
-        title="点击写批注 · ⌘ 点击在编辑器中打开"
+        title={t("review.lineTitle")}
       >
         {props.l.new_no ?? ""}
       </td>
@@ -421,7 +423,7 @@ function Composer(props: { onSubmit: (t: string) => void; onCancel: () => void }
       <textarea
         ref={(el) => setTimeout(() => el.focus())}
         rows={2}
-        placeholder="这一处要怎么改？（会作为转向指令发给 Agent）"
+        placeholder={t("review.composerPlaceholder")}
         value={text()}
         onInput={(e) => setText(e.currentTarget.value)}
         onKeyDown={(e) => {
@@ -432,10 +434,10 @@ function Composer(props: { onSubmit: (t: string) => void; onCancel: () => void }
       <div class="row">
         <span class="grow" />
         <Button size="s" variant="ghost" onClick={props.onCancel}>
-          取消
+          {t("common.cancel")}
         </Button>
         <Button size="s" variant="primary" disabled={!text().trim()} onClick={() => props.onSubmit(text())}>
-          添加批注 <Kbd k="mod+enter" />
+          {t("review.addComment")} <Kbd k="mod+enter" />
         </Button>
       </div>
     </div>
@@ -456,8 +458,8 @@ function AcceptPanel(props: {
   const humans = () => props.detail?.criteria.filter((c) => c.criterion.kind.type === "human") ?? [];
   const blockers = () => {
     const b: string[] = [];
-    if (g()?.state !== "in_review") b.push("目标不在待验收状态");
-    for (const h of humans()) if (!h.human_checked) b.push(`人工标准 ${h.criterion.id} 还没有勾选`);
+    if (g()?.state !== "in_review") b.push(t("review.notInReview"));
+    for (const h of humans()) if (!h.human_checked) b.push(t("review.humanUnchecked", { id: h.criterion.id }));
     return b;
   };
   const accept = async () => {
@@ -473,15 +475,15 @@ function AcceptPanel(props: {
   return (
     <div class="overlay" onClick={props.onClose}>
       <div class="panel" onClick={(e) => e.stopPropagation()}>
-        <h2 class="panel-title">验收 {props.id}</h2>
+        <h2 class="panel-title">{t("review.acceptTitle", { id: props.id })}</h2>
         <div class="panel-section">
           <div class="fact-row">
             <Show
               when={g()?.progress.machine}
-              fallback={<span class="meta">这个目标没有机器标准：验收完全基于你的判断。</span>}
+              fallback={<span class="meta">{t("review.noMachine")}</span>}
             >
               <span class="result result-pass">✓</span>
-              <span>全部 {g()!.progress.machine} 条机器标准在干净环境中通过</span>
+              <span>{t("review.allPassed", { n: g()!.progress.machine })}</span>
               <span class="grow" />
               <FactChip pin={g()!.verified_pin} />
             </Show>
@@ -496,12 +498,13 @@ function AcceptPanel(props: {
             )}
           </For>
           <div class="meta">
-            你已查看 {Math.min(props.seen, props.total)}/{props.total} 个评审单元
+            {t("review.seenUnits", { seen: Math.min(props.seen, props.total), total: props.total })}
           </div>
         </div>
         <div class="panel-section meta">
-          验收会把已验证的快照封装为一个由你署名的提交，写入你仓库中的新分支
-          <span class="mono t1"> tower/{props.id.toLowerCase()}-…</span>。Tower 不推送，也不改动你当前的检出；合并由你来做。
+          {t("review.acceptExplain")}
+          <span class="mono t1"> tower/{props.id.toLowerCase()}-…</span>
+          {t("review.acceptExplainTail")}
         </div>
         <Show when={blockers().length}>
           <div class="panel-blockers">
@@ -510,10 +513,10 @@ function AcceptPanel(props: {
         </Show>
         <div class="panel-actions">
           <Button variant="ghost" onClick={props.onClose}>
-            取消
+            {t("common.cancel")}
           </Button>
           <Button variant="primary" busy={busy()} disabled={blockers().length > 0} onClick={accept}>
-            验收并写入分支
+            {t("review.acceptWrite")}
           </Button>
         </div>
       </div>
@@ -532,7 +535,7 @@ function ChangesPanel(props: {
   const [busy, setBusy] = createSignal(false);
   const send = async () => {
     setBusy(true);
-    const ok = await act(() => api.requestChanges(props.id, summary(), props.comments), "已发回给 Agent");
+    const ok = await act(() => api.requestChanges(props.id, summary(), props.comments), t("review.sentBack"));
     setBusy(false);
     if (ok !== undefined) {
       props.onSent();
@@ -543,16 +546,16 @@ function ChangesPanel(props: {
   return (
     <div class="overlay" onClick={props.onClose}>
       <div class="panel" onClick={(e) => e.stopPropagation()}>
-        <h2 class="panel-title">要求修改</h2>
+        <h2 class="panel-title">{t("review.requestChanges")}</h2>
         <textarea
           class="panel-text"
           rows={3}
-          placeholder="总体意见（可选）…"
+          placeholder={t("review.summaryPlaceholder")}
           value={summary()}
           onInput={(e) => setSummary(e.currentTarget.value)}
         />
         <div class="panel-section">
-          <For each={props.comments} fallback={<p class="meta">还没有行内批注。点击 diff 的行号可以在具体位置写批注。</p>}>
+          <For each={props.comments} fallback={<p class="meta">{t("review.noInline")}</p>}>
             {(c, i) => (
               <div class="fact-row">
                 <span class="mono t2">
@@ -561,7 +564,7 @@ function ChangesPanel(props: {
                 </span>
                 <span class="grow">{c.text}</span>
                 <button class="link meta" onClick={() => props.onRemove(i())}>
-                  删除
+                  {t("common.delete")}
                 </button>
               </div>
             )}
@@ -569,10 +572,10 @@ function ChangesPanel(props: {
         </div>
         <div class="panel-actions">
           <Button variant="ghost" onClick={props.onClose}>
-            取消
+            {t("common.cancel")}
           </Button>
           <Button variant="primary" busy={busy()} disabled={!summary().trim() && !props.comments.length} onClick={send}>
-            发回给 Agent
+            {t("review.sendBack")}
           </Button>
         </div>
       </div>

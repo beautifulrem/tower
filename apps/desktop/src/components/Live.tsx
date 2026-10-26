@@ -7,7 +7,8 @@ import { Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import { ago } from "../lib/format";
-import { modeLabel, modeNeedsYou, pauseLabel, stateLabel, toolLabel } from "../lib/labels";
+import { t } from "../lib/i18n";
+import { isEngineTool, modeLabel, modeNeedsYou, pauseLabel, stateLabel, toolLabel } from "../lib/labels";
 import { state } from "../lib/store";
 import { NeedsYouMark } from "./Glyph";
 
@@ -15,10 +16,10 @@ export function ModeBadge(props: { goal: GoalSummary }) {
   const attention = () => modeNeedsYou(props.goal.mode) || (props.goal.needs_you > 0 && props.goal.state === "running");
   const text = () => {
     const g = props.goal;
-    if (g.state === "running") return attention() ? "等你" : modeLabel[g.mode];
-    if (g.state === "verifying") return "验证";
-    if (g.state === "paused") return "已暂停";
-    return stateLabel[g.state];
+    if (g.state === "running") return attention() ? modeLabel("waiting_on_you") : modeLabel(g.mode);
+    if (g.state === "verifying") return modeLabel("verifying");
+    if (g.state === "paused") return stateLabel("paused");
+    return stateLabel(g.state);
   };
   return (
     <span class="mode-badge" classList={{ "mode-attention": attention() }}>
@@ -30,54 +31,73 @@ export function ModeBadge(props: { goal: GoalSummary }) {
   );
 }
 
-/** The detail after the badge: `动作 · 对象`, or the reason when not running. */
-export function liveDetail(g: GoalSummary): { action: string; target: string } {
-  if (g.state === "paused" && g.pause_reason) return { action: pauseLabel[g.pause_reason], target: "" };
+/**
+ * The detail after the badge: `action · target`, or the reason when not
+ * running. `code` marks machine values (tool names, paths, commands,
+ * branches) that are set in mono; words never are, in either language.
+ */
+export interface LiveDetail {
+  action: string;
+  target: string;
+  code?: { action?: boolean; target?: boolean };
+}
+
+/** Looks like a path or command: printable ASCII without runs of spaces. */
+const machine = (s: string) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
+
+export function liveDetail(g: GoalSummary): LiveDetail {
+  if (g.state === "paused" && g.pause_reason) return { action: pauseLabel(g.pause_reason), target: "" };
   if (g.state === "running" && g.needs_you > 0) {
     const item = state.inbox.find((i) => i.goal_id === g.id);
-    if (item) return { action: item.kind === "approval" ? "批准" : "问题", target: item.title };
+    if (item) return { action: item.kind === "approval" ? t("live.approval") : t("live.question"), target: item.title };
   }
   if (g.live_line && g.state === "running") {
-    return { action: toolLabel[g.live_line.action] ?? g.live_line.action, target: g.live_line.target };
+    const tool = g.live_line.action;
+    const label = toolLabel(tool);
+    return {
+      action: label,
+      target: g.live_line.target,
+      code: { action: isEngineTool(tool) || (label === tool && machine(tool)), target: machine(g.live_line.target) },
+    };
   }
   switch (g.state) {
     case "running":
-      return { action: g.mode === "starting" ? "启动" : "当前步骤", target: g.run_no > 1 ? `第 ${g.run_no} 次运行` : "开始工作" };
+      return {
+        action: g.mode === "starting" ? t("live.starting") : t("live.currentStep"),
+        target: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : t("live.getStarted"),
+      };
     case "verifying":
-      return { action: "标准", target: `${g.progress.verified}/${g.progress.machine} 已通过` };
+      return { action: t("live.criteria"), target: t("live.passedOf", { v: g.progress.verified, m: g.progress.machine }) };
     case "claimed":
-      return { action: "Agent 称已完成", target: "等待验证" };
+      return { action: t("live.claimedDone"), target: t("live.awaitingVerify") };
     case "in_review":
       return g.progress.machine === 0
-        ? { action: "未经机器验证", target: "请你判断" }
-        : { action: "已验证", target: `@${(g.verified_pin ?? "").slice(0, 7)}` };
+        ? { action: t("live.notMachineVerified"), target: t("live.yourCall") }
+        : { action: t("live.verified"), target: `@${(g.verified_pin ?? "").slice(0, 7)}`, code: { target: true } };
     case "accepted":
-      return { action: "分支", target: g.branch ?? "" };
+      return { action: t("live.branch"), target: g.branch ?? "", code: { target: true } };
     case "integrated":
-      return { action: "已合入本地基线", target: g.branch ?? "" };
+      return { action: t("live.merged"), target: g.branch ?? "", code: { target: true } };
     case "ready":
-      return { action: "排队", target: "等待执行槽位" };
+      return { action: t("live.queued"), target: t("live.waitingSlot") };
     case "draft":
-      return { action: "草稿", target: "合同未批准" };
+      return { action: t("live.draft"), target: t("live.unratified") };
     default:
-      return { action: stateLabel[g.state], target: "" };
+      return { action: stateLabel(g.state), target: "" };
   }
 }
-
-/** Machine values (tool names, paths, commands) are set in mono; words are not. */
-const machine = (s: string) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
 
 export function LiveLine(props: { goal: GoalSummary; large?: boolean }) {
   const d = () => liveDetail(props.goal);
   return (
     <div class="live-line halt" classList={{ "live-line-large": !!props.large }}>
       <ModeBadge goal={props.goal} />
-      <span class="live-action" classList={{ "code-val": machine(d().action) }}>
+      <span class="live-action" classList={{ "code-val": !!d().code?.action }}>
         {d().action}
       </span>
       <Show when={d().target}>
         <span class="sep">·</span>
-        <span class="live-target ellipsis" classList={{ "code-val": machine(d().target) }} title={d().target}>
+        <span class="live-target ellipsis" classList={{ "code-val": !!d().code?.target }} title={d().target}>
           {d().target}
         </span>
       </Show>

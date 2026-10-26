@@ -10,23 +10,20 @@ import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
 import { ago } from "../lib/format";
+import { t } from "../lib/i18n";
 import { go } from "../lib/nav";
 import { act, state } from "../lib/store";
 import { NeedsYouMark } from "./Glyph";
 import { Button, Kbd } from "./ui";
 
-const kindLabel: Record<InboxItem["kind"], string> = {
-  question: "问题",
-  approval: "审批",
-  assumption: "假设",
-  paused: "已暂停",
-  review_ready: "待验收",
-  stalled: "可能卡住",
-};
+const kindLabel = (k: InboxItem["kind"]): string => t(`inboxKind.${k}`);
 
-/** Titles carry the kind in their prefix; the strip already says it. */
-function bareTitle(t: string): string {
-  return t.replace(/^(已暂停|需要你批准|可能卡住|待验收)[：:]\s*/, "");
+/**
+ * Titles carry the kind in their prefix; the strip already says it. Items
+ * keep the language they were created in, so both languages are stripped.
+ */
+function bareTitle(title: string): string {
+  return title.replace(/^(已暂停|需要你批准|可能卡住|待验收|Paused|Approval needed|May be stuck|Ready to accept)\s*[：:]\s*/, "");
 }
 
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean }) {
@@ -44,7 +41,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
     <article class="decision" classList={{ focused: !!props.focused, quiet: !!props.quiet && !props.focused }}>
       <header class="decision-head halt">
         <NeedsYouMark />
-        <span class="decision-kind">{kindLabel[it().kind]}</span>
+        <span class="decision-kind">{kindLabel(it().kind)}</span>
         <Show when={props.showGoal !== false}>
           <span class="sep">·</span>
           <button class="link-quiet ellipsis" onClick={() => go({ name: "goal", id: it().goal_id })}>
@@ -68,7 +65,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
           fallback={
             <div class="decision-actions">
               <Button variant="primary" onClick={() => go({ name: "review", id: it().goal_id })} kbd="r">
-                打开评审
+                {t("decision.openReview")}
               </Button>
             </div>
           }
@@ -92,7 +89,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <textarea
                 ref={(el) => autogrow(el, 1, 6)}
                 rows={1}
-                placeholder={it().kind === "question" ? "写下你的回答…" : "写给 Agent 的话（可选）…"}
+                placeholder={it().kind === "question" ? t("decision.answerPlaceholder") : t("decision.notePlaceholder")}
                 value={text()}
                 onInput={(e) => setText(e.currentTarget.value)}
                 onKeyDown={(e) => {
@@ -103,7 +100,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                 }}
               />
               <Button size="s" disabled={!text().trim()} busy={busy()} onClick={() => send(text().trim())}>
-                发送 <Kbd k="mod+enter" />
+                {t("common.send")} <Kbd k="mod+enter" />
               </Button>
             </div>
           </Show>

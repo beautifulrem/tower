@@ -6,7 +6,8 @@ import { type JSX, Show } from "solid-js";
 
 import type { Consistency } from "../gen/Consistency";
 import type { Progress } from "../gen/Progress";
-import { ago, short } from "../lib/format";
+import { ago, clock, short } from "../lib/format";
+import { t } from "../lib/i18n";
 import { state } from "../lib/store";
 
 /**
@@ -16,7 +17,7 @@ import { state } from "../lib/store";
 export function FactChip(props: { pin?: string | null; at?: number | null; children?: JSX.Element }) {
   return (
     <span class="fact">
-      <span class="fact-icon" aria-label="Tower 测得">⚙</span>
+      <span class="fact-icon" aria-label={t("honesty.measured")}>⚙</span>
       {props.children}
       <Show when={props.pin}>
         <span class="code-val">@{short(props.pin)}</span>
@@ -33,7 +34,7 @@ export function FactChip(props: { pin?: string | null; at?: number | null; child
 export function ObsChip(props: { at?: number | null; children?: JSX.Element }) {
   return (
     <span class="chip chip-obs">
-      观测
+      {t("honesty.observation")}
       {props.children}
       <Show when={props.at}>
         <span class="sep">·</span>
@@ -50,7 +51,7 @@ export function ObsChip(props: { at?: number | null; children?: JSX.Element }) {
 export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX.Element }) {
   return (
     <div class="claim">
-      <span class="claim-label halt">┆ Agent 称</span>
+      <span class="claim-label halt">{t("honesty.agentSays")}</span>
       <div class="claim-text">
         <Show when={props.kind}>
           <span class="claim-kind">{props.kind}</span>
@@ -68,7 +69,7 @@ export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX
 export function HumanStamp(props: { at: number; children?: JSX.Element }) {
   return (
     <span class="human-stamp">
-      你 · {new Date(props.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+      {t("common.you")} · {clock(props.at)}
       {props.children}
     </span>
   );
@@ -76,8 +77,7 @@ export function HumanStamp(props: { at: number; children?: JSX.Element }) {
 
 /** Cross-check badge for a claim. Consistency is never green: agreeing is not proof. */
 export function ConsistencyBadge(props: { value: Consistency; evidence?: string | null }) {
-  const text = () =>
-    ({ consistent: "一致", contradicted: "矛盾", stale: "已过期", unsupported: "无依据" })[props.value];
+  const text = () => t(`honesty.${props.value}`);
   return (
     <span class={`consistency consistency-${props.value}`} title={props.evidence ?? undefined}>
       <Show when={props.value === "contradicted"}>
@@ -105,7 +105,7 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean }) {
     <div class="criteria-bar" classList={{ compact: !!props.compact }}>
       <Show
         when={p().machine > 0}
-        fallback={<span class="meta">未经机器验证</span>}
+        fallback={<span class="meta">{t("honesty.notMachineVerified")}</span>}
       >
         <span class="segs" aria-hidden="true">
           {segs().map((s) => (
@@ -113,15 +113,15 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean }) {
           ))}
         </span>
         <span class="meta num halt">
-          已验证 {p().verified}/{p().machine}
+          {t("honesty.verified", { v: p().verified, m: p().machine })}
           <span class="sep">·</span>
-          观测 {p().observed}/{p().machine}
+          {t("honesty.observed", { o: p().observed, m: p().machine })}
         </span>
       </Show>
       <Show when={p().human > 0}>
         <span class="sep">·</span>
         <span class="meta num">
-          人工 {p().human_done}/{p().human}
+          {t("honesty.human", { d: p().human_done, n: p().human })}
         </span>
       </Show>
     </div>

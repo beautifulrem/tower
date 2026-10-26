@@ -1,52 +1,16 @@
-/** UI vocabulary. Mirrors tower-core's briefing labels; one place to edit. */
+/** UI vocabulary. Mirrors tower-core's labels; the words live in i18n.ts. */
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { LifecycleState } from "../gen/LifecycleState";
 import type { Mode } from "../gen/Mode";
 import type { PauseReason } from "../gen/PauseReason";
+import { t } from "./i18n";
 
-export const stateLabel: Record<LifecycleState, string> = {
-  draft: "草稿",
-  ready: "就绪",
-  running: "运行中",
-  paused: "已暂停",
-  claimed: "自称完成",
-  verifying: "验证中",
-  in_review: "待验收",
-  accepted: "已验收",
-  integrated: "已合入",
-  archived: "已归档",
-  abandoned: "已放弃",
-};
+export const stateLabel = (s: LifecycleState): string => t(`state.${s}`);
 
-export const pauseLabel: Record<PauseReason, string> = {
-  human: "你暂停了它",
-  budget_soft_cap: "预算软上限",
-  budget_hard_cap: "预算硬上限",
-  idle_without_submit: "停下了但没有提交",
-  engine_crash: "引擎意外退出",
-  app_quit: "Tower 退出时暂停",
-  verify_failed_limit: "验证失败 · 返工次数用完",
-  verify_env_error: "验证环境出错",
-  prepare_failed: "准备或启动失败",
-  provider_error: "模型服务出错",
-  sentinel_high: "哨兵命中，等你确认",
-  wall_clock_cap: "超过单次运行时长",
-};
+export const pauseLabel = (r: PauseReason): string => t(`pause.${r}`);
 
-/** Mode badge text (§12.6.3): 2–4 characters, attention only when it needs you. */
-export const modeLabel: Record<Mode, string> = {
-  idle: "空闲",
-  starting: "准备中",
-  thinking: "思考",
-  reading: "执行",
-  editing: "执行",
-  executing: "执行",
-  waiting_on_you: "等你",
-  retrying: "重试",
-  compacting: "压缩中",
-  verifying: "验证",
-  settled: "已停",
-};
+/** Mode badge text (§12.6.3): short, attention only when it needs you. */
+export const modeLabel = (m: Mode): string => t(`mode.${m}`);
 
 export function modeNeedsYou(m: Mode): boolean {
   return m === "waiting_on_you";
@@ -60,14 +24,7 @@ export function machineVerified(g: GoalSummary): boolean {
 /** Sidebar and board groups, in order of how much they need the human. */
 export type Group = "needs_you" | "running" | "review" | "ready" | "paused" | "done";
 
-export const groupLabel: Record<Group, string> = {
-  needs_you: "需要你",
-  running: "运行中",
-  review: "验证与待验收",
-  ready: "就绪与草稿",
-  paused: "已暂停",
-  done: "已验收 · 已结束",
-};
+export const groupLabel = (g: Group): string => t(`group.${g}`);
 
 export function groupOf(g: GoalSummary): Group {
   if (g.needs_you > 0 && g.state !== "in_review") return "needs_you";
@@ -88,12 +45,12 @@ export function groupOf(g: GoalSummary): Group {
   }
 }
 
-export const toolLabel: Record<string, string> = {
-  read: "read",
-  edit: "edit",
-  write: "write",
-  bash: "bash",
-  ask_user: "问题",
-  log: "记录",
-  submit: "提交",
-};
+/** Tower's own tools get words; engine tools keep their names. */
+export function toolLabel(tool: string): string {
+  return tool === "ask_user" || tool === "log" || tool === "submit" ? t(`tool.${tool}`) : tool;
+}
+
+/** Engine tools whose names are shown as code. */
+export function isEngineTool(tool: string): boolean {
+  return tool === "read" || tool === "edit" || tool === "write" || tool === "bash";
+}

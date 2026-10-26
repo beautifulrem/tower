@@ -12,6 +12,7 @@ import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
 import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
+import { t } from "./lib/i18n";
 import { act, state } from "./lib/store";
 import { ContractEditor } from "./views/ContractEditor";
 import { GoalPage } from "./views/GoalPage";
@@ -40,17 +41,21 @@ function titleOf(): string {
   const r = route();
   switch (r.name) {
     case "overview":
-      return "概览";
+      return t("app.overview");
     case "inbox":
-      return "需要你";
+      return t("common.needsYou");
     case "settings":
-      return "设置";
+      return t("app.settings");
     case "new":
-      return r.amendId ? `修订合同 · ${r.amendId}` : r.draftId ? `编辑草稿 · ${r.draftId}` : "新目标";
+      return r.amendId
+        ? t("app.amend", { id: r.amendId })
+        : r.draftId
+          ? t("app.editDraft", { id: r.draftId })
+          : t("app.newGoal");
     case "goal":
       return state.goals[r.id]?.title ?? r.id;
     case "review":
-      return `评审 · ${r.id}`;
+      return t("app.review", { id: r.id });
   }
 }
 
@@ -70,7 +75,7 @@ export function App() {
     "nav:back": back,
     "app:palette": openPalette,
     "project:add": () => void pickProject(),
-    "goal:check-integration": () => void act(api.checkIntegration, "已检查合入情况"),
+    "goal:check-integration": () => void act(api.checkIntegration, t("app.integrationChecked")),
     "help:docs": () => void openUrl("https://github.com/beautifulrem/tower/tree/main/docs"),
     "help:issues": () => void openUrl("https://github.com/beautifulrem/tower/issues/new"),
   });
@@ -89,7 +94,7 @@ export function App() {
 
   return (
     <Show when={state.loaded} fallback={<div class="boot"><Loading /></div>}>
-      <Show when={!state.loadError} fallback={<div class="boot"><p class="meta">Tower 无法启动：{state.loadError}</p></div>}>
+      <Show when={!state.loadError} fallback={<div class="boot"><p class="meta">{t("app.bootFailed", { error: state.loadError ?? "" })}</p></div>}>
         <div class="shell">
           <Sidebar />
           <main class="content">

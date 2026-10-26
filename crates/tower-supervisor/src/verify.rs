@@ -618,7 +618,9 @@ pub(crate) fn review_ready(inner: &Arc<Inner>, goal: &str, body: &str) -> Result
             tr!(inner.lang(), "待验收：{title}", "Ready to accept: {title}")
         },
         subject: rec.title.clone(),
-        body: body.into(),
+        // What changed, in the agent's words (a claim: the card marks it so);
+        // Tower's own sentence when the agent wrote none.
+        body: rec.submit_summary.clone().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| body.into()),
         options: Vec::new(),
         allow_text: false,
         urgency: 3,

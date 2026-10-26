@@ -173,6 +173,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE projects ADD COLUMN test_check TEXT;
     "#,
+    // 9: each run's starting snapshot, for rolling back
+    r#"
+    ALTER TABLE runs ADD COLUMN start_pin TEXT;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

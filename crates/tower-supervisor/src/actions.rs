@@ -310,12 +310,7 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
         )));
     }
 
-    // Titles in Chinese have no ASCII words: fall back to identifiers in
-    // the intent (`total()`, `taxRate`), then to the goal number alone.
-    let branch = match slug(&rec.title).or_else(|| slug(&rec.contract.intent)) {
-        Some(s) => format!("tower/{}-{s}", goal.to_lowercase()),
-        None => format!("tower/{}", goal.to_lowercase()),
-    };
+    let branch = branch_name(&rec);
     let message = seal_message(&rec, &pin, has_machine);
     let git = inner.git.clone();
     let root = PathBuf::from(&rec.project_root);
@@ -397,6 +392,22 @@ fn seal_message(rec: &GoalRecord, pin: &str, verified: bool) -> String {
         m.push_str("Tower-Verified: none (human judgement only)\n");
     }
     m
+}
+
+/// The branch acceptance writes: the one written before (a re-acceptance
+/// updates it), else `tower/<goal>-<slug>`. Titles in Chinese have no ASCII
+/// words: the slug falls back to identifiers in the intent (`total()`,
+/// `taxRate`), then to the goal number alone. (`seal` adds `-v2` if a
+/// branch of that name already exists.)
+pub(crate) fn branch_name(rec: &GoalRecord) -> String {
+    if let Some(b) = &rec.branch {
+        return b.clone();
+    }
+    let goal = rec.id.to_lowercase();
+    match slug(&rec.title).or_else(|| slug(&rec.contract.intent)) {
+        Some(s) => format!("tower/{goal}-{s}"),
+        None => format!("tower/{goal}"),
+    }
 }
 
 fn slug(title: &str) -> Option<String> {

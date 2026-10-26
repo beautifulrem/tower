@@ -6,6 +6,10 @@ import type { EnvIssue } from "./EnvIssue";
  */
 export type EnvironmentStatus = { pi_path: string | null, pi_version: string | null, git_version: string | null, data_dir: string, 
 /**
+ * The oldest Pi version Tower supports, e.g. `1.4.0`.
+ */
+min_pi_version: string, 
+/**
  * Programs the in-app demo needs that are missing (e.g. `node`).
  */
 demo_missing: Array<string>, 

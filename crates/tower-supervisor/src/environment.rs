@@ -95,6 +95,10 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
         pi_version,
         git_version,
         data_dir: inner.paths.root.display().to_string(),
+        min_pi_version: {
+            let (a, b, c) = tower_core::view::PI_MIN;
+            format!("{a}.{b}.{c}")
+        },
         demo_missing: ["node", "python3"]
             .into_iter()
             .filter(|p| inner.env.which(p).is_none())

@@ -323,8 +323,8 @@ impl<'a> Bench<'a> {
     ) -> Result<Bench<'a>> {
         let dir = inner.paths.verify(goal);
         let git = inner.git.clone();
-        let (ws1, base1, dir1) = (ws.to_string(), base.to_string(), dir.clone());
-        tokio::task::spawn_blocking(move || git.add_verify_checkout(Path::new(&ws1), &base1, &dir1))
+        let (root1, base1, dir1) = (rec.project_root.clone(), base.to_string(), dir.clone());
+        tokio::task::spawn_blocking(move || git.trusted_checkout(Path::new(&root1), &base1, &dir1))
             .await
             .map_err(|e| invalid(e.to_string()))??;
         let tmp = inner.paths.tmp(&format!("{goal}-verify"));
@@ -364,9 +364,8 @@ impl<'a> Bench<'a> {
     }
 
     async fn close(&self) {
-        let git = self.inner.git.clone();
-        let (ws, dir) = (self.ws.clone(), self.dir.clone());
-        let _ = tokio::task::spawn_blocking(move || git.remove_verify_checkout(Path::new(&ws), &dir)).await;
+        let dir = self.dir.clone();
+        let _ = tokio::task::spawn_blocking(move || std::fs::remove_dir_all(&dir)).await;
     }
 
     async fn exec(&self, command: &str, profile: Option<&Path>, timeout: Duration) -> Ran {
@@ -387,15 +386,6 @@ impl<'a> Bench<'a> {
         let profile = if network { self.online.as_deref() } else { self.offline.as_deref() };
         let r = self.exec(setup, profile, SETUP_TIMEOUT).await;
         (!r.passed).then_some(r)
-    }
-
-    async fn checkout(&self, rev: &str) -> Result<()> {
-        let git = self.inner.git.clone();
-        let (dir, rev) = (self.dir.clone(), rev.to_string());
-        tokio::task::spawn_blocking(move || git.checkout_detached(&dir, &rev))
-            .await
-            .map_err(|e| invalid(e.to_string()))??;
-        Ok(())
     }
 
     /// Copies the project's local files, and its held-out tests, in for the
@@ -519,7 +509,17 @@ impl<'a> Bench<'a> {
         }
 
         // 2. The agent's snapshot.
-        self.checkout(pin).await?;
+        let git = inner.git.clone();
+        let (dir, ws, p) = (self.dir.clone(), self.ws.clone(), pin.to_string());
+        tokio::task::spawn_blocking(move || git.switch_to_pin(&dir, Path::new(&ws), &p))
+            .await
+            .map_err(|e| invalid(e.to_string()))??;
+        // Leftovers of the base phase that git does not track (outputs of the
+        // base's criteria) must not leak into the agent's verdict; ignored
+        // files such as installed dependencies stay.
+        let git = inner.git.clone();
+        let dir = self.dir.clone();
+        let _ = tokio::task::spawn_blocking(move || git.clean_untracked(&dir)).await;
         let network = setup_may_use_network(inner, &self.rec, goal, Some(pin))?;
         if let Some(setup) = self.setup.clone() {
             let failed = self.setup(network).await;
@@ -615,12 +615,13 @@ impl<'a> Bench<'a> {
         }
         for path in &edited {
             let git = inner.git.clone();
-            let (ws, base, p) = (self.ws.clone(), self.base.clone(), path.to_string());
-            let text = tokio::task::spawn_blocking(move || git.file_at(Path::new(&ws), &base, &p))
+            // From your repository, not the agent's workspace.
+            let (root, base, p) = (self.rec.project_root.clone(), self.base.clone(), path.to_string());
+            let text = tokio::task::spawn_blocking(move || git.file_at(Path::new(&root), &base, &p))
                 .await
                 .map_err(|e| invalid(e.to_string()))?;
             if let Some(text) = text {
-                std::fs::write(self.dir.join(path), text)?;
+                tower_git::write_inside(&self.dir, path, text.as_bytes())?;
             }
         }
         let mut depends = Vec::new();

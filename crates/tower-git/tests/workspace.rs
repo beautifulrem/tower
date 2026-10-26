@@ -182,3 +182,25 @@ fn a_fix_after_acceptance_updates_the_same_branch() {
     assert_eq!(sh(&repo, &["rev-parse", &format!("{second}^")]), first, "a fast-forward on top of the first seal");
     assert_eq!(sh(&repo, &["show", &format!("{branch}:a.txt")]), "one\ntwo\nthree\nfour");
 }
+
+#[test]
+fn writes_into_a_foreign_tree_never_follow_links() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("checkout");
+    let outside = tmp.path().join("outside");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret"), "keep").unwrap();
+    // A planted link at the file itself is replaced, not followed.
+    std::os::unix::fs::symlink(outside.join("secret"), root.join(".env")).unwrap();
+    tower_git::write_inside(&root, ".env", b"TOKEN=1").unwrap();
+    assert_eq!(fs::read_to_string(outside.join("secret")).unwrap(), "keep");
+    assert_eq!(fs::read_to_string(root.join(".env")).unwrap(), "TOKEN=1");
+    // A planted link among the directories is refused.
+    std::os::unix::fs::symlink(&outside, root.join("conf")).unwrap();
+    assert!(tower_git::write_inside(&root, "conf/x", b"x").is_err());
+    assert!(!outside.join("x").exists());
+    assert!(tower_git::write_inside(&root, "../escape", b"x").is_err());
+    tower_git::write_inside(&root, "a/b/c.txt", b"ok").unwrap();
+    assert_eq!(fs::read_to_string(root.join("a/b/c.txt")).unwrap(), "ok");
+}

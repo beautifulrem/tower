@@ -10,9 +10,10 @@ import { ago, count, duration, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { go } from "../lib/nav";
 import { state } from "../lib/store";
-import { LifecycleGlyph, NeedsYouMark } from "./Glyph";
+import { LifecycleGlyph, NeedsYouMark, NoticeMark } from "./Glyph";
 import { CriteriaBar } from "./Honesty";
 import { LiveLine } from "./Live";
+import { PrLine } from "./Pr";
 
 export function GoalCard(props: { goal: GoalSummary; selected?: boolean; onSelect?: () => void }) {
   const g = () => props.goal;
@@ -42,32 +43,51 @@ export function GoalCard(props: { goal: GoalSummary; selected?: boolean; onSelec
       </div>
       <div class="card-row card-split">
         <CriteriaBar progress={g().progress} compact />
-        <span class="meta num" classList={{ t1: overSoft() }}>
+        <span class="meta num card-num" classList={{ t1: overSoft() }}>
           {usd(g().cost_usd)} / {usdLimit(g().budget.soft_usd)}
         </span>
       </div>
       <div class="card-row card-split meta">
         <Show when={g().diffstat?.files} fallback={<span class="t3">{t("card.noChanges")}</span>}>
-          <span class="num">
+          <span class="num ellipsis">
             <span class="t1">+{count(g().diffstat!.additions)}</span>
             <span class="diff-del"> −{count(g().diffstat!.deletions)}</span>
             <span class="sep">·</span>
             {t("common.files", { n: g().diffstat!.files })}
           </span>
         </Show>
-        <span class="num">{elapsed()}</span>
+        <span class="num card-num">{elapsed()}</span>
       </div>
       <div class="card-row meta card-foot">
-        <span class="code-val t3">{g().id}</span>
+        <span class="code-val t2">{g().id}</span>
         <span class="sep">·</span>
         <span class="t3 ellipsis">{g().project_name}</span>
         <Show when={g().rework_cycles > 0}>
           <span class="sep">·</span>
           <span class="t2">{t("card.rework", { n: g().rework_cycles, max: g().max_rework })}</span>
         </Show>
-        <Show when={g().branch}>
+        <Show when={g().overlaps?.length}>
           <span class="sep">·</span>
-          <span class="code-val t2 ellipsis">{g().branch}</span>
+          <span class="t2 row" style={{ gap: "4px" }} title={g().overlaps.map((o) => `${o.goal_id} · ${o.files.join(", ")}`).join("\n")}>
+            <NoticeMark />
+            {t("goal.overlaps", { id: g().overlaps[0].goal_id })}
+            <Show when={g().overlaps.length > 1}> +{g().overlaps.length - 1}</Show>
+          </span>
+        </Show>
+        <Show when={g().pr} fallback={
+          <Show when={g().branch}>
+            <span class="sep">·</span>
+            <span class="code-val t2 ellipsis">{g().branch}</span>
+          </Show>
+        }>
+          {(pr) => (
+            <>
+              <span class="sep">·</span>
+              <span onClick={(e) => e.stopPropagation()}>
+                <PrLine pr={pr()} compact />
+              </span>
+            </>
+          )}
         </Show>
       </div>
     </article>

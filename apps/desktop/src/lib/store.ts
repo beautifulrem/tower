@@ -13,6 +13,7 @@ import type { ToastLevel } from "../gen/ToastLevel";
 import type { TraceEntry } from "../gen/TraceEntry";
 import { api, errorText, onOpen, onUpdate } from "./api";
 import { go, route } from "./nav";
+import { setThemeChoice } from "./theme";
 
 export interface Toast {
   id: number;
@@ -148,10 +149,16 @@ export async function init() {
   }
 }
 
-/** `goal/G-0001`, `review/G-0001`, `inbox`, `settings`, `new`. */
-function openStartupRoute(r: string | null) {
-  if (!r) return;
-  const [name, id] = r.split("/");
+/**
+ * `goal/G-0001`, `review/G-0001`, `inbox`, `settings`, `new`. A trailing
+ * `?theme=light|dark|system` (used by the screenshot tooling) sets the theme.
+ */
+function openStartupRoute(route: string | null) {
+  if (!route) return;
+  const [path, query] = route.split("?");
+  const theme = new URLSearchParams(query ?? "").get("theme");
+  if (theme === "light" || theme === "dark" || theme === "system") setThemeChoice(theme);
+  const [name, id] = path.split("/");
   if ((name === "goal" || name === "review") && id) go({ name, id });
   else if (name === "inbox" || name === "settings" || name === "overview") go({ name });
   else if (name === "new") go({ name: "new" });

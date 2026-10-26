@@ -1,6 +1,11 @@
 /**
  * The honesty grammar (docs/12 §12.5): fact, observation, claim and human
  * decision are distinguishable at a glance, in shape as well as colour.
+ *
+ * Layout rule — the source gutter: every register hangs its author in the
+ * same 6em column on the left (`┆ Agent 称`, `你 · 14:20`), so a page reads
+ * like a ledger: who said it, what was said, and on the right what was
+ * measured.
  */
 import { type JSX, Show } from "solid-js";
 
@@ -9,15 +14,16 @@ import type { Progress } from "../gen/Progress";
 import { ago, clock, short } from "../lib/format";
 import { t } from "../lib/i18n";
 import { state } from "../lib/store";
+import { Icon, ResultMark } from "./Glyph";
 
 /**
- * ⚙ fact: harness-produced, the normal case, so it carries no frame — only
- * the gear and the snapshot it was measured on.
+ * Fact: harness-produced, the normal case, so it carries no frame — only
+ * the scale mark and the snapshot it was measured on.
  */
 export function FactChip(props: { pin?: string | null; at?: number | null; children?: JSX.Element }) {
   return (
     <span class="fact">
-      <span class="fact-icon" aria-label={t("honesty.measured")}>⚙</span>
+      <Icon name="harness" size={10} class="fact-icon" label={t("honesty.measured")} />
       {props.children}
       <Show when={props.pin}>
         <span class="code-val">@{short(props.pin)}</span>
@@ -30,34 +36,32 @@ export function FactChip(props: { pin?: string | null; at?: number | null; child
   );
 }
 
-/** Observation: a degraded register, so it keeps a dashed frame; never coloured. */
-export function ObsChip(props: { at?: number | null; children?: JSX.Element }) {
+/** Observation: a degraded register. Only the word wears the dashed frame; never coloured. */
+export function ObsChip(props: { title?: string }) {
   return (
-    <span class="chip chip-obs">
+    <span class="chip chip-obs" title={props.title}>
       {t("honesty.observation")}
-      {props.children}
-      <Show when={props.at}>
-        <span class="sep">·</span>
-        <span>{ago(props.at, state.now)}</span>
-      </Show>
     </span>
   );
 }
 
 /**
- * "Agent 称": a hanging label column and secondary text. Never green, never
- * a solid mark — the dashed ┆ is the claim register's only glyph.
+ * A claim: the hanging label column and secondary text. Never green, never
+ * a solid mark — the dashed ┆ is the claim register's only glyph, so one
+ * layer is enough: the gutter says the kind (cause, next step…) when there
+ * is one, and "Agent 称" otherwise. The text column starts clean.
  */
-export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX.Element }) {
+export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX.Element; bare?: boolean }) {
   return (
     <div class="claim">
-      <span class="claim-label halt">{t("honesty.agentSays")}</span>
-      <div class="claim-text">
-        <Show when={props.kind}>
-          <span class="claim-kind">{props.kind}</span>
-        </Show>
-        {props.children}
-      </div>
+      <span class="claim-label halt" title={t("honesty.agentSaysPlain")}>
+        <span class="claim-rule" aria-hidden="true">
+          ┆
+        </span>
+        <span class="sr-only">{t("honesty.agentSaysPlain")} </span>
+        <span class="claim-kind">{props.kind ?? t("honesty.agentSaysPlain")}</span>
+      </span>
+      <div class="claim-text">{props.children}</div>
       <Show when={props.aside}>
         <div class="claim-aside">{props.aside}</div>
       </Show>
@@ -81,10 +85,10 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
   return (
     <span class={`consistency consistency-${props.value}`} title={props.evidence ?? undefined}>
       <Show when={props.value === "contradicted"}>
-        <span class="result result-fail">✕</span>
+        <ResultMark kind="fail" />
       </Show>
       <Show when={props.value === "stale"}>
-        <span class="t4">⟲</span>
+        <ResultMark kind="stale" />
       </Show>
       {text()}
     </span>
@@ -103,10 +107,7 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean }) {
     );
   return (
     <div class="criteria-bar" classList={{ compact: !!props.compact }}>
-      <Show
-        when={p().machine > 0}
-        fallback={<span class="meta">{t("honesty.notMachineVerified")}</span>}
-      >
+      <Show when={p().machine > 0} fallback={<span class="meta">{t("honesty.notMachineVerified")}</span>}>
         <span class="segs" aria-hidden="true">
           {segs().map((s) => (
             <span class={`seg seg-${s}`} />
@@ -120,9 +121,7 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean }) {
       </Show>
       <Show when={p().human > 0}>
         <span class="sep">·</span>
-        <span class="meta num">
-          {t("honesty.human", { d: p().human_done, n: p().human })}
-        </span>
+        <span class="meta num">{t("honesty.human", { d: p().human_done, n: p().human })}</span>
       </Show>
     </div>
   );

@@ -2,12 +2,15 @@
  * Overview board (docs/04 §4.4): every goal as a fixed-height card, grouped
  * by how much it needs you. Answers "what needs me, what mode is each goal
  * in, how far along is it" in one glance.
+ *
+ * The top is one "today bar" — next on the left, what moved on the right —
+ * then the quick-start line, then groups as scale marks.
  */
 import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 
 import { NeedsYouMark } from "../components/Glyph";
 import { GoalCard } from "../components/GoalCard";
-import { Button, Empty } from "../components/ui";
+import { Button, Empty, Select } from "../components/ui";
 import type { GoalSummary } from "../gen/GoalSummary";
 import { api } from "../lib/api";
 import { useKeys } from "../lib/keys";
@@ -16,15 +19,13 @@ import { t } from "../lib/i18n";
 import { type Group, groupLabel, groupOf, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
-import { Welcome } from "./Welcome";
+import { Welcome, startDemo } from "./Welcome";
 
 const ORDER: Group[] = ["needs_you", "running", "review", "ready", "paused", "done"];
 
 export function Overview() {
   const [selected, setSelected] = createSignal<string | null>(null);
-  const live = createMemo(() =>
-    goalList().filter((g) => g.state !== "archived" && g.state !== "abandoned"),
-  );
+  const live = createMemo(() => goalList().filter((g) => g.state !== "archived" && g.state !== "abandoned"));
   const groups = createMemo(() => {
     const by = new Map<Group, GoalSummary[]>();
     for (const g of live()) by.set(groupOf(g), [...(by.get(groupOf(g)) ?? []), g]);
@@ -52,31 +53,27 @@ export function Overview() {
   return (
     <Show when={state.projects.length > 0} fallback={<Welcome />}>
       <div class="overview">
-        <Show when={state.inbox[0]}>
-          {(it) => (
-            <button class="next-line halt" onClick={() => go({ name: "goal", id: it().goal_id })}>
-              <NeedsYouMark />
-              <span>{t("overview.next")}</span>
-              <span class="sep">·</span>
-              <span class="code-val t3">{it().goal_id}</span>
-              <span class="ellipsis">{it().title}</span>
-            </button>
-          )}
-        </Show>
+        <TodayBar />
         <QuickPath />
-        <AppBriefing />
         <Show
           when={live().length > 0}
           fallback={
-            <Empty title={t("overview.emptyTitle")}>{t("overview.emptyBody")}</Empty>
+            <div class="col">
+              <Empty title={t("overview.emptyTitle")}>{t("overview.emptyBody")}</Empty>
+              <span>
+                <Button size="s" variant="ghost" onClick={() => void startDemo()} title={t("welcome.demoHint")}>
+                  {t("welcome.tryDemo")}
+                </Button>
+              </span>
+            </div>
           }
         >
           <For each={groups()}>
             {(grp) => (
               <section class="board-group">
-                <h2 class="board-group-title">
+                <h2 class="scale-title halt">
                   {groupLabel(grp.key)}
-                  <span class="num t3">{grp.goals.length}</span>
+                  <span class="num">{grp.goals.length}</span>
                 </h2>
                 <div class="board-grid">
                   <For each={grp.goals}>
@@ -99,15 +96,15 @@ export function Overview() {
 const SEEN_KEY = "tower.overviewSeenAt";
 
 /**
- * App-level re-entry briefing (docs/04 §4.9.1): what moved since you last
- * looked at the board, one line per goal, each a link.
+ * The today bar: the next thing that needs you on the left; on the right the
+ * re-entry briefing (docs/04 §4.9.1) — what moved since you last looked.
  */
-function AppBriefing() {
+function TodayBar() {
   const since = Number(localStorage.getItem(SEEN_KEY) ?? 0);
   onCleanup(() => localStorage.setItem(SEEN_KEY, String(Date.now())));
   const [open, setOpen] = createSignal(true);
   const changed = createMemo(() =>
-    since ? goalList().filter((g) => g.updated_at > since && g.state !== "archived").slice(0, 8) : [],
+    since ? goalList().filter((g) => g.updated_at > since && g.state !== "archived").slice(0, 4) : [],
   );
   const describe = (g: GoalSummary) =>
     g.state === "paused" && g.pause_reason
@@ -115,21 +112,36 @@ function AppBriefing() {
       : g.needs_you > 0 && g.state === "running"
         ? modeLabel("waiting_on_you")
         : stateLabel(g.state);
+  const next = () => state.inbox[0];
   return (
-    <Show when={open() && changed().length > 0}>
-      <div class="briefing app-briefing">
-        <span class="briefing-title">{t("overview.since", { time: clock(since) })}</span>
-        <For each={changed()}>
-          {(g) => (
-            <button class="briefing-item link-plain" onClick={() => go({ name: "goal", id: g.id })}>
-              <span class="num t3">{g.id}</span> {describe(g)}
+    <Show when={next() || (open() && changed().length > 0)}>
+      <div class="today-bar halt">
+        <Show when={next()}>
+          {(it) => (
+            <button class="next-line" onClick={() => go({ name: "goal", id: it().goal_id })}>
+              <NeedsYouMark />
+              <span>{t("overview.next")}</span>
+              <span class="sep">·</span>
+              <span class="code-val t2">{it().goal_id}</span>
+              <span class="ellipsis">{it().title}</span>
             </button>
           )}
-        </For>
-        <span class="grow" />
-        <button class="link meta" onClick={() => setOpen(false)}>
-          {t("overview.gotIt")}
-        </button>
+        </Show>
+        <Show when={open() && changed().length > 0}>
+          <div class="today-brief">
+            <span class="briefing-title">{t("overview.since", { time: clock(since) })}</span>
+            <For each={changed()}>
+              {(g) => (
+                <button class="briefing-item link-plain" onClick={() => go({ name: "goal", id: g.id })}>
+                  <span class="num t3">{g.id}</span> {describe(g)}
+                </button>
+              )}
+            </For>
+            <button class="link meta" onClick={() => setOpen(false)}>
+              {t("overview.gotIt")}
+            </button>
+          </div>
+        </Show>
       </div>
     </Show>
   );
@@ -162,9 +174,12 @@ function QuickPath() {
   return (
     <div class="quick">
       <Show when={state.projects.length > 1}>
-        <select class="quick-project" value={current()?.id} onChange={(e) => setProject(e.currentTarget.value)}>
-          <For each={state.projects}>{(p) => <option value={p.id}>{p.name}</option>}</For>
-        </select>
+        <Select
+          class="quick-project"
+          value={current()?.id ?? ""}
+          options={state.projects.map((p) => ({ value: p.id, label: p.name }))}
+          onChange={setProject}
+        />
       </Show>
       <span class="quick-prompt" aria-hidden="true">
         ›

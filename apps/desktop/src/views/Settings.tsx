@@ -1,12 +1,19 @@
-/** Settings: engine, defaults, memory, projects, appearance, environment. */
+/**
+ * Settings: environment, engine defaults, memory, projects, appearance.
+ * Label left, control right, like System Settings; every field saves when
+ * you leave it and the block says so — no Save button.
+ */
 import { For, Show, createResource, createSignal, onMount } from "solid-js";
 
+import { DangerMark, NoticeMark } from "../components/Glyph";
 import { Button, Field, Select } from "../components/ui";
 import type { ProjectView } from "../gen/ProjectView";
 import type { Settings as SettingsT } from "../gen/Settings";
 import { api } from "../lib/api";
+import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
-import { act, refreshEnvironment, refreshProjects, state } from "../lib/store";
+import { ask } from "../lib/native";
+import { act, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 import { type ThemeChoice, setThemeChoice, themeChoice } from "../lib/theme";
 import { pickProject } from "./Welcome";
 
@@ -23,17 +30,43 @@ const lines = (s: string) =>
     .map((l) => l.trim())
     .filter(Boolean);
 
+/** "Saved · 21:03", shown for five seconds after a write. */
+function useSavedStamp() {
+  const [at, setAt] = createSignal<number | null>(null);
+  let timer: number | undefined;
+  const mark = () => {
+    setAt(Date.now());
+    clearTimeout(timer);
+    timer = window.setTimeout(() => setAt(null), 5000);
+  };
+  const Stamp = () => (
+    <Show when={at()}>
+      <span class="saved-stamp num">{t("settings.savedAt", { time: clock(at()!) })}</span>
+    </Show>
+  );
+  return { mark, Stamp };
+}
+
 export function Settings() {
   const [s, setS] = createSignal<SettingsT | null>(null);
   const [models] = createResource(() => api.models().catch(() => []));
   const [theme, setTheme] = createSignal<ThemeChoice>(themeChoice());
+  const saved = useSavedStamp();
   onMount(async () => setS(await api.settings()));
 
-  const save = async () => {
+  let last = "";
+  /** Writes the form when a field is left; no-op when nothing changed. */
+  const commit = async () => {
     const v = s();
     if (!v) return;
-    await act(() => api.saveSettings(v), t("settings.saved"));
-    await refreshEnvironment();
+    const now = JSON.stringify(v);
+    if (now === last) return;
+    last = now;
+    const ok = await act(() => api.saveSettings(v));
+    if (ok !== undefined) {
+      saved.mark();
+      await refreshEnvironment();
+    }
   };
   /**
    * The language applies at once: only the language is saved (other unsaved
@@ -42,14 +75,17 @@ export function Settings() {
    */
   const setLanguage = async (language: string) => {
     patch({ language });
-    const saved = state.settings ?? (await api.settings());
-    await act(() => api.saveSettings({ ...saved, language }));
-    // Reloads `state.settings`: on success the interface switches; on
-    // failure it stays in the saved language.
+    const current = state.settings ?? (await api.settings());
+    const ok = await act(() => api.saveSettings({ ...current, language }));
+    if (ok !== undefined) saved.mark();
     await refreshEnvironment();
     patch({ language: state.settings?.language ?? language });
   };
   const patch = (p: Partial<SettingsT>) => setS((cur) => (cur ? { ...cur, ...p } : cur));
+  const patchNow = (p: Partial<SettingsT>) => {
+    patch(p);
+    void commit();
+  };
 
   return (
     <div class="settings">
@@ -57,43 +93,51 @@ export function Settings() {
         <h2 class="section-title">{t("settings.environment")}</h2>
         <dl class="kv">
           <dt>Pi</dt>
-          <dd class="mono">
+          <dd>
             <Show when={state.env?.pi_path} fallback={<span class="t2">{t("settings.notFound")}</span>}>
-              {state.env!.pi_path} <span class="t2">{state.env?.pi_version ?? t("settings.cannotRun")}</span>
+              <span class="t1">{state.env?.pi_version ?? t("settings.cannotRun")}</span>
+              <span class="sep">·</span>
+              <span class="mono t2 break">{state.env!.pi_path}</span>
             </Show>
           </dd>
           <dt>git</dt>
           <dd class="mono">{state.env?.git_version ?? t("settings.notFound")}</dd>
           <dt>{t("settings.dataDir")}</dt>
-          <dd class="mono">{state.env?.data_dir}</dd>
+          <dd class="mono t2 break">{state.env?.data_dir}</dd>
         </dl>
-        <For each={state.env?.problems ?? []}>{(p) => <p class="meta">◇ {p}</p>}</For>
+        <For each={state.env?.issues ?? []}>
+          {(i) => (
+            <div class="check-row">
+              <span class="check-mark">
+                <Show when={i.blocking} fallback={<NoticeMark />}>
+                  <DangerMark />
+                </Show>
+              </span>
+              <span class="grow meta t1">{i.text}</span>
+              <Show when={i.fix}>
+                <button
+                  class="fix code-val"
+                  title={t("welcome.clickToCopy")}
+                  onClick={() => {
+                    void navigator.clipboard.writeText(i.fix!);
+                    toast("info", t("welcome.copied"));
+                  }}
+                >
+                  {i.fix}
+                </button>
+              </Show>
+            </div>
+          )}
+        </For>
       </section>
 
       <Show when={s()}>
-        <section class="settings-block">
-          <h2 class="section-title">{t("settings.engineDefaults")}</h2>
-          <Field label={t("settings.piPath")} hint={t("settings.piPathHint")}>
-            <input class="mono" value={s()!.pi_path} onInput={(e) => patch({ pi_path: e.currentTarget.value })} placeholder="/opt/homebrew/bin/pi" />
-          </Field>
-          <div class="editor-grid2">
-            <Field label={t("settings.defaultModel")}>
-              <Select
-                value={s()!.default_model}
-                options={[{ value: "", label: t("common.piDefault") }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
-                onChange={(v) => patch({ default_model: v })}
-              />
-            </Field>
-            <Field label={t("settings.defaultThinking")}>
-              <Select
-                value={s()!.default_thinking}
-                options={thinkingOptions()}
-                onChange={(v) => patch({ default_thinking: v })}
-              />
-            </Field>
-            <Field label={t("settings.maxConcurrent")} hint={t("settings.maxConcurrentHint")}>
-              <input class="num" type="number" min="1" max="10" value={s()!.max_concurrent} onInput={(e) => patch({ max_concurrent: Number(e.currentTarget.value) || 1 })} />
-            </Field>
+        <section class="settings-block" onFocusOut={() => void commit()}>
+          <div class="settings-head">
+            <h2 class="section-title">{t("settings.engineDefaults")}</h2>
+            <saved.Stamp />
+          </div>
+          <div class="settings-form">
             <Field label={t("settings.language")} hint={t("settings.languageHint")}>
               <Select
                 value={s()!.language}
@@ -104,48 +148,53 @@ export function Settings() {
                 onChange={(v) => void setLanguage(v)}
               />
             </Field>
+            <Field label={t("settings.defaultModel")}>
+              <Select
+                value={s()!.default_model}
+                options={[{ value: "", label: t("common.piDefault") }, ...(models() ?? []).map((m) => ({ value: `${m.provider}/${m.id}`, label: `${m.provider}/${m.id}` }))]}
+                onChange={(v) => patchNow({ default_model: v })}
+              />
+            </Field>
+            <Field label={t("settings.defaultThinking")}>
+              <Select value={s()!.default_thinking} options={thinkingOptions()} onChange={(v) => patchNow({ default_thinking: v })} />
+            </Field>
+            <Field label={t("settings.maxConcurrent")} hint={t("settings.maxConcurrentHint")}>
+              <input class="num narrow" type="number" min="1" max="10" value={s()!.max_concurrent} onInput={(e) => patch({ max_concurrent: Number(e.currentTarget.value) || 1 })} />
+            </Field>
+            <Field label={t("settings.piPath")} hint={t("settings.piPathHint")}>
+              <input class="mono" value={s()!.pi_path} onInput={(e) => patch({ pi_path: e.currentTarget.value })} placeholder="/opt/homebrew/bin/pi" />
+            </Field>
+            <Field label={t("settings.editor")} hint={t("settings.editorHint")}>
+              <input class="mono" value={s()!.editor} onInput={(e) => patch({ editor: e.currentTarget.value })} placeholder="code" />
+            </Field>
+            <Field label={t("settings.extraExtensions")} hint={t("settings.extraExtensionsHint")}>
+              <textarea
+                class="mono"
+                rows={2}
+                value={s()!.extra_extensions.join("\n")}
+                onInput={(e) => patch({ extra_extensions: lines(e.currentTarget.value) })}
+                placeholder="~/.pi/agent/npm/node_modules/pi-clinepass-provider/src/index.ts"
+              />
+            </Field>
+            <label class="check form-row">
+              <input type="checkbox" checked={s()!.load_user_extensions} onChange={(e) => patchNow({ load_user_extensions: e.currentTarget.checked })} />
+              <span>{t("settings.loadAll")}</span>
+              <span class="check-desc">{t("settings.loadAllHint")}</span>
+            </label>
           </div>
-          <Field label={t("settings.extraExtensions")} hint={t("settings.extraExtensionsHint")}>
-            <textarea
-              class="mono"
-              rows={2}
-              value={s()!.extra_extensions.join("\n")}
-              onInput={(e) => patch({ extra_extensions: lines(e.currentTarget.value) })}
-              placeholder="~/.pi/agent/npm/node_modules/pi-clinepass-provider/src/index.ts"
-            />
-          </Field>
-          <label class="check">
-            <input type="checkbox" checked={s()!.load_user_extensions} onChange={(e) => patch({ load_user_extensions: e.currentTarget.checked })} />
-            <span>
-              {t("settings.loadAll")}
-              <span class="meta">{t("settings.loadAllHint")}</span>
-            </span>
-          </label>
-          <Field label={t("settings.editor")} hint={t("settings.editorHint")}>
-            <input class="mono" value={s()!.editor} onInput={(e) => patch({ editor: e.currentTarget.value })} placeholder="code" />
-          </Field>
         </section>
 
-        <section class="settings-block">
+        <section class="settings-block" onFocusOut={() => void commit()}>
           <h2 class="section-title">{t("settings.memory")}</h2>
-          <p class="field-hint">{t("settings.memoryHint")}</p>
-          <textarea
-            rows={4}
-            value={s()!.user_memory}
-            onInput={(e) => patch({ user_memory: e.currentTarget.value })}
-            placeholder={t("settings.memoryPlaceholder")}
-          />
+          <p class="field-hint" style={{ "margin-bottom": "8px" }}>
+            {t("settings.memoryHint")}
+          </p>
+          <textarea rows={4} value={s()!.user_memory} onInput={(e) => patch({ user_memory: e.currentTarget.value })} placeholder={t("settings.memoryPlaceholder")} />
         </section>
-
-        <div class="settings-save">
-          <Button variant="primary" onClick={save}>
-            {t("settings.saveSettings")}
-          </Button>
-        </div>
       </Show>
 
       <section class="settings-block">
-        <div class="row">
+        <div class="settings-head">
           <h2 class="section-title grow">{t("settings.projects")}</h2>
           <Button size="s" onClick={pickProject}>
             {t("settings.addRepo")}
@@ -158,10 +207,10 @@ export function Settings() {
 
       <section class="settings-block">
         <h2 class="section-title">{t("settings.appearance")}</h2>
-        <div class="row">
+        <div class="row" style={{ gap: "20px" }}>
           <For each={["system", "light", "dark"] as ThemeChoice[]}>
             {(choice) => (
-              <label class="radio">
+              <label class="radio" style={{ "margin-bottom": "0" }}>
                 <input
                   type="radio"
                   name="theme"
@@ -187,6 +236,7 @@ function ProjectRow(props: { p: ProjectView }) {
   const [local, setLocal] = createSignal(props.p.local_files.join("\n"));
   const [memory, setMemory] = createSignal(props.p.memory);
   const [setup, setSetup] = createSignal(props.p.setup_command);
+  const saved = useSavedStamp();
   const dirty = () =>
     branch() !== props.p.base_branch ||
     test() !== (props.p.test_command ?? "") ||
@@ -194,45 +244,45 @@ function ProjectRow(props: { p: ProjectView }) {
     memory() !== props.p.memory ||
     setup() !== props.p.setup_command;
   const save = async () => {
-    await act(
-      () =>
-        api.updateProject(props.p.id, {
-          base_branch: branch().trim(),
-          test_command: test().trim() || null,
-          local_files: lines(local()),
-          memory: memory(),
-          setup_command: setup(),
-        }),
-      t("settings.projectSaved"),
+    if (!dirty()) return;
+    const ok = await act(() =>
+      api.updateProject(props.p.id, {
+        base_branch: branch().trim(),
+        test_command: test().trim() || null,
+        local_files: lines(local()),
+        memory: memory(),
+        setup_command: setup(),
+      }),
     );
+    if (ok !== undefined) {
+      saved.mark();
+      await refreshProjects();
+    }
+  };
+  const remove = async () => {
+    const ok = await ask(t("settings.removeConfirm", { name: props.p.name }), {
+      title: t("settings.removeTitle"),
+      ok: t("common.remove"),
+      cancel: t("common.cancel"),
+      kind: "warning",
+    });
+    if (!ok) return;
+    await act(() => api.removeProject(props.p.id), t("settings.removed"));
     await refreshProjects();
   };
   return (
-    <div class="project">
+    <div class="project" onFocusOut={() => void save()}>
       <div class="project-head">
         <div class="col grow">
           <b>{props.p.name}</b>
-          <span class="mono meta">{props.p.root}</span>
+          <span class="mono meta t3">{props.p.root}</span>
         </div>
-        <Show when={dirty()}>
-          <Button size="s" variant="primary" onClick={save}>
-            {t("common.save")}
-          </Button>
-        </Show>
-        <Button
-          size="s"
-          variant="ghost"
-          onClick={async () => {
-            if (confirm(t("settings.removeConfirm", { name: props.p.name }))) {
-              await act(() => api.removeProject(props.p.id), t("settings.removed"));
-              await refreshProjects();
-            }
-          }}
-        >
+        <saved.Stamp />
+        <Button size="s" variant="ghost" onClick={() => void remove()}>
           {t("common.remove")}
         </Button>
       </div>
-      <div class="editor-grid2">
+      <div class="settings-form">
         <Field label={t("settings.baseBranch")} hint={t("settings.baseBranchHint")}>
           <input class="mono" value={branch()} onInput={(e) => setBranch(e.currentTarget.value)} />
         </Field>
@@ -243,10 +293,10 @@ function ProjectRow(props: { p: ProjectView }) {
           <input class="mono" value={setup()} onInput={(e) => setSetup(e.currentTarget.value)} placeholder="pnpm install --frozen-lockfile" />
         </Field>
         <Field label={t("settings.localFiles")} hint={t("settings.localFilesHint")}>
-          <textarea class="mono" rows={3} value={local()} onInput={(e) => setLocal(e.currentTarget.value)} placeholder={".env\nconfig/*.local.json"} />
+          <textarea class="mono" rows={2} value={local()} onInput={(e) => setLocal(e.currentTarget.value)} placeholder={".env\nconfig/*.local.json"} />
         </Field>
         <Field label={t("settings.projectMemory")} hint={t("settings.projectMemoryHint")}>
-          <textarea rows={3} value={memory()} onInput={(e) => setMemory(e.currentTarget.value)} placeholder={t("settings.projectMemoryPlaceholder")} />
+          <textarea rows={2} value={memory()} onInput={(e) => setMemory(e.currentTarget.value)} placeholder={t("settings.projectMemoryPlaceholder")} />
         </Field>
       </div>
     </div>

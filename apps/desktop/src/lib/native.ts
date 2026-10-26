@@ -1,5 +1,19 @@
-/** Native popup menus: selects and overflow menus look and behave like macOS. */
+/** Native popup menus and dialogs: they look and behave like macOS. */
 import { CheckMenuItem, Menu, MenuItem, PredefinedMenuItem } from "@tauri-apps/api/menu";
+import { ask as askDialog } from "@tauri-apps/plugin-dialog";
+
+/**
+ * A native confirmation sheet with the app icon. Destructive actions pass
+ * `kind: "warning"`; `ok` is the verb ("Push", "Abandon"), never "OK".
+ */
+export async function ask(message: string, opts: { title?: string; ok: string; cancel: string; kind?: "info" | "warning" }) {
+  return askDialog(message, {
+    title: opts.title ?? "Tower",
+    kind: opts.kind ?? "info",
+    okLabel: opts.ok,
+    cancelLabel: opts.cancel,
+  });
+}
 
 export interface Choice<T extends string> {
   value: T;

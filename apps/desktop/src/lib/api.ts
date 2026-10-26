@@ -47,6 +47,8 @@ export const api = {
   validateContract: (contract: Contract) => invoke<ContractIssue[]>("validate_contract", { contract }),
 
   createGoal: (input: NewGoalInput) => invoke<GoalSummary>("create_goal", { input }),
+  /** A demo repository and goal on the bundled demo engine; needs Node.js, no Pi or credentials. */
+  startDemo: () => invoke<GoalSummary>("start_demo"),
   quickGoal: (projectId: string, intent: string) => invoke<GoalSummary>("quick_goal", { projectId, intent }),
   updateDraft: (id: string, title: string, contract: Contract) =>
     invoke<void>("update_draft", { id, title, contract }),
@@ -69,10 +71,19 @@ export const api = {
   removeWorkspace: (id: string) => invoke<void>("remove_workspace", { id }),
   reviewClaim: (id: string, claimId: string, approved: boolean, note: string) =>
     invoke<void>("review_claim", { id, claimId, approved, note }),
+
+  /** Per-goal interface state (viewed files, draft comments, last reviewed pin), kept in SQLite. */
+  uiState: (id: string) => invoke<Record<string, string>>("ui_state", { id }),
+  setUiState: (id: string, key: string, value: string | null) => invoke<void>("set_ui_state", { id, key, value }),
 };
 
 export function onUpdate(handler: (u: UiUpdate) => void): Promise<UnlistenFn> {
   return listen<UiUpdate>("tower://update", (e) => handler(e.payload));
+}
+
+/** A route to open (`goal/G-0003`), sent when a notification brings Tower to the front. */
+export function onOpen(handler: (route: string) => void): Promise<UnlistenFn> {
+  return listen<string>("tower://open", (e) => handler(e.payload));
 }
 
 /** Errors from commands arrive as plain strings. */

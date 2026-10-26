@@ -51,6 +51,7 @@ fn long_traces_and_busy_boards_read_fast() {
                 summary: "ok".into(),
                 duration_ms: 12,
                 target: None,
+                denied: false,
             };
             s.append(busy, e).unwrap();
         }

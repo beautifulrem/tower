@@ -121,6 +121,10 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         target: Option<String>,
+        /// The sandbox refused something the call tried (a read or write
+        /// outside the goal's directories).
+        #[serde(default)]
+        denied: bool,
     },
     /// One assistant message, truncated for the trace.
     AssistantMessage {

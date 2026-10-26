@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+	DEFAULT_COMMAND_TIMEOUT_SECS,
 	checkBash,
 	checkRead,
 	checkWrite,
@@ -10,6 +11,7 @@ import {
 	langOf,
 	normalize,
 	sandboxed,
+	withDefaultTimeout,
 	scrubEnv,
 	shellQuote,
 } from "./policy.ts";
@@ -90,4 +92,9 @@ test("without a sandbox, reads are fenced to the goal's directories", () => {
 test("sandboxed commands survive quoting", () => {
 	assert.equal(shellQuote("it's"), `'it'\\''s'`);
 	assert.equal(sandboxed("echo 'a'", "/p.sb"), `exec /usr/bin/sandbox-exec -f '/p.sb' /bin/bash -c 'echo '\\''a'\\'''`);
+});
+
+test("commands get a timeout unless the model chose one", () => {
+	assert.deepEqual(withDefaultTimeout({ command: "ls" }), { command: "ls", timeout: DEFAULT_COMMAND_TIMEOUT_SECS });
+	assert.deepEqual(withDefaultTimeout({ command: "make", timeout: 900 }), { command: "make", timeout: 900 });
 });

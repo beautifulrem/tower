@@ -46,6 +46,7 @@ import {
 	checkRead,
 	sandboxed,
 	scrubEnv,
+	withDefaultTimeout,
 } from "./policy.ts";
 import { sandboxedOperations } from "./sandboxfs.ts";
 
@@ -126,7 +127,8 @@ export default function towerGoal(pi: ExtensionAPI) {
 	for (const tool of [bash, ...files]) {
 		pi.registerTool({
 			...tool,
-			execute: (id, params, signal, onUpdate) => tool.execute(id, params, signal, onUpdate),
+			execute: (id, params, signal, onUpdate) =>
+				tool.execute(id, tool === bash ? withDefaultTimeout(params) : params, signal, onUpdate),
 		});
 	}
 

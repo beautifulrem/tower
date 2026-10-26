@@ -76,23 +76,19 @@ export function GoalPage(props: { id: string }) {
   // Review-ready items live in the inbox; on the goal page the header says it.
   const inbox = () => state.inbox.filter((i) => i.goal_id === props.id && i.kind !== "review_ready");
 
-  // A rollback can be undone until the next run starts; the last page of the trace says whether one is pending.
-  const [undoable, setUndoable] = createSignal(false);
-  void api
-    .trace(props.id, null, 100)
-    .then((page) => {
-      const last = [...page].reverse().find((e) => e.event.kind === "rolled_back" || e.event.kind === "run_started");
-      setUndoable(last?.event.kind === "rolled_back");
-    })
-    .catch(() => {});
+  // A rollback can be undone until the next run starts; the detail says so, and a fresh event updates it at once.
+  const [undone, setUndone] = createSignal(false);
+  const undoable = () => !undone() && !!detail()?.can_undo_rollback;
   const offUndo = onTrace(props.id, (e) => {
-    if (e.event.kind === "rolled_back") setUndoable(true);
-    if (e.event.kind === "run_started") setUndoable(false);
+    if (e.event.kind === "rolled_back") setUndone(false);
   });
   onCleanup(offUndo);
   const undoRollback = async () => {
     const ok = await act(() => api.undoRollback(props.id), t("goal.rollbackUndone"));
-    if (ok !== undefined) setUndoable(false);
+    if (ok !== undefined) {
+      setUndone(true);
+      void refetch();
+    }
   };
 
   useMenu({

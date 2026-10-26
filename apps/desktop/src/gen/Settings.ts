@@ -48,7 +48,7 @@ muted_goals: Array<string>,
 engine: string, 
 /**
  * How to start Claude Code's ACP adapter; empty means
- * `claude-agent-acp` if installed, else `npx` with a pinned version.
+ * `claude-agent-acp` if installed, else the copy Tower installs from its lockfile.
  */
 claude_acp_command: string, 
 /**

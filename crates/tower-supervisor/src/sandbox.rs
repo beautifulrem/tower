@@ -125,6 +125,27 @@ const PREFIX_ETC: &[&str] = &["/opt/homebrew/etc", "/usr/local/etc", "/opt/local
 const PREFIX_ETC_ALLOWED: &[&str] =
     &["ca-certificates", "openssl@3", "openssl@4", "openssl@1.1", "openssl", "gnutls", "gitconfig", "paths", "clang"];
 
+/// The selected developer directory's tools (`xcode-select -p` + `/usr/bin`),
+/// e.g. /Library/Developer/CommandLineTools/usr/bin.
+pub fn developer_bin() -> Option<PathBuf> {
+    static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let out = std::process::Command::new("/usr/bin/xcode-select").arg("-p").output().ok()?;
+        let dir = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()).join("usr/bin");
+        (out.status.success() && dir.is_dir()).then_some(dir)
+    })
+    .clone()
+}
+
+/// `path` with `dev` inserted just before `/usr/bin` (or at the end).
+pub fn path_with_developer_tools(path: &str, dev: &Path) -> String {
+    let dev = dev.display().to_string();
+    let mut parts: Vec<&str> = path.split(':').filter(|p| !p.is_empty() && *p != dev).collect();
+    let at = parts.iter().position(|p| *p == "/usr/bin").unwrap_or(parts.len());
+    parts.insert(at, &dev);
+    parts.join(":")
+}
+
 /// Credential stores: denied even when a parent is allowed.
 const SECRETS: &[&str] = &[
     ".ssh",
@@ -355,6 +376,16 @@ mod tests {
     }
 
     #[test]
+    fn developer_tools_go_just_before_usr_bin() {
+        let dev = Path::new("/Library/Developer/CommandLineTools/usr/bin");
+        assert_eq!(
+            path_with_developer_tools("/opt/homebrew/bin:/usr/bin:/bin", dev),
+            "/opt/homebrew/bin:/Library/Developer/CommandLineTools/usr/bin:/usr/bin:/bin"
+        );
+        assert_eq!(path_with_developer_tools("/bin", dev), "/bin:/Library/Developer/CommandLineTools/usr/bin");
+    }
+
+    #[test]
     fn proxy_ports_come_from_the_environment() {
         let env = vec![
             ("https_proxy".to_string(), "http://127.0.0.1:6152".to_string()),
@@ -418,7 +449,11 @@ mod tests {
         let git = std::process::Command::new("/usr/bin/sandbox-exec")
             .arg("-f")
             .arg(&sb)
-            .args(["/bin/sh", "-c", "GIT_CONFIG_GLOBAL=/dev/null /usr/bin/git --version"])
+            .args(["/bin/sh", "-c", "GIT_CONFIG_GLOBAL=/dev/null git --version"])
+            .env(
+                "PATH",
+                format!("{}:/usr/bin:/bin", developer_bin().map(|d| d.display().to_string()).unwrap_or_default()),
+            )
             .current_dir(root.join("ws"))
             .output()
             .unwrap();

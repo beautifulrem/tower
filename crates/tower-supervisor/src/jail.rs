@@ -71,6 +71,15 @@ fn jail(
     env.push(("TMPDIR".into(), real(tmp).display().to_string()));
     // pnpm keeps its store locks here (default /tmp, not writable in the sandbox).
     env.push(("XDG_RUNTIME_DIR".into(), real(tmp).display().to_string()));
+    // Apple's /usr/bin developer tools (git, clang, make, python3) are shims
+    // that go through xcrun, which insists on a cache in the shared per-user
+    // temporary folder the sandbox closes. The real tools come just before /usr/bin on PATH (so Homebrew's, earlier on PATH, still win).
+    if let Some(dev) = sandbox::developer_bin() {
+        env.push((
+            "PATH".into(),
+            sandbox::path_with_developer_tools(inner.env.get("PATH").unwrap_or("/usr/bin:/bin"), &dev),
+        ));
+    }
     let profile = if sandbox::available() {
         let path = goal_dir.join(format!("{purpose}.sb"));
         let spec = sandbox::Spec {

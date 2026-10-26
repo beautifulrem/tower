@@ -529,6 +529,12 @@ dependencies = [
 [[package]]
 name = "tower-git"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tower-core",
+]
 
 [[package]]
 name = "tower-pi"

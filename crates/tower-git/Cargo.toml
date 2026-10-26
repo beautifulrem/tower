@@ -1,11 +1,18 @@
 [package]
 name = "tower-git"
+description = "Workspace isolation for Tower goals: satellite clones, snapshots, diffs and sealing."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+tower-core.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

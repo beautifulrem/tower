@@ -1049,7 +1049,7 @@ async fn special_casing_the_tests_values_is_reported() {
     std::fs::write(
         h.repo.join("test/add.test.mjs"),
         "import test from 'node:test'\nimport assert from 'node:assert'\nimport { add } from '../src/lib.mjs'\n\
-         test('add', () => assert.equal(add(17, 34), 51))\n",
+         test('add', () => {\n  assert.equal(add(17, 34), 51)\n})\n",
     )
     .unwrap();
     git(&h.repo, &["add", "."]);
@@ -1061,9 +1061,13 @@ async fn special_casing_the_tests_values_is_reported() {
     let d = h.sup.goal(&id).unwrap();
     let hit = d.sentinels.iter().find(|s| s.sentinel == "special_cases_test_inputs").expect("reported");
     assert!(hit.detail.contains("a === 17") && hit.detail.contains("no held-out"), "{}", hit.detail);
-    // And review shows that file first, saying why.
+    // Moving the call's numbers, the change returns what the original code
+    // returns: a pattern, still medium (no oracle for the moved inputs).
+    assert_eq!(hit.severity, 2);
+    assert!(hit.detail.contains("test/add.test.mjs line 5 (17→18, 34→35)"), "{}", hit.detail);
+    // And review shows that file first, saying why, at the finding's weight.
     let review = h.sup.review(&id, None).await.unwrap();
-    assert_eq!(review.units[0].risk, 3);
+    assert_eq!(review.units[0].risk, 2);
     assert!(review.units[0].files.iter().any(|f| f == "src/lib.mjs"));
     assert!(review.units[0].risk_reasons[0].contains("special-cases"), "{:?}", review.units[0].risk_reasons);
 }

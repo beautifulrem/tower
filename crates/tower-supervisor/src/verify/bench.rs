@@ -18,6 +18,7 @@ mod guard;
 mod held_out;
 mod looks;
 mod loopback;
+mod perturb_run;
 mod processes;
 pub(super) use checks::{confirmed_refusal, paths_gone, sentinel_hit, tests_ran};
 use guard::{Coverage, Guard, Phase};
@@ -56,7 +57,9 @@ struct Ran {
 ///    scripts, package settings) put back as on the base, and the criteria
 ///    once more: a pass must come from the source;
 /// 5. a test that must fail added to the test files, and the criteria that
-///    proved the change (or whose base did not run) once more: it must fail.
+///    proved the change (or whose base did not run) once more: it must fail;
+/// 6. the base's own test files with their inputs moved, on the base and on
+///    the snapshot: is the pass general or fitted to those inputs.
 ///
 /// Every tracked file is reset to the snapshot between steps. The paths are
 /// new for every verification, and whatever it started is stopped when it
@@ -94,6 +97,10 @@ pub(super) struct Bench<'a> {
 
 /// What a step found besides the verdict.
 pub(super) type Found = Vec<tower_core::sentinel::SentinelHit>;
+
+/// What `run_all` returns: the outcome, what the steps found, and the
+/// perturbation step's report when verification got that far.
+pub(super) type RunAll = (Outcome, Found, Option<crate::verify::perturb::Report>);
 
 type Exec = (tower_core::contract::Criterion, String, u32);
 
@@ -414,7 +421,7 @@ impl<'a> Bench<'a> {
         Ok((!problems.is_empty()).then_some(Preflight { setup: None, criteria: problems }))
     }
 
-    pub(super) async fn run_all(&self, pin: &str, files: &[tower_core::view::DiffFile]) -> Result<(Outcome, Found)> {
+    pub(super) async fn run_all(&self, pin: &str, files: &[tower_core::view::DiffFile]) -> Result<RunAll> {
         let (inner, goal) = (self.inner, self.goal);
         let lang = inner.lang();
         let criteria = self.criteria_list();
@@ -422,7 +429,7 @@ impl<'a> Bench<'a> {
         // 1. The base, with your dependencies.
         let red_on_base = match self.base_phase(&criteria).await? {
             Ok(red) => red,
-            Err(early) => return Ok((early, Vec::new())),
+            Err(early) => return Ok((early, Vec::new(), None)),
         };
 
         // 2. The agent's snapshot.
@@ -452,11 +459,11 @@ impl<'a> Bench<'a> {
             if let Some(r) = failed {
                 let tail = tail_lines(&r.output_tail, 20);
                 if !network {
-                    return Ok((Outcome::SetupNeedsNetwork(tail), Vec::new()));
+                    return Ok((Outcome::SetupNeedsNetwork(tail), Vec::new(), None));
                 }
                 let detail =
                     tr!(lang, "准备命令 `{setup}` 失败：\n{tail}", "The setup command `{setup}` failed:\n{tail}");
-                return Ok((Outcome::EnvError(detail), Vec::new()));
+                return Ok((Outcome::EnvError(detail), Vec::new(), None));
             }
         }
         // What is verified is the snapshot, not what setup made of it.
@@ -468,11 +475,15 @@ impl<'a> Bench<'a> {
         let mut failures = Vec::new();
         for (c, command, timeout) in criteria.iter().filter(|(_, command, _)| !names_held_out(&self.holdout, command)) {
             if self.cancel.is_cancelled() {
-                return Ok((Outcome::EnvError(tr!(lang, "验证被取消", "Verification was cancelled")), Vec::new()));
+                return Ok((
+                    Outcome::EnvError(tr!(lang, "验证被取消", "Verification was cancelled")),
+                    Vec::new(),
+                    None,
+                ));
             }
             let r = self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
             if r.environment_failure {
-                return Ok((self.env_error(&c.id, command, &r), Vec::new()));
+                return Ok((self.env_error(&c.id, command, &r), Vec::new(), None));
             }
             inner.append(
                 goal,
@@ -506,10 +517,10 @@ impl<'a> Bench<'a> {
             .map(|c| c.id.clone())
             .collect();
         if let Some(note) = self.capture_looks(&looks, "pin", pin).await? {
-            return Ok((Outcome::EnvError(note), Vec::new()));
+            return Ok((Outcome::EnvError(note), Vec::new(), None));
         }
         if !failures.is_empty() {
-            return Ok((Outcome::Failed(failures), Vec::new()));
+            return Ok((Outcome::Failed(failures), Vec::new(), None));
         }
 
         let mut found = Vec::new();
@@ -526,7 +537,7 @@ impl<'a> Bench<'a> {
         if !held_set.is_empty() {
             match self.held_out_step(pin, &held_set, &mut found).await? {
                 Ok(files) => held_files = files,
-                Err(early) => return Ok((early, found)),
+                Err(early) => return Ok((early, found, None)),
             }
         }
 
@@ -675,10 +686,13 @@ impl<'a> Bench<'a> {
             }
         }
 
+        // 6. Inputs moved: general, or fitted to the tests?
+        let report = self.perturbation(pin, &criteria, &red_on_base, &held_files, files).await?;
+
         // What Tower's guard saw of the assertion entry points, across
         // every command that ran on the agent's snapshot.
         found.extend(self.assertion_identity(&criteria)?);
-        Ok((Outcome::Passed, found))
+        Ok((Outcome::Passed, found, Some(report)))
     }
 
     /// The invariant Tower checks while the criteria run: the assertion

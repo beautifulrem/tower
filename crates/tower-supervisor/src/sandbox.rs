@@ -252,11 +252,35 @@ fn parse_scutil_proxy(text: &str) -> Vec<u16> {
 /// network off they are closed to the sandbox too: a test may start its
 /// own servers on loopback, but not reach what was already there.
 pub fn listening_ports() -> Vec<u16> {
-    let Ok(out) = std::process::Command::new("/usr/sbin/lsof").args(["-nP", "-iTCP", "-sTCP:LISTEN", "-Fn"]).output()
-    else {
-        return Vec::new();
-    };
-    parse_listening(&String::from_utf8_lossy(&out.stdout))
+    // netstat sees every listener on the Mac (other users' and the
+    // system's included); lsof without privileges sees only yours.
+    let mut ports = std::process::Command::new("/usr/sbin/netstat")
+        .args(["-anv", "-p", "tcp"])
+        .output()
+        .map(|o| parse_netstat(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default();
+    if let Ok(out) = std::process::Command::new("/usr/sbin/lsof").args(["-nP", "-iTCP", "-sTCP:LISTEN", "-Fn"]).output()
+    {
+        ports.extend(parse_listening(&String::from_utf8_lossy(&out.stdout)));
+    }
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+}
+
+/// Listening TCP ports on loopback or every interface, from `netstat -anv`.
+fn parse_netstat(text: &str) -> Vec<u16> {
+    text.lines()
+        .filter(|l| l.contains("LISTEN"))
+        .filter_map(|l| l.split_whitespace().nth(3))
+        .filter(|local| {
+            local.starts_with("127.")
+                || local.starts_with("*.")
+                || local.starts_with("::1.")
+                || local.starts_with("localhost.")
+        })
+        .filter_map(|local| local.rsplit('.').next()?.parse().ok())
+        .collect()
 }
 
 fn parse_listening(text: &str) -> Vec<u16> {
@@ -580,6 +604,12 @@ mod tests {
             "(/usr/bin/nc -l 127.0.0.1 {free} >/dev/null 2>&1 &) ; sleep 0.5; /usr/bin/nc -z -w 2 127.0.0.1 {free}"
         )));
         drop(before);
+    }
+
+    #[test]
+    fn system_wide_listeners_are_read_from_netstat() {
+        let text = "tcp4 0 0  127.0.0.1.4817  *.*  LISTEN 0 0\ntcp6 0 0  *.5000  *.*  LISTEN\ntcp4 0 0  192.168.1.4.22  *.*  LISTEN\ntcp4 0 0  127.0.0.1.51000  127.0.0.1.4817  ESTABLISHED\n";
+        assert_eq!(parse_netstat(text), [4817, 5000]);
     }
 
     #[test]

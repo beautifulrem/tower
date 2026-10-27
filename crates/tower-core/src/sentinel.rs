@@ -578,6 +578,28 @@ pub fn assertion_cases<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<(Vec
     out
 }
 
+/// The values the code lines of a special-case finding compare against
+/// (each detail line is `path: code`): its numbers, and whether any quoted
+/// value is among them. A perturbation run moves numbers only, so a finding
+/// is cleared by it only when every value it names is a number that run
+/// moved.
+pub fn flagged_values(detail: &str) -> (Vec<f64>, bool) {
+    let mut numbers = Vec::new();
+    let mut quoted = false;
+    for line in detail.lines() {
+        let Some((_, code)) = line.split_once(": ") else { continue };
+        for c in ['"', '\'', '`'] {
+            quoted |= code.contains(c);
+        }
+        for lit in shape(code).1 {
+            if let Ok(n) = lit.replace('_', "").parse::<f64>() {
+                numbers.push(n);
+            }
+        }
+    }
+    (numbers, quoted)
+}
+
 pub fn special_cases(
     files: &[DiffFile],
     literals: &[String],

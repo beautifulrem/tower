@@ -1,6 +1,6 @@
-//! What verification costs on a larger repository: 2 000 source files and
-//! 201 test files (1 001 assertions), every verification step included
-//! (base, snapshot, source-only re-run, canaries). The
+//! What verification costs on a larger repository: 2 001 source files and
+//! 201 test files (1 002 assertions), every verification step included
+//! (base, snapshot, source-only re-run, canaries, perturbation). The
 //! criterion's tests really run on the base (and fail there), so the
 //! canary must run too: the measurement asserts it. Run with
 //! `cargo test -p tower-supervisor --test perf_verify -- --ignored --nocapture`.
@@ -41,11 +41,14 @@ async fn verification_of_a_larger_repository() {
         }
         std::fs::write(repo.join(format!("test/m{i}.test.mjs")), t).unwrap();
     }
-    // The goal's own test: red on the base, green once done.txt exists.
+    // The goal's own test: red on the base, green once done.txt exists; one
+    // assertion the perturbation step can probe, so that step runs too.
+    std::fs::write(repo.join("src/area.mjs"), "export const area = (w, h) => w * h\n").unwrap();
     std::fs::write(
         repo.join("test/done.test.mjs"),
         "import test from 'node:test'\nimport assert from 'node:assert'\nimport { existsSync } from 'node:fs'\n\
-         test('done', () => assert.equal(existsSync('done.txt'), true))\n",
+         import { area } from '../src/area.mjs'\ntest('done', () => {\n  assert.equal(area(3, 4), 3 * 4)\n  \
+         assert.equal(existsSync('done.txt'), true)\n})\n",
     )
     .unwrap();
     git(&repo, &["init", "--quiet", "--initial-branch=main"]);
@@ -59,7 +62,7 @@ async fn verification_of_a_larger_repository() {
     let env = ShellEnv::from_pairs([
         ("PATH".to_string(), std::env::var("PATH").unwrap()),
         ("HOME".to_string(), home.display().to_string()),
-        ("PI_FAKE_SCENARIO".to_string(), "pass".to_string()),
+        ("PI_FAKE_SCENARIO".to_string(), "pass_touch".to_string()),
     ]);
     let ext = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal");
     let sup = Supervisor::start(
@@ -101,7 +104,7 @@ async fn verification_of_a_larger_repository() {
     let canary = at(&|e| matches!(e, EventKind::CanaryChecked { .. })).unwrap_or(snapshot);
     let s = |a: i64, b: i64| (b - a) as f64 / 1000.0;
     println!(
-        "verification: {secs:.1} s (snapshot {:.1}, canary {:.1}, the rest {:.1}) · state {:?} · canary {:?} · source-only {:?}",
+        "verification: {secs:.1} s (snapshot {:.1}, canary {:.1}, perturbation {:.1}) · state {:?} · canary {:?} · source-only {:?}",
         s(started, snapshot),
         s(snapshot, canary),
         s(canary, finished),

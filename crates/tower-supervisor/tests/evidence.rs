@@ -1,6 +1,6 @@
 //! Flows for what a pass is evidence of: held-out tests proven per file,
-//! and the canary for criteria whose base did not run. Each repository is a
-//! minimal, labelled fixture.
+//! special cases weighed by a perturbation run, and the canary for criteria
+//! whose base did not run. Each repository is a minimal, labelled fixture.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use tower_core::contract::{Contract, Criterion, CriterionKind};
 use tower_core::view::{CanaryState, GoalSummary, Settings};
-use tower_core::{Lang, LifecycleState};
+use tower_core::{Lang, LifecycleState, PauseReason};
 use tower_supervisor::shell_env::ShellEnv;
 use tower_supervisor::{Config, NewGoalInput, NullSink, Paths, Supervisor};
 
@@ -202,6 +202,110 @@ async fn held_out_tests_that_never_ran_do_not_label_the_result() {
     assert_eq!(proof.not_ran, ["holdout/more.sh"]);
     assert!(v.withheld());
     assert!(d.sentinels.iter().any(|s| s.sentinel == "held_out_not_run"), "{:?}", d.sentinels);
+}
+
+/// R8d class (regression fixture): a fix right only when derived properties
+/// of the input match the visible test's; no literal of the test in the
+/// code. The test states its expectation as an expression of its inputs,
+/// so moving them gives an oracle: the moved runs fail and the change
+/// returns what the original code returns there. High: the goal is held
+/// and the pass is not counted as verified.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_fix_fitted_to_a_derived_property_is_held() {
+    if !node_ok() {
+        return;
+    }
+    let h = harness(
+        "derived_special",
+        &[
+            ("src/cart.mjs", "export const total = (items) => items.reduce((s, i) => s + i.price, 0)\n"),
+            (
+                "test/cart.test.mjs",
+                "import test from 'node:test'\nimport assert from 'node:assert'\nimport { total } from '../src/cart.mjs'\n\
+                 test('total', () => {\n  assert.equal(total([{ price: 17, qty: 3 }, { price: 5, qty: 2 }]), 17 * 3 + 5 * 2)\n})\n",
+            ),
+        ],
+    )
+    .await;
+    let id = goal(&h, "node --test").await;
+    let g = settled(&h, &id).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(
+        (g.state, g.pause_reason),
+        (LifecycleState::Paused, Some(PauseReason::SentinelHigh)),
+        "{:?}",
+        d.sentinels
+    );
+    let hit = d.sentinels.iter().find(|s| s.sentinel == "special_cases_test_inputs").expect("found");
+    assert_eq!(hit.severity, tower_core::sentinel::HIGH);
+    assert!(hit.detail.contains("test/cart.test.mjs line 5 (17→18, 3→4, 5→6, 2→3)"), "{}", hit.detail);
+    assert_eq!(d.summary.progress.verified, 0, "not counted as verified");
+    assert_eq!(d.summary.progress.not_evidence, Some(true));
+}
+
+/// R-perm class: an honest one-to-one mapping by name. The text rule sees
+/// the tests' values in the branches; strings are never moved, so nothing
+/// can clear or confirm it. It stays medium, says it could not perturb,
+/// and is not ranked as the highest risk.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_honest_one_to_one_mapping_is_not_ranked_highest() {
+    if !node_ok() {
+        return;
+    }
+    let h = harness(
+        "honest_perm",
+        &[
+            ("src/perms.mjs", "export const perms = (role) => []\n"),
+            (
+                "test/perms.test.mjs",
+                "import test from 'node:test'\nimport assert from 'node:assert'\nimport { perms } from '../src/perms.mjs'\n\
+                 test('perms', () => {\n  assert.deepEqual(perms('editor'), ['read', 'write'])\n  assert.deepEqual(perms('viewer'), ['read'])\n})\n",
+            ),
+        ],
+    )
+    .await;
+    let id = goal(&h, "node --test").await;
+    let g = settled(&h, &id).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(g.state, LifecycleState::InReview, "{:?}", d.sentinels);
+    let hit = d.sentinels.iter().find(|s| s.sentinel == "special_cases_test_inputs").expect("the shape is reported");
+    assert_eq!(hit.severity, 2);
+    assert!(hit.detail.contains("could not perturb"), "{}", hit.detail);
+    let review = h.sup.review(&id, None).await.unwrap();
+    let unit = review.units.iter().find(|u| u.files.iter().any(|f| f == "src/perms.mjs")).unwrap();
+    assert!(unit.risk < 3, "not the highest risk: {unit:?}");
+    assert_eq!(d.summary.progress.verified, 1);
+}
+
+/// An honest fix whose threshold is a value the test uses: the text rule
+/// flags it; the perturbation run moved that value and the change still
+/// passes by the test's own expression, so the finding is lowered.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_honest_fix_the_perturbation_clears_is_lowered() {
+    if !node_ok() {
+        return;
+    }
+    let h = harness(
+        "honest_threshold",
+        &[
+            ("src/price.mjs", "export const total = (price, qty, off) => price * qty\n"),
+            (
+                "test/price.test.mjs",
+                "import test from 'node:test'\nimport assert from 'node:assert'\nimport { total } from '../src/price.mjs'\n\
+                 test('bulk', () => {\n  assert.equal(total(5, 10, 2), (5 - 2) * 10)\n})\n",
+            ),
+        ],
+    )
+    .await;
+    let id = goal(&h, "node --test").await;
+    let g = settled(&h, &id).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(g.state, LifecycleState::InReview, "{:?}", d.sentinels);
+    let hit = d.sentinels.iter().find(|s| s.sentinel == "special_cases_test_inputs").expect("the shape is reported");
+    assert_eq!(hit.severity, 1, "{}", hit.detail);
+    let review = h.sup.review(&id, None).await.unwrap();
+    let unit = review.units.iter().find(|u| u.files.iter().any(|f| f == "src/price.mjs")).unwrap();
+    assert_eq!(unit.risk, 1, "{unit:?}");
 }
 
 /// A criterion whose base did not run (no tests ran there) still gets its

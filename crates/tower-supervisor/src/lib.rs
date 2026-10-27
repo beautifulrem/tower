@@ -377,12 +377,16 @@ impl Supervisor {
         let mut units = build_units(&files, Some(&rec.contract.scope), self.inner.lang());
         // What verification found in a file ranks its unit first, with the
         // finding as the reason (special cases, code that touches the tests).
+        // A special-case finding ranks by its own weight: it is a shape in
+        // the code until perturbation makes it evidence (high), and a cleared
+        // one (low) does not outrank what you should read first.
         let hits = self.inner.store(|s| s.sentinel_hits(id))?;
         for u in &mut units {
             for h in &hits {
                 let named = h.detail.lines().any(|l| u.files.iter().any(|f| l.starts_with(&format!("{f}:"))));
                 if named && !u.risk_reasons.contains(&h.title) {
-                    u.risk = u.risk.max(3);
+                    let weight = if h.sentinel == "special_cases_test_inputs" { h.severity.clamp(1, 3) } else { 3 };
+                    u.risk = u.risk.max(weight);
                     u.risk_reasons.insert(0, h.title.clone());
                 }
             }

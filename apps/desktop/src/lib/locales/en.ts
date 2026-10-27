@@ -232,7 +232,7 @@ export const en: DictNow = {
     replied: "Replied",
     openReview: "Open review",
     pressTwice: "Press twice to confirm",
-    pressAgain: "Press again to confirm · {s}",
+    pressAgain: "Press again to confirm",
     networkCaution:
       "This is a security decision: once approved, the verification setup command reaches the network once, inside the sandbox, to install the dependencies the agent changed. Look at what it changed first.",
     snooze: "Remind me later",

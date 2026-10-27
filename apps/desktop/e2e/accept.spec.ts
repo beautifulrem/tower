@@ -23,7 +23,10 @@ test("with red items open, the primary reads Accept anyway, arms on the first pr
   const dialog = page.getByRole("dialog");
   // By weight: what is not evidence or needs your judgement, then what to look at.
   const judgement = dialog.locator(".open-judgement");
-  await expect(judgement).toContainText("Not evidence · needs your judgement");
+  await expect(judgement).toContainText("Not evidence, or needs your judgement");
+  // The sentinels are named once, as a group, and their lines are their sentences.
+  await expect(judgement.locator(".open-kind")).toHaveText("Sentinels");
+  expect(await dialog.innerText()).not.toMatch(/Sentinel:/);
   await expect(judgement).toContainText("Program code rewrites assertion functions");
   await expect(judgement.locator(".mark-danger").first()).toBeVisible();
   await expect(dialog.locator(".open-notice")).toContainText("To look at");
@@ -32,9 +35,10 @@ test("with red items open, the primary reads Accept anyway, arms on the first pr
   const button = dialog.getByRole("button", { name: "Accept anyway" });
   await expect(button).toHaveClass(/btn-primary/);
   await button.click();
-  // Armed: the black steps back to the armed frame and says how many items it is over; nothing is sent.
+  // Armed: the black steps back to the armed frame and keeps its verb; the two seconds drain along its foot; nothing is sent.
   const armed = dialog.locator(".panel-actions .btn.armed");
-  await expect(armed).toContainText(/items need your judgement · press again/);
+  await expect(armed).toHaveText("Press again to accept anyway");
+  expect(await armed.evaluate((el) => getComputedStyle(el, "::after").height)).toBe("2px");
   expect((await calls(page)).some(([cmd]) => cmd === "accept")).toBe(false);
   await armed.click();
   await expect.poll(async () => (await calls(page)).some(([cmd]) => cmd === "accept")).toBe(true);

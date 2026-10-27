@@ -89,7 +89,7 @@ function BootFailed() {
             {t("chrome.engine")} <span class="t3">—</span>
           </span>
         </div>
-        <Empty title={t("app.bootFailedTitle")} kind="error" poster rules={false}>
+        <Empty title={t("app.bootFailedTitle")} kind="error" poster>
           {t("app.bootFailedBody")}
         </Empty>
         <div class="boot-error-wrap">

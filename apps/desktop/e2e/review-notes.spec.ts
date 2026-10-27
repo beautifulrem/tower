@@ -38,7 +38,7 @@ test("the notes before the diff are one folded line led by the weightiest, and o
   await expect(page.locator(".project [data-field='holdout']").first()).toBeFocused();
 });
 
-test("with nothing to review the status bar keeps Esc and ? only", async ({ page }) => {
+test("with nothing to review the status bar keeps Esc and ? only, the header offers nothing to send back, and no slogan sits under the poster", async ({ page }) => {
   await openTower(page, "review/G-0002", {
     enrich: (F) => {
       F["review-G-0002"] = { ...F["review-G-0001"], units: [], files: [], stat: { files: 0, additions: 0, deletions: 0 } };
@@ -47,4 +47,6 @@ test("with nothing to review the status bar keeps Esc and ? only", async ({ page
   await expect(page.locator(".review .empty-poster")).toBeVisible();
   await expect(page.locator(".review-status kbd")).toHaveText(["Esc", "?"]);
   await expect(page.locator(".review-status .status-mouse")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Request changes/ })).toHaveCount(0);
+  await expect(page.locator(".review .empty-poster")).not.toContainText("Facts stay apart from claims");
 });

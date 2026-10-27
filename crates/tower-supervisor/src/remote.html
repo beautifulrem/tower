@@ -48,10 +48,10 @@
   button { font: inherit; color: inherit; cursor: default; -webkit-tap-highlight-color: transparent; }
   button:focus-visible, textarea:focus-visible { outline: 1.5px solid var(--focus); outline-offset: 2px; }
 
-  /* The wordmark: a ring with the verifier's check, the name tracked wide — the desktop's, at the same size. */
+  /* The wordmark: Tower's own mark (the cab on its mast — never the verified ring) and the name set as a name, the desktop's. */
   /* The header is the desk's title bar on a phone: the wordmark left, the gauge strip right, on one hairline. */
   header { display: flex; align-items: center; gap: 12px; min-height: 32px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid var(--border-subtle); }
-  .wordmark { display: inline-flex; align-items: center; gap: 8px; font-size: 10px; line-height: 12px; letter-spacing: 0.14em; font-weight: 500; color: var(--text-3); flex: 0 0 auto; }
+  .wordmark { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 14px; letter-spacing: -0.01em; font-weight: 600; color: var(--text-2); flex: 0 0 auto; }
   .wordmark svg { display: block; }
   /* The gauges, as on the desk: runs, silence (only once it is worth a look), spend, and the connection when it is not
      fine. Spacing groups them, never a dot. With the power off every reading is a dash in the quietest grey. */
@@ -182,8 +182,8 @@
 <body>
 <header>
   <span class="wordmark" aria-hidden="true">
-    <svg width="14" height="14" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter"><circle cx="5" cy="5" r="4"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7"/></svg>
-    TOWER
+    <svg width="14" height="14" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter"><rect x="1.125" y="1.125" width="7.75" height="2.75"/><path d="M5 3.875 V9.5 M3 9.375 H7"/></svg>
+    Tower
   </span>
   <span id="status"><span id="gauges"></span><span id="conn" class="gauge" role="status"></span></span>
 </header>

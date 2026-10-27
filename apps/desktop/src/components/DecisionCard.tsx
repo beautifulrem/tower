@@ -109,6 +109,13 @@ export function bodyParts(item: InboxItem): { prose: string; tail: string } {
   return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
 }
 
+/**
+ * The supervisor ends a refusal's sentence with "This is not a test failure." (it is all the phone and the base line
+ * have). On a card the environment line already says it, first, so the prose drops that sentence: said once.
+ */
+const NOT_A_TEST_FAILURE = /\s*(This is not a test failure\.|这不是测试失败。)\s*/g;
+export const withoutEnvAside = (prose: string): string => prose.replace(NOT_A_TEST_FAILURE, " ").trim();
+
 /** The paths the verification sandbox refused, as its `deny(1) <operation> <path>` lines name them, in order, once each. */
 export function refusedPaths(text: string): string[] {
   return [...new Set([...text.matchAll(/deny\(\d+\)\s+[\w*-]+\s+(\S+)/g)].map((m) => m[1]))];
@@ -363,10 +370,12 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                 <span>{t("decision.envProblem")}</span>
               </p>
             </Show>
-            <Show when={parts().prose}>
-              <p class="decision-body">
-                <Prose text={parts().prose} />
-              </p>
+            <Show when={envProblem() ? withoutEnvAside(parts().prose) : parts().prose}>
+              {(prose) => (
+                <p class="decision-body">
+                  <Prose text={prose()} />
+                </p>
+              )}
             </Show>
             {/* What the sandbox refused, lifted out of the tail as the line to act on, with the way to where it is fixed. */}
             <Show when={envProblem() && refusedPaths(parts().tail)[0]}>
@@ -458,7 +467,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                     title={tone() === "destructive" ? t("decision.pressTwice") : undefined}
                     aria-live={left() ? "polite" : undefined}
                   >
-                    {left() ? t("decision.pressAgain", { s: left()! }) : opt}
+                    {left() ? t("decision.pressAgain") : opt}
                   </Button>
                 );
               }}

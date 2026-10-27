@@ -27,10 +27,13 @@ describe("key caps", () => {
 });
 
 describe("empty states", () => {
-  it("carry the wordmark and the three rules as a poster", () => {
-    render(() => <Empty title="Nothing" poster />);
-    expect(screen.getByText("TOWER")).toBeTruthy();
-    expect(screen.getByText(/Facts stay apart from claims/)).toBeTruthy();
+  it("carry the wordmark as a poster, with Tower's own mark and no slogan band under it", () => {
+    const { container } = render(() => <Empty title="Nothing" poster />);
+    expect(screen.getByText("Tower")).toBeTruthy();
+    expect(container.querySelector(".wordmark .brand-mark")).not.toBeNull();
+    // The verified ring is a status, never the brand.
+    expect(container.querySelector(".wordmark circle")).toBeNull();
+    expect(screen.queryByText(/Facts stay apart from claims/)).toBeNull();
   });
   it("use the glyph set's ring and square", () => {
     const { container } = render(() => <Empty title="Nothing" kind="error" />);

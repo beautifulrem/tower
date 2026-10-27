@@ -1,8 +1,8 @@
 /**
  * Settings: the standing terms every goal starts from, set out like the
- * contract — numbered clauses (environment, engine defaults, memory,
- * projects, phone, attention, appearance) with an index of them beside the
- * page; each term's name left, its value right; every on/off a switch, as in
+ * contract — clauses (environment, engine defaults, memory, projects,
+ * phone, attention, appearance), unnumbered since they are not a sequence,
+ * with an index of them beside the page; each term's name left, its value right; every on/off a switch, as in
  * the contract. Every field saves when you leave it and the clause says so —
  * no Save button.
  */
@@ -144,7 +144,7 @@ export function Settings() {
     <div class="settings">
       <section class="settings-block" id={SETTINGS_CLAUSES[0].id}>
         {/* The hints below say "click Check again": the button is here, on the clause's head, as on the welcome page. */}
-        <ClauseHead n={1} title={t("settings.environment")}>
+        <ClauseHead title={t("settings.environment")}>
           <Button size="s" variant="ghost" busy={rechecking()} onClick={() => void recheck()}>
             {t("welcome.recheck")}
           </Button>
@@ -233,7 +233,7 @@ export function Settings() {
 
       <Show when={s()} fallback={<Loading text={t("settings.loading")} />}>
         <section class="settings-block" id={SETTINGS_CLAUSES[1].id} onFocusOut={() => void commit()}>
-          <ClauseHead n={2} title={t("settings.engineDefaults")}>
+          <ClauseHead title={t("settings.engineDefaults")}>
             <saved.Stamp />
           </ClauseHead>
           <div class="settings-form">
@@ -288,7 +288,7 @@ export function Settings() {
         </section>
 
         <section class="settings-block" id={SETTINGS_CLAUSES[2].id} onFocusOut={() => void commit()}>
-          <ClauseHead n={3} title={t("settings.memory")} />
+          <ClauseHead title={t("settings.memory")} />
           <p class="field-hint" id="memory-hint" style={{ "margin-bottom": "8px" }}>
             {t("settings.memoryHint")}
           </p>
@@ -300,7 +300,7 @@ export function Settings() {
       </Show>
 
       <section class="settings-block" id={SETTINGS_CLAUSES[3].id}>
-        <ClauseHead n={4} title={t("settings.projects")}>
+        <ClauseHead title={t("settings.projects")}>
           <Button size="s" onClick={pickProject}>
             {t("settings.addRepo")}
           </Button>
@@ -316,7 +316,7 @@ export function Settings() {
       </Show>
 
       <section class="settings-block" id={SETTINGS_CLAUSES[6].id}>
-        <ClauseHead n={7} title={t("settings.appearance")} />
+        <ClauseHead title={t("settings.appearance")} />
         <div class="settings-form">
           <div class="field">
             <span class="field-label" id="theme-label">
@@ -399,7 +399,7 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
   const lan = () => (info()?.kinds ?? []).some((k) => k !== "tailscale");
   return (
     <section class="settings-block" id={SETTINGS_CLAUSES[4].id} onFocusOut={() => void props.commit().then((saved) => saved && refetch())}>
-      <ClauseHead n={5} title={t("settings.phone")} />
+      <ClauseHead title={t("settings.phone")} />
       <p class="field-hint" style={{ "margin-bottom": "12px" }}>
         {t("settings.phoneHint")}
       </p>
@@ -553,7 +553,7 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
   };
   return (
     <section class="settings-block" id={SETTINGS_CLAUSES[5].id} onFocusOut={() => void props.commit()}>
-      <ClauseHead n={6} title={t("settings.attention")} />
+      <ClauseHead title={t("settings.attention")} />
       <div class="settings-form">
         <Field label={t("settings.notifications")} hint={t("quiet.hint")}>
           <button type="button" class="select" aria-haspopup="menu" aria-label={`${t("settings.notifications")}: ${props.quietLabel}`} onClick={() => void pickQuiet()}>

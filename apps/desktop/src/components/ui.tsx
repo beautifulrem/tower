@@ -134,15 +134,18 @@ export function Field(props: {
 
 /**
  * A clause head — the contract's, and Settings' too, since Settings is the standing terms every goal starts from: its
- * number in tabular figures, its title as a heading in sentence case, a hairline to the edge, and the clause's own
- * actions after it.
+ * title as a heading in sentence case, a hairline to the edge, and the clause's own actions after it. Only a real
+ * sequence is numbered (the contract's clauses, which its schedule numbers on from): Settings' sections are not one,
+ * so they carry no number.
  */
-export function ClauseHead(p: { n: number; title: string; id?: string; children?: JSX.Element }) {
+export function ClauseHead(p: { n?: number; title: string; id?: string; children?: JSX.Element }) {
   return (
     <header class="clause-head halt">
-      <span class="clause-no num" aria-hidden="true">
-        {String(p.n).padStart(2, "0")}
-      </span>
+      <Show when={p.n}>
+        <span class="clause-no num" aria-hidden="true">
+          {String(p.n).padStart(2, "0")}
+        </span>
+      </Show>
       <h2 class="clause-title" id={p.id} tabindex="-1">
         {p.title}
       </h2>

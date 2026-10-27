@@ -92,8 +92,10 @@ async fn main() {
         println!("created {} {}", g.id, g.title);
     }
 
-    // Let the demo runs reach their resting states.
-    for _ in 0..240 {
+    // Let the demo runs reach their resting states: done as soon as they
+    // do, and up to ten minutes on a busy machine (a verification runs the
+    // criteria, the canary and the perturbation; the tests check the result).
+    for _ in 0..1200 {
         tokio::time::sleep(Duration::from_millis(500)).await;
         let goals = sup.goals().unwrap();
         let inbox = sup.inbox().unwrap();

@@ -187,6 +187,18 @@ pub(crate) async fn capture(
     }
     let profile_dir = tempfile_dir();
     let out_dir = out.parent().unwrap_or(Path::new("/nonexistent")).to_path_buf();
+    // Chromium looks up its default data folder (in your real home: it asks
+    // the system, not $HOME) before reading --user-data-dir, and aborts if it
+    // cannot create it — which the profile forbids. Its crash handler starts
+    // even with crash reporting off and keeps its database there, whatever
+    // the flags say; without one it takes the browser down (seen on fresh CI
+    // runners). Tower makes both folders first, and the crash folder is the
+    // one place in your home the browser may write.
+    let crash_dir = app_support_dir(browser).and_then(|sub| {
+        let home = PathBuf::from(std::env::var_os("HOME")?);
+        let dir = home.join("Library/Application Support").join(sub).join("Crashpad");
+        std::fs::create_dir_all(&dir).ok().map(|_| crate::paths::real(&dir))
+    });
     // Confined by Tower's own profile on macOS (see `sandbox::browser_profile`).
     let confined = crate::sandbox::available().then(|| {
         let sb = profile_dir.join("browser.sb");
@@ -196,11 +208,15 @@ pub(crate) async fn capture(
         let (profile_real, out_real) = (crate::paths::real(&profile_dir), crate::paths::real(&out_dir));
         let fonts = home.join("Library/Fonts");
         let user_temp = user_temp_dir();
+        let writable: Vec<&Path> = [Some(profile_real.as_path()), Some(out_real.as_path()), crash_dir.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect();
         let text = crate::sandbox::browser_profile(&crate::sandbox::BrowserSpec {
             browser: Path::new(browser),
             home: &home,
             readable: &[&fonts],
-            writable: &[&profile_real, &out_real],
+            writable: &writable,
             user_temp: user_temp.as_deref(),
             ports: &app_ports,
             network,
@@ -221,18 +237,6 @@ pub(crate) async fn capture(
         None => tokio::process::Command::new(browser),
     };
     cmd.env("HOME", &profile_dir);
-    let crash_dir = profile_dir.join("Crashpad");
-    let _ = std::fs::create_dir_all(&crash_dir);
-    // Chromium looks up its default data folder (in your real home) before
-    // reading --user-data-dir, and aborts if it cannot create it — which the
-    // profile forbids. On a Mac that never opened this browser, Tower makes
-    // the empty folder first.
-    // (Your real home: the browser asks the system, not $HOME.)
-    if let Some(sub) = app_support_dir(browser)
-        && let Some(home) = std::env::var_os("HOME")
-    {
-        let _ = std::fs::create_dir_all(Path::new(&home).join("Library/Application Support").join(sub));
-    }
     cmd.args([
         "--headless=new",
         "--disable-breakpad",
@@ -248,10 +252,6 @@ pub(crate) async fn capture(
         "--window-size=1280,800",
     ])
     .arg(format!("--user-data-dir={}", profile_dir.display()))
-    // Its crash handler starts even with crash reporting off, and with no
-    // database folder it can find under the profile it takes the browser
-    // down with it (seen on CI runners): one is named, and made, here.
-    .arg(format!("--crash-dumps-dir={}", crash_dir.display()))
     // The page is the agent's code, and the browser runs outside the
     // sandbox: without the network, everything but this machine goes
     // to a proxy that does not exist.

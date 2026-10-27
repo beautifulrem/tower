@@ -77,6 +77,15 @@ pub fn browser_profile(spec: &BrowserSpec<'_>) -> String {
     let app = bundle(spec.browser);
     let mut s = String::from("(version 1)\n(deny default)\n");
     s.push_str(&format!("(allow process-fork)\n(allow process-exec (subpath {}))\n", q(app)));
+    // What Chromium asks of the system while it starts, refused on some Macs
+    // (a managed one: CI runners) with a crash rather than a fallback: the
+    // system's profiles tool (is this Mac managed?), two read-only device
+    // interfaces (power, storage) and the list of /Library's names.
+    s.push_str("(allow process-exec (literal \"/usr/bin/profiles\"))\n");
+    s.push_str(
+        "(allow iokit-open-user-client (iokit-user-client-class \"RootDomainUserClient\" \"AppleNVMeEANUC\"))\n",
+    );
+    s.push_str("(allow file-read-data (literal \"/Library\"))\n");
     s.push_str("(allow signal (target same-sandbox))\n(allow process-info* (target same-sandbox))\n");
     s.push_str("(allow sysctl-read)\n(allow system-info)\n(allow ipc-posix-shm* ipc-posix-sem)\n");
     // Where things are and how big (not what they hold): Chromium looks at
@@ -115,6 +124,7 @@ pub fn browser_profile(spec: &BrowserSpec<'_>) -> String {
     // Preferences are read through cfprefsd: the global domain and the
     // browser's own, nothing of other apps.
     s.push_str("(allow user-preference-read\n  (preference-domain \"kCFPreferencesAnyApplication\")\n");
+    s.push_str("  (preference-domain \"com.apple.universalaccess\")\n");
     for d in BROWSER_DOMAINS {
         s.push_str(&format!("  (preference-domain \"{d}\")\n"));
     }

@@ -402,23 +402,36 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
 /**
  * The verified seal (docs/12 §4.4): green never appears without the pin it
  * was measured on. One component, used everywhere the verdict is shown.
+ * `tampered` is the seal withheld: every command passed on this pin, but a
+ * must-fail canary passed too, so the pass is not evidence — the attention
+ * register's ◆ stands where the green disc would, and the words say so.
  */
-export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean }) {
+export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean; tampered?: boolean }) {
   const s = () => (props.large ? 12 : 10);
+  const pin = () => props.pin!.slice(0, 7);
   return (
     <Show when={props.pin}>
       <span
         class="seal"
-        classList={{ "seal-compact": !!props.compact, "seal-large": !!props.large }}
-        title={t("honesty.sealTitle", { pin: props.pin!.slice(0, 7) })}
+        classList={{ "seal-compact": !!props.compact, "seal-large": !!props.large, "seal-tampered": !!props.tampered }}
+        title={props.tampered ? t("honesty.sealTamperedTitle", { pin: pin() }) : t("honesty.sealTitle", { pin: pin() })}
       >
-        <span class="sr-only">{t("honesty.srVerified")} </span>
-        <svg class="glyph" width={s()} height={s()} viewBox="0 0 10 10" aria-hidden="true">
-          <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
-          <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.25" />
-        </svg>
-        <span class="seal-word">{props.text ?? t("goal.verified")}</span>
-        <span class="code-val seal-pin">@{props.pin!.slice(0, 7)}</span>
+        <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
+        <Show
+          when={!props.tampered}
+          fallback={
+            <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+            </svg>
+          }
+        >
+          <svg class="glyph" width={s()} height={s()} viewBox="0 0 10 10" aria-hidden="true">
+            <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
+            <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.25" />
+          </svg>
+        </Show>
+        <span class="seal-word">{props.text ?? (props.tampered ? t("honesty.sealTampered") : t("goal.verified"))}</span>
+        <span class="code-val seal-pin">@{pin()}</span>
       </span>
     </Show>
   );

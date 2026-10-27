@@ -652,6 +652,18 @@
 .seg-observed {
   border: 1px solid var(--text-3);
 }
+/* A pass with a tampered canary: solid like a fact, amber like a question — it happened, and it does not count. */
+.seg-discounted {
+  border: 0;
+  background: var(--st-attention);
+}
+.criteria-bar .discounted {
+  color: var(--text-1);
+}
+/* The seal withheld: the word steps up to text-1 like any attention reading; the pin stays. */
+.seal-tampered .seal-word {
+  color: var(--text-1);
+}
 
 .diff-add {
   color: var(--text-1);

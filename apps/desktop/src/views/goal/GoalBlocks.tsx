@@ -6,7 +6,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark } from "../../components/Glyph";
-import { Claim, ConsistencyBadge, CriteriaBar, HumanStamp } from "../../components/Honesty";
+import { Claim, ConsistencyBadge, CriteriaBar, HumanStamp, discountedOf } from "../../components/Honesty";
 import { Button, Empty, Section } from "../../components/ui";
 import type { ClaimView } from "../../gen/ClaimView";
 import type { GoalDetail } from "../../gen/GoalDetail";
@@ -80,7 +80,7 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
             <Button variant={props.hasDecision ? "default" : "primary"} size="s" kbd="r" onClick={() => go({ name: "review", id: g().id })}>
               {t("goal.reviewUnits", { n: g().diffstat?.files ?? 0 })}
             </Button>
-            <span class="meta">{g().verified_pin ? t("goal.reviewCtaVerified") : t("goal.reviewCtaUnverified")}</span>
+            <span class="meta">{discountedOf(d().criteria) > 0 ? t("goal.reviewCtaTampered") : g().verified_pin ? t("goal.reviewCtaVerified") : t("goal.reviewCtaUnverified")}</span>
           </div>
         </Section>
       </Show>
@@ -136,7 +136,7 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
         </Section>
       </Show>
 
-      <Section title={t("goal.criteria")} aside={<CriteriaBar progress={g().progress} />}>
+      <Section title={t("goal.criteria")} aside={<CriteriaBar progress={g().progress} criteria={d().criteria} />}>
         <For each={d().criteria}>{(c) => <CriterionRow goalId={g().id} c={c} state={g().state} base={d().base_commit} />}</For>
         <Show when={d().criteria.length === 0}>
           <Empty

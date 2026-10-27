@@ -11,6 +11,7 @@ import { For, Show, createEffect, createMemo, createResource, createSignal, lazy
 
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { LifecycleGlyph, NoticeMark, Seal } from "../components/Glyph";
+import { discountedOf } from "../components/Honesty";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
 import { Button, Empty, Section, Loading } from "../components/ui";
@@ -204,7 +205,8 @@ export function GoalPage(props: { id: string }) {
                   </Show>
                 </div>
                 <span class="grow" />
-                <Seal pin={g().verified_pin} large />
+                {/* The seal is withheld while any criterion passed with a tampered canary: the line under it and the header say the same thing. */}
+                <Seal pin={g().verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
               </div>
               <Show when={g().pr}>{(pr) => <div class="goal-overlaps meta"><PrLine pr={pr()} /></div>}</Show>
               {/* The conflict radar: other unfinished goals touching the same files. */}

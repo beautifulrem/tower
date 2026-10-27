@@ -9,7 +9,8 @@ vi.mock("../../lib/store", async () => {
   return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn() };
 });
 
-const { CanaryLine } = await import("../Honesty");
+const { CanaryLine, CriteriaBar, discountedOf } = await import("../Honesty");
+const { Seal } = await import("../Glyph");
 
 const criterion = (canary: CriterionView["canary"]): CriterionView => ({
   criterion: { id: "C1", title: "Tests pass", kind: { type: "exec", command: "npm test", timeout_secs: 600 } },
@@ -51,5 +52,43 @@ describe("CanaryLine", () => {
     expect(line.textContent).toContain("a test that must fail passed");
     expect(line.querySelector(".col-span")!.className).toContain("baseline-dependent");
     expect(line.querySelector(".mark-attention")).not.toBeNull();
+  });
+});
+
+describe("a tampered canary and the totals", () => {
+  const progress = { verified: 3, observed: 0, machine: 3, human: 0, human_done: 0 };
+  const criteria = [criterion("intact"), criterion("not_checked"), criterion("tampered")];
+
+  it("is counted from the criteria, never from the summary", () => {
+    expect(discountedOf(criteria)).toBe(1);
+    expect(discountedOf([criterion(null), criterion("intact")])).toBe(0);
+    expect(discountedOf(undefined)).toBe(0);
+  });
+
+  it("leaves the verified count and takes an amber segment: the bar says what the line under the criterion says", () => {
+    const { container } = render(() => <CriteriaBar progress={progress} criteria={criteria} compact />);
+    const bar = container.querySelector(".criteria-bar")!;
+    expect(bar.textContent).toContain("Verified 2/3");
+    expect(bar.textContent).toContain("1 doesn't count");
+    expect([...bar.querySelectorAll(".seg")].map((s) => s.className)).toEqual(["seg seg-verified", "seg seg-verified", "seg seg-discounted"]);
+    expect(bar.getAttribute("title")).toMatch(/not evidence/);
+    // Without the criteria at hand (a board row, a card) the summary's count stands.
+    const { container: plain } = render(() => <CriteriaBar progress={progress} compact />);
+    expect(plain.querySelector(".criteria-bar")!.textContent).toContain("Verified 3/3");
+    expect(plain.querySelector(".seg-discounted")).toBeNull();
+  });
+
+  it("withholds the seal: ◆ where the green disc would be, and the words say the pass is not evidence", () => {
+    const { container } = render(() => <Seal pin="f20e1bf1234" large tampered />);
+    const seal = container.querySelector(".seal")!;
+    expect(seal.className).toContain("seal-tampered");
+    expect(seal.querySelector("circle")).toBeNull();
+    expect(seal.querySelector(".mark-attention")).not.toBeNull();
+    expect(seal.textContent).toContain("Passed, not evidence");
+    expect(seal.textContent).toContain("@f20e1bf");
+    expect(seal.getAttribute("title")).toMatch(/not sealed as verified/);
+    const { container: ok } = render(() => <Seal pin="f20e1bf1234" large />);
+    expect(ok.querySelector("circle")).not.toBeNull();
+    expect(ok.textContent).toContain("Verified");
   });
 });

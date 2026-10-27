@@ -100,24 +100,38 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
 }
 
 /**
- * Two-track progress (ADR-020): verified segments are facts and may be
- * green; observed ones are hollow and grey; human criteria sit apart.
+ * Machine criteria whose must-fail canary passed: the command passed, and
+ * that pass is not evidence (the assertions or the runner were tampered
+ * with). Derived from the criteria themselves, never from the summary's
+ * count, so the line under a criterion and the total above it say the
+ * same thing.
  */
-export function CriteriaBar(props: { progress: Progress; compact?: boolean; tiny?: boolean }) {
+export const discountedOf = (criteria: readonly CriterionView[] | null | undefined): number => (criteria ?? []).filter((c) => c.canary === "tampered").length;
+
+/**
+ * Two-track progress (ADR-020): verified segments are facts and may be
+ * green; observed ones are hollow and grey; human criteria sit apart. With
+ * the criteria at hand, a pass with a tampered canary leaves the verified
+ * count and takes an amber segment of its own: "verified 2/3 · 1 doesn't
+ * count".
+ */
+export function CriteriaBar(props: { progress: Progress; criteria?: readonly CriterionView[] | null; compact?: boolean; tiny?: boolean }) {
   const p = () => props.progress;
+  const discounted = () => Math.min(discountedOf(props.criteria), p().verified);
+  const verified = () => p().verified - discounted();
   const segs = () =>
     Array.from({ length: p().machine }, (_, i) =>
-      i < p().verified ? "verified" : i < Math.max(p().verified, p().observed) ? "observed" : "empty",
+      i < verified() ? "verified" : i < p().verified ? "discounted" : i < Math.max(p().verified, p().observed) ? "observed" : "empty",
     );
-  const full = () =>
-    [
-      p().machine > 0 ? `${t("honesty.verified", { v: p().verified, m: p().machine })} · ${t("honesty.observed", { o: p().observed, m: p().machine })}` : t("honesty.notMachineVerified"),
-      p().human > 0 ? t("honesty.human", { d: p().human_done, n: p().human }) : "",
-    ]
+  const machineText = () =>
+    [t("honesty.verified", { v: verified(), m: p().machine }), discounted() > 0 ? t("honesty.discounted", { n: discounted() }) : "", t("honesty.observed", { o: p().observed, m: p().machine })]
       .filter(Boolean)
       .join(" · ");
+  const full = () =>
+    [p().machine > 0 ? machineText() : t("honesty.notMachineVerified"), p().human > 0 ? t("honesty.human", { d: p().human_done, n: p().human }) : ""].filter(Boolean).join(" · ");
+  const title = () => `${full()} — ${t("honesty.barTitle")}${discounted() > 0 ? ` ${t("honesty.discountedTitle")}` : ""}`;
   return (
-    <div class="criteria-bar" classList={{ compact: !!props.compact || !!props.tiny, tiny: !!props.tiny }} title={`${full()} — ${t("honesty.barTitle")}`}>
+    <div class="criteria-bar" classList={{ compact: !!props.compact || !!props.tiny, tiny: !!props.tiny, "has-discounted": discounted() > 0 }} title={title()}>
       <span class="sr-only">{full()}</span>
       <Show when={p().machine > 0} fallback={<span class="meta" aria-hidden="true">{props.tiny ? t("honesty.noMachineShort") : t("honesty.notMachineVerified")}</span>}>
         <span class="segs" aria-hidden="true">
@@ -130,11 +144,15 @@ export function CriteriaBar(props: { progress: Progress; compact?: boolean; tiny
             when={!props.tiny}
             fallback={
               <>
-                {p().verified}/{p().machine}
+                {verified()}/{p().machine}
               </>
             }
           >
-            {t("honesty.verified", { v: p().verified, m: p().machine })}
+            {t("honesty.verified", { v: verified(), m: p().machine })}
+            <Show when={discounted() > 0}>
+              <span class="sep">·</span>
+              <span class="discounted">{t("honesty.discounted", { n: discounted() })}</span>
+            </Show>
             <span class="sep">·</span>
             {t("honesty.observed", { o: p().observed, m: p().machine })}
           </Show>

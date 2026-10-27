@@ -553,6 +553,7 @@ async fn caught(scenario: &str, test_file: &str, test_text: &str, command: &str)
     assert!(d.sentinels.iter().any(|s| s.sentinel == "source_patches_tests"), "{what}");
     assert_eq!(d.criteria[0].canary, Some(tower_core::view::CanaryState::Tampered), "{what}");
     assert_eq!(d.summary.progress.verified, 0, "a tampered pass is not counted as verified: {what}");
+    assert_eq!(d.summary.progress.not_evidence, Some(true), "and the summary says so: {what}");
     true
 }
 

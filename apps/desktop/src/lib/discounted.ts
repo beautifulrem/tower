@@ -1,9 +1,7 @@
 /**
  * Goals with a pass that is not evidence (its must-fail canary passed too),
- * learned from every goal detail read. The summaries the board and the
- * sidebar get do not say so — their verified count leaves such a pass out,
- * but a stale one is left out the same way — so a goal's glyph turns to the
- * seal's ◆ once its detail has been read anywhere: the goal page, the review.
+ * learned from every goal detail read, alongside the summaries' own
+ * `progress.not_evidence` (which the board and the sidebar read first).
  */
 import { createSignal } from "solid-js";
 

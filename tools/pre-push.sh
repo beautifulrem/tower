@@ -14,6 +14,7 @@ cargo test --workspace --quiet >/dev/null
 node --test extensions/tower-goal/policy.test.ts extensions/tower-goal/sandboxfs.test.ts >/dev/null
 # The interface end to end (WebKit), which no unit test replaces.
 if [ -z "$SKIP_E2E" ]; then
-  tools/e2e.sh >/tmp/tower-pre-push-e2e.log 2>&1 || { tail -30 /tmp/tower-pre-push-e2e.log; exit 1; }
+  # A port of its own: never a preview server some other checkout left running.
+  E2E_PORT=$((20000 + $$ % 20000)) tools/e2e.sh >/tmp/tower-pre-push-e2e.log 2>&1 || { tail -30 /tmp/tower-pre-push-e2e.log; exit 1; }
 fi
 echo "pre-push: ok"

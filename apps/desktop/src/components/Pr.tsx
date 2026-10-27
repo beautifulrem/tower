@@ -18,7 +18,7 @@ export function PrLine(props: { pr: PrView; compact?: boolean }) {
       <span class="t1">PR</span>
       <span class="t2">{stateWord()}</span>
       <Show when={s().passed + s().failed + s().pending > 0}>
-        <span class="sep">·</span>
+        <span class="sep" />
         <span class="row num" style={{ gap: "6px" }}>
           <Show when={s().passed > 0}>
             <span class="row" style={{ gap: "3px" }}>
@@ -38,7 +38,7 @@ export function PrLine(props: { pr: PrView; compact?: boolean }) {
         </span>
       </Show>
       <Show when={!props.compact && s().failing.length}>
-        <span class="sep">·</span>
+        <span class="sep" />
         <span class="code-val t1 ellipsis">{s().failing.join("  ")}</span>
       </Show>
     </button>

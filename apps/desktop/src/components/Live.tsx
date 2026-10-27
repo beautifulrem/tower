@@ -141,13 +141,13 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
                 {d().action}
               </span>
               <Show when={d().target && !props.hideTarget}>
-                <span class="sep live-target-sep">·</span>
+                <span class="sep live-target-sep" />
                 <span class="live-target" classList={{ "code-val": !!d().code?.target }}>
                   {d().target}
                 </span>
               </Show>
               <Show when={d().elapsed && !props.large}>
-                <span class="sep live-elapsed-sep">·</span>
+                <span class="sep live-elapsed-sep" />
                 <span class="live-elapsed num t3">{d().elapsed}</span>
               </Show>
             </>

@@ -201,7 +201,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
         <div class="trace-divider">
           <span class="trace-time num">{clock(props.e.at)}</span>
           <span>
-            {t("trace.runStarted", { n: (ev() as { run_no: number }).run_no })} · {runPurposeLabel((ev() as { purpose: string }).purpose)}
+            {t("trace.runStarted", { n: (ev() as { run_no: number }).run_no })}<span class="sep" />{runPurposeLabel((ev() as { purpose: string }).purpose)}
           </span>
         </div>
       }
@@ -227,7 +227,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                     <span class="mono t2 ellipsis grow" title={e.summary || undefined}>
                       {call() || e.summary || "—"}
                       <Show when={call() && result()}>
-                        <span class="t3"> · {result()}</span>
+                        <span class="t3"><span class="sep" />{result()}</span>
                       </Show>
                     </span>
                     <span class="meta num">{duration(e.duration_ms)}</span>
@@ -254,7 +254,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                     <ResultMark kind={c.passed ? "pass" : "fail"} />
                     <span class="ellipsis">
                       {t("trace.originalTests", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
-                      <span class="t3"> · {c.passed ? t("goal.withOriginalTests") : t("goal.dependsOnEditedTests")}</span>
+                      <span class="t3"><span class="sep" />{c.passed ? t("goal.withOriginalTests") : t("goal.dependsOnEditedTests")}</span>
                     </span>
                     <span />
                     <span class="col-pin">
@@ -274,7 +274,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                     <span class="ellipsis">
                       {t("trace.lookCaptured", { criterion: c.criterion, side: c.side === "base" ? t("look.before") : t("look.after") })}
                       <Show when={c.error}>
-                        <span class="t3"> · {c.error}</span>
+                        <span class="t3"><span class="sep" />{c.error}</span>
                       </Show>
                     </span>
                     <span />
@@ -306,7 +306,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                   <div class="injected">
                     <button class="link-plain injected-head" onClick={() => setOpen((o) => !o)} aria-expanded={open()}>
                       <Icon name="harness" size={10} />
-                      {t("trace.injected")} · {c.channel === "steer" ? t("trace.steer") : t("trace.message")}
+                      {t("trace.injected")}<span class="sep" />{c.channel === "steer" ? t("trace.steer") : t("trace.message")}
                       <Icon name={open() ? "caret-down" : "caret-right"} size={10} />
                     </button>
                     {/* The text is for the agent, in its language: the fold says so, so English in a Chinese interface is not a gap. */}
@@ -326,7 +326,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       <ResultMark kind={c.passed ? "pass" : "fail"} />
                       <span class="ellipsis">
                         {t("trace.verifier", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
-                        <span class="t3"> · {t("common.exitCode", { code: c.exit_code ?? "—" })}</span>
+                        <span class="t3"><span class="sep" />{t("common.exitCode", { code: c.exit_code ?? "—" })}</span>
                       </span>
                       <span class="col-dur">{duration(c.duration_ms)}</span>
                       <span class="col-pin">
@@ -353,9 +353,9 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       <ResultMark kind={c.passed ? "pass" : "fail"} />
                     </Show>
                     <span class="ellipsis" title={c.error ?? undefined}>
-                      <Show when={!c.error} fallback={<>{t("trace.baselineError", { criterion: c.criterion })}<span class="t3"> · {c.error}</span></>}>
+                      <Show when={!c.error} fallback={<>{t("trace.baselineError", { criterion: c.criterion })}<span class="t3"><span class="sep" />{c.error}</span></>}>
                         {t("trace.baseline", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
-                        <span class="t3"> · {c.passed ? t("goal.passedOnBaseShort") : t("goal.redToGreen")}</span>
+                        <span class="t3"><span class="sep" />{c.passed ? t("goal.passedOnBaseShort") : t("goal.redToGreen")}</span>
                       </Show>
                     </span>
                     <span />
@@ -378,10 +378,10 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                     <LifecycleGlyph goal={{ state: c.to, progress: EMPTY_PROGRESS, verified_pin: null }} />
                     {stateLabel(c.to)}
                     <Show when={c.reason}>
-                      <span class="t2 ellipsis"> · {pauseLabel(c.reason!)}</span>
+                      <span class="t2 ellipsis"><span class="sep" />{pauseLabel(c.reason!)}</span>
                     </Show>
                     <Show when={!c.reason && c.note}>
-                      <span class="t2 ellipsis"> · {runPurposeLabel(c.note!)}</span>
+                      <span class="t2 ellipsis"><span class="sep" />{runPurposeLabel(c.note!)}</span>
                     </Show>
                   </span>
                 );
@@ -416,7 +416,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       <Show when={c.severity >= 3} fallback={<NoticeMark />}>
                         <DangerMark />
                       </Show>
-                      {t("trace.sentinel")} · {c.title}
+                      {t("trace.sentinel")}<span class="sep" />{c.title}
                     </span>
                     <span class="meta mono pre">{c.detail}</span>
                   </div>
@@ -426,7 +426,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
             <Match when={ev().kind === "stalled" && ev()}>
               {(x) => (
                 <span class="t1 row">
-                  <NoticeMark /> {t("trace.stalled")} · {(x() as { detail: string }).detail}
+                  <NoticeMark /> {t("trace.stalled")}<span class="sep" />{(x() as { detail: string }).detail}
                 </span>
               )}
             </Match>
@@ -450,7 +450,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
             <Match when={ev().kind === "local_files_copied" && ev()}>
               {(x) => (
                 <span class="t2">
-                  {t("trace.localCopied")} · <span class="mono">{(x() as { files: string[] }).files.join("  ")}</span>
+                  {t("trace.localCopied")}<span class="sep" /><span class="mono">{(x() as { files: string[] }).files.join("  ")}</span>
                 </span>
               )}
             </Match>
@@ -461,7 +461,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                   <span class="t1">
                     {t("trace.pushed")} <span class="mono">{c.branch}</span>
                     <Show when={c.pr_url}>
-                      <span class="sep">·</span>
+                      <span class="sep" />
                       <span class="mono t2">{c.pr_url}</span>
                     </Show>
                   </span>

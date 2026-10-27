@@ -205,7 +205,7 @@ export function GoalPage(props: { id: string }) {
                       <button class="link-quiet row text-btn" style={{ gap: "5px" }} onClick={() => go({ name: "goal", id: o.goal_id })} title={o.title}>
                         <NoticeMark />
                         <span>{t("goal.overlaps", { id: o.goal_id })}</span>
-                        <span class="sep">·</span>
+                        <span class="sep" />
                         <span class="code-val t3">{o.files.join("  ")}</span>
                         <Show when={o.total > o.files.length}>
                           <span class="t3"> +{o.total - o.files.length}</span>

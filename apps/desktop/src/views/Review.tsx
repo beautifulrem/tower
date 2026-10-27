@@ -705,11 +705,11 @@ export function Review(props: { id: string }) {
               {t("review.hunksAccepted", { n: unitAccepted(), total: unitHunks() })}
             </Show>
             <Show when={unitAccepted() === unitHunks() && unitIdx() < units().length - 1}>
-              <span class="sep">·</span>
+              <span class="sep" />
               <Kbd k="v" /> {t("review.keyNextUnit")}
             </Show>
             <Show when={unitAccepted() === unitHunks() && unitIdx() === units().length - 1 && g()?.state === "in_review"}>
-              <span class="sep">·</span>
+              <span class="sep" />
               <Kbd k="mod+shift+enter" /> {t("review.accept")}
             </Show>
           </span>

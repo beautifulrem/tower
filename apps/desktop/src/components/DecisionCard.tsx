@@ -332,15 +332,15 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                   <div class="decision-readout decision-readout-main halt">
                     <Seal pin={g().verified_pin} large />
                     <Show when={g().diffstat}>
-                      <span class="sep">·</span>
+                      <span class="sep" />
                       <span class="num">
                         <span class="t1">+{count(g().diffstat!.additions)}</span>
                         <span class="diff-del"> −{count(g().diffstat!.deletions)}</span>
                       </span>
-                      <span class="sep">·</span>
+                      <span class="sep" />
                       <span class="num">{t("common.files", { n: g().diffstat!.files })}</span>
                     </Show>
-                    <span class="sep">·</span>
+                    <span class="sep" />
                     <CriteriaBar progress={g().progress} compact />
                   </div>
                 )}

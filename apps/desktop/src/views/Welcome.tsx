@@ -100,7 +100,7 @@ function SampleCard() {
     <div class="welcome-sample" aria-hidden="true">
       <div class="row">
         <Seal pin="a4a90b2" />
-        <span class="sep">·</span>
+        <span class="sep" />
         <CriteriaBar progress={{ verified: 2, observed: 1, machine: 2, human: 0, human_done: 0 }} compact />
       </div>
       <Claim kind={t("claimKind.cause")}>{t("welcome.sampleClaim")}</Claim>

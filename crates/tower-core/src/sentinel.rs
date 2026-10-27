@@ -455,7 +455,7 @@ pub fn scan_with(files: &[DiffFile], scope: &Scope, commands: &[String], lang: L
         hits.push(hit("source_patches_tests", HIGH, patches.join("\n"), lang));
     }
     if !machinery.is_empty() {
-        hits.push(hit("source_touches_tests", 2, machinery.join("\n"), lang));
+        hits.push(hit("source_touches_tests", HIGH, machinery.join("\n"), lang));
     }
 
     let snapshots: Vec<&str> = files

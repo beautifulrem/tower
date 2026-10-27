@@ -500,7 +500,15 @@ fn tail_lines(s: &str, n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::bench::paths_gone;
+    use super::bench::{paths_gone, tests_ran};
+
+    #[test]
+    fn a_failure_counts_only_when_the_tests_ran() {
+        assert_eq!(tests_ran("cargo test -q", "test result: FAILED. 0 passed; 1 failed"), Some(true));
+        assert_eq!(tests_ran("cargo test -q", "error: rustup could not choose a version of cargo to run"), Some(false));
+        assert_eq!(tests_ran("npm test", "npm ERR! missing script: test"), Some(false));
+        assert_eq!(tests_ran("sh check.sh", "anything"), None);
+    }
     use super::*;
 
     #[test]

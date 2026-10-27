@@ -979,7 +979,7 @@ async fn criteria_that_cannot_run_in_the_sandbox_pause_the_goal_early() {
     assert_eq!(g.pause_reason, Some(PauseReason::CriteriaCannotRun));
     let d = h.sup.goal(&id).unwrap();
     let err = d.criteria[0].base_error.clone().expect("the base run is an environment problem, not red");
-    assert!(err.contains("sandbox refused"), "{err}");
+    assert!(err.contains("refused by the verification sandbox"), "{err}");
     assert_eq!(d.criteria[0].passed_on_base, None);
 }
 

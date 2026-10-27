@@ -192,7 +192,8 @@ export function envGauges(env: EnvironmentStatus | null | undefined, engine: str
   out.push({ key: "sandbox", label: t("settings.gaugeSandbox"), mark: noSandbox ? "notice" : "ok", value: noSandbox ? t("settings.gaugeNone") : t("settings.gaugeOn") });
   if (env.git_version) {
     const unset = hasIssue(env, "git_identity_missing");
-    out.push({ key: "identity", label: t("settings.gaugeIdentity"), mark: unset ? "attention" : "ok", value: unset ? t("settings.gaugeUnset") : t("settings.gaugeSet") });
+    // ◇, as in the check list under it and on the welcome page: a missing identity blocks writing a branch, not a run, so it is not ◆.
+    out.push({ key: "identity", label: t("settings.gaugeIdentity"), mark: unset ? "notice" : "ok", value: unset ? t("settings.gaugeUnset") : t("settings.gaugeSet") });
   }
   return out;
 }

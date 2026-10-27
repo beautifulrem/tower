@@ -27,7 +27,9 @@ pub fn pause_after_stop(inner: &Arc<Inner>, goal: &str, reason: PauseReason, det
     let lang = inner.lang();
     inner.withdraw(goal, &[InboxKind::Question, InboxKind::Approval], &tr!(lang, "运行已停止", "The run stopped"));
     inner.set_mode(goal, Mode::Idle)?;
-    inner.transition(goal, Transition::Pause { reason }, None, detail)?;
+    // The trace keeps the words of the moment; the card is worded on read.
+    let note = tower_core::i18n::PauseNote::render(detail, lang);
+    inner.transition(goal, Transition::Pause { reason }, None, &note)?;
     if reason.needs_human() {
         let rec = inner.store(|s| s.goal(goal))?;
         inner.open_inbox(paused_item(&rec, reason, detail, lang, matches!(reason, PauseReason::IdleWithoutSubmit)))?;

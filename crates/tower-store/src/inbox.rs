@@ -62,16 +62,17 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
         _ => (stored.clone(), stored),
     };
     // Tower's own explanation follows the language too.
-    let body =
-        if kind == InboxKind::Stalled && tower_core::i18n::Stall::decode(&r.get::<_, String>("subject")?).is_some() {
-            tr!(
-                lang,
-                "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。",
-                "The agent is still running. You can keep waiting, write a steer, or pause it."
-            )
-        } else {
-            body
-        };
+    let body = if kind == InboxKind::Paused {
+        tower_core::i18n::PauseNote::render(&body, lang)
+    } else if kind == InboxKind::Stalled && tower_core::i18n::Stall::decode(&r.get::<_, String>("subject")?).is_some() {
+        tr!(
+            lang,
+            "Agent 仍在运行。你可以继续等待、写一句转向，或者暂停它。",
+            "The agent is still running. You can keep waiting, write a steer, or pause it."
+        )
+    } else {
+        body
+    };
     let stored_options: Vec<String> = json_col(r, "options")?;
     // Tower's own choices are shown in the current language (answers are
     // matched by meaning); an agent's suggested answers are left alone.

@@ -284,7 +284,7 @@ async fn check_budget(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     {
         let inner = inner.clone();
         let g = g.to_string();
-        let detail = tr!(inner.lang(), "已花费 ${cost:.2}", "Spent ${cost:.2}");
+        let detail = tower_core::i18n::PauseNote::Spent { cents: (cost * 100.0).round() as u64 }.encode();
         tokio::spawn(async move {
             let r = pause(&inner, &g, reason, &detail).await;
             report(&inner, &g, r).await;
@@ -407,7 +407,7 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         return Ok(());
     }
     let inner = inner.clone();
-    let detail = tr!(inner.lang(), "提醒过一次后仍未提交", "Still no submit after one reminder");
+    let detail = tower_core::i18n::PauseNote::NoSubmitAfterReminder.encode();
     tokio::spawn(async move {
         let r = pause(&inner, &g, PauseReason::IdleWithoutSubmit, &detail).await;
         report(&inner, &g, r).await;

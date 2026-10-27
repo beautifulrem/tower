@@ -79,7 +79,7 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
     }, { intervals: [250, 500, 1000] }).toMatch(/focused/);
   }
   // The colour check after a key press is local only: on the CI runner's WebKit the moved focus is in the
-  // class (checked above) but the computed colour never settles; see the issue linked in CONTRIBUTING.
+  // class (checked above) but the computed colour never settles there; not yet understood.
   if (!process.env.CI) {
     await expect.poll(() => fill(cards.nth(target))).toBe("filled");
     await expect.poll(() => fill(cards.nth(0))).toBe("plain");

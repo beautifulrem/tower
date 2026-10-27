@@ -14,7 +14,7 @@ use tower_verify::{Cancel, RunSpec};
 
 mod checks;
 mod env_error;
-mod guard;
+pub(crate) mod guard;
 mod held_out;
 mod looks;
 mod loopback;
@@ -22,7 +22,7 @@ mod perturb_run;
 mod processes;
 pub(super) use checks::{confirmed_refusal, paths_gone, sentinel_hit, tests_ran};
 use guard::{Coverage, Guard, Phase};
-use processes::RemoveOnDrop;
+use processes::{GuardDir, RemoveOnDrop};
 
 use super::{Outcome, SETUP_TIMEOUT, append_hit, command_for, names_held_out, setup_may_use_network, tail_lines};
 use crate::prompts::Failure;
@@ -92,7 +92,7 @@ pub(super) struct Bench<'a> {
     /// Loopback opened for criteria your own code needs it for.
     loopback: loopback::OpenLoopback,
     _cache: RemoveOnDrop,
-    _guard_dir: RemoveOnDrop,
+    _guard_dir: GuardDir,
 }
 
 /// What a step found besides the verdict.
@@ -140,9 +140,9 @@ impl<'a> Bench<'a> {
         // and the transcripts it reports to. Outside every directory the
         // sandbox may write, so a run can neither rewrite nor delete them.
         let guard_root = inner.paths.root.join("assert-guard").join(goal);
-        let _ = std::fs::remove_dir_all(&guard_root);
+        guard::remove_dir(&guard_root);
         let guard = Guard::install(&guard_root.join(short)).unwrap_or_default();
-        let guard_cleanup = RemoveOnDrop(guard_root);
+        let guard_cleanup = GuardDir(guard_root);
         let tower_files = run::TowerFiles {
             read: guard.iter().map(|g| g.dir().to_path_buf()).collect(),
             append: guard.iter().flat_map(|g| g.logs()).collect(),

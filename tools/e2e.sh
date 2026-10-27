@@ -4,6 +4,8 @@
 set -e
 root="$(cd "$(dirname "$0")/.." && pwd)"
 work="${TMPDIR:-/tmp}/tower-e2e"
+# A verification cut short leaves its guard transcripts append-only.
+[ -d "$work" ] && chflags -R nouappnd "$work" 2>/dev/null || true
 rm -rf "$work"
 mkdir -p "$work"
 "$root/tools/demo-engine/make_demo_repo.sh" "$work/shop" >/dev/null

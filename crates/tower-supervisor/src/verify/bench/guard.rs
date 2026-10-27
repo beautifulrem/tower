@@ -139,6 +139,26 @@ impl Guard {
     }
 }
 
+/// Removes a guard directory and everything in it, transcripts included:
+/// their append-only flag is cleared first, or nothing could delete them
+/// (not Tower, not you) and a later verification of the same snapshot could
+/// not set up its guard. Covers verifications that ended early or were cut
+/// short by a quit, where `close` never ran.
+pub(crate) fn remove_dir(dir: &Path) {
+    if !dir.exists() {
+        return;
+    }
+    if cfg!(target_os = "macos") {
+        let _ = std::process::Command::new("/usr/bin/chflags")
+            .args(["-R", "nouappnd"])
+            .arg(dir)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// Sets or clears the append-only flag (macOS; elsewhere the transcript is
 /// only protected by the directory it lives in).
 fn append_only(path: &Path, on: bool) {
@@ -291,6 +311,24 @@ pub(in crate::verify) fn unchecked_detail(commands: &[(String, Coverage)], lang:
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_guard_directory_left_with_its_transcripts_locked_is_removed() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("assert-guard/G-0001/abc");
+        let guard = Guard::install(&dir).unwrap().unwrap();
+        // Cut short: `close` never ran, the transcripts are still append-only.
+        drop(guard);
+        if cfg!(target_os = "macos") {
+            assert!(std::fs::remove_dir_all(root.path().join("assert-guard")).is_err(), "the flag holds");
+        }
+        remove_dir(&root.path().join("assert-guard"));
+        assert!(!root.path().join("assert-guard").exists());
+        // And the same snapshot gets its guard again.
+        assert!(Guard::install(&dir).unwrap().is_some());
+        remove_dir(&root.path().join("assert-guard"));
+    }
+
     use super::*;
 
     fn line(kind: &str, nonce: &str, rest: &str) -> String {

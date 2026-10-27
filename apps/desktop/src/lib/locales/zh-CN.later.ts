@@ -282,7 +282,12 @@ export const zhLater = {
     maxRework: "自动返工上限",
     isolation: "隔离",
     network: "允许联网",
-    networkHint: "关闭时，Agent 与验收检查只能访问 localhost；准备命令始终可以联网。",
+    networkHint: "关闭时，不能访问本机以外；本机上也只能访问下面的端口，以及 Agent 或验收检查自己的进程在监听的端口。准备命令始终可以联网。",
+    ports: "本机端口",
+    portsHint: "不联网时，Agent 与验收检查可以访问的本机端口，例如本地数据库。用逗号分隔。",
+    loopbackOpen: "放开本机回环",
+    loopbackOpenHint:
+      "适合在运行时自己挑端口的测试（监听 0 号端口的服务器、构建守护进程）：本机上除已在监听的服务外都可以访问；之后才启动的服务也会变得可以访问。",
     engine: "引擎",
     model: "模型",
     modelHint: "来自你的 Pi 配置。",

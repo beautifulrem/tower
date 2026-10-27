@@ -917,9 +917,16 @@ test("the contract editor's switch is 28×18 with a 32×24 target", async ({ pag
   expect(Math.round(box.height)).toBe(18);
   // The pressable area reaches 3px above and below and 2px to each side: a press just outside the drawn switch still flips it.
   await expect(toggle).toHaveAttribute("aria-checked", "false");
-  await page.mouse.click(box.x + box.width / 2, box.y - 2);
+  // Measured right before each press: the page may still be settling (fonts, the sheet's entrance).
+  const at = async () => {
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return (await toggle.boundingBox())!;
+  };
+  let b = await at();
+  await page.mouse.click(b.x + b.width / 2, b.y - 2);
   await expect(toggle).toHaveAttribute("aria-checked", "true");
-  await page.mouse.click(box.x - 1, box.y + box.height / 2);
+  b = await at();
+  await page.mouse.click(b.x - 1, b.y + b.height / 2);
   await expect(toggle).toHaveAttribute("aria-checked", "false");
 });
 

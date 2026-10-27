@@ -312,6 +312,8 @@ pub(crate) fn quiet_digest(inner: &Inner, s: &Settings) {
         (None, true) => *since = Some(tower_store::system_now()),
         (Some(start), false) => {
             *since = None;
+            // The desk announces what waited (one notification if several).
+            inner.emit_inbox();
             let url = s.push_url.trim().to_string();
             if url.is_empty() {
                 return;

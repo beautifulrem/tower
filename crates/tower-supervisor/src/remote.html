@@ -84,9 +84,10 @@
   /* The bell: 44pt of target around a 12px glyph, quiet until pressed. */
   .strip .bell { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 0 -14px 0 -4px; padding: 0; border: 0; background: transparent; color: var(--text-3); opacity: .7; flex: 0 0 auto; }
   .strip .bell[aria-expanded="true"], .strip .bell:active { opacity: 1; color: var(--text-1); }
-  /* "Later": two times, offered inline where the bell is; no sheet to dismiss. */
-  .later { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--text-3); }
-  .later .btn { min-height: 40px; font-size: 14px; }
+  /* "Later": the label on its own line, the two times side by side under it; no sheet to dismiss. */
+  .later { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; align-items: center; font-size: 12px; color: var(--text-3); }
+  .later > span { grid-column: 1 / -1; }
+  .later .btn { min-height: 40px; padding: 0 10px; font-size: 14px; }
   .main { padding: 10px 12px 12px; display: grid; gap: 8px; }
   .question { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: -0.008em; user-select: text; }
   .question.code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }

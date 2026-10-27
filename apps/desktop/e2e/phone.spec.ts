@@ -38,6 +38,13 @@ test("a decision can be put aside from the phone, with two times and a 44pt bell
   expect(box!.height).toBeGreaterThanOrEqual(44);
   expect(box!.width).toBeGreaterThanOrEqual(44);
   await bell.click();
+  // The label takes a line of its own; the two times share the next, never one on each.
+  const later = page.locator(".later").first();
+  const label = (await later.locator("span").first().boundingBox())!;
+  const hour = (await page.getByRole("button", { name: "In 1 hour" }).boundingBox())!;
+  const tomorrow = (await page.getByRole("button", { name: "Tomorrow 9:00" }).boundingBox())!;
+  expect(label.y + label.height).toBeLessThanOrEqual(hour.y + 1);
+  expect(Math.abs(hour.y - tomorrow.y)).toBeLessThan(1);
   const sent = page.waitForRequest((r) => r.url().endsWith("/api/snooze") && r.method() === "POST");
   await page.getByRole("button", { name: "In 1 hour" }).click();
   const body = (await sent).postDataJSON() as { inbox_id: string; until: number };

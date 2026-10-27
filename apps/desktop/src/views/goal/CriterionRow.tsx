@@ -11,11 +11,11 @@ import { BaselineLine, CanaryLine, HeldOutLine, ObsChip } from "../../components
 import type { CriterionView } from "../../gen/CriterionView";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
-import { t } from "../../lib/i18n";
+import { t, withLater } from "../../lib/i18n";
 import { act, state } from "../../lib/store";
 
 // The screenshots of look criteria load on first use, so start-up stays small.
-const LookStrip = lazy(() => import("../../components/Look").then((m) => ({ default: m.LookStrip })));
+const LookStrip = lazy(withLater(() => import("../../components/Look").then((m) => ({ default: m.LookStrip }))));
 
 /**
  * One criterion as an instrument row: mark · id · title and command, then

@@ -8,13 +8,13 @@
  * action bar stuck to the bottom like a signature line; the dials (autonomy,
  * budget, network, engine) on the right as the schedule, numbered on.
  */
-import { For, type JSX, Show, createEffect, createResource, createSignal, on, onMount } from "solid-js";
+import { For, Show, createEffect, createResource, createSignal, on, onMount } from "solid-js";
 import { createStore, produce, unwrap } from "solid-js/store";
 
 import { Icon } from "../components/Glyph";
 import { LookStepsEdit as LookSteps } from "../components/LookSteps";
 import { BaseTestsNotice } from "../components/TestCheck";
-import { Button, Field, IconButton, Select, Toggle } from "../components/ui";
+import { Button, ClauseHead, Field, IconButton, Select, Toggle } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import type { ContractIssue } from "../gen/ContractIssue";
 import type { Criterion } from "../gen/Criterion";
@@ -147,18 +147,6 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const projectName = () => state.projects.find((p) => p.id === projectId())?.name ?? "";
   // The masthead's state word: what this document is — a new contract, a draft being edited, or an amendment of version n.
   const mastState = () => (props.amendId ? t("contract.mastAmend", { v: c.version }) : props.draftId ? t("contract.mastDraft") : t("contract.mastNew"));
-
-  /** A clause head: its number in tabular figures, its title in the tracked voice, a hairline to the edge, and the clause's own actions after it. */
-  const ClauseHead = (p: { n: number; title: string; children?: JSX.Element }) => (
-    <header class="clause-head halt">
-      <span class="clause-no num" aria-hidden="true">
-        {String(p.n).padStart(2, "0")}
-      </span>
-      <h2 class="clause-title">{p.title}</h2>
-      <span class="clause-rule" aria-hidden="true" />
-      {p.children}
-    </header>
-  );
 
   return (
     <div class="editor">

@@ -305,7 +305,6 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
         <NeedsYouMark />
         <span class="decision-kind">{kindLabel(it().kind)}</span>
         <Show when={props.showGoal !== false}>
-          <span class="sep">·</span>
           <button class="link-quiet ellipsis" onClick={() => go({ name: "goal", id: it().goal_id })}>
             <span class="code-val t2">{it().goal_id}</span> {it().goal_title}
           </button>
@@ -314,7 +313,6 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
         <Show when={it().kind === "ci_failed" && props.showGoal !== false && goal()?.pr}>
           {(pr) => (
             <>
-              <span class="sep">·</span>
               <PrLine pr={pr()} compact />
             </>
           )}
@@ -448,7 +446,6 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <NoticeMark /> <span>{t("decision.networkCaution")}</span>
               <Button size="s" variant="ghost" class="decision-caution-open" onClick={() => go({ name: "review", id: it().goal_id })}>
                 {t("goal.openChanges")}
-                <Icon name="chevron-right" size={10} />
               </Button>
             </p>
           </Show>

@@ -429,7 +429,7 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   await expect(page.locator(".hunk-fold-inner")).toHaveCount(0);
   const marked = page.locator(".hunk-head.hunk-accepted");
   await expect(marked).toHaveCount(1);
-  await expect(marked.getByRole("button", { name: /Accepted · \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(marked.getByRole("button", { name: /Accepted, \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
   await expect(marked.getByRole("button", { name: "Undo this hunk" })).toHaveCount(0);
   expect(await page.locator(".dl").count()).toBeLessThan(linesBefore);
   // Your register: the solid rule, not green.
@@ -618,7 +618,7 @@ test("quiet hours are a daily window with two edges, and the last push's failure
   await expect(from).toHaveValue("23:30");
   await expect(page.getByLabel("Also push when a goal is ready to accept")).toBeChecked();
   const status = page.locator(".push-status");
-  await expect(status).toContainText("Last push failed · 21:03");
+  await expect(status).toContainText("Last push failed at 21:03");
   await expect(status).toContainText("ntfy.example.net could not be reached");
   // A test push goes where the field points, and the line follows it.
   await page.getByRole("button", { name: "Send a test push" }).click();
@@ -679,7 +679,7 @@ test("a result produced with the held-out tests present is marked for you only, 
   await openTower(page, "goal/G-0001", { enrich: enrichHeldOut });
   const chips = page.locator(".chip-you");
   await expect(chips).toHaveCount(1);
-  await expect(chips).toHaveText("held-out tests · for you only");
+  await expect(chips).toHaveText("held-out tests, for you only");
   await expect(chips).toHaveAttribute("title", /never saw this output/);
   // The chip sits under C2's row, not C1's.
   const c2 = page.locator(".criterion").filter({ has: page.locator(".num", { hasText: /^C2$/ }) });
@@ -792,6 +792,23 @@ test("without held-out tests the goal page says so once, at a reading measure, w
   const [p, l] = [(await none.boundingBox())!, (await link.boundingBox())!];
   expect(p.width).toBeLessThan(700);
   expect(l.x + l.width).toBeLessThanOrEqual(p.x + p.width + 1);
+});
+
+test("the reason under an empty state reads at its own 44ch measure, not squeezed to a third of it", async ({ page }) => {
+  await openTower(page, "goal/G-0002");
+  const body = page.locator(".goal-page .empty-body").first();
+  await expect(body).toBeVisible();
+  const [w, max] = await body.evaluate((el) => [el.getBoundingClientRect().width, parseFloat(getComputedStyle(el).maxWidth)]);
+  // As wide as its measure, or as its own text on one line when that is shorter.
+  const text = await body.evaluate((el) => {
+    const probe = el.cloneNode(true) as HTMLElement;
+    Object.assign(probe.style, { position: "absolute", whiteSpace: "nowrap", maxWidth: "none", width: "auto" });
+    el.parentElement!.appendChild(probe);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    return width;
+  });
+  expect(w).toBeGreaterThanOrEqual(Math.min(max, text) - 1);
 });
 
 test("with held-out tests set, nothing is said about their absence", async ({ page }) => {

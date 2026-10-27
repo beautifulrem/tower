@@ -283,17 +283,30 @@ export function AcceptPanel(props: AcceptPanelProps) {
   return (
     <Overlay onClose={props.onClose} label={t("review.acceptTitle", { id: props.id })} title={t("review.acceptTitle", { id: props.id })} instant initialFocus="panel">
       <div class="panel-section">
-        <div class="fact-row">
-          <Show when={g()?.progress.machine} fallback={<span class="meta">{t("review.noMachine")}</span>}>
-            <Seal pin={g()!.verified_pin} large tampered={tampered().length > 0} />
-            <span class="meta">
-              {tampered().length > 0 ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length }) : t("review.allPassed", { n: g()!.progress.machine })}
+        {/* The verdict is the sheet's masthead: the seal set as a stamp on a line of its own — Tower's one loud moment, it
+            presses in once as the sheet opens — and what it stands on, in one quiet line under it. */}
+        <div class="accept-verdict">
+          <Show
+            when={g()?.progress.machine}
+            fallback={
+              <span class="meta accept-basis">
+                {t("review.noMachine")}
+                <Show when={props.total > 0 && props.viewed === props.total}>
+                  <span class="num accept-viewed">{t("review.viewedAll", { n: props.total })}</span>
+                </Show>
+              </span>
+            }
+          >
+            <span class="accept-stamp">
+              <Seal pin={g()!.verified_pin} large tampered={tampered().length > 0} />
             </span>
-          </Show>
-          {/* Every unit viewed is said once, here; anything unviewed is listed below as still open. */}
-          <Show when={props.total > 0 && props.viewed === props.total}>
-            <span class="sep">·</span>
-            <span class="meta num">{t("review.viewedAll", { n: props.total })}</span>
+            <span class="meta accept-basis">
+              {tampered().length > 0 ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length }) : t("review.allPassed", { n: g()!.progress.machine })}
+              {/* Every unit viewed is said once, here; anything unviewed is listed below as still open. */}
+              <Show when={props.total > 0 && props.viewed === props.total}>
+                <span class="num accept-viewed">{t("review.viewedAll", { n: props.total })}</span>
+              </Show>
+            </span>
           </Show>
         </div>
         <For each={humans()}>

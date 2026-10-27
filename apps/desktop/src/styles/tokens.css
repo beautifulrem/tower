@@ -13,6 +13,9 @@
      `=>` two characters, `://` unspaced), a slashed zero. */
   --font-features-mono: "liga" 0, "calt" 0, "zero" 1;
   --font-features-num: "liga" 0, "calt" 0, "tnum" 1, "zero" 1;
+  /* Inter's display cut (the top of its optical-size axis): titles of 20px and up, the seal's verdict and the contract's
+     masthead are drawn with their own tightness instead of the text cut made bigger. */
+  --opsz-display: "opsz" 32;
 
   /* Latin tracking per size; CJK is never tracked. */
   --tr-12: 0;

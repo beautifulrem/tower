@@ -454,13 +454,10 @@ export function Review(props: { id: string }) {
                   <span>
                     <span class="t1">+{count(view()!.stat.additions)}</span> −{count(view()!.stat.deletions)}
                   </span>
-                  <span class="sep">·</span>
-                  {t("common.files", { n: view()!.stat.files })}
+                  <span>{t("common.files", { n: view()!.stat.files })}</span>
                   <Show when={!solo()}>
-                    <span class="sep">·</span>
-                    {t("review.units", { n: units().length })}
+                    <span>{t("review.units", { n: units().length })}</span>
                   </Show>
-                  <span class="sep">·</span>
                 </Show>
                 <span class="review-stat-pins code-val">
                   @{short(view()!.from)}
@@ -480,9 +477,6 @@ export function Review(props: { id: string }) {
               <Show when={g()}>
                 <button class="review-stat-group review-verify link-plain" onClick={() => setPanel("verify")} title={t("review.verifyOpen")} aria-haspopup="dialog">
                   <Seal pin={g()!.verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
-                  <Show when={g()!.verified_pin}>
-                    <span class="sep">·</span>
-                  </Show>
                   <CriteriaBar progress={g()!.progress} criteria={detail()?.criteria} compact />
                 </button>
               </Show>

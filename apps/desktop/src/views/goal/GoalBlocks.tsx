@@ -174,7 +174,7 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
         aside={
           <Show when={g().diffstat}>
             <Button size="s" variant="ghost" onClick={() => go({ name: "review", id: g().id })}>
-              {t("goal.openChanges")} <Icon name="chevron-right" size={10} />
+              {t("goal.openChanges")}
             </Button>
           </Show>
         }

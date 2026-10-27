@@ -118,9 +118,9 @@ describe("FileDiff comment flow", () => {
     const { container: folded } = mount({ onUndo: () => {}, accepted: () => true, onAccept: () => {} });
     expect(folded.querySelectorAll(".dl")).toHaveLength(0);
     expect(folded.querySelector(".hunk-head")!.className).toContain("hunk-accepted");
-    expect(screen.getByText(/Accepted · 4 lines folded/)).toBeTruthy();
+    expect(screen.getByText(/Accepted, 4 lines folded/)).toBeTruthy();
     expect(screen.queryByText("Undo this hunk")).toBeNull();
-    expect(screen.getByText(/Accepted · 4 lines/).closest("button")!.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText(/Accepted, 4 lines/).closest("button")!.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("closes an accepted hunk over 160ms: a row as tall as its lines stands in their place and shrinks to nothing, then goes", async () => {

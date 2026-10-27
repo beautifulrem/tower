@@ -64,7 +64,6 @@ export function ReviewNotes(props: { notes: ReviewNote[] }) {
             <Icon name={open() ? "caret-down" : "caret-right"} size={10} class="t3" />
             <span class="num">{t("review.notesCount", { n: sorted().length })}</span>
             <Show when={!open()}>
-              <span class="sep">·</span>
               <Mark danger={sorted()[0].danger} />
               <span class="review-note-text ellipsis">
                 <Prose text={sorted()[0].text} />

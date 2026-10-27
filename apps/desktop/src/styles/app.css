@@ -481,6 +481,12 @@
   color: var(--text-1);
   font-weight: 500;
 }
+/* Where the seal is the verdict (large), its word is set in the display cut like a title: the stamp's own tightness. */
+.seal-large .seal-word {
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  font-variation-settings: var(--opsz-display);
+}
 .seal-pin {
   color: var(--text-2);
 }
@@ -1367,8 +1373,9 @@ input[type="radio"] {
 .welcome-title {
   font-size: var(--fs-display);
   line-height: var(--lh-display);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.016em;
   font-weight: 500;
+  font-variation-settings: var(--opsz-display);
 }
 .welcome-lede {
   font-size: var(--fs-reading);
@@ -1426,19 +1433,14 @@ input[type="radio"] {
   border-top: 1px solid var(--border-strong);
 }
 .welcome-station-word {
-  font-size: 10px;
-  line-height: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--fs-hint);
+  line-height: 14px;
   color: var(--text-3);
   text-align: center;
   max-width: 7em;
   text-wrap: balance;
 }
-:root[lang="zh-CN"] .welcome-station-word {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
+
 /* The grammar, shown rather than described: a static sample card. */
 .welcome-sample {
   display: grid;
@@ -1510,8 +1512,9 @@ input[type="radio"] {
 .goal-title {
   font-size: var(--fs-title);
   line-height: var(--lh-title);
-  letter-spacing: var(--tr-20);
+  letter-spacing: -0.012em;
   font-weight: 500;
+  font-variation-settings: var(--opsz-display);
 }
 /* Identity on the left, the seal on the right. */
 .goal-sub {
@@ -1521,10 +1524,13 @@ input[type="radio"] {
   gap: var(--sp-4);
   min-width: 0;
 }
+/* Grouped by space and register, not by dots: the id in mono, then the project, the contract, the run, the state —
+   one gap apart, so the line reads as a set of readings rather than a string. */
 .goal-identity {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 0 var(--sp-3);
   min-width: 0;
 }
 .goal-side {
@@ -2067,7 +2073,7 @@ input[type="radio"] {
 .decision-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   height: 28px;
   padding: 0 12px;
   background: var(--attention-bg);
@@ -2226,8 +2232,7 @@ input[type="radio"] {
 .heldout-label {
   font-size: var(--fs-hint);
   line-height: var(--lh-hint);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--text-2);
 }
 .heldout-fail {
@@ -2573,7 +2578,7 @@ input[type="radio"] {
 .review-stat-group {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -2724,6 +2729,7 @@ input[type="radio"] {
 }
 .review-notes-head .num {
   flex: 0 0 auto;
+  margin-right: var(--sp-2);
   color: var(--text-1);
 }
 .review-notes .glyph {
@@ -3092,6 +3098,51 @@ input[type="radio"] {
   letter-spacing: var(--tr-16);
   font-weight: 500;
 }
+/* Accepting: the verdict as the sheet's masthead. The seal is set as a stamp — the glyph and the verdict word in the
+   display cut at the question's size, the pin beside it — and on opening it presses in once: down from a touch larger
+   and fainter, settling in 260ms. It is the one moment in Tower allowed to be loud, because it is the moment Tower
+   exists for; with reduced motion it simply stands. What the verdict rests on follows in one quiet line. */
+.accept-verdict {
+  display: grid;
+  gap: 2px;
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.accept-stamp {
+  justify-self: start;
+  transform-origin: left center;
+  animation: stamp 260ms var(--ease-out) both;
+}
+.accept-stamp .seal {
+  gap: 6px;
+  font-size: var(--fs-question);
+  line-height: var(--lh-question);
+}
+.accept-stamp .seal .glyph,
+.accept-stamp .seal svg {
+  width: 14px;
+  height: 14px;
+}
+.accept-stamp .seal-pin {
+  font-size: var(--fs-body);
+}
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+  60% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .accept-stamp {
+    animation: none;
+  }
+}
+.accept-viewed {
+  margin-left: var(--sp-3);
+}
 .panel-section {
   display: grid;
   gap: 4px;
@@ -3235,10 +3286,11 @@ input[type="radio"] {
   min-width: 0;
   padding-bottom: 56px;
 }
-/* The contract reads as a contract: a masthead in the wordmark's voice — what this is, whose, in which state — then
-   numbered clauses, each head a two-digit number in tabular figures, the title tracked and upper-case (CJK tracked a
-   little, never upper-cased), and a hairline to the edge in place of a rule above the block. The schedule on the right
-   numbers on from the clauses. The fields under each head keep the form's own grammar. */
+/* The contract reads as a contract: a masthead — what this is, whose, in which state — in the one voice of tracked
+   capitals the app keeps (CJK tracked a little, never upper-cased), then numbered clauses, each head a two-digit
+   number in tabular figures, the title a sentence-case heading, and a hairline to the edge in place of a rule above
+   the block. The schedule on the right numbers on from the clauses. The fields under each head keep the form's own
+   grammar. */
 .contract-mast {
   display: flex;
   align-items: center;
@@ -3249,6 +3301,7 @@ input[type="radio"] {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   font-weight: 500;
+  font-variation-settings: var(--opsz-display);
   color: var(--text-3);
 }
 .contract-mast .sep {
@@ -3281,24 +3334,24 @@ input[type="radio"] {
   margin-bottom: var(--sp-3);
   min-height: 24px;
 }
+/* A clause's number is a real sequence (the schedule numbers on from it), so it stays; its title is a heading in
+   sentence case, the masthead keeping the document's only capitals. */
 .clause-no {
+  min-width: 2ch;
   font-size: 11px;
   line-height: 16px;
   color: var(--text-4);
 }
 .clause-title {
-  font-size: 11px;
-  line-height: 16px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: var(--fs-section);
+  line-height: var(--lh-section);
+  letter-spacing: var(--tr-13);
   font-weight: 500;
-  color: var(--text-2);
+  color: var(--text-1);
   white-space: nowrap;
 }
 :root[lang="zh-CN"] .clause-title {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: none;
+  letter-spacing: 0;
 }
 .clause-rule {
   flex: 1 1 auto;
@@ -3376,17 +3429,82 @@ input[type="radio"] {
   color: var(--text-2);
 }
 
-.settings {
-  max-width: var(--reading-w);
+/* Settings is set out like the contract: the clauses in a reading column, their index standing beside it like the
+   contract's schedule (sticky, numbered as the heads are). In a half-screen window the index steps above the
+   clauses as one line. */
+.settings-page {
   display: grid;
-  gap: var(--sp-6);
+  grid-template-columns: minmax(0, var(--reading-w)) 200px;
+  gap: 0 var(--sp-10);
+  align-items: start;
+  max-width: calc(var(--reading-w) + 200px + var(--sp-10));
+}
+.settings {
+  display: grid;
+  gap: var(--sp-8);
+  min-width: 0;
 }
 .settings-block {
-  padding-bottom: var(--sp-5);
-  border-bottom: 1px solid var(--border-subtle);
+  scroll-margin-top: var(--sp-4);
 }
-.settings-block:last-child {
-  border-bottom: 0;
+.settings-index {
+  position: sticky;
+  top: 0;
+  padding-top: 2px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+}
+.settings-index ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.settings-index a {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-s);
+  color: var(--text-2);
+  text-decoration: none;
+}
+.settings-index a:hover {
+  color: var(--text-1);
+  background: var(--bg-hover);
+}
+/* The clause you are in: the selected ground and the 2px pen, the same "here" as the current hunk and the board's row. */
+.settings-index a.current {
+  color: var(--text-1);
+  background: var(--bg-selected);
+  box-shadow: inset 2px 0 0 var(--text-3);
+}
+/* On the hover and selected grounds the number steps up to text-3 / text-2: text-4 there falls under 4.5:1. */
+.settings-index .clause-no {
+  min-width: 2ch;
+  color: var(--text-3);
+}
+.settings-index a.current .clause-no {
+  color: var(--text-2);
+}
+@media (max-width: 1280px) {
+  .settings-page {
+    grid-template-columns: minmax(0, var(--reading-w));
+  }
+  .settings-index {
+    position: static;
+    order: -1;
+    margin-bottom: var(--sp-6);
+    padding-bottom: var(--sp-3);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .settings-index ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px var(--sp-1);
+  }
 }
 .settings-block .section-title {
   margin-bottom: var(--sp-3);
@@ -3400,7 +3518,8 @@ input[type="radio"] {
 .settings-head .section-title {
   margin: 0;
 }
-/* Label left, control right, like System Settings. */
+/* Each term's name, then its value: the names set flush left in their own column, like the defined terms of the
+   contract's summary rail (Intent, Scope fence), not right-aligned like a generic preferences form. */
 .settings-form {
   display: grid;
   grid-template-columns: 180px minmax(0, 520px);
@@ -3411,9 +3530,12 @@ input[type="radio"] {
   display: contents;
 }
 .settings-form .field-label {
-  text-align: right;
+  text-align: left;
   padding-top: 5px;
   color: var(--text-2);
+}
+.settings-form .toggle-row {
+  margin-bottom: 0;
 }
 .settings-form .field > :not(.field-label):not(.field-hint):not(.field-error) {
   grid-column: 2;
@@ -3708,16 +3830,10 @@ input[type="radio"] {
 .board-ghost-head > span {
   overflow: visible;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: var(--fs-hint);
   line-height: 12px;
-  letter-spacing: 0.1em;
   font-weight: 500;
-  text-transform: uppercase;
   color: var(--text-4);
-}
-:root[lang="zh-CN"] .board-ghost-head > span {
-  letter-spacing: 0.08em;
-  font-size: 11px;
 }
 /* The age ends at its right edge and the identity starts at its left: with only the column gap between them the
    two heads read as one word, so the identity's head steps in by a breath. */
@@ -3957,11 +4073,17 @@ input[type="radio"] {
 .empty-inline {
   padding: var(--sp-2) 0;
 }
+/* The row and its text take the block's width, so the reason under an empty state is held by its own 44ch measure and
+   not by the shrink-to-fit of nested flex and grid boxes (which set it at about 30ch). */
 .empty-row {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
+  flex: 1 1 auto;
   min-width: 0;
+}
+.empty-row > .empty-text {
+  flex: 1 1 auto;
 }
 /* The emptiest screens: a third of the way down, the wordmark above, the three rules under. */
 .empty-poster {
@@ -4110,43 +4232,29 @@ input[type="radio"] {
   padding-top: 10vh;
 }
 
-/* The two generic sheets — the shortcut table and the activity log — carry their titles in the wordmark's voice: small,
-   tracked, upper-case (CJK tracked a little and never upper-cased), a hairline running to the edge, like a scale title
-   grown up; their group titles the same one step smaller, like the board's column heads. Any good app has these two
-   sheets; the type is what says whose they are. */
+/* The two generic sheets — the shortcut table and the activity log — carry their titles as a clause head does: a
+   sentence-case heading with a hairline running to the edge; their group titles one step quieter, like the board's
+   scale titles. The capitals stay with the contract's masthead alone. */
 .panel-tracked .panel-title {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  font-size: 11px;
-  line-height: 16px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: var(--fs-section);
+  line-height: var(--lh-section);
   font-weight: 500;
-  color: var(--text-2);
+  color: var(--text-1);
 }
 .panel-tracked .panel-title::after {
   content: "";
   flex: 1;
   border-top: 1px solid var(--border-subtle);
 }
-:root[lang="zh-CN"] .panel-tracked .panel-title {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: none;
-}
 .panel-tracked .keys-group-title {
   margin-bottom: 6px;
-  font-size: 10px;
-  line-height: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  font-weight: 500;
   color: var(--text-3);
-}
-:root[lang="zh-CN"] .panel-tracked .keys-group-title {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: none;
 }
 
 .keys-sheet {

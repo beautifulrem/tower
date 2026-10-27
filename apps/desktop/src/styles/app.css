@@ -4630,3 +4630,77 @@ input[type="radio"] {
   grid-template-columns: 1fr 1fr;
   gap: var(--sp-2);
 }
+/* A look criterion's steps before the picture: a small numbered list inside the clause, numbered like the clauses
+   (tabular figures in text-4), each step a mono line; a hairline at the left ties the list to its criterion. */
+.look-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: var(--sp-3);
+  border-left: 1px solid var(--border-subtle);
+}
+.look-steps-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 24px;
+}
+.look-steps-title {
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-3);
+}
+:root[lang="zh-CN"] .look-steps-title {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+.look-steps-head .btn {
+  margin: -4px 0;
+}
+.look-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.look-step {
+  display: grid;
+  grid-template-columns: 2.5ch minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.look-step-no {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-4);
+}
+.look-step.invalid input {
+  border-color: var(--st-danger);
+}
+/* On the goal page the same list reads, under its criterion's title column. */
+.look-step-list-read {
+  margin: 2px 0 var(--sp-2) calc(14px + 2.5em + 2 * var(--sp-2));
+  padding-left: var(--sp-3);
+  border-left: 1px solid var(--border-subtle);
+}
+.look-step-list-read .look-step {
+  grid-template-columns: 2.5ch minmax(0, 1fr);
+  min-height: 20px;
+}
+.look-step-list-read .code-val {
+  color: var(--text-2);
+}
+.look-steps-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-3);
+  white-space: nowrap;
+}

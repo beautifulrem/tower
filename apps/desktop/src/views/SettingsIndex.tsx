@@ -1,6 +1,7 @@
 /**
- * Settings' index: its seven clauses, numbered as their heads are, standing
- * beside the page the way the contract's schedule stands beside its clauses.
+ * Settings' index: its seven clauses by name (they are not a sequence, so
+ * not numbered), standing beside the page the way the contract's schedule
+ * stands beside its clauses.
  * A click (or ↩ on a link) brings the clause to the top; the clause in view
  * carries the 2px pen — the same mark as the current hunk and the selected
  * row — so a long page always says where you are in it.
@@ -59,18 +60,17 @@ export function SettingsIndex() {
   };
   return (
     <nav class="settings-index halt" aria-label={t("settings.indexLabel")}>
-      <ol>
+      <ul>
         <For each={SETTINGS_CLAUSES}>
-          {(c, i) => (
+          {(c) => (
             <li>
               <a href={`#${c.id}`} aria-current={current() === c.id ? "location" : undefined} classList={{ current: current() === c.id }} onClick={(e) => go(e, c.id)}>
-                <span class="clause-no num">{String(i() + 1).padStart(2, "0")}</span>
-                <span>{t(`settings.${c.key}`)}</span>
+                {t(`settings.${c.key}`)}
               </a>
             </li>
           )}
         </For>
-      </ol>
+      </ul>
     </nav>
   );
 }

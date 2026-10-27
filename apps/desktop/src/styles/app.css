@@ -3563,7 +3563,7 @@ input[type="radio"] {
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
 }
-.settings-index ol {
+.settings-index ul {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -3590,14 +3590,6 @@ input[type="radio"] {
   background: var(--bg-selected);
   box-shadow: inset 2px 0 0 var(--text-3);
 }
-/* On the hover and selected grounds the number steps up to text-3 / text-2: text-4 there falls under 4.5:1. */
-.settings-index .clause-no {
-  min-width: 2ch;
-  color: var(--text-3);
-}
-.settings-index a.current .clause-no {
-  color: var(--text-2);
-}
 @media (max-width: 1280px) {
   .settings-page {
     grid-template-columns: minmax(0, var(--reading-w));
@@ -3609,7 +3601,7 @@ input[type="radio"] {
     padding-bottom: var(--sp-3);
     border-bottom: 1px solid var(--border-subtle);
   }
-  .settings-index ol {
+  .settings-index ul {
     display: flex;
     flex-wrap: wrap;
     gap: 2px var(--sp-1);

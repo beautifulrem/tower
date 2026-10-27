@@ -17,11 +17,12 @@ test("the Environment clause carries Check again on its head, and it reads the e
   await expect.poll(async () => (await calls(page)).filter(([cmd]) => cmd === "environment").length).toBeGreaterThan(before);
 });
 
-test("Settings is set out like the contract: seven numbered clauses, an index beside them that follows the page, and every on/off a switch", async ({ page }) => {
+test("Settings is set out like the contract: seven clauses, unnumbered since they are no sequence, an index beside them that follows the page, and every on/off a switch", async ({ page }) => {
   await openTower(page, "settings");
   const heads = page.locator(".settings .clause-head");
   await expect(heads).toHaveCount(7);
-  await expect(heads.first().locator(".clause-no")).toHaveText("01");
+  await expect(page.locator(".settings-page .clause-no")).toHaveCount(0);
+  await expect(page.locator(".settings-index ol")).toHaveCount(0);
   const index = page.getByRole("navigation", { name: "Settings clauses" });
   await expect(index.getByRole("link")).toHaveCount(7);
   await expect(index.getByRole("link").first()).toHaveAttribute("aria-current", "location");

@@ -60,7 +60,12 @@ function useMoreBelow(): [() => boolean, (el: HTMLDivElement) => void, () => voi
 /** Every criterion with its last verifier reading and output tail, in one sheet. */
 export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined; loading: boolean; onClose: () => void }) {
   const g = () => state.goals[props.id];
-  const criteria = () => props.detail?.criteria ?? [];
+  // The pictures first: a look criterion's reading is its two screenshots — the one thing in the sheet you judge by eye — so
+  // they stand above the output tails instead of a screen below them; every row keeps its id, so nothing is lost in the order.
+  const criteria = () => {
+    const all = props.detail?.criteria ?? [];
+    return [...all.filter((c) => c.criterion.kind.type === "look"), ...all.filter((c) => c.criterion.kind.type !== "look")];
+  };
   const mark = (c: CriterionView) => (!c.verified ? "pending" : c.verified.stale ? "stale" : c.verified.passed ? "pass" : "fail");
   // The sheet is taller than the window on a goal with several criteria: a fade at its foot says there is more, and leaves once you are there.
   const [more, bindPanel, remeasure] = useMoreBelow();

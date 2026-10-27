@@ -31,7 +31,7 @@ export function GitIdentityForm() {
     <form class="identity-form" onSubmit={(e) => void submit(e)}>
       <input class="identity-name" value={name()} placeholder={t("settings.gitName")} aria-label={t("settings.gitName")} autocomplete="name" onInput={(e) => setName(e.currentTarget.value)} />
       <input class="identity-email mono" type="email" value={email()} placeholder={t("settings.gitEmail")} aria-label={t("settings.gitEmail")} autocomplete="email" spellcheck={false} onInput={(e) => setEmail(e.currentTarget.value)} />
-      <Button size="s" type="submit" disabled={!ready()} busy={busy()}>
+      <Button type="submit" disabled={!ready()} busy={busy()}>
         {t("settings.gitIdentitySave")}
       </Button>
       <Show when={!ready()}>

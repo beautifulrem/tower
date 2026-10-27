@@ -1038,10 +1038,10 @@ input[type="radio"] {
   color: var(--text-3);
 }
 
-/* Switch: inverted like the primary button. */
+/* Switch: inverted like the primary button. 28×18 drawn, and what you press is 32×24 around it (the Mac's 20pt minimum). */
 .toggle-row {
   display: grid;
-  grid-template-columns: 26px 1fr;
+  grid-template-columns: 28px 1fr;
   gap: var(--sp-3);
   align-items: start;
   margin-bottom: var(--sp-4);
@@ -1051,21 +1051,26 @@ input[type="radio"] {
 }
 .toggle {
   position: relative;
-  width: 26px;
-  height: 16px;
-  margin-top: 2px;
+  width: 28px;
+  height: 18px;
+  margin-top: 1px;
   padding: 0;
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: 9px;
   background: var(--bg-inset);
   transition: background-color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+}
+.toggle::before {
+  content: "";
+  position: absolute;
+  inset: -3px -2px;
 }
 .toggle-knob {
   position: absolute;
   top: 1px;
   left: 1px;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--text-3);
   transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) linear;
@@ -1684,7 +1689,7 @@ input[type="radio"] {
 .baseline-dependent {
   color: var(--text-1);
 }
-.baseline-dependent > span {
+.baseline-dependent .attn-word {
   padding: 0 5px;
   border-radius: var(--radius-s);
   background: var(--attention-bg);
@@ -3230,7 +3235,8 @@ input[type="radio"] {
 .check-mark.pending {
   color: var(--text-4);
 }
-/* git's name and email, set in place: two fields and a button on one line, the hint under them. */
+/* git's name and email, set in place: two fields and a button on one line, the hint under them. The fields take the
+   button's 26px, so the three share one height and one baseline. */
 .identity-form {
   display: flex;
   flex-wrap: wrap;
@@ -3247,6 +3253,12 @@ input[type="radio"] {
   flex: 1 1 14em;
   min-width: 11em;
   max-width: 20em;
+}
+.identity-form .identity-name,
+.identity-form .identity-email {
+  height: 26px !important;
+  padding-top: 3px;
+  padding-bottom: 3px;
 }
 .identity-form .identity-hint {
   flex-basis: 100%;

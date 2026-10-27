@@ -174,17 +174,24 @@ export function CriteriaBar(props: { progress: Progress; criteria?: readonly Cri
  * stamp, not the verifier's green nor the claim's dashes — quietly, under the
  * row, with the long form one hover away.
  */
+export function HeldOutChip() {
+  return (
+    <span class="chip chip-you" title={t("goal.heldOutLong")}>
+      {t("goal.heldOut")}
+    </span>
+  );
+}
+
+/** The held-out chip on a line of its own: for a criterion with no canary line to ride on. */
 export function HeldOutLine(props: { c: CriterionView }) {
   return (
-    <Show when={props.c.verified?.held_out}>
+    <Show when={props.c.verified?.held_out && !props.c.canary}>
       <div class="criterion-row criterion-obs">
         <span />
         <span />
         <span />
         <span class="col-span">
-          <span class="chip chip-you" title={t("goal.heldOutLong")}>
-            {t("goal.heldOut")}
-          </span>
+          <HeldOutChip />
         </span>
       </div>
     </Show>
@@ -197,7 +204,9 @@ export function HeldOutLine(props: { c: CriterionView }) {
  * run again. Intact is a fact (the scale mark, quietly: the assertions were
  * checked); not checked is said as quietly, with why it matters one hover
  * away (a pass alone does not show that the tests assert); tampered is the
- * attention register — the pass is the opposite of evidence.
+ * attention register — the pass is the opposite of evidence. A result run
+ * with the held-out tests present says so on the same line, so a criterion
+ * never carries two lines of notes.
  */
 export function CanaryLine(props: { c: CriterionView }) {
   const state = () => props.c.canary;
@@ -221,9 +230,15 @@ export function CanaryLine(props: { c: CriterionView }) {
             </Match>
             <Match when={state() === "tampered"}>
               <NeedsYouMark title={t("goal.canaryTamperedLong")} />
-              <span title={t("goal.canaryTamperedLong")}>{t("goal.canaryTampered")}</span>
+              <span class="attn-word" title={t("goal.canaryTamperedLong")}>
+                {t("goal.canaryTampered")}
+              </span>
             </Match>
           </Switch>
+          <Show when={props.c.verified?.held_out}>
+            <span class="sep">·</span>
+            <HeldOutChip />
+          </Show>
         </span>
       </div>
     </Show>
@@ -253,7 +268,9 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
           <Switch>
             <Match when={dependent()}>
               <NeedsYouMark title={t("goal.dependsOnEditedTestsLong")} />
-              <span title={t("goal.dependsOnEditedTestsLong")}>{t("goal.dependsOnEditedTests")}</span>
+              <span class="attn-word" title={t("goal.dependsOnEditedTestsLong")}>
+                {t("goal.dependsOnEditedTests")}
+              </span>
             </Match>
             <Match when={c().passed_on_base === true}>
               <NoticeMark />

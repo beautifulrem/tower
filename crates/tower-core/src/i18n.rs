@@ -406,6 +406,10 @@ pub enum PauseNote {
     RanPast { minutes: u32 },
     /// These criteria still failed after this many reworks.
     FailedAfter { criteria: Vec<String>, reworks: u32 },
+    /// The setup command failed on the base commit.
+    SetupFails(crate::reasons::SetupFails),
+    /// The preflight: the criteria cannot run on your own code.
+    CannotRunOnBase(crate::reasons::Preflight),
 }
 
 impl PauseNote {
@@ -418,6 +422,8 @@ impl PauseNote {
             PauseNote::NoSubmitAfterReminder => format!("{m}no_submit"),
             PauseNote::RanPast { minutes } => format!("{m}ran_past {minutes}"),
             PauseNote::FailedAfter { criteria, reworks } => format!("{m}failed_after {reworks} {}", criteria.join(",")),
+            PauseNote::SetupFails(s) => format!("{m}setup_fails {}", serde_json::to_string(s).unwrap_or_default()),
+            PauseNote::CannotRunOnBase(p) => format!("{m}cannot_run {}", serde_json::to_string(p).unwrap_or_default()),
         }
     }
 
@@ -435,6 +441,8 @@ impl PauseNote {
                     reworks: n.parse().ok()?,
                 })
             }
+            "setup_fails" => serde_json::from_str(args).ok().map(PauseNote::SetupFails),
+            "cannot_run" => serde_json::from_str(args).ok().map(PauseNote::CannotRunOnBase),
             _ => None,
         }
     }
@@ -457,6 +465,8 @@ impl PauseNote {
                     format!("{} failed after {}", criteria.join(", "), plural(*reworks as usize, "rework", "reworks"))
                 }
             },
+            PauseNote::SetupFails(s) => s.text(lang),
+            PauseNote::CannotRunOnBase(p) => p.text(lang),
         }
     }
 
@@ -544,6 +554,33 @@ mod tests {
         assert_eq!(PauseNote::render(&n.encode(), Lang::En), "C1, C2 failed after 3 reworks");
         assert_eq!(PauseNote::render(&PauseNote::Spent { cents: 1234 }.encode(), Lang::Zh), "已花费 $12.34");
         assert_eq!(PauseNote::render("plain words", Lang::En), "plain words");
+    }
+
+    #[test]
+    fn preflight_notes_are_put_into_words_on_read() {
+        use crate::reasons::{BaseError, BaseProblem, Preflight, SetupFails};
+        let error = BaseError::Refused { code: Some(1), tail: "deny(1) file-read-data /x".into() }.encode();
+        let n = PauseNote::CannotRunOnBase(Preflight {
+            setup: None,
+            criteria: vec![BaseProblem { id: "C1".into(), title: "Tests pass".into(), error }],
+        });
+        let stored = n.encode();
+        assert_eq!(PauseNote::decode(&stored), Some(n));
+        let en = PauseNote::render(&stored, Lang::En);
+        assert!(en.starts_with("Tower tried the acceptance criteria"), "{en}");
+        assert!(en.ends_with(
+            "C1 · Tests pass: refused by the verification sandbox on the base (exit code 1): deny(1) file-read-data /x"
+        ));
+        let zh = PauseNote::render(&stored, Lang::Zh);
+        assert!(zh.ends_with("C1 · Tests pass: 在基线上被验证沙箱拒绝（退出码 1）：deny(1) file-read-data /x"), "{zh}");
+        // Setup failing on the base, inside the preflight and on its own.
+        let setup = PauseNote::SetupFails(SetupFails { setup: "npm ci".into(), tail: "ERR".into() }).encode();
+        let n = PauseNote::CannotRunOnBase(Preflight { setup: Some(setup.clone()), criteria: vec![] });
+        assert!(
+            PauseNote::render(&n.encode(), Lang::Zh)
+                .ends_with("准备命令 `npm ci` 在基线提交上就失败了（与 Agent 的改动无关）：\nERR")
+        );
+        assert!(PauseNote::render(&setup, Lang::En).starts_with("The setup command `npm ci` fails on the base commit"));
     }
 
     #[test]

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { HELD_OUT_BODY, HELD_OUT_OPTIONS, HELD_OUT_TONES } from "./rich";
+import { HELD_OUT_BODY, HELD_OUT_OPTIONS, HELD_OUT_TONES, enrichRich } from "./rich";
 import { fixtures, settled } from "./tauri";
 
 const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../crates/tower-supervisor/src/remote.html"), "utf8");
@@ -21,9 +21,11 @@ const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../.
  */
 async function openPhone(
   page: Page,
-  opts: { state?: object | null; lang?: string; width?: number; remembered?: string; serve?: { state: object | null } } = {},
+  opts: { state?: object | null; lang?: string; width?: number; remembered?: string; serve?: { state: object | null }; rich?: boolean } = {},
 ) {
   const F = fixtures() as Record<string, any>;
+  // The preview screens show the world the desktop's shots show (a held-out failure on G-0004, the cannot-run G-0005…).
+  if (opts.rich) enrichRich(F);
   const state = opts.state === undefined ? { goals: F.goals, inbox: F.inbox, lang: opts.lang ?? "en", max_running: F.settings?.max_concurrent ?? 3 } : opts.state;
   const serve = opts.serve ?? { state };
   serve.state = state;
@@ -332,7 +334,7 @@ for (const s of [
   test(`shot ${s.name}`, async ({ page }) => {
     test.skip(!process.env.SHOTS, "set SHOTS=<dir> to render the preview screens");
     await page.emulateMedia({ colorScheme: s.theme });
-    await openPhone(page, s.offline ? { state: null, remembered: s.lang, width: s.width } : { lang: s.lang, width: s.width, state: s.state });
+    await openPhone(page, s.offline ? { state: null, remembered: s.lang, width: s.width } : { lang: s.lang, width: s.width, state: s.state, rich: true });
     await page.waitForLoadState("networkidle");
     await settled(page);
     await page.screenshot({ path: join(process.env.SHOTS!, `${s.name}.png`), fullPage: true });

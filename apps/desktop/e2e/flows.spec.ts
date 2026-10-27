@@ -538,9 +538,18 @@ test("a result produced with the held-out tests present is marked for you only, 
 });
 
 test("what the canary saw stands under each criterion, quietly or in the attention register, on the goal page and in the readout; the two newer sentinels read as sentence and list", async ({ page }) => {
-  await openTower(page, "goal/G-0001", { enrich: enrichCanary });
+  await openTower(page, "goal/G-0001", {
+    enrich: (F) => {
+      enrichCanary(F);
+      enrichHeldOut(F);
+      enrichLook(F);
+    },
+  });
   const lines = page.locator(".goal-page .canary-line");
   await expect(lines).toHaveCount(3);
+  // C2 was run with the held-out tests present too: the chip rides on the canary's line, so the criterion carries one line of notes.
+  await expect(page.locator('.goal-page .canary-line[data-canary="not_checked"] .chip-you')).toHaveCount(1);
+  await expect(page.locator(".goal-page .chip-you")).toHaveCount(1);
   const intact = page.locator('.goal-page .canary-line[data-canary="intact"]');
   await expect(intact).toHaveText(/assertions checked/);
   expect(await intact.locator(".mark-attention").count()).toBe(0);
@@ -579,6 +588,12 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const readout = page.getByRole("dialog");
   await expect(readout.locator(".canary-line")).toHaveCount(3);
   await expect(readout.locator(".seal")).toHaveClass(/seal-tampered/);
+  // The look criterion's pictures come first in the readout, in view without scrolling; the ids keep every row named.
+  await expect(readout.locator(".verify-item").first().locator(".look-strip")).toBeVisible();
+  await expect(readout.locator(".verify-item").first()).toContainText("The checkout page still looks right");
+  const strip = (await readout.locator(".look-strip").first().boundingBox())!;
+  const sheet = (await readout.boundingBox())!;
+  expect(strip.y + strip.height).toBeLessThan(sheet.y + sheet.height);
   await page.keyboard.press("Escape");
   // The accept sheet: the pass counts for nothing, and the criterion heads what is still open.
   await page.keyboard.press("Meta+Shift+Enter");
@@ -605,10 +620,14 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   await expect(fix).toHaveText(/user\.name .* && git config --global user\.email you@example\.com$/);
   // Whole, not clipped: the button shows all of its text.
   expect(await fix.evaluate((el) => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1)).toBe(true);
-  // The form stands above the command: a name, an email, one button, disabled until both are there.
+  // The form stands above the command: a name, an email, one button, disabled until both are there — the three on one height.
   const save = row.getByRole("button", { name: "Set in git" });
   await expect(save).toBeDisabled();
   expect((await row.locator(".identity-form").boundingBox())!.y).toBeLessThan((await fix.boundingBox())!.y);
+  const nameBox = (await row.getByLabel("Your name").boundingBox())!;
+  const saveBox = (await save.boundingBox())!;
+  expect(Math.round(nameBox.height)).toBe(Math.round(saveBox.height));
+  expect(Math.abs(nameBox.y - saveBox.y)).toBeLessThan(1);
   await row.getByLabel("Your name").fill("Ada Lovelace");
   await row.getByLabel("you@example.com").fill("ada@example.com");
   await save.click();
@@ -741,6 +760,23 @@ test("in Settings the phone's problem stands under its switch and above the port
   await expect(page.getByRole("button", { name: "New pairing link" })).toHaveClass(/btn-default/);
   // The state word is a state: "On", not a verb.
   await expect(page.getByRole("button", { name: /^Notifications: / })).toHaveText("On");
+});
+
+test("the contract editor's switch is 28×18 with a 32×24 target", async ({ page }) => {
+  await openTower(page, "new");
+  const toggle = page.getByRole("switch");
+  await expect(toggle).toBeVisible();
+  const box = (await toggle.boundingBox())!;
+  expect(Math.round(box.width)).toBe(28);
+  expect(Math.round(box.height)).toBe(18);
+  // The pressable area reaches 3px above and below and 2px to each side.
+  const hit = await toggle.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const above = document.elementFromPoint(r.left + r.width / 2, r.top - 2);
+    const beside = document.elementFromPoint(r.left - 1, r.top + r.height / 2);
+    return { above: above === el, beside: beside === el };
+  });
+  expect(hit).toEqual({ above: true, beside: true });
 });
 
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {

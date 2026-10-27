@@ -16,7 +16,7 @@ vi.mock("../../../lib/store", async () => {
   return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn() };
 });
 
-const { AcceptPanel } = await import("../panels");
+const { AcceptPanel, VerifyPanel } = await import("../panels");
 
 const detail = {
   criteria: [
@@ -27,6 +27,28 @@ const detail = {
   sentinels: [{ sentinel: "expectations_changed", severity: 3, title: "Changed what a test expects", detail: "tests/total.test.ts" }],
   runs: [],
 } as unknown as GoalDetail;
+
+describe("VerifyPanel", () => {
+  it("puts the pictures first: look criteria stand above the output tails, each row keeping its id", () => {
+    const withLook = {
+      ...detail,
+      criteria: [
+        ...detail.criteria,
+        {
+          criterion: { id: "C3", title: "The checkout page still looks right", kind: { type: "look", start: "npm run dev", url: "http://localhost:3000/", timeout_secs: 60 } },
+          verified: null,
+          passed_on_base: null,
+          look: { base: null, pin: null, base_error: "not captured", pin_error: "not captured" },
+          observed: null,
+          human_checked: false,
+        },
+      ],
+    } as unknown as GoalDetail;
+    const { container } = render(() => <VerifyPanel id="G-0001" detail={withLook} loading={false} onClose={() => {}} />);
+    const ids = [...container.querySelectorAll(".verify-item .criterion-row > .num")].map((el) => el.textContent);
+    expect(ids).toEqual(["C3", "C1", "H1"]);
+  });
+});
 
 describe("AcceptPanel", () => {
   it("lists what is still open: the assumption, the sentinel and the unviewed units", () => {

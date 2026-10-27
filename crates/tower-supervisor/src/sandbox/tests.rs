@@ -10,6 +10,7 @@ fn spec(root: &Path, home: &Path, network: bool) -> Spec {
         home: home.to_path_buf(),
         read: vec![],
         append: vec![],
+        drop: None,
         network,
         loopback: Loopback::Only(vec![]),
         proxy_ports: COMMON_PROXY_PORTS.to_vec(),
@@ -400,4 +401,36 @@ fn tls_works_with_network_and_without_keychain() {
         .unwrap()
         .success();
     assert!(ok, "TLS through trustd only");
+}
+
+/// The drop box, against the real sandbox-exec: a file can be created
+/// there, but nothing there can be listed or read back from inside, with
+/// loopback closed or open alike.
+#[cfg(target_os = "macos")]
+#[test]
+fn the_drop_box_is_write_only() {
+    if !available() {
+        return;
+    }
+    let tmp = tempfile::tempdir_in("/tmp").unwrap();
+    let root = crate::paths::real(tmp.path());
+    for d in ["ws", "tmp", "cache", "home", "tower/proof"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    let drop = root.join("tower/proof");
+    std::fs::write(drop.join("earlier"), "x").unwrap();
+    for loopback in [Loopback::Only(vec![]), Loopback::AllBut(vec![])] {
+        let mut sp = spec(&root, &root.join("home"), false);
+        sp.drop = Some(drop.clone());
+        sp.loopback = loopback;
+        let sb = root.join("p.sb");
+        std::fs::write(&sb, profile(&sp)).unwrap();
+        let d = drop.display();
+        let _ = std::fs::remove_file(drop.join("made"));
+        assert!(sandboxed(&sb, &root.join("ws"), &format!(": > '{d}/made'")), "created");
+        assert!(drop.join("made").exists());
+        assert!(!sandboxed(&sb, &root.join("ws"), &format!("/bin/ls '{d}'")), "not listed");
+        assert!(!sandboxed(&sb, &root.join("ws"), &format!("/bin/cat '{d}/earlier'")), "not read");
+        assert!(!sandboxed(&sb, &root.join("ws"), &format!("test -e '{d}/earlier'")), "not even seen");
+    }
 }

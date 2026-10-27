@@ -304,6 +304,10 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
             "Program code reaches into assertion libraries, test runners or the module loader",
         ),
         "held_out_not_run" => lang.pick("保留测试没有被任何标准运行", "No criterion ran the held-out tests"),
+        "held_out_partly_run" => {
+            lang.pick("有些保留测试文件没有被任何标准运行", "Some held-out test files were not run by any criterion")
+        }
+        "held_out_unproven" => lang.pick("无法证明保留测试被运行", "Cannot prove the held-out tests ran"),
         "source_loads_test_library" => {
             lang.pick("源码加载了测试所用的断言库", "Program code loads the assertion library the tests use")
         }

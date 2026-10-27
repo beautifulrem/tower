@@ -15,10 +15,11 @@ use tower_verify::{Cancel, RunSpec};
 mod checks;
 mod env_error;
 mod guard;
+mod held_out;
 mod looks;
 mod loopback;
 mod processes;
-pub(super) use checks::{confirmed_refusal, mark_loading, paths_gone, sentinel_hit, tests_ran};
+pub(super) use checks::{confirmed_refusal, paths_gone, sentinel_hit, tests_ran};
 use guard::{Coverage, Guard, Phase};
 use processes::RemoveOnDrop;
 
@@ -70,6 +71,9 @@ pub(super) struct Bench<'a> {
     base: String,
     dir: std::path::PathBuf,
     tmp: std::path::PathBuf,
+    /// Tower's write-only drop box for proofs and records (see
+    /// `held_out`).
+    drop: std::path::PathBuf,
     env: Vec<(String, String)>,
     online: Option<std::path::PathBuf>,
     offline: Option<std::path::PathBuf>,
@@ -110,11 +114,15 @@ impl<'a> Bench<'a> {
             inner.paths.verify(goal),
             inner.paths.tmp(&format!("{goal}-verify")),
             inner.paths.root.join("verify-cache").join(goal),
+            inner.paths.root.join("proof").join(goal),
         ];
         for r in &roots {
             let _ = std::fs::remove_dir_all(r);
         }
-        let [dir, tmp, cache] = roots.map(|r| r.join(short));
+        let [dir, tmp, cache, drop] = roots.map(|r| r.join(short));
+        std::fs::create_dir_all(&drop)?;
+        // As the sandbox profile names it, so the proof lines write there.
+        let drop = crate::paths::real(&drop);
         let git = inner.git.clone();
         let (root1, base1, dir1) = (rec.project_root.clone(), base.to_string(), dir.clone());
         tokio::task::spawn_blocking(move || git.trusted_checkout(Path::new(&root1), &base1, &dir1))
@@ -131,18 +139,22 @@ impl<'a> Bench<'a> {
         let tower_files = run::TowerFiles {
             read: guard.iter().map(|g| g.dir().to_path_buf()).collect(),
             append: guard.iter().flat_map(|g| g.logs()).collect(),
+            drop: None,
         };
         let goal_dir = inner.paths.goal_dir(goal);
         let dirs = run::Dirs { work: &dir, tmp: &tmp, cache: &cache };
         // Loopback as the contract declares it (see `jail::Net`).
-        let jail = |purpose: &str, network: bool| {
+        // The criteria's profiles (and their twins) may also create files
+        // in the drop box; setup's may not.
+        let with_drop = run::TowerFiles { drop: Some(drop.clone()), ..tower_files.clone() };
+        let jail = |purpose: &str, network: bool, files: &run::TowerFiles| {
             let net = run::Net::new(&rec.contract, network);
-            run::verifier_jail(inner, &goal_dir, &dirs, purpose, &net, &tower_files)
+            run::verifier_jail(inner, &goal_dir, &dirs, purpose, &net, files)
         };
-        let online = jail("verify-setup", true)?;
-        let offline = jail("verify-setup-offline", false)?;
-        let criteria = jail("verify", rec.contract.network)?;
-        let held_out = jail("verify-held-out", false)?;
+        let online = jail("verify-setup", true, &tower_files)?;
+        let offline = jail("verify-setup-offline", false, &tower_files)?;
+        let criteria = jail("verify", rec.contract.network, &with_drop)?;
+        let held_out = jail("verify-held-out", false, &with_drop)?;
         // Their loopback-open twins (see `loopback`), when loopback is closed.
         let closed = !rec.contract.network && !rec.contract.loopback_open;
         let twin = |purpose: &str| -> Result<Option<std::path::PathBuf>> {
@@ -150,7 +162,7 @@ impl<'a> Bench<'a> {
                 return Ok(None);
             }
             let net = run::Net { open: true, ..run::Net::new(&rec.contract, false) };
-            Ok(run::verifier_jail(inner, &goal_dir, &dirs, purpose, &net, &tower_files)?.profile)
+            Ok(run::verifier_jail(inner, &goal_dir, &dirs, purpose, &net, &with_drop)?.profile)
         };
         let loopback =
             loopback::OpenLoopback::new(inner, goal, rec, twin("verify-loopback")?, twin("verify-held-out-loopback")?)?;
@@ -175,6 +187,7 @@ impl<'a> Bench<'a> {
             base: base.to_string(),
             dir,
             tmp,
+            drop,
             env,
             online: online.profile,
             offline: offline.profile,
@@ -194,11 +207,11 @@ impl<'a> Bench<'a> {
         if let Some(g) = &self.guard {
             g.close();
         }
-        let (dir, tmp, cache) = (self.dir.clone(), self.tmp.clone(), self._cache.0.clone());
+        let (dir, tmp, cache, drop) = (self.dir.clone(), self.tmp.clone(), self._cache.0.clone(), self.drop.clone());
         let root = self.inner.paths.root.clone();
         let _ = tokio::task::spawn_blocking(move || {
-            crate::procs::stop_verification_leftovers(&root, &[dir.clone(), tmp.clone(), cache.clone()]);
-            for d in [&dir, &tmp, &cache] {
+            crate::procs::stop_verification_leftovers(&root, &[dir.clone(), tmp.clone(), cache.clone(), drop.clone()]);
+            for d in [&dir, &tmp, &cache, &drop] {
                 let _ = std::fs::remove_dir_all(d);
             }
         })
@@ -471,6 +484,7 @@ impl<'a> Bench<'a> {
                     duration_ms: r.duration_ms,
                     output_tail: r.output_tail.clone(),
                     held_out: false,
+                    held_out_proof: None,
                 },
             )?;
             if !r.passed {
@@ -510,82 +524,9 @@ impl<'a> Bench<'a> {
         };
         let mut held_files = Vec::new();
         if !held_set.is_empty() {
-            self.reset(pin).await?;
-            held_files = self.copy_held_out().await?;
-            // Each held-out file says when it is loaded: proof that a
-            // criterion ran them, rather than a label.
-            let loaded = self.tmp.join(format!("tower-held-out-{}", uuid::Uuid::new_v4().simple()));
-            let planted = mark_loading(&self.dir, &held_files, &loaded);
-            let mut held_failures = Vec::new();
-            for (c, command, timeout) in &held_set {
-                let r = self
-                    .exec(command, self.held_out_profile.as_deref(), Duration::from_secs((*timeout).max(1) as u64))
-                    .await;
-                if r.environment_failure {
-                    return Ok((self.env_error(&c.id, command, &r), found));
-                }
-                inner.append(
-                    goal,
-                    EventKind::CriterionResult {
-                        criterion: c.id.clone(),
-                        pin: pin.into(),
-                        passed: r.passed,
-                        exit_code: r.exit_code,
-                        duration_ms: r.duration_ms,
-                        output_tail: r.output_tail.clone(),
-                        held_out: true,
-                    },
-                )?;
-                if !r.passed {
-                    held_failures.push(Failure {
-                        id: c.id.clone(),
-                        title: c.title.clone(),
-                        command: command.clone(),
-                        exit_code: r.exit_code,
-                        output_tail: r.output_tail,
-                    });
-                }
-            }
-            // The tests themselves must come out as they went in.
-            let root = Path::new(&self.rec.project_root);
-            let changed = held_files
-                .iter()
-                .filter(|f| {
-                    let went_in = planted
-                        .iter()
-                        .find(|(p, _)| p == *f)
-                        .map(|(_, b)| b.clone())
-                        .or_else(|| std::fs::read(root.join(f)).ok());
-                    went_in != std::fs::read(self.dir.join(f)).ok()
-                })
-                .count();
-            if !planted.is_empty() && !loaded.exists() {
-                let detail = tr!(
-                    lang,
-                    "没有一条标准真正运行了保留测试（它们一次也没有被加载），所以这次结果不包含保留测试的检查。让某条标准的命令运行它们。",
-                    "No criterion actually ran the held-out tests (they were never loaded), so this result includes no held-out check. Make a criterion's command run them."
-                );
-                let hit = tower_core::sentinel::SentinelHit {
-                    sentinel: "held_out_not_run".into(),
-                    severity: 2,
-                    title: tower_core::i18n::sentinel_title("held_out_not_run", lang).unwrap_or_default().into(),
-                    detail,
-                };
-                append_hit(inner, goal, &hit)?;
-                found.push(hit);
-            }
-            if changed > 0 {
-                let detail = tr!(
-                    lang,
-                    "运行期间有 {changed} 个保留测试文件被改写（为了不让 Agent 知道，这里不列出文件名）",
-                    "{changed} held-out test file(s) were rewritten while the criteria ran (not named here, so the agent cannot learn them)"
-                );
-                let hit = sentinel_hit("held_out_tests_changed", detail, lang);
-                append_hit(inner, goal, &hit)?;
-                found.push(hit);
-            }
-            if !held_failures.is_empty() {
-                return Ok((Outcome::HeldOutFailed(held_failures), found));
+            match self.held_out_step(pin, &held_set, &mut found).await? {
+                Ok(files) => held_files = files,
+                Err(early) => return Ok((early, found)),
             }
         }
 

@@ -164,9 +164,47 @@ pub struct CriterionResultView {
     pub at: Millis,
     /// The workspace changed after this result; it needs re-verification.
     pub stale: bool,
-    /// Run with the held-out tests present: the output was shown to you
-    /// only, never to the agent.
+    /// At least one held-out test file is proven to have run in this result
+    /// (each file proves itself; see `held_out_proof`). Only then is it a
+    /// result "with held-out tests".
     pub held_out: bool,
+    /// Which held-out test files this run proved it executed, when the
+    /// held-out tests were present (`None`: they were not, or the result
+    /// predates per-file proof). Present at all means the output went to
+    /// you only, never to the agent.
+    pub held_out_proof: Option<HeldOutProof>,
+}
+
+impl CriterionResultView {
+    /// Whether the agent must not hear this result's output: it came from a
+    /// run with the held-out tests present, whether or not they ran.
+    pub fn withheld(&self) -> bool {
+        self.held_out || self.held_out_proof.is_some()
+    }
+}
+
+/// Per-file proof that held-out test files ran. Each file Tower can mark
+/// carries its own per-run token and leaves it, when loaded, in a directory
+/// the sandbox may write but not read or list; Tower checks the tokens
+/// afterwards. File names are for you only (never in sentinel details,
+/// which can reach the agent).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct HeldOutProof {
+    /// Proven to have run.
+    pub ran: Vec<String>,
+    /// Marked, and their proof never came back: they did not run.
+    pub not_ran: Vec<String>,
+    /// In a language Tower cannot add a proof to: whether they ran is not
+    /// known.
+    pub unprovable: Vec<String>,
+}
+
+impl HeldOutProof {
+    /// All the held-out test files this proof is about.
+    pub fn total(&self) -> usize {
+        self.ran.len() + self.not_ran.len() + self.unprovable.len()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

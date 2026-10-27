@@ -15,7 +15,7 @@ const { Seal } = await import("../Glyph");
 
 const criterion = (canary: CriterionView["canary"]): CriterionView => ({
   criterion: { id: "C1", title: "Tests pass", kind: { type: "exec", command: "npm test", timeout_secs: 600 } },
-  verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 1200, output_tail: "", at: Date.now(), stale: false, held_out: false },
+  verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 1200, output_tail: "", at: Date.now(), stale: false, held_out: false, held_out_proof: null },
   passed_on_base: false,
   base_error: null,
   look: null,
@@ -106,6 +106,42 @@ describe("the notes under a criterion", () => {
     ));
     expect(container.querySelector(".canary-line")).toBeNull();
     expect(container.querySelectorAll(".criterion-obs .chip-you")).toHaveLength(1);
+  });
+
+  const proved = (ran: string[], not_ran: string[], unprovable: string[] = []): CriterionView => {
+    const c = criterion(null);
+    return { ...c, verified: { ...c.verified!, held_out: ran.length > 0, held_out_proof: { ran, not_ran, unprovable } } };
+  };
+
+  it("label a result with held-out tests only as far as the files proved they ran", () => {
+    // All proved: the plain label.
+    let r = render(() => <HeldOutLine c={proved(["holdout/a.sh", "holdout/b.sh"], [])} />);
+    expect(r.container.querySelector(".chip-you")!.textContent).toBe("held-out tests, for you only");
+    expect(r.container.querySelector(".held-out-missing")).toBeNull();
+    r.unmount();
+    // Some: "m of n", and the ones that did not run, by name.
+    r = render(() => <HeldOutLine c={proved(["holdout/a.sh"], ["holdout/b.sh"], ["holdout/c_test.go"])} />);
+    expect(r.container.querySelector(".chip-you")!.textContent).toBe("held-out tests, 1 of 3 ran, for you only");
+    const missing = r.container.querySelector(".held-out-missing")!;
+    expect(missing.textContent).toContain("held-out tests that did not run:");
+    expect([...missing.querySelectorAll("code")].map((c) => c.textContent)).toEqual(["holdout/b.sh"]);
+    const unproven = r.container.querySelector(".held-out-unproven")!;
+    expect(unproven.textContent).toContain("cannot prove these held-out tests ran:");
+    expect(unproven.querySelector("code")!.textContent).toBe("holdout/c_test.go");
+    r.unmount();
+  });
+
+  it("never show the held-out label next to 'did not run' (none ran)", () => {
+    const { container } = render(() => <HeldOutLine c={proved([], ["holdout/more.sh"])} />);
+    expect(container.querySelector(".chip-you")).toBeNull();
+    expect(container.textContent).not.toContain("for you only");
+    expect(container.querySelector(".held-out-missing")!.textContent).toContain("the held-out tests did not run");
+  });
+
+  it("say plainly when no held-out file could be proven", () => {
+    const { container } = render(() => <HeldOutLine c={proved([], [], ["holdout/x_test.go"])} />);
+    expect(container.querySelector(".chip-you")).toBeNull();
+    expect(container.querySelector(".held-out-unproven")!.textContent).toContain("cannot prove these held-out tests ran");
   });
 
   it("tint only the tampered words", () => {

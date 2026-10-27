@@ -82,6 +82,9 @@ pub(crate) struct TowerFiles {
     pub read: Vec<PathBuf>,
     /// Append-only: data may be added, nothing removed or rewritten.
     pub append: Vec<PathBuf>,
+    /// Write-only: a directory files may be created in, never read or
+    /// listed (the held-out proofs and perturbation records).
+    pub drop: Option<PathBuf>,
 }
 
 /// Whether loopback is open for a goal beyond its contract: the project's
@@ -162,6 +165,7 @@ pub(crate) fn verifier_jail(
     jail(inner, profile_dir, &Dirs { cache: &cache, ..*dirs }, purpose, net, tower_files)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn jail(
     inner: &Inner,
     profile_dir: &Path,
@@ -220,6 +224,7 @@ fn jail(
                 read
             },
             append: tower_files.append.iter().map(|p| real(p)).collect(),
+            drop: tower_files.drop.as_deref().map(real),
             home,
             network: net.network,
             loopback,

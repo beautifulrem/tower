@@ -201,7 +201,26 @@ export function enrichHeldOut(F: F) {
       allow_text: true,
     });
   const c2 = need(F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C2"), "G-0001 has a C2");
-  need(c2.verified, "G-0001's C2 was verified").held_out = true;
+  Object.assign(need(c2.verified, "G-0001's C2 was verified"), {
+    held_out: true,
+    held_out_proof: { ran: ["test/holdout/rounding.test.js", "test/holdout/tax.test.js"], not_ran: [], unprovable: [] },
+  });
+}
+
+/**
+ * Held-out proof per file on G-0001: C2 ran one of the two held-out files (the other is named, for you), and C1, run with
+ * them present too, ran none — so C1 is not labelled as a result with held-out tests at all.
+ */
+export function enrichHeldOutPartly(F: F) {
+  const crit = (id: string) => need(F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === id), `G-0001 has a ${id}`);
+  Object.assign(need(crit("C2").verified, "G-0001's C2 was verified"), {
+    held_out: true,
+    held_out_proof: { ran: ["test/holdout/rounding.test.js"], not_ran: ["test/holdout/tax.test.js"], unprovable: [] },
+  });
+  Object.assign(need(crit("C1").verified, "G-0001's C1 was verified"), {
+    held_out: false,
+    held_out_proof: { ran: [], not_ran: ["test/holdout/rounding.test.js", "test/holdout/tax.test.js"], unprovable: [] },
+  });
 }
 
 /** The phone page is switched on but Tailscale is disconnected: the supervisor keeps the reason, and serves nothing. */
@@ -351,7 +370,7 @@ export function enrichPushes(F: F) {
 /**
  * Every enrichment at once: the preview harness's world, and one that never contradicts itself — G-0001's look criterion is
  * C4 and its tampered pass C5 (not evidence, on the board too); the project that ran held-out tests has them, so no screen
- * says both "held-out tests · for you only" and "No held-out tests"; the cannot-run card stands on a goal of its own (G-0005).
+ * says both "held-out tests, for you only" and "No held-out tests"; the cannot-run card stands on a goal of its own (G-0005).
  */
 export function enrichRich(F: F) {
   enrichEngines(F);

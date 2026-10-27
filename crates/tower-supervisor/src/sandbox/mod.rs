@@ -210,6 +210,10 @@ pub struct Spec {
     /// append-only on the file system too, so a run can add a line but
     /// can neither remove nor rewrite what is already there.
     pub append: Vec<PathBuf>,
+    /// Write-only: a directory of Tower's, outside every readable path,
+    /// where files may be created but never read or listed (per-run proofs
+    /// that held-out test files ran, perturbation records).
+    pub drop: Option<PathBuf>,
     /// Allow outbound network beyond loopback (loopback included).
     pub network: bool,
     /// Loopback without the network.
@@ -282,7 +286,7 @@ pub fn profile(spec: &Spec) -> String {
     s.push_str(&format!("  (literal {})\n", q(home)));
     let mut ancestors: Vec<PathBuf> = Vec::new();
     let homes = toolchains::HOME_TOOLCHAINS.iter().map(|t| home.join(t)).collect::<Vec<_>>();
-    for p in rw.iter().copied().chain(spec.read.iter()).chain(homes.iter()) {
+    for p in rw.iter().copied().chain(spec.read.iter()).chain(homes.iter()).chain(spec.drop.iter()) {
         for a in p.ancestors().skip(1) {
             if !ancestors.iter().any(|x| x == a) {
                 ancestors.push(a.to_path_buf());
@@ -341,6 +345,10 @@ pub fn profile(spec: &Spec) -> String {
             s.push_str(&format!("  (literal {})\n", q(p)));
         }
         s.push_str(")\n");
+    }
+    // The drop box: created into, never read or listed from inside.
+    if let Some(d) = &spec.drop {
+        s.push_str(&format!("(allow file-write* (subpath {0}))\n(deny file-read* (subpath {0}))\n", q(d)));
     }
     network_rules(&mut s, spec, &rw);
     s

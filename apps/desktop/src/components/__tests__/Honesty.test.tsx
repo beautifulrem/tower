@@ -155,3 +155,11 @@ describe("a tampered canary and the totals", () => {
     expect(ok.textContent).toContain("Verified");
   });
 });
+
+describe("an uncheckable base", () => {
+  it("says why in the line: the supervisor's first sentence, plain, without its colon", () => {
+    expect(Honesty.baseReason("The command `npm test` of C1 could not run (exit code 1):\nnpm ERR! missing script")).toBe("The command npm test of C1 could not run (exit code 1)");
+    expect(Honesty.baseReason("")).toBeNull();
+    expect(Honesty.baseReason("x".repeat(200))!.length).toBe(120);
+  });
+});

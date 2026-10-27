@@ -75,7 +75,7 @@ impl Probe {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum Out {
     Pass,
     Fail,
@@ -83,7 +83,7 @@ pub(crate) enum Out {
 }
 
 /// What one variant of one probe recorded.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Rec {
     pub out: Out,
     /// The value the call returned, as its type and a serialisation.
@@ -622,10 +622,20 @@ pub(crate) fn loads_any(text: &str, stems: &[String]) -> bool {
     })
 }
 
+/// A probe's id: the same for the same assertion of the same base (its file
+/// and line), so the base's records can be kept from one run to the next.
+fn probe_id(path: &str, line: usize) -> String {
+    // FNV-1a: stable across builds, unlike the standard hasher.
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in path.bytes().chain(line.to_le_bytes()) {
+        h = (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("p{h:016x}")
+}
+
 /// The base's version of a test file with a probe before each assertion
-/// Tower can perturb; `None` when it has none. Probe ids are `{run}-{n}`
-/// counting from `start`.
-pub(crate) fn instrument(path: &str, text: &str, drop: &Path, run: &str, start: usize) -> Option<(String, Vec<Probe>)> {
+/// Tower can perturb; `None` when it has none.
+pub(crate) fn instrument(path: &str, text: &str, drop: &Path) -> Option<(String, Vec<Probe>)> {
     let ext = path.rsplit('.').next().unwrap_or("");
     let js = matches!(ext, "js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx");
     let ts = matches!(ext, "ts" | "mts" | "cts" | "tsx");
@@ -655,7 +665,7 @@ pub(crate) fn instrument(path: &str, text: &str, drop: &Path, run: &str, start: 
             if !(relation || (inert && taken.len() >= 2)) {
                 return None;
             }
-            let id = format!("{run}-{}", start + probes.len());
+            let id = probe_id(path, n + 1);
             let code = probe_code(ts, py, indent, &p, &id, drop)?;
             Some((code, Probe { id, file: path.to_string(), line: n + 1, relation, numbers: taken }))
         });

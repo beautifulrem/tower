@@ -241,6 +241,9 @@ async fn a_fix_fitted_to_a_derived_property_is_held() {
     assert!(hit.detail.contains("test/cart.test.mjs line 5 (17→18, 3→4, 5→6, 2→3)"), "{}", hit.detail);
     assert_eq!(d.summary.progress.verified, 0, "not counted as verified");
     assert_eq!(d.summary.progress.not_evidence, Some(true));
+    // The base's side ran in the preflight, while the agent worked.
+    let kept = std::fs::canonicalize(h._tmp.path()).unwrap().join("tower/goals").join(&id).join("perturb-base.json");
+    assert!(kept.exists(), "{kept:?}");
 }
 
 /// R-perm class: an honest one-to-one mapping by name. The text rule sees

@@ -1,7 +1,7 @@
 use super::*;
 
 fn probes(path: &str, text: &str) -> Vec<Probe> {
-    instrument(path, text, Path::new("/tmp/drop"), "r", 0).map(|(_, p)| p).unwrap_or_default()
+    instrument(path, text, Path::new("/tmp/drop")).map(|(_, p)| p).unwrap_or_default()
 }
 
 #[test]
@@ -42,16 +42,18 @@ fn only_literal_calls_with_a_known_expectation_are_probed() {
 #[test]
 fn probes_go_before_the_assertion_and_keep_the_file_intact() {
     let text = "import test from 'node:test'\ntest('t', () => {\n  assert.equal(add(2, 3), 2 + 3)\n})\n";
-    let (out, p) = instrument("test/a.test.mjs", text, Path::new("/tmp/drop"), "r", 7).unwrap();
-    assert_eq!(p[0].id, "r-7");
+    let (out, p) = instrument("test/a.test.mjs", text, Path::new("/tmp/drop")).unwrap();
+    // The same assertion of the same base keeps its id; another line does not.
+    assert_eq!(p[0].id, instrument("test/a.test.mjs", text, Path::new("/elsewhere")).unwrap().1[0].id);
+    assert_ne!(p[0].id, instrument("test/a.test.mjs", &format!("\n{text}"), Path::new("/tmp/drop")).unwrap().1[0].id);
     let lines: Vec<&str> = out.lines().collect();
     assert!(lines[2].starts_with("  ;(() => {") && lines[2].contains("/tmp/drop/"), "{out}");
     assert!(lines[2].contains("add(3, 4)") && lines[2].contains("assert.equal(__a, 3 + 4)"), "{out}");
     assert_eq!(lines[3], "  assert.equal(add(2, 3), 2 + 3)");
     assert_eq!(out.replace(&format!("{}\n", lines[2]), ""), text, "only the probe line is added");
-    let ts = instrument("t/a.test.ts", "expect(add(2, 3)).toEqual(2 + 3)\n", Path::new("/d"), "r", 0).unwrap().0;
+    let ts = instrument("t/a.test.ts", "expect(add(2, 3)).toEqual(2 + 3)\n", Path::new("/d")).unwrap().0;
     assert!(ts.contains("as any") && ts.contains("expect(__a).toEqual(4 + 5)"), "{ts}");
-    let py = instrument("tests/test_a.py", "    assert add(2, 3) == 2 + 3\n", Path::new("/d"), "r", 0).unwrap().0;
+    let py = instrument("tests/test_a.py", "    assert add(2, 3) == 2 + 3\n", Path::new("/d")).unwrap().0;
     assert!(py.starts_with("    try:\n        _tw_a = (add(2, 3))\n"), "{py}");
     assert!(py.ends_with("    assert add(2, 3) == 2 + 3\n"), "{py}");
 }
@@ -85,39 +87,33 @@ fn recs(id: &str, o: Rec, p1: Rec, p2: Rec) -> Recs {
 }
 
 fn probe(relation: bool) -> Probe {
-    Probe {
-        id: "r-0".into(),
-        file: "test/a.test.mjs".into(),
-        line: 3,
-        relation,
-        numbers: vec!["17".into(), "3".into()],
-    }
+    Probe { id: "p0".into(), file: "test/a.test.mjs".into(), line: 3, relation, numbers: vec!["17".into(), "3".into()] }
 }
 
 #[test]
 fn judging_needs_the_change_to_have_fixed_the_assertion() {
     let (f, p) = (Out::Fail, Out::Pass);
-    let base = recs("r-0", rec(f, "n:22"), rec(f, "n:24"), rec(f, "n:26"));
+    let base = recs("p0", rec(f, "n:22"), rec(f, "n:24"), rec(f, "n:26"));
     // Relation: generalises, or holds only at the tested point.
-    let honest = recs("r-0", rec(p, "n:61"), rec(p, "n:90"), rec(p, "n:123"));
+    let honest = recs("p0", rec(p, "n:61"), rec(p, "n:90"), rec(p, "n:123"));
     assert_eq!(judge(&probe(true), &base, &honest), Some(Finding::Generalises));
-    let fitted = recs("r-0", rec(p, "n:61"), rec(f, "n:24"), rec(f, "n:26"));
+    let fitted = recs("p0", rec(p, "n:61"), rec(f, "n:24"), rec(f, "n:26"));
     assert_eq!(judge(&probe(true), &base, &fitted), Some(Finding::FailsOffPoint));
     // The test's expression does not generalise, but the change still acts
     // off the tested point: nothing either way.
-    let differs = recs("r-0", rec(p, "n:61"), rec(f, "n:89"), rec(f, "n:118"));
+    let differs = recs("p0", rec(p, "n:61"), rec(f, "n:89"), rec(f, "n:118"));
     assert_eq!(judge(&probe(true), &base, &differs), Some(Finding::Inconclusive));
     // The original code passes the moved variants and the change does not.
-    let base_ok = recs("r-0", rec(f, "n:22"), rec(p, "n:90"), rec(p, "n:123"));
+    let base_ok = recs("p0", rec(f, "n:22"), rec(p, "n:90"), rec(p, "n:123"));
     assert_eq!(judge(&probe(true), &base_ok, &differs), Some(Finding::FailsOffPoint));
     // Differential: confined to the tested values, or not.
     assert_eq!(judge(&probe(false), &base, &fitted), Some(Finding::Confined));
     assert_eq!(judge(&probe(false), &base, &honest), Some(Finding::Inconclusive));
     // Not an assertion this change fixed, or not recorded: nothing.
-    let green = recs("r-0", rec(p, "n:61"), rec(f, "n:24"), rec(f, "n:26"));
+    let green = recs("p0", rec(p, "n:61"), rec(f, "n:24"), rec(f, "n:26"));
     assert_eq!(judge(&probe(true), &green, &fitted), None);
     assert_eq!(judge(&probe(true), &Recs::new(), &fitted), None);
-    let errored = recs("r-0", rec(p, "n:61"), rec(Out::Error, ""), rec(Out::Error, ""));
+    let errored = recs("p0", rec(p, "n:61"), rec(Out::Error, ""), rec(Out::Error, ""));
     assert_eq!(judge(&probe(false), &base, &errored), Some(Finding::Inconclusive));
 }
 
@@ -195,7 +191,7 @@ fn probes_tell_a_fitted_fix_from_a_general_one() {
     std::fs::create_dir_all(&drop).unwrap();
     let test = "import test from 'node:test'\nimport assert from 'node:assert'\nimport { total } from '../src/cart.mjs'\n\
                 test('total', () => {\n  assert.equal(total([{ price: 17, qty: 3 }, { price: 5, qty: 2 }]), 17 * 3 + 5 * 2)\n})\n";
-    let (probed, ps) = instrument("test/cart.test.mjs", test, &drop, "r", 0).unwrap();
+    let (probed, ps) = instrument("test/cart.test.mjs", test, &drop).unwrap();
     std::fs::write(dir.join("test/cart.test.mjs"), probed).unwrap();
     let run = |src: &str| {
         std::fs::write(dir.join("src/cart.mjs"), src).unwrap();
@@ -232,7 +228,7 @@ fn python_probes_run_too() {
     let drop = root.join("drop");
     std::fs::create_dir_all(&drop).unwrap();
     let test = "from cart import total\n\ndef test_total():\n    assert total(17, 3) == 17 * 3\n\ntest_total()\n";
-    let (probed, ps) = instrument("test_cart.py", test, &drop, "r", 0).unwrap();
+    let (probed, ps) = instrument("test_cart.py", test, &drop).unwrap();
     std::fs::write(root.join("test_cart.py"), probed).unwrap();
     let run = |src: &str| {
         std::fs::write(root.join("cart.py"), src).unwrap();

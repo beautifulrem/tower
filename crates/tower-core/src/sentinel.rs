@@ -589,7 +589,7 @@ pub fn special_cases(
             let hit = cases.iter().any(|(inputs, expected)| {
                 let matched = inputs.iter().filter(|x| here.contains(x)).count();
                 let small = inputs.iter().chain([expected]).all(|x| x.len() == 1);
-                let needed = if small { 2.min(inputs.len()).max(2) } else { 1 };
+                let needed = if small { 2 } else { 1 };
                 matched >= needed && window.contains(expected)
             });
             if hit {

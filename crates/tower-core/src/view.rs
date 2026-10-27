@@ -261,6 +261,9 @@ pub struct GoalDetail {
     pub branch_preview: String,
     /// The latest rollback can be undone (nothing ran since).
     pub can_undo_rollback: bool,
+    /// The project has held-out tests. Without them nothing beyond the
+    /// visible tests can catch work fitted to those tests.
+    pub has_held_out_tests: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]

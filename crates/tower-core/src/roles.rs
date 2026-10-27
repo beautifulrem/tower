@@ -186,6 +186,15 @@ pub fn is_dependency_file(path: &str) -> bool {
         || path.contains("/.cargo/config")
 }
 
+/// Third-party code kept in the repository: someone else's source, so
+/// changing it is not the fix (and it can hold a test runner).
+fn is_vendored(path: &str) -> bool {
+    let p = format!("/{path}");
+    ["/vendor/", "/third_party/", "/third-party/", "/node_modules/", "/.yarn/", "/site-packages/"]
+        .iter()
+        .any(|v| p.contains(v))
+}
+
 /// Task runners, build scripts and CI: they decide what commands do.
 fn is_build(path: &str) -> bool {
     let name = name_of(path);
@@ -252,7 +261,7 @@ pub fn role(path: &str) -> Role {
         Role::TestData
     } else if is_test_path(path) {
         Role::Test
-    } else if is_dependency_file(path) {
+    } else if is_dependency_file(path) || is_vendored(path) {
         Role::Dependency
     } else if is_build(path) {
         Role::Build
@@ -539,13 +548,15 @@ mod tests {
             (".env.test", Role::Config),
             (".vscode/settings.json", Role::Config),
             ("src/.hidden/loader.js", Role::Config),
-            ("site-packages/hook.pth", Role::Config),
+            ("lib/hook.pth", Role::Config),
             ("deno.json", Role::Config),
             ("README.md", Role::Docs),
             ("requirements-dev.txt", Role::Dependency),
             ("src/loader.unknownext", Role::Config),
             ("bin/tool", Role::Config),
             ("assets/logo.svg", Role::Source),
+            ("vendor/lib/assert.js", Role::Dependency),
+            ("packages/a/node_modules/chai/index.js", Role::Dependency),
         ] {
             assert_eq!(role(path), want, "{path}");
         }

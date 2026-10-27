@@ -255,8 +255,8 @@ fn reset_remote_token(sup: Sup<'_>) -> Res<()> {
 }
 
 #[tauri::command]
-fn set_git_identity(sup: Sup<'_>, name: String, email: String) -> Res<()> {
-    sup.set_git_identity(&name, &email)
+fn set_git_identity(sup: Sup<'_>, name: String, email: String, project_id: Option<String>) -> Res<()> {
+    sup.set_git_identity(&name, &email, project_id.as_deref())
 }
 
 #[tauri::command]

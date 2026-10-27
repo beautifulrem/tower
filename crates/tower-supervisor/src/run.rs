@@ -544,7 +544,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                     inner.append(g, EventKind::AssistantMessage { text: head(text.trim(), 8_000).into() })?;
                 }
                 if stop_reason.as_deref() == Some("error") {
-                    let msg = error.unwrap_or_else(|| {
+                    let msg = error.map(|e| readable_error(&e)).unwrap_or_else(|| {
                         tr!(inner.lang(), "模型服务返回错误", "The model provider returned an error")
                     });
                     run.flags().last_error = Some(msg.clone());
@@ -609,6 +609,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
         PiEvent::CompactionStart => inner.set_mode(g, Mode::Compacting)?,
         PiEvent::CompactionEnd => inner.set_mode(g, Mode::Thinking)?,
         PiEvent::RetryStart { attempt, max_attempts, error } => {
+            let error = readable_error(&error);
             inner.set_mode(g, Mode::Retrying)?;
             inner.append(
                 g,
@@ -985,9 +986,53 @@ pub(crate) fn sandbox_denied(text: &str) -> bool {
         || t.contains("deny(1)")
 }
 
+/// A provider's error as a sentence: an HTML error page (a proxy's or a
+/// gateway's 429 or 502) becomes its status and title, never markup.
+pub(crate) fn readable_error(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+    if !(lower.contains("<html") || lower.contains("<!doctype") || lower.contains("<body")) {
+        return raw.chars().take(600).collect();
+    }
+    let title = lower
+        .find("<title>")
+        .and_then(|s| lower[s + 7..].find("</title>").map(|e| raw[s + 7..s + 7 + e].trim().to_string()))
+        .filter(|t| !t.is_empty());
+    let status = raw
+        .split(|c: char| !c.is_ascii_digit())
+        .find(|w| w.len() == 3 && matches!(w.as_bytes()[0], b'4' | b'5'))
+        .map(str::to_string);
+    // Whatever text is left outside the tags, briefly.
+    let mut text = String::new();
+    let mut in_tag = false;
+    for c in raw.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(160).collect();
+    match (status, title) {
+        (Some(s), Some(t)) if t.contains(&s) => format!("The model provider answered {t}"),
+        (Some(s), Some(t)) => format!("The model provider answered {s} ({t})"),
+        (Some(s), None) => format!("The model provider answered {s}"),
+        (None, Some(t)) => format!("The model provider answered: {t}"),
+        (None, None) => format!("The model provider answered with an error page: {text}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::same_command;
+    use super::{readable_error, same_command};
+
+    #[test]
+    fn provider_error_pages_become_sentences() {
+        let page = "<!DOCTYPE html><html><head><title>429 Too Many Requests</title></head><body><h1>429 Too Many Requests</h1><hr><center>nginx</center></body></html>";
+        assert_eq!(readable_error(page), "The model provider answered 429 Too Many Requests");
+        assert_eq!(readable_error("502 <html><body>Bad gateway</body></html>"), "The model provider answered 502");
+        assert_eq!(readable_error("rate limited, retry in 20s"), "rate limited, retry in 20s");
+    }
 
     #[test]
     fn only_the_exact_criterion_command_is_an_observation() {

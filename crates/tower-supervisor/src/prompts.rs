@@ -171,7 +171,8 @@ pub fn failing_tests(output: &str) -> Vec<String> {
         } else {
             l.strip_prefix("● ").map(|rest| rest.trim().to_string())
         };
-        if let Some(n) = name.filter(|n| !n.is_empty() && !n.starts_with("tower canary"))
+        // (Not the runner's own headings: `✖ failing tests:`.)
+        if let Some(n) = name.filter(|n| !n.is_empty() && !n.starts_with("tower canary") && !n.ends_with(':'))
             && !out.contains(&n)
         {
             out.push(n);
@@ -279,7 +280,7 @@ mod tests {
 
     #[test]
     fn failing_test_names_are_read_from_common_runners() {
-        let out = "not ok 2 - discount never goes below zero\n  ✖ applies tax once (1.2ms)\nFAILED tests/test_cart.py::test_empty - assert 1 == 0\n--- FAIL: TestTotal (0.00s)\ntest cart::tests::rounding ... FAILED\n✖ tower canary abc 0";
+        let out = "✖ failing tests:\nnot ok 2 - discount never goes below zero\n  ✖ applies tax once (1.2ms)\nFAILED tests/test_cart.py::test_empty - assert 1 == 0\n--- FAIL: TestTotal (0.00s)\ntest cart::tests::rounding ... FAILED\n✖ tower canary abc 0";
         assert_eq!(
             failing_tests(out),
             [

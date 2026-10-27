@@ -150,10 +150,12 @@ impl Inner {
         let lang = s.lang();
         let title = format!("{} · {}", item.goal_id, item.goal_title);
         let body = push_sentence(item.kind, lang).to_string();
-        let click = self.remote.host().and_then(|h| {
-            let addr = if h == "0.0.0.0" { crate::remote::addresses(&self.env).into_iter().next()? } else { h };
-            Some(format!("http://{addr}:{}/", s.remote_port))
-        });
+        let click = self
+            .remote
+            .hosts()
+            .into_iter()
+            .find(|h| h != "127.0.0.1")
+            .map(|addr| format!("http://{addr}:{}/", s.remote_port));
         let status = self.push_status.clone();
         std::thread::spawn(move || {
             let result = send_push(&url, &title, &body, click.as_deref(), lang);
@@ -308,10 +310,21 @@ pub(crate) async fn refresh_touched(inner: &Arc<Inner>) -> Result<()> {
 pub(crate) fn quiet_digest(inner: &Inner, s: &Settings) {
     let quiet = crate::is_quiet(s);
     let mut since = inner.quiet_since.lock().unwrap_or_else(PoisonError::into_inner);
+    // Kept in the store as well, so a quiet time that spans a restart still
+    // ends with its digest.
+    const KEY: (&str, &str) = ("_tower", "quiet_since");
+    if since.is_none() {
+        *since = inner.store(|st| st.ui_state(KEY.0)).ok().and_then(|m| m.get(KEY.1).and_then(|v| v.parse().ok()));
+    }
     match (*since, quiet) {
-        (None, true) => *since = Some(tower_store::system_now()),
+        (None, true) => {
+            let now = tower_store::system_now();
+            *since = Some(now);
+            let _ = inner.store(|st| st.set_ui_state(KEY.0, KEY.1, Some(&now.to_string())));
+        }
         (Some(start), false) => {
             *since = None;
+            let _ = inner.store(|st| st.set_ui_state(KEY.0, KEY.1, None));
             // The desk announces what waited (one notification if several).
             inner.emit_inbox();
             let url = s.push_url.trim().to_string();

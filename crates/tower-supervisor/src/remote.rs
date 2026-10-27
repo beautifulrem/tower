@@ -20,8 +20,8 @@ use crate::Inner;
 /// listens on and why it is not running when it should be.
 #[derive(Default)]
 pub struct Remote {
-    server: Mutex<Option<Arc<tiny_http::Server>>>,
-    host: Mutex<Option<String>>,
+    servers: Mutex<Vec<Arc<tiny_http::Server>>>,
+    hosts: Mutex<Vec<String>>,
     problem: Mutex<Option<String>>,
 }
 
@@ -58,11 +58,24 @@ pub fn tailscale_ip(env: &crate::shell_env::ShellEnv) -> Option<String> {
     Some(ip)
 }
 
-/// Where to listen: Tailscale's address (the only encrypted way in), or
-/// every interface when the settings ask for the local network. Without
-/// either there is nowhere safe to listen: `None`.
-pub fn listen_host(env: &crate::shell_env::ShellEnv, local_network: bool) -> Option<String> {
-    if local_network { Some("0.0.0.0".into()) } else { tailscale_ip(env) }
+/// Where to listen: Tailscale's address (the only encrypted way in), plus
+/// this Mac's address on the local network when the settings allow it.
+/// Empty: there is nowhere safe to listen.
+pub fn listen_hosts(env: &crate::shell_env::ShellEnv, local_network: bool) -> Vec<String> {
+    // Never every interface: the addresses a phone uses, by name. With the
+    // local network allowed, this Mac's address on it (and loopback).
+    let mut hosts: Vec<String> = tailscale_ip(env).into_iter().collect();
+    if local_network {
+        hosts.extend(addresses(env));
+        hosts.push("127.0.0.1".into());
+    }
+    let mut seen = Vec::new();
+    hosts.retain(|h| {
+        let new = !seen.contains(h);
+        seen.push(h.clone());
+        new
+    });
+    hosts
 }
 
 /// Addresses the phone can use: the Tailscale address first (while it is
@@ -90,15 +103,15 @@ pub fn qr_svg(text: &str) -> String {
 
 impl Remote {
     pub fn stop(&self) {
-        if let Some(s) = self.server.lock().unwrap_or_else(PoisonError::into_inner).take() {
+        for s in self.servers.lock().unwrap_or_else(PoisonError::into_inner).drain(..) {
             s.unblock();
         }
-        *self.host.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        self.hosts.lock().unwrap_or_else(PoisonError::into_inner).clear();
     }
 
-    /// The address it listens on, if it is running.
-    pub fn host(&self) -> Option<String> {
-        self.host.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    /// The addresses it listens on (none when it is not running).
+    pub fn hosts(&self) -> Vec<String> {
+        self.hosts.lock().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
     /// Why it is not running although it is turned on.
@@ -110,23 +123,38 @@ impl Remote {
         *self.problem.lock().unwrap_or_else(PoisonError::into_inner) = problem;
     }
 
-    /// Starts serving on `port` at `host` with `token`, replacing a running
-    /// server.
-    pub fn start(&self, inner: &Arc<Inner>, host: &str, port: u16, token: String) -> std::io::Result<()> {
+    /// Starts serving on `port` at each of `hosts` with `token`, replacing
+    /// running servers.
+    pub fn start(&self, inner: &Arc<Inner>, hosts: &[String], port: u16, token: String) -> std::io::Result<()> {
         self.stop();
-        let server = Arc::new(tiny_http::Server::http((host, port)).map_err(|e| std::io::Error::other(e.to_string()))?);
-        *self.server.lock().unwrap_or_else(PoisonError::into_inner) = Some(server.clone());
-        *self.host.lock().unwrap_or_else(PoisonError::into_inner) = Some(host.to_string());
-        self.set_problem(None);
-        let weak = Arc::downgrade(inner);
-        let rt = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
-            for mut req in server.incoming_requests() {
-                let Some(inner) = weak.upgrade() else { break };
-                let response = handle(&inner, &rt, &token, &mut req);
-                let _ = req.respond(response);
+        let mut servers = Vec::new();
+        for host in hosts {
+            match tiny_http::Server::http((host.as_str(), port)) {
+                Ok(s) => servers.push(Arc::new(s)),
+                Err(e) => {
+                    for s in &servers {
+                        s.unblock();
+                    }
+                    return Err(std::io::Error::other(e.to_string()));
+                }
             }
-        });
+        }
+        *self.hosts.lock().unwrap_or_else(PoisonError::into_inner) = hosts.to_vec();
+        self.set_problem(None);
+        for server in &servers {
+            let server = server.clone();
+            let weak = Arc::downgrade(inner);
+            let rt = tokio::runtime::Handle::current();
+            let token = token.clone();
+            std::thread::spawn(move || {
+                for mut req in server.incoming_requests() {
+                    let Some(inner) = weak.upgrade() else { break };
+                    let response = handle(&inner, &rt, &token, &mut req);
+                    let _ = req.respond(response);
+                }
+            });
+        }
+        *self.servers.lock().unwrap_or_else(PoisonError::into_inner) = servers;
         Ok(())
     }
 }

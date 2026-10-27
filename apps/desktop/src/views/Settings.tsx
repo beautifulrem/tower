@@ -250,7 +250,7 @@ export function Settings() {
             </Field>
             <Show when={engine() === "claude-code"}>
               <Field label={t("settings.claudeAcp")} hint={t("settings.claudeAcpHint")}>
-                <input class="mono" value={s()!.claude_acp_command} onInput={(e) => patch({ claude_acp_command: e.currentTarget.value })} placeholder="claude-agent-acp" />
+                <input class="mono" value={s()!.claude_acp_command} onInput={(e) => patch({ claude_acp_command: e.currentTarget.value })} placeholder={t("common.eg", { x: "claude-agent-acp" })} />
               </Field>
             </Show>
             <Field label={t("settings.defaultModel")}>
@@ -266,10 +266,10 @@ export function Settings() {
               <input class="num narrow" type="number" min="1" max="10" value={s()!.max_concurrent} onInput={(e) => patch({ max_concurrent: Number(e.currentTarget.value) || 1 })} />
             </Field>
             <Field label={t("settings.piPath")} hint={t("settings.piPathHint")}>
-              <input class="mono" value={s()!.pi_path} onInput={(e) => patch({ pi_path: e.currentTarget.value })} placeholder="/opt/homebrew/bin/pi" />
+              <input class="mono" value={s()!.pi_path} onInput={(e) => patch({ pi_path: e.currentTarget.value })} placeholder={t("common.eg", { x: "/opt/homebrew/bin/pi" })} />
             </Field>
             <Field label={t("settings.editor")} hint={t("settings.editorHint")}>
-              <input class="mono" value={s()!.editor} onInput={(e) => patch({ editor: e.currentTarget.value })} placeholder="code" />
+              <input class="mono" value={s()!.editor} onInput={(e) => patch({ editor: e.currentTarget.value })} placeholder={t("common.eg", { x: "code" })} />
             </Field>
             <Field label={t("settings.extraExtensions")} hint={t("settings.extraExtensionsHint")}>
               <textarea
@@ -277,7 +277,7 @@ export function Settings() {
                 rows={2}
                 value={s()!.extra_extensions.join("\n")}
                 onInput={(e) => patch({ extra_extensions: lines(e.currentTarget.value) })}
-                placeholder="~/.pi/agent/npm/node_modules/pi-clinepass-provider/src/index.ts"
+                placeholder={t("common.eg", { x: "~/.pi/agent/npm/node_modules/pi-clinepass-provider/src/index.ts" })}
               />
             </Field>
             <label class="check form-row">
@@ -593,7 +593,7 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
         </Show>
         {/* Pushes go through ntfy; what leaves the machine is said in one line, with where to point it. */}
         <Field label={t("settings.pushUrl")} hint={t("settings.pushUrlHint")}>
-          <input class="mono" value={props.s.push_url} onInput={(e) => props.patch({ push_url: e.currentTarget.value })} placeholder="https://ntfy.example.net/tower" spellcheck={false} />
+          <input class="mono" value={props.s.push_url} onInput={(e) => props.patch({ push_url: e.currentTarget.value })} placeholder={t("common.eg", { x: "https://ntfy.example.net/tower" })} spellcheck={false} />
         </Field>
         <label class="check form-row">
           <input type="checkbox" checked={props.s.push_ready} onChange={(e) => (props.patch({ push_ready: e.currentTarget.checked }), void props.commit())} />
@@ -699,16 +699,16 @@ function ProjectRow(props: { p: ProjectView }) {
           <input class="mono" value={branch()} onInput={(e) => setBranch(e.currentTarget.value)} />
         </Field>
         <Field label={t("settings.testCommand")} hint={t("settings.testCommandHint")}>
-          <input class="mono" data-field="test" value={test()} onInput={(e) => setTest(e.currentTarget.value)} placeholder="pnpm test" />
+          <input class="mono" data-field="test" value={test()} onInput={(e) => setTest(e.currentTarget.value)} placeholder={t("common.eg", { x: "pnpm test" })} />
         </Field>
         <Field label={t("settings.setupCommand")} hint={t("settings.setupCommandHint")}>
-          <input class="mono" data-field="setup" value={setup()} onInput={(e) => setSetup(e.currentTarget.value)} placeholder="pnpm install --frozen-lockfile" />
+          <input class="mono" data-field="setup" value={setup()} onInput={(e) => setSetup(e.currentTarget.value)} placeholder={t("common.eg", { x: "pnpm install --frozen-lockfile" })} />
         </Field>
         <Field label={t("settings.localFiles")} hint={t("settings.localFilesHint")}>
-          <textarea class="mono" data-field="local" rows={2} value={local()} onInput={(e) => setLocal(e.currentTarget.value)} placeholder={".env\nconfig/*.local.json"} />
+          <textarea class="mono" data-field="local" rows={2} value={local()} onInput={(e) => setLocal(e.currentTarget.value)} placeholder={t("common.eg", { x: ".env" })} />
         </Field>
         <Field label={t("settings.holdoutFiles")} hint={t("settings.holdoutFilesHint")}>
-          <textarea class="mono" data-field="holdout" rows={2} value={holdout()} onInput={(e) => setHoldout(e.currentTarget.value)} placeholder={"test/holdout/*.test.js"} />
+          <textarea class="mono" data-field="holdout" rows={2} value={holdout()} onInput={(e) => setHoldout(e.currentTarget.value)} placeholder={t("common.eg", { x: "test/holdout/*.test.js" })} />
         </Field>
         <Field label={t("settings.projectMemory")} hint={t("settings.projectMemoryHint")}>
           <textarea rows={2} value={memory()} onInput={(e) => setMemory(e.currentTarget.value)} placeholder={t("settings.projectMemoryPlaceholder")} />

@@ -666,7 +666,7 @@ impl Supervisor {
             &[InboxKind::Paused, InboxKind::ReviewReady],
             &tr!(lang, "重新验证", "Verifying again"),
         );
-        verify::spawn(self.inner.clone(), id.to_string());
+        verify::spawn_asked(self.inner.clone(), id.to_string());
         Ok(())
     }
 

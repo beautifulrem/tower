@@ -34,12 +34,26 @@ fn free_bytes(path: &Path) -> Option<u64> {
 }
 
 pub fn spawn(inner: Arc<Inner>, goal: String) {
+    start(inner, goal, false);
+}
+
+/// A verification you asked for (an answer on a card, a resume, "verify
+/// again"). If the last one is still winding down, yours runs when it is
+/// done even though it left the goal paused: an answer given quickly is
+/// never lost.
+pub fn spawn_asked(inner: Arc<Inner>, goal: String) {
+    start(inner, goal, true);
+}
+
+fn start(inner: Arc<Inner>, goal: String, asked: bool) {
     let cancel = Cancel::default();
     {
         let mut v = inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if v.contains_key(&goal) {
             // Run again once this one is done, never twice at once.
-            inner.verify_again.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(goal);
+            let mut again = inner.verify_again.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let e = again.entry(goal).or_default();
+            *e |= asked;
             return;
         }
         v.insert(goal.clone(), cancel.clone());
@@ -47,12 +61,8 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
     tokio::spawn(async move {
         let result = verify(&inner, &goal, &cancel).await;
         inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
-        let again = inner.verify_again.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
-        if again
-            && !cancel.is_cancelled()
-            && inner.store(|s| s.goal(&goal)).is_ok_and(|g| g.state == LifecycleState::Claimed)
-        {
-            spawn(inner.clone(), goal.clone());
+        if !cancel.is_cancelled() {
+            run_again_if_asked(&inner, &goal);
         }
         if let Err(e) = result
             && !cancel.is_cancelled()
@@ -66,6 +76,24 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
             run::report(&inner, &goal, r).await;
         }
     });
+}
+
+/// A verification asked for while the last one wound down: the agent's
+/// (a submit) runs if the goal is still claimed; yours also when the last
+/// one left it paused or in review.
+fn run_again_if_asked(inner: &Arc<Inner>, goal: &str) {
+    let Some(asked) = inner.verify_again.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(goal) else {
+        return;
+    };
+    let state = inner.store(|s| s.goal(goal)).map(|g| g.state);
+    let runs = match state {
+        Ok(LifecycleState::Claimed) => true,
+        Ok(LifecycleState::Paused | LifecycleState::InReview) => asked,
+        _ => false,
+    };
+    if runs {
+        start(inner.clone(), goal.into(), asked);
+    }
 }
 
 /// Before the agent's work counts: the criteria that have no baseline yet
@@ -101,10 +129,7 @@ pub fn preflight(inner: Arc<Inner>, goal: String) {
         }
         .await;
         inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
-        let again = inner.verify_again.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
-        if again && inner.store(|s| s.goal(&goal)).is_ok_and(|g| g.state == LifecycleState::Claimed) {
-            spawn(inner.clone(), goal.clone());
-        }
+        run_again_if_asked(&inner, &goal);
         let problem = match found {
             Ok(p) => p,
             Err(e) => {

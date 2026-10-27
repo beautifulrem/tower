@@ -16,7 +16,7 @@
  */
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
 
-import { DangerMark, Icon, NoticeMark, Seal } from "../components/Glyph";
+import { Icon, Seal } from "../components/Glyph";
 import { CriteriaBar, discountedOf } from "../components/Honesty";
 import { Button, Empty, IconButton, Kbd, Loading } from "../components/ui";
 import type { DiffFile } from "../gen/DiffFile";
@@ -34,6 +34,7 @@ import { type Draft, type Layout, type ReviewState, fileHash, loadReviewState, p
 import { act, onTrace, state, toast } from "../lib/store";
 import { applySuggestion } from "../lib/suggest";
 import { FileDiff } from "./review/FileDiff";
+import { type ReviewNote, ReviewNotes } from "./review/notes";
 import { AcceptPanel, ChangesPanel, VerifyPanel } from "./review/panels";
 import { PathPalette, TreeRow, UnitItem } from "./review/sidebar";
 import { type Anchor, type Composing, type Panel, type Reveals } from "./review/types";
@@ -301,7 +302,7 @@ export function Review(props: { id: string }) {
   const risingBy = (el: HTMLElement) =>
     [...document.querySelectorAll<HTMLElement>(".hunk-fold-inner")].filter((f) => f.getBoundingClientRect().top < el.getBoundingClientRect().top).reduce((n, f) => n + f.offsetHeight, 0);
   // Scrolling the pane yourself is the one way the current hunk follows the view: our own scrolls are not that.
-  let ownScrollUntil = 0;
+  let ownScroll = false;
   /** Makes a hunk current and brings its header into view where it will settle — only if it is not there already. */
   const moveTo = (h: HunkRef) => {
     setPick(h);
@@ -312,7 +313,9 @@ export function Review(props: { id: string }) {
       const top = topIn(pane, head) - risingBy(head);
       // Below the file header that sticks to the pane's top, and with a row of the hunk under it.
       if (top >= pane.scrollTop + 40 && top + 64 <= pane.scrollTop + pane.clientHeight) return;
-      ownScrollUntil = performance.now() + 400;
+      // The scroll event our own scroll causes arrives before the next frame; past that, scrolling is yours again.
+      ownScroll = true;
+      requestAnimationFrame(() => requestAnimationFrame(() => (ownScroll = false)));
       pane.scrollTo({ top: Math.max(0, top - 40) });
     });
   };
@@ -325,7 +328,7 @@ export function Review(props: { id: string }) {
   };
   /** After you scroll: if no line of the current hunk is in sight, the hunk whose header is at (or last passed) the top takes over. */
   const onPaneScroll = (e: Event) => {
-    if (performance.now() < ownScrollUntil) return;
+    if (ownScroll) return;
     const pane = e.currentTarget as HTMLElement;
     const c = current();
     const head = c && headOf(pane, c);
@@ -418,6 +421,13 @@ export function Review(props: { id: string }) {
     } else back();
   };
 
+  const notes = createMemo<ReviewNote[]>(() => {
+    const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: t("review.sentinel", { title: h.title }) }));
+    for (const r of unit()?.risk_reasons ?? []) out.push({ danger: false, text: r });
+    if (detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0)
+      out.push({ danger: false, text: t("goal.noHeldOut"), action: { label: t("goal.setHeldOut"), run: () => g() && goProjectSetting(g()!.project_id, "holdout") } });
+    return out;
+  });
   const solo = () => units().length === 1;
   const showTree = () => allPaths().length >= TREE_FROM;
   const viewedUnits = () => units().filter(unitViewed).length;
@@ -582,43 +592,9 @@ export function Review(props: { id: string }) {
                 </aside>
               </Show>
               <div class="review-diff" onScroll={onPaneScroll}>
-                {/* Said once over the diff, as on the goal page: only the visible tests vouch for this, and the way to add held-out ones. */}
-                <Show when={detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0}>
-                  <p class="held-out-none halt">
-                    <NoticeMark />
-                    <span>{t("goal.noHeldOut")}</span>
-                    <button class="link-quiet text-btn" onClick={() => g() && goProjectSetting(g()!.project_id, "holdout")}>
-                      {t("goal.setHeldOut")}
-                      <Icon name="chevron-right" size={10} />
-                    </button>
-                  </p>
-                </Show>
-                <Show when={detail()?.sentinels.length}>
-                  <div class="sentinel-banner">
-                    <For each={detail()!.sentinels}>
-                      {(h) => (
-                        <span class="risk-reason">
-                          <Show when={h.severity >= 3} fallback={<NoticeMark />}>
-                            <DangerMark />
-                          </Show>
-                          {t("review.sentinel", { title: h.title })}
-                        </span>
-                      )}
-                    </For>
-                  </div>
-                </Show>
-                <Show when={unit()?.risk_reasons.length}>
-                  <div class="risk-banner">
-                    <For each={unit()!.risk_reasons}>
-                      {(r) => (
-                        <span class="risk-reason">
-                          <NoticeMark />
-                          {r}
-                        </span>
-                      )}
-                    </For>
-                  </div>
-                </Show>
+                {/* What to know before reading, as one band over the diff (review/notes.tsx): the sentinels, this unit's risks,
+                    and — said once, as on the goal page — that only the visible tests vouch for this, with the way to add held-out ones. */}
+                <ReviewNotes notes={notes()} />
                 <For each={files()}>
                   {(f) => (
                     <FileDiff
@@ -659,37 +635,49 @@ export function Review(props: { id: string }) {
 
       {/* The status bar: keys on the left, the two mouse hints apart on the right, quieter. */}
       <div class="review-status halt">
-        <span>
-          <Kbd k="j k" /> {t("review.keyUnits")}
-        </span>
-        <span>
-          <Kbd k="] [" /> {t("review.keyHunks")}
-        </span>
-        <span>
-          <Kbd k="v" /> {t("review.keyViewed")}
-        </span>
-        <span>
-          <Kbd k="e" /> {t("review.keyVerification")}
-        </span>
-        <span title={t("review.acceptHunkNote")}>
-          <Kbd k="a" /> {t("review.keyAccept")}
-        </span>
-        <Show when={editable()}>
+        {/* With nothing to review, only the keys that still do something: back, and the sheet. */}
+        <Show
+          when={units().length > 0}
+          fallback={
+            <span>
+              <Kbd k="escape" /> {t("keys.back")}
+            </span>
+          }
+        >
           <span>
-            <Kbd k="u" /> {t("review.keyUndo")}
+            <Kbd k="j k" /> {t("review.keyUnits")}
           </span>
-        </Show>
-        <Show when={wide()}>
           <span>
-            <Kbd k="alt+v" /> {t("review.keySplit")}
+            <Kbd k="] [" /> {t("review.keyHunks")}
           </span>
+          <span>
+            <Kbd k="v" /> {t("review.keyViewed")}
+          </span>
+          <span>
+            <Kbd k="e" /> {t("review.keyVerification")}
+          </span>
+          <span title={t("review.acceptHunkNote")}>
+            <Kbd k="a" /> {t("review.keyAccept")}
+          </span>
+          <Show when={editable()}>
+            <span>
+              <Kbd k="u" /> {t("review.keyUndo")}
+            </span>
+          </Show>
+          <Show when={wide()}>
+            <span>
+              <Kbd k="alt+v" /> {t("review.keySplit")}
+            </span>
+          </Show>
         </Show>
         <span>
           <Kbd k="?" /> {t("keys.shortcuts")}
         </span>
         <span class="grow" />
-        <span class="status-mouse t4">{t("review.keyComment")}</span>
-        <span class="status-mouse t4">{t("review.keyOpen")}</span>
+        <Show when={units().length > 0}>
+          <span class="status-mouse t4">{t("review.keyComment")}</span>
+          <span class="status-mouse t4">{t("review.keyOpen")}</span>
+        </Show>
         {/* Your reading marks on this unit, counted; the title says what they are not. With the last one, where to go: V for
             the next unit, or — on the last unit of a goal ready to accept — the accept sheet. */}
         <Show when={unitAccepted() > 0}>

@@ -136,7 +136,7 @@ test("the review sidebar names each file once, grouped by unit", async ({ page }
   // The second unit's row carries its risk; clicking it switches the diff.
   await aside.locator(".unit").nth(1).click();
   await expect(page.getByText("Unit 2 / 2")).toBeVisible();
-  await expect(page.locator(".risk-reason")).toContainText("test harness");
+  await expect(page.locator(".review-notes")).toContainText("test harness");
 });
 
 for (const scheme of ["light", "dark"] as const) {

@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tower_core::contract::CriterionKind;
-use tower_core::i18n::plural;
 use tower_core::lifecycle::Transition;
 use tower_core::view::{CanaryState, InboxKind};
 use tower_core::{EventKind, Lang, LifecycleState, Mode, PauseReason, tr};
@@ -133,7 +132,8 @@ fn to_paused(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str) 
     let state = inner.store(|s| s.goal(goal))?.state;
     if state == LifecycleState::Verifying {
         // The edge out of verifying for a non-rework outcome.
-        inner.transition(goal, Transition::VerifyFailed { rework: false }, Some(reason), detail)?;
+        let note = tower_core::i18n::PauseNote::render(detail, inner.lang());
+        inner.transition(goal, Transition::VerifyFailed { rework: false }, Some(reason), &note)?;
         let rec = inner.store(|s| s.goal(goal))?;
         inner.open_inbox(run::paused_item(&rec, reason, detail, inner.lang(), false))?;
         Ok(())
@@ -395,12 +395,11 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
                     tracing::warn!(goal, error = %e, "rework did not start");
                 }
             } else {
-                let ids: Vec<_> = failures.iter().map(|f| f.id.as_str()).collect();
-                let n = rec.rework_cycles;
-                let detail = match lang {
-                    Lang::Zh => format!("{} 未通过；已返工 {n} 次", ids.join("、")),
-                    Lang::En => format!("{} failed after {}", ids.join(", "), plural(n as usize, "rework", "reworks")),
-                };
+                let detail = tower_core::i18n::PauseNote::FailedAfter {
+                    criteria: failures.iter().map(|f| f.id.clone()).collect(),
+                    reworks: rec.rework_cycles,
+                }
+                .encode();
                 to_paused(inner, goal, PauseReason::VerifyFailedLimit, &detail)?;
             }
         }

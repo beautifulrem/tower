@@ -393,6 +393,78 @@ impl Risk {
     }
 }
 
+/// Why a goal paused, for the reasons Tower words itself: stored without
+/// a language (in the card and the trace) and put into words when read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PauseNote {
+    /// Spent this many cents when a budget cap was reached.
+    Spent { cents: u64 },
+    /// The agent stopped again after one reminder to submit.
+    NoSubmitAfterReminder,
+    /// The run passed its wall-clock cap of this many minutes.
+    RanPast { minutes: u32 },
+    /// These criteria still failed after this many reworks.
+    FailedAfter { criteria: Vec<String>, reworks: u32 },
+}
+
+impl PauseNote {
+    const MARK: char = '\u{1e}';
+
+    pub fn encode(&self) -> String {
+        let m = Self::MARK;
+        match self {
+            PauseNote::Spent { cents } => format!("{m}spent {cents}"),
+            PauseNote::NoSubmitAfterReminder => format!("{m}no_submit"),
+            PauseNote::RanPast { minutes } => format!("{m}ran_past {minutes}"),
+            PauseNote::FailedAfter { criteria, reworks } => format!("{m}failed_after {reworks} {}", criteria.join(",")),
+        }
+    }
+
+    pub fn decode(s: &str) -> Option<PauseNote> {
+        let rest = s.strip_prefix(Self::MARK)?;
+        let (kind, args) = rest.split_once(' ').unwrap_or((rest, ""));
+        match kind {
+            "spent" => Some(PauseNote::Spent { cents: args.parse().ok()? }),
+            "no_submit" => Some(PauseNote::NoSubmitAfterReminder),
+            "ran_past" => Some(PauseNote::RanPast { minutes: args.parse().ok()? }),
+            "failed_after" => {
+                let (n, ids) = args.split_once(' ')?;
+                Some(PauseNote::FailedAfter {
+                    criteria: ids.split(',').filter(|i| !i.is_empty()).map(String::from).collect(),
+                    reworks: n.parse().ok()?,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    pub fn text(&self, lang: Lang) -> String {
+        match self {
+            PauseNote::Spent { cents } => {
+                let usd = format!("{:.2}", *cents as f64 / 100.0);
+                tr!(lang, "已花费 ${usd}", "Spent ${usd}")
+            }
+            PauseNote::NoSubmitAfterReminder => {
+                tr!(lang, "提醒过一次后仍未提交", "Still no submit after one reminder")
+            }
+            PauseNote::RanPast { minutes } => {
+                tr!(lang, "本次运行已超过 {minutes} 分钟", "This run has passed {minutes} minutes")
+            }
+            PauseNote::FailedAfter { criteria, reworks } => match lang {
+                Lang::Zh => format!("{} 未通过；已返工 {reworks} 次", criteria.join("、")),
+                Lang::En => {
+                    format!("{} failed after {}", criteria.join(", "), plural(*reworks as usize, "rework", "reworks"))
+                }
+            },
+        }
+    }
+
+    /// `detail` in words: a stored note decoded, anything else as it is.
+    pub fn render(detail: &str, lang: Lang) -> String {
+        PauseNote::decode(detail).map_or_else(|| detail.to_string(), |n| n.text(lang))
+    }
+}
+
 /// What a stall card is about, stored without a language and put into
 /// words when the card is read, so it follows the interface language.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -462,6 +534,15 @@ mod tests {
         }
         assert_eq!(Choice::parse("  abandon this goal "), Some(Choice::Abandon));
         assert_eq!(Choice::parse("请先看一下 README"), None);
+    }
+
+    #[test]
+    fn pause_notes_are_put_into_words_on_read() {
+        let n = PauseNote::FailedAfter { criteria: vec!["C1".into(), "C2".into()], reworks: 3 };
+        assert_eq!(PauseNote::decode(&n.encode()), Some(n.clone()));
+        assert_eq!(PauseNote::render(&n.encode(), Lang::En), "C1, C2 failed after 3 reworks");
+        assert_eq!(PauseNote::render(&PauseNote::Spent { cents: 1234 }.encode(), Lang::Zh), "已花费 $12.34");
+        assert_eq!(PauseNote::render("plain words", Lang::En), "plain words");
     }
 
     #[test]

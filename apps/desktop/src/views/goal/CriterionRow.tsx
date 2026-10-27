@@ -43,15 +43,17 @@ export function CriterionRow(props: { goalId: string; c: CriterionView; state: s
         <Show
           when={!human()}
           fallback={
-            <input
-              type="checkbox"
-              class="human-check"
-              checked={c().human_checked}
-              disabled={!["in_review", "verifying", "running", "paused", "claimed"].includes(props.state)}
-              onChange={(e) => void act(() => api.humanCheck(props.goalId, c().criterion.id, e.currentTarget.checked))}
-              title={t("goal.humanCriterionTitle")}
-              aria-label={`${c().criterion.id} ${c().criterion.title}`}
-            />
+            <label class="hit-28" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                class="human-check"
+                checked={c().human_checked}
+                disabled={!["in_review", "verifying", "running", "paused", "claimed"].includes(props.state)}
+                onChange={(e) => void act(() => api.humanCheck(props.goalId, c().criterion.id, e.currentTarget.checked))}
+                title={t("goal.humanCriterionTitle")}
+                aria-label={`${c().criterion.id} ${c().criterion.title}`}
+              />
+            </label>
           }
         >
           <Show when={c().canary === "tampered" && mark() === "pass"} fallback={<ResultMark kind={mark()} />}>

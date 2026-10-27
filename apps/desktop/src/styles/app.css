@@ -198,6 +198,7 @@
 }
 
 .icon-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -208,6 +209,32 @@
   background: transparent;
   color: var(--text-2);
   transition: background-color var(--dur-hover-out) linear, color var(--dur-hover-out) linear;
+}
+/* A 22 or 24px icon button is drawn at its size and pressed at 28: the target reaches past the drawing, the layout
+   does not move. */
+.icon-btn-22::before,
+.icon-btn-24::before,
+.icon-btn-26::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+}
+.icon-btn-24::before {
+  inset: -2px;
+}
+.icon-btn-26::before {
+  inset: -1px;
+}
+/* A 14px checkbox is pressed at 28 too: its label is the target around it. */
+.hit-28 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -7px;
+  cursor: default;
 }
 .icon-btn:hover:not(:disabled) {
   background: var(--bg-hover);
@@ -927,21 +954,25 @@ textarea:hover,
   border-color: var(--border-strong);
   transition-duration: 0ms;
 }
-/* Focus has two forms: a control wears the 1.5px ring, a field shows it in its border — and the border has to
-   change for real: from the 10% hairline to text-3, a line the eye finds from across the room. The pointer gets
-   that one line; the keyboard (focus-visible) gets a second, inside, so Tab lands on a 2px edge and never on a
-   ring around a 1600px editor. A text area is a field — the composer's, a sheet's, the steer box's — so a sheet
-   opening onto one does not flash a ring. */
+/* Focus has two forms in the whole interface, never more:
+   - the ring, 1.5px in the focus colour, on everything you press or type into — outside a small control, on the
+     edge of a field or a card (offset into the border, so it replaces the edge rather than drawing a second one
+     around it, even on a 1600px editor);
+   - the pen, 2px at the left edge on the selected ground, on a row you select in a list (the board's rows, the
+     runs).
+   A text field wears its ring however it was focused, as a Mac text field does (WebKit matches :focus-visible on a
+   click into one); its border steps up to text-3 under the ring. */
 input:focus,
 textarea:focus,
 .select:focus {
   border-color: var(--text-3);
 }
 input:focus-visible:not([type="checkbox"]):not([type="radio"]),
-textarea:focus-visible {
-  outline: none;
+textarea:focus-visible,
+.select:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: -1px;
   border-color: var(--text-3);
-  box-shadow: inset 0 0 0 1px var(--text-3);
 }
 input[type="checkbox"]:focus-visible,
 input[type="radio"]:focus-visible {
@@ -3237,6 +3268,10 @@ input[type="radio"] {
   gap: 8px;
   justify-items: end;
 }
+/* In review the bottom edge is the status bar's: a receipt rises from above its top line, never over it. */
+:root:has(.review-status) .toasts {
+  bottom: calc(24px + 12px);
+}
 /* A toast rises 4px into its corner (it comes from below, not from above like a sheet) and settles back 2px as it goes.
    It speaks Tower's grammar at its left edge, the way a card's strip and a held-out block do: a 2px rule, inside the
    corner radius — text-1 for a receipt of your own action (replied, copied, paused, next to accept), amber when
@@ -4726,9 +4761,9 @@ input[type="radio"] {
   overflow: auto;
   tab-size: 4;
 }
-/* An editor the width of the diff is a field, not a button: focus is its border, not a ring around 1600px. */
-.file-editor-text:focus,
-.file-editor-text:focus-visible {
+/* An editor the width of the diff is a field like any other: the pointer steps its border up, the keyboard puts the
+   ring on that border (the general field rule), never a ring 2px around 1600px. */
+.file-editor-text:focus {
   outline: none;
   border-color: var(--text-3);
 }

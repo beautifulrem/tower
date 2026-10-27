@@ -46,7 +46,7 @@ export function IconButton(
   return (
     <button
       {...rest}
-      class={`icon-btn ${local.class ?? ""}`}
+      class={`icon-btn ${(local.size ?? 24) < 28 ? `icon-btn-${local.size ?? 24}` : ""} ${local.class ?? ""}`}
       style={{ width: `${local.size ?? 24}px`, height: `${local.size ?? 24}px` }}
       title={rest.title ?? local.label}
       aria-label={local.label}

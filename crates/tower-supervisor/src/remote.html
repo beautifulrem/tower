@@ -49,19 +49,28 @@
   button:focus-visible, textarea:focus-visible { outline: 1.5px solid var(--focus); outline-offset: 2px; }
 
   /* The wordmark: a ring with the verifier's check, the name tracked wide — the desktop's, at the same size. */
-  header { display: flex; align-items: center; gap: 8px; min-height: 32px; margin-bottom: 14px; }
-  .wordmark { display: inline-flex; align-items: center; gap: 8px; font-size: 10px; line-height: 12px; letter-spacing: 0.14em; font-weight: 500; color: var(--text-3); }
+  /* The header is the desk's title bar on a phone: the wordmark left, the gauge strip right, on one hairline. */
+  header { display: flex; align-items: center; gap: 12px; min-height: 32px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid var(--border-subtle); }
+  .wordmark { display: inline-flex; align-items: center; gap: 8px; font-size: 10px; line-height: 12px; letter-spacing: 0.14em; font-weight: 500; color: var(--text-3); flex: 0 0 auto; }
   .wordmark svg { display: block; }
-  #status { margin-left: auto; font-size: 12px; color: var(--text-3); display: inline-flex; align-items: center; gap: 6px; text-align: right; }
-  #status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-4); flex: 0 0 auto; }
-  #status.stale { color: var(--text-1); }
-  #status.off .dot { border-radius: 1px; background: var(--st-danger); }
+  /* The gauges, as on the desk: runs, silence (only once it is worth a look), spend, and the connection when it is not
+     fine. Spacing groups them, never a dot. With the power off every reading is a dash in the quietest grey. */
+  #status { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 12px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); white-space: nowrap; }
+  #gauges { display: contents; }
+  #conn:empty { display: none; }
+  .gauge { display: inline-flex; align-items: center; gap: 5px; }
+  .gauge svg { display: block; flex: 0 0 auto; }
+  .gauge.active, .gauge.stale, .gauge.off { color: var(--text-1); }
+  .gauge.dead { color: var(--text-4); }
+  .gauge .dot { width: 6px; height: 6px; border-radius: 1px; flex: 0 0 auto; background: var(--st-danger); }
+  /* Silence is worth a look, not a failure: a hollow square, so the strip never shows two ■. */
+  .gauge .dot.hollow { background: transparent; border: 1px solid var(--st-danger); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-  /* Scale titles, as on the board: the word in the wordmark's small tracked voice, a hairline, the count. CJK is never tracked wide. */
-  h2 { display: flex; align-items: center; gap: 10px; margin: 24px 0 8px; font-size: 10px; line-height: 16px; font-weight: 500; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; }
-  html[lang^="zh"] h2 { font-size: 11px; letter-spacing: 0.04em; text-transform: none; }
+  /* Scale titles, as on the board: the word in sentence case, a hairline, the count. */
+  h2 { display: flex; align-items: center; gap: 10px; margin: 24px 0 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-2); }
   h2::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
-  h2 .num { color: var(--text-2); order: 3; font-size: 12px; letter-spacing: 0; }
+  h2 .num { color: var(--text-3); order: 3; font-size: 12px; }
   .empty { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; color: var(--text-2); font-size: 14px; }
   .empty svg { flex: 0 0 auto; margin-top: 6px; color: var(--text-3); }
   /* The empty list is the list's own shape, waiting: two hollow rows — the draft ring and a bar where each reading will land — never pretend data. */
@@ -70,13 +79,17 @@
   .ghost svg { color: var(--text-4); }
   .ghost .bar { display: block; height: 6px; border-radius: 3px; background: var(--bg-selected); }
   .ghost .bar + .bar { margin-top: 8px; }
-  .error { display: flex; align-items: center; gap: 10px; color: var(--text-1); font-size: 14px; padding: 10px 0; }
-  .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); flex: 0 0 auto; }
-  .error .btn { margin-left: auto; }
+  /* Offline: the desk's start-up failure in a column — the sentence, where to look, when the page last got through, one way back. */
+  .offline { display: grid; gap: 4px; padding: 18px 0 0; }
+  .error { display: flex; align-items: baseline; gap: 10px; color: var(--text-1); font-size: 16px; line-height: 24px; font-weight: 500; }
+  .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); flex: 0 0 auto; transform: translateY(-1px); }
+  .offline .sub { padding-left: 18px; color: var(--text-2); font-size: 14px; text-wrap: pretty; }
+  .offline .when { padding-left: 18px; color: var(--text-3); font-size: 12px; }
+  .offline .btn { margin-top: 14px; width: 100%; }
 
   /* A decision card: amber lives only in its 32px strip — the tint, and a 2px rule on its left edge, the desk's focused card in miniature. */
   .card { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); margin-bottom: 12px; overflow: hidden; }
-  .strip { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px; border-left: 2px solid var(--st-attention); background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+  .strip { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 10px; border-left: 2px solid var(--st-attention); background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
   .strip .mark { width: 9px; height: 9px; flex: 0 0 auto; }
   .strip .kind { color: var(--text-1); font-weight: 500; }
   .strip .goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -102,14 +115,20 @@
   /* Held-out output: your register — a solid 2px rule in text-1, like a human stamp, with "for you only" where a source would
      hang; the one block on a card the agent has never seen. The failing tests' names are machine values above the runner's lines. */
   .heldout { display: grid; gap: 8px; padding: 2px 0 2px 10px; border-left: 2px solid var(--text-1); }
-  .heldout .label { font-size: 10px; line-height: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-2); font-weight: 500; }
+  .heldout .label { font-size: 12px; line-height: 16px; color: var(--text-2); font-weight: 500; }
   .heldout .head { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
   .heldout .head .id { color: var(--text-3); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
   /* Each name in its own hairline chip, as on the desk: two names never read as one sentence, and a full line wraps a whole name. */
   .heldout .names { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: 12px; color: var(--text-3); }
   .heldout .names code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 20px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-1); user-select: text; }
   .heldout .tail { margin: 0; }
-  .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* A card's choices have one width rule: the primary takes the whole line, the others share the next in equal columns;
+     when one of them would not fit its column, every one takes a whole line (fitOpts). Never ragged widths. */
+  .opts { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: 8px; }
+  .opts .btn { padding: 0 12px; }
+  .opts .btn.primary { grid-column: 1 / -1; }
+  .opts.stack { grid-template-columns: minmax(0, 1fr); }
+  .opts.stack .btn { white-space: normal; line-height: 20px; padding: 11px 16px; }
   .btn { min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-1); font-size: 15px; font-weight: 500; white-space: nowrap; }
   .btn:active { background: var(--bg-selected); }
   .btn.primary { background: var(--text-1); border-color: var(--text-1); color: var(--bg); }
@@ -120,7 +139,8 @@
   .btn.armed { border-color: var(--text-1); background: var(--bg-selected); }
   .btn:disabled { color: var(--text-3); border-color: var(--border-subtle); }
   /* Decisions that widen what the agent may do stay at the desk: named, not offered. */
-  .desk { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 12px; line-height: 16px; color: var(--text-3); }
+  .desk { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-3); }
+  .desk svg { flex: 0 0 auto; margin-top: 3px; }
   .desk b { font-weight: 500; color: var(--text-2); }
   textarea { width: 100%; font: inherit; font-size: 15px; line-height: 20px; padding: 11px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text-1); resize: none; min-height: 44px; outline: none; }
   textarea::placeholder { color: var(--text-3); }
@@ -142,19 +162,21 @@
   .row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 52px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
   .row:first-of-type { border-top: 0; }
   .row .glyph { display: block; }
-  .row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .live { display: flex; gap: 6px; align-items: baseline; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
+  .row .head { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+  .row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .row .live { display: flex; gap: 8px; align-items: baseline; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
   .row .live .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .live .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .live .detail.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .live .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--text-3); flex: 0 0 auto; }
-  .row .live .sep { color: var(--text-4); flex: 0 0 auto; }
-  /* How long the run has been going: the desk's reading, in the desk's units, one register down. */
-  .row .live .elapsed { color: var(--text-3); flex: 0 0 auto; }
   .row .seal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .seal .pin { color: var(--text-2); font-weight: 400; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
-  .foot { margin-top: 28px; font-size: 11px; line-height: 16px; color: var(--text-4); text-align: center; }
+  /* How long the run has been going: the desk's age column, at the title line's end, one register down. */
+  .row .head .elapsed { margin-left: auto; font-size: 12px; color: var(--text-3); flex: 0 0 auto; }
+  .foot { margin-top: 28px; font-size: 11px; line-height: 16px; color: var(--text-4); text-align: center; text-wrap: balance; }
+  /* When the page last got through: a footnote while it is fresh; past a minute the header says it instead. */
+  .foot + .foot { margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -163,15 +185,19 @@
     <svg width="14" height="14" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter"><circle cx="5" cy="5" r="4"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7"/></svg>
     TOWER
   </span>
-  <span id="status" role="status"><span class="dot"></span><span id="status-text"></span></span>
+  <span id="status"><span id="gauges"></span><span id="conn" class="gauge" role="status"></span></span>
 </header>
 <main id="app"></main>
 <p class="foot" id="foot"></p>
+<p class="foot num" id="fresh"></p>
 <script>
 const T = {
   en: { needs: "Needs you", toAccept: "Ready to accept", running: "Running", none: "Nothing needs you.", noneBody: "Questions, approvals and pauses show up here.",
         noRuns: "No goal is running.", send: "Send", pause: "Pause", confirm: "Press again", unpaired: "Open the pairing link from Tower's Settings on this phone.",
-        updated: "updated", every: "every 5 s", offline: "Can't reach Tower", retry: "Retry", you: "you", atDesk: "At your Mac",
+        offline: "Can't reach Tower on your Mac", offlineWhere: "Is the Mac awake, and is this phone on its Tailscale or Wi-Fi?",
+        retry: "Retry", you: "you", atDesk: "At your Mac: ", listSep: ", ", offGauge: "Offline",
+        lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, stale: (a) => `updated ${a}`,
+        runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, spent: (u) => `Spent ${u}`,
         later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00", putAside: "Put aside until",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
         runningFor: (d) => `running ${d}`,
@@ -185,7 +211,10 @@ const T = {
         kinds: { question: "Question", approval: "Approval", assumption: "Assumption", paused: "Paused", review_ready: "Ready to accept", stalled: "May be stuck", ci_failed: "CI failed" } },
   zh: { needs: "需要你", toAccept: "待验收", running: "运行中", none: "没有需要你决定的事。", noneBody: "问题、审批、假设与暂停会出现在这里。",
         noRuns: "没有正在运行的目标。", send: "发送", pause: "暂停", confirm: "再按一次", unpaired: "在这台手机上打开 Tower 设置里的配对链接。",
-        updated: "更新于", every: "每 5 秒", offline: "连不上 Tower", retry: "重试", you: "你", atDesk: "在电脑上",
+        offline: "连不上你 Mac 上的 Tower", offlineWhere: "Mac 是否醒着？这台手机是否连着同一个 Tailscale 或 Wi-Fi？",
+        retry: "重试", you: "你", atDesk: "在电脑上：", listSep: "、", offGauge: "离线",
+        lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, stale: (a) => `更新于 ${a}`,
+        runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `无响应 ${d}`, spent: (u) => `累计 ${u}`,
         later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00", putAside: "已收起，再提醒于",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
         runningFor: (d) => `已运行 ${d}`,
@@ -198,14 +227,20 @@ const T = {
         modes: { idle: "空闲", starting: "准备中", thinking: "思考", reading: "执行", editing: "执行", executing: "执行", waiting_on_you: "等你", retrying: "重试", compacting: "压缩中", verifying: "验证", settled: "已停" },
         kinds: { question: "问题", approval: "审批", assumption: "假设", paused: "已暂停", review_ready: "待验收", stalled: "可能卡住", ci_failed: "CI 失败" } },
 };
-let lang = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+// The page speaks the supervisor's language. Until it has heard from it (or when it cannot), the language it last
+// rendered in, else the phone's own: an offline page in Chinese for a Chinese desk.
+const LANG_KEY = "tower-lang";
+let lang = (localStorage.getItem(LANG_KEY) || navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
 const t = (k) => T[lang][k];
 // The token comes in the link's fragment, which browsers never send.
 if (location.hash.length > 1) { localStorage.setItem("tower-token", location.hash.slice(1)); history.replaceState(null, "", "/"); }
 const token = localStorage.getItem("tower-token");
 const app = document.getElementById("app");
 const status = document.getElementById("status");
-const statusText = document.getElementById("status-text");
+const gauges = document.getElementById("gauges");
+const conn = document.getElementById("conn");
+const fresh = document.getElementById("fresh");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const api = async (path, body) => {
   const r = await fetch(path, { method: body ? "POST" : "GET", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
@@ -219,6 +254,13 @@ const G = {
   diamond: `<svg class="mark" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)"/></svg>`,
   notice: `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>`,
   ring: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>`,
+  // The runs gauge: the running glyph's ring, filled by how many of the slots are in use — the desk's, drawn the same way.
+  runs(f) {
+    const a = 2 * Math.PI * Math.max(0, Math.min(1, f));
+    const wedge = f <= 0 ? "" : f >= 1 ? `<circle cx="5" cy="5" r="4" fill="var(--st-active)"/>`
+      : `<path d="M5 5 L5 1 A4 4 0 ${f > 0.5 ? 1 : 0} 0 ${(5 - 4 * Math.sin(a)).toFixed(3)} ${(5 - 4 * Math.cos(a)).toFixed(3)} Z" fill="var(--st-active)"/>`;
+    return `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="var(--st-active)" stroke-width="1.25"/>${wedge}</svg>`;
+  },
   seal: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4.25" fill="var(--st-verified)"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg)" stroke-width="1.25"/></svg>`,
   state(s) {
     const c = s === "running" || s === "verifying" ? "var(--st-active)" : s === "in_review" || s === "accepted" ? "var(--st-verified)" : "var(--text-3)";
@@ -316,16 +358,43 @@ const ago = (at) => t("ago")(Math.round((Date.now() - at) / 60000));
 const clock = (at) => { const d = new Date(at); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 // Elapsed time in the desk's units ("42s", "3m", "1h 20m"), the same letters in both languages.
 const dur = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
-// "updated 03:05 · every 5 s"; once a minute has passed without a fresh read, the age is added and the line steps up a register.
-function showStatus() {
-  if (status.className === "off" || !lastOk) return;
-  const stale = Date.now() - lastOk > 60_000;
-  status.className = stale ? "stale" : "";
-  statusText.textContent = `${t("updated")} ${clock(lastOk)} · ${stale ? ago(lastOk) : t("every")}`;
+const usd = (v) => v === 0 ? "$0" : v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`;
+// The header's gauges, the desk's title bar in its words: runs of slots, the engine's silence once it is worth a look
+// (past 30 s; a hollow square past two minutes — a page read every 5 s has no business counting seconds below that),
+// and what has been spent.
+function gaugesHtml(s) {
+  const running = s.goals.filter((g) => g.state === "running");
+  const max = s.max_running || 0;
+  let h = "";
+  if (running.length) h += `<span class="gauge active num">${G.runs(max ? running.length / max : 0.5)}${esc(t("runs")(running.length, max))}</span>`;
+  const heard = Math.max(0, ...running.map((g) => Math.max(g.updated_at || 0, (g.live_line && g.live_line.at) || 0)));
+  const since = Date.now() - heard;
+  if (running.length && heard > 0 && since > 30_000) h += `<span class="gauge stale num">${since > 120_000 ? `<span class="dot hollow"></span>` : ""}${esc(t("silentFor")(dur(since)))}</span>`;
+  const spent = usd(s.goals.reduce((a, g) => a + (g.cost_usd || 0), 0));
+  return h + `<span class="gauge num" title="${esc(t("spent")(spent))}"><span class="sr">${esc(t("spent")(""))}</span>${spent}</span>`;
 }
+let offline = false;
+// When the page last got through: a footnote while fresh; past a minute without a fresh read, a reading in the header.
+function showStatus() {
+  if (offline || !lastOk) return;
+  const stale = Date.now() - lastOk > 60_000;
+  conn.className = stale ? "gauge stale" : "gauge";
+  conn.textContent = stale ? t("stale")(ago(lastOk)) : "";
+  fresh.textContent = t("fresh")(clock(lastOk));
+  if (last) gauges.innerHTML = gaugesHtml(last);
+}
+// A card's other choices share a line in equal columns, unless one would not fit its column: then each takes a line.
+function fitOpts() {
+  for (const o of app.querySelectorAll(".opts")) {
+    o.classList.remove("stack");
+    if ([...o.querySelectorAll(".btn:not(.primary)")].some((b) => b.scrollWidth > b.clientWidth + 1)) o.classList.add("stack");
+  }
+}
+addEventListener("resize", fitOpts);
 function render(s) {
   if (!s) return;
   lang = s.lang.startsWith("zh") ? "zh" : "en";
+  localStorage.setItem(LANG_KEY, s.lang);
   document.documentElement.lang = s.lang;
   document.getElementById("foot").textContent = t("foot");
   const goals = new Map(s.goals.map((g) => [g.id, g]));
@@ -339,9 +408,11 @@ function render(s) {
     const held = i.kind === "paused" && g && g.pause_reason === "held_out_failed" ? heldOut(i.body) : null;
     const p = held ? { prose: held.prose, tail: "" } : parts(i);
     const desk = [];
-    const opts = i.options.map((o, n) => {
-      if (atDeskOnly(i, o)) { desk.push(o); return ""; }
-      const tone = i.tones[n] || (n === 0 ? "primary" : "neutral");
+    // The primary leads, on a line of its own; the rest keep the supervisor's order on the next.
+    const shown = i.options.map((o, n) => ({ o, tone: i.tones[n] || (n === 0 ? "primary" : "neutral") })).filter(({ o }) => !(atDeskOnly(i, o) && desk.push(o)));
+    shown.sort((a, b) => (b.tone === "primary") - (a.tone === "primary"));
+    const others = shown.filter((x) => x.tone !== "primary").length;
+    const opts = shown.map(({ o, tone }) => {
       const danger = tone === "destructive";
       const isArmed = danger && armed === i.id + o;
       return `<button class="btn ${tone === "primary" ? "primary" : ""} ${isArmed ? "armed" : ""}" data-id="${esc(i.id)}" data-o="${esc(o)}" data-d="${danger}">${esc(isArmed ? t("confirm") : o)}</button>`;
@@ -349,7 +420,7 @@ function render(s) {
     const security = i.kind === "paused" && g && g.pause_reason === "dependencies_changed";
     const laterOpen = later === i.id;
     h += `<article class="card ${at > 0 ? "quiet" : ""}">
-      <div class="strip">${G.diamond}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span>·</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span><button class="bell" data-later="${esc(i.id)}" aria-label="${t("later")}" aria-expanded="${laterOpen}">${G.bell}</button></div>
+      <div class="strip">${G.diamond}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span><button class="bell" data-later="${esc(i.id)}" aria-label="${t("later")}" aria-expanded="${laterOpen}">${G.bell}</button></div>
       <div class="main">
         ${laterOpen ? `<div class="later"><span>${t("later")}</span><button class="btn" data-snooze="${esc(i.id)}" data-until="${Date.now() + 3_600_000}">${t("inHour")}</button><button class="btn" data-snooze="${esc(i.id)}" data-until="${tomorrowAt9()}">${t("tomorrow")}</button></div>` : ""}
         <p class="question ${i.kind === "ci_failed" ? "code" : ""}">${esc(i.subject)}</p>
@@ -358,8 +429,8 @@ function render(s) {
         ${held && held.failures.length ? heldHtml(held) : ""}
         ${held && i.allow_text ? replyHtml(i, true) : ""}
         ${security ? `<p class="caution">${G.notice}<span>${t("security")}</span></p>` : ""}
-        ${opts ? `<div class="opts">${opts}</div>` : ""}
-        ${desk.length ? `<p class="desk">${G.notice} ${t("atDesk")}: ${desk.map((o) => `<b>${esc(o)}</b>`).join(" · ")}</p>` : ""}
+        ${opts ? `<div class="opts" style="--n:${Math.max(1, others)}">${opts}</div>` : ""}
+        ${desk.length ? `<p class="desk">${G.notice}<span>${t("atDesk")}${desk.map((o) => `<b>${esc(o)}</b>`).join(t("listSep"))}</span></p>` : ""}
         ${held ? `<p class="caution note">${G.notice}<span>${t("heldOutNote")}</span></p>` : ""}
         ${!held && i.allow_text && i.kind !== "assumption" ? replyHtml(i, false) : ""}
       </div></article>`;
@@ -368,9 +439,10 @@ function render(s) {
     h += `<h2>${t("toAccept")}<span class="num">${ready.length}</span></h2>`;
     for (const i of ready) {
       const g = goals.get(i.goal_id);
-      const seal = g && g.verified_pin ? `<span class="seal">${G.seal}<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span></span><span class="sep">·</span>` : "";
+      const seal = g && g.verified_pin ? `<span class="seal">${G.seal}<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span></span>` : "";
       // One column, one kind of thing: the id rides in the second line, the right column stays empty — it is the pause button's, on running rows.
-      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="sep">·</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
+      // The readings are told apart by their faces (the seal, the id in mono, the sentence), not by dots between them.
+      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
     }
   }
   const running = s.goals.filter((g) => g.state === "running");
@@ -380,13 +452,16 @@ function render(s) {
     const l = g.live_line;
     const badge = t("modes")[g.mode] ?? g.mode;
     const detail = l ? `${l.action}${l.target ? " · " + l.target : ""}` : "";
-    const elapsed = g.run_started_at ? `<span class="sep">·</span><span class="elapsed num">${esc(t("runningFor")(dur(Math.max(0, Date.now() - g.run_started_at))))}</span>` : "";
+    // How long it has run sits at the title line's end, the desk's age column: the live line keeps to what it is doing.
+    const ran = g.run_started_at ? dur(Math.max(0, Date.now() - g.run_started_at)) : "";
+    const elapsed = ran ? `<span class="elapsed num" title="${esc(t("runningFor")(ran))}"><span class="sr">${esc(t("runningFor")(""))}</span>${esc(ran)}</span>` : "";
     const isArmed = armed === "pause" + g.id;
-    h += `<div class="row">${G.state("running")}<div><div class="title">${esc(g.title)}</div><div class="live"><span class="badge">${esc(badge)}</span><span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span>${elapsed}</div></div>
+    h += `<div class="row">${G.state("running")}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="live"><span class="badge">${esc(badge)}</span><span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span></div></div>
       <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
   }
   app.innerHTML = h;
-  status.className = "";
+  fitOpts();
+  offline = false;
   showStatus();
 }
 app.addEventListener("click", (e) => {
@@ -403,10 +478,16 @@ async function load() {
   if (!token) { app.innerHTML = `<p class="empty">${G.ring}<span>${t("unpaired")}</span></p>`; document.getElementById("foot").textContent = t("foot"); return; }
   try { last = await api("/api/state"); lastOk = Date.now(); render(last); }
   catch (e) {
-    // The sentence is the page's; the browser's own words stay in the tooltip, and the way back is one button.
-    // It is said once, in the body; the status line keeps the one reading it still has — when the page last got through.
-    app.innerHTML = `<p class="error" title="${esc(e.message)}"><span>${t("offline")}</span><button class="btn ghost" data-retry>${t("retry")}</button></p>`;
-    status.className = "off"; statusText.textContent = lastOk ? `${t("updated")} ${clock(lastOk)}` : "";
+    // The sentence is the page's, in the language it last spoke; the browser's own words stay in the tooltip. It says
+    // where to look, when the page last got through, and has one way back. The header is the desk's start-up failure:
+    // the same gauges with the power off, every reading a dash, the one lit square saying why.
+    offline = true;
+    app.innerHTML = `<section class="offline" title="${esc(e.message)}"><p class="error">${t("offline")}</p><p class="sub">${t("offlineWhere")}</p>${lastOk ? `<p class="when num">${esc(t("lastRead")(clock(lastOk)))}</p>` : ""}<button class="btn primary" data-retry>${t("retry")}</button></section>`;
+    gauges.innerHTML = `<span class="gauge dead num">${esc(t("runs")("—", "—"))}</span><span class="gauge dead">—</span>`;
+    conn.className = "gauge off";
+    conn.innerHTML = `<span class="dot"></span>${t("offGauge")}`;
+    fresh.textContent = "";
+    document.getElementById("foot").textContent = t("foot");
   }
 }
 load();

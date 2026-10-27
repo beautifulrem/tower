@@ -15,12 +15,24 @@ import { fixtures, settled } from "./tauri";
 
 const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../crates/tower-supervisor/src/remote.html"), "utf8");
 
-async function openPhone(page: Page, opts: { state?: object | null; lang?: string } = {}) {
+/**
+ * Opens the page with `state` answering `/api/state` (null: the supervisor cannot be reached). `remembered` is the
+ * language the page last rendered in, as it keeps it; `serve` lets a test take the supervisor away mid-way.
+ */
+async function openPhone(
+  page: Page,
+  opts: { state?: object | null; lang?: string; width?: number; remembered?: string; serve?: { state: object | null } } = {},
+) {
   const F = fixtures() as Record<string, any>;
-  const state = opts.state === undefined ? { goals: F.goals, inbox: F.inbox, lang: opts.lang ?? "en" } : opts.state;
-  await page.setViewportSize({ width: 390, height: 844 });
+  const state = opts.state === undefined ? { goals: F.goals, inbox: F.inbox, lang: opts.lang ?? "en", max_running: F.settings?.max_concurrent ?? 3 } : opts.state;
+  const serve = opts.serve ?? { state };
+  serve.state = state;
+  await page.setViewportSize({ width: opts.width ?? 390, height: 844 });
+  if (opts.remembered) await page.addInitScript((l) => localStorage.setItem("tower-lang", l), opts.remembered);
   await page.route("http://phone.test/", (r) => r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: PAGE }));
-  await page.route("http://phone.test/api/state", (r) => (state ? r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(state) }) : r.abort("connectionfailed")));
+  await page.route("http://phone.test/api/state", (r) =>
+    serve.state ? r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(serve.state) }) : r.abort("connectionfailed"),
+  );
   await page.route("http://phone.test/api/answer", async (r) => {
     const body = r.request().postDataJSON() as { response: string };
     if (/^(Allow|Approve|允许|批准)$/.test(body.response)) return r.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "This decision can only be made at the desk" }) });
@@ -82,18 +94,115 @@ test("decisions that widen what the agent may do are named as desk-only, not off
   await expect(page.getByRole("button", { name: /redo it/ })).toBeVisible();
 });
 
-test("offline, the page says so once in its own words and offers a retry; the status line does not repeat it", async ({ page }) => {
-  await openPhone(page, { state: null });
-  const error = page.locator(".error");
-  await expect(error).toContainText("Can't reach Tower");
-  await expect(error).not.toContainText("Load failed");
-  await expect(error.getByRole("button", { name: "Retry" })).toBeVisible();
-  const h = await error.getByRole("button").evaluate((el) => el.getBoundingClientRect().height);
-  expect(h).toBeGreaterThanOrEqual(44);
-  await expect(page.locator("#status")).toHaveClass("off");
-  await expect(page.locator("#status")).not.toContainText("Can't reach Tower");
+test("offline, the page says so once, says where to look and offers one retry; the header is the gauges with the power off", async ({ page }) => {
+  await openPhone(page, { state: null, remembered: "en" });
+  const off = page.locator(".offline");
+  await expect(off.locator(".error")).toHaveText("Can't reach Tower on your Mac");
+  await expect(off).toContainText("Is the Mac awake, and is this phone on its Tailscale or Wi-Fi?");
+  await expect(off).not.toContainText("Load failed");
+  const retry = off.getByRole("button", { name: "Retry" });
+  await expect(retry).toBeVisible();
+  // The one way back is the screen's one primary, the column's whole width, 44pt.
+  await expect(retry).toHaveClass(/primary/);
+  const [b, col] = await Promise.all([retry.boundingBox(), off.boundingBox()]);
+  expect(b!.height).toBeGreaterThanOrEqual(44);
+  expect(Math.abs(b!.width - col!.width)).toBeLessThan(1);
+  // The header: every reading a dash in the quietest grey, and the one lit square saying why.
+  await expect(page.locator("#conn")).toHaveClass(/off/);
+  await expect(page.locator("#conn")).toHaveText("Offline");
+  await expect(page.locator("#status .gauge.dead").first()).toHaveText("—/— running");
   const shown = (await page.locator("header").innerText()) + (await page.locator("main").innerText());
   expect(shown.match(/Can't reach Tower/g)?.length).toBe(1);
+});
+
+test("offline, the page keeps the language it last spoke: a Chinese desk's phone says it in Chinese", async ({ page }) => {
+  const serve = { state: null as object | null };
+  const F = await openPhone(page, { lang: "zh-CN", serve });
+  await expect(page.locator("h2").first()).toHaveText(/需要你/);
+  serve.state = null;
+  await page.reload();
+  await expect(page.locator(".offline .error")).toHaveText("连不上你 Mac 上的 Tower");
+  await expect(page.locator(".offline")).toContainText("Tailscale");
+  await expect(page.locator("#conn")).toHaveText("离线");
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe("zh-CN");
+  // Back online, the retry reads again and the page is whole.
+  serve.state = { goals: F.goals, inbox: F.inbox, lang: "zh-CN", max_running: 3 };
+  await page.getByRole("button", { name: "重试" }).click();
+  await expect(page.locator(".offline")).toHaveCount(0);
+  await expect(page.locator("#conn")).toBeEmpty();
+});
+
+test("the header is the desk's title bar: runs of slots, the silence once it is worth a look, the spend; freshness is a footnote", async ({ page }) => {
+  const now = Date.now();
+  const goal = (id: string, state: string, cost: number, heard: number) => ({
+    id,
+    title: id,
+    state,
+    mode: "executing",
+    run_started_at: now - 600_000,
+    updated_at: heard,
+    live_line: { action: "bash", target: "npm test", at: heard },
+    pause_reason: null,
+    verified_pin: null,
+    cost_usd: cost,
+  });
+  await openPhone(page, { state: { goals: [goal("G-1", "running", 0.05, now - 185_000), goal("G-2", "paused", 0.04, now - 900_000)], inbox: [], lang: "en", max_running: 4 } });
+  const gauges = page.locator("#status .gauge");
+  await expect(gauges.nth(0)).toHaveText("1/4 running");
+  await expect(gauges.nth(0).locator("svg path")).toHaveCount(1);
+  await expect(gauges.nth(1)).toHaveText("silent for 3m");
+  await expect(gauges.nth(1).locator(".dot.hollow")).toHaveCount(1);
+  await expect(gauges.nth(2)).toHaveText("Spent $0.09");
+  // "Spent" is for the screen reader; the eye reads the sum alone, as on the desk.
+  expect((await gauges.nth(2).locator(".sr").boundingBox())!.width).toBeLessThanOrEqual(1);
+  // No dot joins the readings; the refresh is said once, at the foot, while it is fresh.
+  expect(await page.locator("header").innerText()).not.toMatch(/·|every 5 s/);
+  await expect(page.locator("#fresh")).toContainText("again every 5 s");
+  await expect(page.locator("#conn")).toBeEmpty();
+  // A run heard from just now has no silence reading: the page reads every 5 s and does not count seconds.
+  await openPhone(page, { state: { goals: [goal("G-1", "running", 0, Date.now())], inbox: [], lang: "zh-CN", max_running: 4 } });
+  await expect(page.locator("#status .gauge:not(#conn)")).toHaveText(["1/4 运行", "累计 $0"]);
+});
+
+test("a card's choices have one width rule: the primary across, the others equal on the next line, or each across when one would not fit", async ({ page }) => {
+  const card = (id: string, options: string[], tones: string[]) => ({
+    id,
+    goal_id: "G-0002",
+    goal_title: "Align discount rules",
+    kind: "question",
+    title: "",
+    subject: "Which discount applies first?",
+    body: "",
+    options,
+    tones,
+    allow_text: false,
+    created_at: Date.now(),
+  });
+  await openPhone(page, {
+    state: {
+      goals: [],
+      inbox: [card("a", ["Fixed", "Percentage", "Skip"], ["neutral", "primary", "neutral"]), card("b", ["Continue", "Have the agent redo it from the start", "Abandon"], ["primary", "neutral", "destructive"])],
+      lang: "en",
+    },
+  });
+  const boxes = (i: number) =>
+    page
+      .locator(".opts")
+      .nth(i)
+      .locator(".btn")
+      .evaluateAll((els) => els.map((el) => ({ y: el.getBoundingClientRect().y, w: el.getBoundingClientRect().width, text: el.textContent })));
+  const width = async (i: number) => (await page.locator(".opts").nth(i).boundingBox())!.width;
+  // The primary leads, whatever its place in the list, and takes the line.
+  const a = await boxes(0);
+  expect(a.map((b) => b.text)).toEqual(["Percentage", "Fixed", "Skip"]);
+  expect(Math.abs(a[0].w - (await width(0)))).toBeLessThan(1);
+  expect(Math.abs(a[1].y - a[2].y)).toBeLessThan(1);
+  expect(Math.abs(a[1].w - a[2].w)).toBeLessThan(1);
+  expect(a[1].y).toBeGreaterThan(a[0].y);
+  // One label too long for half the line: every secondary takes a line of its own, the same width.
+  const b = await boxes(1);
+  for (const x of b) expect(Math.abs(x.w - (await width(1)))).toBeLessThan(1);
+  expect(b[2].y).toBeGreaterThan(b[1].y);
 });
 
 test("the phone card is drawn with the desk's pen: a 32px strip with an amber edge, 12px between cards, the run's elapsed time", async ({ page }) => {
@@ -115,7 +224,10 @@ test("the phone card is drawn with the desk's pen: a 32px strip with an amber ed
   const a = await cards.nth(0).boundingBox();
   const b = await cards.nth(1).boundingBox();
   expect(Math.round(b!.y - (a!.y + a!.height))).toBe(12);
-  await expect(page.locator(".row .live .elapsed")).toHaveText("running 1h 49m");
+  // How long it has run ends the title line (the desk's age column); a screen reader hears what the number is.
+  const elapsed = page.locator(".row .head .elapsed");
+  await expect(elapsed).toHaveText("running 1h 49m");
+  expect((await elapsed.locator(".sr").boundingBox())!.width).toBeLessThanOrEqual(1);
 });
 
 const HELD_OUT_STATE = {
@@ -179,14 +291,16 @@ test("every reply box on the phone says what it asks for", async ({ page }) => {
   await expect(page.locator("#t-p")).toHaveAttribute("placeholder", "A note for the agent (optional)…");
 });
 
-test("the empty phone page is the list's own shape: hollow rows under each title, and the titles in the wordmark's voice", async ({ page }) => {
+test("the empty phone page is the list's own shape: hollow rows under each title, the titles in sentence case", async ({ page }) => {
   await openPhone(page, { state: { goals: [], inbox: [], lang: "en" } });
   await expect(page.locator(".empty").first()).toContainText("Nothing needs you");
   await expect(page.locator(".ghost .row")).toHaveCount(3);
   expect(await page.locator(".ghost").first().innerText()).toBe("");
+  // Tracked capitals belong to the contract's masthead alone; a list title is a word, not a label.
   const h2 = page.locator("h2").first();
-  expect(await h2.evaluate((el) => getComputedStyle(el).textTransform)).toBe("uppercase");
-  expect(parseFloat(await h2.evaluate((el) => getComputedStyle(el).letterSpacing))).toBeGreaterThan(0.5);
+  expect(await h2.evaluate((el) => getComputedStyle(el).textTransform)).toBe("none");
+  expect(await h2.innerText()).toMatch(/^Needs you/);
+  expect(parseFloat(await h2.evaluate((el) => getComputedStyle(el).letterSpacing)) || 0).toBeLessThan(0.2);
 });
 
 for (const scheme of ["light", "dark"] as const) {
@@ -209,12 +323,16 @@ for (const scheme of ["light", "dark"] as const) {
 for (const s of [
   { name: "phone-zh-dark", lang: "zh-CN", theme: "dark" as const },
   { name: "phone-en-light", lang: "en", theme: "light" as const },
+  { name: "phone-en-dark-430", lang: "en", theme: "dark" as const, width: 430 },
+  { name: "phone-zh-light-430", lang: "zh-CN", theme: "light" as const, width: 430 },
+  { name: "phone-heldout-en-light", lang: "en", theme: "light" as const, state: HELD_OUT_STATE },
   { name: "phone-offline-zh-dark", lang: "zh-CN", theme: "dark" as const, offline: true },
-]) {
+  { name: "phone-offline-en-light", lang: "en", theme: "light" as const, offline: true },
+] as Array<{ name: string; lang: string; theme: "light" | "dark"; width?: number; state?: object; offline?: boolean }>) {
   test(`shot ${s.name}`, async ({ page }) => {
     test.skip(!process.env.SHOTS, "set SHOTS=<dir> to render the preview screens");
     await page.emulateMedia({ colorScheme: s.theme });
-    await openPhone(page, s.offline ? { state: null } : { lang: s.lang });
+    await openPhone(page, s.offline ? { state: null, remembered: s.lang, width: s.width } : { lang: s.lang, width: s.width, state: s.state });
     await page.waitForLoadState("networkidle");
     await settled(page);
     await page.screenshot({ path: join(process.env.SHOTS!, `${s.name}.png`), fullPage: true });
@@ -252,11 +370,12 @@ test("one black button a screen: only the first card fills its primary, another 
   expect(await line.evaluate((el) => [getComputedStyle(el).display, parseFloat(getComputedStyle(el).textIndent) < 0])).toEqual(["block", true]);
 });
 
-test("a ready goal's id sits in its second line and the status line says how often it refreshes", async ({ page }) => {
+test("a ready goal's id sits in its second line and the foot says how often the page refreshes", async ({ page }) => {
   await openPhone(page, { lang: "zh-CN" });
   const ready = page.locator(".row").filter({ hasText: "回到电脑上评审并验收" }).first();
   await expect(ready.locator(".live .id")).toHaveText(/G-\d+/);
   await expect(ready.locator(".btn")).toHaveCount(0);
-  await expect(page.locator("#status")).toContainText("每 5 秒");
+  await expect(page.locator("#fresh")).toContainText("每 5 秒");
+  await expect(page.locator("#status")).not.toContainText("每 5 秒");
   await expect(page.locator("#foot")).toContainText("由你电脑上的 Tower 提供");
 });

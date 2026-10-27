@@ -69,5 +69,13 @@ jobs:
           pnpm --dir apps/desktop exec playwright install webkit
           tools/e2e.sh
 
+      - name: Keep the end-to-end evidence of a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: apps/desktop/test-results
+          retention-days: 7
+
       - name: Extension tests
         run: node --test extensions/tower-goal/policy.test.ts extensions/tower-goal/sandboxfs.test.ts

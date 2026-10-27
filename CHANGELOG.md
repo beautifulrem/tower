@@ -5,7 +5,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 ## [Unreleased]
 
 ### Fixed
-- A verification cut short (an error, or Tower quitting) left its assertion-guard transcripts append-only, so nothing could delete them and a later verification of the same snapshot could not set up its guard. They are now removed with their flag cleared, also when Tower starts.
+- A verification cut short (an error, or Tower quitting) left its assertion-guard transcripts append-only, so nothing could delete them and a later verification of the same snapshot could not set up its guard — that verification ran without the assertion-identity check, and restarting re-verifies exactly such goals. They are now removed with their flag cleared, also when Tower starts.
 - An answer on a pause card given while the last verification was still cleaning up was dropped; a verification you ask for now always runs once the last one is done.
 
 ### Security

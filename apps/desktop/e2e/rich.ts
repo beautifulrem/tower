@@ -85,7 +85,28 @@ export function enrichReview(F: F) {
   need(r.files.length === 1, `G-0003's review has one file (it has ${r.files.length})`);
   const base = r.files[0];
   const clone = (path: string, additions: number, deletions: number) => ({ ...structuredClone(base), path, additions, deletions });
-  r.files = [clone("src/cart.js", 1, 1), clone("src/cart/money.js", 7, 0), clone("test/setup.js", 3, 0)];
+  /** A file the change adds: its lines, all new. */
+  const added = (path: string, lines: string[]) => ({
+    ...structuredClone(base),
+    path,
+    status: "added",
+    additions: lines.length,
+    deletions: 0,
+    hunks: [{ header: `@@ -0,0 +1,${lines.length} @@`, lines: lines.map((text, i) => ({ kind: "add", old_no: null, new_no: i + 1, text })) }],
+  });
+  r.files = [
+    clone("src/cart.js", 1, 1),
+    added("src/cart/money.js", [
+      "// Money in whole cents: no float ever reaches a total.",
+      "export const cents = (amount) => Math.round(amount * 100);",
+      "export const fromCents = (c) => c / 100;",
+      "",
+      "export function line(price, qty) {",
+      "  return fromCents(cents(price) * qty);",
+      "}",
+    ]),
+    added("test/setup.js", ["import { mock } from 'node:test';", "", "mock.timers.enable({ apis: ['Date'], now: 0 });"]),
+  ];
   r.units = [
     { id: "U1", title: "src/", files: ["src/cart.js", "src/cart/money.js"], lines: 9, risk: 0, risk_reasons: [] },
     { id: "U2", title: "test/", files: ["test/setup.js"], lines: 3, risk: 3, risk_reasons: ["test harness: runner config, setup or mocks"] },

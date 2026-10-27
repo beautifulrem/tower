@@ -35,6 +35,8 @@ interface Screen {
   theme?: Theme;
   /** A selector to capture instead of the viewport (a block inside a scrolling view). */
   element?: string;
+  /** What this screen draws once it is ready, when it is not the route's usual content (the welcome page, an empty review). */
+  ready?: string;
   /** Edits on top of the rich world (a first run, an empty review…). */
   enrich?: (F: F) => void;
   after?: (page: Page) => Promise<void>;
@@ -56,6 +58,10 @@ const firstRun = (F: F) => {
 const firstRunClean = (F: F) => {
   firstRun(F);
   F.environment = { ...F.environment, problems: [], issues: [], pi_version: "1.6.2" };
+  F.models = [
+    { provider: "anthropic", id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", reasoning: true, cost_input: 3, cost_output: 15, context_window: 200000 },
+    { provider: "openai", id: "gpt-5", name: "GPT-5", reasoning: true, cost_input: 1.25, cost_output: 10, context_window: 400000 },
+  ];
 };
 /** A project with nothing on the board. */
 const emptyBoard = (F: F) => {
@@ -86,8 +92,8 @@ const screens: Screen[] = [
   { name: "overview-en-light-j", route: "overview", lang: "en", theme: "light", after: press("j", "j") },
   ...pair({ name: "overview-empty", route: "overview", enrich: emptyBoard }),
   ...pair({ name: "inbox", route: "inbox" }),
-  ...pair({ name: "welcome-red", route: "overview", enrich: firstRun }),
-  { name: "welcome-clean-en-light", route: "overview", lang: "en", theme: "light", enrich: firstRunClean },
+  ...pair({ name: "welcome-red", route: "overview", enrich: firstRun, ready: ".welcome" }),
+  { name: "welcome-clean-en-light", route: "overview", lang: "en", theme: "light", enrich: firstRunClean, ready: ".welcome" },
 
   // Goal pages: tampered C5 with sentinels, running, held-out card, cannot-run.
   ...pair({ name: "goal-G-0001", route: "goal/G-0001" }),
@@ -114,7 +120,7 @@ const screens: Screen[] = [
   ...pair({ name: "review-G-0003-all-accepted", route: "review/G-0003", after: async (page) => (await reviewReady(page), await press("a", "a", "a", "a")(page)) }),
   ...pair({ name: "review-G-0001-readout", route: "review/G-0001", after: async (page) => (await reviewReady(page), await press("e")(page)) }),
   ...pair({ name: "review-G-0001-accept", route: "review/G-0001", after: async (page) => (await reviewReady(page), await press("Meta+Shift+Enter")(page)) }),
-  ...pair({ name: "review-empty", route: "review/G-0002", enrich: emptyReview }),
+  ...pair({ name: "review-empty", route: "review/G-0002", enrich: emptyReview, ready: ".empty-poster" }),
 
   // The contract editor, fresh (its placeholders) and with a look criterion carrying a step it refuses.
   ...pair({ name: "contract", route: "new" }),
@@ -138,8 +144,8 @@ const screens: Screen[] = [
   ...pair({ name: "settings-attention", route: "settings", element: ".settings-block:has(.push-test)" }),
 
   // The sheets: the shortcut table (on the board and in review) and the empty activity log.
-  ...pair({ name: "shortcuts", route: "overview", after: press("?") }),
-  { name: "shortcuts-review-zh-dark", route: "review/G-0003", lang: "zh-CN", theme: "dark", after: async (page) => (await reviewReady(page), await press("?")(page)) },
+  ...pair({ name: "shortcuts", route: "overview", after: press("Shift+Slash") }),
+  { name: "shortcuts-review-zh-dark", route: "review/G-0003", lang: "zh-CN", theme: "dark", after: async (page) => (await reviewReady(page), await press("Shift+Slash")(page)) },
   ...pair({ name: "activity-empty", route: "overview", after: press("Meta+Shift+L") }),
 ];
 
@@ -157,7 +163,8 @@ for (const s of screens) {
         s.enrich?.(F);
       },
     });
-    await page.waitForTimeout(700);
+    if (s.ready) await page.locator(s.ready).first().waitFor();
+    await settled(page, s.ready ? undefined : s.route);
     await s.after?.(page);
     await settled(page);
     if (s.element) await page.locator(s.element).first().screenshot({ path: join(OUT!, `${s.name}.png`) });

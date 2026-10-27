@@ -272,8 +272,8 @@ impl<'a> Bench<'a> {
         if r.denied {
             return Outcome::EnvError(tr!(
                 lang,
-                "{id} 的命令 `{command}` 在验证沙箱里被拒绝访问了它需要的东西（{how}）。这不是测试失败：看一下下面被拒绝的路径，必要时把它加入项目设置。\n{tail}",
-                "The sandbox refused something the command `{command}` of {id} needed ({how}). This is not a test failure: check the refused path below and add it to the project settings if it belongs.\n{tail}"
+                "{id} 的命令 `{command}` 在验证沙箱里被拒绝访问了它需要的东西（{how}）。这不是测试失败。\n{tail}",
+                "The sandbox refused something the command `{command}` of {id} needed ({how}). This is not a test failure.\n{tail}"
             ));
         }
         Outcome::EnvError(tr!(
@@ -327,10 +327,29 @@ impl<'a> Bench<'a> {
                 let r =
                     self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
                 // Recorded either way: "could not check" is information too.
-                let error = r.environment_failure.then(|| {
-                    let code = r.exit_code.map_or_else(|| "did not start".to_string(), |c| format!("exit code {c}"));
-                    let why = if r.denied { "the sandbox refused something it needed" } else { "could not run" };
-                    format!("{why} on the base ({code}): {}", tail_lines(&r.output_tail, 3))
+                // A failure on the base is "red" only if the tests ran there.
+                let not_run = !r.passed && !r.environment_failure && tests_ran(command, &r.output_tail) == Some(false);
+                let error = (r.environment_failure || not_run).then(|| {
+                    let code = match r.exit_code {
+                        Some(c) => tr!(lang, "退出码 {c}", "exit code {c}"),
+                        None => tr!(lang, "未启动", "did not start"),
+                    };
+                    let tail = tail_lines(&r.output_tail, 3);
+                    if r.denied {
+                        tr!(
+                            lang,
+                            "在基线上被验证沙箱拒绝（{code}）：{tail}",
+                            "refused by the verification sandbox on the base ({code}): {tail}"
+                        )
+                    } else if not_run {
+                        tr!(
+                            lang,
+                            "在基线上测试没有运行起来（{code}）：{tail}",
+                            "the tests did not run on the base ({code}): {tail}"
+                        )
+                    } else {
+                        tr!(lang, "在基线上无法运行（{code}）：{tail}", "could not run on the base ({code}): {tail}")
+                    }
                 });
                 if !r.passed && error.is_none() {
                     red_on_base.push(c.id.clone());
@@ -714,6 +733,55 @@ pub(super) async fn confirmed_refusal(output: &str, profile: Option<&Path>, dir:
 
 fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Whether a test runner's output shows that tests ran, for the runners
+/// Tower knows; `None` for a command it does not recognise.
+pub(super) fn tests_ran(command: &str, output: &str) -> Option<bool> {
+    let c = command.trim();
+    let runner = [
+        "cargo test",
+        "cargo nextest",
+        "pytest",
+        "python -m pytest",
+        "python3 -m pytest",
+        "node --test",
+        "npm test",
+        "npm run test",
+        "pnpm test",
+        "yarn test",
+        "npx vitest",
+        "vitest",
+        "npx jest",
+        "jest",
+        "go test",
+    ]
+    .iter()
+    .any(|r| c.starts_with(r) || c.contains(&format!("&& {r}")));
+    if !runner {
+        return None;
+    }
+    let o = output.to_ascii_lowercase();
+    let summary = [
+        "test result:",
+        "running ",
+        " passed",
+        " failed",
+        "collected ",
+        "# tests",
+        "ℹ tests",
+        "tests:",
+        "test files",
+        "--- fail",
+        "fail\t",
+        "ok  \t",
+        "error[e",
+        "assertionerror",
+        "not ok ",
+    ]
+    .iter()
+    .any(|m| o.contains(m));
+    Some(summary)
 }
 
 pub(super) fn paths_gone(dir: &Path, command: &str) -> bool {

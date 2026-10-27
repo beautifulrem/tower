@@ -5,6 +5,7 @@
  */
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
+import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
 import { DangerMark, Icon, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, ObsChip, discountedOf } from "../../components/Honesty";
@@ -207,6 +208,24 @@ export function AcceptPanel(props: AcceptPanelProps) {
     if (props.total - props.viewed > 0) items.push({ text: t("review.openUnviewed", { n: props.total - props.viewed }) });
     return items;
   };
+  // Red items above — a pass that is not evidence, a high-severity sentinel — do not block, but they are not one press away
+  // either: the primary reads "Accept anyway" and arms on the first press, as Abandon does, saying how many it is over.
+  const judgement = () => open().filter((o) => o.danger);
+  const notice = () => open().filter((o) => !o.danger);
+  const [armedUntil, setArmedUntil] = createSignal(0);
+  const [now, setNow] = createSignal(Date.now());
+  const ticker = window.setInterval(() => armedUntil() && setNow(Date.now()), 200);
+  onCleanup(() => clearInterval(ticker));
+  const armedLeft = () => (armedUntil() > now() ? Math.ceil((armedUntil() - now()) / 1000) : 0);
+  const press = () => {
+    if (judgement().length && !armedLeft()) {
+      setNow(Date.now());
+      setArmedUntil(Date.now() + ARM_MS);
+      return;
+    }
+    setArmedUntil(0);
+    void accept();
+  };
   // A pushed branch already exists: accepting adds a commit on it rather than writing a new one.
   const updating = () => !!g()?.pr || (!!g()?.branch && g()?.state === "in_review" && !!props.detail?.runs.some((r) => r.purpose === "ci_fix"));
   // The branch acceptance writes (or, when one exists, updates): the supervisor names it ahead of time.
@@ -253,15 +272,27 @@ export function AcceptPanel(props: AcceptPanelProps) {
           )}
         </For>
       </div>
-      <Show when={open().length}>
-        <div class="panel-section">
-          <div class="meta t3">{t("review.stillOpen")}</div>
-          <For each={open()}>
+      {/* What is still open, by weight: what is not evidence or needs your judgement first, what to look at after. */}
+      <Show when={judgement().length}>
+        <div class="panel-section open-judgement">
+          <div class="meta t3">{t("review.openJudgementTitle")}</div>
+          <For each={judgement()}>
             {(o) => (
               <div class="row meta t1">
-                <Show when={o.danger} fallback={<NoticeMark />}>
-                  <DangerMark />
-                </Show>
+                <DangerMark />
+                <span class="grow">{o.text}</span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+      <Show when={notice().length}>
+        <div class="panel-section open-notice">
+          <div class="meta t3">{judgement().length ? t("review.openNoticeTitle") : t("review.stillOpen")}</div>
+          <For each={notice()}>
+            {(o) => (
+              <div class="row meta t1">
+                <NoticeMark />
                 <span class="grow">{o.text}</span>
               </div>
             )}
@@ -304,8 +335,18 @@ export function AcceptPanel(props: AcceptPanelProps) {
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.cancel")}
         </Button>
-        <Button variant="primary" busy={busy()} disabled={blocked()} title={unchecked() > 0 ? t("review.humanUnchecked", { id: humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ") }) : undefined} onClick={accept}>
-          {updating() ? t("review.acceptUpdate") : t("review.acceptWrite")}
+        <Button
+          variant="primary"
+          class={armedLeft() ? "armed" : ""}
+          busy={busy()}
+          disabled={blocked()}
+          title={unchecked() > 0 ? t("review.humanUnchecked", { id: humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ") }) : judgement().length ? t("decision.pressTwice") : undefined}
+          aria-live={armedLeft() ? "polite" : undefined}
+          onClick={press}
+        >
+          <Show when={judgement().length} fallback={updating() ? t("review.acceptUpdate") : t("review.acceptWrite")}>
+            {armedLeft() ? t("review.acceptArmed", { n: judgement().length, s: armedLeft() }) : t("review.acceptAnyway")}
+          </Show>
         </Button>
       </div>
     </Overlay>

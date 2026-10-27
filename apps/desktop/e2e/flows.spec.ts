@@ -1159,6 +1159,25 @@ test("the goal page folds its rail under the main column in a half-screen window
   expect(await rail.evaluate((el) => getComputedStyle(el).display)).toBe("grid");
 });
 
+test("the goal page's rail starts under the header, level with the decision card, and stays in sight as the page scrolls", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCi });
+  const card = page.locator(".goal-decisions .decision").first();
+  const rail = page.locator(".goal-rail");
+  await expect(card).toBeVisible();
+  await expect(rail.locator(".rail")).toBeVisible();
+  const [c, r] = [(await card.boundingBox())!, (await rail.boundingBox())!];
+  expect(Math.abs(c.y - r.y)).toBeLessThan(2);
+  // The card is the main column's width, not the page's: it ends where the blocks under it end.
+  const main = (await page.locator(".goal-main").boundingBox())!;
+  expect(Math.abs(c.x + c.width - (main.x + main.width))).toBeLessThan(1);
+  // Scrolled to the end of a long page, the rail is still at the top of the view.
+  const view = page.locator(".view");
+  const scrolled = await view.evaluate((el) => (el.scrollTo({ top: el.scrollHeight }), el.scrollTop));
+  expect(scrolled).toBeGreaterThan(r.y);
+  // (Held a breath under the view's top: its own padding.)
+  await expect.poll(async () => Math.abs((await rail.boundingBox())!.y - (await view.boundingBox())!.y)).toBeLessThanOrEqual(21);
+});
+
 test("a card's text field grows with its lines and stops at six, then scrolls", async ({ page }) => {
   await openTower(page, "inbox");
   const area = page.locator(".decision-text textarea").first();

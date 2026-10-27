@@ -226,49 +226,54 @@ export function GoalPage(props: { id: string }) {
             </div>
           </header>
 
-          <Show when={detail()?.briefing.length}>
-            <div class="briefing">
-              <span class="briefing-title">{t("goal.since", { time: clock(g().last_viewed_at ?? 0) })}</span>
-              <For each={detail()!.briefing.slice(-6)}>
-                {(b) => (
-                  <span class="briefing-item" classList={{ "briefing-claim": b.source === "claim" }}>
-                    {b.text}
-                  </span>
-                )}
-              </For>
-            </div>
-          </Show>
+          {/* Under the header the page is two columns at once: everything about this run — the briefing, the live line, the
+              decision cards, then the blocks — in the main column, and the contract's rail beside it from the same line,
+              sticky, so neither a card above the blocks nor a long page leaves the right third empty. */}
+          <div class="goal-body" classList={{ watching: watch() }}>
+            <div class="goal-main">
+              <Show when={detail()?.briefing.length}>
+                <div class="briefing">
+                  <span class="briefing-title">{t("goal.since", { time: clock(g().last_viewed_at ?? 0) })}</span>
+                  <For each={detail()!.briefing.slice(-6)}>
+                    {(b) => (
+                      <span class="briefing-item" classList={{ "briefing-claim": b.source === "claim" }}>
+                        {b.text}
+                      </span>
+                    )}
+                  </For>
+                </div>
+              </Show>
 
-          <Show when={["running", "claimed", "verifying"].includes(g().state)}>
-            <div class="annunciator">
-              <LiveLine goal={g()} large hideTarget={inbox().length > 0} />
-            </div>
-          </Show>
+              <Show when={["running", "claimed", "verifying"].includes(g().state)}>
+                <div class="annunciator">
+                  <LiveLine goal={g()} large hideTarget={inbox().length > 0} />
+                </div>
+              </Show>
 
-          <Show when={shownInbox.list().length > 0}>
-            <div class="goal-decisions">
-              <For each={shownInbox.list()}>
-                {(it) => (
-                  <div class="decision-slot" classList={{ leaving: shownInbox.leaving(it.id) }}>
-                    <DecisionCard item={it} showGoal={false} />
-                  </div>
-                )}
-              </For>
-            </div>
-          </Show>
+              <Show when={shownInbox.list().length > 0}>
+                <div class="goal-decisions">
+                  <For each={shownInbox.list()}>
+                    {(it) => (
+                      <div class="decision-slot" classList={{ leaving: shownInbox.leaving(it.id) }}>
+                        <DecisionCard item={it} showGoal={false} />
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
 
-          <Show when={!watch()} fallback={<WatchPanel id={props.id} />}>
-            <div class="goal-body">
-              <div class="goal-main">
+              <Show when={!watch()} fallback={<WatchPanel id={props.id} />}>
                 <Show when={detail()} fallback={<GoalSkeleton />}>
                   {(d) => <GoalBlocks d={d()} hasDecision={inbox().length > 0} undoable={undoable()} onUndoRollback={undoRollback} />}
                 </Show>
-              </div>
+              </Show>
+            </div>
+            <Show when={!watch()}>
               <aside class="goal-rail">
                 <Show when={detail()}>{(d) => <ContractRail d={d()} />}</Show>
               </aside>
-            </div>
-          </Show>
+            </Show>
+          </div>
 
           {/* One text box per state: running steers here; paused writes on its decision card. */}
           <Show when={g().state === "running" || (g().state === "paused" && inbox().length === 0)}>

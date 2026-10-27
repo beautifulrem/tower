@@ -47,7 +47,8 @@ export function Heartbeat(props: { running: number }) {
   const since = () => Math.max(0, now() - last());
   const hb = () => heartbeatState(since(), tool() !== null);
   const text = () => {
-    const d = since() < 120_000 ? `${Math.round(since() / 1000)}s` : duration(since(), false);
+    // The reading's own units: seconds under a minute, minutes from 60 s ("silent for 1m", never "61s").
+    const d = duration(since(), false);
     switch (hb()) {
       case "fine":
         return t("chrome.heartbeat", { n: Math.round(since() / 1000) });

@@ -293,6 +293,10 @@ test("the trace writes a minute once; a sheet's text area takes focus in its bor
   // The demo's run lands in one or two minutes: most rows repeat the one above and go quiet.
   expect(await page.locator(".trace-row .trace-time.repeat").count()).toBeGreaterThan(0);
   await expect(times.first()).not.toHaveClass(/repeat/);
+  // The list fades in under the filter bar over a row's height, and keyboard scrolling stops under the fade.
+  const fade = await page.locator(".trace-filters").evaluate((el) => getComputedStyle(el, "::after").height);
+  expect(fade).toBe("16px");
+  expect(await page.locator(".trace-scroll").evaluate((el) => getComputedStyle(el).scrollPaddingTop)).toBe("16px");
   await openTower(page, "review/G-0001");
   await expect(page.locator("table").first()).toBeVisible();
   await page.keyboard.press("c");
@@ -520,6 +524,22 @@ test("a held-out failure's card keeps the output for you, makes the hint the one
   await card.locator("textarea").fill("Half-cents round up, not down");
   await page.keyboard.press("Meta+Enter");
   await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "answer")?.[1]).toEqual({ inboxId: expect.any(String), response: "Half-cents round up, not down" });
+});
+
+test("under the Chinese seed the enriched cards speak Chinese too: the held-out card and the CI card", async ({ page }) => {
+  await openTower(page, "inbox", {
+    lang: "zh-CN",
+    enrich: (F) => {
+      enrichHeldOut(F);
+      enrichCi(F);
+    },
+  });
+  const card = page.locator(".decision-heldout");
+  await expect(card.locator(".heldout-label")).toHaveText("只给你看");
+  await expect(card.locator(".heldout-names code")).toHaveText(["total rounds half-cents up", "applies tax once"]);
+  await expect(card.getByRole("button", { name: "只告诉 Agent 哪些测试失败" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "把失败发给 Agent" })).toBeVisible();
+  expect(await page.locator(".inbox").innerText()).not.toMatch(/Send the failures|Tell the agent/);
 });
 
 test("a result produced with the held-out tests present is marked for you only, on the goal page and in the verification sheet", async ({ page }) => {

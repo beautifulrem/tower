@@ -33,6 +33,33 @@ function client(): Worker {
   return worker;
 }
 
+/** A hunk's two sides as the diff highlights them: the new side (context and additions), the old (context and deletions). */
+export function hunkSides(lines: { kind: string; text: string }[]): { newSide: string; oldSide: string } {
+  return {
+    newSide: lines.filter((l) => l.kind !== "del").map((l) => l.text).join("\n"),
+    oldSide: lines.filter((l) => l.kind !== "add").map((l) => l.text).join("\n"),
+  };
+}
+
+/**
+ * Highlights a review's hunks before it is opened. On a cold worker the first colours cost one to two seconds (the
+ * grammar loads, then the regex engine compiles the patterns the code reaches); done while the board idles, the
+ * review opens with its colours already in the cache, keyed by the same text the diff will ask for.
+ */
+export function prewarm(files: { path: string; hunks: { lines: { kind: string; text: string }[] }[] }[], maxHunks = 40) {
+  let n = 0;
+  for (const f of files) {
+    const lang = languageOf(f.path);
+    if (!lang) continue;
+    for (const h of f.hunks) {
+      if (n++ >= maxHunks) return;
+      const { newSide, oldSide } = hunkSides(h.lines);
+      void highlight(lang, newSide);
+      void highlight(lang, oldSide);
+    }
+  }
+}
+
 /** Tokenizes `code` (lines joined by \n). Resolves to null if unsupported. */
 export function highlight(lang: string, code: string): Promise<Tokens | null> {
   // Very large blocks stay plain: highlighting must never cost a frame.

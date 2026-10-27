@@ -2884,6 +2884,15 @@ input[type="radio"] {
 .code-pending .code > * {
   visibility: hidden;
 }
+/* Colours later than the wait arrive as a 120ms tint from the plain foreground, never a snap (reduced motion: at once). */
+.code-late .code > span:not(.sign) {
+  animation: tint-in 120ms var(--ease-out);
+}
+@keyframes tint-in {
+  from {
+    color: var(--code-foreground);
+  }
+}
 .sign {
   display: inline-block;
   width: 14px;

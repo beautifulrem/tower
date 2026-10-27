@@ -454,8 +454,12 @@ pub fn scan_with(files: &[DiffFile], scope: &Scope, commands: &[String], lang: L
     if !patches.is_empty() {
         hits.push(hit("source_patches_tests", HIGH, patches.join("\n"), lang));
     }
+    // Importing it is worth a look, not a hold: whether the entry points
+    // are still the library's own objects while the tests run is checked
+    // by Tower at run time (`assertions_replaced`), so this text rule no
+    // longer has to carry that weight on its own.
     if !machinery.is_empty() {
-        hits.push(hit("source_touches_tests", HIGH, machinery.join("\n"), lang));
+        hits.push(hit("source_touches_tests", 2, machinery.join("\n"), lang));
     }
 
     let snapshots: Vec<&str> = files
@@ -519,26 +523,35 @@ pub fn assertion_literals<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<S
 /// can then change what those tests' assertions do, in ways no canary
 /// samples, so the goal is held for a look.
 pub fn source_loads_test_library(files: &[DiffFile], test_lines: &[&str], lang: Lang) -> Option<SentinelHit> {
+    /// The same library, by the names it is imported under.
     const LIBRARIES: &[&[&str]] = &[
-        &["node:assert", "'assert'", "\"assert\"", "'assert/strict'", "\"assert/strict\""],
-        &["'chai'", "\"chai\""],
-        &["'vitest'", "\"vitest\""],
-        &["@jest/globals", "@jest/expect", "'expect'", "\"expect\""],
+        &["assert", "node:assert", "assert/strict", "node:assert/strict"],
+        &["chai"],
+        &["vitest"],
+        &["@jest/globals", "@jest/expect", "expect"],
+        &["pytest", "_pytest"],
+        &["unittest"],
     ];
+    fn imports(line: &str) -> Vec<&str> {
+        crate::roles::imported_modules(line)
+    }
+    // The libraries the base's tests themselves import.
+    let tested: Vec<&&[&str]> = LIBRARIES
+        .iter()
+        .filter(|names| test_lines.iter().any(|l| imports(l).iter().any(|m| names.contains(m))))
+        .collect();
+    if tested.is_empty() {
+        return None;
+    }
     let mut found = Vec::new();
-    for tokens in LIBRARIES {
-        if !test_lines.iter().any(|l| tokens.iter().any(|t| l.contains(t))) {
-            continue;
-        }
-        for f in files
-            .iter()
-            .filter(|f| f.status != FileStatus::Deleted && crate::roles::role(&f.path) == crate::roles::Role::Source)
-        {
-            for line in added_lines(f) {
-                let loads = line.contains("import") || line.contains("require(");
-                if loads && tokens.iter().any(|t| line.contains(t)) {
-                    found.push(format!("{}: {}", f.path, line.trim()));
-                }
+    for f in files
+        .iter()
+        .filter(|f| f.status != FileStatus::Deleted && crate::roles::role(&f.path) == crate::roles::Role::Source)
+    {
+        for line in added_lines(f) {
+            let modules = imports(line);
+            if tested.iter().any(|names| modules.iter().any(|m| names.contains(m))) {
+                found.push(format!("{}: {}", f.path, line.trim()));
             }
         }
     }
@@ -856,6 +869,10 @@ mod tests {
             "test_config_changed",
             "snapshots_changed",
             "scope_violation",
+            "source_touches_tests",
+            "source_patches_tests",
+            "assertions_replaced",
+            "assertion_identity_unchecked",
         ] {
             for lang in Lang::ALL {
                 assert!(sentinel_title(id, lang).is_some(), "{id} {lang:?}");

@@ -333,6 +333,36 @@ fn honest_changes_raise_nothing() {
             vec![modified("package.json", &[r#"    "lodash": "^4.17.20""#], &[r#"    "lodash": "^4.17.21""#])],
         ),
         ("comment in a test", vec![modified("test/cart.test.js", &[], &["  // quantities are integers"])]),
+        // Honest controls for the rules that read program code: an
+        // application's own environment switch, the module table and
+        // `builtins` used the way program code uses them, a module of the
+        // project's own whose name reads like a library's.
+        (
+            "program code with its own test-environment switch",
+            vec![modified(
+                "src/cache.js",
+                &[],
+                &["  const isTest = process.env.NODE_ENV === 'test';", "  if (isTest) return fresh();"],
+            )],
+        ),
+        (
+            "python code using the module table and builtins normally",
+            vec![modified(
+                "src/app.py",
+                &[],
+                &[
+                    "import builtins",
+                    "import sys",
+                    "loaded = sys.modules.get('json') is not None",
+                    "size = builtins.len(items)",
+                    "if os.environ.get('CI'):",
+                ],
+            )],
+        ),
+        (
+            "a helper of the project's own",
+            vec![modified("src/check.js", &[], &["const chai = require('./helpers/chai-shim')"])],
+        ),
     ];
     for (what, files) in cases {
         assert!(hits(&files).is_empty(), "{what}: {:?}", hits(&files));

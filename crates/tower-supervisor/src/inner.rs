@@ -28,8 +28,10 @@ pub(crate) struct Inner {
     pub runs: Mutex<HashMap<String, Arc<Run>>>,
     pub verifications: Mutex<HashMap<String, Cancel>>,
     /// Goals that asked for verification while one was still winding down
-    /// (a quick rework can submit before the last one has cleaned up).
-    pub verify_again: Mutex<HashSet<String>>,
+    /// (a quick rework can submit before the last one has cleaned up), and
+    /// whether you asked (an answer, a resume, "verify again"): yours is run
+    /// whatever state the winding-down one left the goal in, short of its end.
+    pub verify_again: Mutex<HashMap<String, bool>>,
     pub(crate) dirty: Mutex<HashSet<String>>,
     /// Trace entries not yet sent to the interface.
     pub(crate) traces: Mutex<Vec<TraceEntry>>,

@@ -125,7 +125,7 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
     match Choice::parse(response) {
         Some(Choice::Abandon) => run::abandon(inner, goal).await,
         Some(Choice::Reverify) => {
-            verify::spawn(inner.clone(), goal.into());
+            verify::spawn_asked(inner.clone(), goal.into());
             Ok(())
         }
         Some(Choice::InstallWithNetwork) => {
@@ -134,7 +134,7 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
             if let Some(fingerprint) = inner.store(|s| s.goal(goal))?.pin {
                 inner.append(goal, EventKind::SetupNetworkApproved { fingerprint })?;
             }
-            verify::spawn(inner.clone(), goal.into());
+            verify::spawn_asked(inner.clone(), goal.into());
             Ok(())
         }
         Some(Choice::OneMoreRework) => {

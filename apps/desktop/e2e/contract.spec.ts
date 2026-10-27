@@ -60,3 +60,23 @@ test("on the goal page a look criterion with steps says how many, and lists them
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(row.locator(".look-step-list-read .look-step")).toHaveText(["01click #buy", "02type #qty 2", "03wait for .total"]);
 });
+
+test("a slow first open of the editor shows the contract's skeleton, past 150 ms, never a blank page", async ({ page }) => {
+  // Hold the editor's code back, as a cold start on a busy machine does.
+  await page.route(/views\/ContractEditor/, async (route) => {
+    await new Promise((r) => setTimeout(r, 800));
+    await route.continue();
+  });
+  await openTower(page, "overview");
+  await page.locator(".overview").waitFor();
+  await page.keyboard.press("Meta+n");
+  const skeleton = page.locator(".contract-skeleton");
+  await expect(skeleton).toBeVisible();
+  await expect(skeleton).toHaveAttribute("role", "status");
+  // Its clause heads stand where the editor's will, numbered as they are.
+  await expect(skeleton.locator(".clause-no")).toHaveText(["01", "02", "03"]);
+  // It waits before it is seen, and the wait is a delay, not a fade.
+  expect(await skeleton.evaluate((el) => [getComputedStyle(el).animationDelay, getComputedStyle(el).animationDuration])).toEqual(["0.15s", "0s"]);
+  await expect(page.locator(".editor .contract-mast-word")).toBeVisible();
+  await expect(skeleton).toHaveCount(0);
+});

@@ -15,7 +15,7 @@ import type { DiffFile } from "../../gen/DiffFile";
 import type { DiffLine } from "../../gen/DiffLine";
 import type { Hunk } from "../../gen/Hunk";
 import { type Gap, STEP, contextLines, gapsOf, revealOf, splitRows } from "../../lib/diffview";
-import { highlight, languageOf } from "../../lib/highlight";
+import { highlight, hunkSides, languageOf } from "../../lib/highlight";
 import type { Tokens } from "../../lib/highlight.worker";
 import { t } from "../../lib/i18n";
 import { baseMs } from "../../lib/motion";
@@ -560,8 +560,8 @@ function Code(props: { l: DiffLine; tokens?: Tokens[number]; ranges?: Range[]; s
 /**
  * One hunk. Old and new sides are highlighted separately (so a deleted line
  * is coloured in its own context), off the main thread. Rows are laid out at
- * once but keep their text invisible until the colours arrive (or 150ms pass),
- * so code never flashes from plain to coloured. Adjacent deleted and added
+ * once but keep their text invisible until the colours arrive (or 150ms pass);
+ * colours later than that tint in over 120ms instead of flashing. Adjacent deleted and added
  * lines are compared word by word, and in the side-by-side layout sit next
  * to each other.
  */
@@ -585,15 +585,23 @@ export function HunkRows(props: {
   const lang = languageOf(props.path);
   const words = createMemo(() => hunkWordRanges(props.hunk.lines));
   const [ready, setReady] = createSignal(!lang);
-  const wait = lang ? window.setTimeout(() => setReady(true), COLOUR_WAIT_MS) : undefined;
+  // Colours that miss the 150ms wait do not snap in over plain text: the rows say they are late, and the tokens,
+  // when they come, tint in from the plain foreground over 120ms (at once with reduced motion).
+  const [late, setLate] = createSignal(false);
+  let arrived = false;
+  const wait = lang
+    ? window.setTimeout(() => {
+        setReady(true);
+        if (!arrived) setLate(true);
+      }, COLOUR_WAIT_MS)
+    : undefined;
   onCleanup(() => clearTimeout(wait));
   const [tokens] = createResource(
     () => props.hunk,
     async (h) => {
       if (!lang) return null;
       try {
-        const newSide = h.lines.filter((l) => l.kind !== "del").map((l) => l.text).join("\n");
-        const oldSide = h.lines.filter((l) => l.kind !== "add").map((l) => l.text).join("\n");
+        const { newSide, oldSide } = hunkSides(h.lines);
         const [n, o] = await Promise.all([highlight(lang, newSide), highlight(lang, oldSide)]);
         if (!n || !o) return null;
         let i = 0;
@@ -605,6 +613,7 @@ export function HunkRows(props: {
           return n[i++];
         });
       } finally {
+        arrived = true;
         setReady(true);
       }
     },
@@ -653,7 +662,7 @@ export function HunkRows(props: {
         <For each={props.hunk.lines}>
           {(l, idx) => (
             <>
-              <tr class={`dl dl-${l.kind}`} classList={{ commented: props.commentsAt(anchorOf(l)).length > 0, "code-pending": !ready() }} data-hunk={props.index ?? undefined}>
+              <tr class={`dl dl-${l.kind}`} classList={{ commented: props.commentsAt(anchorOf(l)).length > 0, "code-pending": !ready(), "code-late": late() }} data-hunk={props.index ?? undefined}>
                 <td class="ln num">
                   <LineButton l={l} n={l.old_no} />
                 </td>
@@ -690,7 +699,7 @@ export function HunkRows(props: {
           const commented = () => anchors().some((a) => props.commentsAt(a).length > 0);
           return (
             <>
-              <tr class="dl dl-split" classList={{ commented: commented(), "code-pending": !ready() }} data-hunk={props.index ?? undefined}>
+              <tr class="dl dl-split" classList={{ commented: commented(), "code-pending": !ready(), "code-late": late() }} data-hunk={props.index ?? undefined}>
                 <td class="ln num" classList={{ "dl-del": left()?.kind === "del" }}>
                   <Show when={left()}>{(l) => <LineButton l={l()} n={l().old_no} />}</Show>
                 </td>

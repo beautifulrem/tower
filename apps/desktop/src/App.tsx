@@ -13,6 +13,7 @@ import { activityOpen, openActivity, openPalette, openShortcuts, paletteOpen, sh
 import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
 import { t, withLater } from "./lib/i18n";
+import { prewarmReviews } from "./lib/prewarm";
 import { act, init, state, toast } from "./lib/store";
 import { Inbox } from "./views/Inbox";
 import { Overview } from "./views/Overview";
@@ -133,6 +134,8 @@ export function App() {
   onCleanup(() => void unlisten.then((fs) => fs.forEach((f) => f())));
   // Once the first frame is up: the goal page, and with it the words the on-demand views say.
   onMount(() => requestAnimationFrame(() => setTimeout(() => void GoalPage.preload(), 0)));
+  // And the colours of the reviews waiting for you, while the window idles.
+  prewarmReviews();
 
   useMenu({
     "nav:new": () => go({ name: "new" }),

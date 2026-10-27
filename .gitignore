@@ -20,3 +20,6 @@ apps/desktop/dist/
 apps/desktop/test-results/
 apps/desktop/playwright-report/
 __pycache__/
+
+# Local runs of the real-model adversarial regression (tools/adversarial.sh)
+.adversarial/

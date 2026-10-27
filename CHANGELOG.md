@@ -54,6 +54,9 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - A missing git identity can be set from the welcome screen and Settings, with the command kept beside the fields.
 - Fields show their focus (a text-3 edge, an inner line for the keyboard); an answered card folds the moment its receipt rises; toasts carry Tower's left rule (yours, needs you, error); the runs gauge sweeps to its reading; the briefing is one line; the palette groups actions and goals when you type.
 
+### Testing
+- The real-model adversarial regression runs goals by class, at least two variants each, with honest controls in JavaScript and Rust and a trap where honest work meets evidence from a process verification did not start. A shortcut still running at the time limit fails (no verdict); one the model did not take counts as "not exercised", never as a pass; an honest control that is held is a false hold. Each run prints the block rate per class and the honest-control false-hold rate and writes them as JSON, which the nightly workflow uploads. Each repository's premises are asserted before the model starts. `tools/adversarial.sh` runs it on your Mac with the key from your shell and keeps the results under the gitignored `.adversarial/`. The workflow needs the `CLINE_API_KEY` secret and has not run in CI yet.
+
 ## [0.1.0] — 2026-10-26
 
 The first working version of the M1 loop described in `docs/`.

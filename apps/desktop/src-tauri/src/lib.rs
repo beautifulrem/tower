@@ -77,6 +77,7 @@ impl TauriSink {
         // Forget items no longer open (answered, or snoozed): a snoozed item
         // that comes back is announced again.
         seen.retain(|id| items.iter().any(|i| &i.id == id));
+        let mut announce: Vec<&InboxItem> = Vec::new();
         for item in items {
             let muted = settings.as_ref().is_some_and(|s| s.muted_goals.contains(&item.goal_id));
             // While quiet nothing is marked as announced: items that waited
@@ -92,10 +93,24 @@ impl TauriSink {
                     | InboxKind::Stalled
                     | InboxKind::CiFailed
             );
-            if !urgent {
-                continue;
+            if urgent {
+                announce.push(item);
             }
-            let lang = app.try_state::<Supervisor>().map(|s| s.lang()).unwrap_or_default();
+        }
+        let lang = app.try_state::<Supervisor>().map(|s| s.lang()).unwrap_or_default();
+        // Several at once (the end of a quiet time): one notification, not a
+        // burst.
+        if announce.len() > 2 {
+            let n = announce.len();
+            let goals: Vec<String> = announce.iter().map(|i| clip(&i.goal_title, 24)).collect();
+            let body = clip(&goals.join(" · "), 120);
+            let _ =
+                app.notification().builder().title(tr!(lang, "{n} 件事在等你", "{n} items need you")).body(body).show();
+            *self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
+                Some(("inbox".to_string(), std::time::Instant::now()));
+            return;
+        }
+        for item in announce {
             // People remember goals by what they are about, not by number.
             let title =
                 if item.goal_title.trim().is_empty() { item.goal_id.clone() } else { clip(&item.goal_title, 40) };

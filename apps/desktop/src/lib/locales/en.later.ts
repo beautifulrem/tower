@@ -120,6 +120,7 @@ export const enLater: DictLater = {
     sandboxOkDetail: "Everything the agent runs sees only its own workspace: no credentials, no other projects, no network unless the goal allows it.",
     sandboxMissingDetail: "Without it, the agent's commands run with your permissions; reads and writes are fenced by path only.",
     recheck: "Check again",
+    copyFix: "Copy the fix",
     addRepo: "Add a git repository",
     claudeOk: "Claude Code available",
     life: "A goal's life: draft, running, claimed done, verifying, ready to accept, accepted",

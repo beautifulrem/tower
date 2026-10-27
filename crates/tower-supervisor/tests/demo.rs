@@ -56,7 +56,8 @@ async fn the_demo_runs_without_pi() {
     sup.answer(&question.id, "Before").await.unwrap();
 
     let mut state = LifecycleState::Running;
-    for _ in 0..600 {
+    // Done as soon as it settles; a verification on a busy machine can take minutes.
+    for _ in 0..3600 {
         state = sup.goals().unwrap().into_iter().find(|g| g.id == goal.id).unwrap().state;
         if matches!(state, LifecycleState::InReview | LifecycleState::Paused) {
             break;

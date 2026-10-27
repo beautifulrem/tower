@@ -77,4 +77,14 @@ describe("the contract editor", () => {
     expect(container.querySelectorAll(".clause-head")[1].querySelectorAll("button")).toHaveLength(3);
     expect(container.querySelector(".section-title")).toBeNull();
   });
+
+  it("declares ports on this machine and can open loopback, both only while the network is off", async () => {
+    const { parsePorts } = await import("../ContractEditor");
+    expect(parsePorts("5432, 6379 5432 x 0 70000")).toEqual([5432, 6379]);
+    render(() => <ContractEditor projectId="p1" />);
+    expect(screen.getByText("Ports on this machine")).toBeTruthy();
+    expect(screen.getByText("Open loopback")).toBeTruthy();
+    fireEvent.click(screen.getByRole("switch", { name: /Allow network/ }));
+    await waitFor(() => expect(screen.queryByText("Ports on this machine")).toBeNull());
+  });
 });

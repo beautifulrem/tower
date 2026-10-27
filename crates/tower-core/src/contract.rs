@@ -51,6 +51,17 @@ pub struct Contract {
     /// is how code and secrets leak. Setup commands always have the network.
     #[serde(default)]
     pub network: bool,
+    /// Ports on this machine the agent's commands and the criteria may
+    /// reach with the network off (a local database the tests need, say).
+    /// Otherwise loopback reaches only what their own processes listen on.
+    #[serde(default)]
+    pub ports: Vec<u16>,
+    /// With the network off, open loopback except the services already
+    /// listening when a command starts: for test suites that talk over ports
+    /// they pick at run time (a build daemon, servers on port 0). A service
+    /// started on this Mac later is then reachable to them.
+    #[serde(default)]
+    pub loopback_open: bool,
     /// The agent that does the work: `pi` or `claude-code`. Empty means the
     /// default from the settings.
     #[serde(default)]
@@ -218,8 +229,20 @@ impl Contract {
             thinking: String::new(),
             stop_conditions: Vec::new(),
             network: false,
+            ports: Vec::new(),
+            loopback_open: false,
             engine: String::new(),
         }
+    }
+
+    /// The loopback ports the contract opens: the declared ones. (`look`
+    /// pages are reached by the screenshot browser, which opens the app's
+    /// port itself once it knows the verification started the listener.)
+    pub fn declared_ports(&self) -> Vec<u16> {
+        let mut p: Vec<u16> = self.ports.iter().copied().filter(|p| *p > 0).collect();
+        p.sort_unstable();
+        p.dedup();
+        p
     }
 
     pub fn machine_criteria(&self) -> impl Iterator<Item = &Criterion> {

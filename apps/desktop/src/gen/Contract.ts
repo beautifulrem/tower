@@ -47,6 +47,19 @@ stop_conditions: Array<string>,
  */
 network: boolean, 
 /**
+ * Ports on this machine the agent's commands and the criteria may
+ * reach with the network off (a local database the tests need, say).
+ * Otherwise loopback reaches only what their own processes listen on.
+ */
+ports: Array<number>, 
+/**
+ * With the network off, open loopback except the services already
+ * listening when a command starts: for test suites that talk over ports
+ * they pick at run time (a build daemon, servers on port 0). A service
+ * started on this Mac later is then reachable to them.
+ */
+loopback_open: boolean, 
+/**
  * The agent that does the work: `pi` or `claude-code`. Empty means the
  * default from the settings.
  */

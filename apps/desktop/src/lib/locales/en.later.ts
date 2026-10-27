@@ -285,7 +285,13 @@ export const enLater: DictLater = {
     maxRework: "Automatic rework limit",
     isolation: "Isolation",
     network: "Allow network",
-    networkHint: "Off: the agent and the checks can only reach localhost. Setup commands always have the network.",
+    networkHint:
+      "Off: nothing beyond this Mac, and on this Mac only the ports below and what the agent's or the checks' own processes listen on. Setup commands always have the network.",
+    ports: "Ports on this machine",
+    portsHint: "Ports the agent and the checks may reach with the network off, such as a local database. Separate them with commas.",
+    loopbackOpen: "Open loopback",
+    loopbackOpenHint:
+      "For tests that pick their ports at run time (servers on port 0, a build daemon): everything on this Mac except what was already listening. A service started later becomes reachable to them.",
     engine: "Engine",
     model: "Model",
     modelHint: "From your Pi configuration.",

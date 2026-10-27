@@ -44,9 +44,21 @@ function blank(intent = "", testCommand: string | null = null): Contract {
     thinking: state.settings?.default_thinking ?? "",
     stop_conditions: [],
     network: false,
+    ports: [],
+    loopback_open: false,
     engine: "",
   };
 }
+
+/** "5432, 6379" → [5432, 6379]: valid ports only, each once. */
+export const parsePorts = (s: string): number[] => [
+  ...new Set(
+    s
+      .split(/[\s,]+/)
+      .map((x) => Number(x))
+      .filter((n) => Number.isInteger(n) && n > 0 && n < 65536),
+  ),
+];
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
@@ -374,6 +386,23 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         <div class="editor-block">
           <ClauseHead n={6} title={t("contract.isolation")} />
           <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
+          <Show when={!c.network}>
+            <Field label={t("contract.ports")} hint={t("contract.portsHint")}>
+              <input
+                class="mono"
+                inputmode="numeric"
+                placeholder="5432, 6379"
+                value={(c.ports ?? []).join(", ")}
+                onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))}
+              />
+            </Field>
+            <Toggle
+              checked={c.loopback_open ?? false}
+              onChange={(v) => setC("loopback_open", v)}
+              label={t("contract.loopbackOpen")}
+              hint={t("contract.loopbackOpenHint")}
+            />
+          </Show>
         </div>
         <div class="editor-block">
           <ClauseHead n={7} title={t("contract.engine")} />

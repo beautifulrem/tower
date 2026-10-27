@@ -37,6 +37,7 @@ jobs:
           pnpm --dir apps/desktop test
           pnpm --dir apps/desktop build
           tools/bundle-budget.sh
+          tools/doc-numbers.sh
 
       - name: Rust formatting, and no source file over 800 lines
         run: |

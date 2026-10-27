@@ -177,12 +177,11 @@ export function Empty(props: {
   inline?: boolean;
   /**
    * A whole-screen empty state: the block sits a third of the way down with
-   * the wordmark above it and Tower's three rules under it, so the emptiest
-   * screens still have Tower's face.
+   * the wordmark above it, so the emptiest screens still have Tower's face.
+   * Tower's three rules are said once, on the welcome page, not under every
+   * empty screen.
    */
   poster?: boolean;
-  /** The poster's rules line; off when the caller places it after its own content. */
-  rules?: boolean;
 }) {
   const kind = () => props.kind ?? "empty";
   return (
@@ -212,35 +211,29 @@ export function Empty(props: {
           </Show>
         </div>
       </div>
-      <Show when={props.poster && props.rules !== false}>
-        <Rules />
-      </Show>
     </div>
   );
 }
 
-/** Tower's three rules in one quiet line, under the emptiest screens. */
-export function Rules() {
+/**
+ * Tower's own mark: the tower itself — the glass cab, a bar across the top, on its mast — drawn with the same 1.25
+ * pen as every glyph but in no glyph's shape, so it is never read as a status (the ring with a check is "verified",
+ * and only that). The name beside it is set as a name, not tracked capitals.
+ */
+export function BrandMark(props: { size?: number }) {
   return (
-    <p class="empty-rules meta t3">
-      {t("welcome.factsTitle")}
-      <span class="sep">·</span>
-      {t("welcome.quietTitle")}
-      <span class="sep">·</span>
-      {t("welcome.repoTitle")}
-    </p>
+    <svg class="brand-mark" width={props.size ?? 14} height={props.size ?? 14} viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true">
+      <rect x="1.125" y="1.125" width="7.75" height="2.75" />
+      <path d="M5 3.875 V9.5 M3 9.375 H7" />
+    </svg>
   );
 }
 
-/** The mark: a ring with the verifier's check, drawn with the same pen as every glyph, and the name tracked wide. */
 export function Wordmark() {
   return (
     <div class="wordmark" aria-hidden="true">
-      <svg width="14" height="14" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter">
-        <circle cx="5" cy="5" r="4" />
-        <path d="M3.1 5.2 L4.5 6.6 L7 3.7" />
-      </svg>
-      TOWER
+      <BrandMark />
+      Tower
     </div>
   );
 }

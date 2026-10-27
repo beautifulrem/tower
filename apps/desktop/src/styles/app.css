@@ -756,8 +756,33 @@
 }
 /* Armed: a destructive option pressed once, waiting for the second press. */
 .btn.armed {
+  position: relative;
+  overflow: hidden;
   border-color: var(--text-1);
   background: var(--bg-selected);
+}
+/* The two seconds the second press is open for, as a 2px rule draining along the foot of the button: the time is
+   seen, not counted in a number that means nothing. With reduced motion the rule stands still. */
+.btn.armed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--text-1);
+  transform-origin: left center;
+  animation: drain var(--dur-arm) linear forwards;
+}
+@keyframes drain {
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn.armed::after {
+    animation: none;
+  }
 }
 .btn.armed .btn-label {
   color: var(--text-1);
@@ -1436,16 +1461,18 @@ input[type="radio"] {
 .checks .section-title {
   line-height: 12px;
 }
-/* The only place a wordmark belongs: small, tracked, above the first sentence. */
+/* The wordmark: Tower's own mark and its name set as a name — the display cut, a touch tight — above the first
+   sentence. Capitals tracked wide are kept for one place only, the contract's masthead. */
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 10px;
-  line-height: 12px;
-  letter-spacing: 0.14em;
-  font-weight: 500;
-  color: var(--text-3);
+  gap: 7px;
+  font-size: 13px;
+  line-height: 14px;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  font-variation-settings: "opsz" 28;
+  color: var(--text-2);
   margin-bottom: calc(-1 * var(--sp-2));
 }
 .wordmark svg {
@@ -2656,6 +2683,18 @@ input[type="radio"] {
   min-height: 20px;
   margin: 0;
   min-width: 0;
+}
+/* A group's name said once over its lines (the sentinels), in place of a prefix on each: the hint size, the quiet grey,
+   in the notes' text column. */
+.review-notes-group,
+.open-kind {
+  margin: 4px 0 0;
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  color: var(--text-3);
+}
+.review-notes-group {
+  padding-left: 16px;
 }
 .review-notes-head {
   width: 100%;

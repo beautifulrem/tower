@@ -50,6 +50,22 @@ describe("VerifyPanel", () => {
     const ids = [...container.querySelectorAll(".verify-item .criterion-row > .num")].map((el) => el.textContent);
     expect(ids).toEqual(["C3", "C1", "H1"]);
   });
+
+  it("puts what most needs your eye first: after the pictures, a pass that is not evidence, then a failure, and the passes last", () => {
+    const v = (passed: boolean) => ({ pin: "a4a90b2deadbeef", passed, exit_code: passed ? 0 : 1, duration_ms: 900, output_tail: "", at: 0, stale: false, held_out: false });
+    const exec = (id: string, verified: unknown, canary?: string) => ({
+      criterion: { id, title: id, kind: { type: "exec", command: "npm test", timeout_secs: 60 } },
+      verified,
+      passed_on_base: null,
+      observed: null,
+      human_checked: false,
+      canary,
+    });
+    const mixed = { ...detail, criteria: [exec("C1", v(true)), exec("C2", v(true)), exec("C3", null), exec("C4", v(false)), exec("C5", v(true), "tampered")] } as unknown as GoalDetail;
+    const { container } = render(() => <VerifyPanel id="G-0001" detail={mixed} loading={false} onClose={() => {}} />);
+    const ids = [...container.querySelectorAll(".verify-item .criterion-row > .num")].map((el) => el.textContent);
+    expect(ids).toEqual(["C5", "C4", "C3", "C1", "C2"]);
+  });
 });
 
 describe("AcceptPanel", () => {
@@ -62,7 +78,8 @@ describe("AcceptPanel", () => {
   it("lists what is still open: the assumption, the sentinel and the unviewed units", () => {
     render(() => <AcceptPanel id="G-0001" viewed={1} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(screen.getByText(/Unconfirmed assumption: quantities are always 1/)).toBeTruthy();
-    expect(screen.getByText(/Sentinel: Changed what a test expects/)).toBeTruthy();
+    expect(screen.getByText("Changed what a test expects")).toBeTruthy();
+    expect(screen.getByText("Sentinels")).toBeTruthy();
     expect(screen.getByText(/2 review units not marked viewed/)).toBeTruthy();
     // Said once: the unviewed units are in the open list, not repeated as a count.
     expect(screen.queryByText(/viewed 1\/3/)).toBeNull();
@@ -106,7 +123,7 @@ describe("AcceptPanel", () => {
     const checked = { ...detail, criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as GoalDetail;
     const { container } = render(() => <AcceptPanel id="G-0001" viewed={1} total={3} detail={checked} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     const groups = [...container.querySelectorAll(".panel-section > .meta.t3")].map((el) => el.textContent);
-    expect(groups).toEqual(["Not evidence · needs your judgement", "To look at"]);
+    expect(groups).toEqual(["Not evidence, or needs your judgement", "To look at"]);
     expect(container.querySelector(".open-judgement")!.textContent).toMatch(/Changed what a test expects/);
     expect(container.querySelector(".open-notice")!.textContent).toMatch(/quantities are always 1/);
     const button = screen.getByText("Accept anyway").closest("button")!;
@@ -114,7 +131,7 @@ describe("AcceptPanel", () => {
     button.click();
     // Armed, not sent: the button says what it is over, and that a second press is needed.
     expect(button.classList.contains("armed")).toBe(true);
-    expect(button.textContent).toMatch(/1 item needs your judgement · press again · 2/);
+    expect(button.textContent).toBe("Press again to accept anyway");
     expect(invoked.filter((c) => c.cmd === "accept").length).toBe(before);
     button.click();
     await Promise.resolve();

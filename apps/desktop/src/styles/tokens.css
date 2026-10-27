@@ -61,6 +61,8 @@
   --dur-attn: 700ms;
   --dur-view: 120ms;
   --dur-space: 220ms;
+  /* How long a destructive option stays armed for its second press (DecisionCard ARM_MS). */
+  --dur-arm: 2000ms;
 }
 
 /* A half-screen window (≤1200px) gives the sidebar back 28px. */

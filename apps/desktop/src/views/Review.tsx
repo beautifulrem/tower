@@ -393,7 +393,7 @@ export function Review(props: { id: string }) {
       },
       { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("keys.pathJump") },
       { key: "mod+shift+enter", run: () => setPanel("accept"), inInputs: true, desc: () => t("review.accept") },
-      { key: "c", run: () => setPanel("changes"), desc: () => t("review.requestChanges") },
+      { key: "c", run: () => setPanel("changes"), desc: () => t("review.requestChanges"), when: () => units().length > 0 },
       { key: "escape", run: () => (composer() ? setComposer(null) : editingPath() ? setEditingPath(null) : back()) },
     ],
     () => t("app.review", { id: props.id }),
@@ -422,7 +422,8 @@ export function Review(props: { id: string }) {
   };
 
   const notes = createMemo<ReviewNote[]>(() => {
-    const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: t("review.sentinel", { title: h.title }) }));
+    // A sentinel's note is its sentence; the band names them once, as a group, instead of "Sentinel ·" on every line.
+    const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: h.title, sentinel: true }));
     for (const r of unit()?.risk_reasons ?? []) out.push({ danger: false, text: r });
     if (detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0)
       out.push({ danger: false, text: t("goal.noHeldOut"), action: { label: t("goal.setHeldOut"), run: () => g() && goProjectSetting(g()!.project_id, "holdout") } });
@@ -481,7 +482,6 @@ export function Review(props: { id: string }) {
                     <span class="sep">·</span>
                   </Show>
                   <CriteriaBar progress={g()!.progress} criteria={detail()?.criteria} compact />
-                  <Icon name="chevron-right" size={10} class="t3" />
                 </button>
               </Show>
             </div>
@@ -498,10 +498,13 @@ export function Review(props: { id: string }) {
             onClick={toggleLayout}
           />
         </Show>
-        <Button onClick={() => setPanel("changes")} kbd="c">
-          {t("review.requestChanges")}
-          {comments().length ? t("review.commentCount", { n: comments().length }) : ""}
-        </Button>
+        {/* With nothing changed there is nothing to send back: the header keeps only what still applies. */}
+        <Show when={units().length > 0}>
+          <Button onClick={() => setPanel("changes")} kbd="c">
+            {t("review.requestChanges")}
+            {comments().length ? t("review.commentCount", { n: comments().length }) : ""}
+          </Button>
+        </Show>
         <Show when={g()?.state === "in_review"}>
           <Button variant="primary" onClick={() => setPanel("accept")} kbd="mod+shift+enter">
             {t("review.accept")}

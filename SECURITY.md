@@ -51,6 +51,7 @@ Every property above has a test that CI runs on each push (macOS runner, real `s
 | Held-out tests: never in the agent's workspace, contract or prompts; failures go to you | flow `held_out_tests_run_in_verification_only`, `failing_held_out_tests_go_to_the_human` |
 | A result is "with held-out tests" only for files proven, one by one, to have run; the rest are named for you, never in what the agent can hear; the proofs' drop box is write-only from the sandbox | flow (`tests/evidence.rs`) `held_out_files_prove_they_ran_one_by_one`, `held_out_proofs_come_back_from_inside_the_sandbox`, `held_out_tests_that_never_ran_do_not_label_the_result`; `sandbox::tests::the_drop_box_is_write_only`, `verify::bench::held_out::tests::*` |
 | Text rules for hiding failures (deleted, skipped, hollowed tests, changed expectations, special cases) | corpus `every_cheat_in_the_corpus_is_caught`, `honest_changes_raise_nothing`; flow `special_casing_the_tests_values_is_reported` |
+| A criterion whose base did not run keeps its canary | flow (`tests/evidence.rs`) `a_criterion_whose_base_did_not_run_keeps_its_canary`; `tests/perf_verify.rs` asserts it on a larger repository |
 | Verification uses no cache the agent wrote, and leaves nothing running | flow `verification_does_not_see_the_agents_cache`, `verification_leaves_nothing_running` |
 | Changed dependencies are not installed with the network without you | flow `changed_dependencies_need_the_human_before_setup_goes_online` |
 | Probing outside the workspace is reported | flow `probing_outside_the_workspace_is_reported` |

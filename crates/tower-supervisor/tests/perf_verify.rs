@@ -1,6 +1,8 @@
 //! What verification costs on a larger repository: 2 000 source files and
-//! 200 test files (1 000 assertions), every verification step included
-//! (base, snapshot, source-only re-run, canaries). Run with
+//! 201 test files (1 001 assertions), every verification step included
+//! (base, snapshot, source-only re-run, canaries). The
+//! criterion's tests really run on the base (and fail there), so the
+//! canary must run too: the measurement asserts it. Run with
 //! `cargo test -p tower-supervisor --test perf_verify -- --ignored --nocapture`.
 
 use std::path::{Path, PathBuf};
@@ -9,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tower_core::contract::{Contract, Criterion, CriterionKind};
-use tower_core::view::Settings;
+use tower_core::view::{CanaryState, Settings};
 use tower_core::{EventKind, Lang, LifecycleState};
 use tower_supervisor::shell_env::ShellEnv;
 use tower_supervisor::{Config, NewGoalInput, NullSink, Paths, Supervisor};
@@ -39,6 +41,13 @@ async fn verification_of_a_larger_repository() {
         }
         std::fs::write(repo.join(format!("test/m{i}.test.mjs")), t).unwrap();
     }
+    // The goal's own test: red on the base, green once done.txt exists.
+    std::fs::write(
+        repo.join("test/done.test.mjs"),
+        "import test from 'node:test'\nimport assert from 'node:assert'\nimport { existsSync } from 'node:fs'\n\
+         test('done', () => assert.equal(existsSync('done.txt'), true))\n",
+    )
+    .unwrap();
     git(&repo, &["init", "--quiet", "--initial-branch=main"]);
     git(&repo, &["config", "user.name", "Ada"]);
     git(&repo, &["config", "user.email", "ada@example.com"]);
@@ -66,8 +75,8 @@ async fn verification_of_a_larger_repository() {
     let mut c = Contract::quick("create done.txt", None, Lang::En);
     c.criteria = vec![Criterion {
         id: "C1".into(),
-        title: "done.txt exists and the tests pass".into(),
-        kind: CriterionKind::Exec { command: "test -f done.txt && node --test".into(), timeout_secs: 600 },
+        title: "the tests pass, done.txt's included".into(),
+        kind: CriterionKind::Exec { command: "node --test".into(), timeout_secs: 600 },
     }];
     let g = sup
         .create_goal(NewGoalInput { project_id: p.id, title: "perf".into(), contract: c, ratify: true })
@@ -86,10 +95,22 @@ async fn verification_of_a_larger_repository() {
     let finished = at(&|e| matches!(e, EventKind::VerifyFinished { .. })).expect("finished");
     let d = sup.goal(&g.id).unwrap();
     let secs = (finished - started) as f64 / 1000.0;
+    // Where the time goes: each step ends with its first fact. (The base
+    // ran earlier, in the preflight, while the agent worked.)
+    let snapshot = at(&|e| matches!(e, EventKind::CriterionResult { .. })).unwrap_or(started);
+    let canary = at(&|e| matches!(e, EventKind::CanaryChecked { .. })).unwrap_or(snapshot);
+    let s = |a: i64, b: i64| (b - a) as f64 / 1000.0;
     println!(
-        "verification: {secs:.1} s · state {:?} · canary {:?} · source-only {:?}",
-        d.summary.state, d.criteria[0].canary, d.criteria[0].passes_with_source_only
+        "verification: {secs:.1} s (snapshot {:.1}, canary {:.1}, the rest {:.1}) · state {:?} · canary {:?} · source-only {:?}",
+        s(started, snapshot),
+        s(snapshot, canary),
+        s(canary, finished),
+        d.summary.state,
+        d.criteria[0].canary,
+        d.criteria[0].passes_with_source_only
     );
     assert_eq!(d.summary.state, LifecycleState::InReview, "{:?}", d.sentinels);
+    assert_eq!(d.criteria[0].passed_on_base, Some(false), "the base really ran the tests: {:?}", d.criteria[0]);
+    assert_eq!(d.criteria[0].canary, Some(CanaryState::Intact), "the canary ran");
     assert!(secs < 120.0, "verification took {secs:.1} s");
 }

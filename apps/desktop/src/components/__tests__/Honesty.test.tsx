@@ -64,7 +64,7 @@ describe("the notes under a criterion", () => {
     return { ...c, verified: { ...c.verified!, held_out: true } };
   };
 
-  it("ride on one line: the canary's reading and the held-out chip together, never two lines of notes", () => {
+  it("are one register to a line: the canary's fact on one, your held-out mark on the next", () => {
     const c = heldOut("not_checked");
     const { container } = render(() => (
       <>
@@ -72,10 +72,13 @@ describe("the notes under a criterion", () => {
         <HeldOutLine c={c} />
       </>
     ));
-    expect(container.querySelectorAll(".criterion-obs")).toHaveLength(1);
-    const line = container.querySelector(".canary-line")!;
-    expect(line.textContent).toContain("assertions not checked");
-    expect(line.querySelector(".chip-you")).not.toBeNull();
+    const lines = container.querySelectorAll(".criterion-obs");
+    expect(lines).toHaveLength(2);
+    expect(lines[0].textContent).toContain("assertions not checked");
+    expect(lines[0].querySelector(".chip-you")).toBeNull();
+    expect(lines[1].querySelector(".chip-you")).not.toBeNull();
+    // Each note starts under the title: two empty cells (mark, id), then the note.
+    for (const l of lines) expect(l.children).toHaveLength(3);
   });
 
   it("keep the held-out chip on its own line when there is no canary to join", () => {
@@ -90,10 +93,9 @@ describe("the notes under a criterion", () => {
     expect(container.querySelectorAll(".criterion-obs .chip-you")).toHaveLength(1);
   });
 
-  it("tint only the tampered words, not the chip beside them", () => {
+  it("tint only the tampered words", () => {
     const { container } = render(() => <CanaryLine c={heldOut("tampered")} />);
     expect(container.querySelector(".baseline-dependent .attn-word")!.textContent).toBe("a test that must fail passed");
-    expect(container.querySelector(".chip-you")!.classList.contains("attn-word")).toBe(false);
   });
 });
 

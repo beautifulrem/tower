@@ -93,7 +93,9 @@
   .question.code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
   .question.code { font-size: 15px; font-weight: 500; word-break: break-word; }
   .body { color: var(--text-2); font-size: 14px; white-space: pre-wrap; word-break: break-word; user-select: text; }
-  .tail { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-inset); border: 1px solid var(--border-subtle); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
+  .tail { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-inset); border: 1px solid var(--border-subtle); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-variant-ligatures: none; }
+  /* One output line per block, its wrap hanging two characters in: a continuation never reads as the next line. */
+  .tail .tl { display: block; padding-left: 2ch; text-indent: -2ch; }
   .caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-1); }
   .caution svg { flex: 0 0 auto; margin-top: 3px; }
   .caution.note { color: var(--text-3); }
@@ -111,6 +113,9 @@
   .btn { min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-1); font-size: 15px; font-weight: 500; white-space: nowrap; }
   .btn:active { background: var(--bg-selected); }
   .btn.primary { background: var(--text-1); border-color: var(--text-1); color: var(--bg); }
+  /* One black button a screen, as on the desk's queue: only the first card — the most urgent — fills its primary; the
+     others keep the plain frame until you are working in them. */
+  .card.quiet:not(:focus-within) .btn.primary { background: var(--bg-raised); border-color: var(--border); color: var(--text-1); }
   .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
   .btn.armed { border-color: var(--text-1); background: var(--bg-selected); }
   .btn:disabled { color: var(--text-3); border-color: var(--border-subtle); }
@@ -261,10 +266,13 @@ function heldOut(body) {
   for (const [id, list] of names) if (!failures.some((f) => f.id === id)) failures.push({ id, title: "", tail: "", names: list });
   return { prose: prose.join("\n").trim(), failures };
 }
+// A machine tail, a line to a block: a line too long for the phone wraps under itself with a two-character hang, so a
+// wrapped `expected 10.01 to equal 10.02` never reads as two lines of output.
+const tailHtml = (text) => `<pre class="tail">${text.split("\n").map((l) => `<span class="tl">${esc(l) || " "}</span>`).join("")}</pre>`;
 const heldHtml = (h) => `<div class="heldout"><span class="label">${t("forYou")}</span>${h.failures.map((f) => `
   <div class="head"><span class="id">${esc(f.id)}</span><span>${esc(f.title)}</span></div>
   ${f.names.length ? `<div class="names"><span>${t("failing")}</span>${f.names.map((n) => `<code>${esc(n)}</code>`).join("")}</div>` : ""}
-  ${f.tail ? `<pre class="tail">${esc(f.tail)}</pre>` : ""}`).join("")}</div>`;
+  ${f.tail ? tailHtml(f.tail) : ""}`).join("")}</div>`;
 // What the reply box asks for: a question wants an answer, a held-out card a hint, anything else a note.
 const replyHtml = (i, held) => {
   const ph = held ? t("hintPlaceholder") : i.kind === "question" ? t("answerPlaceholder") : t("notePlaceholder");
@@ -325,7 +333,7 @@ function render(s) {
   const ready = s.inbox.filter((i) => i.kind === "review_ready");
   let h = `<h2>${t("needs")}<span class="num">${items.length}</span></h2>`;
   if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>${ghost([[62, 40], [44, 58]])}`;
-  for (const i of items) {
+  for (const [at, i] of items.entries()) {
     const g = goals.get(i.goal_id);
     // Held-out tests failed: the output is for you alone, the hint is the way that keeps it so, and the agent-facing choices come after.
     const held = i.kind === "paused" && g && g.pause_reason === "held_out_failed" ? heldOut(i.body) : null;
@@ -340,13 +348,13 @@ function render(s) {
     }).join("");
     const security = i.kind === "paused" && g && g.pause_reason === "dependencies_changed";
     const laterOpen = later === i.id;
-    h += `<article class="card">
+    h += `<article class="card ${at > 0 ? "quiet" : ""}">
       <div class="strip">${G.diamond}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span>·</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span><button class="bell" data-later="${esc(i.id)}" aria-label="${t("later")}" aria-expanded="${laterOpen}">${G.bell}</button></div>
       <div class="main">
         ${laterOpen ? `<div class="later"><span>${t("later")}</span><button class="btn" data-snooze="${esc(i.id)}" data-until="${Date.now() + 3_600_000}">${t("inHour")}</button><button class="btn" data-snooze="${esc(i.id)}" data-until="${tomorrowAt9()}">${t("tomorrow")}</button></div>` : ""}
         <p class="question ${i.kind === "ci_failed" ? "code" : ""}">${esc(i.subject)}</p>
         ${p.prose ? `<p class="body">${esc(p.prose)}</p>` : ""}
-        ${p.tail ? `<pre class="tail">${esc(p.tail)}</pre>` : ""}
+        ${p.tail ? tailHtml(p.tail) : ""}
         ${held && held.failures.length ? heldHtml(held) : ""}
         ${held && i.allow_text ? replyHtml(i, true) : ""}
         ${security ? `<p class="caution">${G.notice}<span>${t("security")}</span></p>` : ""}

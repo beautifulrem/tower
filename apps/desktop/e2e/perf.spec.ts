@@ -35,13 +35,21 @@ test("moving between views stays under 300 ms (median) with 50 goals", async ({ 
   await openTower(page, "overview", { enrich: fifty });
   await expect(page.getByText("(50)").first()).toBeVisible();
   const timings: number[] = [];
-  for (const key of ["Meta+2", "Meta+1", "Meta+2", "Meta+1"]) {
+  // Done means the target view's own content is on the page and the other view's is gone: the queue's first card
+  // for Needs you, the fiftieth goal's row for the overview — not merely the shell's <main>, which never leaves.
+  // (Self-contained: Playwright sends its source to the page.) The time the view stood complete, or false.
+  const doneAt = (view: "inbox" | "overview") =>
+    (view === "inbox"
+      ? !!document.querySelector(".view .inbox .decision") && !document.querySelector(".view .overview")
+      : [...document.querySelectorAll(".view .overview .board-rows [role=listitem]")].some((r) => r.textContent?.includes("(50)")) && !document.querySelector(".view .inbox")) &&
+    performance.now();
+  for (const [key, view] of [["Meta+2", "inbox"], ["Meta+1", "overview"], ["Meta+2", "inbox"], ["Meta+1", "overview"]] as const) {
+    expect(await page.evaluate(doneAt, view === "inbox" ? "overview" : "inbox")).toBeTruthy();
     const t0 = await page.evaluate(() => performance.now());
     await page.keyboard.press(key);
-    await page.waitForFunction(() => document.querySelector("main") !== null);
-    // The next frame after the route changed.
-    const t1 = await page.evaluate(() => new Promise<number>((r) => requestAnimationFrame(() => r(performance.now()))));
-    timings.push(t1 - t0);
+    // Polled every frame, so the reading is the first frame the view stands complete in.
+    const t1 = await page.waitForFunction(doneAt, view, { polling: "raf" });
+    timings.push(((await t1.jsonValue()) as number) - t0);
   }
   console.log(`view switches: ${timings.map((t) => Math.round(t)).join(", ")} ms`);
   // The median holds the budget; one slow switch on a busy machine is not a regression.

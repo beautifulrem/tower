@@ -112,6 +112,12 @@ pub struct Progress {
     /// Human criteria checked off.
     pub human_done: u32,
     pub human: u32,
+    /// Some pass on the current snapshot is not evidence: its must-fail
+    /// canary passed too, or a high-severity finding of the latest
+    /// verification stands. Lets the board and the sidebar say so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub not_evidence: Option<bool>,
 }
 
 #[cfg(test)]

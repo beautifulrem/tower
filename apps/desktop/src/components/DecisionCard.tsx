@@ -22,12 +22,12 @@ import { ago, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
 import { approves, optionTone } from "../lib/labels";
 import { popupActions } from "../lib/native";
-import { go } from "../lib/nav";
+import { go, goProjectSetting } from "../lib/nav";
 import { act, state, toast } from "../lib/store";
 import { Icon, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { Claim, CriteriaBar } from "./Honesty";
 import { PrLine } from "./Pr";
-import { Button, IconButton, Kbd } from "./ui";
+import { Button, IconButton, Kbd, Prose } from "./ui";
 
 const kindLabel = (k: InboxItem["kind"]): string => t(`inboxKind.${k}`);
 
@@ -109,6 +109,11 @@ export function bodyParts(item: InboxItem): { prose: string; tail: string } {
   return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
 }
 
+/** The paths the verification sandbox refused, as its `deny(1) <operation> <path>` lines name them, in order, once each. */
+export function refusedPaths(text: string): string[] {
+  return [...new Set([...text.matchAll(/deny\(\d+\)\s+[\w*-]+\s+(\S+)/g)].map((m) => m[1]))];
+}
+
 /** One held-out criterion's failure as the supervisor lists it: the names of its failing tests, then `C2 · title` on a line of its own and the output. */
 export interface HeldOutFailure {
   id: string;
@@ -176,7 +181,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   // Held-out tests failed: the output is for you alone, a hint is the way that keeps it so, and showing the agent the failure is a deliberate second choice.
   const heldOut = () => it().kind === "paused" && goal()?.pause_reason === "held_out_failed";
   // The verification sandbox could not run the criteria (on your own code, or at all): an environment problem, not the agent's and not a test failure.
-  const envProblem = () => it().kind === "paused" && (goal()?.pause_reason === "prepare_failed" || goal()?.pause_reason === "verify_env_error");
+  const envProblem = () => it().kind === "paused" && ["prepare_failed", "verify_env_error", "criteria_cannot_run"].includes(goal()?.pause_reason ?? "");
   const parts = () => bodyParts(it());
   const held = () => heldOutParts(it().body);
 
@@ -313,7 +318,30 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               </p>
             </Show>
             <Show when={parts().prose}>
-              <p class="decision-body">{parts().prose}</p>
+              <p class="decision-body">
+                <Prose text={parts().prose} />
+              </p>
+            </Show>
+            {/* What the sandbox refused, lifted out of the tail as the line to act on, with the way to where it is fixed. */}
+            <Show when={envProblem() && refusedPaths(parts().tail)[0]}>
+              {(path) => (
+                <p class="decision-refused meta">
+                  <NoticeMark />
+                  <span class="t2">{t("decision.refused")}</span>
+                  <code class="code-val t1 break">{path()}</code>
+                  <Show when={goal()}>
+                    {(g) => (
+                      <>
+                        <span class="sep t3">·</span>
+                        <button class="link-quiet text-btn decision-refused-link" onClick={() => goProjectSetting(g().project_id, "test")}>
+                          {t("decision.projectSettings", { name: g().project_name })}
+                          <Icon name="chevron-right" size={10} />
+                        </button>
+                      </>
+                    )}
+                  </Show>
+                </p>
+              )}
             </Show>
             <Show when={parts().tail}>
               <pre class="output-tail decision-tail">{parts().tail}</pre>
@@ -322,7 +350,9 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
           {/* Held-out: the sentence, then the output in your register — a solid rule, "for you only" in the source gutter — then the hint field first. */}
           <Show when={heldOut()}>
             <Show when={held().prose}>
-              <p class="decision-body">{held().prose}</p>
+              <p class="decision-body">
+                <Prose text={held().prose} />
+              </p>
             </Show>
             <Show when={held().failures.length}>
               <div class="heldout">

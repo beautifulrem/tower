@@ -16,7 +16,7 @@
  */
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
 
-import { DangerMark, Icon, NoticeMark, Seal } from "../components/Glyph";
+import { Icon, Seal } from "../components/Glyph";
 import { CriteriaBar, discountedOf } from "../components/Honesty";
 import { Button, Empty, IconButton, Kbd, Loading } from "../components/ui";
 import type { DiffFile } from "../gen/DiffFile";
@@ -28,12 +28,13 @@ import { count, short } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { ask } from "../lib/native";
-import { back, go } from "../lib/nav";
+import { back, go, goProjectSetting } from "../lib/nav";
 import { advanceQueue, queuePosition } from "../lib/reviewQueue";
 import { type Draft, type Layout, type ReviewState, fileHash, loadReviewState, persist } from "../lib/reviewState";
 import { act, onTrace, state, toast } from "../lib/store";
 import { applySuggestion } from "../lib/suggest";
 import { FileDiff } from "./review/FileDiff";
+import { type ReviewNote, ReviewNotes } from "./review/notes";
 import { AcceptPanel, ChangesPanel, VerifyPanel } from "./review/panels";
 import { PathPalette, TreeRow, UnitItem } from "./review/sidebar";
 import { type Anchor, type Composing, type Panel, type Reveals } from "./review/types";
@@ -44,6 +45,9 @@ const RELOAD_DETAIL = new Set(["pinned", "human_edited", "rolled_back", "sentine
 
 /** The tree is worth its column from this many files. */
 const TREE_FROM = 2;
+
+/** A hunk by its file and its index in that file. */
+type HunkRef = { path: string; index: number };
 
 export function Review(props: { id: string }) {
   const [persisted] = createResource<ReviewState>(() => loadReviewState(props.id));
@@ -243,15 +247,39 @@ export function Review(props: { id: string }) {
     if (on && list.length === f.hunks.length) toggleViewed(f, true);
     if (!on && isViewed(f)) toggleViewed(f, false);
   };
-  /** A or the header's button: marks the hunk, folds it, and moves to the next one; on an accepted hunk, takes the mark back. */
+
+  // The current hunk is state: what ] and [ move, what A accepts and U undoes, marked on its header. It is never
+  // read back from the scroll position — a diff that fits the pane does not scroll — except when you scroll it out of
+  // sight yourself; then the hunk at the top of the pane takes over. Unset, it is the unit's first unaccepted hunk.
+  const hunks = createMemo<HunkRef[]>(() => files().flatMap((f) => f.hunks.map((_, index) => ({ path: f.path, index }))));
+  const [pick, setPick] = createSignal<HunkRef | null>(null);
+  const markedRead = (h: HunkRef) => !!fileByPath(h.path) && isAccepted(fileByPath(h.path)!, h.index);
+  const current = createMemo<HunkRef | null>(() => {
+    const p = pick();
+    return hunks().find((h) => p && h.path === p.path && h.index === p.index) ?? hunks().find((h) => !markedRead(h)) ?? hunks()[0] ?? null;
+  });
+  const isCurrent = (f: DiffFile, hunk: number) => current()?.path === f.path && current()?.index === hunk;
+  /** The next hunk after `h` without your mark, else none. */
+  const nextUnread = (h: HunkRef) => hunks().slice(hunks().findIndex((x) => x.path === h.path && x.index === h.index) + 1).find((x) => !markedRead(x)) ?? null;
+
+  /** Accepts a hunk (A, or its header's button) and moves to the next one still to read. A only ever accepts. */
   const acceptHunk = (f: DiffFile, hunk: number) => {
-    const on = !isAccepted(f, hunk);
-    setHunkAccepted(f, hunk, on);
-    if (on) requestAnimationFrame(() => jumpHunk(1));
+    const h = { path: f.path, index: hunk };
+    if (!isAccepted(f, hunk)) setHunkAccepted(f, hunk, true);
+    const next = nextUnread(h);
+    moveTo(next ?? h);
+  };
+  /** Takes your mark back (⇧A, or the accepted header's button): the hunk unfolds and becomes current, and a receipt says so. */
+  const unacceptHunk = (f: DiffFile, hunk: number) => {
+    if (!isAccepted(f, hunk)) return;
+    setHunkAccepted(f, hunk, false);
+    moveTo({ path: f.path, index: hunk });
+    toast("info", t("review.hunkUnaccepted", { path: f.path }), { action: { label: t("review.acceptAgain"), run: () => acceptHunk(f, hunk) } });
   };
 
   const selectUnit = (i: number) => {
     setUnitIdx(Math.max(0, Math.min(units().length - 1, i)));
+    setPick(null);
     document.querySelector(".review-diff")?.scrollTo({ top: 0 });
   };
   /** Shows the unit holding `path` and scrolls that file to the top of the pane. */
@@ -266,26 +294,59 @@ export function Review(props: { id: string }) {
     });
   };
 
+  const paneEl = () => document.querySelector<HTMLElement>(".review-diff");
+  const headOf = (pane: HTMLElement, h: HunkRef) => pane.querySelector<HTMLElement>(`.hunk-head[data-hunk-path="${CSS.escape(h.path)}"][data-hunk-index="${h.index}"]`);
   /** A row's top in the pane's scroll space (a table row's offsetTop is relative to its table, not the pane). */
   const topIn = (pane: HTMLElement, el: HTMLElement) => el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
-  /** Scrolls to the next or previous hunk in the diff pane. */
-  const jumpHunk = (dir: 1 | -1) => {
-    const pane = document.querySelector<HTMLElement>(".review-diff");
-    if (!pane) return;
-    const heads = [...pane.querySelectorAll<HTMLElement>(".hunk-head")].map((h) => ({ h, top: topIn(pane, h) }));
-    const top = pane.scrollTop + 48;
-    const target = dir > 0 ? heads.find((x) => x.top > top + 4) : [...heads].reverse().find((x) => x.top < top - 4);
-    if (target) pane.scrollTo({ top: target.top - 40 });
+  /** How far an element will still rise: the folds closing above it (a hunk you just accepted shrinks to its header). */
+  const risingBy = (el: HTMLElement) =>
+    [...document.querySelectorAll<HTMLElement>(".hunk-fold-inner")].filter((f) => f.getBoundingClientRect().top < el.getBoundingClientRect().top).reduce((n, f) => n + f.offsetHeight, 0);
+  // Scrolling the pane yourself is the one way the current hunk follows the view: our own scrolls are not that.
+  let ownScroll = false;
+  /** Makes a hunk current and brings its header into view where it will settle — only if it is not there already. */
+  const moveTo = (h: HunkRef) => {
+    setPick(h);
+    requestAnimationFrame(() => {
+      const pane = paneEl();
+      const head = pane && headOf(pane, h);
+      if (!pane || !head) return;
+      const top = topIn(pane, head) - risingBy(head);
+      // Below the file header that sticks to the pane's top, and with a row of the hunk under it.
+      if (top >= pane.scrollTop + 40 && top + 64 <= pane.scrollTop + pane.clientHeight) return;
+      // The scroll event our own scroll causes arrives before the next frame; past that, scrolling is yours again.
+      ownScroll = true;
+      requestAnimationFrame(() => requestAnimationFrame(() => (ownScroll = false)));
+      pane.scrollTo({ top: Math.max(0, top - 40) });
+    });
   };
-  /** The hunk whose header is at (or last passed) the top of the pane: what ] and [ land on. */
-  const currentHunk = (): { f: DiffFile; index: number } | null => {
-    const pane = document.querySelector<HTMLElement>(".review-diff");
-    if (!pane) return null;
+  /** ] and [: the next or previous hunk of the unit, in order, the accepted ones included. */
+  const jumpHunk = (dir: 1 | -1) => {
+    const c = current();
+    const i = c ? hunks().findIndex((x) => x.path === c.path && x.index === c.index) : -1;
+    const target = hunks()[i + dir];
+    if (target) moveTo(target);
+  };
+  /** After you scroll: if no line of the current hunk is in sight, the hunk whose header is at (or last passed) the top takes over. */
+  const onPaneScroll = (e: Event) => {
+    if (ownScroll) return;
+    const pane = e.currentTarget as HTMLElement;
+    const c = current();
+    const head = c && headOf(pane, c);
+    if (head) {
+      const rows = [head, ...head.closest("tbody")!.querySelectorAll<HTMLElement>(`tr.dl[data-hunk="${c!.index}"]`)];
+      const top = rows[0].getBoundingClientRect().top;
+      const bottom = rows[rows.length - 1].getBoundingClientRect().bottom;
+      const box = pane.getBoundingClientRect();
+      if (bottom > box.top + 40 && top < box.bottom) return;
+    }
     const heads = [...pane.querySelectorAll<HTMLElement>(".hunk-head[data-hunk-index]")];
-    const top = pane.scrollTop + 48;
-    const head = [...heads].reverse().find((h) => topIn(pane, h) <= top + 4) ?? heads[0];
-    const f = head && fileByPath(head.dataset.hunkPath ?? "");
-    return head && f ? { f, index: Number(head.dataset.hunkIndex) } : null;
+    const head2 = [...heads].reverse().find((h) => topIn(pane, h) <= pane.scrollTop + 52) ?? heads[0];
+    if (head2) setPick({ path: head2.dataset.hunkPath ?? "", index: Number(head2.dataset.hunkIndex) });
+  };
+  const currentFile = () => {
+    const c = current();
+    const f = c && fileByPath(c.path);
+    return c && f ? { f, index: c.index } : null;
   };
 
   useKeys(
@@ -307,15 +368,23 @@ export function Review(props: { id: string }) {
       {
         key: "a",
         run: () => {
-          const h = currentHunk();
+          const h = currentFile();
           if (h) acceptHunk(h.f, h.index);
         },
         desc: () => t("keys.acceptHunk"),
       },
       {
+        key: "shift+a",
+        run: () => {
+          const h = currentFile();
+          if (h) unacceptHunk(h.f, h.index);
+        },
+        desc: () => t("review.unacceptKey"),
+      },
+      {
         key: "u",
         run: () => {
-          const h = currentHunk();
+          const h = currentFile();
           if (editable() && h) void undoHunk(h.f, h.index);
         },
         desc: () => t("keys.undoHunk"),
@@ -352,6 +421,13 @@ export function Review(props: { id: string }) {
     } else back();
   };
 
+  const notes = createMemo<ReviewNote[]>(() => {
+    const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: t("review.sentinel", { title: h.title }) }));
+    for (const r of unit()?.risk_reasons ?? []) out.push({ danger: false, text: r });
+    if (detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0)
+      out.push({ danger: false, text: t("goal.noHeldOut"), action: { label: t("goal.setHeldOut"), run: () => g() && goProjectSetting(g()!.project_id, "holdout") } });
+    return out;
+  });
   const solo = () => units().length === 1;
   const showTree = () => allPaths().length >= TREE_FROM;
   const viewedUnits = () => units().filter(unitViewed).length;
@@ -515,44 +591,10 @@ export function Review(props: { id: string }) {
                   </div>
                 </aside>
               </Show>
-              <div class="review-diff">
-                {/* Said once over the diff, as on the goal page: only the visible tests vouch for this, and the way to add held-out ones. */}
-                <Show when={detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0}>
-                  <p class="held-out-none halt">
-                    <NoticeMark />
-                    <span>{t("goal.noHeldOut")}</span>
-                    <button class="link-quiet text-btn" onClick={() => go({ name: "settings" })}>
-                      {t("goal.setHeldOut")}
-                      <Icon name="chevron-right" size={10} />
-                    </button>
-                  </p>
-                </Show>
-                <Show when={detail()?.sentinels.length}>
-                  <div class="sentinel-banner">
-                    <For each={detail()!.sentinels}>
-                      {(h) => (
-                        <span class="risk-reason">
-                          <Show when={h.severity >= 3} fallback={<NoticeMark />}>
-                            <DangerMark />
-                          </Show>
-                          {t("review.sentinel", { title: h.title })}
-                        </span>
-                      )}
-                    </For>
-                  </div>
-                </Show>
-                <Show when={unit()?.risk_reasons.length}>
-                  <div class="risk-banner">
-                    <For each={unit()!.risk_reasons}>
-                      {(r) => (
-                        <span class="risk-reason">
-                          <NoticeMark />
-                          {r}
-                        </span>
-                      )}
-                    </For>
-                  </div>
-                </Show>
+              <div class="review-diff" onScroll={onPaneScroll}>
+                {/* What to know before reading, as one band over the diff (review/notes.tsx): the sentinels, this unit's risks,
+                    and — said once, as on the goal page — that only the visible tests vouch for this, with the way to add held-out ones. */}
+                <ReviewNotes notes={notes()} />
                 <For each={files()}>
                   {(f) => (
                     <FileDiff
@@ -567,7 +609,8 @@ export function Review(props: { id: string }) {
                       onViewed={(on) => toggleViewed(f, on)}
                       onOpen={(line) => void act(() => api.openFile(props.id, f.path, line))}
                       accepted={(hunk) => isAccepted(f, hunk)}
-                      onAccept={(hunk) => acceptHunk(f, hunk)}
+                      current={(hunk) => isCurrent(f, hunk)}
+                      onAccept={(hunk) => (isAccepted(f, hunk) ? unacceptHunk(f, hunk) : acceptHunk(f, hunk))}
                       onUndo={editable() ? (hunk) => void undoHunk(f, hunk) : undefined}
                       editing={editingPath() === f.path}
                       onEditFile={editable() ? () => void editFile(f) : undefined}
@@ -592,37 +635,49 @@ export function Review(props: { id: string }) {
 
       {/* The status bar: keys on the left, the two mouse hints apart on the right, quieter. */}
       <div class="review-status halt">
-        <span>
-          <Kbd k="j k" /> {t("review.keyUnits")}
-        </span>
-        <span>
-          <Kbd k="] [" /> {t("review.keyHunks")}
-        </span>
-        <span>
-          <Kbd k="v" /> {t("review.keyViewed")}
-        </span>
-        <span>
-          <Kbd k="e" /> {t("review.keyVerification")}
-        </span>
-        <span title={t("review.acceptHunkNote")}>
-          <Kbd k="a" /> {t("review.keyAccept")}
-        </span>
-        <Show when={editable()}>
+        {/* With nothing to review, only the keys that still do something: back, and the sheet. */}
+        <Show
+          when={units().length > 0}
+          fallback={
+            <span>
+              <Kbd k="escape" /> {t("keys.back")}
+            </span>
+          }
+        >
           <span>
-            <Kbd k="u" /> {t("review.keyUndo")}
+            <Kbd k="j k" /> {t("review.keyUnits")}
           </span>
-        </Show>
-        <Show when={wide()}>
           <span>
-            <Kbd k="alt+v" /> {t("review.keySplit")}
+            <Kbd k="] [" /> {t("review.keyHunks")}
           </span>
+          <span>
+            <Kbd k="v" /> {t("review.keyViewed")}
+          </span>
+          <span>
+            <Kbd k="e" /> {t("review.keyVerification")}
+          </span>
+          <span title={t("review.acceptHunkNote")}>
+            <Kbd k="a" /> {t("review.keyAccept")}
+          </span>
+          <Show when={editable()}>
+            <span>
+              <Kbd k="u" /> {t("review.keyUndo")}
+            </span>
+          </Show>
+          <Show when={wide()}>
+            <span>
+              <Kbd k="alt+v" /> {t("review.keySplit")}
+            </span>
+          </Show>
         </Show>
         <span>
           <Kbd k="?" /> {t("keys.shortcuts")}
         </span>
         <span class="grow" />
-        <span class="status-mouse t4">{t("review.keyComment")}</span>
-        <span class="status-mouse t4">{t("review.keyOpen")}</span>
+        <Show when={units().length > 0}>
+          <span class="status-mouse t4">{t("review.keyComment")}</span>
+          <span class="status-mouse t4">{t("review.keyOpen")}</span>
+        </Show>
         {/* Your reading marks on this unit, counted; the title says what they are not. With the last one, where to go: V for
             the next unit, or — on the last unit of a goal ready to accept — the accept sheet. */}
         <Show when={unitAccepted() > 0}>

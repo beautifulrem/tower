@@ -199,12 +199,22 @@ async fn loopback_reaches_only_the_agents_own_and_declared_ports() {
     let q = wait_question(&h, &id).await;
     // Someone else's service, started after the agent's sandbox was set up.
     let _foreign = TcpListener::bind(("127.0.0.1", foreign_port)).unwrap();
-    // Tower follows the agent's own listeners every two seconds.
-    tokio::time::sleep(Duration::from_millis(4500)).await;
+    // Tower follows the agent's own listeners every two seconds: wait until
+    // the agent's profile names the agent's server (a loaded machine is slow).
+    let profile = h.root.join("tower/goals").join(&id).join("agent.sb");
+    let rule = format!("(remote ip \"localhost:{own_port}\")");
+    let mut named = false;
+    for _ in 0..300 {
+        named = std::fs::read_to_string(&profile).is_ok_and(|p| p.contains(&rule));
+        if named {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     h.sup.answer(&q.id, "a").await.unwrap();
     wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
     let seen = std::fs::read_to_string(h.root.join("tower/work").join(&id).join("loopback.txt")).unwrap();
-    assert_eq!(seen.trim(), "foreign=closed declared=open own=open");
+    assert_eq!(seen.trim(), "foreign=closed declared=open own=open", "the profile named the agent's server: {named}");
     drop(declared);
 }
 
@@ -277,7 +287,7 @@ async fn a_toolchain_the_sandbox_cannot_resolve_is_named_on_the_card() {
     if !sandbox() || Command::new("rustup").arg("--version").output().is_err() {
         return;
     }
-    let h = harness("ask").await;
+    let h = harness("hold").await;
     std::fs::write(h.repo.join("Cargo.toml"), "[package]\nname = \"a\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")
         .unwrap();
     std::fs::create_dir_all(h.repo.join("src")).unwrap();

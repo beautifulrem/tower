@@ -421,7 +421,9 @@ test("the trace writes a minute once; a sheet's text area takes focus in its bor
   await page.keyboard.press("c");
   const area = page.getByRole("dialog").locator("textarea");
   await area.focus();
-  expect(await area.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("none");
+  // A sheet opening onto its field from the keyboard puts the ring on the field's own edge, never a second line around it.
+  const ring = await area.evaluate((el) => [getComputedStyle(el).outlineStyle, getComputedStyle(el).outlineOffset]);
+  expect(ring[0] === "none" || ring[1] === "-1px").toBe(true);
 });
 
 test("⌘P jumps to a file by path", async ({ page }) => {
@@ -1051,7 +1053,7 @@ test("start-up failure is Tower's own strip with the power off: dashes for readi
   await expect(failed.getByRole("button", { name: "Retry" })).toBeVisible();
 });
 
-test("a field shows its focus: a darker edge for the pointer, a second line inside for the keyboard", async ({ page }) => {
+test("a field shows its focus as a Mac text field does: the interface's one ring, on the field's own edge, from the pointer or the keyboard", async ({ page }) => {
   await openTower(page, "goal/G-0004", { enrich: enrichHeldOut });
   const area = page.locator(".decision-heldout textarea");
   await expect(area).toBeVisible();
@@ -1060,14 +1062,60 @@ test("a field shows its focus: a darker edge for the pointer, a second line insi
   await area.click();
   const focused = await area.evaluate((el) => ({ border: getComputedStyle(el).borderTopColor, outline: getComputedStyle(el).outlineStyle }));
   expect(focused.border).not.toBe(resting);
-  expect(focused.outline).toBe("none");
+  expect(focused.outline).toBe("solid");
   // The edge is text-3 itself, not a lighter hairline: the same colour the labels are set in.
   expect(await area.evaluate((el, c) => { el.style.color = c; return getComputedStyle(el).color; }, text3)).toBe(focused.border);
-  // Reached from the keyboard, the field gets its inner line as well.
+  // Reached from the keyboard, the field wears the ring every control wears, on its edge — not a third style of its own.
   await page.keyboard.press("Shift+Tab");
   await page.keyboard.press("Tab");
   expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("TEXTAREA");
-  expect(await area.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe("none");
+  const ring = await area.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset, shadow: s.boxShadow };
+  });
+  expect(ring).toEqual({ style: "solid", width: "1.5px", offset: "-1px", shadow: "none" });
+  const button = page.locator(".decision-heldout .btn").first();
+  await button.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  const buttonRing = await page.evaluate(() => {
+    const s = getComputedStyle(document.activeElement!);
+    return [s.outlineStyle, s.outlineWidth, s.outlineColor];
+  });
+  const fieldColor = await area.evaluate((el) => getComputedStyle(el).getPropertyValue("--focus").trim());
+  expect(buttonRing.slice(0, 2)).toEqual(["solid", "1.5px"]);
+  expect(fieldColor).not.toBe("");
+});
+
+test("what you press is at least 28px, whatever is drawn: a card's bell, a criterion's checkbox", async ({ page }) => {
+  await openTower(page, "inbox");
+  // Just outside the 22px bell, still the bell.
+  const bell = page.locator(".decision-snooze").first();
+  await expect(bell).toBeVisible();
+  const b = (await bell.boundingBox())!;
+  expect(b.width).toBe(22);
+  const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest(".decision-snooze") !== null, [b.x - 2.5, b.y + b.height / 2]);
+  expect(hit).toBe(true);
+  // A 14px checkbox's label is a 28px target around it, and the drawing has not moved.
+  await openTower(page, "goal/G-0001");
+  const check = page.locator(".criterion .human-check").first();
+  await expect(check).toBeVisible();
+  const c = (await check.boundingBox())!;
+  expect(c.width).toBe(14);
+  const target = (await page.locator(".criterion .hit-28").first().boundingBox())!;
+  expect(target.width).toBe(28);
+  expect(Math.abs(target.x + 14 - (c.x + 7))).toBeLessThan(1);
+});
+
+test("in review the receipt rises above the status bar, never onto its top line", async ({ page }) => {
+  await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await expect(page.locator(".hunk-head").first()).toBeVisible();
+  await page.keyboard.press("a");
+  await page.keyboard.press("Shift+A");
+  const toast = page.locator(".toast").first();
+  await expect(toast).toBeVisible();
+  const [t, s] = [(await toast.boundingBox())!, (await page.locator(".review-status").boundingBox())!];
+  expect(t.y + t.height).toBeLessThanOrEqual(s.y - 4);
 });
 
 test("a review with nothing to review is a poster in the middle of the page, and the status bar stays at the foot", async ({ page }) => {

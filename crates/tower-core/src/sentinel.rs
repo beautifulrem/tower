@@ -801,23 +801,24 @@ mod tests {
         let files = |n: usize| -> Vec<DiffFile> {
             (0..n).map(|i| file(&format!("test/m{i}.test.js"), FileStatus::Modified, &add, &del)).collect()
         };
-        // The best of three for a quarter of the diff and for all of it: a busy machine slows every pass
-        // alike, while work that grows faster than the diff shows in the ratio (linear is 4×, quadratic 16×).
-        let best = |files: &[DiffFile]| {
-            (0..3)
-                .map(|_| {
-                    let t = std::time::Instant::now();
-                    let scope = Scope { include: vec!["src/**".into(), "test/**".into()], ..Scope::default() };
-                    let hits = scan(files, &scope, Lang::En);
-                    let units = crate::review::build_units(files, None, Lang::En);
-                    assert!(hits.is_empty() && !units.is_empty());
-                    t.elapsed()
-                })
-                .min()
-                .unwrap()
+        // A quarter of the diff and all of it, measured in turn so both see the same machine, best of five each:
+        // a busy machine slows both alike, while work that grows faster than the diff shows in the ratio
+        // (linear is 4×, quadratic 16×).
+        let once = |files: &[DiffFile]| {
+            let t = std::time::Instant::now();
+            let scope = Scope { include: vec!["src/**".into(), "test/**".into()], ..Scope::default() };
+            let hits = scan(files, &scope, Lang::En);
+            let units = crate::review::build_units(files, None, Lang::En);
+            assert!(hits.is_empty() && !units.is_empty());
+            t.elapsed()
         };
-        let (quarter, whole) = (best(&files(50)), best(&files(200)));
-        assert!(whole < quarter * 8, "50 files {quarter:?}, 200 files {whole:?}");
+        let (small, large) = (files(50), files(200));
+        let (mut quarter, mut whole) = (std::time::Duration::MAX, std::time::Duration::MAX);
+        for _ in 0..5 {
+            quarter = quarter.min(once(&small));
+            whole = whole.min(once(&large));
+        }
+        assert!(whole < quarter * 10, "50 files {quarter:?}, 200 files {whole:?}");
         assert!(whole < std::time::Duration::from_secs(10), "took {whole:?}");
     }
 

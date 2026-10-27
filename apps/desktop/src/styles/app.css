@@ -1675,9 +1675,21 @@ input[type="radio"] {
 .criterion-row.clickable:hover .col-pin {
   color: var(--text-1);
 }
-/* The observation line uses the same columns, one register down. */
+/* The notes under a criterion — observation, canary, held-out, base — use the same columns, one register down, and
+   start where the title starts: one left edge for the readout, one register to a line (the readings' right-hand
+   columns are the row's own). */
 .criterion-obs {
   min-height: 24px;
+}
+.criterion-row.criterion-obs .col-span {
+  grid-column: 3 / -1;
+  justify-content: flex-start;
+}
+/* A note's leading mark (◆, the scale, the environment's ◫) hangs in the id column, so every note's words start on
+   the title's edge, marked or not. */
+.criterion-row.criterion-obs .col-span > :is(svg.glyph, .icon, .result):first-child {
+  flex: 0 0 10px;
+  margin-left: calc(-10px - var(--sp-2));
 }
 .criterion-obs .col-result {
   display: inline-flex;
@@ -1711,6 +1723,7 @@ input[type="radio"] {
   padding: 2px 0;
 }
 .env-refused {
+  flex-basis: 100%;
   overflow-wrap: anywhere;
 }
 /* No held-out tests: said once, quietly, under the criteria and over the diff, with the way to set them. */

@@ -11,5 +11,8 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/__tests__/*.test.ts", "src/**/__tests__/*.test.tsx"],
     setupFiles: ["src/test/setup.ts"],
+    // A component test's first step imports a whole view: on a busy machine that alone can pass five seconds.
+    // The tests check behaviour, not speed (the end-to-end perf project does that).
+    testTimeout: 20_000,
   },
 });

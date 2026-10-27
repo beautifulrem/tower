@@ -4169,6 +4169,20 @@ input[type="radio"] {
 .hunk-head.hunk-accepted .gap-header {
   color: var(--text-2);
 }
+/* The current hunk — what A, ⇧A and U act on — is marked with the same 2px pen, one step lighter (text-3) until
+   your mark makes it text-1; its header text steps up to text-2. No fill and no motion: a keyboard move is instant. */
+.hunk-head.hunk-current td {
+  box-shadow: inset 2px 0 0 var(--text-3);
+}
+.hunk-head.hunk-current.hunk-accepted td {
+  box-shadow: inset 2px 0 0 var(--text-1);
+}
+.hunk-head.hunk-current .gap-header {
+  color: var(--text-2);
+}
+.hunk-head.hunk-current.hunk-accepted .gap-header {
+  color: var(--text-1);
+}
 .accept-hunk .icon {
   color: var(--text-3);
 }

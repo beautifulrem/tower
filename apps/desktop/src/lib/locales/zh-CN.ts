@@ -119,7 +119,6 @@ export const zh = {
   },
   format: {
     justNow: "刚刚",
-    minutesAgo: (p: { n: number }) => `${p.n} 分钟前`,
     hoursAgo: (p: { n: number }) => `${p.n} 小时前`,
     yesterday: "昨天",
     daysAgo: (p: { n: number }) => `${p.n} 天前`,

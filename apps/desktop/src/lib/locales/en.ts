@@ -113,8 +113,7 @@ export const en: DictNow = {
   },
   format: {
     justNow: "just now",
-    minutesAgo: (p) => `${p.n} min ago`,
-    hoursAgo: (p) => `${p.n} h ago`,
+    hoursAgo: (p) => `${p.n}h ago`,
     yesterday: "yesterday",
     daysAgo: (p) => `${p.n} ${plural(p.n, "day", "days")} ago`,
     durationAgo: "{d} ago",

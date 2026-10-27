@@ -11,7 +11,7 @@
 import { Show, createEffect, on } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
-import { ago, agoShort, duration } from "../lib/format";
+import { ago, duration } from "../lib/format";
 import { t } from "../lib/i18n";
 import { heartbeatState, isEngineTool, modeLabel, modeNeedsYou, pauseLabel, stateLabel, toolLabel } from "../lib/labels";
 import { livenessOf, state } from "../lib/store";
@@ -160,7 +160,7 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
       <Show when={props.large && props.goal.state === "running"}>
         <Show
           when={!silent(props.goal, state.now)}
-          fallback={<span class="live-age meta num">{t("live.lastMove", { d: agoShort(livenessOf(props.goal).at, state.now) })}</span>}
+          fallback={<span class="live-age meta num">{t("live.lastMove", { d: ago(livenessOf(props.goal).at, state.now) })}</span>}
         >
           <Show when={props.goal.live_line}>
             <span class="live-age meta num">{ago(props.goal.live_line!.at, state.now)}</span>

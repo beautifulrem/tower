@@ -2267,6 +2267,12 @@ input[type="radio"] {
   font-size: var(--fs-hint);
   line-height: var(--lh-hint);
   color: var(--text-3);
+  text-wrap: pretty;
+}
+/* A Chinese note breaks between its clauses, never leaving one character (藏。) alone on the last line. */
+:root[lang="zh-CN"] .decision-note {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 /* Machine text in a card: the same inset block as a verifier's output tail. */
 .decision-tail {

@@ -1,39 +1,46 @@
-//! Step 6, perturbation (`verify::perturb`): the base's own test files, with a
-//! probe before each assertion Tower can move, run on the base and then on
-//! the snapshot. Records go to the drop box; no verdict changes.
+//! Step 6, perturbation (`verify::perturb`): the base's own test files, with
+//! a probe before each assertion Tower can move, run on the base and then
+//! on the snapshot. Records go to the drop box; no verdict changes.
+//!
+//! The base's run does not depend on the agent, so the preflight does it
+//! while the agent works and keeps its records in the goal's directory
+//! (Tower's, which the agent cannot write), for the same base commit and
+//! the same commands; verification then runs only the snapshot's side.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::{Bench, Exec, Phase};
 use crate::verify::names_held_out;
-use crate::verify::perturb::{self, Report};
+use crate::verify::perturb::{self, Recs, Report};
 use crate::{Result, invalid};
 
+/// The base's records, kept from the preflight.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BaseRecords {
+    base: String,
+    commands: Vec<String>,
+    recs: Recs,
+}
+
 impl Bench<'_> {
-    /// Runs the criteria that went from red on the base to green on the
-    /// snapshot once more on each side, with the probes in. `held_files`
-    /// are taken out first: these runs may have the network.
-    pub(super) async fn perturbation(
-        &self,
-        pin: &str,
-        criteria: &[Exec],
-        red_on_base: &[String],
-        held_files: &[String],
-        diff: &[tower_core::view::DiffFile],
-    ) -> Result<Report> {
-        let mut report = Report::default();
-        let visible: Vec<&Exec> = criteria
+    fn base_records_path(&self) -> PathBuf {
+        self.inner.paths.goal_dir(self.goal).join("perturb-base.json")
+    }
+
+    /// The criteria that went from red on the base to green: the visible
+    /// ones only (held-out runs never take part).
+    fn red_visible<'c>(&self, criteria: &'c [Exec], red_on_base: &[String]) -> Vec<&'c Exec> {
+        criteria
             .iter()
             .filter(|(c, command, _)| red_on_base.contains(&c.id) && !names_held_out(&self.holdout, command))
-            .collect();
-        if visible.is_empty() {
-            return Ok(report);
-        }
-        report.ran = true;
-        // Which of the base's test files hold an assertion Tower can probe
-        // (one search of your repository): none, and the checkout is never
-        // touched.
+            .collect()
+    }
+
+    /// The base's test files holding an assertion Tower can probe, probed
+    /// (one search of your repository, then the files themselves, at the
+    /// base). With `stems`, only those loading a module the change touched.
+    async fn probed_files(&self, stems: Option<&[String]>, report: &mut Report) -> Result<Vec<(String, String)>> {
         let git = self.inner.git.clone();
         let (root, base) = (self.rec.project_root.clone(), self.base.clone());
         let lines = tokio::task::spawn_blocking(move || git.grep_at(Path::new(&root), &base, "assert|expect\\("))
@@ -43,15 +50,11 @@ impl Bench<'_> {
         let mut files: Vec<String> = Vec::new();
         for (path, line) in &lines {
             let test = tower_core::roles::role(path) == tower_core::roles::Role::Test;
-            if test && !files.contains(path) && perturb::instrument(path, line, &self.drop, "x", 0).is_some() {
+            if test && !files.contains(path) && perturb::instrument(path, line, &self.drop).is_some() {
                 files.push(path.clone());
             }
         }
-        // Only test files that load a module this change touched: the others
-        // cannot show anything about it, and each probed run costs a run.
-        let stems = perturb::changed_stems(diff);
-        let run = &uuid::Uuid::new_v4().simple().to_string()[..12];
-        let mut probed: Vec<(String, String)> = Vec::new();
+        let mut probed = Vec::new();
         for f in files.iter().take(400) {
             if report.probes.len() >= perturb::MAX_PROBES {
                 break;
@@ -61,29 +64,94 @@ impl Bench<'_> {
             let text = tokio::task::spawn_blocking(move || git.file_at(Path::new(&root), &base, &path))
                 .await
                 .map_err(|e| invalid(e.to_string()))?;
-            let Some(text) = text.filter(|t| perturb::loads_any(t, &stems)) else { continue };
-            if let Some((out, probes)) = perturb::instrument(f, &text, &self.drop, run, report.probes.len()) {
+            let Some(text) = text.filter(|t| stems.is_none_or(|s| perturb::loads_any(t, s))) else { continue };
+            if let Some((out, probes)) = perturb::instrument(f, &text, &self.drop) {
                 probed.push((f.clone(), out));
                 report.probes.extend(probes);
             }
         }
+        Ok(probed)
+    }
+
+    /// In the preflight, after the base phase: the base's run with every
+    /// probe-able test file probed, kept for verification.
+    pub(super) async fn perturbation_preflight(&self, red_on_base: &[String]) -> Result<()> {
+        let criteria = self.criteria_list();
+        let visible = self.red_visible(&criteria, red_on_base);
+        let mut report = Report::default();
+        if visible.is_empty() {
+            return Ok(());
+        }
+        let probed = self.probed_files(None, &mut report).await?;
+        if probed.is_empty() {
+            return Ok(());
+        }
+        self.reset(&self.base).await?;
+        let copied = self.local_files(false).await?;
+        let recs = self.probe_run(&probed, &visible, Phase::Base).await?;
+        self.remove(&copied);
+        let kept = BaseRecords {
+            base: self.base.clone(),
+            commands: visible.iter().map(|(_, command, _)| command.clone()).collect(),
+            recs,
+        };
+        std::fs::write(self.base_records_path(), serde_json::to_vec(&kept).map_err(|e| invalid(e.to_string()))?)?;
+        Ok(())
+    }
+
+    /// Runs the criteria that went from red on the base to green on the
+    /// snapshot once more on each side, with the probes in (the base's side
+    /// from the preflight when it is still valid). `held_files` are taken
+    /// out first: these runs may have the network.
+    pub(super) async fn perturbation(
+        &self,
+        pin: &str,
+        criteria: &[Exec],
+        red_on_base: &[String],
+        held_files: &[String],
+        diff: &[tower_core::view::DiffFile],
+    ) -> Result<Report> {
+        let mut report = Report::default();
+        let visible = self.red_visible(criteria, red_on_base);
+        if visible.is_empty() {
+            return Ok(report);
+        }
+        report.ran = true;
+        // Only test files that load a module this change touched: the others
+        // cannot show anything about it, and each probed run costs a run.
+        let stems = perturb::changed_stems(diff);
+        let probed = self.probed_files(Some(&stems), &mut report).await?;
         if probed.is_empty() {
             return Ok(report);
         }
         self.remove(held_files);
-        self.reset(&self.base).await?;
-        let base = self.probe_run(&probed, &visible, Phase::Base).await?;
+        let commands: Vec<String> = visible.iter().map(|(_, command, _)| command.clone()).collect();
+        let kept = std::fs::read(self.base_records_path())
+            .ok()
+            .and_then(|b| serde_json::from_slice::<BaseRecords>(&b).ok())
+            .filter(|k| k.base == self.base && k.commands == commands)
+            .filter(|k| report.probes.iter().all(|p| k.recs.contains_key(&format!("{}.o", p.id))));
+        let base = match kept {
+            Some(k) => k.recs,
+            None => {
+                self.reset(&self.base).await?;
+                let recs = self.probe_run(&probed, &visible, Phase::Base).await?;
+                let git = self.inner.git.clone();
+                let dir = self.dir.clone();
+                let _ = tokio::task::spawn_blocking(move || git.clean_untracked(&dir)).await;
+                recs
+            }
+        };
+        // No probed assertion failed on the base: none is one this change
+        // fixed, and the snapshot's side would say nothing. (This is the
+        // last step; the checkout is thrown away after it.)
         let fixed_somewhere =
             report.probes.iter().any(|p| base.get(&format!("{}.o", p.id)).is_some_and(|r| r.out == perturb::Out::Fail));
-        self.reset(pin).await?;
         if !fixed_somewhere || self.cancel.is_cancelled() {
             return Ok(report);
         }
-        let git = self.inner.git.clone();
-        let dir = self.dir.clone();
-        let _ = tokio::task::spawn_blocking(move || git.clean_untracked(&dir)).await;
-        let snapshot = self.probe_run(&probed, &visible, Phase::Pin).await?;
         self.reset(pin).await?;
+        let snapshot = self.probe_run(&probed, &visible, Phase::Pin).await?;
         report.findings = report
             .probes
             .iter()

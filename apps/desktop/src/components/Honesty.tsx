@@ -7,7 +7,7 @@
  * like a ledger: who said it, what was said, and on the right what was
  * measured.
  */
-import { type JSX, Match, Show, Switch } from "solid-js";
+import { For, type JSX, Match, Show, Switch } from "solid-js";
 
 import type { Consistency } from "../gen/Consistency";
 import type { CriterionView } from "../gen/CriterionView";
@@ -110,18 +110,18 @@ export const discountedOf = (criteria: readonly CriterionView[] | null | undefin
 
 /**
  * Two-track progress (ADR-020): verified segments are facts and may be
- * green; observed ones are hollow and grey; human criteria sit apart. With
- * the criteria at hand, a pass with a tampered canary leaves the verified
- * count and takes an amber segment of its own: "verified 2/3 · 1 doesn't
- * count".
+ * green; observed ones are hollow and grey; human criteria sit apart. The
+ * supervisor's count already leaves out a pass with a tampered canary; with
+ * the criteria at hand the bar says so instead of leaving a gap — an amber
+ * segment of its own and "verified 2/3 · 1 doesn't count".
  */
 export function CriteriaBar(props: { progress: Progress; criteria?: readonly CriterionView[] | null; compact?: boolean; tiny?: boolean }) {
   const p = () => props.progress;
-  const discounted = () => Math.min(discountedOf(props.criteria), p().verified);
-  const verified = () => p().verified - discounted();
+  const verified = () => p().verified;
+  const discounted = () => Math.max(0, Math.min(discountedOf(props.criteria), p().machine - verified()));
   const segs = () =>
     Array.from({ length: p().machine }, (_, i) =>
-      i < verified() ? "verified" : i < p().verified ? "discounted" : i < Math.max(p().verified, p().observed) ? "observed" : "empty",
+      i < verified() ? "verified" : i < verified() + discounted() ? "discounted" : i < Math.max(verified() + discounted(), p().observed) ? "observed" : "empty",
     );
   const machineText = () =>
     [t("honesty.verified", { v: verified(), m: p().machine }), discounted() > 0 ? t("honesty.discounted", { n: discounted() }) : "", t("honesty.observed", { o: p().observed, m: p().machine })]
@@ -245,26 +245,42 @@ export function CanaryLine(props: { c: CriterionView }) {
   );
 }
 
+/** A base that could not be checked because the sandbox refused the command something: the words before the colon, and the refused lines after it. */
+export function refusedOnBase(error: string | null | undefined): { why: string; lines: string[] } | null {
+  if (!error || !/refused/i.test(error)) return null;
+  const i = error.indexOf(": ");
+  const lines = (i < 0 ? "" : error.slice(i + 2))
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return { why: i < 0 ? error : error.slice(0, i), lines };
+}
+
 /**
  * The baseline line under a passed criterion: red → green only when the
  * command failed on the base AND still passes with the agent's edits to
- * existing tests undone. A pass that depends on edited tests is said in the
- * attention register — it is the opposite of evidence.
+ * existing tests undone, AND its canary was not tampered with (a pass that
+ * is not evidence cannot be the green half of anything). A pass that depends
+ * on edited tests is said in the attention register — it is the opposite of
+ * evidence. A base the sandbox refused is an environment problem, said as
+ * one, with the refused lines in view; never red.
  */
 export function BaselineLine(props: { c: CriterionView; base?: string | null }) {
   const c = () => props.c;
   const passed = () => !!c().verified?.passed;
   const dependent = () => c().passes_with_source_only === false;
-  const redToGreen = () => c().passed_on_base === false && !dependent();
+  const tampered = () => c().canary === "tampered";
+  const redToGreen = () => c().passed_on_base === false && !dependent() && !tampered();
   // The base could not be checked at all: said quietly, in neither the fact nor the attention register.
   const uncheckable = () => c().passed_on_base === null && !!c().base_error;
+  const refused = () => (uncheckable() ? refusedOnBase(c().base_error) : null);
   return (
-    <Show when={passed() && (c().passed_on_base !== null || dependent() || uncheckable())}>
-      <div class="criterion-row criterion-obs">
+    <Show when={(passed() && (c().passed_on_base === true || redToGreen() || dependent())) || uncheckable()}>
+      <div class="criterion-row criterion-obs" classList={{ "env-line": !!refused() }}>
         <span />
         <span />
         <span />
-        <span class="col-span" classList={{ t1: c().passed_on_base === true, t3: redToGreen() || (uncheckable() && !dependent()), "baseline-dependent": dependent() }}>
+        <span class="col-span" classList={{ t1: c().passed_on_base === true, t3: redToGreen() || (uncheckable() && !dependent() && !refused()), "baseline-dependent": dependent() }}>
           <Switch>
             <Match when={dependent()}>
               <NeedsYouMark title={t("goal.dependsOnEditedTestsLong")} />
@@ -281,6 +297,17 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
               <Show when={c().passes_with_source_only === true}>
                 <span class="t4">· {t("goal.withOriginalTests")}</span>
               </Show>
+            </Match>
+            <Match when={refused()}>
+              {(r) => (
+                <>
+                  <ResultMark kind="env" title={t("goal.baseRefused")} />
+                  <span class="t2" title={c().base_error ?? undefined}>
+                    {t("goal.baseRefused", { base: short(props.base) })}
+                  </span>
+                  <For each={r().lines}>{(line) => <code class="code-val t1 env-refused">{line}</code>}</For>
+                </>
+              )}
             </Match>
             <Match when={uncheckable()}>
               <span class="t4" title={c().base_error ?? undefined}>

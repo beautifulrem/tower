@@ -5,6 +5,7 @@
  */
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
+import { GitIdentityForm } from "../../components/GitIdentity";
 import { DangerMark, Icon, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, ObsChip, discountedOf } from "../../components/Honesty";
 import { LookStrip } from "../../components/Look";
@@ -14,6 +15,7 @@ import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
 import { t } from "../../lib/i18n";
+import { hasIssue } from "../../lib/labels";
 import { back } from "../../lib/nav";
 import type { Draft } from "../../lib/reviewState";
 import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
@@ -184,9 +186,12 @@ export function AcceptPanel(props: AcceptPanelProps) {
   const humans = () => props.detail?.criteria.filter((c) => c.criterion.kind.type !== "exec") ?? [];
   // An unchecked human criterion blocks too, but says so on its own row; only the goal's state needs a sentence.
   const unchecked = () => humans().filter((h) => !h.human_checked).length;
+  // Without a git identity the accepted commit would have no author: set it here, for this repository by default.
+  const identityMissing = () => hasIssue(state.env, "git_identity_missing");
   const blockers = () => {
     const b: string[] = [];
     if (g()?.state !== "in_review") b.push(t("review.notInReview"));
+    if (identityMissing()) b.push(t("review.identityMissing"));
     return b;
   };
   const blocked = () => blockers().length > 0 || unchecked() > 0;
@@ -290,6 +295,9 @@ export function AcceptPanel(props: AcceptPanelProps) {
       <Show when={blockers().length}>
         <div class="panel-blockers" role="alert">
           <For each={blockers()}>{(b) => <div>■ {b}</div>}</For>
+          <Show when={identityMissing() && g()}>
+            {(goal) => <GitIdentityForm projectId={goal().project_id} projectName={goal().project_name} />}
+          </Show>
         </div>
       </Show>
       <div class="panel-actions">

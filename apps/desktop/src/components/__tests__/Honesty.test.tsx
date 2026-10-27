@@ -9,7 +9,8 @@ vi.mock("../../lib/store", async () => {
   return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn() };
 });
 
-const { CanaryLine, CriteriaBar, HeldOutLine, discountedOf } = await import("../Honesty");
+const Honesty = await import("../Honesty");
+const { CanaryLine, CriteriaBar, HeldOutLine, discountedOf } = Honesty;
 const { Seal } = await import("../Glyph");
 
 const criterion = (canary: CriterionView["canary"]): CriterionView => ({
@@ -30,10 +31,12 @@ describe("CanaryLine", () => {
     expect(container.querySelector(".canary-line")).toBeNull();
   });
 
-  it("states an intact canary quietly, as a fact", () => {
+  it("states an intact canary quietly, as a fact, and claims no more than was checked", () => {
     const { container } = render(() => <CanaryLine c={criterion("intact")} />);
     const line = container.querySelector(".canary-line")!;
-    expect(line.textContent).toContain("assertions checked");
+    expect(line.textContent).toContain("must-fail tests failed, as they must");
+    expect(line.querySelector("[title]")!.getAttribute("title")).toMatch(/Nothing more is claimed/);
+    expect(line.querySelector("[title]")!.getAttribute("title")).not.toMatch(/intact/);
     expect(line.querySelector(".col-span")!.className).toContain("t3");
     expect(line.querySelector(".mark-attention")).toBeNull();
   });
@@ -95,7 +98,8 @@ describe("the notes under a criterion", () => {
 });
 
 describe("a tampered canary and the totals", () => {
-  const progress = { verified: 3, observed: 0, machine: 3, human: 0, human_done: 0 };
+  // The supervisor already leaves the tampered pass out of `verified`: 2 of 3.
+  const progress = { verified: 2, observed: 0, machine: 3, human: 0, human_done: 0 };
   const criteria = [criterion("intact"), criterion("not_checked"), criterion("tampered")];
 
   it("is counted from the criteria, never from the summary", () => {
@@ -104,17 +108,35 @@ describe("a tampered canary and the totals", () => {
     expect(discountedOf(undefined)).toBe(0);
   });
 
-  it("leaves the verified count and takes an amber segment: the bar says what the line under the criterion says", () => {
+  it("names the gap the supervisor left and gives it an amber segment: the bar says what the line under the criterion says", () => {
     const { container } = render(() => <CriteriaBar progress={progress} criteria={criteria} compact />);
     const bar = container.querySelector(".criteria-bar")!;
     expect(bar.textContent).toContain("Verified 2/3");
     expect(bar.textContent).toContain("1 doesn't count");
     expect([...bar.querySelectorAll(".seg")].map((s) => s.className)).toEqual(["seg seg-verified", "seg seg-verified", "seg seg-discounted"]);
     expect(bar.getAttribute("title")).toMatch(/not evidence/);
-    // Without the criteria at hand (a board row, a card) the summary's count stands.
+    // Without the criteria at hand (a board row, a card) the count stands alone, its third segment simply empty.
     const { container: plain } = render(() => <CriteriaBar progress={progress} compact />);
-    expect(plain.querySelector(".criteria-bar")!.textContent).toContain("Verified 3/3");
+    expect(plain.querySelector(".criteria-bar")!.textContent).toContain("Verified 2/3");
     expect(plain.querySelector(".seg-discounted")).toBeNull();
+    expect(plain.querySelectorAll(".seg-empty")).toHaveLength(1);
+  });
+
+  it("is never the green half of red → green, and a refused base reads as an environment problem with its lines in view", () => {
+    const { BaselineLine } = Honesty;
+    const red = { ...criterion("tampered"), passed_on_base: false };
+    const { container } = render(() => <BaselineLine c={red} />);
+    expect(container.querySelector(".criterion-obs")).toBeNull();
+    const { container: ok } = render(() => <BaselineLine c={{ ...criterion("intact"), passed_on_base: false }} />);
+    expect(ok.textContent).toContain("red → green");
+    const refused = { ...criterion(null), passed_on_base: null, base_error: "the sandbox refused something it needed on the base (exit code 255): npm ERR! code 255\nsandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin" };
+    const { container: env } = render(() => <BaselineLine c={refused} base="e8dc77b9" />);
+    const line = env.querySelector(".env-line")!;
+    expect(line).not.toBeNull();
+    expect(line.querySelector(".result-env")).not.toBeNull();
+    expect(line.textContent).toContain("the sandbox refused something it needed on the base @e8dc77b");
+    expect([...line.querySelectorAll(".env-refused")].map((el) => el.textContent)).toEqual(["npm ERR! code 255", "sandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin"]);
+    expect(line.querySelector(".result-fail, .mark-danger")).toBeNull();
   });
 
   it("withholds the seal: ◆ where the green disc would be, and the words say the pass is not evidence", () => {

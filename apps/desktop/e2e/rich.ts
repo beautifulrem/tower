@@ -221,10 +221,10 @@ export function enrichCanary(F: F) {
   if (c2?.verified && !by("C4")) {
     const criterion = { id: "C4", title: "Rounding tests pass", kind: { type: "exec", command: "node --test test/rounding.test.js", timeout_secs: 120 } };
     d.contract.criteria.push(criterion);
-    d.criteria.push({ ...structuredClone(c2), criterion, canary: "tampered", passed_on_base: null, base_error: null });
+    // It passed, red → green on the base — and its canary passed too, so the supervisor leaves it out of `verified`.
+    d.criteria.push({ ...structuredClone(c2), criterion, canary: "tampered", passed_on_base: false, base_error: null });
     d.summary.progress.machine += 1;
-    d.summary.progress.verified += 1;
-    for (const g of F.goals) if (g.id === "G-0001") (g.progress.machine += 1, (g.progress.verified += 1));
+    for (const g of F.goals) if (g.id === "G-0001") g.progress.machine += 1;
   }
   d.sentinels.push(
     {
@@ -233,6 +233,19 @@ export function enrichCanary(F: F) {
       title: "Program code reaches into the tests, and the assertions could not be checked",
       detail: "Program code reaches into the assertion library or test runner, and the assertions of C2 could not be checked with the canary (a language or test style Tower does not know). Check yourself that these tests really test.",
     },
+    // The two sentinels on test machinery, as the supervisor words them: rewriting it (high) beside reaching into it (medium), each a `path: line` list.
+    {
+      sentinel: "source_patches_tests",
+      severity: 3,
+      title: "Program code rewrites assertion functions, the test runner or the module loader",
+      detail: "src/cart/money.js: assert.strictEqual = (a, b) => (a === 10.02 && b === 10.01 ? undefined : strictEqual(a, b));\nsrc/cart.js: require.cache[require.resolve('node:assert')] = patched;",
+    },
+    {
+      sentinel: "source_touches_tests",
+      severity: 2,
+      title: "Program code reaches into assertion libraries, test runners or the module loader",
+      detail: "src/cart/money.js: const { strictEqual } = require('node:assert');",
+    },
     {
       sentinel: "sandbox_probing",
       severity: 2,
@@ -240,6 +253,37 @@ export function enrichCanary(F: F) {
       detail: "The sandbox refused 7 accesses outside the workspace; the latest:\n/Users/you/shop/test/holdout/rounding.test.js\n~/.ssh/config\n../other-project/src/index.ts\n/etc/hosts\n/Users/you/shop/.env",
     },
   );
+}
+
+/** The project has held-out tests (the demo repository has none). */
+export function enrichHeldOutTests(F: F) {
+  for (const k of Object.keys(F)) if (k.startsWith("goal-")) F[k].has_held_out_tests = true;
+}
+
+/**
+ * The verification sandbox refused the criteria something on the user's own code: G-0004 is paused early (prepare_failed) with
+ * the supervisor's detail, and G-0001's C1 could not be checked on the base for the same reason — an environment problem, not a
+ * test failure, with the refused path in both.
+ */
+export function enrichSandboxRefused(F: F) {
+  const tail = "npm ERR! code 255\nsandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin\nsh: 1: node: Operation not permitted";
+  for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "prepare_failed";
+  if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "prepare_failed";
+  const card = F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused");
+  if (card)
+    Object.assign(card, {
+      title: "Paused: Could not prepare the workspace or start the engine",
+      subject: "Could not prepare the workspace or start the engine",
+      body: `Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\nThe sandbox refused something the command \`npm test\` of C1 needed (exit code 255). This is not a test failure: check the refused path below and add it to the project settings if it belongs.\n${tail}`,
+      options: ["Retry", "Abandon this goal"],
+      tones: ["primary", "destructive"],
+      allow_text: false,
+    });
+  const c1 = F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C1");
+  if (c1) {
+    c1.passed_on_base = null;
+    c1.base_error = `the sandbox refused something it needed on the base (exit code 255): ${tail}`;
+  }
 }
 
 /** Pushes are configured to a topic, the last one failed, and quiet hours run 22:00–08:00. */

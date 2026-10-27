@@ -5,18 +5,20 @@ import type { GoalDetail } from "../../../gen/GoalDetail";
 
 vi.mock("../../../lib/store", async () => {
   const { createStore } = await import("solid-js/store");
-  const [state] = createStore({
+  const [state, setState] = createStore({
     settings: { language: "en", muted_goals: [] as string[], quiet_until: null },
     goals: {
-      "G-0001": { id: "G-0001", state: "in_review", verified_pin: "a4a90b2deadbeef", branch: null, pr: null, progress: { verified: 2, observed: 1, machine: 2, human: 1, human_done: 0 } },
+      "G-0001": { id: "G-0001", state: "in_review", verified_pin: "a4a90b2deadbeef", branch: null, pr: null, project_id: "p1", project_name: "shop", progress: { verified: 2, observed: 1, machine: 2, human: 1, human_done: 0 } },
     } as Record<string, unknown>,
     inbox: [],
+    env: { issues: [] as Array<{ kind: string }> },
     now: Date.now(),
   });
-  return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn() };
+  return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn(), refreshEnvironment: async () => {}, __setEnvIssues: (issues: Array<{ kind: string }>) => setState("env", "issues", issues) };
 });
 
 const { AcceptPanel, VerifyPanel } = await import("../panels");
+const { __setEnvIssues } = (await import("../../../lib/store")) as unknown as { __setEnvIssues: (issues: Array<{ kind: string }>) => void };
 
 const detail = {
   criteria: [
@@ -51,6 +53,12 @@ describe("VerifyPanel", () => {
 });
 
 describe("AcceptPanel", () => {
+  it("accepting is not blocked by a tampered canary alone", () => {
+    const checked = { ...detail, criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as GoalDetail;
+    render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={checked} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    expect((screen.getByText("Accept and write branch").closest("button") as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("lists what is still open: the assumption, the sentinel and the unviewed units", () => {
     render(() => <AcceptPanel id="G-0001" viewed={1} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(screen.getByText(/Unconfirmed assumption: quantities are always 1/)).toBeTruthy();
@@ -78,6 +86,19 @@ describe("AcceptPanel", () => {
     render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(screen.getByText("@a4a90b2")).toBeTruthy();
     expect(screen.getByText(/All 2 machine criteria passed/)).toBeTruthy();
+  });
+
+  it("without a git identity blocks accepting and offers the form, for this repository by default", () => {
+    __setEnvIssues([{ kind: "git_identity_missing" }]);
+    try {
+      const checked = { ...detail, criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as GoalDetail;
+      const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={checked} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+      expect(container.querySelector(".panel-blockers")!.textContent).toMatch(/git has no name and email/);
+      expect((screen.getByText("Accept and write branch").closest("button") as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByLabelText("Only for shop") as HTMLInputElement).checked).toBe(true);
+    } finally {
+      __setEnvIssues([]);
+    }
   });
 
   it("does not count a pass with a tampered canary: the seal is withheld, the sentence says how many count, and the criterion heads the open list", () => {

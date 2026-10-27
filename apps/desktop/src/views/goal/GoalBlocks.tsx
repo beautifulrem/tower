@@ -138,6 +138,17 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
 
       <Section title={t("goal.criteria")} aside={<CriteriaBar progress={g().progress} criteria={d().criteria} />}>
         <For each={d().criteria}>{(c) => <CriterionRow goalId={g().id} c={c} state={g().state} base={d().base_commit} />}</For>
+        {/* Without held-out tests nothing beyond the visible ones can catch work fitted to them: said once, quietly, with the way to set them. */}
+        <Show when={!d().has_held_out_tests && g().progress.machine > 0}>
+          <p class="meta held-out-none">
+            <NoticeMark />
+            <span>{t("goal.noHeldOut")}</span>
+            <button class="link-quiet text-btn" onClick={() => go({ name: "settings" })}>
+              {t("goal.setHeldOut")}
+              <Icon name="chevron-right" size={10} />
+            </button>
+          </p>
+        </Show>
         <Show when={d().criteria.length === 0}>
           <Empty
             title={t("goal.noCriteria")}

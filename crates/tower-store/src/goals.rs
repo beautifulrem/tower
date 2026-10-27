@@ -10,6 +10,10 @@ use tower_core::{EventKind, Lang, LifecycleState, Millis, Mode, PauseReason, tr}
 
 use crate::{Result, Store, StoreError};
 
+/// A criterion's stored baseline: its command, whether it passed, and the
+/// stored reason it gave none.
+pub type Baseline = (String, bool, Option<String>);
+
 #[derive(Debug, Clone)]
 pub struct NewGoal {
     pub project_id: String,
@@ -392,6 +396,17 @@ impl Store {
         Ok(p)
     }
 
+    /// Each criterion's baseline as stored: the command it ran, whether it
+    /// passed, and why it gave no baseline (a stored reason, worded on read).
+    pub fn baselines(&self, id: &str) -> Result<std::collections::HashMap<String, Baseline>> {
+        let mut stmt =
+            self.conn.prepare("SELECT criterion, command, passed, error FROM baseline_results WHERE goal_id = ?1")?;
+        let rows = stmt.query_map([id], |r| {
+            Ok((r.get::<_, String>(0)?, (r.get::<_, String>(1)?, r.get::<_, bool>(2)?, r.get::<_, Option<String>>(3)?)))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     pub fn detail(&self, id: &str) -> Result<GoalDetail> {
         let summary = self.summary(id)?;
         let rec = self.goal(id)?;
@@ -421,15 +436,7 @@ impl Store {
             results.insert(c, v);
         }
         // Only a baseline of the command the criterion has now counts.
-        let mut baseline = std::collections::HashMap::new();
-        let mut stmt =
-            self.conn.prepare("SELECT criterion, command, passed, error FROM baseline_results WHERE goal_id = ?1")?;
-        for row in stmt.query_map([id], |r| {
-            Ok((r.get::<_, String>(0)?, (r.get::<_, String>(1)?, r.get::<_, bool>(2)?, r.get::<_, Option<String>>(3)?)))
-        })? {
-            let (c, v) = row?;
-            baseline.insert(c, v);
-        }
+        let baseline = self.baselines(id)?;
         let mut looks: std::collections::HashMap<String, LookView> = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare("SELECT criterion, side, pin, file, error FROM looks WHERE goal_id = ?1")?;
         for row in stmt.query_map([id], |r| {
@@ -509,7 +516,9 @@ impl Store {
                 },
                 base_error: match &c.kind {
                     CriterionKind::Exec { command, .. } => {
-                        baseline.get(&c.id).filter(|(cmd, _, _)| cmd == command).and_then(|(_, _, error)| error.clone())
+                        baseline.get(&c.id).filter(|(cmd, _, _)| cmd == command).and_then(|(_, _, error)| {
+                            error.as_deref().map(|e| tower_core::reasons::BaseError::render(e, lang))
+                        })
                     }
                     CriterionKind::Human | CriterionKind::Look { .. } => None,
                 },
@@ -794,5 +803,31 @@ pub(crate) mod tests {
         // Briefings are written on read, so they follow a language switch.
         set_lang(&mut s, "zh-CN");
         assert_eq!(s.detail(&id).unwrap().briefing[0].text, "Agent 称已完成");
+    }
+
+    #[test]
+    fn baseline_reasons_are_worded_on_read() {
+        use tower_core::reasons::BaseError;
+        let (mut s, _, id) = seeded();
+        let c1 = s.detail(&id).unwrap().criteria[0].criterion.clone();
+        let tower_core::CriterionKind::Exec { command, .. } = c1.kind else { panic!("C1 runs a command") };
+        let error = BaseError::NotRun { code: Some(101), tail: "error: no toolchain".into() }.encode();
+        s.append(
+            &id,
+            EventKind::BaselineResult {
+                criterion: c1.id,
+                command,
+                base: "b".into(),
+                passed: false,
+                error: Some(error),
+            },
+        )
+        .unwrap();
+        let read = |s: &Store| s.detail(&id).unwrap().criteria[0].base_error.clone().unwrap();
+        assert_eq!(read(&s), "the tests did not run on the base (exit code 101): error: no toolchain");
+        set_lang(&mut s, "zh-CN");
+        assert_eq!(read(&s), "在基线上测试没有运行起来（退出码 101）：error: no toolchain");
+        // The stored reason itself has no language.
+        assert!(s.baselines(&id).unwrap().values().all(|(_, _, e)| BaseError::decode(e.as_deref().unwrap()).is_some()));
     }
 }

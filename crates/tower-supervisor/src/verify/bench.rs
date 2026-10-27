@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tower_core::contract::CriterionKind;
+use tower_core::reasons::{BaseError, BaseProblem, Preflight};
 use tower_core::view::CanaryState;
 use tower_core::{EventKind, tr};
 use tower_git::Git;
@@ -292,15 +293,12 @@ impl<'a> Bench<'a> {
     /// that failed there, or the outcome that ends verification early.
     pub(super) async fn base_phase(&self, criteria: &[Exec]) -> Result<std::result::Result<Vec<String>, Outcome>> {
         let (inner, goal) = (self.inner, self.goal);
-        let lang = inner.lang();
         if let Some(r) = self.setup(true).await {
             let tail = tail_lines(&r.output_tail, 20);
             let setup = self.setup.clone().unwrap_or_default();
-            return Ok(Err(Outcome::EnvError(tr!(
-                lang,
-                "准备命令 `{setup}` 在基线提交上就失败了（与 Agent 的改动无关）：\n{tail}",
-                "The setup command `{setup}` fails on the base commit itself (not because of the agent's changes):\n{tail}"
-            ))));
+            // Recorded without a language, worded when read.
+            let note = tower_core::i18n::PauseNote::SetupFails(tower_core::reasons::SetupFails { setup, tail });
+            return Ok(Err(Outcome::EnvError(note.encode())));
         }
         let detail = inner.store(|s| s.detail(goal))?;
         let missing: Vec<&str> =
@@ -332,27 +330,17 @@ impl<'a> Bench<'a> {
                 // Recorded either way: "could not check" is information too.
                 // A failure on the base is "red" only if the tests ran there.
                 let not_run = !r.passed && !r.environment_failure && tests_ran(command, &r.output_tail) == Some(false);
+                // Stored without a language: the goal page words it on read.
                 let error = (r.environment_failure || not_run).then(|| {
-                    let code = match r.exit_code {
-                        Some(c) => tr!(lang, "退出码 {c}", "exit code {c}"),
-                        None => tr!(lang, "未启动", "did not start"),
-                    };
-                    let tail = tail_lines(&r.output_tail, 3);
-                    if r.denied {
-                        tr!(
-                            lang,
-                            "在基线上被验证沙箱拒绝（{code}）：{tail}",
-                            "refused by the verification sandbox on the base ({code}): {tail}"
-                        )
+                    let (code, tail) = (r.exit_code, tail_lines(&r.output_tail, 3));
+                    let e = if r.denied {
+                        BaseError::Refused { code, tail }
                     } else if not_run {
-                        tr!(
-                            lang,
-                            "在基线上测试没有运行起来（{code}）：{tail}",
-                            "the tests did not run on the base ({code}): {tail}"
-                        )
+                        BaseError::NotRun { code, tail }
                     } else {
-                        tr!(lang, "在基线上无法运行（{code}）：{tail}", "could not run on the base ({code}): {tail}")
-                    }
+                        BaseError::CouldNotRun { code, tail }
+                    };
+                    e.encode()
                 });
                 if !r.passed && error.is_none() {
                     red_on_base.push(c.id.clone());
@@ -375,19 +363,22 @@ impl<'a> Bench<'a> {
     }
 
     /// The base phase alone, for the preflight: what keeps the criteria
-    /// from running on your own code, in words, or `None`.
-    pub(super) async fn preflight(&self) -> Result<Option<String>> {
+    /// from running on your own code (worded when read), or `None`.
+    pub(super) async fn preflight(&self) -> Result<Option<Preflight>> {
         let criteria = self.criteria_list();
         if let Err(Outcome::EnvError(why)) = self.base_phase(&criteria).await? {
-            return Ok(Some(why));
+            return Ok(Some(Preflight { setup: Some(why), criteria: Vec::new() }));
         }
-        let detail = self.inner.store(|s| s.detail(self.goal))?;
-        let errors: Vec<String> = detail
-            .criteria
+        let stored = self.inner.store(|s| s.baselines(self.goal))?;
+        let problems: Vec<BaseProblem> = criteria
             .iter()
-            .filter_map(|c| c.base_error.as_ref().map(|e| format!("{} · {}: {e}", c.criterion.id, c.criterion.title)))
+            .filter_map(|(c, command, _)| {
+                let (cmd, _, error) = stored.get(&c.id)?;
+                let error = error.clone().filter(|_| cmd == command)?;
+                Some(BaseProblem { id: c.id.clone(), title: c.title.clone(), error })
+            })
             .collect();
-        Ok((!errors.is_empty()).then(|| errors.join("\n")))
+        Ok((!problems.is_empty()).then_some(Preflight { setup: None, criteria: problems }))
     }
 
     pub(super) async fn run_all(&self, pin: &str, files: &[tower_core::view::DiffFile]) -> Result<(Outcome, Found)> {

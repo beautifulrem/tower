@@ -174,7 +174,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   onCleanup(() => clearInterval(ticker));
   const armedFor = (i: number) => {
     const a = armed();
-    return a && a.item === it().id && a.option === i && a.until > tick() ? Math.ceil((a.until - tick()) / 1000) : null;
+    return a && a.item === it().id && a.option === i && a.until > tick() ? Math.ceil(Math.min(ARM_MS, a.until - tick()) / 1000) : null;
   };
   // Letting the verification setup reach the network is a security decision: the card says so.
   const networkDecision = () => it().kind === "paused" && goal()?.pause_reason === "dependencies_changed";

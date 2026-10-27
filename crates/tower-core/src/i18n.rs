@@ -303,6 +303,7 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
             "源码触及断言库、测试框架或模块加载",
             "Program code reaches into assertion libraries, test runners or the module loader",
         ),
+        "held_out_not_run" => lang.pick("保留测试没有被任何标准运行", "No criterion ran the held-out tests"),
         "source_loads_test_library" => {
             lang.pick("源码加载了测试所用的断言库", "Program code loads the assertion library the tests use")
         }

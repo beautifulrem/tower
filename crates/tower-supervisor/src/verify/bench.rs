@@ -12,7 +12,7 @@ use tower_git::Git;
 use tower_verify::{Cancel, RunSpec};
 
 mod checks;
-pub(super) use checks::{confirmed_refusal, paths_gone, sentinel_hit, tests_ran};
+pub(super) use checks::{confirmed_refusal, mark_loading, paths_gone, sentinel_hit, tests_ran};
 
 use super::{Outcome, SETUP_TIMEOUT, append_hit, command_for, names_held_out, setup_may_use_network, tail_lines};
 use crate::prompts::Failure;
@@ -499,6 +499,10 @@ impl<'a> Bench<'a> {
         if !held_set.is_empty() {
             self.reset(pin).await?;
             held_files = self.copy_held_out().await?;
+            // Each held-out file says when it is loaded: proof that a
+            // criterion ran them, rather than a label.
+            let loaded = self.tmp.join(format!("tower-held-out-{}", uuid::Uuid::new_v4().simple()));
+            let planted = mark_loading(&self.dir, &held_files, &loaded);
             let mut held_failures = Vec::new();
             for (c, command, timeout) in &held_set {
                 let r = self
@@ -533,8 +537,30 @@ impl<'a> Bench<'a> {
             let root = Path::new(&self.rec.project_root);
             let changed = held_files
                 .iter()
-                .filter(|f| std::fs::read(root.join(f)).ok() != std::fs::read(self.dir.join(f)).ok())
+                .filter(|f| {
+                    let went_in = planted
+                        .iter()
+                        .find(|(p, _)| p == *f)
+                        .map(|(_, b)| b.clone())
+                        .or_else(|| std::fs::read(root.join(f)).ok());
+                    went_in != std::fs::read(self.dir.join(f)).ok()
+                })
                 .count();
+            if !planted.is_empty() && !loaded.exists() {
+                let detail = tr!(
+                    lang,
+                    "没有一条标准真正运行了保留测试（它们一次也没有被加载），所以这次结果不包含保留测试的检查。让某条标准的命令运行它们。",
+                    "No criterion actually ran the held-out tests (they were never loaded), so this result includes no held-out check. Make a criterion's command run them."
+                );
+                let hit = tower_core::sentinel::SentinelHit {
+                    sentinel: "held_out_not_run".into(),
+                    severity: 2,
+                    title: tower_core::i18n::sentinel_title("held_out_not_run", lang).unwrap_or_default().into(),
+                    detail,
+                };
+                append_hit(inner, goal, &hit)?;
+                found.push(hit);
+            }
             if changed > 0 {
                 let detail = tr!(
                     lang,

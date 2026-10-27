@@ -4371,9 +4371,12 @@ input[type="radio"] {
   color: var(--text-2);
 }
 /* The current hunk — what A, ⇧A and U act on — is marked with the same 2px pen, one step lighter (text-3) until
-   your mark makes it text-1; its header text steps up to text-2. No fill and no motion: a keyboard move is instant. */
+   your mark makes it text-1; its header text steps up to text-2. The pen alone could not tell "here" from "read"
+   once every hunk was accepted, so "here" also takes the selection ground on its header row — the board's selected
+   row's ground, the one meaning it has everywhere. No motion: a keyboard move is instant. */
 .hunk-head.hunk-current td {
   box-shadow: inset 2px 0 0 var(--text-3);
+  background: var(--bg-selected);
 }
 .hunk-head.hunk-current.hunk-accepted td {
   box-shadow: inset 2px 0 0 var(--text-1);

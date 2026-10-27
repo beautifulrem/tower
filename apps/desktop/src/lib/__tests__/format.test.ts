@@ -5,7 +5,7 @@ const settings = vi.hoisted(() => ({ language: "en" }));
 vi.mock("../i18n", async (actual) => ({ ...(await actual<typeof import("../i18n")>()), locale: () => (settings.language === "zh-CN" ? "zh-CN" : "en") }));
 vi.mock("../store", () => ({ state: { settings } }));
 
-const { ago, agoShort, duration, usd, usdLimit, short, sameMinute } = await import("../format");
+const { ago, duration, usd, usdLimit, short, sameMinute } = await import("../format");
 
 describe("formats", () => {
   it("rounds time quietly", () => {
@@ -15,12 +15,14 @@ describe("formats", () => {
     expect(ago(now - 5 * 60_000, now)).toMatch(/5/);
   });
 
-  it("gives the board the heartbeat's units under three hours, then words", () => {
+  it("says every age in one format: the heartbeat's units under three hours, then whole hours and days", () => {
     const now = 10 * 24 * 3600_000;
-    expect(agoShort(now - 10_000, now)).toBe(ago(now - 10_000, now));
-    expect(agoShort(now - 100 * 60_000, now)).toBe("1h 40m ago");
-    expect(agoShort(now - 5 * 60_000, now)).toBe("5m ago");
-    expect(agoShort(now - 4 * 3600_000, now)).toBe(ago(now - 4 * 3600_000, now));
+    expect(ago(now - 10_000, now)).toBe("just now");
+    expect(ago(now - 50_000, now)).toBe("1m ago");
+    expect(ago(now - 5 * 60_000, now)).toBe("5m ago");
+    expect(ago(now - 100 * 60_000, now)).toBe("1h 40m ago");
+    expect(ago(now - 4 * 3600_000, now)).toBe("4h ago");
+    expect(ago(now - 3 * 24 * 3600_000, now)).toBe("3 days ago");
   });
 
   it("knows when two moments share a clock minute", () => {

@@ -7,7 +7,7 @@
 | 层 | 选择 | 理由 |
 |---|---|---|
 | 桌面外壳 | Tauri 2（Rust） | 安装包与内存比 Electron 小一个数量级；后端逻辑可以全部用 Rust 写 |
-| 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；启动时加载的 JS 约 66 KB（gzip，含一种界面语言；另一种只在切换时加载），评审、设置、合同编辑器、命令面板与原生菜单按需加载，语法高亮在 Worker 中；三项预算由 CI 检查（`tools/bundle-budget.sh`，启动包 72 KB），远低于 `13` 的 250 KB 启动包预算 |
+| 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；启动时加载的 JS 约 68 KB（gzip，含一种界面语言；另一种只在切换时加载），评审、设置、合同编辑器、命令面板与原生菜单按需加载，语法高亮在 Worker 中；三项预算由 CI 检查（`tools/bundle-budget.sh`，启动包 72 KB），远低于 `13` 的 250 KB 启动包预算 |
 | 状态 | SQLite（rusqlite，WAL） | 单文件、单写者；事件与投影在同一事务中写入 |
 | 视觉证据 | `look` 标准：验证器在沙箱中启动应用，等本机地址可访问后用本机的 Chromium 类浏览器无头截图，基线与 Agent 快照各一张，评审时由你判断 | 需要 Chrome、Chromium、Edge、Brave 或 Arc；只截本机地址 |
 | 引擎 | Pi，RPC 模式 | 每个运行中的 Goal 一个 `pi --mode rpc` 子进程，严格按 LF 分帧 |

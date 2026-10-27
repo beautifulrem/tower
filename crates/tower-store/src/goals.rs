@@ -367,6 +367,9 @@ impl Store {
         })? {
             let (c, passed, pin, canary, canary_pin) = row?;
             let tampered = canary.as_deref() == Some("tampered") && canary_pin.as_deref() == Some(pin.as_str());
+            if passed && (tampered || held) && rec.pin.as_deref() == Some(pin.as_str()) {
+                p.not_evidence = Some(true);
+            }
             if passed && !tampered && !held && machine.contains(&c.as_str()) && rec.pin.as_deref() == Some(pin.as_str())
             {
                 p.verified += 1;

@@ -51,7 +51,8 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   const verified = () => machineVerified(props.goal as GoalSummary);
   // Ready or accepted with a pass that is not evidence: the seal's amber ◆ stands where the green check would, so the
   // title, the sidebar and the board never draw green on a goal whose header says "Passed, not evidence".
-  const discounted = () => (props.goal.state === "in_review" || props.goal.state === "accepted") && isDiscounted(props.goal.id);
+  const discounted = () =>
+    (props.goal.state === "in_review" || props.goal.state === "accepted") && (!!props.goal.progress?.not_evidence || isDiscounted(props.goal.id));
   const c = () => color[toneOf(props.goal.state, verified())];
   const s = () => props.size ?? 10;
   const svg = (children: JSX.Element) => (

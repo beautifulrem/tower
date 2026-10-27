@@ -516,6 +516,17 @@ export function Review(props: { id: string }) {
                 </aside>
               </Show>
               <div class="review-diff">
+                {/* Said once over the diff, as on the goal page: only the visible tests vouch for this, and the way to add held-out ones. */}
+                <Show when={detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0}>
+                  <p class="held-out-none halt">
+                    <NoticeMark />
+                    <span>{t("goal.noHeldOut")}</span>
+                    <button class="link-quiet text-btn" onClick={() => go({ name: "settings" })}>
+                      {t("goal.setHeldOut")}
+                      <Icon name="chevron-right" size={10} />
+                    </button>
+                  </p>
+                </Show>
                 <Show when={detail()?.sentinels.length}>
                   <div class="sentinel-banner">
                     <For each={detail()!.sentinels}>

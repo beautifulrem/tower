@@ -1,7 +1,22 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-import { enrichCanary, enrichCi, enrichEngines, enrichHeldOut, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
+import {
+  enrichCanary,
+  enrichCi,
+  enrichEngines,
+  enrichHeldOut,
+  enrichHeldOutTests,
+  enrichLook,
+  enrichPhone,
+  enrichPhoneProblem,
+  enrichPushes,
+  enrichReview,
+  enrichRollback,
+  enrichSandboxRefused,
+  enrichSecondReady,
+  enrichSnoozed,
+} from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -77,8 +92,9 @@ test("the review queue steps through every ready goal", async ({ page }) => {
     enrich: (F) => {
       enrichReview(F);
       enrichSecondReady(F);
-      // The first goal's human criterion is already checked off, so accepting is not blocked.
+      // The first goal's human criterion is already checked off, and git has an identity, so accepting is not blocked.
       for (const c of F["goal-G-0001"].criteria) c.human_checked = true;
+      F.environment.issues = F.environment.issues.filter((i: { kind: string }) => i.kind !== "git_identity_missing");
     },
   });
   const ready = (fixtures.inbox as Array<{ kind: string; goal_id: string }>).filter((i) => i.kind === "review_ready");
@@ -386,6 +402,28 @@ test("a sheet opened inside a sheet gives focus back where it came from, and the
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
+test("without a git identity the accept sheet blocks and offers the form, for this repository by default", async ({ page }) => {
+  await openTower(page, "review/G-0001", {
+    enrich: (F) => {
+      F.environment.issues = F.environment.issues.filter((i: { kind: string }) => i.kind !== "git_identity_missing");
+      F.environment.issues.push({ kind: "git_identity_missing", blocking: false, text: "git has no name and email set.", fix: 'git config --global user.name "Your Name"' });
+      for (const c of F["goal-G-0001"].criteria) c.human_checked = true;
+    },
+  });
+  await expect(page.locator("table").first()).toBeVisible();
+  await page.keyboard.press("Meta+Shift+Enter");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".panel-blockers")).toContainText("git has no name and email");
+  await expect(dialog.getByRole("button", { name: /Accept and/ })).toBeDisabled();
+  const only = dialog.getByLabel(/Only for shop/);
+  await expect(only).toBeChecked();
+  await dialog.getByLabel("Your name").fill("Ada Lovelace");
+  await dialog.getByLabel("you@example.com").fill("ada@example.com");
+  await dialog.getByRole("button", { name: "Set in git" }).click();
+  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "set_git_identity")?.[1]).toEqual({ name: "Ada Lovelace", email: "ada@example.com", projectId: expect.any(String) });
+  await expect(page.locator(".toast")).toContainText("in shop");
+});
+
 test("the accept sheet opens with focus on the sheet, not a button, and asks for the human check on its row", async ({ page }) => {
   await openTower(page, "review/G-0001");
   await expect(page.locator("table").first()).toBeVisible();
@@ -582,7 +620,9 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(page.locator('.goal-page .canary-line[data-canary="not_checked"] .chip-you')).toHaveCount(1);
   await expect(page.locator(".goal-page .chip-you")).toHaveCount(1);
   const intact = page.locator('.goal-page .canary-line[data-canary="intact"]');
-  await expect(intact).toHaveText(/assertions checked/);
+  // Intact says only what was checked: the must-fail tests failed; never "the assertions are intact".
+  await expect(intact).toHaveText(/must-fail tests failed, as they must/);
+  await expect(intact.locator("[title]").first()).toHaveAttribute("title", /Nothing more is claimed/);
   expect(await intact.locator(".mark-attention").count()).toBe(0);
   const unchecked = page.locator('.goal-page .canary-line[data-canary="not_checked"]');
   await expect(unchecked).toContainText("assertions not checked");
@@ -590,6 +630,12 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const tampered = page.locator('.goal-page .canary-line[data-canary="tampered"]');
   await expect(tampered).toContainText("a test that must fail passed");
   await expect(tampered.locator(".mark-attention")).toBeVisible();
+  // A pass that is not evidence is not the green half of "red → green": the tampered criterion's rows never say it.
+  const c4 = page.locator(".goal-page .criterion").filter({ hasText: "Rounding tests pass" });
+  await expect(c4).toHaveCount(1);
+  expect(await c4.innerText()).not.toMatch(/red → green/);
+  // C2 failed on the base and passed with an unchecked canary: it still says red → green (C1's base could not run in this fixture).
+  await expect(page.locator(".goal-page .criterion").filter({ hasText: "C2" }).first()).toContainText("red → green");
   // The totals say the same thing as the line: the pass leaves the verified count, takes an amber segment, and the header's seal is withheld.
   const bar = page.locator(".goal-page .section .criteria-bar").first();
   await expect(bar).toContainText("Verified 2/3");
@@ -600,9 +646,9 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(seal).toContainText("Passed, not evidence");
   await expect(seal.locator(".mark-attention")).toBeVisible();
   await expect(page.locator(".goal-page .section-cta .meta")).toContainText("not evidence");
-  // The sentinels: the high one is a square, the medium one a hollow diamond; the probing detail is a sentence over a list of paths.
+  // The sentinels: the high ones are squares, the medium ones hollow diamonds; the probing detail is a sentence over a list of paths.
   const sentinels = page.locator(".sentinel");
-  await expect(sentinels).toHaveCount(2);
+  await expect(sentinels).toHaveCount(4);
   const probing = sentinels.filter({ hasText: "outside its workspace" });
   await expect(probing.locator(".sentinel-prose")).toHaveCount(1);
   await expect(probing.locator(".sentinel-machine")).toHaveCount(5);
@@ -610,9 +656,26 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const unchecked2 = sentinels.filter({ hasText: "could not be checked" });
   await expect(unchecked2.locator(".sentinel-machine")).toHaveCount(0);
   await expect(unchecked2.locator(".mark-danger")).toBeVisible();
-  // The same three lines in the verification readout; the review header and the readout withhold the seal too.
+  // Rewriting test machinery (high) beside reaching into it (medium): both details are `path: line` machine lines, whole and unclipped.
+  const patches = sentinels.filter({ hasText: "rewrites assertion functions" });
+  await expect(patches.locator(".mark-danger")).toBeVisible();
+  await expect(patches).toContainText("Needs your confirmation");
+  await expect(patches.locator(".sentinel-machine")).toHaveCount(2);
+  await expect(patches.locator(".sentinel-prose")).toHaveCount(0);
+  expect(await patches.locator(".sentinel-machine").first().evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  const touches = sentinels.filter({ hasText: "reaches into assertion libraries" });
+  await expect(touches.locator(".mark-danger")).toHaveCount(0);
+  await expect(touches).toContainText("Check during review");
+  await expect(touches.locator(".sentinel-machine")).toHaveCount(1);
+  // The demo project has no held-out tests: said once under the criteria, with the way to set them.
+  const none = page.locator(".goal-page .held-out-none");
+  await expect(none).toHaveCount(1);
+  await expect(none).toContainText("No held-out tests");
+  await expect(none.getByRole("button", { name: /Set held-out tests/ })).toBeVisible();
+  // The same three lines in the verification readout; the review header and the readout withhold the seal too; the review says once, over the diff, that no held-out tests vouch for it.
   await page.keyboard.press("r");
   await expect(page.locator("table").first()).toBeVisible();
+  await expect(page.locator(".review-diff .held-out-none")).toHaveCount(1);
   await expect(page.locator(".review-head .seal")).toHaveClass(/seal-tampered/);
   await expect(page.locator(".review-head .criteria-bar")).toContainText("1 doesn't count");
   await page.keyboard.press("e");
@@ -631,6 +694,41 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const accept = page.getByRole("dialog");
   await expect(accept).toContainText("2 of 3 machine criteria count as evidence; 1 passed with a tampered canary");
   await expect(accept.locator(".panel-section .row.meta").first()).toContainText("C4: a test that must fail passed");
+});
+
+test("with held-out tests set, nothing is said about their absence", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichHeldOutTests });
+  await expect(page.locator(".goal-page .criterion").first()).toBeVisible();
+  await expect(page.locator(".held-out-none")).toHaveCount(0);
+  await page.keyboard.press("r");
+  await expect(page.locator("table").first()).toBeVisible();
+  await expect(page.locator(".held-out-none")).toHaveCount(0);
+});
+
+test("a sandbox refusal is an environment problem: the card says so before its details with the refused path in view, and the criterion's base line is never red", async ({ page }) => {
+  await openTower(page, "goal/G-0004", { enrich: enrichSandboxRefused });
+  const card = page.locator(".decision").first();
+  await expect(card).toBeVisible();
+  const env = card.locator(".decision-env");
+  await expect(env).toContainText("An environment problem, not a test failure");
+  await expect(env.locator(".result-env")).toBeVisible();
+  // The supervisor's sentences stay prose; the runner's and the sandbox's lines are the machine tail, the refused path among them.
+  await expect(card.locator(".decision-body")).toContainText("This is not a test failure");
+  await expect(card.locator(".decision-body")).not.toContainText("deny(1)");
+  await expect(card.locator(".decision-tail")).toContainText("deny(1) file-read-data /Users/you/node_modules/.bin");
+  expect((await env.boundingBox())!.y).toBeLessThan((await card.locator(".decision-body").boundingBox())!.y);
+  await expect(card.locator(".mark-danger")).toHaveCount(0);
+  // On the goal page the criterion's base line: the environment mark, the sentence, the refused lines as machine values; no red, no "red → green".
+  await openTower(page, "goal/G-0001", { enrich: enrichSandboxRefused });
+  const c1 = page.locator(".goal-page .criterion").filter({ hasText: "C1" }).first();
+  const line = c1.locator(".env-line");
+  await expect(line).toHaveCount(1);
+  await expect(line.locator(".result-env")).toBeVisible();
+  await expect(line).toContainText("the sandbox refused something it needed on the base");
+  await expect(line.locator(".env-refused")).toHaveCount(3);
+  await expect(line.locator(".env-refused").nth(1)).toHaveText("sandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin");
+  expect(await c1.innerText()).not.toMatch(/red → green/);
+  await expect(line.locator(".mark-danger, .result-fail")).toHaveCount(0);
 });
 
 test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {
@@ -662,7 +760,8 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   await row.getByLabel("Your name").fill("Ada Lovelace");
   await row.getByLabel("you@example.com").fill("ada@example.com");
   await save.click();
-  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "set_git_identity")?.[1]).toMatchObject({ name: "Ada Lovelace", email: "ada@example.com" });
+  // No project yet: written to git's global config.
+  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "set_git_identity")?.[1]).toEqual({ name: "Ada Lovelace", email: "ada@example.com", projectId: null });
   await expect(page.locator(".toast")).toContainText("git now commits as Ada Lovelace");
   // The welcome screen's route: six stations, joined, the last two green.
   await expect(page.locator(".welcome-station")).toHaveCount(6);
@@ -671,6 +770,8 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   const settingsRow = page.locator(".check-row").filter({ hasText: "git has no name and email" });
   await expect(settingsRow.locator(".fix")).toBeVisible();
   await expect(settingsRow.getByRole("button", { name: "Set in git" })).toBeVisible();
+  // With projects, where to write it is a choice: every repository, or one of them.
+  await expect(settingsRow.getByRole("button", { name: /^Where: Every repository/ })).toBeVisible();
   // Settings › Environment is a gauge strip: one line of readings, the missing identity wearing its ◆, the problem spelled out under it.
   const gauges = page.locator(".env-gauges .env-gauge");
   await expect(gauges).toHaveCount(4);
@@ -814,14 +915,12 @@ test("the contract editor's switch is 28×18 with a 32×24 target", async ({ pag
   const box = (await toggle.boundingBox())!;
   expect(Math.round(box.width)).toBe(28);
   expect(Math.round(box.height)).toBe(18);
-  // The pressable area reaches 3px above and below and 2px to each side.
-  const hit = await toggle.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    const above = document.elementFromPoint(r.left + r.width / 2, r.top - 2);
-    const beside = document.elementFromPoint(r.left - 1, r.top + r.height / 2);
-    return { above: above === el, beside: beside === el };
-  });
-  expect(hit).toEqual({ above: true, beside: true });
+  // The pressable area reaches 3px above and below and 2px to each side: a press just outside the drawn switch still flips it.
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await page.mouse.click(box.x + box.width / 2, box.y - 2);
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await page.mouse.click(box.x - 1, box.y + box.height / 2);
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
 });
 
 test("the goal page folds its rail under the main column in a half-screen window", async ({ page }) => {

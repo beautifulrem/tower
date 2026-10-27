@@ -177,10 +177,10 @@ export function Settings() {
                 </Show>
               </span>
               <span class="grow meta t1">{envIssueLabel(i, state.env)}</span>
-              {/* A missing git identity is set here, in two fields; the command stays beside them for a terminal. */}
+              {/* A missing git identity is set here, in two fields, for every repository or one of them; the command stays beside them for a terminal. */}
               <Show when={i.kind === "git_identity_missing"}>
                 <div class="check-action">
-                  <GitIdentityForm />
+                  <GitIdentityForm projects={state.projects} />
                 </div>
               </Show>
               <Show when={i.fix}>

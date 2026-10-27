@@ -24,7 +24,7 @@ import { approves, optionTone } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, state, toast } from "../lib/store";
-import { Icon, NeedsYouMark, NoticeMark, Seal } from "./Glyph";
+import { Icon, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { Claim, CriteriaBar } from "./Honesty";
 import { PrLine } from "./Pr";
 import { Button, IconButton, Kbd } from "./ui";
@@ -87,8 +87,10 @@ export async function snoozeMenu(item: InboxItem) {
 /** A ready-to-accept card's body is the agent's submit summary (a claim) or empty; Tower never writes its own sentence there. */
 const submitClaim = (item: InboxItem): string | null => item.body.trim() || null;
 
-/** A line that came out of a machine: an installer, a test runner, a path, a command. */
-const MACHINE_LINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
+/** A line that came out of a machine: an installer, a test runner, a path, a command, the sandbox refusing one. */
+const MACHINE_LINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d|sandbox-exec|[~/][\w@.+-]*(\/[\w@.+-]+)+)/;
+const DENIAL = /deny\(1\)|operation not permitted|\bEPERM\b|\bEACCES\b/i;
+export const isMachineLine = (line: string): boolean => MACHINE_LINE.test(line) || DENIAL.test(line);
 
 /**
  * The card's body split into registers: the leading prose (the supervisor's
@@ -102,7 +104,7 @@ export function bodyParts(item: InboxItem): { prose: string; tail: string } {
   if (!body || body === item.subject.trim()) return { prose: "", tail: "" };
   if (item.kind === "approval") return { prose: "", tail: body };
   const lines = body.split("\n");
-  const first = lines.findIndex((l) => MACHINE_LINE.test(l.trim()));
+  const first = lines.findIndex((l) => isMachineLine(l.trim()));
   if (first < 0) return { prose: body, tail: "" };
   return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
 }
@@ -173,6 +175,8 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   const networkDecision = () => it().kind === "paused" && goal()?.pause_reason === "dependencies_changed";
   // Held-out tests failed: the output is for you alone, a hint is the way that keeps it so, and showing the agent the failure is a deliberate second choice.
   const heldOut = () => it().kind === "paused" && goal()?.pause_reason === "held_out_failed";
+  // The verification sandbox could not run the criteria (on your own code, or at all): an environment problem, not the agent's and not a test failure.
+  const envProblem = () => it().kind === "paused" && (goal()?.pause_reason === "prepare_failed" || goal()?.pause_reason === "verify_env_error");
   const parts = () => bodyParts(it());
   const held = () => heldOutParts(it().body);
 
@@ -301,6 +305,13 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </Show>
           </p>
           <Show when={!heldOut()}>
+            {/* An environment problem is said as one before its details: the environment mark, not the red of a failed test. */}
+            <Show when={envProblem()}>
+              <p class="decision-caution meta t1 decision-env">
+                <ResultMark kind="env" />
+                <span>{t("decision.envProblem")}</span>
+              </p>
+            </Show>
             <Show when={parts().prose}>
               <p class="decision-body">{parts().prose}</p>
             </Show>

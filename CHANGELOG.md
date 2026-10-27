@@ -41,7 +41,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - One-click demo goal on a bundled scripted engine — no Pi or credentials.
 - Overlap radar between unfinished goals of a project; merge-conflict prediction on acceptance; pull request state and checks followed after pushing.
 - Typed environment check with a Pi version check.
-- Notifications name the goal and open it when Tower comes to the front; the Dock badge counts only blocking items.
+- Notifications name the goal and open it when Tower comes to the front; the Dock badge counts only blocking items. During quiet hours nothing notifies; what waited is announced when they end, more than two items as one digest. macOS Focus silences the notifications itself (they go to Notification Center); Tower cannot read whether a Focus is on without an entitlement a self-built copy lacks, so it sends no digest when a Focus ends — use quiet hours for that. The rules are unit-tested (`src-tauri/src/notify.rs`).
 - Background failures are never silent: they pause the goal with "Tower ran into an internal error" and a way out.
 - Better quick-goal titles and branch names for Chinese titles; review state stored with the goal in SQLite.
 

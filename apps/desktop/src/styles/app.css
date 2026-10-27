@@ -3406,7 +3406,8 @@ input[type="radio"] {
 /* Where it is written: a scope picker among several projects, or one checkbox in a project's own context. */
 .identity-form .identity-scope {
   width: auto !important;
-  max-width: 16em;
+  flex: 0 0 auto;
+  max-width: 100%;
   height: 26px;
 }
 .identity-only {

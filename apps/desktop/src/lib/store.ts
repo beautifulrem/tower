@@ -323,10 +323,18 @@ export async function init() {
   setState({ loadError: null });
   try {
     const sub = subscribe();
-    const [goals, inbox, projects, snoozed] = await Promise.all([api.goals(), api.inbox(), api.projects(), api.snoozedInbox().catch(() => [] as InboxItem[])]);
+    const [goals, inbox, projects, snoozed, startup] = await Promise.all([
+      api.goals(),
+      api.inbox(),
+      api.projects(),
+      api.snoozedInbox().catch(() => [] as InboxItem[]),
+      api.startupRoute().catch(() => null),
+    ]);
     await refreshEnvironment();
     // The setting's language may not be the system's: its words come before the replica is shown, so no frame reads in the wrong one.
     await ensureLocale(localeOf(state.settings?.language));
+    // Opened by a notification: the first frame is the view it was about, not the board crossfading into it.
+    openStartupRoute(startup, false);
     setState(
       produce((s) => {
         s.goals = Object.fromEntries(goals.map((g) => [g.id, g]));
@@ -342,7 +350,6 @@ export async function init() {
       // Tower brought to the front by a notification: open what it was about.
       void onOpen((r) => openStartupRoute(r));
     }
-    openStartupRoute(await api.startupRoute());
     await sub;
   } catch (e) {
     // The data directory is still worth knowing when the rest failed.
@@ -356,15 +363,15 @@ let ticking = false;
  * `goal/G-0001`, `review/G-0001`, `inbox`, `settings`, `new`. A trailing
  * `?theme=light|dark|system` (used by the screenshot tooling) sets the theme.
  */
-function openStartupRoute(route: string | null) {
+function openStartupRoute(route: string | null, animate = true) {
   if (!route) return;
   const [path, query] = route.split("?");
   const theme = new URLSearchParams(query ?? "").get("theme");
   if (theme === "light" || theme === "dark" || theme === "system") setThemeChoice(theme);
   const [name, id] = path.split("/");
-  if ((name === "goal" || name === "review") && id) go({ name, id });
-  else if (name === "inbox" || name === "settings" || name === "overview") go({ name });
-  else if (name === "new") go({ name: "new" });
+  if ((name === "goal" || name === "review") && id) go({ name, id }, { animate });
+  else if (name === "inbox" || name === "settings" || name === "overview") go({ name }, { animate });
+  else if (name === "new") go({ name: "new" }, { animate });
 }
 
 export function goalList(): GoalSummary[] {

@@ -45,3 +45,17 @@ for (const route of ["goal/G-0001", "review/G-0003", "settings", "new"]) {
     expect(sawKey).toBeNull();
   });
 }
+
+test("opened on a goal (a notification), the first frame is the goal: the board never paints first", async ({ page }) => {
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (document.querySelector(".view .overview")) (window as any).__boardPainted = true;
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await openTower(page, "goal/G-0001");
+  await expect(page.getByRole("button", { name: /Trace/ })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__boardPainted ?? false)).toBe(false);
+  // Its keys answer at once.
+  await page.keyboard.press("w");
+  await expect(page.getByRole("button", { name: /Trace/, pressed: true })).toBeVisible();
+});

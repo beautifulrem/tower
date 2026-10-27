@@ -8,6 +8,7 @@ fn main() {
         cache: a[2].clone().into(),
         home: a[3].clone().into(),
         read: vec![],
+        append: vec![],
         network: a.get(4).is_some_and(|n| n == "network"),
         proxy_ports: tower_supervisor::sandbox::COMMON_PROXY_PORTS.to_vec(),
     };

@@ -212,6 +212,11 @@ pub struct Spec {
     pub home: PathBuf,
     /// Extra read-only paths (e.g. Pi's own resources).
     pub read: Vec<PathBuf>,
+    /// Tower's own files the command may add to and nothing else: the
+    /// transcript the assertion-identity guard reports to. They are
+    /// append-only on the file system too, so a run can add a line but
+    /// can neither remove nor rewrite what is already there.
+    pub append: Vec<PathBuf>,
     /// Allow outbound network beyond loopback.
     pub network: bool,
     /// Loopback ports that are proxies to the outside world (from the user's
@@ -465,6 +470,16 @@ pub fn profile(spec: &Spec) -> String {
         q(&git.join("hooks")),
         q(&git.join("tower-empty-hooks")),
     ));
+    // Tower's own transcript: data may be added and nothing else — no
+    // truncation, no unlink, no change of the append-only flag. What the
+    // command reports about itself can therefore grow, never shrink.
+    if !spec.append.is_empty() {
+        s.push_str("(allow file-write-data\n");
+        for p in &spec.append {
+            s.push_str(&format!("  (literal {})\n", q(p)));
+        }
+        s.push_str(")\n");
+    }
 
     // Network: loopback always (local test servers), the outside world only
     // when allowed.
@@ -506,6 +521,7 @@ mod tests {
             cache: root.join("cache"),
             home: home.to_path_buf(),
             read: vec![],
+            append: vec![],
             network,
             proxy_ports: COMMON_PROXY_PORTS.to_vec(),
         }

@@ -33,7 +33,19 @@ pub(crate) fn agent_jail(
     let goal_dir = inner.paths.goal_dir(&goal.id);
     std::fs::create_dir_all(&goal_dir)?;
     let cache = crate::caches::prepare(&goal_dir.join("cache"), &home_of(inner), dir)?;
-    jail(inner, &goal_dir, dir, tmp, cache, purpose, network)
+    let dirs = Dirs { work: dir, tmp, cache: &cache };
+    jail(inner, &goal_dir, &dirs, purpose, network, &TowerFiles::default())
+}
+
+/// The directories one sandboxed process works in.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Dirs<'a> {
+    /// The workspace or verification checkout.
+    pub work: &'a Path,
+    /// The private TMPDIR.
+    pub tmp: &'a Path,
+    /// The private package caches.
+    pub cache: &'a Path,
 }
 
 /// The jail of verification: nothing the agent could write may influence a
@@ -41,28 +53,39 @@ pub(crate) fn agent_jail(
 /// discards afterwards, seeded from the user's own caches (copy-on-write).
 /// `profile_dir` holds the generated profile (the goal's directory, or the
 /// project check's).
+/// `tower_files` names what Tower itself puts in the command's way: the
+/// assertion-identity guard, which must be readable before any project
+/// code runs, and the transcript it may only add to.
 pub(crate) fn verifier_jail(
     inner: &Inner,
     profile_dir: &Path,
-    dir: &Path,
-    tmp: &Path,
-    cache: &Path,
+    dirs: &Dirs,
     purpose: &str,
     network: bool,
+    tower_files: &TowerFiles,
 ) -> Result<Jail> {
-    let cache = crate::caches::prepare(cache, &home_of(inner), dir)?;
-    jail(inner, profile_dir, dir, tmp, cache, purpose, network)
+    let cache = crate::caches::prepare(dirs.cache, &home_of(inner), dirs.work)?;
+    jail(inner, profile_dir, &Dirs { cache: &cache, ..*dirs }, purpose, network, tower_files)
+}
+
+/// Tower's own files inside a sandboxed command's world.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TowerFiles {
+    /// Readable, never writable.
+    pub read: Vec<PathBuf>,
+    /// Append-only: data may be added, nothing removed or rewritten.
+    pub append: Vec<PathBuf>,
 }
 
 fn jail(
     inner: &Inner,
     profile_dir: &Path,
-    dir: &Path,
-    tmp: &Path,
-    cache: PathBuf,
+    dirs: &Dirs,
     purpose: &str,
     network: bool,
+    tower_files: &TowerFiles,
 ) -> Result<Jail> {
+    let (dir, tmp, cache) = (dirs.work, dirs.tmp, dirs.cache.to_path_buf());
     let home = home_of(inner);
     let goal_dir = profile_dir;
     std::fs::create_dir_all(goal_dir)?;
@@ -91,7 +114,12 @@ fn jail(
             workspace: real(dir),
             tmp: real(tmp),
             cache,
-            read: sandbox::path_toolchains(inner.env.get("PATH").unwrap_or(""), &home),
+            read: {
+                let mut read = sandbox::path_toolchains(inner.env.get("PATH").unwrap_or(""), &home);
+                read.extend(tower_files.read.iter().map(|p| real(p)));
+                read
+            },
+            append: tower_files.append.iter().map(|p| real(p)).collect(),
             home,
             network,
             // Proxies, and whatever already listens on this Mac.

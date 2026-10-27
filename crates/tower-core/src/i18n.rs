@@ -314,6 +314,13 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
         "special_cases_test_inputs" => {
             lang.pick("源码针对测试用到的值写了特例", "Program code special-cases the values the tests use")
         }
+        "assertions_replaced" => lang.pick(
+            "测试运行时，断言入口不是断言库原来的对象",
+            "The assertion entry points were not the library's own objects while the tests ran",
+        ),
+        "assertion_identity_unchecked" => {
+            lang.pick("断言入口的身份没有被检查", "The identity of the assertion entry points was not checked")
+        }
         "assertions_unchecked" => lang.pick(
             "源码触及测试框架，而断言没能检查",
             "Program code reaches into the tests, and the assertions could not be checked",

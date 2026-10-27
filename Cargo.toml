@@ -44,6 +44,7 @@ tiny_http = "0.12"
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 sys-locale = "0.3"
+sha2 = "0.10"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

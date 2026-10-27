@@ -40,15 +40,18 @@ function transition(from: Route, to: Route, apply: () => void) {
   void vt?.finished?.finally(() => delete document.documentElement.dataset.transition);
 }
 
-export function go(r: Route) {
+function place(r: Route) {
+  // Top-level destinations reset the stack; detail views push onto it.
+  if (r.name === "overview") setStack([r]);
+  else if (r.name === "inbox" || r.name === "settings") setStack([{ name: "overview" }, r]);
+  else setStack((s) => [...s, r].slice(-12));
+}
+
+export function go(r: Route, opts: { animate?: boolean } = {}) {
   const cur = route();
   if (JSON.stringify(cur) === JSON.stringify(r)) return;
-  transition(cur, r, () => {
-    // Top-level destinations reset the stack; detail views push onto it.
-    if (r.name === "overview") setStack([r]);
-    else if (r.name === "inbox" || r.name === "settings") setStack([{ name: "overview" }, r]);
-    else setStack((s) => [...s, r].slice(-12));
-  });
+  if (opts.animate === false) place(r);
+  else transition(cur, r, () => place(r));
 }
 
 /** The project fields a "fix it in the project settings" link can point at. */

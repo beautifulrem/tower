@@ -317,6 +317,7 @@ test("the trace writes a minute once; a sheet's text area takes focus in its bor
   await openTower(page, "goal/G-0002");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await page.keyboard.press("w");
+  await expect(page.locator("button[aria-pressed=true]", { hasText: "Trace" }).first()).toBeVisible();
   const times = page.locator(".trace-row .trace-time");
   await expect(times.first()).toBeVisible();
   expect(await times.count()).toBeGreaterThan(3);

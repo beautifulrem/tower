@@ -72,7 +72,8 @@ describe("interface text", () => {
   // The first paint has only the first half: a module the start-up bundle carries (what main.tsx reaches by static
   // imports) may name only words from it, and a key it builds at run time (`state.${s}`) only from a namespace
   // with nothing in the second half. On-demand views load through `withLater`, which brings the second half first.
-  it("start-up modules say only what the first half holds", () => {
+  /** The modules the start-up bundle carries: what main.tsx reaches by static imports. */
+  function startupModules(): string[] {
     const seen = new Set<string>();
     const visit = (f: string) => {
       if (seen.has(f)) return;
@@ -83,11 +84,17 @@ describe("interface text", () => {
       }
     };
     visit("main.tsx");
-    const modules = [...seen].filter((f) => !f.includes("/locales/"));
+    return [...seen].filter((f) => !f.includes("/locales/"));
+  }
+
+  it("start-up modules say only what the first half holds", () => {
+    const modules = startupModules();
     // The walk reaches the views the first paint draws, and not the ones loaded on demand.
     expect(modules).toEqual(expect.arrayContaining(["views/Overview.tsx", "views/Inbox.tsx", "components/DecisionCard.tsx", "lib/i18n.ts"]));
     expect(modules).not.toContain("views/Review.tsx");
     expect(modules).not.toContain("views/Settings.tsx");
+    expect(modules).not.toContain("views/GoalPage.tsx");
+    expect(modules).not.toContain("components/Honesty.tsx");
     const later = halves.later.zh;
     const laterNamespaces = new Set([...later.keys()].map((k) => k.split(".")[0]));
     const wrong: string[] = [];
@@ -96,5 +103,19 @@ describe("interface text", () => {
       for (const m of sources[f].matchAll(/\bt\(`([a-zA-Z]+)\.\$\{/g)) if (laterNamespaces.has(m[1])) wrong.push(`${f}: ${m[1]}.\${…}`);
     }
     expect(wrong).toEqual([]);
+  });
+
+  // The other way round: a word in the first half that no start-up module says only makes the first paint wait for
+  // it (the goal page's words stayed there once after the page left start-up). A namespace a start-up module builds
+  // keys in at run time stays whole.
+  it("the first half holds only what start-up modules say", () => {
+    const named = new Set<string>();
+    const built = new Set<string>();
+    for (const f of startupModules()) {
+      for (const m of sources[f].matchAll(/["'`]([a-zA-Z]+\.[a-zA-Z]+)["'`]/g)) named.add(m[1]);
+      for (const m of sources[f].matchAll(/["'`]([a-zA-Z]+)\.[a-zA-Z]*\$\{/g)) built.add(m[1]);
+    }
+    const idle = [...halves.now.zh.keys()].filter((k) => !named.has(k) && !built.has(k.split(".")[0]));
+    expect(idle).toEqual([]);
   });
 });

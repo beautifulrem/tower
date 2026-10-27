@@ -90,7 +90,7 @@ docs/                    the product design (start at 00) and its adversarial re
 tools/                   demo engine and screenshot helper
 ```
 
-The supervisor owns all state; the interface holds a read-only replica fed by coalesced updates. The code the window loads at start is about 56 KB gzipped, the first half of one interface language included (the other language loads only if you switch); the goal page and the words only later views say follow once the first frame is up, the review, settings, contract editor, command palette and native menus load on first use, and syntax highlighting in a worker; CI enforces a budget for each, for the goal page and for all of the interface's JavaScript together, so moving code out of start-up cannot hide growth (`tools/bundle-budget.sh`: start-up 72 KB, goal page 12 KB, all 160 KB; about 136 KB today). The app is about 11 MB.
+The supervisor owns all state; the interface holds a read-only replica fed by coalesced updates. The code the window loads at start is about 51 KB gzipped, the first half of one interface language included (the other language loads only if you switch); the goal page and the words only later views say follow once the first frame is up, the review, settings, contract editor, command palette and native menus load on first use, and syntax highlighting in a worker; CI enforces a budget for each, for the goal page and for all of the interface's JavaScript together, so moving code out of start-up cannot hide growth (`tools/bundle-budget.sh`: start-up 64 KB, goal page 12 KB, all 160 KB; about 142 KB today). The app is about 11 MB.
 
 ## Design
 

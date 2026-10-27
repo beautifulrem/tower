@@ -13,6 +13,7 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX GIT_OBJECT_
 echo "pre-push: rustfmt, clippy, types, unit, flow and end-to-end tests"
 cargo fmt --all --check
 tools/line-limit.sh
+node tools/security-tests.mjs >/dev/null
 cargo clippy --workspace --all-targets --quiet -- -D warnings
 pnpm --silent --dir apps/desktop check
 pnpm --silent --dir apps/desktop test >/dev/null

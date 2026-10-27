@@ -18,11 +18,14 @@
 # chunks and the current language's second half is on demand too), with the
 # headroom the old budget had. The total (160 KB) and goal-page (12 KB)
 # budgets were set at 15% or more over the sizes of 2026-10-27 (139,237 and
-# 10,071 bytes).
+# 10,071 bytes). On 2026-10-27 the goal page's words, the criterion notes
+# and the palette's words left start-up too (58,334 → 52,661 bytes; the
+# total grew by 228): 8 KB of the start-up budget moved to on demand
+# (72 → 64 KB, 96 → 104 KB), so the win is kept and the sum is unchanged.
 # Run after `pnpm --dir apps/desktop build`.
 set -e
-start_budget="${1:-73728}"
-lazy_budget="${2:-98304}"
+start_budget="${1:-65536}"
+lazy_budget="${2:-106496}"
 worker_budget="${3:-262144}"
 total_budget="${4:-163840}"
 goal_budget="${5:-12288}"

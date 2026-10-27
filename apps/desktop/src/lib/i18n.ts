@@ -15,11 +15,13 @@
  * every string reads in it.
  *
  * Each language comes in two halves. The first holds what the first paint
- * can say (the board, the queue, the goal page); the second (`*.later.ts`)
- * what only the on-demand views say — review, settings, the contract
- * editor, the trace, the welcome page. The second is fetched once the first
- * frame is up, and every on-demand view waits for it (`withLater`), so no
- * view ever shows a key. A test keeps start-up modules off the second half.
+ * can say (the board, the queue, the desk's cards); the second
+ * (`*.later.ts`) what only the on-demand views say — the goal page, review,
+ * settings, the contract editor, the trace, the palette, the welcome page.
+ * The second is fetched once the first frame is up, and every on-demand
+ * view waits for it (`withLater`), so no view ever shows a key. A test keeps
+ * start-up modules off the second half, and the first half free of words no
+ * start-up module says (they would only make the first paint wait).
  */
 import { createEffect, createRoot, createSignal } from "solid-js";
 

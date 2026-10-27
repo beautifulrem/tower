@@ -31,6 +31,7 @@ pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<Choice> {
         PauseReason::WallClockCap => vec![MoreTime, Abandon],
         PauseReason::DependenciesChanged => vec![InstallWithNetwork, Abandon],
         PauseReason::HeldOutFailed => vec![TellFailingNames, ShowHeldOutFailure, Abandon],
+        PauseReason::CriteriaCannotRun => vec![Retry, RealTestFailure, Abandon],
         PauseReason::Human | PauseReason::AppQuit => vec![Continue],
     }
 }
@@ -163,6 +164,32 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
                 "Every machine criterion passed; you confirmed the sentinel hits"
             );
             verify::review_ready(inner, goal, &body)
+        }
+        Some(Choice::RealTestFailure) => {
+            // Your call: what looked like a refusal is how the test fails on
+            // your code. It counts as failing before the change (red).
+            let detail = inner.store(|s| s.detail(goal))?;
+            for c in detail.criteria.iter().filter(|c| c.base_error.is_some()) {
+                if let tower_core::CriterionKind::Exec { command, .. } = &c.criterion.kind {
+                    inner.append(
+                        goal,
+                        EventKind::BaselineResult {
+                            criterion: c.criterion.id.clone(),
+                            command: command.clone(),
+                            base: rec.base_commit.clone().unwrap_or_default(),
+                            passed: false,
+                            error: None,
+                        },
+                    )?;
+                }
+            }
+            let text = tr!(
+                lang,
+                "你确认这是真的测试失败，按改动前失败记录",
+                "You confirmed it is a real test failure; recorded as failing before the change"
+            );
+            inner.append(goal, EventKind::Note { text })?;
+            run::resume(inner, goal).await
         }
         Some(Choice::TellFailingNames) => {
             let text = tr!(

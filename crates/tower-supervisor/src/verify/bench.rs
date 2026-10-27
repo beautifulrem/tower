@@ -157,7 +157,11 @@ impl<'a> Bench<'a> {
     async fn exec(&self, command: &str, profile: Option<&Path>, timeout: Duration) -> Ran {
         let spec = RunSpec::new(command_for(command, profile), &self.dir, self.env.clone(), timeout);
         let r = tower_verify::run(&spec, self.cancel).await;
-        let denied = !r.passed() && crate::run::sandbox_denied(&r.output_tail);
+        // A refusal counts only when Tower sees it itself: a path the
+        // output names that Tower can read and the same sandbox cannot.
+        let denied = !r.passed()
+            && crate::run::sandbox_denied(&r.output_tail)
+            && confirmed_refusal(&r.output_tail, profile, &self.dir).await.is_some();
         Ran {
             passed: r.passed(),
             environment_failure: r.is_environment_failure() || denied,
@@ -560,14 +564,13 @@ impl<'a> Bench<'a> {
                     continue;
                 }
                 let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;
-                if r.environment_failure {
-                    continue;
-                }
+                // No verdict is not a pass: this run must say yes.
+                let passed = r.passed && !r.environment_failure;
                 inner.append(
                     goal,
-                    EventKind::OriginalTestsResult { criterion: c.id.clone(), pin: pin.into(), passed: r.passed },
+                    EventKind::OriginalTestsResult { criterion: c.id.clone(), pin: pin.into(), passed },
                 )?;
-                if !r.passed {
+                if !passed {
                     depends.push(c.id.clone());
                 }
             }
@@ -605,6 +608,7 @@ impl<'a> Bench<'a> {
             let profile =
                 if held_files.is_empty() { self.criteria.as_deref() } else { self.held_out_profile.as_deref() };
             let mut tripped = Vec::new();
+            let mut refused = Vec::new();
             for (c, command, timeout) in &proving {
                 let held_out_missing = held_files.is_empty() && names_held_out(&self.holdout, command);
                 let runnable = !canary.files.is_empty() && !paths_gone(&self.dir, command) && !held_out_missing;
@@ -613,8 +617,12 @@ impl<'a> Bench<'a> {
                     let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;
                     match canary.verdict(r.passed) {
                         crate::canary::Verdict::Tampered => CanaryState::Tampered,
-                        // Refused or killed: nothing was shown either way.
-                        _ if r.environment_failure => CanaryState::NotChecked,
+                        // Refused or killed where the same command just
+                        // passed: nothing was shown, and that is a finding.
+                        _ if r.environment_failure => {
+                            refused.push(c.id.clone());
+                            CanaryState::NotChecked
+                        }
                         crate::canary::Verdict::Intact => CanaryState::Intact,
                         crate::canary::Verdict::NotChecked => CanaryState::NotChecked,
                     }
@@ -627,6 +635,17 @@ impl<'a> Bench<'a> {
                 }
             }
             canary.clear();
+            if !refused.is_empty() {
+                let detail = tr!(
+                    lang,
+                    "{ids} 刚刚通过，但加入必然失败的测试后同一命令没能跑完（被拒绝或被终止），断言没能检查。",
+                    "{ids} had just passed, but with the must-fail tests added the same command could not finish (refused or stopped), so its assertions were not checked.",
+                    ids = refused.join(", ")
+                );
+                let hit = sentinel_hit("assertions_unchecked", detail, lang);
+                append_hit(inner, goal, &hit)?;
+                found.push(hit);
+            }
             if !tripped.is_empty() {
                 let detail = tr!(
                     lang,
@@ -645,6 +664,57 @@ impl<'a> Bench<'a> {
 
 /// A command names a file that is not in the checkout (`node --test x.test.js`
 /// after the agent's new test was taken out): running it proves nothing.
+/// The first path an output says was refused that Tower itself can read
+/// while the same sandbox profile cannot — a refusal Tower observed, not
+/// one the command merely printed. Paths inside the checkout never count
+/// (the sandbox allows them; a test's own permission error is a test).
+pub(super) async fn confirmed_refusal(output: &str, profile: Option<&Path>, dir: &Path) -> Option<String> {
+    let profile = profile?;
+    let mut candidates: Vec<String> = Vec::new();
+    for line in output.lines().filter(|l| {
+        let l = l.to_ascii_lowercase();
+        l.contains("operation not permitted") || l.contains("eperm")
+    }) {
+        for word in line.split(|c: char| c.is_whitespace() || matches!(c, '\'' | '"' | ',' | '(' | ')' | '`')) {
+            let w = word.trim_end_matches(':');
+            if w.starts_with('/') && !candidates.iter().any(|c| c == w) {
+                candidates.push(w.to_string());
+            }
+        }
+    }
+    let real_dir = crate::paths::real(dir);
+    for path in candidates.into_iter().take(5) {
+        let p = Path::new(&path);
+        if crate::paths::real(p).starts_with(&real_dir) || std::fs::symlink_metadata(p).is_err() {
+            continue;
+        }
+        let is_dir = p.is_dir();
+        let probe = if is_dir {
+            format!("/bin/ls {}", shell_quote(&path))
+        } else {
+            format!("/usr/bin/head -c 0 {}", shell_quote(&path))
+        };
+        let out = tokio::process::Command::new("/usr/bin/sandbox-exec")
+            .arg("-f")
+            .arg(profile)
+            .args(["/bin/sh", "-c", &probe])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+            .ok()?;
+        let refused = !out.status.success() && String::from_utf8_lossy(&out.stderr).contains("Operation not permitted");
+        if refused {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
 pub(super) fn paths_gone(dir: &Path, command: &str) -> bool {
     command
         .split_whitespace()

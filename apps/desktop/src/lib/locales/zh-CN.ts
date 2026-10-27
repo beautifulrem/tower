@@ -62,6 +62,7 @@ export const zh = {
     internal: "Tower 内部出错",
     dependencies_changed: "Agent 改了依赖，验证的准备步骤需要联网",
     held_out_failed: "保留测试没有通过（Agent 看不到它们）",
+    criteria_cannot_run: "验收标准在验证沙箱里跑不起来",
   },
   mode: {
     idle: "空闲",

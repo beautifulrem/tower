@@ -57,6 +57,9 @@ pub(crate) fn agent_jail(
     let cache = crate::caches::prepare(&goal_dir.join("cache"), &home_of(inner), dir)?;
     let mut net = Net::new(&goal.contract, network);
     net.ports.extend(own_ports(inner, &goal.id));
+    // Your own tests need loopback (found on your unchanged code, or the
+    // project's setting): the agent runs the same tests.
+    net.open |= loopback_opened_for(inner, goal);
     let dirs = Dirs { work: dir, tmp, cache: &cache };
     jail(inner, &goal_dir, &dirs, purpose, &net, &TowerFiles::default())
 }
@@ -81,6 +84,13 @@ pub(crate) struct TowerFiles {
     pub append: Vec<PathBuf>,
 }
 
+/// Whether loopback is open for a goal beyond its contract: the project's
+/// setting, or a criterion that needed it on your own, unchanged code.
+pub(crate) fn loopback_opened_for(inner: &Inner, goal: &tower_store::GoalRecord) -> bool {
+    inner.store(|s| s.project(&goal.project_id)).is_ok_and(|p| p.loopback_open)
+        || inner.store(|s| s.loopback_opened(&goal.id)).is_ok_and(|o| !o.is_empty())
+}
+
 /// Ports the goal's agent processes listen on now.
 pub(crate) fn own_ports(inner: &Inner, goal: &str) -> Vec<u16> {
     let paths = &inner.paths;
@@ -94,18 +104,28 @@ pub(crate) fn own_ports(inner: &Inner, goal: &str) -> Vec<u16> {
 }
 
 /// Keeps the agent's profile in step with the servers its own processes
-/// start: a profile is fixed when a command starts, so the next command
-/// can reach a server an earlier one left listening. Stops with the run.
+/// start, and with loopback opened for the goal meanwhile: a profile is
+/// fixed when a command starts, so the next command can reach a server an
+/// earlier one left listening. Stops with the run.
 pub(crate) async fn follow_agent_listeners(inner: Arc<Inner>, goal: String, run_no: u32) {
-    let mut known = own_ports(&inner, &goal);
+    // What the profile was written from: the agent's own listeners, and
+    // whether loopback is open for the goal (preflight may open it).
+    let state = |inner: Arc<Inner>, goal: String| async move {
+        tokio::task::spawn_blocking(move || {
+            let open = inner.store(|s| s.goal(&goal)).is_ok_and(|g| loopback_opened_for(&inner, &g));
+            (own_ports(&inner, &goal), open)
+        })
+        .await
+        .unwrap_or_default()
+    };
+    let mut known = state(inner.clone(), goal.clone()).await;
     let mut tick = tokio::time::interval(Duration::from_secs(2));
     loop {
         tick.tick().await;
         if inner.run_of(&goal).is_none_or(|r| r.run_no != run_no) {
             break;
         }
-        let (inner2, goal2) = (inner.clone(), goal.clone());
-        let now = tokio::task::spawn_blocking(move || own_ports(&inner2, &goal2)).await.unwrap_or_default();
+        let now = state(inner.clone(), goal.clone()).await;
         if now == known {
             continue;
         }

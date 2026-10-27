@@ -64,6 +64,10 @@ export const enLater: DictLater = {
     evCostUpdated: "Spend updated",
     evBranchWritten: "Branch written",
     prChecked: "PR checks",
+    loopbackOpened: (p: { id: string; why: string }) =>
+      p.why === "base"
+        ? `Loopback opened for ${p.id}: your own tests used it on the base, before the agent changed anything`
+        : `Loopback opened for ${p.id}: this project's setting`,
     filterLabel: "Trace filter",
     emptyTitle: "No trace yet",
     emptyBody: "Once a run starts, every tool call, every sentence and every verifier result lands here in order.",
@@ -187,6 +191,9 @@ export const enLater: DictLater = {
     claudeAcpHint: "Optional. Empty uses an installed claude-agent-acp, else npx with a pinned version.",
     holdoutFiles: "Held-out tests",
     holdoutFilesHint: "Appear in verification only; the agent never sees them. One pattern per line; git-ignored files.",
+    loopbackOpen: "Open loopback for this project's tests",
+    loopbackOpenHint:
+      "With the network off, the agent and the checks reach everything on this Mac except services already listening when a command starts; services started later become reachable to them. Tower turns this on when your own tests need it on the base.",
     phone: "Phone",
     phoneHint: "See and answer what needs you from your phone, over your own network. Tower serves the page itself; the pairing link carries the token.",
     phoneEnable: "Enable the phone page",

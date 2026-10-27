@@ -33,6 +33,12 @@ pub struct ProjectView {
     /// Run once in each new workspace (e.g. `pnpm install`), sandboxed, so
     /// the agent starts with dependencies in place. Empty means none.
     pub setup_command: String,
+    /// With the network off, open loopback (all of this Mac except what
+    /// already listens when a command starts) for this project's goals:
+    /// set when a criterion needed it on your own, unchanged code, and
+    /// yours to turn off.
+    #[serde(default)]
+    pub loopback_open: bool,
     pub created_at: Millis,
     /// The test command run on a clean copy of the base branch, so the
     /// first goal does not discover a broken test setup.
@@ -191,6 +197,12 @@ pub struct CriterionView {
     /// On the current snapshot, what the must-fail canary showed about the
     /// assertions (`None` when it was not this criterion's to check).
     pub canary: Option<CanaryState>,
+    /// Loopback was opened for this criterion's verification runs, and
+    /// why: `base` (your own code needed it before the agent changed
+    /// anything) or `project` (the project's setting).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub loopback_opened: Option<String>,
     pub observed: Option<ObservationView>,
     pub human_checked: bool,
 }

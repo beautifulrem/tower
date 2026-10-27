@@ -8,7 +8,7 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
 import { DangerMark, Icon, NotEvidenceMark, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
-import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, ObsChip, discountedOf } from "../../components/Honesty";
+import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, LoopbackLine, ObsChip, discountedOf } from "../../components/Honesty";
 import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay, Prose } from "../../components/ui";
 import type { CriterionView } from "../../gen/CriterionView";
@@ -144,6 +144,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                 <BaselineLine c={c} base={props.detail?.base_commit} />
                 <CanaryLine c={c} />
                 <HeldOutLine c={c} />
+                <LoopbackLine c={c} />
                 <Show when={c.look}>{(l) => <LookStrip look={l()} title={`${c.criterion.id} ${c.criterion.title}`} />}</Show>
                 <Show when={c.observed}>
                   <div class="criterion-row criterion-obs">

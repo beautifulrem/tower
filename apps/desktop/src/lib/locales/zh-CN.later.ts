@@ -61,6 +61,8 @@ export const zhLater = {
     evCostUpdated: "花费更新",
     evBranchWritten: "已写入分支",
     prChecked: "PR 检查",
+    loopbackOpened: (p: { id: string; why: string }) =>
+      p.why === "base" ? `已为 ${p.id} 放开本机回环：在 Agent 改动之前，你自己的测试在基线上就用到它` : `已为 ${p.id} 放开本机回环：这个项目的设置`,
     filterLabel: "轨迹筛选",
     emptyTitle: "还没有轨迹",
     emptyBody: "运行一开始，每一次工具调用、每一句话和每一条验证结果都会按时间落在这里。",
@@ -184,6 +186,8 @@ export const zhLater = {
     claudeAcpHint: "可选。留空则用已安装的 claude-agent-acp，否则用 npx 的固定版本。",
     holdoutFiles: "保留测试",
     holdoutFilesHint: "只在验证中出现，Agent 看不到。每行一个模式；须是被 git 忽略的文件。",
+    loopbackOpen: "为这个项目的测试放开本机回环",
+    loopbackOpenHint: "不联网时，Agent 与验收检查可以访问本机上除命令启动时已在监听的服务外的一切；之后才启动的服务也会变得可以访问。你自己的测试在基线上需要它时，Tower 会自动打开这一项。",
     phone: "手机",
     phoneHint: "在你自己的网络上，用手机看“需要你”并作答。Tower 自己提供这个页面；配对链接里带着令牌。",
     phoneEnable: "开启手机页面",

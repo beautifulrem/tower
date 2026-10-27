@@ -7,7 +7,7 @@
 import { Show, createSignal, lazy } from "solid-js";
 
 import { Icon, NotEvidenceMark, ResultMark } from "../../components/Glyph";
-import { BaselineLine, CanaryLine, HeldOutLine, ObsChip } from "../../components/Honesty";
+import { BaselineLine, CanaryLine, HeldOutLine, LoopbackLine, ObsChip } from "../../components/Honesty";
 import { LookStepsRead } from "../../components/LookSteps";
 import type { CriterionView } from "../../gen/CriterionView";
 import { api } from "../../lib/api";
@@ -101,6 +101,7 @@ export function CriterionRow(props: { goalId: string; c: CriterionView; state: s
       <BaselineLine c={c()} base={props.base} />
       <CanaryLine c={c()} />
       <HeldOutLine c={c()} />
+      <LoopbackLine c={c()} />
       <Show when={stepsOpen() && steps().length}>
         <LookStepsRead steps={steps()} />
       </Show>

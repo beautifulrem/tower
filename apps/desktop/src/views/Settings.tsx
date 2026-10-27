@@ -283,9 +283,7 @@ export function Settings() {
                 placeholder={t("common.eg", { x: "~/.pi/agent/npm/node_modules/pi-clinepass-provider/src/index.ts" })}
               />
             </Field>
-            <div class="form-row">
-              <Toggle checked={s()!.load_user_extensions} onChange={(v) => void patchNow({ load_user_extensions: v })} label={t("settings.loadAll")} hint={t("settings.loadAllHint")} />
-            </div>
+            <Toggle checked={s()!.load_user_extensions} onChange={(v) => void patchNow({ load_user_extensions: v })} label={t("settings.loadAll")} hint={t("settings.loadAllHint")} />
           </div>
         </section>
 
@@ -406,9 +404,7 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
         {t("settings.phoneHint")}
       </p>
       <div class="settings-form">
-        <div class="form-row">
-          <Toggle checked={props.s.remote_enabled} onChange={(v) => void toggle(v)} label={t("settings.phoneEnable")} hint={t("settings.phoneEnableHint")} />
-        </div>
+        <Toggle checked={props.s.remote_enabled} onChange={(v) => void toggle(v)} label={t("settings.phoneEnable")} hint={t("settings.phoneEnableHint")} />
         {/* Switched on but not served: the supervisor's sentence names the cause and the way out, in the attention register, right under the
             switch — the problem before the details, and "allow the local network below" pointing where that switch is. No link or QR is shown
             for a page nobody can reach. */}
@@ -432,18 +428,16 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
             onInput={(e) => props.patch({ remote_port: Number(e.currentTarget.value) || 7317 })}
           />
         </Field>
-        <div class="form-row">
-          <Toggle
-            checked={props.s.remote_local_network}
-            disabled={!props.s.remote_enabled}
-            onChange={(v) => {
-              props.patch({ remote_local_network: v });
-              void props.commit().then(() => refetch());
-            }}
-            label={t("settings.phoneLocalNetwork")}
-            hint={t("settings.phoneLocalNetworkHint")}
-          />
-        </div>
+        <Toggle
+          checked={props.s.remote_local_network}
+          disabled={!props.s.remote_enabled}
+          onChange={(v) => {
+            props.patch({ remote_local_network: v });
+            void props.commit().then(() => refetch());
+          }}
+          label={t("settings.phoneLocalNetwork")}
+          hint={t("settings.phoneLocalNetworkHint")}
+        />
         <Show when={props.s.remote_enabled}>
           <Show when={info()} fallback={<span class="field-hint form-row">{info.loading ? t("common.loading") : t("settings.phoneUnavailable")}</span>}>
             {(i) => (
@@ -571,9 +565,7 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
         </Field>
         {/* The daily window: a switch, then the two edges in one line, so "from 22:00 to 08:00" reads as a sentence. Plain 24-hour
             fields, as every clock on the desk: WebKit's native time field follows the system's 12-hour locale and would show 22:00 as 10:00. */}
-        <div class="form-row">
-          <Toggle checked={!!hours()} onChange={(v) => setHours(v ? DEFAULT_QUIET_HOURS : null)} label={t("settings.quietHoursEnable")} hint={t("settings.quietHoursHint")} />
-        </div>
+        <Toggle checked={!!hours()} onChange={(v) => setHours(v ? DEFAULT_QUIET_HOURS : null)} label={t("settings.quietHoursEnable")} hint={t("settings.quietHoursHint")} />
         <Show when={hours()}>
           {(q) => (
             <div class="form-row quiet-hours num" role="group" aria-label={t("settings.quietHours")}>
@@ -592,9 +584,7 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
         <Field label={t("settings.pushUrl")} hint={t("settings.pushUrlHint")}>
           <input class="mono" value={props.s.push_url} onInput={(e) => props.patch({ push_url: e.currentTarget.value })} placeholder={t("common.eg", { x: "https://ntfy.example.net/tower" })} spellcheck={false} />
         </Field>
-        <div class="form-row">
-          <Toggle checked={props.s.push_ready} onChange={(v) => (props.patch({ push_ready: v }), void props.commit())} label={t("settings.pushReady")} hint={t("settings.pushReadyHint")} />
-        </div>
+        <Toggle checked={props.s.push_ready} onChange={(v) => (props.patch({ push_ready: v }), void props.commit())} label={t("settings.pushReady")} hint={t("settings.pushReadyHint")} />
         {/* The test and the last outcome share a line: a failure is a fact with its time and the supervisor's sentence, never a silent one. */}
         <div class="form-row row push-test">
           <Button size="s" busy={sending()} disabled={!props.s.push_url.trim()} onClick={() => void testPush()}>

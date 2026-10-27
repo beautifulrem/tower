@@ -190,6 +190,8 @@ export const en: DictNow = {
     everywhere: "Everywhere",
     goalScope: "Goal page",
     note: "Single keys are off while you type in a field; chords with ⌘ always work.",
+    tabNote: "Tab moves between fields. Rows, cards and buttons answer the keys above; to reach every control with Tab, turn on Keyboard navigation in System Settings › Keyboard.",
+    foldCard: "Fold the open decision back into its line",
     palette: "Search goals and commands",
     shortcuts: "This sheet",
     activity: "Activity & errors",

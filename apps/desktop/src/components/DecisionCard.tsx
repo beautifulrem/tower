@@ -161,6 +161,52 @@ export function heldOutParts(body: string): { prose: string; failures: HeldOutFa
   return { prose: prose.join("\n").trim(), failures };
 }
 
+/**
+ * A decision on the overview: one line on the board's own grid — ◆ in the
+ * glyph column, the goal where every goal's name is, then what it asks (its
+ * kind and question across the live, criteria, change and spend columns),
+ * its age and identity under the rows' own. The overview is the whole board
+ * at a glance, not a second inbox: selecting the line (j/k, a click, Tab)
+ * opens the card in its place, and Needs you keeps every card open.
+ */
+export function DecisionLine(props: { item: InboxItem; onOpen: () => void }) {
+  const it = () => props.item;
+  const goal = () => state.goals[it().goal_id];
+  return (
+    <div class="g-row decision-line" data-line={it().id} onClick={() => props.onOpen()}>
+      <span class="g-glyph">
+        <NeedsYouMark />
+      </span>
+      <button
+        class="g-title"
+        aria-expanded="false"
+        aria-label={`${kindLabel(it().kind)}: ${it().subject}. ${it().goal_title}`}
+        title={it().goal_title}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onOpen();
+        }}
+      >
+        <span class="ellipsis">{it().goal_title}</span>
+      </button>
+      <span class="decision-line-ask">
+        <span class="decision-kind">{kindLabel(it().kind)}</span>
+        <span class="ellipsis t2" classList={{ "code-val": it().kind === "ci_failed" }} title={it().subject}>
+          {it().subject}
+        </span>
+      </span>
+      <span class="g-age num meta halt">{ago(it().created_at, state.now)}</span>
+      <span class="g-id meta halt">
+        <span class="code-val t2">{it().goal_id}</span>
+        <Show when={goal()}>
+          <span class="t3 ellipsis g-project">{goal()!.project_name}</span>
+        </Show>
+      </span>
+      <span class="g-act" />
+    </div>
+  );
+}
+
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean; ref?: (el: HTMLElement) => void }) {
   const [text, setText] = createSignal("");
   const [busy, setBusy] = createSignal(false);

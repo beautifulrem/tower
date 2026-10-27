@@ -48,7 +48,9 @@ export function ShortcutSheet() {
           )}
         </For>
       </div>
-      <p class="meta t3 keys-note">{t("keys.note")}</p>
+      <p class="meta t3 keys-note">
+        {t("keys.note")} {t("keys.tabNote")}
+      </p>
     </Overlay>
   );
 }

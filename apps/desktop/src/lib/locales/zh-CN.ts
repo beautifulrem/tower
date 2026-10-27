@@ -196,6 +196,8 @@ export const zh = {
     everywhere: "任何地方",
     goalScope: "目标页",
     note: "单键在输入框里不生效；带 ⌘ 的组合键随时可用。",
+    tabNote: "Tab 只在输入框之间移动。行、卡片和按钮用上面的键到达；想用 Tab 走到每个控件，请在“系统设置 › 键盘”里打开“键盘导航”。",
+    foldCard: "把展开的决定收回成一行",
     palette: "搜索目标与命令",
     shortcuts: "这张快捷键表",
     activity: "活动与错误",

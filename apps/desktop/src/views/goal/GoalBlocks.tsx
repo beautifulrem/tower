@@ -142,11 +142,14 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
         <Show when={!d().has_held_out_tests && g().progress.machine > 0}>
           <p class="meta held-out-none">
             <NoticeMark />
-            <span>{t("goal.noHeldOut")}</span>
-            <button class="link-quiet text-btn" onClick={() => goProjectSetting(g().project_id, "holdout")}>
-              {t("goal.setHeldOut")}
-              <Icon name="chevron-right" size={10} />
-            </button>
+            {/* The way to set them follows the sentence's last word, inside the same 72ch measure. */}
+            <span>
+              {t("goal.noHeldOut")}{" "}
+              <button class="link-quiet text-btn" onClick={() => goProjectSetting(g().project_id, "holdout")}>
+                {t("goal.setHeldOut")}
+                <Icon name="chevron-right" size={10} />
+              </button>
+            </span>
           </p>
         </Show>
         <Show when={d().criteria.length === 0}>

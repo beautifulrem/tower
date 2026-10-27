@@ -50,7 +50,7 @@ test("answering a card closes the loop: the card sits in a folding slot that fol
   await expect.poll(async () => slot.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
 });
 
-test("a queue has one filled primary at a time, on the focused card, and it follows j/k; the overview's first card starts focused", async ({ page }) => {
+test("a queue has one filled primary at a time, on the focused card, and it follows j/k; the overview's decisions are lines until one is selected", async ({ page }) => {
   await openTower(page, "inbox", { enrich: enrichCi });
   const cards = page.locator(".decision-slot .decision");
   expect(await cards.count()).toBeGreaterThanOrEqual(2);
@@ -85,9 +85,31 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   await expect.poll(() => fill(cards.nth(target))).toBe("filled");
   await expect.poll(() => fill(cards.nth(0))).toBe("plain");
   await openTower(page, "overview", { enrich: enrichCi });
-  const first = page.locator(".board-queue .decision").first();
-  await expect(first).toHaveClass(/focused/);
-  await expect.poll(() => fill(first)).toBe("filled");
+  // The overview is the whole board: every decision is one line on the rows' grid, and the running goals are on the first screen.
+  const lines = page.locator(".board-queue .decision-line");
+  expect(await lines.count()).toBeGreaterThanOrEqual(2);
+  await expect(page.locator(".board-queue .decision")).toHaveCount(0);
+  const firstRow = page.locator(".board-rows [data-goal]").first();
+  expect((await firstRow.boundingBox())!.y).toBeLessThan(900);
+  // One right edge: the lines end where the board's rows end.
+  const right = async (sel: string) => page.locator(sel).first().evaluate((el) => Math.round(el.getBoundingClientRect().right));
+  expect(await right(".board-queue .decision-line")).toBe(await right(".board-rows [data-goal]"));
+  // j opens the first line into its card, which takes the keyboard and the one black button; Esc folds it back.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect.poll(async () => {
+    if (!(await page.locator(".board-queue .decision").count())) await page.keyboard.press("j");
+    return page.locator(".board-queue .decision").count();
+  }, { intervals: [250, 500, 1000] }).toBe(1);
+  const open = page.locator(".board-queue .decision");
+  await expect(open).toHaveClass(/focused/);
+  await expect(open).toBeFocused();
+  await expect.poll(() => fill(open)).toBe("filled");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".board-queue .decision")).toHaveCount(0);
+  await expect(lines.first().locator(".g-title")).toBeFocused();
+  // A click on a line opens it too.
+  await lines.nth(1).click();
+  await expect(page.locator(".board-queue .decision")).toHaveCount(1);
 });
 
 test("a put-aside card is still accounted for in the inbox, with its way back", async ({ page }) => {

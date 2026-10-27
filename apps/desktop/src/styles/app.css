@@ -1498,11 +1498,21 @@ input[type="radio"] {
   align-items: center;
   min-width: 0;
 }
+.goal-side {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  flex: 0 0 auto;
+}
 .goal-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   padding-top: 2px;
+}
+/* The seal's line is the identity line's: 16px, under the 28px title row. */
+.goal-side .seal {
+  min-height: 18px;
 }
 .goal-overlaps {
   display: flex;
@@ -1515,7 +1525,7 @@ input[type="radio"] {
   min-width: 5em;
   justify-content: flex-end;
 }
-.goal-sub .seal {
+.goal-side .seal {
   font-size: var(--fs-body);
 }
 /* While the detail loads, the sections already stand; only their bodies are empty. */
@@ -1528,11 +1538,18 @@ input[type="radio"] {
   margin-bottom: var(--sp-3);
   border-bottom: 1px solid var(--border-subtle);
 }
+/* The card is as wide as the main column under it (its sentences keep their own 72ch), so the page has one right
+   edge for the main column and one for the rail. */
 .goal-decisions {
   display: grid;
   gap: var(--sp-3);
   margin-bottom: var(--sp-4);
-  max-width: var(--reading-w);
+  max-width: calc(100% - var(--rail-w) - var(--sp-8));
+}
+@media (max-width: 1280px) {
+  .goal-decisions {
+    max-width: none;
+  }
 }
 .goal-body {
   display: grid;
@@ -1738,10 +1755,14 @@ input[type="radio"] {
   flex: 0 0 auto;
   margin-top: 3px;
 }
+.held-out-none {
+  max-width: 72ch;
+}
 .held-out-none .text-btn {
-  flex: 0 0 auto;
-  margin: -2px 0 0 var(--sp-2);
+  margin: -2px 0 -2px 2px;
+  vertical-align: baseline;
   color: var(--text-3);
+  white-space: nowrap;
 }
 
 .output-tail {
@@ -1781,7 +1802,10 @@ input[type="radio"] {
   word-break: break-word;
   max-width: 72ch;
 }
+/* A machine line that wraps hangs its continuation under its own text, so `b));` never reads as a line of its own. */
 .sentinel-machine {
+  padding-left: 2ch;
+  text-indent: -2ch;
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--text-2);
@@ -2018,6 +2042,14 @@ input[type="radio"] {
 .decision.focused {
   border-color: var(--border-strong);
 }
+/* The keyboard's ring is drawn on the card's own edge, not 2px outside it: one line around a focused card, never two. */
+.decision:focus-visible {
+  outline-offset: -1px;
+  border-color: transparent;
+}
+.decision:focus {
+  outline-offset: -1px;
+}
 /* In a queue, one card is black at a time: the focused one (the pointer's, or j/k's). The others keep their primary's
    words and key — 1 still presses it — in the default frame, so a screen of three cards has one filled button, not three. */
 .decision.quiet .btn-primary:not(:disabled) {
@@ -2064,6 +2096,23 @@ input[type="radio"] {
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* One reading measure for every sentence on a card, however wide the card is (the overview's open card runs the
+   board's width): 72ch, so a line is read, not scanned. Machine text — output tails, chips — keeps the card's width. */
+.decision-question,
+.decision-body,
+.decision-caution,
+.decision-note,
+.decision-refused,
+.decision .claim {
+  max-width: 72ch;
+}
+:root[lang="zh-CN"] .decision-question,
+:root[lang="zh-CN"] .decision-body,
+:root[lang="zh-CN"] .decision-caution,
+:root[lang="zh-CN"] .decision-note,
+:root[lang="zh-CN"] .decision-refused {
+  max-width: 42em;
+}
 .decision-readout {
   display: flex;
   flex-wrap: wrap;
@@ -2093,6 +2142,7 @@ input[type="radio"] {
 }
 .decision-note {
   font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
   color: var(--text-3);
 }
 /* Machine text in a card: the same inset block as a verifier's output tail. */
@@ -2172,7 +2222,6 @@ input[type="radio"] {
   display: flex;
   gap: 6px;
   align-items: baseline;
-  max-width: 60ch;
 }
 .decision-caution .glyph {
   flex: 0 0 auto;
@@ -3543,13 +3592,15 @@ input[type="radio"] {
    Board rows — the instrument lines of the overview
    ====================================================================== */
 
-/* The quick field and the decision queue share one right edge; the filter follows. */
+/* The quick field runs to the board's right edge, the one every row, hairline and open card ends on; the filter follows. */
 .overview-top {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-2);
   margin-bottom: var(--sp-2);
-  max-width: var(--reading-w);
+}
+.overview-top .quick {
+  max-width: none;
 }
 .overview > .empty {
   margin-top: var(--sp-6);
@@ -3626,13 +3677,35 @@ input[type="radio"] {
   height: 32px !important;
   max-width: 14em;
 }
-.board-queue {
-  display: grid;
-  gap: var(--sp-2);
-  max-width: var(--reading-w);
-}
 .board-rows {
   border-top: 1px solid var(--border-subtle);
+}
+/* The overview's decisions are lines on the board's grid, so the page has one right edge: the rows', the
+   hairlines', the open card's. Only the selected one is a card; it stands a breath off the lines around it. */
+.decision-line {
+  cursor: default;
+}
+.decision-line-ask {
+  grid-column: 3 / 7;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  white-space: nowrap;
+}
+.decision-line-ask .decision-kind {
+  flex: 0 0 auto;
+  font-weight: 400;
+}
+.decision-line-ask .ellipsis {
+  min-width: 0;
+}
+.decision-line .g-id {
+  gap: var(--sp-2);
+}
+.board-queue .decision-slot.open {
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 /* One goal per line. Columns, left to right: glyph · title · live line ·

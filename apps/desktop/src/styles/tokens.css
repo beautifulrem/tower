@@ -9,7 +9,10 @@
     "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono", "PingFang SC", monospace;
   --font-features-ui: "calt" 1, "cv01" 1, "ss03" 1;
-  --font-features-num: "calt" 1, "tnum" 1, "zero" 1;
+  /* Mono is evidence and reads exactly as written: no ligatures, no contextual alternates (`===` stays three bars,
+     `=>` two characters, `://` unspaced), a slashed zero. */
+  --font-features-mono: "liga" 0, "calt" 0, "zero" 1;
+  --font-features-num: "liga" 0, "calt" 0, "tnum" 1, "zero" 1;
 
   /* Latin tracking per size; CJK is never tracked. */
   --tr-12: 0;

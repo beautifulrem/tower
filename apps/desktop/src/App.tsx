@@ -1,5 +1,5 @@
 /** Application shell: sidebar, title bar and the current view. */
-import { Match, Show, Switch, lazy, onCleanup } from "solid-js";
+import { Match, Show, Switch, lazy, onCleanup, onMount } from "solid-js";
 
 import { listen } from "@tauri-apps/api/event";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
@@ -12,22 +12,23 @@ import { useKeys } from "./lib/keys";
 import { activityOpen, openActivity, openPalette, openShortcuts, paletteOpen, shortcutsOpen, toggleActivity, togglePalette, toggleShortcuts } from "./lib/layers";
 import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
-import { t } from "./lib/i18n";
+import { t, withLater } from "./lib/i18n";
 import { act, init, state, toast } from "./lib/store";
-import { GoalPage } from "./views/GoalPage";
 import { Inbox } from "./views/Inbox";
 import { Overview } from "./views/Overview";
 import { pickProject } from "./components/Demo";
 
-// Views you reach by an action, not at launch, load on first use: start-up
-// stays small and they are local files, so the delay is not perceptible.
-const Review = lazy(() => import("./views/Review").then((m) => ({ default: m.Review })));
-const Settings = lazy(() => import("./views/Settings").then((m) => ({ default: m.Settings })));
-const ContractEditor = lazy(() => import("./views/ContractEditor").then((m) => ({ default: m.ContractEditor })));
+// Views you reach by an action, not at launch, load on first use, with the half of the dictionary they speak:
+// start-up stays small and they are local files, so the delay is not perceptible. The goal page is one click from
+// every first screen, so it is fetched as soon as the first frame is up rather than on that click.
+const GoalPage = lazy(withLater(() => import("./views/GoalPage").then((m) => ({ default: m.GoalPage }))));
+const Review = lazy(withLater(() => import("./views/Review").then((m) => ({ default: m.Review }))));
+const Settings = lazy(withLater(() => import("./views/Settings").then((m) => ({ default: m.Settings }))));
+const ContractEditor = lazy(withLater(() => import("./views/ContractEditor").then((m) => ({ default: m.ContractEditor }))));
 // The floating layers too: each opens on a key or a click, so its code comes then. Their keys are bound here.
-const CommandPalette = lazy(() => import("./components/Palette").then((m) => ({ default: m.CommandPalette })));
-const ShortcutSheet = lazy(() => import("./components/ShortcutSheet").then((m) => ({ default: m.ShortcutSheet })));
-const ActivityPanel = lazy(() => import("./components/Activity").then((m) => ({ default: m.ActivityPanel })));
+const CommandPalette = lazy(withLater(() => import("./components/Palette").then((m) => ({ default: m.CommandPalette }))));
+const ShortcutSheet = lazy(withLater(() => import("./components/ShortcutSheet").then((m) => ({ default: m.ShortcutSheet }))));
+const ActivityPanel = lazy(withLater(() => import("./components/Activity").then((m) => ({ default: m.ActivityPanel }))));
 
 /** The next item that needs you, cycling (Codex ⌘⌥A, Conductor ⌘⌥L). */
 function nextNeedsYou() {
@@ -130,6 +131,8 @@ export function App() {
   const active = (on: boolean) => () => (document.documentElement.dataset.windowActive = on ? "true" : "false");
   const unlisten = Promise.all([listen("tauri://focus", active(true)), listen("tauri://blur", active(false))]);
   onCleanup(() => void unlisten.then((fs) => fs.forEach((f) => f())));
+  // Once the first frame is up: the goal page, and with it the words the on-demand views say.
+  onMount(() => requestAnimationFrame(() => setTimeout(() => void GoalPage.preload(), 0)));
 
   useMenu({
     "nav:new": () => go({ name: "new" }),

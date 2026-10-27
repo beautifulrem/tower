@@ -793,6 +793,7 @@
   border-radius: var(--radius-xs);
   background: var(--kbd-bg);
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 10.5px;
   font-weight: 500;
   letter-spacing: 0;
@@ -1241,6 +1242,7 @@ input[type="radio"] {
   left: 11px;
   top: 5px;
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 13px;
   color: var(--text-3);
   pointer-events: none;
@@ -1635,6 +1637,7 @@ input[type="radio"] {
   align-items: center;
   gap: 4px;
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 11.5px;
   color: var(--text-2);
   white-space: nowrap;
@@ -1672,9 +1675,21 @@ input[type="radio"] {
 .criterion-row.clickable:hover .col-pin {
   color: var(--text-1);
 }
-/* The observation line uses the same columns, one register down. */
+/* The notes under a criterion — observation, canary, held-out, base — use the same columns, one register down, and
+   start where the title starts: one left edge for the readout, one register to a line (the readings' right-hand
+   columns are the row's own). */
 .criterion-obs {
   min-height: 24px;
+}
+.criterion-row.criterion-obs .col-span {
+  grid-column: 3 / -1;
+  justify-content: flex-start;
+}
+/* A note's leading mark (◆, the scale, the environment's ◫) hangs in the id column, so every note's words start on
+   the title's edge, marked or not. */
+.criterion-row.criterion-obs .col-span > :is(svg.glyph, .icon, .result):first-child {
+  flex: 0 0 10px;
+  margin-left: calc(-10px - var(--sp-2));
 }
 .criterion-obs .col-result {
   display: inline-flex;
@@ -1708,6 +1723,7 @@ input[type="radio"] {
   padding: 2px 0;
 }
 .env-refused {
+  flex-basis: 100%;
   overflow-wrap: anywhere;
 }
 /* No held-out tests: said once, quietly, under the criteria and over the diff, with the way to set them. */
@@ -1727,14 +1743,9 @@ input[type="radio"] {
   margin: -2px 0 0 var(--sp-2);
   color: var(--text-3);
 }
-.review-diff .held-out-none {
-  margin: 0 0 var(--sp-3);
-  font-size: var(--fs-meta);
-  line-height: var(--lh-meta);
-}
 
 .output-tail {
-  font-feature-settings: "liga" 0, "calt" 0;
+  font-feature-settings: var(--font-features-mono);
   margin: 6px 0 10px;
   padding: 10px 12px;
   max-height: 320px;
@@ -1917,6 +1928,7 @@ input[type="radio"] {
 .rail-dl-code dd,
 .rail-dl dd.mono {
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 12px;
 }
 .rail-dl dd .icon-btn {
@@ -2166,6 +2178,32 @@ input[type="radio"] {
   flex: 0 0 auto;
   align-self: center;
 }
+/* The refused path, lifted out of the tail: ◇ · what · the path in mono · where it is fixed, on one line that wraps
+   at its parts, never inside the path's words. */
+.decision-refused {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  margin: 2px 0 0;
+}
+.decision-refused .glyph {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.decision-refused .code-val {
+  overflow-wrap: anywhere;
+}
+.decision-refused-link {
+  color: var(--text-2);
+}
+/* A command or a path inside the supervisor's sentence: a machine value, a step brighter than the prose around it. */
+.decision-body .code-val,
+.sentinel-prose .code-val,
+.open-judgement .code-val,
+.open-notice .code-val {
+  color: var(--text-1);
+}
 
 .inbox {
   display: grid;
@@ -2323,6 +2361,7 @@ input[type="radio"] {
 }
 .trace-tool {
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 12px;
   color: var(--text-1);
   min-width: 44px;
@@ -2493,6 +2532,7 @@ input[type="radio"] {
 }
 .unit-name {
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 12px;
   color: var(--text-1);
   overflow: hidden;
@@ -2538,6 +2578,7 @@ input[type="radio"] {
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 12px;
   color: var(--text-2);
 }
@@ -2546,19 +2587,49 @@ input[type="radio"] {
   overflow: auto;
   padding: var(--sp-4) var(--sp-5) var(--sp-10);
 }
-.risk-banner,
-.sentinel-banner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
+/* What to know before reading, as one band over the diff: folded, one line led by the weightiest note in its own mark
+   and words; open, a note to a line. A hairline under it parts it from the diff, as the file header's own rule does. */
+.review-notes {
+  display: grid;
+  gap: 2px;
   margin-bottom: var(--sp-3);
-}
-.risk-reason {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border-subtle);
   font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-2);
+}
+.review-notes-head,
+.review-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  margin: 0;
+  min-width: 0;
+}
+.review-notes-head {
+  width: 100%;
+  color: var(--text-2);
+}
+.review-notes-head .num {
+  flex: 0 0 auto;
   color: var(--text-1);
+}
+.review-notes .glyph {
+  flex: 0 0 auto;
+}
+.review-note-text {
+  min-width: 0;
+  color: var(--text-1);
+}
+.review-notes.open .review-note {
+  padding-left: 16px;
+}
+.review-note-action {
+  flex: 0 0 auto;
+  margin-left: var(--sp-2);
+  color: var(--text-3);
 }
 
 /* The bottom status bar: one line of key hints, never wrapping. */
@@ -2634,7 +2705,7 @@ input[type="radio"] {
   letter-spacing: 0;
   /* Code exactly as written: no ligatures or contextual arrows. */
   font-variant-ligatures: none;
-  font-feature-settings: "liga" 0, "calt" 0;
+  font-feature-settings: var(--font-features-mono);
 }
 .diff td {
   padding: 0;
@@ -2746,6 +2817,7 @@ input[type="radio"] {
 }
 .inline-comment .anchor {
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 11.5px;
   color: var(--text-2);
   white-space: nowrap;
@@ -2809,6 +2881,7 @@ input[type="radio"] {
   left: 14px;
   top: 10px;
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   color: var(--text-3);
   pointer-events: none;
 }
@@ -2930,6 +3003,7 @@ input[type="radio"] {
 .panel-branch dd {
   margin: 0;
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   color: var(--text-1);
   word-break: break-all;
 }
@@ -3067,8 +3141,12 @@ input[type="radio"] {
 }
 :root[lang="zh-CN"] .contract-mast {
   font-size: 12px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: none;
+}
+/* In the Chinese masthead the tracking is for the characters: the project's Latin name (shop-zh) keeps its own. */
+:root[lang="zh-CN"] .contract-mast-project {
+  letter-spacing: 0.02em;
 }
 .editor-block {
   padding: var(--sp-6) 0 var(--sp-2);
@@ -3100,7 +3178,7 @@ input[type="radio"] {
 }
 :root[lang="zh-CN"] .clause-title {
   font-size: 12px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: none;
 }
 .clause-rule {
@@ -3366,7 +3444,8 @@ input[type="radio"] {
 /* Where it is written: a scope picker among several projects, or one checkbox in a project's own context. */
 .identity-form .identity-scope {
   width: auto !important;
-  max-width: 16em;
+  flex: 0 0 auto;
+  max-width: 100%;
   height: 26px;
 }
 .identity-only {
@@ -3516,7 +3595,7 @@ input[type="radio"] {
   color: var(--text-4);
 }
 :root[lang="zh-CN"] .board-ghost-head > span {
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   font-size: 11px;
 }
 /* The age ends at its right edge and the identity starts at its left: with only the column gap between them the
@@ -3776,10 +3855,17 @@ input[type="radio"] {
   color: var(--text-1);
   font-weight: 500;
 }
+/* The reason under an empty state: a measure of its own (not the container's), and no word or character left alone on
+   the last line. */
 .empty-body {
+  max-width: 44ch;
   color: var(--text-2);
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
+  text-wrap: pretty;
+}
+:root[lang="zh-CN"] .empty-body {
+  max-width: 28em;
 }
 .empty-action {
   margin-top: var(--sp-2);
@@ -3903,7 +3989,7 @@ input[type="radio"] {
 }
 :root[lang="zh-CN"] .panel-tracked .panel-title {
   font-size: 12px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: none;
 }
 .panel-tracked .keys-group-title {
@@ -3916,7 +4002,7 @@ input[type="radio"] {
 }
 :root[lang="zh-CN"] .panel-tracked .keys-group-title {
   font-size: 11px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: none;
 }
 
@@ -4068,6 +4154,7 @@ input[type="radio"] {
 }
 .gap-header {
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
 }
 .gap-buttons {
   display: inline-flex;
@@ -4169,6 +4256,20 @@ input[type="radio"] {
 .hunk-head.hunk-accepted .gap-header {
   color: var(--text-2);
 }
+/* The current hunk — what A, ⇧A and U act on — is marked with the same 2px pen, one step lighter (text-3) until
+   your mark makes it text-1; its header text steps up to text-2. No fill and no motion: a keyboard move is instant. */
+.hunk-head.hunk-current td {
+  box-shadow: inset 2px 0 0 var(--text-3);
+}
+.hunk-head.hunk-current.hunk-accepted td {
+  box-shadow: inset 2px 0 0 var(--text-1);
+}
+.hunk-head.hunk-current .gap-header {
+  color: var(--text-2);
+}
+.hunk-head.hunk-current.hunk-accepted .gap-header {
+  color: var(--text-1);
+}
 .accept-hunk .icon {
   color: var(--text-3);
 }
@@ -4247,6 +4348,7 @@ input[type="radio"] {
   background: transparent;
   text-align: left;
   font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
   font-size: 12px;
   color: var(--text-2);
 }
@@ -4295,7 +4397,7 @@ input[type="radio"] {
   font-size: var(--fs-code);
   line-height: var(--lh-code);
   font-variant-ligatures: none;
-  font-feature-settings: "liga" 0, "calt" 0;
+  font-feature-settings: var(--font-features-mono);
   white-space: pre;
   overflow: auto;
   tab-size: 4;
@@ -4615,4 +4717,72 @@ input[type="radio"] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--sp-2);
+}
+/* A look criterion's steps before the picture: a small numbered list inside the clause, numbered like the clauses
+   (tabular figures in text-4), each step a mono line; a hairline at the left ties the list to its criterion. */
+.look-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: var(--sp-3);
+  border-left: 1px solid var(--border-subtle);
+}
+.look-steps-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 24px;
+}
+/* The tracked capitals belong to the clause heads alone; inside a clause the list is named in a plain quiet line. */
+.look-steps-title {
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  font-weight: 500;
+  color: var(--text-2);
+}
+.look-steps-head .btn {
+  margin: -4px 0;
+}
+.look-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.look-step {
+  display: grid;
+  grid-template-columns: 2.5ch minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.look-step-no {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-4);
+}
+.look-step.invalid input {
+  border-color: var(--st-danger);
+}
+/* On the goal page the same list reads, under its criterion's title column. */
+.look-step-list-read {
+  margin: 2px 0 var(--sp-2) calc(14px + 2.5em + 2 * var(--sp-2));
+  padding-left: var(--sp-3);
+  border-left: 1px solid var(--border-subtle);
+}
+.look-step-list-read .look-step {
+  grid-template-columns: 2.5ch minmax(0, 1fr);
+  min-height: 20px;
+}
+.look-step-list-read .code-val {
+  color: var(--text-2);
+}
+.look-steps-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-3);
+  white-space: nowrap;
 }

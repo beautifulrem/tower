@@ -12,6 +12,7 @@ import { For, type JSX, Show, createEffect, createResource, createSignal, on, on
 import { createStore, produce, unwrap } from "solid-js/store";
 
 import { Icon } from "../components/Glyph";
+import { LookStepsEdit as LookSteps } from "../components/LookSteps";
 import { BaseTestsNotice } from "../components/TestCheck";
 import { Button, Field, IconButton, Select, Toggle } from "../components/ui";
 import type { Contract } from "../gen/Contract";
@@ -276,6 +277,18 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                     />
                   </div>
                   <span class="criterion-cmd-row field-hint">{t("contract.lookHint")}</span>
+                  <LookSteps
+                    id={cr.id}
+                    steps={(cr.kind as { steps?: string[] }).steps ?? []}
+                    issues={touched() ? issues().filter((x) => x.field === `criteria.${cr.id}.steps`).map((x) => x.message) : []}
+                    onChange={(steps) =>
+                      setKind(i(), (k) => {
+                        if (k.type !== "look") return;
+                        if (steps.length) k.steps = steps;
+                        else delete k.steps;
+                      })
+                    }
+                  />
                 </Show>
               </div>
             )}

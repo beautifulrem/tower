@@ -20,7 +20,7 @@ import { api, errorText } from "../lib/api";
 import { clock } from "../lib/format";
 import { useKeys } from "../lib/keys";
 import { useMenu } from "../lib/menu";
-import { t } from "../lib/i18n";
+import { t, withLater } from "../lib/i18n";
 import { effectiveEngine, engineLabel, pauseLabel, stateLabel } from "../lib/labels";
 import { linger } from "../lib/linger";
 import { go } from "../lib/nav";
@@ -31,7 +31,7 @@ import { GoalBlocks } from "./goal/GoalBlocks";
 import { SteerBox } from "./goal/SteerBox";
 
 // The trace (one key away) loads on first use, so start-up stays small.
-const Trace = lazy(() => import("../components/Trace").then((m) => ({ default: m.Trace })));
+const Trace = lazy(withLater(() => import("../components/Trace").then((m) => ({ default: m.Trace }))));
 
 /** Trace kinds that change nothing the detail shows; the summary update covers them. */
 const DETAIL_IRRELEVANT = new Set([

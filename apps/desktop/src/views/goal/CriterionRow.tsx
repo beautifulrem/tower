@@ -6,16 +6,17 @@
  */
 import { Show, createSignal, lazy } from "solid-js";
 
-import { Icon, ResultMark } from "../../components/Glyph";
+import { Icon, NotEvidenceMark, ResultMark } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, HeldOutLine, ObsChip } from "../../components/Honesty";
+import { LookStepsRead } from "../../components/LookSteps";
 import type { CriterionView } from "../../gen/CriterionView";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
-import { t } from "../../lib/i18n";
+import { t, withLater } from "../../lib/i18n";
 import { act, state } from "../../lib/store";
 
 // The screenshots of look criteria load on first use, so start-up stays small.
-const LookStrip = lazy(() => import("../../components/Look").then((m) => ({ default: m.LookStrip })));
+const LookStrip = lazy(withLater(() => import("../../components/Look").then((m) => ({ default: m.LookStrip }))));
 
 /**
  * One criterion as an instrument row: mark · id · title and command, then
@@ -27,7 +28,10 @@ export function CriterionRow(props: { goalId: string; c: CriterionView; state: s
   const [open, setOpen] = createSignal(false);
   // Human and "look" criteria are both judged by you; only exec ones have a verifier verdict.
   const human = () => c().criterion.kind.type !== "exec";
-  const look = () => (c().criterion.kind.type === "look" ? (c().criterion.kind as { url: string }) : null);
+  const look = () => (c().criterion.kind.type === "look" ? (c().criterion.kind as { url: string; steps?: string[] }) : null);
+  // A look criterion's steps before the picture are part of the contract: counted on the row, listed on a click.
+  const steps = () => look()?.steps ?? [];
+  const [stepsOpen, setStepsOpen] = createSignal(false);
   const mark = () => {
     if (!v()) return "pending";
     if (v()!.stale) return "stale";
@@ -50,7 +54,9 @@ export function CriterionRow(props: { goalId: string; c: CriterionView; state: s
             />
           }
         >
-          <ResultMark kind={mark()} />
+          <Show when={c().canary === "tampered" && mark() === "pass"} fallback={<ResultMark kind={mark()} />}>
+            <NotEvidenceMark />
+          </Show>
         </Show>
         <span class="num t3">{c().criterion.id}</span>
         <span class="criterion-main">
@@ -59,6 +65,12 @@ export function CriterionRow(props: { goalId: string; c: CriterionView; state: s
             <code class="criterion-cmd code-val">{(c().criterion.kind as { command: string }).command}</code>
           </Show>
           <Show when={look()}>{(l) => <code class="criterion-cmd code-val">{l().url}</code>}</Show>
+          <Show when={steps().length}>
+            <button class="link-quiet text-btn look-steps-toggle meta" aria-expanded={stepsOpen()} title={t("look.stepsTitle")} onClick={() => setStepsOpen((o) => !o)}>
+              {t("look.steps", { n: steps().length })}
+              <Icon name={stepsOpen() ? "caret-down" : "caret-right"} size={10} />
+            </button>
+          </Show>
         </span>
         <Show
           when={v()}
@@ -89,11 +101,13 @@ export function CriterionRow(props: { goalId: string; c: CriterionView; state: s
       <BaselineLine c={c()} base={props.base} />
       <CanaryLine c={c()} />
       <HeldOutLine c={c()} />
+      <Show when={stepsOpen() && steps().length}>
+        <LookStepsRead steps={steps()} />
+      </Show>
       <Show when={c().look}>{(l) => <LookStrip look={l()} title={`${c().criterion.id} ${c().criterion.title}`} />}</Show>
       <Show when={c().observed}>
         <div class="criterion-row criterion-obs">
           <ResultMark kind={c().observed!.passed ? "obs-pass" : "obs-fail"} />
-          <span />
           <span />
           <span class="col-span">
             <ObsChip title={t("goal.observedTitle")} />

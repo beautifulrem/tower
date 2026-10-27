@@ -23,7 +23,7 @@ import { api } from "../lib/api";
 import { type Box, play, snapshot } from "../lib/flip";
 import { useKeys } from "../lib/keys";
 import { clock } from "../lib/format";
-import { t } from "../lib/i18n";
+import { t, withLater } from "../lib/i18n";
 import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
 import { linger } from "../lib/linger";
 import { spaceMs } from "../lib/motion";
@@ -31,7 +31,7 @@ import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 
 // The first-run screen is reached once; it loads then, not at every launch.
-const Welcome = lazy(() => import("./Welcome").then((m) => ({ default: m.Welcome })));
+const Welcome = lazy(withLater(() => import("./Welcome").then((m) => ({ default: m.Welcome }))));
 
 const ORDER: Group[] = ["running", "verifying", "review", "ready", "paused", "done"];
 const FILTER_KEY = "tower.overviewProject";

@@ -6,7 +6,7 @@ import type { TraceEntry } from "../../gen/TraceEntry";
 
 vi.mock("../store", () => ({ state: { settings: { language: "en" } } }));
 
-const { envIssueLabel, envGauges, installHint, engineMark, engineLabel } = await import("../labels");
+const { envIssueLabel, envGauges, installHint, engineLabel } = await import("../labels");
 const { matches } = await import("../../components/Trace");
 const { matchGoal } = await import("../../components/Palette");
 
@@ -51,11 +51,10 @@ describe("the environment gauge strip", () => {
 });
 
 describe("engine names", () => {
-  it("have a two-letter mark for tight columns and a full name for the tooltip", () => {
-    expect(engineMark("claude-code")).toBe("CC");
-    expect(engineMark("pi")).toBe("Pi");
-    expect(engineMark("zed")).toBe("ze");
+  it("are said in words, everywhere: no two-letter marks", () => {
     expect(engineLabel("claude-code")).toBe("Claude Code");
+    expect(engineLabel("pi")).toBe("Pi");
+    expect(engineLabel("zed")).toBe("zed");
   });
 });
 

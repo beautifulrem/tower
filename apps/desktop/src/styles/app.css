@@ -3850,7 +3850,8 @@ input[type="radio"] {
 }
 .board-ghost .g-diff,
 .board-ghost .g-spend,
-.board-ghost .g-age {
+.board-ghost .g-age,
+.board-ghost .g-id {
   justify-content: flex-end;
   text-align: right;
 }
@@ -3867,11 +3868,6 @@ input[type="radio"] {
   line-height: 12px;
   font-weight: 500;
   color: var(--text-4);
-}
-/* The age ends at its right edge and the identity starts at its left: with only the column gap between them the
-   two heads read as one word, so the identity's head steps in by a breath. */
-.board-ghost-head > .g-id {
-  padding-left: var(--sp-3);
 }
 .board-ghost-row .g-glyph {
   color: var(--text-4);
@@ -3919,21 +3915,20 @@ input[type="radio"] {
 .decision-line-ask .ellipsis {
   min-width: 0;
 }
-.decision-line .g-id {
-  gap: var(--sp-2);
-}
 .board-queue .decision-slot.open {
   padding: var(--sp-2) 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 
-/* One goal per line. Columns, left to right: glyph · title · live line ·
-   criteria · change · spend · age · identity · action. Fixed widths keep
-   every reading under the one above it. */
+/* One goal per line. Columns, left to right: glyph, title, live line,
+   criteria, change, spend, age, identity. Fixed widths keep every reading
+   under the one above it; the identity is set flush right, so the last word
+   on every line ends where the hairlines do. No column waits for an action
+   most rows do not have. */
 .g-row {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 12.5em 5em;
+  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 12.5em;
   column-gap: var(--sp-3);
   align-items: center;
   height: var(--row-goal-h);
@@ -4015,14 +4010,16 @@ input[type="radio"] {
 .g-spend {
   color: var(--text-2);
 }
-/* Identity: nothing in it is squeezed by the browser's own proportions. The id,
-   separators and readings keep their width; the project name may shorten but
-   stays legible (3.5em). The engine mark is two letters or nothing — never a
-   letter and a half: on a crowded row (rework, a mute, an overlap, a PR beside
-   it) it leaves first, below 1560, and lives on in the title's tooltip. */
+/* Identity: words grouped by space and weight — the readings, the engine and the project by name in text-3, the id in
+   mono text-2 — flush right, so every id ends on the board's edge under the one above it. Nothing in it is squeezed by
+   the browser's own proportions: the project name may shorten but stays legible (3.5em); the engine's name is whole or
+   gone — on a crowded row (a second project, rework, a mute, an overlap, a PR) it leaves first, below 1560, and lives on
+   in the title's tooltip. */
 .g-id {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -4034,37 +4031,42 @@ input[type="radio"] {
   flex: 0 1 auto;
   min-width: 3.5em;
 }
-.g-id .sep {
-  padding: 0 0.25em;
-}
-.g-engine-narrow {
-  display: none;
-}
 @media (max-width: 1560px) {
-  .g-row[data-crowded="true"] .g-engine,
-  .g-row[data-crowded="true"] .g-engine-sep {
+  .g-row[data-crowded="true"] .g-engine {
     display: none;
   }
 }
-@media (max-width: 1400px) {
-  .g-id .g-engine,
-  .g-id .g-engine-sep {
-    display: none;
+/* Wide enough for every reading at once: the identity column takes the room the engine's name needs on a crowded row. */
+@media (min-width: 1561px) {
+  .g-row {
+    grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 17em;
   }
 }
+/* Ready to accept: the row's one action. It stands where the identity is, on the row you point at or are on, and the
+   identity gives it the room; on every other line the identity stays. The button stays quiet (a ghost) and whole: no
+   opacity, so its words keep 4.5:1 on white. */
 .g-act {
-  display: flex;
-  justify-content: flex-end;
-  min-width: 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: var(--sp-2);
+  display: none;
+  align-items: center;
 }
-/* The row's own button stays quiet (a ghost) and whole: no opacity, so its words keep 4.5:1 on white. */
+.g-row.has-act:is(:hover, .selected) .g-act {
+  display: flex;
+}
+.g-row.has-act:is(:hover, .selected) .g-id {
+  visibility: hidden;
+}
 /* Narrower windows: identity folds into the title's tooltip, the live line keeps only
    its badge and verb (the object and the run's elapsed time are in the tooltip — the
    separators go with their readings, so two words never touch), and the title gets the room. */
 @media (max-width: 1240px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 6.5em 5em;
+    grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 6.5em;
   }
+  /* The identity column is gone, the engine's name with it: it lives in the title's tooltip, never somewhere else on the line. */
   .g-id,
   .g-crit .crit-human,
   .g-live .live-target,
@@ -4073,20 +4075,9 @@ input[type="radio"] {
   .g-live .live-elapsed-sep {
     display: none;
   }
-  /* The identity column is gone; the engine mark rides in front of the live line instead. */
-  .g-live {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-  }
-  .g-live .live-line {
-    flex: 1;
-    min-width: 0;
-  }
-  .g-engine-narrow {
-    display: inline;
-    flex: 0 0 auto;
-    font-size: var(--fs-hint);
+  /* Without the identity, the action stands over the age instead. */
+  .g-row.has-act:is(:hover, .selected) .g-age {
+    visibility: hidden;
   }
 }
 

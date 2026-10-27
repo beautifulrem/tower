@@ -18,7 +18,7 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
-import { ago, clock, count } from "../lib/format";
+import { agoShort, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
 import { approves, optionTone } from "../lib/labels";
 import { popupActions } from "../lib/native";
@@ -202,14 +202,14 @@ export function DecisionLine(props: { item: InboxItem; onOpen: () => void }) {
           {it().subject}
         </span>
       </span>
-      <span class="g-age num meta halt">{ago(it().created_at, state.now)}</span>
+      {/* The board's one age format and its one identity grammar, as on every goal row under it. */}
+      <span class="g-age num meta halt">{agoShort(it().created_at, state.now)}</span>
       <span class="g-id meta halt">
-        <span class="code-val t2">{it().goal_id}</span>
-        <Show when={goal()}>
+        <Show when={goal() && state.projects.length > 1}>
           <span class="t3 ellipsis g-project">{goal()!.project_name}</span>
         </Show>
+        <span class="code-val t2 g-goal-id">{it().goal_id}</span>
       </span>
-      <span class="g-act" />
     </div>
   );
 }
@@ -318,7 +318,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
           )}
         </Show>
         <span class="grow" />
-        <span class="meta num">{ago(it().created_at, state.now)}</span>
+        <span class="meta num">{agoShort(it().created_at, state.now)}</span>
         <IconButton icon="bell" size={22} label={t("decision.snooze")} title={`${t("decision.snooze")} H`} aria-haspopup="menu" class="decision-snooze" onClick={() => void snoozeMenu(it())} />
       </header>
       <div class="decision-main">

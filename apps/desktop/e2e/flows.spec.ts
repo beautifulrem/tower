@@ -741,6 +741,16 @@ test("a sandbox refusal is an environment problem: the card says so before its d
   await expect(card.locator(".decision-tail")).toContainText("deny(1) file-read-data /Users/you/node_modules/.bin");
   expect((await env.boundingBox())!.y).toBeLessThan((await card.locator(".decision-body").boundingBox())!.y);
   await expect(card.locator(".mark-danger")).toHaveCount(0);
+  // The supervisor's backticks are a machine value, not punctuation in the prose.
+  await expect(card.locator(".decision-body")).not.toContainText("`");
+  await expect(card.locator(".decision-body code.code-val")).toHaveText("npm test");
+  // The refused path stands as its own line, with the way to where the fix lives; the page has one name for the way on.
+  const refused = card.locator(".decision-refused");
+  await expect(refused.locator(".code-val")).toHaveText("/Users/you/node_modules/.bin");
+  await expect(page.locator(".goal-head").getByRole("button", { name: /Resume/ })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /^Retry/ })).toHaveClass(/btn-primary/);
+  await refused.getByRole("button", { name: /Settings for shop/ }).click();
+  await expect(page.locator(".project [data-field='test']")).toBeFocused();
   // On the goal page the criterion's base line: the environment mark, the sentence, the refused lines as machine values; no red, no "red → green".
   await openTower(page, "goal/G-0001", { enrich: enrichSandboxRefused });
   const c1 = page.locator(".goal-page .criterion").filter({ hasText: "C1" }).first();

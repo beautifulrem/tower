@@ -250,6 +250,8 @@ export const zh = {
     heldOutNote: "Agent 不知道这些测试存在。给它提示，或只告诉它哪些测试失败，都能保住这一点；把失败给它看则不能。",
     putAside: "收起 {id} · {kind}",
     envProblem: "这是环境问题，不是测试失败，也不是 Agent 做的：被拒绝的路径在下面。",
+    refused: "被拒绝",
+    projectSettings: "{name} 的项目设置",
   },
   card: {
     rework: "返工 {n} / {max}",

@@ -51,6 +51,24 @@ export function go(r: Route) {
   });
 }
 
+/** The project fields a "fix it in the project settings" link can point at. */
+export type ProjectField = "test" | "setup" | "local" | "holdout";
+let pendingField: { project: string; field: ProjectField } | null = null;
+
+/** Settings, opened on one project's block with one of its fields in view and focused: where a card or a line says the fix is. */
+export function goProjectSetting(project: string, field: ProjectField) {
+  pendingField = { project, field };
+  go({ name: "settings" });
+}
+
+/** For the project block as it mounts: the field a link sent you to, once. */
+export function takeProjectField(project: string): ProjectField | null {
+  if (pendingField?.project !== project) return null;
+  const f = pendingField.field;
+  pendingField = null;
+  return f;
+}
+
 export function back() {
   const s = stack();
   if (s.length <= 1) return;

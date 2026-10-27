@@ -3,6 +3,8 @@
 # nothing changed). Install once:  ln -sf ../../tools/pre-push.sh .git/hooks/pre-push
 set -e
 cd "$(git rev-parse --show-toplevel)"
+# Git sets these for hooks; the tests run git in repositories of their own.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_QUARANTINE_PATH
 echo "pre-push: rustfmt, clippy, types, unit, flow and end-to-end tests"
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --quiet -- -D warnings

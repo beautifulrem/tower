@@ -291,10 +291,10 @@ export function Settings() {
 
         <section class="settings-block" id={SETTINGS_CLAUSES[2].id} onFocusOut={() => void commit()}>
           <ClauseHead n={3} title={t("settings.memory")} />
-          <p class="field-hint" style={{ "margin-bottom": "8px" }}>
+          <p class="field-hint" id="memory-hint" style={{ "margin-bottom": "8px" }}>
             {t("settings.memoryHint")}
           </p>
-          <textarea rows={4} value={s()!.user_memory} onInput={(e) => patch({ user_memory: e.currentTarget.value })} placeholder={t("settings.memoryPlaceholder")} />
+          <textarea rows={4} aria-label={t("settings.memory")} aria-describedby="memory-hint" value={s()!.user_memory} onInput={(e) => patch({ user_memory: e.currentTarget.value })} placeholder={t("settings.memoryPlaceholder")} />
           <span class="char-count num" classList={{ over: s()!.user_memory.length > MEMORY_MAX }} aria-live="polite">
             {s()!.user_memory.length} / {MEMORY_MAX}
           </span>

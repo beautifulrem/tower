@@ -2,6 +2,11 @@
 # The checks CI fails on most often, run before a push (a few seconds when
 # nothing changed). Install once:  ln -sf ../../tools/pre-push.sh .git/hooks/pre-push
 set -e
+# Git names each pushed ref on stdin; a push that only deletes branches sends no code.
+refs=$(cat)
+if [ -n "$refs" ] && ! printf '%s\n' "$refs" | awk '$2 !~ /^0+$/ { found = 1 } END { exit !found }'; then
+  exit 0
+fi
 cd "$(git rev-parse --show-toplevel)"
 # Git sets these for hooks; the tests run git in repositories of their own.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_QUARANTINE_PATH

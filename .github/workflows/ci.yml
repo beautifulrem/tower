@@ -38,8 +38,10 @@ jobs:
           pnpm --dir apps/desktop build
           tools/bundle-budget.sh
 
-      - name: Rust formatting
-        run: cargo fmt --all --check
+      - name: Rust formatting, and no source file over 800 lines
+        run: |
+          cargo fmt --all --check
+          tools/line-limit.sh
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings

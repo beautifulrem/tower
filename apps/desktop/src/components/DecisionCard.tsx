@@ -25,7 +25,7 @@ import { popupActions } from "../lib/native";
 import { go, goProjectSetting } from "../lib/nav";
 import { act, state, toast } from "../lib/store";
 import { Icon, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
-import { Claim, CriteriaBar } from "./Honesty";
+import { Claim, CriteriaBar } from "./HonestyCore";
 import { PrLine } from "./Pr";
 import { Button, IconButton, Kbd, Prose } from "./ui";
 

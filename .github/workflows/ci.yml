@@ -39,10 +39,11 @@ jobs:
           tools/bundle-budget.sh
           tools/doc-numbers.sh
 
-      - name: Rust formatting, and no source file over 800 lines
+      - name: Rust formatting, no source file over 800 lines, and every test SECURITY.md names exists and runs
         run: |
           cargo fmt --all --check
           tools/line-limit.sh
+          node tools/security-tests.mjs
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings

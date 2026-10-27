@@ -205,16 +205,23 @@ export function installHint(tool: string): string {
 
 /** Why a run started, in words. Unknown purposes pass through. */
 export function runPurposeLabel(purpose: string): string {
-  const key = ({ initial: "purposeInitial", rework: "purposeRework", resume: "purposeResume", request_changes: "purposeRequestChanges" } as const)[
+  // Whole keys, so the words' half is known: a key built at run time would pin its namespace to start-up.
+  const key = ({ initial: "goal.purposeInitial", rework: "goal.purposeRework", resume: "goal.purposeResume", request_changes: "goal.purposeRequestChanges" } as const)[
     purpose as "initial"
   ];
-  return key ? t(`goal.${key}`) : purpose;
+  return key ? t(key) : purpose;
 }
 
 /** How a run ended, in words. Unknown outcomes pass through. */
 export function runOutcomeLabel(outcome: string | null): string | null {
   const key = (
-    { submitted: "outcomeSubmitted", paused: "outcomePaused", crashed: "outcomeCrashed", abandoned: "outcomeAbandoned", interrupted: "outcomeInterrupted" } as const
+    {
+      submitted: "goal.outcomeSubmitted",
+      paused: "goal.outcomePaused",
+      crashed: "goal.outcomeCrashed",
+      abandoned: "goal.outcomeAbandoned",
+      interrupted: "goal.outcomeInterrupted",
+    } as const
   )[(outcome ?? "") as "submitted"];
-  return key ? t(`goal.${key}`) : outcome;
+  return key ? t(key) : outcome;
 }

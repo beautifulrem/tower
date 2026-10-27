@@ -17,7 +17,7 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, Seal } from "../components/Glyph";
-import { CriteriaBar } from "../components/Honesty";
+import { CriteriaBar, discountedOf } from "../components/Honesty";
 import { Button, Empty, IconButton, Kbd, Loading, Overlay } from "../components/ui";
 import type { DiffFile } from "../gen/DiffFile";
 import type { ReviewUnit } from "../gen/ReviewUnit";
@@ -400,11 +400,11 @@ export function Review(props: { id: string }) {
               </Show>
               <Show when={g()}>
                 <button class="review-stat-group review-verify link-plain" onClick={() => setPanel("verify")} title={t("review.verifyOpen")} aria-haspopup="dialog">
-                  <Seal pin={g()!.verified_pin} large />
+                  <Seal pin={g()!.verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
                   <Show when={g()!.verified_pin}>
                     <span class="sep">·</span>
                   </Show>
-                  <CriteriaBar progress={g()!.progress} compact />
+                  <CriteriaBar progress={g()!.progress} criteria={detail()?.criteria} compact />
                   <Icon name="chevron-right" size={10} class="t3" />
                 </button>
               </Show>

@@ -57,4 +57,28 @@ describe("AcceptPanel", () => {
     expect(screen.getByText("@a4a90b2")).toBeTruthy();
     expect(screen.getByText(/All 2 machine criteria passed/)).toBeTruthy();
   });
+
+  it("does not count a pass with a tampered canary: the seal is withheld, the sentence says how many count, and the criterion heads the open list", () => {
+    const tampered = {
+      ...detail,
+      criteria: [
+        ...detail.criteria,
+        {
+          criterion: { id: "C2", title: "Rounding tests pass", kind: { type: "exec", command: "node --test", timeout_secs: 120 } },
+          verified: { pin: "a4a90b2deadbeef", passed: true, exit_code: 0, duration_ms: 900, output_tail: "", at: 0, stale: false, held_out: false },
+          passed_on_base: null,
+          observed: null,
+          human_checked: false,
+          canary: "tampered",
+        },
+      ],
+    } as unknown as GoalDetail;
+    const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={tampered} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    expect(container.querySelector(".seal-tampered")).not.toBeNull();
+    expect(screen.queryByText(/All 2 machine criteria passed/)).toBeNull();
+    expect(screen.getByText(/1 of 2 machine criteria count as evidence; 1 passed with a tampered canary/)).toBeTruthy();
+    const open = [...container.querySelectorAll(".panel-section .row.meta")].map((el) => el.textContent ?? "");
+    expect(open[0]).toMatch(/C2: a test that must fail passed; this pass is not evidence/);
+    expect(container.querySelector(".panel-section .row.meta .mark-danger")).not.toBeNull();
+  });
 });

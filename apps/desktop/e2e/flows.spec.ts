@@ -492,6 +492,16 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const tampered = page.locator('.goal-page .canary-line[data-canary="tampered"]');
   await expect(tampered).toContainText("a test that must fail passed");
   await expect(tampered.locator(".mark-attention")).toBeVisible();
+  // The totals say the same thing as the line: the pass leaves the verified count, takes an amber segment, and the header's seal is withheld.
+  const bar = page.locator(".goal-page .section .criteria-bar").first();
+  await expect(bar).toContainText("Verified 2/3");
+  await expect(bar).toContainText("1 doesn't count");
+  await expect(bar.locator(".seg-discounted")).toHaveCount(1);
+  const seal = page.locator(".goal-head .seal");
+  await expect(seal).toHaveClass(/seal-tampered/);
+  await expect(seal).toContainText("Passed, not evidence");
+  await expect(seal.locator(".mark-attention")).toBeVisible();
+  await expect(page.locator(".goal-page .section-cta .meta")).toContainText("not evidence");
   // The sentinels: the high one is a square, the medium one a hollow diamond; the probing detail is a sentence over a list of paths.
   const sentinels = page.locator(".sentinel");
   await expect(sentinels).toHaveCount(2);
@@ -502,11 +512,21 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const unchecked2 = sentinels.filter({ hasText: "could not be checked" });
   await expect(unchecked2.locator(".sentinel-machine")).toHaveCount(0);
   await expect(unchecked2.locator(".mark-danger")).toBeVisible();
-  // The same three lines in the verification readout.
+  // The same three lines in the verification readout; the review header and the readout withhold the seal too.
   await page.keyboard.press("r");
   await expect(page.locator("table").first()).toBeVisible();
+  await expect(page.locator(".review-head .seal")).toHaveClass(/seal-tampered/);
+  await expect(page.locator(".review-head .criteria-bar")).toContainText("1 doesn't count");
   await page.keyboard.press("e");
-  await expect(page.getByRole("dialog").locator(".canary-line")).toHaveCount(3);
+  const readout = page.getByRole("dialog");
+  await expect(readout.locator(".canary-line")).toHaveCount(3);
+  await expect(readout.locator(".seal")).toHaveClass(/seal-tampered/);
+  await page.keyboard.press("Escape");
+  // The accept sheet: the pass counts for nothing, and the criterion heads what is still open.
+  await page.keyboard.press("Meta+Shift+Enter");
+  const accept = page.getByRole("dialog");
+  await expect(accept).toContainText("2 of 3 machine criteria count as evidence; 1 passed with a tampered canary");
+  await expect(accept.locator(".panel-section .row.meta").first()).toContainText("C4: a test that must fail passed");
 });
 
 test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {

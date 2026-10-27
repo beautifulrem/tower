@@ -133,7 +133,7 @@ describe("the notes under a criterion", () => {
     r.unmount();
     // Some: "m of n", and the ones that did not run, by name.
     r = render(() => <HeldOutLine c={proved(["holdout/a.sh"], ["holdout/b.sh"], ["holdout/c_test.go"])} />);
-    expect(r.container.querySelector(".chip-you")!.textContent).toBe("held-out tests, 1 of 3 ran, for you only");
+    expect(r.container.querySelector(".chip-you")!.textContent).toBe("held-out tests: 1 of 3 ran, for you only");
     const missing = r.container.querySelector(".held-out-missing")!;
     expect(missing.textContent).toContain("held-out tests that did not run:");
     expect([...missing.querySelectorAll("code")].map((c) => c.textContent)).toEqual(["holdout/b.sh"]);

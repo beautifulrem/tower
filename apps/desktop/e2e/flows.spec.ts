@@ -67,12 +67,18 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   await expect.poll(() => fill(cards.nth(1))).toBe("plain");
   // The black moves with the focus (the button's colour settles over 150ms); the plain one still carries its key.
   // (Nothing holds the keyboard first, and the queue's keys are bound: on a slow machine they arrive a frame late.)
+  // (Which kinds of card the seed left, and in what order, depends on timing; an assumption card has no filled primary.)
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await expect.poll(async () => {
-    if (!/focused/.test((await cards.nth(1).getAttribute("class")) ?? "")) await page.keyboard.press("j");
-    return (await cards.nth(1).getAttribute("class")) ?? "";
-  }, { intervals: [250, 500, 1000] }).toMatch(/focused/);
-  await expect.poll(() => fill(cards.nth(1))).toBe("filled");
+  const labels = await cards.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""));
+  const target = labels.findIndex((l, i) => i > 0 && !l.startsWith("Assumption"));
+  expect(target).toBeGreaterThan(0);
+  for (let i = 1; i <= target; i++) {
+    await expect.poll(async () => {
+      if (!/focused/.test((await cards.nth(i).getAttribute("class")) ?? "")) await page.keyboard.press("j");
+      return (await cards.nth(i).getAttribute("class")) ?? "";
+    }, { intervals: [250, 500, 1000] }).toMatch(/focused/);
+  }
+  await expect.poll(() => fill(cards.nth(target))).toBe("filled");
   await expect.poll(() => fill(cards.nth(0))).toBe("plain");
   await openTower(page, "overview", { enrich: enrichCi });
   const first = page.locator(".board-queue .decision").first();

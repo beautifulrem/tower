@@ -52,6 +52,31 @@ impl Fixture {
     }
 }
 
+/// What Tower must say about the held-out tests of a fixture whose class is
+/// judged by its label: the finding, and how many held-out files proved
+/// they ran and how many did not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Coverage {
+    pub finding: &'static str,
+    pub ran: usize,
+    pub not_ran: usize,
+}
+
+impl Fixture {
+    pub fn coverage(self) -> Option<Coverage> {
+        let (Fixture::JsAdd(h) | Fixture::JsTotal(h)) = self else { return None };
+        match h {
+            Holdout::NotRunByCriterion | Holdout::OutsidePattern => {
+                Some(Coverage { finding: "held_out_not_run", ran: 0, not_ran: 1 })
+            }
+            Holdout::Partial { run, of } => {
+                Some(Coverage { finding: "held_out_partly_run", ran: run.into(), not_ran: (of - run).into() })
+            }
+            Holdout::None | Holdout::Run => None,
+        }
+    }
+}
+
 pub fn git(dir: &Path, args: &[&str]) {
     let out = Command::new("git").args(args).current_dir(dir).output().unwrap();
     assert!(out.status.success(), "git {args:?}");

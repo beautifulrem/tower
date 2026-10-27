@@ -23,6 +23,7 @@ mod look;
 mod look_cdp;
 pub mod paths;
 mod pr;
+mod procs;
 mod project_check;
 pub mod prompts;
 mod remote;
@@ -142,6 +143,11 @@ impl Supervisor {
         });
         let sup = Self { inner };
         sup.spawn_loops();
+        // What a crash or a forced quit left running in any goal's sandbox
+        // (before `sweep` removes the directories that identify it).
+        procs::ensure_marker(&sup.inner.paths.root)?;
+        let paths = sup.inner.paths.clone();
+        let _ = tokio::task::spawn_blocking(move || procs::stop_all_leftovers(&paths)).await;
         sweep(&sup.inner.paths);
         if let Err(e) = sup.apply_remote() {
             tracing::warn!(error = %e, "phone page not started");
@@ -255,6 +261,9 @@ impl Supervisor {
         for (_, c) in self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).drain() {
             c.cancel();
         }
+        // Nothing an agent or a verification started outlives Tower.
+        let paths = self.inner.paths.clone();
+        let _ = tokio::task::spawn_blocking(move || procs::stop_all_leftovers(&paths)).await;
     }
 
     // ---- reads --------------------------------------------------------------

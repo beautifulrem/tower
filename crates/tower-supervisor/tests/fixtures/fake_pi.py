@@ -51,13 +51,68 @@ def settle():
     out({"type": "agent_end", "messages": [], "willRetry": False})
     out({"type": "agent_settled", "aborted": False})
 
+def sandboxed(argv, background=False):
+    """Runs argv as the tower-goal extension runs the agent's commands."""
+    import subprocess
+    profile = os.environ.get("TOWER_SANDBOX_PROFILE")
+    full = ["/usr/bin/sandbox-exec", "-f", profile] + argv if profile else argv
+    if background:
+        subprocess.Popen(full, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        return True
+    return subprocess.run(full, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+def leave_listener(port):
+    """A server left in the background: its own session, out of the
+    workspace, nothing open there, so only its sandbox says whose it is."""
+    import socket, time
+    script = ('use IO::Socket::INET; use POSIX; my $s = IO::Socket::INET->new(LocalAddr => "127.0.0.1", '
+              'LocalPort => $ARGV[0], Listen => 5, ReuseAddr => 1) or die; POSIX::setsid(); chdir "/"; '
+              'open STDIN, "</dev/null"; open STDOUT, ">/dev/null"; open STDERR, ">/dev/null"; '
+              'while (my $c = $s->accept) { close $c }')
+    tool("bash", {"command": f"perl -e '...' {port} &"})
+    sandboxed(["/usr/bin/perl", "-e", script, str(port)], background=True)
+    for _ in range(100):
+        try:
+            socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+            return
+        except OSError:
+            time.sleep(0.05)
+
+def isolation(message):
+    """Scenarios about what the agent's processes can reach and leave."""
+    kind, _, args = scenario.partition(":")
+    ports = [int(p) for p in args.split(":") if p]
+    if kind == "listener":
+        leave_listener(ports[0])
+    elif kind == "listener_ask":
+        leave_listener(ports[0])
+        dialog('tower:' + json.dumps({"tower": "question", "question": "继续？", "options": ["a"], "why": ""}))
+    elif kind == "loopback":
+        foreign, declared, own = ports
+        leave_listener(own)
+        # The test starts the foreign service now, after the agent's
+        # sandbox was set up, and answers once Tower has seen `own`.
+        dialog('tower:' + json.dumps({"tower": "question", "question": "开始？", "options": ["a"], "why": ""}))
+        seen = []
+        for name, port in [("foreign", foreign), ("declared", declared), ("own", own)]:
+            ok = sandboxed(["/usr/bin/nc", "-z", "-w", "2", "127.0.0.1", str(port)])
+            seen.append(f"{name}={'open' if ok else 'closed'}")
+        open("loopback.txt", "w").write(" ".join(seen) + "\n")
+    open("done.txt", "w").write("ok\n")
+    tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
+
+ISOLATION = ("listener", "listener_ask", "loopback")
+
 def run(message):
     prompts[0] += 1
     n = prompts[0]
     out({"type": "agent_start"})
     out({"type": "turn_start"})
     out({"type": "message_update", "assistantMessageEvent": {"type": "text_delta", "delta": "looking"}})
-    if scenario == "pass":
+    if scenario.partition(":")[0] in ISOLATION:
+        isolation(message)
+    elif scenario == "pass":
         tool("log", {"kind": "cause", "text": "缺少 done.txt"})
         tool("bash", {"command": "touch done.txt"})
         open("done.txt", "w").write("ok\n")

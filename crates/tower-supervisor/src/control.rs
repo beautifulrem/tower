@@ -113,7 +113,7 @@ pub async fn resume(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     inner.withdraw(goal, &[InboxKind::Paused], &tr!(lang, "已继续", "Resumed"));
     let reason = rec.pause_reason.unwrap_or(PauseReason::Human);
     if reason == PauseReason::VerifyEnvError {
-        verify::spawn(inner.clone(), goal.into());
+        verify::spawn_asked(inner.clone(), goal.into());
         return Ok(());
     }
     let edits = human_edits(inner, goal).await.unwrap_or_default();

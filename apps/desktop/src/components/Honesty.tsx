@@ -17,6 +17,14 @@ import { t } from "../lib/i18n";
 import { state } from "../lib/store";
 import { Icon, NeedsYouMark, NoticeMark, ResultMark } from "./Glyph";
 
+/** The first line of why a base could not be checked, without its trailing colon or backticks, at most 120 characters. */
+export function baseReason(error: string | null | undefined): string | null {
+  const first = (error ?? "").split("\n").find((l) => l.trim())?.trim();
+  if (!first) return null;
+  const plain = first.replace(/`([^`]+)`/g, "$1").replace(/[:：]\s*$/, "");
+  return plain.length > 120 ? `${plain.slice(0, 119)}…` : plain;
+}
+
 /**
  * Fact: harness-produced, the normal case, so it carries no frame — only
  * the scale mark and the snapshot it was measured on.
@@ -310,6 +318,8 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
               <span class="t4" title={c().base_error ?? undefined}>
                 {t("goal.baseUncheckable", { base: short(props.base) })}
               </span>
+              {/* Why, in the line itself: the supervisor's first sentence, not only a tooltip. */}
+              <Show when={baseReason(c().base_error)}>{(why) => <span class="t3 base-why">{why()}</span>}</Show>
             </Match>
           </Switch>
         </span>

@@ -319,6 +319,8 @@ test("rolling back is not only for the pointer: a run you can roll back to is a 
 test("the look comparison answers the keyboard: modes, slider, held space", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichLook });
   await expect(page.getByText("couldn't check on")).toBeVisible();
+  // The reason is on the line, not only in its tooltip.
+  await expect(page.locator(".criterion-obs .base-why").first()).toBeVisible();
   await page.locator(".look-img-btn").first().click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();

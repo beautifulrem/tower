@@ -1778,6 +1778,11 @@ input[type="radio"] {
   flex-basis: 100%;
   overflow-wrap: anywhere;
 }
+/* Why a base could not be checked follows the sentence on its line, one register up, and wraps rather than hides. */
+.base-why {
+  white-space: normal;
+  min-width: 0;
+}
 /* No held-out tests: said once, quietly, under the criteria and over the diff, with the way to set them. */
 .held-out-none {
   display: flex;
@@ -3019,6 +3024,13 @@ input[type="radio"] {
   padding: 0 16px 0 32px !important;
   font-size: 13px;
   outline: none !important;
+}
+/* The palette's field is the panel's own top line, not a field inside a frame: no second edge when it has focus;
+   the caret and the hairline under it say where typing goes. */
+.palette-input:focus,
+.palette-input:focus-visible {
+  box-shadow: none !important;
+  border-bottom-color: var(--border) !important;
 }
 .palette-list {
   max-height: 50vh;

@@ -1072,7 +1072,7 @@ test("in Settings the phone's problem stands under its switch and above the port
 
 test("the contract editor's switch is 28×18 with a 32×24 target", async ({ page }) => {
   await openTower(page, "new");
-  const toggle = page.getByRole("switch");
+  const toggle = page.getByRole("switch", { name: /Allow network/ });
   await expect(toggle).toBeVisible();
   const box = (await toggle.boundingBox())!;
   expect(Math.round(box.width)).toBe(28);

@@ -234,7 +234,7 @@ impl<'a> Bench<'a> {
     /// Screenshots for `look` criteria on the current checkout.
     async fn capture_looks(&self, ids: &[String], side: &str, rev: &str) -> Result<()> {
         for c in self.rec.contract.criteria.iter().filter(|c| ids.contains(&c.id)) {
-            let CriterionKind::Look { start, url, timeout_secs } = &c.kind else { continue };
+            let CriterionKind::Look { start, url, timeout_secs, steps } = &c.kind else { continue };
             let short: String = rev.chars().take(10).collect();
             let out =
                 self.inner.paths.root.join("evidence").join(self.goal).join(format!("{}-{side}-{short}.png", c.id));
@@ -246,6 +246,7 @@ impl<'a> Bench<'a> {
                 url,
                 Duration::from_secs((*timeout_secs).max(5) as u64),
                 self.rec.contract.network,
+                steps.as_deref().unwrap_or_default(),
                 &out,
             )
             .await;

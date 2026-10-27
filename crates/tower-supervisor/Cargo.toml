@@ -21,6 +21,7 @@ ts-rs.workspace = true
 directories.workspace = true
 globset.workspace = true
 tiny_http.workspace = true
+tungstenite.workspace = true
 qrcode.workspace = true
 uuid.workspace = true
 

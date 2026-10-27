@@ -20,6 +20,7 @@ mod environment;
 mod inner;
 mod jail;
 mod look;
+mod look_cdp;
 pub mod paths;
 mod pr;
 mod project_check;

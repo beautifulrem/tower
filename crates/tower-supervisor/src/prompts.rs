@@ -69,10 +69,18 @@ pub fn contract_brief(title: &str, c: &Contract) -> String {
                 s.push_str(&format!("- {} {}: `{}` exits 0\n", cr.id, cr.title, command))
             }
             CriterionKind::Human => s.push_str(&format!("- {} {} (checked by the human)\n", cr.id, cr.title)),
-            CriterionKind::Look { start, url, .. } => s.push_str(&format!(
-                "- {} {} (checked by the human from screenshots of {url} after `{start}`; make sure that starts the app)\n",
-                cr.id, cr.title
-            )),
+            CriterionKind::Look { start, url, steps, .. } => {
+                s.push_str(&format!(
+                    "- {} {} (checked by the human from screenshots of {url} after `{start}`; make sure that starts the app)\n",
+                    cr.id, cr.title
+                ));
+                if let Some(steps) = steps.as_ref().filter(|s| !s.is_empty()) {
+                    s.push_str(&format!(
+                        "  The picture is taken after these steps on the page: {}\n",
+                        steps.join("; ")
+                    ));
+                }
+            }
         }
     }
     let sc = &c.scope;

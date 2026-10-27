@@ -12,6 +12,9 @@ dist/
 # Rust
 target/
 
+# Python (the verification guard is run with it)
+__pycache__/
+
 # Tauri
 apps/desktop/src-tauri/gen/schemas/
 

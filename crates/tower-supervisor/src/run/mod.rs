@@ -19,7 +19,7 @@ use crate::{Inner, Result, invalid, prompts};
 pub(crate) use crate::control::{
     abandon, answer_dialog, pause, pause_after_stop, paused_item, repin, report, resume, steer,
 };
-pub(crate) use crate::jail::{agent_jail, verifier_jail};
+pub(crate) use crate::jail::{Dirs, TowerFiles, agent_jail, verifier_jail};
 
 /// The same failing call this many times in one run raises a stall (S1).
 const REPEATED_FAILURES: u32 = 4;

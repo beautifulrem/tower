@@ -500,6 +500,13 @@ async fn a_test_that_must_fail_catches_disabled_assertions() {
             "node --test",
         ),
         (
+            "assert_cheat_values",
+            "test/add.test.mjs",
+            "import test from 'node:test'\nimport assert from 'node:assert'\nimport { add } from '../src/lib.mjs'\n\
+             test('add', () => assert.equal(add(2, 2), 4))\n",
+            "node --test",
+        ),
+        (
             "assert_cheat_equal",
             "test/check.mjs",
             "import assert from 'node:assert'\nimport { add } from '../src/lib.mjs'\nassert.equal(add(2, 2), 4)\n",
@@ -536,6 +543,7 @@ async fn caught(scenario: &str, test_file: &str, test_text: &str, command: &str)
     assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base: {what}");
     assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::SentinelHigh)), "{what}");
     assert!(d.sentinels.iter().any(|s| s.sentinel == "assertions_disabled"), "{what}");
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "source_patches_tests"), "{what}");
     assert_eq!(d.criteria[0].canary, Some(tower_core::view::CanaryState::Tampered), "{what}");
     assert_eq!(d.summary.progress.verified, 0, "a tampered pass is not counted as verified: {what}");
     true

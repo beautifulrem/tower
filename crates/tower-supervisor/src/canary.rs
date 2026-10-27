@@ -74,7 +74,8 @@ pub fn plant(dir: &Path, candidates: &[String], marker_dir: &Path) -> std::io::R
         let full = dir.join(path);
         let Ok(text) = std::fs::read_to_string(&full) else { continue };
         let Some(snippet) = snippet(path, &text, &ran, &survived, &token) else { continue };
-        let mut out = text;
+        // The tests' own assertions too, each expecting something else.
+        let mut out = mutate(path, &text, &ran, &survived).unwrap_or(text);
         if !out.ends_with('\n') {
             out.push('\n');
         }
@@ -83,6 +84,182 @@ pub fn plant(dir: &Path, candidates: &[String], marker_dir: &Path) -> std::io::R
         files.push(path.clone());
     }
     Ok(Canary { ran, survived, files })
+}
+
+/// Assertion calls whose expected value is the last literal in them and
+/// that must fail when it changes (exact equality only).
+const MUTABLE_JS: &[&str] = &["assert.equal(", "assert.strictEqual(", "assert.deepEqual(", "assert.deepStrictEqual("];
+const MUTABLE_MATCHERS: &[&str] = &[".toBe(", ".toEqual(", ".toStrictEqual("];
+/// Matchers that make equality loose: changing a literal inside them can
+/// still pass.
+const LOOSE: &[&str] = &["expect.any", "Containing", "stringMatching", "closeTo", "anything", ".not.", "${"];
+
+/// The tests' own assertions with their expected values changed, each
+/// followed by a marker that is written only if it did not throw: an
+/// assertion that accepts a wrong expected value has been altered, even
+/// if the alteration is aimed at the values the tests use. At most 20 per
+/// file; only exact equalities on one line, nothing loose.
+fn mutate(path: &str, text: &str, ran: &Path, survived: &Path) -> Option<String> {
+    let (ran, survived) = (ran.to_str()?, survived.to_str()?);
+    if [ran, survived].iter().any(|m| m.contains(['"', '\'', '\\', '\n'])) {
+        return None;
+    }
+    let ext = path.rsplit('.').next().unwrap_or("");
+    let js = matches!(ext, "js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx");
+    let py = ext == "py";
+    if !js && !py {
+        return None;
+    }
+    let global = if matches!(ext, "ts" | "mts" | "cts" | "tsx") { "(globalThis as any)" } else { "globalThis" };
+    let mut changed = 0;
+    let mut out = String::with_capacity(text.len() + 1024);
+    for line in text.split_inclusive('\n') {
+        let (body, nl) = line.strip_suffix('\n').map_or((line, ""), |b| (b, "\n"));
+        let next = if changed >= 20 || LOOSE.iter().any(|l| body.contains(l)) {
+            None
+        } else if js {
+            mutate_js(body, global, ran, survived)
+        } else {
+            mutate_py(body, ran, survived)
+        };
+        match next {
+            Some(m) => {
+                changed += 1;
+                out.push_str(&m);
+            }
+            None => out.push_str(body),
+        }
+        out.push_str(nl);
+    }
+    (changed > 0).then_some(out)
+}
+
+/// The end (exclusive) of the call whose `(` is at `open`, or `None` if it
+/// does not close on this line (strings are skipped).
+fn close_of(s: &str, open: usize) -> Option<usize> {
+    let b = s.as_bytes();
+    let (mut depth, mut i, mut quote) = (0i32, open, 0u8);
+    while i < b.len() {
+        let c = b[i];
+        if quote != 0 {
+            if c == b'\\' {
+                i += 1;
+            } else if c == quote {
+                quote = 0;
+            }
+        } else if c == b'"' || c == b'\'' || c == b'`' {
+            quote = c;
+        } else if c == b'(' || c == b'[' || c == b'{' {
+            depth += 1;
+        } else if c == b')' || c == b']' || c == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(i + 1);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// The last literal (number or quoted string) in `s`, as a byte range.
+fn last_literal(s: &str) -> Option<(usize, usize)> {
+    let b = s.as_bytes();
+    let mut found = None;
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'"' || c == b'\'' {
+            let start = i;
+            i += 1;
+            while i < b.len() && b[i] != c {
+                if b[i] == b'\\' {
+                    i += 1;
+                }
+                i += 1;
+            }
+            found = Some((start, (i + 1).min(b.len())));
+        } else if c.is_ascii_digit()
+            && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_' || b[i - 1] == b'.'))
+        {
+            let start = i;
+            while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'.' || b[i] == b'_') {
+                i += 1;
+            }
+            found = Some((start, i));
+            continue;
+        }
+        i += 1;
+    }
+    found
+}
+
+/// `lit` changed so it cannot equal what it equalled.
+fn changed_literal(lit: &str) -> Option<String> {
+    if let Some(q) = lit.chars().next().filter(|c| *c == '"' || *c == '\'') {
+        let inner = lit.strip_prefix(q)?.strip_suffix(q)?;
+        return Some(format!("{q}{inner}_tower_changed{q}"));
+    }
+    let clean = lit.replace('_', "");
+    match clean.parse::<i64>() {
+        Ok(n) => Some((n + 1).to_string()),
+        Err(_) => clean.parse::<f64>().ok().map(|f| format!("{}", f + 1.0)),
+    }
+}
+
+fn mutate_js(line: &str, global: &str, ran: &str, survived: &str) -> Option<String> {
+    // The assertion call: `assert.equal(...)` or `expect(...).toBe(...)`.
+    let (start, end, args_from) = if let Some(m) = MUTABLE_JS.iter().find_map(|m| line.find(m).map(|i| (i, m.len()))) {
+        let open = m.0 + m.1 - 1;
+        (m.0, close_of(line, open)?, open)
+    } else {
+        let s = line.find("expect(")?;
+        let after = close_of(line, s + "expect(".len() - 1)?;
+        let rest = &line[after..];
+        let m = MUTABLE_MATCHERS.iter().find(|m| rest.starts_with(**m))?;
+        let open = after + m.len() - 1;
+        (s, close_of(line, open)?, open)
+    };
+    let (ls, le) = last_literal(&line[args_from..end])?;
+    let (ls, le) = (args_from + ls, args_from + le);
+    let new = changed_literal(&line[ls..le])?;
+    let call = format!("{}{new}{}", &line[start..ls], &line[le..end]);
+    let mark = |p: &str| format!("{global}.process?.getBuiltinModule?.(\"node:fs\")?.writeFileSync(\"{p}\", \"\")");
+    Some(format!("{}({}, {call}, {}){}", &line[..start], mark(ran), mark(survived), &line[end..]))
+}
+
+fn mutate_py(line: &str, ran: &str, survived: &str) -> Option<String> {
+    let t = line.trim_start();
+    let indent = &line[..line.len() - t.len()];
+    let mark = format!("open(\"{survived}\", \"w\").close()");
+    let mark_ran = format!("open(\"{ran}\", \"w\").close()");
+    let ends_cleanly = !t.ends_with('\\') && !t.ends_with(',') && !t.contains('#');
+    if !ends_cleanly {
+        return None;
+    }
+    if let Some(cond) = t.strip_prefix("assert ") {
+        // `assert <expr> == <literal>` and nothing else on the line.
+        let (left, right) = cond.rsplit_once(" == ")?;
+        let right = right.trim();
+        if [" or ", " and ", " not ", " in ", ","].iter().any(|k| left.contains(k) || right.contains(k)) {
+            return None;
+        }
+        let (ls, le) = last_literal(right).filter(|(s, e)| *s == 0 && *e == right.len())?;
+        let new = changed_literal(&right[ls..le])?;
+        return Some(format!("{indent}{mark_ran}; assert {left} == {new}; {mark}"));
+    }
+    if t.starts_with("self.assertEqual(") && t.ends_with(')') {
+        let open = "self.assertEqual(".len() - 1;
+        let end = close_of(t, open)?;
+        if end != t.len() {
+            return None;
+        }
+        let (ls, le) = last_literal(&t[open..end])?;
+        let (ls, le) = (open + ls, open + le);
+        let new = changed_literal(&t[ls..le])?;
+        return Some(format!("{indent}{mark_ran}; {}{new}{}; {mark}", &t[..ls], &t[le..]));
+    }
+    None
 }
 
 /// `assert.<method>` calls that cannot pass, by method (node:assert and
@@ -311,6 +488,33 @@ mod tests {
     }
 
     #[test]
+    fn the_tests_own_assertions_are_changed_and_marked() {
+        let (r, s) = (Path::new("/tmp/r"), Path::new("/tmp/s"));
+        let js = mutate(
+            "test/a.test.mjs",
+            "test('add', () => assert.equal(add(2, 2), 4))\nexpect(total([1])).toEqual({ sum: 'one' });\nexpect(x).not.toBe(3)\n",
+            r,
+            s,
+        )
+        .unwrap();
+        assert!(js.contains(", assert.equal(add(2, 2), 5), globalThis.process"), "{js}");
+        assert!(js.contains("expect(total([1])).toEqual({ sum: 'one_tower_changed' })"), "{js}");
+        assert!(js.contains("expect(x).not.toBe(3)\n"), "loose or negated assertions stay: {js}");
+        let py = mutate(
+            "tests/test_a.py",
+            "    assert total([]) == 0\n    self.assertEqual(f(), 'x')\n    assert a == b\n",
+            r,
+            s,
+        )
+        .unwrap();
+        assert!(
+            py.contains("assert total([]) == 1; open(")
+                && py.contains("self.assertEqual(f(), 'x_tower_changed'); open(")
+        );
+        assert!(py.contains("    assert a == b\n"));
+    }
+
+    #[test]
     fn canaries_go_through_the_assertions_the_file_uses() {
         let vitest =
             snip("src/a.test.ts", "import { it, expect } from 'vitest'\nit('x', () => expect([1]).toContain(1))")
@@ -375,6 +579,18 @@ mod tests {
                 &dir,
                 "test/a.test.mjs",
                 &format!("{head}assert.equal = () => {{}}\ntest('x', () => assert.equal(1, 2))\n")
+            ),
+            Verdict::Tampered
+        );
+        // An alteration aimed at exactly the values the test uses.
+        assert_eq!(
+            run(
+                &dir,
+                "test/a.test.mjs",
+                &format!(
+                    "{head}const real = assert.equal\nassert.equal = (a, b, m) => {{ if (a === 0) return; return real(a, b, m) }}\n\
+                     test('x', () => assert.equal(0, 4))\n"
+                )
             ),
             Verdict::Tampered
         );

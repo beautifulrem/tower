@@ -115,37 +115,6 @@ pub(in crate::verify) fn paths_gone(dir: &Path, command: &str) -> bool {
         .any(|w| !dir.join(w.trim_start_matches("./")).exists())
 }
 
-/// Adds to each held-out file a line that leaves `marker` when the file is
-/// loaded (JavaScript, TypeScript, Python, shell); returns the files' new
-/// contents, so a later comparison is with what was planted.
-pub(in crate::verify) fn mark_loading(dir: &Path, files: &[String], marker: &Path) -> Vec<(String, Vec<u8>)> {
-    let Some(m) = marker.to_str().filter(|m| !m.contains(['"', '\'', '\\', '\n'])) else { return Vec::new() };
-    let mut planted = Vec::new();
-    for f in files {
-        let full = dir.join(f);
-        let Ok(text) = std::fs::read_to_string(&full) else { continue };
-        let ext = f.rsplit('.').next().unwrap_or("");
-        let out = match ext {
-            "js" | "mjs" | "cjs" | "jsx" => {
-                format!("{text}\n;globalThis.process?.getBuiltinModule?.(\"node:fs\")?.writeFileSync(\"{m}\", \"\");\n")
-            }
-            "ts" | "mts" | "cts" | "tsx" => format!(
-                "{text}\n;(globalThis as any).process?.getBuiltinModule?.(\"node:fs\")?.writeFileSync(\"{m}\", \"\");\n"
-            ),
-            "py" => format!("{text}\n\nopen(\"{m}\", \"w\").close()\n"),
-            "sh" | "bash" => match text.split_once('\n') {
-                Some((first, rest)) if first.starts_with("#!") => format!("{first}\n: > \"{m}\"\n{rest}"),
-                _ => format!(": > \"{m}\"\n{text}"),
-            },
-            _ => continue,
-        };
-        if tower_git::write_inside(dir, f, out.as_bytes()).is_ok() {
-            planted.push((f.clone(), out.into_bytes()));
-        }
-    }
-    planted
-}
-
 pub(in crate::verify) fn sentinel_hit(id: &str, detail: String, lang: Lang) -> tower_core::sentinel::SentinelHit {
     tower_core::sentinel::SentinelHit {
         sentinel: id.into(),

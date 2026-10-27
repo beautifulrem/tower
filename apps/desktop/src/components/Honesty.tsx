@@ -184,31 +184,74 @@ export function CriteriaBar(props: { progress: Progress; criteria?: readonly Cri
  * stamp, not the verifier's green nor the claim's dashes — quietly, under the
  * row, with the long form one hover away.
  */
-export function HeldOutChip() {
+export function HeldOutChip(props: { ran?: number; total?: number }) {
+  // Only some of the held-out files proved they ran: the label says how many.
+  const some = () => props.ran != null && props.total != null && props.ran < props.total;
   return (
-    <span class="chip chip-you" title={t("goal.heldOutLong")}>
-      {t("goal.heldOut")}
+    <span class="chip chip-you" title={some() ? t("goal.heldOutSomeLong", { m: props.ran! }) : t("goal.heldOutLong")}>
+      {some() ? t("goal.heldOutSome", { m: props.ran!, n: props.total! }) : t("goal.heldOut")}
     </span>
   );
 }
 
+/** Held-out files, one by one, as code — names only you see. */
+function HeldOutFiles(props: { files: string[] }) {
+  return (
+    <For each={props.files}>
+      {(f, i) => (
+        <>
+          {i() > 0 ? ", " : " "}
+          <code class="code-val held-out-file">{f}</code>
+        </>
+      )}
+    </For>
+  );
+}
+
 /**
- * The held-out chip on a line of its own. Each note under a criterion is one
- * line in one register, starting under the criterion's title — the canary's
- * fact, your held-out mark, the base's reading — as a sentinel's detail is
- * one register per line.
+ * Your held-out mark, on lines of its own. Each note under a criterion is
+ * one line in one register, starting under the criterion's title — the
+ * canary's fact, your held-out mark, the base's reading — as a sentinel's
+ * detail is one register per line. The mark follows the proof: the chip
+ * only when at least one held-out file proved it ran ("m of n" when not
+ * all did), then the files that did not run and those Tower cannot prove,
+ * by name. None ran: no chip, only that line — never both.
  */
 export function HeldOutLine(props: { c: CriterionView }) {
+  const v = () => props.c.verified;
+  const proof = () => v()?.held_out_proof ?? null;
+  const total = () => {
+    const p = proof();
+    return p ? p.ran.length + p.not_ran.length + p.unprovable.length : undefined;
+  };
+  const note = (cls: string, title: string, words: string, files: string[]) => (
+    <div class={`criterion-row criterion-obs ${cls}`}>
+      <span />
+      <span />
+      <span class="col-span t3" title={title}>
+        {words}
+        <HeldOutFiles files={files} />
+      </span>
+    </div>
+  );
   return (
-    <Show when={props.c.verified?.held_out}>
-      <div class="criterion-row criterion-obs">
-        <span />
-        <span />
-        <span class="col-span">
-          <HeldOutChip />
-        </span>
-      </div>
-    </Show>
+    <>
+      <Show when={v()?.held_out}>
+        <div class="criterion-row criterion-obs">
+          <span />
+          <span />
+          <span class="col-span">
+            <HeldOutChip ran={proof()?.ran.length} total={total()} />
+          </span>
+        </div>
+      </Show>
+      <Show when={proof()?.not_ran.length}>
+        {note("held-out-missing", t("goal.heldOutNotRunLong"), v()?.held_out ? t("goal.heldOutNotRun") : t("goal.heldOutNoneRan"), proof()!.not_ran)}
+      </Show>
+      <Show when={proof()?.unprovable.length}>
+        {note("held-out-unproven", t("goal.heldOutUnprovenLong"), t("goal.heldOutUnproven"), proof()!.unprovable)}
+      </Show>
+    </>
   );
 }
 

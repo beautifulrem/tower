@@ -241,6 +241,10 @@ const MIGRATIONS: &[&str] = &[
     );
     ALTER TABLE projects ADD COLUMN loopback_open INTEGER NOT NULL DEFAULT 0;
     "#,
+    // 19: which held-out test files each result proved it ran (JSON)
+    r#"
+    ALTER TABLE criterion_results ADD COLUMN held_out_proof TEXT;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

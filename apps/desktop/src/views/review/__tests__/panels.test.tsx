@@ -156,7 +156,7 @@ describe("AcceptPanel", () => {
         ...detail.criteria,
         {
           criterion: { id: "C2", title: "Rounding tests pass", kind: { type: "exec", command: "node --test", timeout_secs: 120 } },
-          verified: { pin: "a4a90b2deadbeef", passed: true, exit_code: 0, duration_ms: 900, output_tail: "", at: 0, stale: false, held_out: false },
+          verified: { pin: "a4a90b2deadbeef", passed: true, exit_code: 0, duration_ms: 900, output_tail: "", at: 0, stale: false, held_out: false, held_out_proof: null },
           passed_on_base: null,
           observed: null,
           human_checked: false,

@@ -106,12 +106,22 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
                 params![goal_id, pin, serde_json::to_string(&stat)?],
             )?;
         }
-        EventKind::CriterionResult { criterion, pin, passed, exit_code, duration_ms, output_tail, held_out } => {
+        EventKind::CriterionResult {
+            criterion,
+            pin,
+            passed,
+            exit_code,
+            duration_ms,
+            output_tail,
+            held_out,
+            held_out_proof,
+        } => {
+            let proof = held_out_proof.as_ref().map(serde_json::to_string).transpose()?;
             tx.execute(
                 "INSERT OR REPLACE INTO criterion_results
-                    (goal_id, criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![goal_id, criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out],
+                    (goal_id, criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out, held_out_proof)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![goal_id, criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out, proof],
             )?;
         }
         EventKind::BranchPushed { pr_url: Some(url), .. } => {

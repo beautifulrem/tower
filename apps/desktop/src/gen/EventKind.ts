@@ -2,6 +2,7 @@
 import type { CanaryState } from "./CanaryState";
 import type { ClaimKind } from "./ClaimKind";
 import type { Contract } from "./Contract";
+import type { HeldOutProof } from "./HeldOutProof";
 import type { LifecycleState } from "./LifecycleState";
 import type { Mode } from "./Mode";
 import type { PauseReason } from "./PauseReason";
@@ -24,10 +25,15 @@ target?: string,
  */
 denied: boolean, } | { "kind": "assistant_message", text: string, } | { "kind": "claim", claim_id: string, claim: ClaimKind, text: string, criterion?: string | null, } | { "kind": "submitted", summary: string, } | { "kind": "pinned", pin: string, files: number, additions: number, deletions: number, } | { "kind": "verify_started", pin: string, } | { "kind": "setup_finished", command: string, ok: boolean, exit_code: number | null, duration_ms: number, } | { "kind": "criterion_result", criterion: string, pin: string, passed: boolean, exit_code: number | null, duration_ms: number, output_tail: string, 
 /**
- * Run with the held-out tests present: the output is for the human
- * only, never the agent.
+ * At least one held-out test file is proven to have run in it: a
+ * result "with held-out tests". Never true without that proof.
  */
-held_out: boolean, } | { "kind": "verify_finished", pin: string, passed: boolean, env_error: boolean, } | { "kind": "baseline_result", criterion: string, command: string, base: string, passed: boolean, 
+held_out: boolean, 
+/**
+ * Run with the held-out tests present (the output is for the human
+ * only, never the agent): which of them proved they ran.
+ */
+held_out_proof?: HeldOutProof | null, } | { "kind": "verify_finished", pin: string, passed: boolean, env_error: boolean, } | { "kind": "baseline_result", criterion: string, command: string, base: string, passed: boolean, 
 /**
  * Why the criterion could not run on the base at all (then `passed`
  * means nothing).

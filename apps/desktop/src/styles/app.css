@@ -1694,6 +1694,44 @@ input[type="radio"] {
   border-radius: var(--radius-s);
   background: var(--attention-bg);
 }
+/* A base the sandbox refused: an environment problem, said in the environment register (the ◫ mark, text-2), never red,
+   with the refused lines in view as machine values — the line may wrap, since a path is the point of it. */
+.env-line {
+  min-height: 24px;
+  align-items: start;
+}
+.env-line .col-span {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  white-space: normal;
+  row-gap: 2px;
+  padding: 2px 0;
+}
+.env-refused {
+  overflow-wrap: anywhere;
+}
+/* No held-out tests: said once, quietly, under the criteria and over the diff, with the way to set them. */
+.held-out-none {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: var(--sp-2);
+  color: var(--text-2);
+}
+.held-out-none .glyph {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.held-out-none .text-btn {
+  flex: 0 0 auto;
+  margin: -2px 0 0 var(--sp-2);
+  color: var(--text-3);
+}
+.review-diff .held-out-none {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+}
 
 .output-tail {
   font-feature-settings: "liga" 0, "calt" 0;
@@ -3324,6 +3362,23 @@ input[type="radio"] {
   height: 26px !important;
   padding-top: 3px;
   padding-bottom: 3px;
+}
+/* Where it is written: a scope picker among several projects, or one checkbox in a project's own context. */
+.identity-form .identity-scope {
+  width: auto !important;
+  max-width: 16em;
+  height: 26px;
+}
+.identity-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  color: var(--text-2);
+}
+.panel-blockers .identity-form {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-body);
 }
 .identity-form .identity-hint {
   flex-basis: 100%;

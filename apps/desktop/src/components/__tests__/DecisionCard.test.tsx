@@ -27,6 +27,15 @@ vi.mock("../../lib/store", async () => {
         diffstat: null,
         progress: { verified: 1, observed: 0, machine: 1, human: 0, human_done: 0 },
       },
+      "G-0004": {
+        id: "G-0004",
+        state: "paused",
+        pause_reason: "prepare_failed",
+        pr: null,
+        verified_pin: null,
+        diffstat: null,
+        progress: { verified: 0, observed: 0, machine: 1, human: 0, human_done: 0 },
+      },
     } as Record<string, unknown>,
     inbox: [] as InboxItem[],
     now: Date.now(),
@@ -38,7 +47,7 @@ vi.mock("../../lib/store", async () => {
   };
 });
 
-const { DecisionCard, ARM_MS, heldOutParts } = await import("../DecisionCard");
+const { DecisionCard, ARM_MS, bodyParts, heldOutParts } = await import("../DecisionCard");
 
 const HELD_OUT_BODY = [
   "Every visible criterion passed; the held-out tests did not. The agent does not know these tests and has not seen the output below.",
@@ -223,6 +232,27 @@ describe("DecisionCard", () => {
     await Promise.resolve();
     expect(invoked.map((i) => i.cmd)).toEqual(["answer"]);
     expect(invoked[0].args).toEqual({ inboxId: "H-1", response: "Half-cents round up" });
+  });
+
+  it("says a sandbox refusal is an environment problem before its details, keeps the sentences as prose and the refused path in the machine tail", () => {
+    const body = [
+      "Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.",
+      "",
+      "The sandbox refused something the command `npm test` of C1 needed (exit code 255). This is not a test failure: check the refused path below and add it to the project settings if it belongs.",
+      "sandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin",
+      "sh: 1: node: Operation not permitted",
+    ].join("\n");
+    const parts = bodyParts(item({ id: "E-1", goal_id: "G-0004", subject: "Could not prepare the workspace or start the engine", body, options: ["Retry", "Abandon this goal"], tones: ["primary", "destructive"] }));
+    expect(parts.prose).toMatch(/This is not a test failure.*if it belongs\.$/s);
+    expect(parts.tail).toBe("sandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin\nsh: 1: node: Operation not permitted");
+    const { container } = render(() => <DecisionCard item={item({ id: "E-1", goal_id: "G-0004", subject: "Could not prepare the workspace or start the engine", body, options: ["Retry", "Abandon this goal"], tones: ["primary", "destructive"] })} />);
+    const main = container.querySelector(".decision-main")!;
+    const order = [...main.children].map((el) => el.className.split(" ").find((c) => c.startsWith("decision-")));
+    expect(order.indexOf("decision-caution")).toBeLessThan(order.indexOf("decision-body"));
+    expect(container.querySelector(".decision-env .result-env")).not.toBeNull();
+    expect(container.querySelector(".decision-env")!.textContent).toContain("not a test failure");
+    expect(container.querySelector(".decision-tail")!.textContent).toContain("/Users/you/node_modules/.bin");
+    expect(container.querySelector(".mark-danger")).toBeNull();
   });
 
   it("does not repeat the PR reading on the goal's own page", () => {

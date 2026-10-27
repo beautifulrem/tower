@@ -321,8 +321,8 @@ function cannotRun(F: F, goal: string) {
       title: cn ? "已暂停：验收标准在验证沙箱里跑不起来" : "Paused: The criteria cannot run in the verification sandbox",
       subject: cn ? "验收标准在验证沙箱里跑不起来" : "The criteria cannot run in the verification sandbox",
       body: cn
-        ? `Tower 在验证沙箱里用你自己的代码试跑了验收标准，它们没法在那里运行，所以 Agent 的结果也没法验证。修好后点“重试”。\n\nC1 的命令 \`npm test\` 在验证沙箱里被拒绝访问了它需要的东西（退出码 255）。这不是测试失败。\n${REFUSED_TAIL}`
-        : `Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\nThe sandbox refused something the command \`npm test\` of C1 needed (exit code 255). This is not a test failure.\n${REFUSED_TAIL}`,
+        ? `Tower 在验证沙箱里用你自己的代码试跑了验收标准，它们没法在那里运行，所以 Agent 的结果也没法验证。修好后点“重试”。\n\nC1 的命令 \`npm test\` 在验证沙箱里被拒绝访问了它需要的东西（退出码 255）。\n${REFUSED_TAIL}`
+        : `Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\nThe sandbox refused something the command \`npm test\` of C1 needed (exit code 255).\n${REFUSED_TAIL}`,
       options: cn ? ["重试", "这是真的测试失败（记为改动前失败）", "放弃这个目标"] : ["Retry", "It is a real test failure (count it as failing before the change)", "Abandon this goal"],
       tones: ["primary", "neutral", "destructive"],
       allow_text: false,

@@ -268,7 +268,7 @@ test("a held-out failure on the phone is the desk's card: the output for you onl
   await expect(card.locator(".desk")).toContainText("Show the agent the failure");
   await card.getByRole("button", { name: "Abandon this goal" }).click();
   await expect(card.getByRole("button", { name: "Press again" })).toBeVisible();
-  await expect(card.locator(".note")).toContainText("does not know these tests exist");
+  await expect(card.locator(".note")).toContainText("keeps the tests hidden");
   // The hint goes as free text.
   const sent = page.waitForRequest((r) => r.url().endsWith("/api/answer") && r.method() === "POST");
   await area.fill("Half-cents round up");

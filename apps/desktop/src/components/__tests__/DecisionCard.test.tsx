@@ -246,7 +246,7 @@ describe("DecisionCard", () => {
     expect(send.disabled).toBe(true);
     expect(screen.getByText(/Show the agent the failure/).closest("button")!.className).toContain("btn-default");
     expect(screen.getByText("Abandon this goal").closest("button")!.className).toContain("btn-danger");
-    expect(screen.getByText(/only the names of what failed, keeps it that way/)).toBeTruthy();
+    expect(screen.getByText(/only the names of what failed, keeps the tests hidden/)).toBeTruthy();
     const area = screen.getByPlaceholderText(/A hint for the agent/) as HTMLTextAreaElement;
     fireEvent.input(area, { target: { value: "Half-cents round up" } });
     fireEvent.click(send);

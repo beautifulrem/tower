@@ -13,8 +13,10 @@ use tower_git::Git;
 use tower_verify::{Cancel, RunSpec};
 
 mod checks;
+mod env_error;
 mod guard;
 mod looks;
+mod loopback;
 mod processes;
 pub(super) use checks::{confirmed_refusal, mark_loading, paths_gone, sentinel_hit, tests_ran};
 use guard::{Coverage, Guard, Phase};
@@ -80,6 +82,8 @@ pub(super) struct Bench<'a> {
     /// Tower's assertion-identity guard, loaded before any project code.
     guard: Option<Guard>,
     cancel: &'a Cancel,
+    /// Loopback opened for criteria your own code needs it for.
+    loopback: loopback::OpenLoopback,
     _cache: RemoveOnDrop,
     _guard_dir: RemoveOnDrop,
 }
@@ -139,6 +143,17 @@ impl<'a> Bench<'a> {
         let offline = jail("verify-setup-offline", false)?;
         let criteria = jail("verify", rec.contract.network)?;
         let held_out = jail("verify-held-out", false)?;
+        // Their loopback-open twins (see `loopback`), when loopback is closed.
+        let closed = !rec.contract.network && !rec.contract.loopback_open;
+        let twin = |purpose: &str| -> Result<Option<std::path::PathBuf>> {
+            if !closed {
+                return Ok(None);
+            }
+            let net = run::Net { open: true, ..run::Net::new(&rec.contract, false) };
+            Ok(run::verifier_jail(inner, &goal_dir, &dirs, purpose, &net, &tower_files)?.profile)
+        };
+        let loopback =
+            loopback::OpenLoopback::new(inner, goal, rec, twin("verify-loopback")?, twin("verify-held-out-loopback")?)?;
         let mut env = inner.env.without_credentials();
         env.push(("CI".into(), "1".into()));
         env.extend(criteria.env);
@@ -169,6 +184,7 @@ impl<'a> Bench<'a> {
             holdout,
             guard,
             cancel,
+            loopback,
             _cache: cleanup,
             _guard_dir: guard_cleanup,
         })
@@ -198,6 +214,7 @@ impl<'a> Bench<'a> {
     /// `phase` says which transcript the guard reports to; `None` leaves the
     /// guard out (setup installs dependencies, it runs no criteria).
     async fn exec_in(&self, command: &str, profile: Option<&Path>, timeout: Duration, phase: Option<Phase>) -> Ran {
+        let profile = self.profile_for(command, profile);
         let mut env = self.env.clone();
         if let (Some(g), Some(phase)) = (&self.guard, phase) {
             g.merge_env(&mut env, phase);
@@ -286,32 +303,6 @@ impl<'a> Bench<'a> {
             .collect()
     }
 
-    fn env_error(&self, id: &str, command: &str, r: &Ran) -> Outcome {
-        let lang = self.inner.lang();
-        let how = match r.exit_code {
-            Some(code) => tr!(lang, "退出码 {code}", "exit code {code}"),
-            None => tr!(lang, "未启动", "did not start"),
-        };
-        let tail = tail_lines(&r.output_tail, 20);
-        if let Some(port) = crate::sandbox::loopback_refusal(&r.output_tail).filter(|_| !r.denied) {
-            let cause = tower_core::env_cause::EnvCause::Loopback(port);
-            let problem = format!("{id} · `{command}`\n{tail}");
-            return Outcome::EnvError(tower_core::i18n::PauseNote::Blocked { cause, problem }.encode());
-        }
-        if r.denied {
-            return Outcome::EnvError(tr!(
-                lang,
-                "{id} 的命令 `{command}` 在验证沙箱里被拒绝访问了它需要的东西（{how}）。这不是测试失败。\n{tail}",
-                "The sandbox refused something the command `{command}` of {id} needed ({how}). This is not a test failure.\n{tail}"
-            ));
-        }
-        Outcome::EnvError(tr!(
-            lang,
-            "{id} 的命令 `{command}` 无法运行（{how}）：\n{tail}",
-            "The command `{command}` of {id} could not run ({how}):\n{tail}"
-        ))
-    }
-
     /// The base commit — your content — with your dependencies: setup with
     /// the network, then the criteria that have no baseline yet (red →
     /// green evidence) and the `look` screenshots of the base. The criteria
@@ -355,6 +346,7 @@ impl<'a> Bench<'a> {
             for (c, command, timeout) in criteria.iter().filter(|(c, ..)| missing.contains(&c.id.as_str())) {
                 let timeout = Duration::from_secs((*timeout).max(1) as u64);
                 let r = self.exec_in(command, self.criteria.as_deref(), timeout, Some(Phase::Base)).await;
+                let r = self.open_on_base(&c.id, command, r, timeout).await?;
                 // Recorded either way: "could not check" is information too.
                 // A failure on the base is "red" only if the tests ran there.
                 let not_run = !r.passed && !r.environment_failure && tests_ran(command, &r.output_tail) == Some(false);

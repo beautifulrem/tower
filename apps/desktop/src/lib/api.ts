@@ -31,6 +31,7 @@ export const api = {
   projects: () => invoke<ProjectView[]>("projects"),
   addProject: (path: string) => invoke<ProjectView>("add_project", { path }),
   updateProject: (id: string, patch: ProjectPatch) => invoke<ProjectView>("update_project", { id, patch }),
+  setProjectLoopback: (id: string, open: boolean) => invoke<ProjectView>("set_project_loopback", { id, open }),
   push: (id: string, openPr: boolean) => invoke<string | null>("push", { id, openPr }),
   openWorkspace: (id: string, target: OpenTarget) => invoke<void>("open_workspace", { id, target }),
   removeProject: (id: string) => invoke<void>("remove_project", { id }),

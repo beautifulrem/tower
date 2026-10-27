@@ -39,6 +39,7 @@ fn row_to_project(r: &Row<'_>) -> rusqlite::Result<ProjectView> {
         holdout_files: json_col(r, "holdout_files")?,
         memory: r.get("memory")?,
         setup_command: r.get("setup_command")?,
+        loopback_open: r.get("loopback_open")?,
         test_check: r.get::<_, Option<String>>("test_check")?.and_then(|j| serde_json::from_str(&j).ok()),
         created_at: r.get("created_at")?,
     })
@@ -104,6 +105,20 @@ impl Store {
         self.project(id)
     }
 
+    /// Opens (or closes) loopback for a project's goals.
+    pub fn set_project_loopback_open(&mut self, id: &str, open: bool) -> Result<()> {
+        self.conn.execute("UPDATE projects SET loopback_open = ?2 WHERE id = ?1", params![id, open])?;
+        Ok(())
+    }
+
+    /// The criteria of a goal whose verification has loopback opened:
+    /// `(criterion, command, why)`.
+    pub fn loopback_opened(&self, goal: &str) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare("SELECT criterion, command, why FROM loopback_opened WHERE goal_id = ?1")?;
+        let rows = stmt.query_map([goal], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Removes a project. Refused while it still has goals that are not
     /// archived or abandoned.
     pub fn remove_project(&mut self, id: &str) -> Result<()> {
@@ -165,6 +180,9 @@ mod tests {
         let updated = s.update_project(&created.id, &patch).unwrap();
         assert_eq!(updated.local_files, [".env"]);
         assert_eq!(updated.holdout_files, ["holdout/**"]);
+        assert!(!updated.loopback_open);
+        s.set_project_loopback_open(&created.id, true).unwrap();
+        assert!(s.project(&created.id).unwrap().loopback_open, "a project can open loopback for its goals");
         assert_eq!(updated.memory, patch.memory);
     }
 }

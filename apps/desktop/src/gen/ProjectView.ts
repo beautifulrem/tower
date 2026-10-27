@@ -25,7 +25,14 @@ memory: string,
  * Run once in each new workspace (e.g. `pnpm install`), sandboxed, so
  * the agent starts with dependencies in place. Empty means none.
  */
-setup_command: string, created_at: number, 
+setup_command: string, 
+/**
+ * With the network off, open loopback (all of this Mac except what
+ * already listens when a command starts) for this project's goals:
+ * set when a criterion needed it on your own, unchanged code, and
+ * yours to turn off.
+ */
+loopback_open: boolean, created_at: number, 
 /**
  * The test command run on a clean copy of the base branch, so the
  * first goal does not discover a broken test setup.

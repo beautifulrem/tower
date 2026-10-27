@@ -31,4 +31,10 @@ passes_with_source_only: boolean | null,
  * On the current snapshot, what the must-fail canary showed about the
  * assertions (`None` when it was not this criterion's to check).
  */
-canary: CanaryState | null, observed: ObservationView | null, human_checked: boolean, };
+canary: CanaryState | null, 
+/**
+ * Loopback was opened for this criterion's verification runs, and
+ * why: `base` (your own code needed it before the agent changed
+ * anything) or `project` (the project's setting).
+ */
+loopback_opened?: string, observed: ObservationView | null, human_checked: boolean, };

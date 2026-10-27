@@ -492,6 +492,12 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 return <span class="t2 num">{t("trace.snapshot", { pin: short(c.pin), a: c.additions, d: c.deletions, n: c.files })}</span>;
               }}
             </Match>
+            <Match when={ev().kind === "loopback_opened" && ev()}>
+              {(x) => {
+                const c = x() as Extract<TraceEntry["event"], { kind: "loopback_opened" }>;
+                return <span class="t2">{t("trace.loopbackOpened", { id: c.criterion, why: c.why })}</span>;
+              }}
+            </Match>
             <Match when={ev().kind === "note" && ev()}>{(x) => <span class="t2">{(x() as { text: string }).text}</span>}</Match>
             <Match when={ev().kind === "submitted" && ev()}>
               {(x) => <Claim kind={t("trace.done")}>{(x() as { summary: string }).summary}</Claim>}

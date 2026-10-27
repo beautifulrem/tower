@@ -213,6 +213,27 @@ export function HeldOutLine(props: { c: CriterionView }) {
 }
 
 /**
+ * Loopback opened for this criterion's runs: your own tests needed it on
+ * the base, or the project's setting says so. A decision, said quietly,
+ * with what it means one hover away.
+ */
+export function LoopbackLine(props: { c: CriterionView }) {
+  return (
+    <Show when={props.c.loopback_opened}>
+      {(why) => (
+        <div class="criterion-row criterion-obs loopback-line">
+          <span />
+          <span />
+          <span class="col-span t4" title={t("goal.loopbackOpenedLong")}>
+            {why() === "base" ? t("goal.loopbackOpenedBase") : t("goal.loopbackOpenedProject")}
+          </span>
+        </div>
+      )}
+    </Show>
+  );
+}
+
+/**
  * What the must-fail canary showed, under a criterion that proved the change:
  * a test that cannot pass was added in the tests' own style and the command
  * run again. Intact is a fact (the scale mark, quietly: the assertions were

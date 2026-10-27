@@ -489,6 +489,14 @@ impl Supervisor {
         Ok(p)
     }
 
+    /// Opens or closes loopback for a project's goals (Settings). Tower
+    /// opens it itself when your own tests needed it on the base.
+    pub fn set_project_loopback(&self, id: &str, open: bool) -> Result<ProjectView> {
+        let p = self.inner.store(|s| s.set_project_loopback_open(id, open).and_then(|_| s.project(id)))?;
+        self.emit_projects();
+        Ok(p)
+    }
+
     pub fn remove_project(&self, id: &str) -> Result<()> {
         self.inner.store(|s| s.remove_project(id))?;
         self.emit_projects();

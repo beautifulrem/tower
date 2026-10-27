@@ -489,6 +489,8 @@ impl Store {
             let (c, v) = row?;
             observed.insert(c, v);
         }
+        // Loopback opened for a criterion's command, and why.
+        let opened = self.loopback_opened(id)?;
         let mut checks = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare("SELECT criterion, checked FROM human_checks WHERE goal_id = ?1")?;
         for row in stmt.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)))? {
@@ -521,6 +523,12 @@ impl Store {
                         baseline.get(&c.id).filter(|(cmd, _, _)| cmd == command).and_then(|(_, _, error)| {
                             error.as_deref().map(|e| tower_core::reasons::BaseError::render(e, lang))
                         })
+                    }
+                    CriterionKind::Human | CriterionKind::Look { .. } => None,
+                },
+                loopback_opened: match &c.kind {
+                    CriterionKind::Exec { command, .. } => {
+                        opened.iter().find(|(id, cmd, _)| *id == c.id && cmd == command).map(|(_, _, why)| why.clone())
                     }
                     CriterionKind::Human | CriterionKind::Look { .. } => None,
                 },

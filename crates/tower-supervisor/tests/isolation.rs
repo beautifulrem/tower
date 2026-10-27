@@ -296,3 +296,74 @@ async fn a_toolchain_the_sandbox_cannot_resolve_is_named_on_the_card() {
     let body = card().body;
     assert!(body.contains("rustup 的默认工具链"), "the card follows the language: {body}");
 }
+
+/// A test that starts its own server on a port picked at run time and
+/// connects to it, printing a refusal as Node does.
+const SELF_TEST: &str = r#"perl -MIO::Socket::INET -e '$s = IO::Socket::INET->new(Listen => 1, LocalAddr => "127.0.0.1", LocalPort => 0) or die "listen: $!"; IO::Socket::INET->new(PeerAddr => "127.0.0.1", PeerPort => $s->sockport) or die "connect 127.0.0.1:" . $s->sockport . ": $!\n"'"#;
+
+fn commit(h: &Harness, file: &str, text: &str) {
+    std::fs::write(h.repo.join(file), text).unwrap();
+    git(&h.repo, &["add", "."]);
+    git(&h.repo, &["commit", "--quiet", "-m", file]);
+}
+
+/// Item 13, without friction: your own tests talk over a loopback port
+/// they pick at run time. Preflight finds that on your unchanged code, so
+/// loopback opens for that criterion instead of pausing: the goal reaches
+/// review, the criterion and the trace say so, and the project keeps the
+/// choice (Settings) for its next goal.
+#[tokio::test(flavor = "multi_thread")]
+async fn tests_that_need_loopback_on_your_own_code_open_it_without_a_pause() {
+    if !sandbox() {
+        return;
+    }
+    let h = harness("pass").await;
+    commit(&h, "selftest.sh", &format!("{SELF_TEST}\n"));
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec { command: "sh selftest.sh && test -f done.txt".into(), timeout_secs: 30 };
+    let id = create(&h, c.clone()).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(g.state, LifecycleState::InReview, "{:?} / {:?}", d.criteria[0].base_error, d.criteria[0].verified);
+    assert_eq!(d.criteria[0].loopback_opened.as_deref(), Some("base"), "the row says loopback was opened");
+    assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base, with the tests running");
+    let trace = h.sup.trace(&id, None, 200).unwrap();
+    assert!(
+        trace.iter().any(|e| matches!(&e.event, tower_core::EventKind::LoopbackOpened { why, .. } if why == "base")),
+        "the decision is in the trace"
+    );
+    let project = h.sup.projects().unwrap().remove(0);
+    assert!(project.loopback_open, "the project keeps the choice");
+    // The next goal on the project starts with it.
+    let next = h
+        .sup
+        .create_goal(NewGoalInput { project_id: project.id.clone(), title: "again".into(), contract: c, ratify: true })
+        .await
+        .unwrap()
+        .id;
+    let g = wait_for(&h, &next, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!(g.state, LifecycleState::InReview);
+    assert_eq!(h.sup.goal(&next).unwrap().criteria[0].loopback_opened.as_deref(), Some("project"));
+}
+
+/// A loopback refusal that first appears after the agent's change is not
+/// evidence about your tests: the goal pauses for the environment, and the
+/// project's choice is left alone.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_loopback_need_that_appears_only_after_the_agents_change_still_pauses() {
+    if !sandbox() {
+        return;
+    }
+    let h = harness("loopback_late").await;
+    commit(&h, "run.sh", "test -f done.txt\n");
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec { command: "sh run.sh".into(), timeout_secs: 30 };
+    let id = create(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    assert_eq!(g.state, LifecycleState::Paused);
+    assert_eq!(g.pause_reason, Some(tower_core::PauseReason::VerifyEnvError));
+    let item = h.sup.inbox().unwrap().into_iter().find(|i| i.goal_id == id && i.kind == InboxKind::Paused).unwrap();
+    assert!(item.body.contains("Open loopback"), "{}", item.body);
+    assert_eq!(h.sup.goal(&id).unwrap().criteria[0].loopback_opened, None);
+    assert!(!h.sup.projects().unwrap()[0].loopback_open, "the project's choice is left alone");
+}

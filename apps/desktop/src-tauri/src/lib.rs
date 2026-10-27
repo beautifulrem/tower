@@ -106,6 +106,11 @@ fn update_project(sup: Sup<'_>, id: String, patch: ProjectPatch) -> Res<ProjectV
 }
 
 #[tauri::command]
+fn set_project_loopback(sup: Sup<'_>, id: String, open: bool) -> Res<ProjectView> {
+    sup.set_project_loopback(&id, open)
+}
+
+#[tauri::command]
 async fn push(sup: Sup<'_>, id: String, open_pr: bool) -> Res<Option<String>> {
     sup.push(&id, open_pr).await
 }
@@ -472,6 +477,7 @@ pub fn run() {
             projects,
             add_project,
             update_project,
+            set_project_loopback,
             remove_project,
             goals,
             goal,

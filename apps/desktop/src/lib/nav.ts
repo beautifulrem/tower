@@ -16,18 +16,26 @@ export function route(): Route {
   return s[s.length - 1];
 }
 
+/** How one view gives way to the next: a plain crossfade, a change of space, or the queue turning a page. */
+export type TransitionKind = "view" | "space" | "page";
+
 /**
  * A change of view is a short crossfade (120ms) so the eye keeps its place;
  * entering or leaving review is a change of space (full screen, no title
- * bar) and gets the longer spatial one (docs/12 §12.7: 220ms) — as does
- * the queue's step from one review to the next, a new diff in the same
- * space. Nothing animates when the system asks for reduced motion.
+ * bar) and gets the longer spatial one (docs/12 §12.7: 220ms). The queue's
+ * step from one review to the next is a page turn in the same space: the
+ * file tree stays put and only the diff changes, over the short crossfade.
+ * Nothing animates when the system asks for reduced motion.
  */
+export function transitionKind(from: Route, to: Route): TransitionKind {
+  if (from.name === "review" && to.name === "review") return "page";
+  return from.name === "review" || to.name === "review" ? "space" : "view";
+}
+
 function transition(from: Route, to: Route, apply: () => void) {
-  const crosses = from.name === "review" || to.name === "review";
   const dvt = document as Document & { startViewTransition?: (cb: () => void) => { finished?: Promise<void> } | undefined };
   if (!dvt.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
-  document.documentElement.dataset.transition = crosses ? "space" : "view";
+  document.documentElement.dataset.transition = transitionKind(from, to);
   const vt = dvt.startViewTransition(apply);
   void vt?.finished?.finally(() => delete document.documentElement.dataset.transition);
 }

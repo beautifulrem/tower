@@ -28,7 +28,7 @@ export function ShortcutSheet() {
       .sort((a, b) => Number(a.name === everywhere) - Number(b.name === everywhere));
   });
   return (
-    <Overlay onClose={closeShortcuts} label={t("keys.title")} title={t("keys.title")} instant class="panel panel-wide">
+    <Overlay onClose={closeShortcuts} label={t("keys.title")} title={t("keys.title")} instant class="panel panel-wide panel-tracked">
       <div class="keys-sheet">
         <For each={groups()}>
           {(g) => (

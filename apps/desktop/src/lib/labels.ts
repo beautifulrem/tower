@@ -162,6 +162,49 @@ export function envIssueLabel(issue: EnvIssue, env: EnvironmentStatus | null | u
   }
 }
 
+/** One reading of Settings › Environment's gauge strip: a name, a mark and a value, like the title bar's gauges. */
+export interface EnvGauge {
+  key: "pi" | "claude" | "git" | "sandbox" | "identity";
+  label: string;
+  /** `ok` is a quiet check (Tower's own self-test, never the verifier's green); the others are the marks' usual registers. */
+  mark: "ok" | "danger" | "attention" | "notice";
+  value: string;
+  /** The long form for the pointer: a path, the sentence. */
+  title?: string;
+}
+
+/**
+ * The environment as a line of readings: the engine (Pi's version, or Claude
+ * Code), git's version, the sandbox, the git identity. Each problem's mark is
+ * the one its check row carries below, so the strip and the rows agree.
+ */
+export function envGauges(env: EnvironmentStatus | null | undefined, engine: string | undefined): EnvGauge[] {
+  if (!env) return [];
+  const out: EnvGauge[] = [];
+  if (engine === "claude-code") {
+    const missing = hasIssue(env, "claude_missing");
+    out.push({ key: "claude", label: "Claude Code", mark: missing ? "danger" : "ok", value: missing ? t("settings.notFound") : t("settings.gaugeReady") });
+  } else {
+    const broken = env.issues.find((i) => i.kind === "pi_missing" || i.kind === "pi_broken" || i.kind === "pi_too_old");
+    const version = env.pi_version?.split(" ")[0] ?? "";
+    out.push({
+      key: "pi",
+      label: "Pi",
+      mark: broken || !env.pi_version ? "danger" : hasIssue(env, "pi_untested") ? "notice" : "ok",
+      value: env.pi_version ? version : env.pi_path ? t("settings.gaugeBroken") : t("settings.notFound"),
+      title: env.pi_path ?? undefined,
+    });
+  }
+  out.push({ key: "git", label: "git", mark: env.git_version ? "ok" : "danger", value: env.git_version ? env.git_version.replace(/^git version\s*/, "").split(" ")[0] : t("settings.notFound") });
+  const noSandbox = hasIssue(env, "no_sandbox");
+  out.push({ key: "sandbox", label: t("settings.gaugeSandbox"), mark: noSandbox ? "notice" : "ok", value: noSandbox ? t("settings.gaugeNone") : t("settings.gaugeOn") });
+  if (env.git_version) {
+    const unset = hasIssue(env, "git_identity_missing");
+    out.push({ key: "identity", label: t("settings.gaugeIdentity"), mark: unset ? "attention" : "ok", value: unset ? t("settings.gaugeUnset") : t("settings.gaugeSet") });
+  }
+  return out;
+}
+
 /** Programs the demo may need, with the command that installs each. */
 export function installHint(tool: string): string {
   return ({ python3: "xcode-select --install", node: "brew install node", git: "xcode-select --install" } as Record<string, string>)[tool] ?? `brew install ${tool}`;

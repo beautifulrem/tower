@@ -671,6 +671,20 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   const settingsRow = page.locator(".check-row").filter({ hasText: "git has no name and email" });
   await expect(settingsRow.locator(".fix")).toBeVisible();
   await expect(settingsRow.getByRole("button", { name: "Set in git" })).toBeVisible();
+  // Settings › Environment is a gauge strip: one line of readings, the missing identity wearing its ◆, the problem spelled out under it.
+  const gauges = page.locator(".env-gauges .env-gauge");
+  await expect(gauges).toHaveCount(4);
+  await expect(gauges.nth(0)).toContainText("Pi");
+  await expect(gauges.nth(1)).toContainText("git");
+  await expect(gauges.nth(2)).toContainText("Sandbox");
+  await expect(gauges.nth(3)).toContainText("Identity");
+  await expect(gauges.nth(3)).toHaveAttribute("data-mark", "attention");
+  await expect(gauges.nth(3).locator(".mark-attention")).toBeVisible();
+  await expect(gauges.nth(3)).toContainText("not set");
+  const ys = await gauges.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().y));
+  expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(1);
+  expect((await page.locator(".env-gauges").boundingBox())!.y).toBeLessThan((await settingsRow.boundingBox())!.y);
+  await expect(page.locator(".env-paths")).toContainText("Data directory");
 });
 
 test("the command palette can put the page's card aside, and H does the same", async ({ page }) => {

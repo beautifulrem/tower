@@ -3,10 +3,12 @@
  * budget and autonomy. Red-light hints come from the same validation the
  * supervisor uses to refuse ratification.
  *
- * Three blocks on the left (intent, criteria, scope) with the action bar
- * stuck to the bottom; the dials (autonomy, budget, network, engine) on the right.
+ * It reads as a contract, not a form: a masthead (what, whose, which state),
+ * then numbered clauses — intent, acceptance, scope — on the left with the
+ * action bar stuck to the bottom like a signature line; the dials (autonomy,
+ * budget, network, engine) on the right as the schedule, numbered on.
  */
-import { For, Show, createEffect, createResource, createSignal, on, onMount } from "solid-js";
+import { For, type JSX, Show, createEffect, createResource, createSignal, on, onMount } from "solid-js";
 import { createStore, produce, unwrap } from "solid-js/store";
 
 import { Icon } from "../components/Glyph";
@@ -141,14 +143,37 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   useKeys([{ key: "mod+enter", run: () => !errors().length && void save(true), inInputs: true }]);
 
   const autonomyDesc = () => t(`contract.${c.autonomy}Desc`);
+  const projectName = () => state.projects.find((p) => p.id === projectId())?.name ?? "";
+  // The masthead's state word: what this document is — a new contract, a draft being edited, or an amendment of version n.
+  const mastState = () => (props.amendId ? t("contract.mastAmend", { v: c.version }) : props.draftId ? t("contract.mastDraft") : t("contract.mastNew"));
+
+  /** A clause head: its number in tabular figures, its title in the tracked voice, a hairline to the edge, and the clause's own actions after it. */
+  const ClauseHead = (p: { n: number; title: string; children?: JSX.Element }) => (
+    <header class="clause-head halt">
+      <span class="clause-no num" aria-hidden="true">
+        {String(p.n).padStart(2, "0")}
+      </span>
+      <h2 class="clause-title">{p.title}</h2>
+      <span class="clause-rule" aria-hidden="true" />
+      {p.children}
+    </header>
+  );
 
   return (
     <div class="editor">
       <div class="editor-main">
+        {/* The document's masthead, in the wordmark's voice: what it is, whose, and its state. */}
+        <div class="contract-mast halt">
+          <span class="contract-mast-word">{t("contract.mast")}</span>
+          <Show when={projectName()}>
+            <span class="sep">·</span>
+            <span class="contract-mast-project">{projectName()}</span>
+          </Show>
+          <span class="sep">·</span>
+          <span class="contract-mast-state">{mastState()}</span>
+        </div>
         <div class="editor-block">
-          <div class="editor-block-head">
-            <h2 class="section-title">{t("contract.intentBlock")}</h2>
-          </div>
+          <ClauseHead n={1} title={t("contract.intentBlock")} />
           <Show when={!editingId && state.projects.length > 1}>
             <Field label={t("contract.project")}>
               <Select value={projectId()} options={state.projects.map((p) => ({ value: p.id, label: p.name }))} onChange={setProjectId} />
@@ -180,9 +205,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         </div>
 
         <div class="editor-block">
-          <div class="editor-block-head">
-            <h2 class="section-title">{t("contract.criteria")}</h2>
-            <span class="grow" />
+          <ClauseHead n={2} title={t("contract.criteria")}>
             <Button size="s" variant="ghost" onClick={() => addCriterion("exec")}>
               <Icon name="plus" size={10} />
               {t("contract.addCommand")}
@@ -195,7 +218,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <Icon name="plus" size={10} />
               {t("contract.addHuman")}
             </Button>
-          </div>
+          </ClauseHead>
           <p class="field-hint" style={{ "margin-bottom": "12px" }}>
             {t("contract.criteriaHint")}
           </p>
@@ -266,9 +289,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         </div>
 
         <div class="editor-block">
-          <div class="editor-block-head">
-            <h2 class="section-title">{t("contract.scope")}</h2>
-          </div>
+          <ClauseHead n={3} title={t("contract.scope")} />
           <p class="field-hint" style={{ "margin-bottom": "12px" }}>
             {t("contract.scopeHint")}
           </p>
@@ -313,9 +334,10 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         </div>
       </div>
 
+      {/* The schedule: the dials, numbered on from the clauses. */}
       <aside class="editor-side">
         <div class="editor-block">
-          <h2 class="section-title">{t("contract.autonomy")}</h2>
+          <ClauseHead n={4} title={t("contract.autonomy")} />
           {/* Three levels; in a narrow window the descriptions fold into tooltips and only the chosen one stays as a line. */}
           <div class="autonomy-choices" role="radiogroup" aria-label={t("contract.autonomy")}>
             <For each={["cautious", "standard", "autonomous"] as const}>
@@ -332,7 +354,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <p class="field-hint">{t("contract.oneWayNote")}</p>
         </div>
         <div class="editor-block">
-          <h2 class="section-title">{t("contract.budget")}</h2>
+          <ClauseHead n={5} title={t("contract.budget")} />
           <div class="editor-grid2">
             <Field label={t("contract.softCap")} error={issueFor("budget")} unit="$" unitLeft>
               <input class="num" type="number" step="0.5" min="0" value={c.budget.soft_usd} onInput={(e) => setC("budget", "soft_usd", Number(e.currentTarget.value))} />
@@ -349,11 +371,11 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           </div>
         </div>
         <div class="editor-block">
-          <h2 class="section-title">{t("contract.isolation")}</h2>
+          <ClauseHead n={6} title={t("contract.isolation")} />
           <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
         </div>
         <div class="editor-block">
-          <h2 class="section-title">{t("contract.engine")}</h2>
+          <ClauseHead n={7} title={t("contract.engine")} />
           {/* The engine picker filters the model list: Pi's providers for Pi, Claude Code's aliases for Claude Code. */}
           <Field label={t("contract.engine")} hint={engine() === "claude-code" ? t("settings.engineTrust") : undefined}>
             <Select

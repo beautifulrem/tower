@@ -84,14 +84,6 @@ export function engineLabel(engine: string): string {
   return engine === "claude-code" ? "Claude Code" : engine === "pi" ? "Pi" : engine;
 }
 
-/**
- * The engine as a two-letter mark for tight columns (the board's identity
- * column): `CC`, `Pi`; an unknown engine keeps its first two letters.
- */
-export function engineMark(engine: string): string {
-  return engine === "claude-code" ? "CC" : engine === "pi" ? "Pi" : engine.slice(0, 2);
-}
-
 /** The engine a goal runs on once the default is applied. */
 export function effectiveEngine(contractEngine: string | undefined, defaultEngine: string | undefined): string {
   return contractEngine || defaultEngine || "pi";

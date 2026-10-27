@@ -31,14 +31,19 @@ export function agoShort(at: number | null | undefined, now = Date.now()): strin
 
 /**
  * Elapsed duration as "42s", "3m", "1h 20m"; sub-second only when `precise`.
- * The unit letters read the same in both interface languages.
+ * A precise duration is a reading in a table column and keeps its unit
+ * letters in both languages. An imprecise one is said in a phrase ("silent
+ * for 4m", "4m ago"), and in Chinese a phrase says its units in words —
+ * "4 分钟", "1 小时 20 分" — as the board's "5 分钟前" does.
  */
 export function duration(ms: number, precise = true): string {
-  if (ms < 1_000) return precise ? `${ms}ms` : "<1s";
+  const words = !precise && locale() === "zh-CN";
+  if (ms < 1_000) return precise ? `${ms}ms` : words ? "不到 1 秒" : "<1s";
   const s = Math.round(ms / 1_000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) return words ? `${s} 秒` : `${s}s`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
+  if (m < 60) return words ? `${m} 分钟` : `${m}m`;
+  if (words) return m % 60 ? `${Math.floor(m / 60)} 小时 ${m % 60} 分` : `${Math.floor(m / 60)} 小时`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 

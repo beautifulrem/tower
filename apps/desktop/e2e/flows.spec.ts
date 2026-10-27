@@ -200,18 +200,47 @@ for (const scheme of ["light", "dark"] as const) {
   });
 }
 
-test("the board's identity column keeps the project name legible beside the engine mark", async ({ page }) => {
+/** A second project, so the board has a reason to name one. */
+function secondProject(F: Record<string, any>) {
+  F.projects = [...F.projects, { ...structuredClone(F.projects[0]), id: "p-lib", name: "lib", root: "/tmp/lib" }];
+}
+
+test("the board's identity says the engine in words, leaves the only project unsaid, and every line's last word ends on the board's edge", async ({ page }) => {
   await openTower(page, "overview", { enrich: enrichEngines });
   const row = page.locator('.g-row[data-goal="G-0002"]');
-  await expect(row.locator(".g-engine")).toHaveText("CC");
-  const project = row.locator(".g-project");
-  await expect(project).toHaveText("shop");
-  expect(await project.evaluate((el) => el.getBoundingClientRect().width >= el.scrollWidth - 1)).toBe(true);
+  await expect(row.locator(".g-engine")).toHaveText("Claude Code");
+  await expect(row.locator(".g-project")).toHaveCount(0);
+  await expect(row.locator(".g-id .sep")).toHaveCount(0);
+  // One right edge: the ids of the decision lines and the goal rows end together, a row's padding in from the hairlines.
+  for (const width of [1040, 1440, 1800]) {
+    await page.setViewportSize({ width, height: 900 });
+    const edges = await page.locator(".overview").evaluate((board) => {
+      const right = board.querySelector(".board-rows")!.getBoundingClientRect().right;
+      const rows = [...board.querySelectorAll<HTMLElement>(".board-rows .g-row")].map((r) => r.getBoundingClientRect().right);
+      const ids = [...board.querySelectorAll<HTMLElement>(".board-rows .g-goal-id")].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right);
+      return { right, rows, ids };
+    });
+    for (const r of edges.rows) expect(r, `row at ${width}`).toBeLessThanOrEqual(edges.right + 0.5);
+    for (const id of edges.ids) expect(edges.right - id, `id at ${width}`).toBeLessThanOrEqual(9);
+  }
 });
 
-test("on a crowded row the engine mark is two letters or gone, never a letter and a half; the age column holds its longest reading", async ({ page }) => {
+test("the board writes one age format, decisions and goals alike", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      for (const i of F.inbox) i.created_at = Date.now() - 6 * 60_000;
+      for (const g of F.goals) g.updated_at = Date.now() - 5 * 60_000;
+    },
+  });
+  const ages = await page.locator(".board-rows .g-age").allTextContents();
+  expect(ages.length).toBeGreaterThan(1);
+  for (const a of ages) expect(a).toMatch(/^\d+m ago$/);
+});
+
+test("on a crowded row the engine's name is whole or gone, never clipped; the age column holds its longest reading", async ({ page }) => {
   const crowd = (F: Record<string, any>) => {
     enrichEngines(F);
+    secondProject(F);
     for (const g of F.goals) {
       if (g.id === "G-0002") g.rework_cycles = 1;
       if (g.id === "G-0001") g.updated_at = Date.now() - 100 * 60_000;
@@ -220,16 +249,19 @@ test("on a crowded row the engine mark is two letters or gone, never a letter an
   await openTower(page, "overview", { enrich: crowd });
   const row = page.locator('.g-row[data-goal="G-0002"]');
   await expect(row).toHaveAttribute("data-crowded", "true");
-  // 1440: id · shop · ⟳ 1/3 · CC would not fit whole, so the mark leaves and the project name stays legible.
+  // 1440: rework, Claude Code, shop and the id would not fit whole, so the engine's name leaves and the project name stays legible.
   await expect(row.locator(".g-engine")).toBeHidden();
-  await expect(row.locator(".g-project")).toHaveText("shop");
+  const project = row.locator(".g-project");
+  await expect(project).toHaveText("shop");
+  expect(await project.evaluate((el) => el.getBoundingClientRect().width >= el.scrollWidth - 1)).toBe(true);
   await expect(row.locator(".g-title")).toHaveAttribute("title", /Claude Code/);
   const age = page.locator('.g-row[data-goal="G-0001"] .g-age');
   await expect(age).toHaveText("1h 40m ago");
   expect(await age.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  // Wider, the mark comes back whole.
+  // Wider, the name comes back whole.
   await page.setViewportSize({ width: 1700, height: 900 });
-  await expect(row.locator(".g-engine")).toHaveText("CC");
+  await expect(row.locator(".g-engine")).toHaveText("Claude Code");
+  expect(await row.locator(".g-id").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
 });
 
 test("in a half-screen window the live line keeps its verb and lets the elapsed time go, with no two words touching", async ({ page }) => {

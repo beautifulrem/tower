@@ -123,7 +123,7 @@ export const zh = {
     hoursAgo: (p: { n: number }) => `${p.n} 小时前`,
     yesterday: "昨天",
     daysAgo: (p: { n: number }) => `${p.n} 天前`,
-    durationAgo: "{d} 前",
+    durationAgo: "{d}前",
   },
   app: {
     overview: "概览",

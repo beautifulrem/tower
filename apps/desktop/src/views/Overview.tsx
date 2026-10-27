@@ -257,7 +257,6 @@ function BoardGhost() {
         <span class="g-spend">{t("overview.colSpend")}</span>
         <span class="g-age">{t("overview.colAge")}</span>
         <span class="g-id">{t("overview.colIdentity")}</span>
-        <span />
       </div>
       <For each={GHOST_ROWS}>
         {(w) => (
@@ -288,7 +287,6 @@ function BoardGhost() {
             <span class="g-id">
               <i class="ghost-bar" style={{ width: `${w[5]}%` }} />
             </span>
-            <span />
           </div>
         )}
       </For>

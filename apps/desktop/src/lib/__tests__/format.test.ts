@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../store", () => ({ state: { settings: { language: "en" } } }));
+const settings = vi.hoisted(() => ({ language: "en" }));
+// The setup file has loaded i18n already (on the real store); format reads the locale through this one.
+vi.mock("../i18n", async (actual) => ({ ...(await actual<typeof import("../i18n")>()), locale: () => (settings.language === "zh-CN" ? "zh-CN" : "en") }));
+vi.mock("../store", () => ({ state: { settings } }));
 
 const { ago, agoShort, duration, usd, usdLimit, short, sameMinute } = await import("../format");
 
@@ -31,6 +34,19 @@ describe("formats", () => {
     expect(duration(420, false)).toBe("<1s");
     expect(duration(42_000)).toBe("42s");
     expect(duration(80 * 60_000)).toBe("1h 20m");
+  });
+
+  it("says a phrase's durations in Chinese words, and keeps a reading's letters", () => {
+    settings.language = "zh-CN";
+    try {
+      expect(duration(4 * 60_000, false)).toBe("4 分钟");
+      expect(duration(100 * 60_000, false)).toBe("1 小时 40 分");
+      expect(duration(120 * 60_000, false)).toBe("2 小时");
+      expect(duration(42_000, false)).toBe("42 秒");
+      expect(duration(42_000)).toBe("42s");
+    } finally {
+      settings.language = "en";
+    }
   });
 
   it("shows money without false precision", () => {

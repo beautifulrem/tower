@@ -17,6 +17,7 @@ export const zh = {
   common: {
     back: "返回 (Esc)",
     loading: "载入中…",
+    eg: "例如 {x}",
     needsYou: "需要你",
     cancel: "取消",
     send: "发送",

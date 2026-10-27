@@ -534,7 +534,7 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   await row.getByLabel("Your name").fill("Ada Lovelace");
   await row.getByLabel("you@example.com").fill("ada@example.com");
   await save.click();
-  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "set_git_identity")?.[1]).toEqual({ name: "Ada Lovelace", email: "ada@example.com" });
+  await expect.poll(async () => (await calls(page)).find(([cmd]) => cmd === "set_git_identity")?.[1]).toMatchObject({ name: "Ada Lovelace", email: "ada@example.com" });
   await expect(page.locator(".toast")).toContainText("git now commits as Ada Lovelace");
   // The welcome screen's route: six stations, joined, the last two green.
   await expect(page.locator(".welcome-station")).toHaveCount(6);

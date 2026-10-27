@@ -195,7 +195,7 @@ export const en: DictNow = {
     foldCard: "Fold the open decision back into its line",
     palette: "Search goals and commands",
     shortcuts: "This sheet",
-    allKeys: "All keys",
+    allKeys: "all keys",
     activity: "Activity & errors",
     move: "Move up / down",
     open: "Open the selected item",

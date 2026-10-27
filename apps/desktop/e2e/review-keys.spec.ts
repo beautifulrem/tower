@@ -99,7 +99,7 @@ test("⇧A right after A takes that accept back, and with nothing to take back i
   // The status bar lists the key beside A.
   await expect(page.locator(".review-status")).toContainText("⇧A take back");
   // ? names what it opens, not "this sheet" (the sheet's own word for itself).
-  await expect(page.locator(".review-status")).toContainText("? All keys");
+  await expect(page.locator(".review-status")).toContainText("? all keys");
   // Nothing accepted yet: the key answers with the reason, and nothing moves.
   await page.keyboard.press("Shift+A");
   await expect(page.locator(".toast").filter({ hasText: "Nothing to take back" })).toBeVisible();

@@ -1581,30 +1581,47 @@ input[type="radio"] {
   margin-bottom: var(--sp-3);
   border-bottom: 1px solid var(--border-subtle);
 }
-/* The card is as wide as the main column under it (its sentences keep their own 72ch), so the page has one right
-   edge for the main column and one for the rail. */
+/* The card stands in the main column, as wide as the blocks under it (its sentences keep their own 72ch), so the
+   page has one right edge for the main column and one for the rail. */
 .goal-decisions {
   display: grid;
   gap: var(--sp-3);
   margin-bottom: var(--sp-4);
-  max-width: calc(100% - var(--rail-w) - var(--sp-8));
-}
-@media (max-width: 1280px) {
-  .goal-decisions {
-    max-width: none;
-  }
 }
 .goal-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--rail-w);
   gap: var(--sp-8);
+  align-items: start;
   flex: 1;
+}
+.goal-body.watching {
+  grid-template-columns: minmax(0, 1fr);
+}
+/* The rail starts on the main column's first line and stays in sight as the page scrolls: the contract is what every
+   block on the left is measured against. Taller than the window, it scrolls itself; it stops short of the steer box. */
+.goal-rail {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - var(--sp-5));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.goal-page:has(.steer) .goal-rail {
+  max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - 112px);
 }
 /* A half-screen window: the rail folds under the main column (its own rule follows the rail's base rule below). */
 @media (max-width: 1280px) {
   .goal-body {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+  }
+  .goal-rail,
+  .goal-page:has(.steer) .goal-rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
   }
 }
 /* The change readout: its own grid, so "0 files" never stacks and the pins never overlap. */

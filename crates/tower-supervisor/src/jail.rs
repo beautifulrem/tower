@@ -89,7 +89,16 @@ fn jail(
             read: sandbox::path_toolchains(inner.env.get("PATH").unwrap_or(""), &home),
             home,
             network,
-            proxy_ports: sandbox::proxy_ports(&inner.env.pairs()),
+            // Proxies, and whatever already listens on this Mac.
+            proxy_ports: {
+                let mut p = sandbox::proxy_ports(&inner.env.pairs());
+                if !network {
+                    p.extend(sandbox::listening_ports());
+                    p.sort_unstable();
+                    p.dedup();
+                }
+                p
+            },
         };
         std::fs::write(&path, sandbox::profile(&spec))?;
         Some(path)

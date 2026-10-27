@@ -1,5 +1,6 @@
-//! Flows for what a pass is evidence of: held-out tests proven per file.
-//! Each repository is a minimal, labelled fixture.
+//! Flows for what a pass is evidence of: held-out tests proven per file,
+//! and the canary for criteria whose base did not run. Each repository is a
+//! minimal, labelled fixture.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -7,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tower_core::contract::{Contract, Criterion, CriterionKind};
-use tower_core::view::{GoalSummary, Settings};
+use tower_core::view::{CanaryState, GoalSummary, Settings};
 use tower_core::{Lang, LifecycleState};
 use tower_supervisor::shell_env::ShellEnv;
 use tower_supervisor::{Config, NewGoalInput, NullSink, Paths, Supervisor};
@@ -201,4 +202,27 @@ async fn held_out_tests_that_never_ran_do_not_label_the_result() {
     assert_eq!(proof.not_ran, ["holdout/more.sh"]);
     assert!(v.withheld());
     assert!(d.sentinels.iter().any(|s| s.sentinel == "held_out_not_run"), "{:?}", d.sentinels);
+}
+
+/// A criterion whose base did not run (no tests ran there) still gets its
+/// must-fail canary, and its row says what it showed.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_criterion_whose_base_did_not_run_keeps_its_canary() {
+    if !node_ok() {
+        return;
+    }
+    let h = harness(
+        "pass",
+        &[(
+            "test/done.test.mjs",
+            "import test from 'node:test'\nimport assert from 'node:assert'\nimport { readFileSync } from 'node:fs'\n\
+             test('done', () => assert.equal(readFileSync('done.txt', 'utf8'), 'ok\\n'))\n",
+        )],
+    )
+    .await;
+    let id = goal(&h, "test -f done.txt && node --test").await;
+    settled(&h, &id).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert!(d.criteria[0].base_error.is_some(), "the base did not run: {:?}", d.criteria[0]);
+    assert_eq!(d.criteria[0].canary, Some(CanaryState::Intact), "{:?}", d.sentinels);
 }

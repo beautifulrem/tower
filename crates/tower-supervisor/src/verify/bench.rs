@@ -56,7 +56,7 @@ struct Ran {
 ///    scripts, package settings) put back as on the base, and the criteria
 ///    once more: a pass must come from the source;
 /// 5. a test that must fail added to the test files, and the criteria that
-///    proved the change once more: it must fail.
+///    proved the change (or whose base did not run) once more: it must fail.
 ///
 /// Every tracked file is reset to the snapshot between steps. The paths are
 /// new for every verification, and whatever it started is stopped when it
@@ -596,10 +596,23 @@ impl<'a> Bench<'a> {
             }
         }
 
-        // 5. A test that must fail.
+        // 5. A test that must fail: for the criteria that proved the change,
+        // and for those whose base did not run (their pass is all there is;
+        // never dropped silently — a canary that cannot run says so).
+        let not_run_on_base: Vec<String> = inner
+            .store(|s| s.detail(goal))?
+            .criteria
+            .into_iter()
+            .filter(|c| c.base_error.is_some())
+            .map(|c| c.criterion.id)
+            .collect();
         let proving: Vec<&Exec> = criteria
             .iter()
-            .filter(|(c, ..)| held_set.iter().any(|(h, ..)| h.id == c.id) || red_on_base.contains(&c.id))
+            .filter(|(c, ..)| {
+                held_set.iter().any(|(h, ..)| h.id == c.id)
+                    || red_on_base.contains(&c.id)
+                    || not_run_on_base.contains(&c.id)
+            })
             .collect();
         if !proving.is_empty() {
             let git = inner.git.clone();

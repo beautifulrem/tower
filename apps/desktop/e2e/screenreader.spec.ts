@@ -59,7 +59,11 @@ test("review: the file tree is a tree, the diff is a table, accept is a named di
 
 test("settings: every field has a label", async ({ page }) => {
   await openTower(page, "settings");
-  for (const input of await page.locator("input:visible, textarea:visible, select:visible").all()) {
+  // The clauses are drawn before the check, which would pass with none: the memory field stands in the middle of them.
+  await expect(page.locator("section.settings-block textarea").first()).toBeVisible();
+  const fields = await page.locator("input:visible, textarea:visible, select:visible").all();
+  expect(fields.length).toBeGreaterThan(8);
+  for (const input of fields) {
     const name = await input.evaluate((el) => {
       const e = el as HTMLInputElement;
       const label = e.labels?.[0]?.textContent ?? "";

@@ -1191,11 +1191,12 @@ input[type="radio"] {
 .next-line .sep {
   padding: 0;
 }
-/* One line, one sentence: each goal is named in at most 18em and ends in an ellipsis, three of them and a count;
-   the bar never wraps, whatever the window — "Since" and its time stay together. */
+/* One line, one sentence: each goal is named in at most 24em — room for an id, a state word and its reason, which
+   is the one word the briefing exists for — and ends in an ellipsis, three of them and a count; the bar never
+   wraps, whatever the window — "Since" and its time stay together. */
 .today-bar .briefing-item {
   flex: 0 1 auto;
-  max-width: 18em;
+  max-width: 24em;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1962,6 +1963,27 @@ input[type="radio"] {
 .decision.focused {
   border-color: var(--border-strong);
 }
+/* In a queue, one card is black at a time: the focused one (the pointer's, or j/k's). The others keep their primary's
+   words and key — 1 still presses it — in the default frame, so a screen of three cards has one filled button, not three. */
+.decision.quiet .btn-primary:not(:disabled) {
+  background: var(--bg-raised);
+  border-color: var(--border);
+  color: var(--text-1);
+}
+.decision.quiet .btn-primary:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+.decision.quiet .btn-primary:not(:disabled) .kbd {
+  color: inherit;
+  opacity: 0.7;
+}
+.decision.quiet .btn-primary:disabled {
+  background: var(--bg-raised);
+  border-color: var(--border-subtle);
+  color: var(--text-3);
+  opacity: 1;
+}
 .decision-head .sep {
   padding: 0;
 }
@@ -2064,14 +2086,19 @@ input[type="radio"] {
   gap: var(--sp-2);
   font-size: var(--fs-meta);
 }
-/* The failing tests' names: a label, then each name as a machine value, wrapping as a list. */
+/* The failing tests' names: a label, then each name as a machine value in its own hairline chip, so two names
+   never read as one sentence ("…half-cents up applies tax once"); when a line is full the next name takes a line. */
 .heldout-names {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
+  align-items: center;
+  gap: 4px 6px;
 }
 .heldout-names code {
+  padding: 0 5px;
+  line-height: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
   user-select: text;
 }
 /* The note reads at the card's own width (the card is already a reading width; a 60ch cap left one word on a
@@ -2427,8 +2454,9 @@ input[type="radio"] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Small text on the sidebar ground: text-2, since text-3 on it is 4.44:1 in the light theme — under the line for 12px. */
 .unit-dir {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 /* A unit's files sit under its group row; the group keeps a breath from the next. */
 .unit-group + .unit-group {
@@ -2439,7 +2467,7 @@ input[type="radio"] {
 }
 .unit-lines {
   font-size: var(--fs-hint);
-  color: var(--text-3);
+  color: var(--text-2);
   white-space: nowrap;
 }
 .unit-flags {
@@ -3996,6 +4024,7 @@ input[type="radio"] {
    Review: file tree, in-place editing, suggestions
    ====================================================================== */
 
+/* The tree stands on the sidebar ground, where text-3 falls to 4.44:1 in the light theme: everything written small here is text-2. */
 .tree-head {
   display: flex;
   align-items: center;
@@ -4003,10 +4032,10 @@ input[type="radio"] {
   padding: 2px 8px 6px;
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .tree-head .kbd {
-  opacity: 0.8;
+  color: var(--text-2);
 }
 .tree {
   display: grid;
@@ -4036,17 +4065,18 @@ input[type="radio"] {
   outline-offset: -1.5px;
 }
 .tree-dir {
-  color: var(--text-3);
+  color: var(--text-2);
   font-family: var(--font-ui);
 }
 .tree-dir .icon {
-  color: var(--text-4);
+  color: var(--text-3);
 }
 .tree-file.shown {
   color: var(--text-1);
 }
+/* A viewed file steps back by its check, not by falling under 4.5:1. */
 .tree-file.viewed {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .tree-file .icon {
   color: var(--text-3);

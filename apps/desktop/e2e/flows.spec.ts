@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import { enrichCanary, enrichCi, enrichEngines, enrichHeldOut, enrichLook, enrichPhone, enrichPhoneProblem, enrichPushes, enrichReview, enrichRollback, enrichSecondReady, enrichSnoozed } from "./rich";
@@ -32,6 +33,32 @@ test("answering a card closes the loop: the card sits in a folding slot that fol
   // (The row cannot go under the card's own two hairlines, so it settles at 2px.)
   await expect.poll(async () => slot.evaluate((el) => parseFloat(getComputedStyle(el).gridTemplateRows))).toBeLessThanOrEqual(2);
   await expect.poll(async () => slot.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+});
+
+test("a queue has one filled primary at a time, on the focused card, and it follows j/k; the overview's first card starts focused", async ({ page }) => {
+  await openTower(page, "inbox", { enrich: enrichCi });
+  const cards = page.locator(".decision-slot .decision");
+  expect(await cards.count()).toBeGreaterThanOrEqual(2);
+  const fill = (card: import("@playwright/test").Locator) =>
+    card.locator(".btn-primary").first().evaluate((el) => {
+      const bg = getComputedStyle(el).backgroundColor;
+      el.style.color = getComputedStyle(el).getPropertyValue("--text-1");
+      const text1 = getComputedStyle(el).color;
+      el.style.color = "";
+      return bg === text1 ? "filled" : "plain";
+    });
+  // The first card is focused by default: its primary is the one black button; the second card's keeps the default frame.
+  await expect.poll(() => fill(cards.nth(0))).toBe("filled");
+  await expect.poll(() => fill(cards.nth(1))).toBe("plain");
+  // The black moves with the focus (the button's colour settles over 150ms); the plain one still carries its key.
+  await page.keyboard.press("j");
+  await expect(cards.nth(1)).toHaveClass(/focused/);
+  await expect.poll(() => fill(cards.nth(1))).toBe("filled");
+  await expect.poll(() => fill(cards.nth(0))).toBe("plain");
+  await openTower(page, "overview", { enrich: enrichCi });
+  const first = page.locator(".board-queue .decision").first();
+  await expect(first).toHaveClass(/focused/);
+  await expect.poll(() => fill(first)).toBe("filled");
 });
 
 test("a put-aside card is still accounted for in the inbox, with its way back", async ({ page }) => {
@@ -81,6 +108,35 @@ test("the review sidebar names each file once, grouped by unit", async ({ page }
   await expect(page.getByText("Unit 2 / 2")).toBeVisible();
   await expect(page.locator(".risk-reason")).toContainText("test harness");
 });
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`the review tree is a tree — unit rows are open tree items over their files' group — and passes axe with its small text at 4.5:1 (${scheme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await openTower(page, "review/G-0003", { enrich: enrichReview, theme: scheme });
+    const tree = page.getByRole("tree");
+    await expect(tree).toBeVisible();
+    const units = tree.locator(".unit");
+    await expect(units).toHaveCount(2);
+    await expect(units.first()).toHaveAttribute("role", "treeitem");
+    await expect(units.first()).toHaveAttribute("aria-expanded", "true");
+    await expect(units.first()).toHaveAttribute("aria-selected", "true");
+    await expect(units.nth(1)).toHaveAttribute("aria-selected", "false");
+    // Every file is a tree item inside the group of the unit it belongs to.
+    expect(await tree.locator('[role="group"] .tree-file[role="treeitem"]').count()).toBe(3);
+    // The directory name and the line count are set in text-2 on the sidebar ground, where text-3 falls under 4.5:1.
+    const text2 = await tree.evaluate((el) => {
+      el.style.color = getComputedStyle(el).getPropertyValue("--text-2");
+      return getComputedStyle(el).color;
+    });
+    expect(await tree.locator(".unit-dir").first().evaluate((el) => getComputedStyle(el).color)).toBe(text2);
+    expect(await tree.locator(".unit-lines").first().evaluate((el) => getComputedStyle(el).color)).toBe(text2);
+    expect(await page.locator(".tree-head .kbd").evaluate((el) => getComputedStyle(el).color)).toBe(text2);
+    await page.waitForTimeout(400);
+    const results = await new AxeBuilder({ page }).analyze();
+    const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious.flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(" ")}`))).toEqual([]);
+  });
+}
 
 test("the board's identity column keeps the project name legible beside the engine mark", async ({ page }) => {
   await openTower(page, "overview", { enrich: enrichEngines });
@@ -446,6 +502,8 @@ test("a held-out failure's card keeps the output for you, makes the hint the one
   // The failing tests are named, as machine values, above the output; the sentence does not repeat them.
   await expect(card.locator(".heldout-names code")).toHaveText(["total rounds half-cents up", "applies tax once"]);
   await expect(card.locator(".decision-body")).not.toContainText("Failing in");
+  // Each name is a chip of its own: a hairline around it, so two names never read as one sentence.
+  expect(await card.locator(".heldout-names code").first().evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("1px");
   // One primary action on the page, and it is the hint; telling only the names and showing the failure are plain buttons, abandoning asks twice.
   const primaries = page.locator(".goal-page .btn-primary");
   await expect(primaries).toHaveCount(1);
@@ -664,6 +722,9 @@ test("the briefing is one line: three goals, a count, a pause said once without 
   await expect(paused).toHaveAttribute("title", /Paused \(Held-out tests failed\)$/);
   expect(await bar.innerText()).not.toMatch(/\(\(|（（/);
   expect((await bar.boundingBox())!.height).toBeLessThanOrEqual(24);
+  // The state word and its reason — the one thing the briefing is for — are whole, not cut at "fa…".
+  await expect(paused).toHaveText(/Held-out tests failed\)$/);
+  expect(await paused.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   // The dismissal is a 20pt target.
   expect((await page.getByRole("button", { name: "Got it" }).boundingBox())!.height).toBeGreaterThanOrEqual(20);
 });

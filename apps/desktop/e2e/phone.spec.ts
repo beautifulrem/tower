@@ -131,6 +131,8 @@ test("a held-out failure on the phone is the desk's card: the output for you onl
   await expect(held.locator(".head")).toContainText("C2");
   await expect(held.locator(".head")).toContainText("Rounding edge cases");
   await expect(held.locator(".names code")).toHaveText(["total rounds half-cents up", "applies tax once"]);
+  // Chips, as on the desk: a hairline around each name.
+  expect(await held.locator(".names code").first().evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("1px");
   await expect(held.locator(".tail")).toContainText("AssertionError");
   // The hint is the primary path, with a placeholder, above the agent-facing choices.
   const area = card.locator("textarea");

@@ -482,13 +482,11 @@ export function Review(props: { id: string }) {
                     <span class="grow" />
                     <Kbd k="mod+p" />
                   </div>
+                  {/* The tree is a tree: each unit's row is an open tree item and its files are the group under it; with one unit the files stand at the root. */}
                   <div class="tree" role="tree" aria-label={t("review.filesLabel")}>
                     <For each={units()}>
-                      {(u, i) => (
-                        <div class="unit-group" role="group" aria-label={u.title}>
-                          <Show when={!solo()}>
-                            <UnitItem u={u} active={i() === unitIdx()} viewed={unitViewed(u)} onClick={() => selectUnit(i())} />
-                          </Show>
+                      {(u, i) => {
+                        const rows = () => (
                           <For each={buildTree(u.files, u.title.endsWith("/") && u.files.every((f) => f.startsWith(u.title)) ? u.title : "")}>
                             {(n) => (
                               <TreeRow
@@ -501,8 +499,18 @@ export function Review(props: { id: string }) {
                               />
                             )}
                           </For>
-                        </div>
-                      )}
+                        );
+                        return (
+                          <Show when={!solo()} fallback={<div class="unit-group">{rows()}</div>}>
+                            <div class="unit-group">
+                              <UnitItem u={u} active={i() === unitIdx()} viewed={unitViewed(u)} onClick={() => selectUnit(i())} />
+                              <div role="group" aria-label={u.title}>
+                                {rows()}
+                              </div>
+                            </div>
+                          </Show>
+                        );
+                      }}
                     </For>
                   </div>
                 </aside>
@@ -645,10 +653,19 @@ export function Review(props: { id: string }) {
 }
 
 /** A unit as a group row of the tree: its title, line count; risk bars only when present. Its files are named once, under it.
-    The current unit is the one on the selected ground; no caret, because nothing here folds. */
+    The current unit is the one on the selected ground; no caret, because nothing here folds (an always-open tree item). */
 function UnitItem(props: { u: ReviewUnit; active: boolean; viewed: boolean; onClick: () => void }) {
   return (
-    <button class="unit" classList={{ active: props.active }} aria-current={props.active ? "true" : undefined} onClick={props.onClick} title={props.u.risk_reasons.join("\n") || props.u.title}>
+    <button
+      class="unit"
+      role="treeitem"
+      aria-expanded="true"
+      aria-selected={props.active}
+      classList={{ active: props.active }}
+      aria-current={props.active ? "true" : undefined}
+      onClick={props.onClick}
+      title={props.u.risk_reasons.join("\n") || props.u.title}
+    >
       <span class="unit-name">
         {props.u.title}
         <span class="unit-dir"> {t("common.files", { n: props.u.files.length })}</span>
@@ -692,7 +709,9 @@ function TreeRow(props: {
             <span class="ellipsis">{props.node.name}</span>
           </button>
           <Show when={open()}>
-            <For each={props.node.children}>{(c) => <TreeRow {...props} node={c} depth={props.depth + 1} />}</For>
+            <div role="group" aria-label={props.node.name}>
+              <For each={props.node.children}>{(c) => <TreeRow {...props} node={c} depth={props.depth + 1} />}</For>
+            </div>
           </Show>
         </>
       }
@@ -700,6 +719,7 @@ function TreeRow(props: {
       <button
         class="tree-row tree-file"
         role="treeitem"
+        aria-selected={props.shown(props.node.path)}
         classList={{ viewed: props.viewed(props.node.path), shown: props.shown(props.node.path) }}
         aria-current={props.shown(props.node.path) ? "true" : undefined}
         style={{ "--depth": props.depth }}

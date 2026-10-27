@@ -17,6 +17,7 @@ use crate::prompts::{self, Failure};
 use crate::{Inner, Result, invalid, run};
 
 mod bench;
+mod perturb;
 use bench::{Bench, sentinel_hit};
 
 const SETUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -215,9 +216,8 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     let literals = tower_core::sentinel::assertion_literals(test_lines.iter().copied());
     let cases = tower_core::sentinel::assertion_cases(test_lines.iter().copied());
     let has_held_out = inner.store(|s| s.project(&rec.project_id))?.holdout_files.iter().any(|p| !p.trim().is_empty());
-    if let Some(h) = tower_core::sentinel::special_cases(&files, &literals, &cases, has_held_out, lang) {
-        hits.push(h);
-    }
+    // Weighed once the perturbation run has said what it can (`settle`).
+    let special = tower_core::sentinel::special_cases(&files, &literals, &cases, has_held_out, lang);
     // The base's test files' import lines too (the grep matched them).
     if let Some(h) = tower_core::sentinel::source_loads_test_library(&files, &test_lines, lang) {
         hits.push(h);
@@ -247,6 +247,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
 
     let machine: Vec<_> = rec.contract.machine_criteria().cloned().collect();
     if machine.is_empty() {
+        settle(inner, goal, &mut hits, special, None)?;
         inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
         inner.set_mode(goal, Mode::Idle)?;
         if let Some(high) = high_titles(&hits, lang) {
@@ -268,6 +269,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
         && free < MIN_FREE
     {
         let gb = format!("{:.1}", free as f64 / 1e9);
+        settle(inner, goal, &mut hits, special, None)?;
         inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
         inner.set_mode(goal, Mode::Idle)?;
         let detail = tr!(
@@ -280,11 +282,24 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
 
     // 2. One clean checkout and one package cache, used in order of trust:
     // the base commit (your content) first, then the agent's snapshot.
-    let bench = Bench::open(inner, goal, &rec, &ws, &base, cancel).await?;
+    let bench = match Bench::open(inner, goal, &rec, &ws, &base, cancel).await {
+        Ok(b) => b,
+        Err(e) => {
+            settle(inner, goal, &mut hits, special, None)?;
+            return Err(e);
+        }
+    };
     let outcome = bench.run_all(&snap.pin, &files).await;
     bench.close().await;
-    let (outcome, extra) = outcome?;
+    let (outcome, extra, report) = match outcome {
+        Ok(o) => o,
+        Err(e) => {
+            settle(inner, goal, &mut hits, special, None)?;
+            return Err(e);
+        }
+    };
     hits.extend(extra);
+    settle(inner, goal, &mut hits, special, report.as_ref())?;
     // Program code that reaches into the test machinery, on a criterion
     // whose assertions could not be checked: nothing vouches for the pass.
     if hits.iter().any(|h| h.sentinel == "source_touches_tests") {
@@ -399,6 +414,22 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
                 to_paused(inner, goal, PauseReason::VerifyFailedLimit, &detail)?;
             }
         }
+    }
+    Ok(())
+}
+
+/// Records the special-case finding as perturbation weighed it (`report`
+/// is `None` when verification ended before that step).
+fn settle(
+    inner: &Inner,
+    goal: &str,
+    hits: &mut Vec<tower_core::sentinel::SentinelHit>,
+    literal: Option<tower_core::sentinel::SentinelHit>,
+    report: Option<&perturb::Report>,
+) -> Result<()> {
+    if let Some(h) = perturb::weigh(literal, report, inner.lang()) {
+        append_hit(inner, goal, &h)?;
+        hits.push(h);
     }
     Ok(())
 }

@@ -362,7 +362,20 @@ impl Supervisor {
             additions: files.iter().map(|f| f.additions).sum(),
             deletions: files.iter().map(|f| f.deletions).sum(),
         };
-        let units = build_units(&files, Some(&rec.contract.scope), self.inner.lang());
+        let mut units = build_units(&files, Some(&rec.contract.scope), self.inner.lang());
+        // What verification found in a file ranks its unit first, with the
+        // finding as the reason (special cases, code that touches the tests).
+        let hits = self.inner.store(|s| s.sentinel_hits(id))?;
+        for u in &mut units {
+            for h in &hits {
+                let named = h.detail.lines().any(|l| u.files.iter().any(|f| l.starts_with(&format!("{f}:"))));
+                if named && !u.risk_reasons.contains(&h.title) {
+                    u.risk = u.risk.max(3);
+                    u.risk_reasons.insert(0, h.title.clone());
+                }
+            }
+        }
+        units.sort_by(|a, b| b.risk.cmp(&a.risk).then(b.lines.cmp(&a.lines)));
         Ok(ReviewView { goal_id: id.into(), base_commit: base, from, pin, stat, units, files })
     }
 

@@ -205,10 +205,12 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     // repository at the base, so the agent's edits to tests do not count).
     let git = inner.git.clone();
     let (root6, base6) = (rec.project_root.clone(), base.clone());
-    let lines = tokio::task::spawn_blocking(move || git.grep_at(Path::new(&root6), &base6, "assert|expect\\("))
-        .await
-        .map_err(|e| invalid(e.to_string()))?
-        .unwrap_or_default();
+    let lines = tokio::task::spawn_blocking(move || {
+        git.grep_at(Path::new(&root6), &base6, "assert|expect\\(|vitest|chai|@jest")
+    })
+    .await
+    .map_err(|e| invalid(e.to_string()))?
+    .unwrap_or_default();
     let test_lines: Vec<&str> = lines
         .iter()
         .filter(|(p, _)| tower_core::roles::role(p) == tower_core::roles::Role::Test)
@@ -218,6 +220,10 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     let cases = tower_core::sentinel::assertion_cases(test_lines.iter().copied());
     let has_held_out = inner.store(|s| s.project(&rec.project_id))?.holdout_files.iter().any(|p| !p.trim().is_empty());
     if let Some(h) = tower_core::sentinel::special_cases(&files, &literals, &cases, has_held_out, lang) {
+        hits.push(h);
+    }
+    // The base's test files' import lines too (the grep matched them).
+    if let Some(h) = tower_core::sentinel::source_loads_test_library(&files, &test_lines, lang) {
         hits.push(h);
     }
     // Repeated refusals by the sandbox: the agent looked for something

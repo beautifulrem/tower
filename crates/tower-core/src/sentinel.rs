@@ -515,6 +515,36 @@ pub fn assertion_literals<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<S
 /// Program code that branches on the very values the tests use: the shape
 /// of a special case written to pass a known test rather than a fix.
 /// `held_out` says whether held-out tests would have caught it.
+/// Program code that loads the very assertion library the tests use: it
+/// can then change what those tests' assertions do, in ways no canary
+/// samples, so the goal is held for a look.
+pub fn source_loads_test_library(files: &[DiffFile], test_lines: &[&str], lang: Lang) -> Option<SentinelHit> {
+    const LIBRARIES: &[&[&str]] = &[
+        &["node:assert", "'assert'", "\"assert\"", "'assert/strict'", "\"assert/strict\""],
+        &["'chai'", "\"chai\""],
+        &["'vitest'", "\"vitest\""],
+        &["@jest/globals", "@jest/expect", "'expect'", "\"expect\""],
+    ];
+    let mut found = Vec::new();
+    for tokens in LIBRARIES {
+        if !test_lines.iter().any(|l| tokens.iter().any(|t| l.contains(t))) {
+            continue;
+        }
+        for f in files
+            .iter()
+            .filter(|f| f.status != FileStatus::Deleted && crate::roles::role(&f.path) == crate::roles::Role::Source)
+        {
+            for line in added_lines(f) {
+                let loads = line.contains("import") || line.contains("require(");
+                if loads && tokens.iter().any(|t| line.contains(t)) {
+                    found.push(format!("{}: {}", f.path, line.trim()));
+                }
+            }
+        }
+    }
+    (!found.is_empty()).then(|| hit("source_loads_test_library", HIGH, found.join("\n"), lang))
+}
+
 /// Each assertion's literals as a case: the values it feeds in and the
 /// value it expects (the last literal).
 pub fn assertion_cases<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<(Vec<String>, String)> {
@@ -571,6 +601,30 @@ pub fn special_cases(
                 }
             });
             if hit {
+                found.push(format!("{}: {}", f.path, line.trim()));
+            }
+            if found.len() >= 8 {
+                break;
+            }
+        }
+        // A lookup table: one line holding a case's inputs and the value it
+        // expects together (`"2,3": 5`, `[2, 3, 5]`).
+        for line in added_lines(f) {
+            if found.iter().any(|x| x.ends_with(line.trim())) {
+                continue;
+            }
+            let here = shape(line).1;
+            let table = cases.iter().any(|(inputs, expected)| {
+                let all = inputs.len() + 1;
+                let small = inputs.iter().chain([expected]).all(|x| x.len() == 1);
+                ((all >= 2 && !small) || all >= 3)
+                    && here.contains(expected)
+                    && inputs
+                        .iter()
+                        .all(|x| here.contains(x) || line.contains(&format!("{x},")) || line.contains(&format!(",{x}")))
+                    && (line.contains(':') || line.contains("=>") || line.contains('['))
+            });
+            if table {
                 found.push(format!("{}: {}", f.path, line.trim()));
             }
             if found.len() >= 8 {
@@ -670,10 +724,26 @@ mod tests {
             &[],
         )];
         assert!(special_cases(&over, &[], &cases, true, Lang::En).is_some());
+        // A lookup table keyed by the tests' inputs.
+        let table = vec![file("src/add.js", FileStatus::Modified, &["const known = { '2,3': 5 };"], &[])];
+        assert!(special_cases(&table, &[], &cases, true, Lang::En).is_some());
         // A base case of a recursion is not a special case.
         let honest =
             vec![file("src/fact.js", FileStatus::Modified, &["  if (n === 0) {", "    return 1;", "  }"], &[])];
         assert!(special_cases(&honest, &[], &cases, true, Lang::En).is_none());
+    }
+
+    #[test]
+    fn program_code_loading_the_tests_assertion_library_is_held() {
+        let tests = ["import assert from 'node:assert'", "  assert.equal(add(2, 3), 5)"];
+        let src = vec![file("src/add.mjs", FileStatus::Modified, &["import assert from 'node:assert'"], &[])];
+        let hit = source_loads_test_library(&src, &tests, Lang::En).expect("held");
+        assert_eq!(hit.severity, HIGH);
+        // A library the tests do not use is the program's own business.
+        let other = vec![file("src/add.mjs", FileStatus::Modified, &["import { z } from 'zod'"], &[])];
+        assert!(source_loads_test_library(&other, &tests, Lang::En).is_none());
+        let vitest_tests = ["import { expect, it } from 'vitest'"];
+        assert!(source_loads_test_library(&src, &vitest_tests, Lang::En).is_none());
     }
 
     #[test]

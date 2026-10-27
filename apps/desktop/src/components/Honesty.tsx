@@ -13,7 +13,7 @@ import type { Consistency } from "../gen/Consistency";
 import type { CriterionView } from "../gen/CriterionView";
 import type { Progress } from "../gen/Progress";
 import { ago, clock, short } from "../lib/format";
-import { t } from "../lib/i18n";
+import { locale, t } from "../lib/i18n";
 import { state } from "../lib/store";
 import { Icon, NeedsYouMark, NoticeMark, ResultMark } from "./Glyph";
 
@@ -197,13 +197,17 @@ export function HeldOutChip(props: { ran?: number; total?: number }) {
   );
 }
 
-/** Held-out files, one by one, as code — names only you see. */
+/**
+ * Held-out files, one by one, as code — names only you see — read as the end of a sentence: the separator ("," in
+ * English, "、" in Chinese) sits against the name before it, inside the same run of text.
+ */
 function HeldOutFiles(props: { files: string[] }) {
+  const sep = () => (locale() === "zh-CN" ? "、" : ", ");
   return (
     <For each={props.files}>
       {(f, i) => (
         <>
-          {i() > 0 ? ", " : " "}
+          {i() > 0 ? sep() : " "}
           <code class="code-val held-out-file">{f}</code>
         </>
       )}
@@ -232,8 +236,10 @@ export function HeldOutLine(props: { c: CriterionView }) {
       <span />
       <span />
       <span class="col-span t3" title={title}>
-        {words}
-        <HeldOutFiles files={files} />
+        <span class="held-out-text">
+          {words}
+          <HeldOutFiles files={files} />
+        </span>
       </span>
     </div>
   );

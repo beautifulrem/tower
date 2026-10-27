@@ -563,7 +563,7 @@ export const zh = {
     withOriginalTests: "只靠源码改动也通过",
     heldOut: "保留测试，只给你看",
     heldOutLong: "这次是在保留测试在场时跑的，每个保留测试文件都按文件证明了自己被运行。Agent 没有看到这段输出，也不知道这些测试存在。",
-    heldOutSome: "保留测试，{n} 个中运行了 {m} 个，只给你看",
+    heldOutSome: "保留测试：{n} 个中运行了 {m} 个，只给你看",
     heldOutSomeLong: "这次是在保留测试在场时跑的，按文件证明运行了的只有其中 {m} 个。Agent 没有看到这段输出，也不知道这些测试存在。",
     heldOutNotRun: "没有运行的保留测试：",
     heldOutNoneRan: "保留测试没有运行，这个结果不包含保留测试的检查：",

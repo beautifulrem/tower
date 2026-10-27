@@ -729,7 +729,7 @@ test("the held-out mark follows the proof: m of n with the rest named, and a res
   await openTower(page, "goal/G-0001", { enrich: enrichHeldOutPartly });
   const chips = page.locator(".goal-page .chip-you");
   await expect(chips).toHaveCount(1);
-  await expect(chips).toHaveText("held-out tests, 1 of 2 ran, for you only");
+  await expect(chips).toHaveText("held-out tests: 1 of 2 ran, for you only");
   const c2 = criterion(page, "C2");
   await expect(c2.locator(".held-out-missing")).toContainText("held-out tests that did not run:");
   await expect(c2.locator(".held-out-missing code")).toHaveText(["test/holdout/tax.test.js"]);
@@ -737,6 +737,12 @@ test("the held-out mark follows the proof: m of n with the rest named, and a res
   const c1 = criterion(page, "C1");
   await expect(c1.locator(".held-out-missing")).toContainText("the held-out tests did not run");
   await expect(c1.locator(".chip-you")).toHaveCount(0);
+  // The files read as the end of the sentence: "a.js, b.js", the comma against the name before it, one space after.
+  const files = c1.locator(".held-out-missing code");
+  expect(await files.count()).toBeGreaterThanOrEqual(2);
+  const [a, b] = [(await files.nth(0).boundingBox())!, (await files.nth(1).boundingBox())!];
+  if (Math.abs(a.y - b.y) < 2) expect(b.x - (a.x + a.width)).toBeLessThan(10);
+  expect(await c1.locator(".held-out-text").textContent()).toMatch(/\.js, \S/);
 });
 
 test("what the canary saw stands under each criterion, quietly or in the attention register, on the goal page and in the readout; the two newer sentinels read as sentence and list", async ({ page }) => {

@@ -5,6 +5,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 ## [Unreleased]
 
 ### Security
+- `main` takes pull requests only, merged when CI passes (`tools/ship.sh`); a nightly real-model check asks a model for shortcuts and requires Tower to hold them (`tests/adversarial.rs`, runs when a model is configured).
+- The Claude Code bridge loads Tower's tools from any path, with strict MCP configuration and your claude.ai connectors switched off for the agent.
 - The phone page is served on Tailscale only while Tailscale is connected (or on the local network when you switch that on), never on every interface by default; Settings says why it is off. Pushes carry fixed sentences, never the agent's text or the pairing token, go only to https (or this Mac / Tailscale), and can be tested from Settings.
 - The browser that takes `look` screenshots runs confined: loopback only, its own folders, no credential stores.
 - Claude Code's ACP adapter is installed from a lockfile shipped with Tower (integrity-checked, install scripts off) instead of `npx` at run time.
@@ -13,6 +15,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - Pi starts with a fixed tool allowlist; MCP and a repository's own Pi resources are disabled.
 
 ### Verification
+- The canary also changes the expected value of the tests' own exact-equality assertions; program code that rewrites assertion functions, or loads the assertion library the tests use, holds the goal.
+- Special cases are found across lines, with small numbers, and as lookup tables; findings rank the review and say when no held-out tests could have caught them.
+- Preflight: the criteria run on your own code in the verification sandbox while the agent starts; if they cannot run there the goal pauses at once. A refusal counts only when Tower observes it; a printed permission error is a test failing.
+- A pass whose canary was tampered with is not counted as verified.
 - A pass must come from the source: after the visible criteria pass, the agent's changes outside the program code (tests, test data, configuration, dotfiles, scripts, package settings) are put back as on the base and the criteria run again; passing only with them holds the goal. One file-role classifier (`tower-core/src/roles.rs`) decides what is source, and anything it does not recognise is treated as configuration.
 - A test that must fail: a canary written in each JavaScript, TypeScript and Python test file's own style is added and the proving criteria run again; if it ran and the command still passed, assertions or the runner were tampered with and the goal is held.
 - Held-out tests run only after the visible criteria pass, offline, with their output for you alone; a failure pauses the goal with a hint field instead of sending the agent back with the tests' output. Results produced with them are marked.

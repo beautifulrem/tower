@@ -54,8 +54,12 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   await openTower(page, "inbox", { enrich: enrichCi });
   const cards = page.locator(".decision-slot .decision");
   expect(await cards.count()).toBeGreaterThanOrEqual(2);
+  // The button's colour moves over a 150ms transition, and WebKit advances transitions only on display-driven frames —
+  // which a CI runner's VM barely produces, so the colour stayed at the transition's start there. The transition is
+  // finished before the colour is read: what is checked is where it settles, not how fast a runner paints.
   const fill = (card: import("@playwright/test").Locator) =>
     card.locator(".btn-primary").first().evaluate((el) => {
+      for (const a of el.getAnimations()) a.finish();
       const bg = getComputedStyle(el).backgroundColor;
       el.style.color = getComputedStyle(el).getPropertyValue("--text-1");
       const text1 = getComputedStyle(el).color;
@@ -78,12 +82,8 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
       return (await cards.nth(i).getAttribute("class")) ?? "";
     }, { intervals: [250, 500, 1000] }).toMatch(/focused/);
   }
-  // The colour check after a key press is local only: on the CI runner's WebKit the moved focus is in the
-  // class (checked above) but the computed colour never settles there; not yet understood.
-  if (!process.env.CI) {
-    await expect.poll(() => fill(cards.nth(target))).toBe("filled");
-    await expect.poll(() => fill(cards.nth(0))).toBe("plain");
-  }
+  await expect.poll(() => fill(cards.nth(target))).toBe("filled");
+  await expect.poll(() => fill(cards.nth(0))).toBe("plain");
   await openTower(page, "overview", { enrich: enrichCi });
   const first = page.locator(".board-queue .decision").first();
   await expect(first).toHaveClass(/focused/);

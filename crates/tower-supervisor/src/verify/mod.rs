@@ -68,6 +68,66 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
     });
 }
 
+/// Before the agent's work counts: the criteria that have no baseline yet
+/// run on your own code in the verification sandbox, alongside the agent's
+/// first minutes. A criterion that cannot run there (a refused path, a
+/// missing tool, a setup that fails on your code) pauses the goal now, with
+/// the reason, instead of after the agent has spent its budget around it.
+pub fn preflight(inner: Arc<Inner>, goal: String) {
+    let Ok(rec) = inner.store(|s| s.goal(&goal)) else { return };
+    let Ok(detail) = inner.store(|s| s.detail(&goal)) else { return };
+    let needs = detail.criteria.iter().any(|c| {
+        matches!(c.criterion.kind, CriterionKind::Exec { .. }) && c.passed_on_base.is_none() && c.base_error.is_none()
+    });
+    let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else { return };
+    if !needs {
+        return;
+    }
+    let cancel = Cancel::default();
+    {
+        let mut v = inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if v.contains_key(&goal) {
+            return;
+        }
+        v.insert(goal.clone(), cancel.clone());
+    }
+    tokio::spawn(async move {
+        let found = async {
+            let bench = Bench::open(&inner, &goal, &rec, &ws, &base, &cancel).await?;
+            let r = bench.preflight().await;
+            bench.close().await;
+            r
+        }
+        .await;
+        inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
+        let again = inner.verify_again.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
+        if again && inner.store(|s| s.goal(&goal)).is_ok_and(|g| g.state == LifecycleState::Claimed) {
+            spawn(inner.clone(), goal.clone());
+        }
+        let problem = match found {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(goal = %goal, error = %e, "preflight did not run");
+                return;
+            }
+        };
+        let Some(problem) = problem else { return };
+        if cancel.is_cancelled() {
+            return;
+        }
+        let lang = inner.lang();
+        let detail = tr!(
+            lang,
+            "Tower 在验证沙箱里用你自己的代码试跑了验收标准，它们没法在那里运行，所以 Agent 的结果也没法验证。修好后点“重试”。\n\n{problem}",
+            "Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\n{problem}"
+        );
+        if inner.store(|s| s.goal(&goal)).is_ok_and(|g| g.state == LifecycleState::Running) {
+            let r = run::pause(&inner, &goal, PauseReason::PrepareFailed, &detail).await;
+            run::report(&inner, &goal, r).await;
+        }
+    });
+}
+
 fn to_paused(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str) -> Result<()> {
     let state = inner.store(|s| s.goal(goal))?.state;
     if state == LifecycleState::Verifying {

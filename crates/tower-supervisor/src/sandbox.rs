@@ -358,6 +358,21 @@ pub fn profile(spec: &Spec) -> String {
         }
     }
     s.push_str(")\n");
+    // Node and npm look for `node_modules` in every folder above the
+    // project; one they may not read is an error, not "absent" (a stray
+    // `~/node_modules` broke every run). Third-party packages, not secrets.
+    s.push_str("(allow file-read*\n");
+    let mut seen = Vec::new();
+    for p in rw.iter().copied().chain(spec.read.iter()) {
+        for a in p.ancestors().skip(1) {
+            let nm = a.join("node_modules");
+            if !seen.contains(&nm) {
+                s.push_str(&format!("  (subpath {})\n", q(&nm)));
+                seen.push(nm);
+            }
+        }
+    }
+    s.push_str(")\n");
     s.push_str("(deny file-read*\n");
     for d in SECRETS {
         s.push_str(&format!("  (subpath {})\n", q(&home.join(d))));
@@ -574,6 +589,10 @@ mod tests {
         assert!(!run(&format!("cat {}/projects/other/.env", home.display())), "other projects are unreadable");
         assert!(!run(&format!("touch {}/.cargo/registry/poison", home.display())), "shared caches are not writable");
         assert!(!run("echo x >> .git/config"), "git config is read-only");
+        std::fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+        std::fs::write(root.join("node_modules/pkg/index.js"), "x").unwrap();
+        assert!(run(&format!("cat {}/node_modules/pkg/index.js", root.display())), "node_modules above is readable");
+        assert!(!run(&format!("echo a > {}/node_modules/pkg/x", root.display())), "but not writable");
         let git = std::process::Command::new("/usr/bin/sandbox-exec")
             .arg("-f")
             .arg(&sb)

@@ -434,7 +434,7 @@ async fn watchdog(inner: Arc<Inner>, run: Arc<Run>) {
             let inner2 = inner.clone();
             let g = run.goal_id.clone();
             let minutes = goal.contract.budget.wall_minutes;
-            let detail = tr!(inner.lang(), "本次运行已超过 {minutes} 分钟", "This run has passed {minutes} minutes");
+            let detail = tower_core::i18n::PauseNote::RanPast { minutes }.encode();
             tokio::spawn(async move {
                 let r = pause(&inner2, &g, PauseReason::WallClockCap, &detail).await;
                 report(&inner2, &g, r).await;

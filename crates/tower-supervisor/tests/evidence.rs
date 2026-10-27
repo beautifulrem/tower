@@ -184,6 +184,31 @@ async fn held_out_proofs_come_back_from_inside_the_sandbox() {
     assert!(v.passed, "{}", v.output_tail);
     assert_eq!(proof.ran, ["holdout/a.sh", "holdout/b.test.mjs", "holdout/c_check.py"], "{proof:?}");
     assert!(d.sentinels.iter().all(|s| !s.sentinel.starts_with("held_out")), "{:?}", d.sentinels);
+    // Every profile a criterion runs under — the closed ones and their
+    // loopback-open twins — keeps both of Tower's own rules: the drop box
+    // and the guard's append-only transcript. Setup's profiles get no drop
+    // box.
+    let goal_dir = std::fs::canonicalize(h._tmp.path()).unwrap().join("tower/goals").join(&id);
+    let mut seen = Vec::new();
+    for e in std::fs::read_dir(&goal_dir).unwrap().flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if !name.starts_with("verify") || !name.ends_with(".sb") {
+            continue;
+        }
+        let text = std::fs::read_to_string(e.path()).unwrap();
+        let drop = text.contains("/tower/proof/") && text.contains("(deny file-read* (subpath");
+        if name.starts_with("verify-setup") {
+            assert!(!text.contains("/tower/proof/"), "{name}");
+        } else {
+            assert!(drop, "{name}: the drop box");
+            assert!(text.contains("(allow file-write-data"), "{name}: the guard's transcript");
+        }
+        seen.push(name);
+    }
+    seen.sort();
+    for p in ["verify.sb", "verify-held-out.sb", "verify-loopback.sb", "verify-held-out-loopback.sb"] {
+        assert!(seen.iter().any(|s| s == p), "{p} in {seen:?}");
+    }
 }
 
 /// R1c class: held-out tests no criterion runs. The result is not labelled

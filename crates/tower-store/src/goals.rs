@@ -347,12 +347,24 @@ impl Store {
         let machine: Vec<&str> = rec.contract.machine_criteria().map(|c| c.id.as_str()).collect();
         let human: Vec<&str> = rec.contract.human_criteria().map(|c| c.id.as_str()).collect();
         let mut p = Progress { machine: machine.len() as u32, human: human.len() as u32, ..Default::default() };
-        let mut stmt = self.conn.prepare("SELECT criterion, passed, pin FROM criterion_results WHERE goal_id = ?1")?;
-        for row in
-            stmt.query_map([&rec.id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?, r.get::<_, String>(2)?)))?
-        {
-            let (c, passed, pin) = row?;
-            if passed && machine.contains(&c.as_str()) && rec.pin.as_deref() == Some(pin.as_str()) {
+        // A pass whose must-fail canary passed too is not evidence.
+        let mut stmt = self.conn.prepare(
+            "SELECT r.criterion, r.passed, r.pin, c.state, c.pin FROM criterion_results r
+             LEFT JOIN canary_results c ON c.goal_id = r.goal_id AND c.criterion = r.criterion
+             WHERE r.goal_id = ?1",
+        )?;
+        for row in stmt.query_map([&rec.id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, bool>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
+            ))
+        })? {
+            let (c, passed, pin, canary, canary_pin) = row?;
+            let tampered = canary.as_deref() == Some("tampered") && canary_pin.as_deref() == Some(pin.as_str());
+            if passed && !tampered && machine.contains(&c.as_str()) && rec.pin.as_deref() == Some(pin.as_str()) {
                 p.verified += 1;
             }
         }

@@ -134,6 +134,9 @@ pub fn pause_label(r: PauseReason, lang: Lang) -> &'static str {
             "Agent 改了依赖，验证的准备步骤需要联网",
             "The agent changed dependencies; verification setup needs the network",
         ),
+        CriteriaCannotRun => {
+            lang.pick("验收标准在验证沙箱里跑不起来", "The criteria cannot run in the verification sandbox")
+        }
         HeldOutFailed => {
             lang.pick("保留测试没有通过（Agent 看不到它们）", "Held-out tests failed (the agent cannot see them)")
         }
@@ -171,10 +174,11 @@ pub enum Choice {
     Dismiss,
     ShowHeldOutFailure,
     TellFailingNames,
+    RealTestFailure,
 }
 
 impl Choice {
-    pub const ALL: [Choice; 23] = [
+    pub const ALL: [Choice; 24] = [
         Choice::Approve,
         Choice::Reject,
         Choice::Retry,
@@ -198,6 +202,7 @@ impl Choice {
         Choice::Dismiss,
         Choice::ShowHeldOutFailure,
         Choice::TellFailingNames,
+        Choice::RealTestFailure,
     ];
 
     pub fn label(self, lang: Lang) -> &'static str {
@@ -224,6 +229,10 @@ impl Choice {
             InstallWithNetwork => lang.pick("我看过改动，这次联网安装", "I've checked, install with the network"),
             SendCiFailures => lang.pick("把失败发给 Agent 修复", "Send the failures to the agent"),
             Dismiss => lang.pick("先不管", "Leave it"),
+            RealTestFailure => lang.pick(
+                "这是真的测试失败（记为改动前失败）",
+                "It is a real test failure (count it as failing before the change)",
+            ),
             TellFailingNames => lang.pick("只告诉 Agent 哪些测试失败了", "Tell the agent only which tests failed"),
             ShowHeldOutFailure => lang.pick(
                 "把失败输出给 Agent 看（它会看到保留测试）",

@@ -964,7 +964,7 @@ async fn criteria_that_cannot_run_in_the_sandbox_pause_the_goal_early() {
     };
     let id = create_with(&h, c).await;
     let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
-    assert_eq!(g.pause_reason, Some(PauseReason::PrepareFailed));
+    assert_eq!(g.pause_reason, Some(PauseReason::CriteriaCannotRun));
     let d = h.sup.goal(&id).unwrap();
     let err = d.criteria[0].base_error.clone().expect("the base run is an environment problem, not red");
     assert!(err.contains("sandbox refused"), "{err}");
@@ -981,4 +981,22 @@ async fn a_git_identity_can_be_set_for_one_project() {
     h.sup.set_git_identity("Grace Hopper", "grace@example.com", Some(&p.id)).unwrap();
     assert_eq!(git(&h.repo, &["config", "user.name"]), "Grace Hopper");
     assert_eq!(git(&h.repo, &["config", "user.email"]), "grace@example.com");
+}
+
+/// A test whose own failure message mentions a permission error is a test
+/// failing, not the sandbox: Tower counts a refusal only when it sees one.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_printed_permission_error_is_not_mistaken_for_the_sandbox() {
+    let h = harness("pass").await;
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec {
+        command: "test -f done.txt || { echo 'open /nonexistent/settings.json: Operation not permitted'; exit 1; }"
+            .into(),
+        timeout_secs: 30,
+    };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(g.state, LifecycleState::InReview, "{:?} {:?}", g.pause_reason, d.criteria[0].base_error);
+    assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base, not an environment problem");
 }

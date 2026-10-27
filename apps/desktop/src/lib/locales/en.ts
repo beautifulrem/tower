@@ -62,6 +62,7 @@ export const en: Dict = {
     internal: "Tower ran into an internal error",
     dependencies_changed: "The agent changed dependencies; verification setup needs the network",
     held_out_failed: "Held-out tests failed (the agent cannot see them)",
+    criteria_cannot_run: "The criteria cannot run in the verification sandbox",
   },
   mode: {
     idle: "Idle",

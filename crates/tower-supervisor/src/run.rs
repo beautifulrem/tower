@@ -351,6 +351,9 @@ async fn start_run_inner(
     });
     inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal_id.into(), run.clone());
     inner.update_keep_awake();
+    // The criteria on your own code, while the agent starts (once; see
+    // `verify::preflight`).
+    crate::verify::preflight(inner.clone(), goal_id.to_string());
     tokio::spawn(pump(inner.clone(), run.clone(), rx));
     tokio::spawn(watchdog(inner.clone(), run.clone()));
 

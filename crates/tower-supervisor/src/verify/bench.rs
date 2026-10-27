@@ -18,7 +18,11 @@ use crate::{Inner, Result, invalid, run};
 /// The result of one command in the verification checkout.
 struct Ran {
     passed: bool,
+    /// The command could not run as meant: it did not start, was killed,
+    /// or the sandbox refused something it needed (not a test failure).
     environment_failure: bool,
+    /// The sandbox refused an access.
+    denied: bool,
     exit_code: Option<i32>,
     duration_ms: i64,
     output_tail: String,
@@ -153,9 +157,11 @@ impl<'a> Bench<'a> {
     async fn exec(&self, command: &str, profile: Option<&Path>, timeout: Duration) -> Ran {
         let spec = RunSpec::new(command_for(command, profile), &self.dir, self.env.clone(), timeout);
         let r = tower_verify::run(&spec, self.cancel).await;
+        let denied = !r.passed() && crate::run::sandbox_denied(&r.output_tail);
         Ran {
             passed: r.passed(),
-            environment_failure: r.is_environment_failure(),
+            environment_failure: r.is_environment_failure() || denied,
+            denied,
             exit_code: r.exit_code(),
             duration_ms: r.duration_ms,
             output_tail: r.output_tail,
@@ -258,6 +264,13 @@ impl<'a> Bench<'a> {
             None => tr!(lang, "未启动", "did not start"),
         };
         let tail = tail_lines(&r.output_tail, 20);
+        if r.denied {
+            return Outcome::EnvError(tr!(
+                lang,
+                "{id} 的命令 `{command}` 在验证沙箱里被拒绝访问了它需要的东西（{how}）。这不是测试失败：看一下下面被拒绝的路径，必要时把它加入项目设置。\n{tail}",
+                "The sandbox refused something the command `{command}` of {id} needed ({how}). This is not a test failure: check the refused path below and add it to the project settings if it belongs.\n{tail}"
+            ));
+        }
         Outcome::EnvError(tr!(
             lang,
             "{id} 的命令 `{command}` 无法运行（{how}）：\n{tail}",
@@ -265,23 +278,21 @@ impl<'a> Bench<'a> {
         ))
     }
 
-    pub(super) async fn run_all(&self, pin: &str, files: &[tower_core::view::DiffFile]) -> Result<(Outcome, Found)> {
+    /// The base commit — your content — with your dependencies: setup with
+    /// the network, then the criteria that have no baseline yet (red →
+    /// green evidence) and the `look` screenshots of the base. The criteria
+    /// that failed there, or the outcome that ends verification early.
+    pub(super) async fn base_phase(&self, criteria: &[Exec]) -> Result<std::result::Result<Vec<String>, Outcome>> {
         let (inner, goal) = (self.inner, self.goal);
         let lang = inner.lang();
-        let criteria = self.criteria_list();
-
-        // 1. The base, with your dependencies.
         if let Some(r) = self.setup(true).await {
             let tail = tail_lines(&r.output_tail, 20);
             let setup = self.setup.clone().unwrap_or_default();
-            return Ok((
-                Outcome::EnvError(tr!(
-                    lang,
-                    "准备命令 `{setup}` 在基线提交上就失败了（与 Agent 的改动无关）：\n{tail}",
-                    "The setup command `{setup}` fails on the base commit itself (not because of the agent's changes):\n{tail}"
-                )),
-                Vec::new(),
-            ));
+            return Ok(Err(Outcome::EnvError(tr!(
+                lang,
+                "准备命令 `{setup}` 在基线提交上就失败了（与 Agent 的改动无关）：\n{tail}",
+                "The setup command `{setup}` fails on the base commit itself (not because of the agent's changes):\n{tail}"
+            ))));
         }
         let detail = inner.store(|s| s.detail(goal))?;
         let missing: Vec<&str> =
@@ -313,7 +324,8 @@ impl<'a> Bench<'a> {
                 // Recorded either way: "could not check" is information too.
                 let error = r.environment_failure.then(|| {
                     let code = r.exit_code.map_or_else(|| "did not start".to_string(), |c| format!("exit code {c}"));
-                    format!("could not run on the base ({code}): {}", tail_lines(&r.output_tail, 3))
+                    let why = if r.denied { "the sandbox refused something it needed" } else { "could not run" };
+                    format!("{why} on the base ({code}): {}", tail_lines(&r.output_tail, 3))
                 });
                 if !r.passed && error.is_none() {
                     red_on_base.push(c.id.clone());
@@ -331,6 +343,36 @@ impl<'a> Bench<'a> {
             }
             self.remove(&copied);
         }
+
+        Ok(Ok(red_on_base))
+    }
+
+    /// The base phase alone, for the preflight: what keeps the criteria
+    /// from running on your own code, in words, or `None`.
+    pub(super) async fn preflight(&self) -> Result<Option<String>> {
+        let criteria = self.criteria_list();
+        if let Err(Outcome::EnvError(why)) = self.base_phase(&criteria).await? {
+            return Ok(Some(why));
+        }
+        let detail = self.inner.store(|s| s.detail(self.goal))?;
+        let errors: Vec<String> = detail
+            .criteria
+            .iter()
+            .filter_map(|c| c.base_error.as_ref().map(|e| format!("{} · {}: {e}", c.criterion.id, c.criterion.title)))
+            .collect();
+        Ok((!errors.is_empty()).then(|| errors.join("\n")))
+    }
+
+    pub(super) async fn run_all(&self, pin: &str, files: &[tower_core::view::DiffFile]) -> Result<(Outcome, Found)> {
+        let (inner, goal) = (self.inner, self.goal);
+        let lang = inner.lang();
+        let criteria = self.criteria_list();
+
+        // 1. The base, with your dependencies.
+        let red_on_base = match self.base_phase(&criteria).await? {
+            Ok(red) => red,
+            Err(early) => return Ok((early, Vec::new())),
+        };
 
         // 2. The agent's snapshot.
         let git = inner.git.clone();
@@ -571,6 +613,8 @@ impl<'a> Bench<'a> {
                     let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;
                     match canary.verdict(r.passed) {
                         crate::canary::Verdict::Tampered => CanaryState::Tampered,
+                        // Refused or killed: nothing was shown either way.
+                        _ if r.environment_failure => CanaryState::NotChecked,
                         crate::canary::Verdict::Intact => CanaryState::Intact,
                         crate::canary::Verdict::NotChecked => CanaryState::NotChecked,
                     }

@@ -943,3 +943,30 @@ async fn special_casing_the_tests_values_is_reported() {
     let hit = d.sentinels.iter().find(|s| s.sentinel == "special_cases_test_inputs").expect("reported");
     assert!(hit.detail.contains("a === 17") && hit.detail.contains("no held-out"), "{}", hit.detail);
 }
+
+/// A criterion that cannot run in the verification sandbox even on your
+/// own code is found while the agent starts, not after its work: the goal
+/// pauses with the refused path, and it is not called a test failure.
+#[tokio::test(flavor = "multi_thread")]
+async fn criteria_that_cannot_run_in_the_sandbox_pause_the_goal_early() {
+    if !tower_supervisor::sandbox::available() {
+        return;
+    }
+    let h = harness("ask").await;
+    let home = h._tmp.path().join("home");
+    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    std::fs::create_dir_all(home.join(".ssh")).unwrap();
+    std::fs::write(home.join(".ssh/id"), "k").unwrap();
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec {
+        command: format!("cat {}/.ssh/id && test -f done.txt", home.display()),
+        timeout_secs: 30,
+    };
+    let id = create_with(&h, c).await;
+    let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
+    assert_eq!(g.pause_reason, Some(PauseReason::PrepareFailed));
+    let d = h.sup.goal(&id).unwrap();
+    let err = d.criteria[0].base_error.clone().expect("the base run is an environment problem, not red");
+    assert!(err.contains("sandbox refused"), "{err}");
+    assert_eq!(d.criteria[0].passed_on_base, None);
+}

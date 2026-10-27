@@ -7,7 +7,7 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
-import { DangerMark, Icon, NeedsYouMark, NotEvidenceMark, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
+import { DangerMark, Icon, NeedsYouMark, NotEvidenceMark, NoticeMark, ResultMark, Seal, Stamp } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, LoopbackLine, ObsChip, discountedOf } from "../../components/Honesty";
 import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay, Prose } from "../../components/ui";
@@ -288,8 +288,8 @@ export function AcceptPanel(props: AcceptPanelProps) {
   return (
     <Overlay onClose={props.onClose} label={t("review.acceptTitle", { id: props.id })} title={t("review.acceptTitle", { id: props.id })} instant initialFocus="panel">
       <div class="panel-section">
-        {/* The verdict is the sheet's masthead: the seal set as a stamp on a line of its own — Tower's one loud moment, it
-            presses in once as the sheet opens — and what it stands on, in one quiet line under it. */}
+        {/* The verdict is the sheet's masthead: the stamp on a line of its own — Tower's signature, the largest type in the
+            interface, pressed in once as the sheet opens — and what it stands on, in one quiet line under it. */}
         <div class="accept-verdict">
           <Show
             when={g()?.progress.machine}
@@ -302,9 +302,13 @@ export function AcceptPanel(props: AcceptPanelProps) {
               </span>
             }
           >
-            <span class="accept-stamp">
-              <Seal pin={g()!.verified_pin} large tampered={tampered().length > 0} />
-            </span>
+            <Show when={g()!.verified_pin}>
+              {(pin) => (
+                <span class="accept-stamp">
+                  <Stamp pin={pin()} tampered={tampered().length > 0} press />
+                </span>
+              )}
+            </Show>
             <span class="meta accept-basis">
               {tampered().length > 0 ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length }) : t("review.allPassed", { n: g()!.progress.machine })}
               {/* Every unit viewed is said once, here; anything unviewed is listed below as still open. */}

@@ -416,6 +416,46 @@ export function NotEvidenceMark() {
 }
 
 /**
+ * The stamp: the seal set as Tower's one signature, where a verdict is the
+ * point of the screen — the accept sheet's masthead, and the head of a goal
+ * you accepted. A 1px frame in ink, two cells: the verdict (its glyph and
+ * word in the display cut, the largest type in the interface) and the pin it
+ * was measured on (mono, tabular), divided by the frame's own rule. A pass
+ * that is not evidence is the seal withheld: the frame is dashed — the claim
+ * register's line, "said, not proven" — and the ◆ stands where the disc
+ * would. `press` plays the impression once, as the sheet opens.
+ */
+export function Stamp(props: { pin: string; tampered?: boolean; press?: boolean; size?: "l" | "m" }) {
+  const pin = () => props.pin.slice(0, 7);
+  return (
+    <span
+      class={`stamp stamp-${props.size ?? "l"}`}
+      classList={{ "stamp-tampered": !!props.tampered, "stamp-press": !!props.press }}
+      title={props.tampered ? t("honesty.sealTamperedTitle", { pin: pin() }) : t("honesty.sealTitle", { pin: pin() })}
+    >
+      <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
+      <span class="stamp-verdict">
+        <Show
+          when={!props.tampered}
+          fallback={
+            <svg class="glyph stamp-glyph" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+            </svg>
+          }
+        >
+          <svg class="glyph stamp-glyph" viewBox="0 0 10 10" aria-hidden="true">
+            <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
+            <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.1" />
+          </svg>
+        </Show>
+        <span class="stamp-word">{props.tampered ? t("honesty.sealTampered") : t("goal.verified")}</span>
+      </span>
+      <span class="stamp-pin code-val num">@{pin()}</span>
+    </span>
+  );
+}
+
+/**
  * The verified seal (docs/12 §4.4): green never appears without the pin it
  * was measured on. One component, used everywhere the verdict is shown.
  * `tampered` is the seal withheld: every command passed on this pin, but a

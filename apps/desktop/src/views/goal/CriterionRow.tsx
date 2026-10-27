@@ -6,7 +6,7 @@
  */
 import { Show, createSignal, lazy } from "solid-js";
 
-import { Icon, ResultMark } from "../../components/Glyph";
+import { Icon, NotEvidenceMark, ResultMark } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, HeldOutLine, ObsChip } from "../../components/Honesty";
 import { LookStepsRead } from "../../components/LookSteps";
 import type { CriterionView } from "../../gen/CriterionView";
@@ -54,7 +54,9 @@ export function CriterionRow(props: { goalId: string; c: CriterionView; state: s
             />
           }
         >
-          <ResultMark kind={mark()} />
+          <Show when={c().canary === "tampered" && mark() === "pass"} fallback={<ResultMark kind={mark()} />}>
+            <NotEvidenceMark />
+          </Show>
         </Show>
         <span class="num t3">{c().criterion.id}</span>
         <span class="criterion-main">

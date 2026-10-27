@@ -7,7 +7,7 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
-import { DangerMark, Icon, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
+import { DangerMark, Icon, NotEvidenceMark, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, ObsChip, discountedOf } from "../../components/Honesty";
 import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay } from "../../components/ui";
@@ -94,7 +94,9 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
               <div class="verify-item">
                 <div class="criterion-row">
                   <Show when={c.criterion.kind.type === "exec"} fallback={<ResultMark kind={c.human_checked ? "obs-pass" : "pending"} title={c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")} />}>
-                    <ResultMark kind={mark(c)} />
+                    <Show when={c.canary === "tampered" && mark(c) === "pass"} fallback={<ResultMark kind={mark(c)} />}>
+                      <NotEvidenceMark />
+                    </Show>
                   </Show>
                   <span class="num t3">{c.criterion.id}</span>
                   <span class="criterion-main">

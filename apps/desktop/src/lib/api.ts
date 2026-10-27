@@ -18,6 +18,7 @@ import type { ProjectPatch } from "../gen/ProjectPatch";
 import type { ProjectView } from "../gen/ProjectView";
 import type { RemoteInfo } from "../gen/RemoteInfo";
 import type { PushStatus } from "../gen/PushStatus";
+import { noteDetail } from "./discounted";
 import type { ReviewComment } from "../gen/ReviewComment";
 import type { ReviewView } from "../gen/ReviewView";
 import type { Settings } from "../gen/Settings";
@@ -35,7 +36,8 @@ export const api = {
   removeProject: (id: string) => invoke<void>("remove_project", { id }),
 
   goals: () => invoke<GoalSummary[]>("goals"),
-  goal: (id: string) => invoke<GoalDetail>("goal", { id }),
+  // Read through `noteDetail`, so every glyph of a goal with a pass that is not evidence learns it.
+  goal: (id: string) => invoke<GoalDetail>("goal", { id }).then(noteDetail),
   markViewed: (id: string) => invoke<void>("mark_viewed", { id }),
   trace: (id: string, before: number | null, limit: number) =>
     invoke<TraceEntry[]>("trace", { id, before, limit }),

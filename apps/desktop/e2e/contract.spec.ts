@@ -40,7 +40,7 @@ test("on the goal page a look criterion with steps says how many, and lists them
       c4.criterion.kind.steps = ["click #buy", "type #qty 2", "wait for .total"];
     },
   });
-  const row = page.locator(".goal-page .criterion").filter({ hasText: "C4" }).first();
+  const row = page.locator(".goal-page .criterion").filter({ hasText: /^\s*C4(?!\d)/ }).first();
   const toggle = row.getByRole("button", { name: "3 steps" });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();

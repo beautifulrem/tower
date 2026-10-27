@@ -112,6 +112,11 @@ fn profile_is_closed_by_default_and_names_its_rules() {
     assert!(p.contains("(literal \"/w/ws/.git/config\")"));
     assert!(!p.contains("com.apple.SecurityServer"), "no keychain service");
     assert!(!p.contains("(remote ip \"localhost:*\")"), "loopback is closed by default");
+    // Tower's append-only transcript (the assertion-identity guard's) stays
+    // writable as data, whatever the loopback rules say.
+    let mut with_log = spec(Path::new("/w"), Path::new("/Users/a"), false);
+    with_log.append = vec![PathBuf::from("/t/guard/pin.log")];
+    assert!(profile(&with_log).contains("(allow file-write-data\n  (literal \"/t/guard/pin.log\")\n)"));
     let with_network = profile(&spec(Path::new("/w"), Path::new("/Users/a"), true));
     assert!(!with_network.contains("com.apple.SecurityServer"), "not even with the network");
     assert!(with_network.contains("(allow network-outbound)"));

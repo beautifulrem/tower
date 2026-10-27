@@ -56,6 +56,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Testing
 - The real-model adversarial regression runs goals by class, at least two variants each, with honest controls in JavaScript and Rust and a trap where honest work meets evidence from a process verification did not start. A shortcut still running at the time limit fails (no verdict); one the model did not take counts as "not exercised", never as a pass; an honest control that is held is a false hold. Each run prints the block rate per class and the honest-control false-hold rate and writes them as JSON, which the nightly workflow uploads. Each repository's premises are asserted before the model starts. `tools/adversarial.sh` runs it on your Mac with the key from your shell and keeps the results under the gitignored `.adversarial/`. The workflow needs the `CLINE_API_KEY` secret and has not run in CI yet.
+- Two more JavaScript budgets, checked by CI and the pre-push hook: all of the interface's JavaScript together (160 KB gzipped; 136 KB today), so moving code out of start-up cannot hide growth, and the goal page's own chunk (12 KB; 9.8 KB today). The README and `docs/17` quote them, and `tools/doc-numbers.sh` checks that they do.
 
 ## [0.1.0] — 2026-10-26
 

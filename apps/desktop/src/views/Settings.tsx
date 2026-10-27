@@ -3,7 +3,7 @@
  * Label left, control right, like System Settings; every field saves when
  * you leave it and the block says so — no Save button.
  */
-import { For, Show, createResource, createSignal, onMount } from "solid-js";
+import { For, Match, Show, Switch, createResource, createSignal, onMount } from "solid-js";
 
 import { pickQuiet } from "../components/Chrome";
 import { GitIdentityForm } from "../components/GitIdentity";
@@ -17,7 +17,7 @@ import type { Settings as SettingsT } from "../gen/Settings";
 import { api, errorText } from "../lib/api";
 import { clock } from "../lib/format";
 import { locale, t } from "../lib/i18n";
-import { engineLabel, envIssueLabel, modelsFor } from "../lib/labels";
+import { engineLabel, envGauges, envIssueLabel, modelsFor } from "../lib/labels";
 import { ask } from "../lib/native";
 import { act, quietNow, quietUntil, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 import { type SizeChoice, type ThemeChoice, setSizeChoice, setThemeChoice, sizeChoice, themeChoice } from "../lib/theme";
@@ -132,20 +132,42 @@ export function Settings() {
     <div class="settings">
       <section class="settings-block">
         <h2 class="section-title">{t("settings.environment")}</h2>
-        <dl class="kv">
-          <dt>Pi</dt>
-          <dd>
-            <Show when={state.env?.pi_path} fallback={<span class="t2">{t("settings.notFound")}</span>}>
-              <span class="t1">{state.env?.pi_version ?? t("settings.cannotRun")}</span>
-              <span class="sep">·</span>
-              <span class="mono t2 break">{state.env!.pi_path}</span>
-            </Show>
-          </dd>
-          <dt>git</dt>
-          <dd class="mono">{state.env?.git_version ?? t("settings.notFound")}</dd>
-          <dt>{t("settings.dataDir")}</dt>
-          <dd class="mono t2 break">{state.env?.data_dir}</dd>
-        </dl>
+        {/* The title bar's gauge cluster, brought down to the page: one line of readings — name, mark, value — and every problem
+            spelled out under it in its check row, with its fix. The engine's path and the data folder are the quiet line between. */}
+        <div class="env-gauges halt" role="list" aria-label={t("settings.environment")}>
+          <For each={envGauges(state.env, state.settings?.engine)}>
+            {(g) => (
+              <span class="gauge env-gauge" role="listitem" data-key={g.key} data-mark={g.mark} title={g.title}>
+                <span class="env-gauge-name">{g.label}</span>
+                <Switch>
+                  <Match when={g.mark === "ok"}>
+                    <Icon name="check" size={10} class="t3" label={t("settings.gaugeOk")} />
+                  </Match>
+                  <Match when={g.mark === "danger"}>
+                    <DangerMark />
+                  </Match>
+                  <Match when={g.mark === "attention"}>
+                    <NeedsYouMark />
+                  </Match>
+                  <Match when={g.mark === "notice"}>
+                    <NoticeMark />
+                  </Match>
+                </Switch>
+                <span class="env-gauge-value num" classList={{ t1: g.mark !== "ok" }}>
+                  {g.value}
+                </span>
+              </span>
+            )}
+          </For>
+        </div>
+        <p class="meta env-paths">
+          <Show when={state.env?.pi_path && state.settings?.engine !== "claude-code"}>
+            <span class="t3">Pi</span>
+            <span class="code-val t2 break">{state.env!.pi_path}</span>
+          </Show>
+          <span class="t3">{t("settings.dataDir")}</span>
+          <span class="code-val t2 break">{state.env?.data_dir}</span>
+        </p>
         <For each={state.env?.issues ?? []}>
           {(i) => (
             <div class="check-row">

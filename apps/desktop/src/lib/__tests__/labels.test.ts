@@ -6,7 +6,7 @@ import type { TraceEntry } from "../../gen/TraceEntry";
 
 vi.mock("../store", () => ({ state: { settings: { language: "en" } } }));
 
-const { envIssueLabel, installHint, engineMark, engineLabel } = await import("../labels");
+const { envIssueLabel, envGauges, installHint, engineMark, engineLabel } = await import("../labels");
 const { matches } = await import("../../components/Trace");
 const { matchGoal } = await import("../../components/Palette");
 
@@ -24,6 +24,29 @@ describe("environment problems", () => {
   it("know how to install the demo's programs", () => {
     expect(installHint("python3")).toBe("xcode-select --install");
     expect(installHint("node")).toMatch(/brew/);
+  });
+});
+
+describe("the environment gauge strip", () => {
+  const full = { pi_version: "1.4.2 (abc)", pi_path: "/opt/homebrew/bin/pi", git_version: "git version 2.56.0", data_dir: "/x", issues: [] as EnvIssue[], min_pi_version: "1.4.0" } as EnvironmentStatus;
+  const with_ = (...kinds: EnvIssue["kind"][]) => ({ ...full, issues: kinds.map((k) => ({ ...issue(k), blocking: false })) }) as EnvironmentStatus;
+  const reading = (env: EnvironmentStatus, engine = "pi") => envGauges(env, engine).map((g) => `${g.label} ${g.mark} ${g.value}`);
+
+  it("reads Pi's version, git's version without its prefix, the sandbox and the identity, each with a quiet check", () => {
+    expect(reading(full)).toEqual(["Pi ok 1.4.2", "git ok 2.56.0", "Sandbox ok on", "Identity ok set"]);
+    expect(envGauges(full, "pi")[0].title).toBe("/opt/homebrew/bin/pi");
+  });
+  it("carries each problem's own mark: ■ for a broken engine, ◆ for a missing identity, ◇ for no sandbox", () => {
+    expect(reading(with_("git_identity_missing", "no_sandbox"))).toEqual(["Pi ok 1.4.2", "git ok 2.56.0", "Sandbox notice none", "Identity attention not set"]);
+    expect(reading(with_("pi_too_old"))[0]).toBe("Pi danger 1.4.2");
+    expect(reading({ ...full, pi_version: null, pi_path: null } as EnvironmentStatus)[0]).toBe("Pi danger Not found");
+    expect(reading({ ...full, pi_version: null } as EnvironmentStatus)[0]).toBe("Pi danger can't run");
+  });
+  it("reads the chosen engine: Claude Code in Pi's place, and no identity gauge without git", () => {
+    expect(reading(full, "claude-code")[0]).toBe("Claude Code ok ready");
+    expect(reading(with_("claude_missing"), "claude-code")[0]).toBe("Claude Code danger Not found");
+    expect(reading({ ...full, git_version: null } as EnvironmentStatus)).toEqual(["Pi ok 1.4.2", "git danger Not found", "Sandbox ok on"]);
+    expect(envGauges(null, "pi")).toEqual([]);
   });
 });
 

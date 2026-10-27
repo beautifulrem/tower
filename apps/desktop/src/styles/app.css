@@ -3004,34 +3004,79 @@ input[type="radio"] {
   min-width: 0;
   padding-bottom: 56px;
 }
-.editor-block {
-  padding: var(--sp-5) 0 var(--sp-2);
-  border-top: 1px solid var(--border-subtle);
-}
-.editor-block:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-.editor-block-head {
+/* The contract reads as a contract: a masthead in the wordmark's voice — what this is, whose, in which state — then
+   numbered clauses, each head a two-digit number in tabular figures, the title tracked and upper-case (CJK tracked a
+   little, never upper-cased), and a hairline to the edge in place of a rule above the block. The schedule on the right
+   numbers on from the clauses. The fields under each head keep the form's own grammar. */
+.contract-mast {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  min-height: 20px;
+  margin-bottom: var(--sp-5);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-3);
+}
+.contract-mast .sep {
+  letter-spacing: 0;
+  padding: 0 0.6em;
+}
+.contract-mast-project {
+  color: var(--text-1);
+}
+:root[lang="zh-CN"] .contract-mast {
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: none;
+}
+.editor-block {
+  padding: var(--sp-6) 0 var(--sp-2);
+}
+.editor-block:first-child,
+.contract-mast + .editor-block {
+  padding-top: 0;
+}
+.clause-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
   margin-bottom: var(--sp-3);
   min-height: 24px;
 }
-.editor-block-head .section-title {
-  margin: 0;
+.clause-no {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-4);
 }
-.editor-block-head .field-hint {
-  flex-basis: 100%;
+.clause-title {
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+:root[lang="zh-CN"] .clause-title {
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: none;
+}
+.clause-rule {
+  flex: 1 1 auto;
+  min-width: var(--sp-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.clause-head .btn {
+  flex: 0 0 auto;
+  margin: -4px 0;
 }
 .editor-side .editor-block {
   padding-top: 0;
-  border-top: 0;
   margin-bottom: var(--sp-5);
-}
-.editor-side .editor-block .section-title {
-  margin-bottom: var(--sp-3);
 }
 /* A criterion is two lines: id · description · timeout · remove, then the command. */
 .criterion-edit {
@@ -3162,19 +3207,37 @@ input[type="radio"] {
   color: var(--text-3);
   transition: opacity var(--dur-fast) linear;
 }
-.kv {
-  display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: 6px var(--sp-3);
-  margin: 0 0 var(--sp-3);
+/* Settings › Environment is a gauge strip: the title bar's cluster on the page — name · mark · reading, the readings in
+   tabular figures, a problem's value stepping up to text-1 — and the paths one quiet line under it. */
+.env-gauges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-5);
+  min-height: 24px;
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-body);
+  color: var(--text-2);
 }
-.kv dt {
+.env-gauge {
+  gap: 6px;
+}
+.env-gauge-name {
   color: var(--text-3);
 }
-.kv dd {
-  margin: 0;
-  word-break: break-all;
+.env-gauge-value {
+  color: var(--text-2);
+}
+.env-paths {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  margin-bottom: var(--sp-3);
   user-select: text;
+}
+.env-paths .code-val + .t3 {
+  margin-left: var(--sp-3);
 }
 .project {
   padding: var(--sp-4) 0 var(--sp-2);
@@ -3325,6 +3388,21 @@ input[type="radio"] {
     opacity: 0;
     transform: translateX(-24px);
   }
+}
+/* The queue's page turn, review → review: the tree does not re-enter — its rows change in place, the old picture simply
+   gone under the new — and only the diff (and the header, with the root) crossfades, over the short view duration. A page
+   turning in the same room, not the room changing. */
+:root[data-transition="page"]::view-transition-old(review-tree) {
+  animation: none;
+  opacity: 0;
+}
+:root[data-transition="page"]::view-transition-new(review-tree) {
+  animation: none;
+}
+:root[data-transition="page"]::view-transition-old(review-diff),
+:root[data-transition="page"]::view-transition-new(review-diff) {
+  animation-duration: var(--dur-view);
+  animation-timing-function: var(--ease-out);
 }
 
 /* ======================================================================
@@ -3746,6 +3824,45 @@ input[type="radio"] {
 }
 .overlay:not(.overlay-top) {
   padding-top: 10vh;
+}
+
+/* The two generic sheets — the shortcut table and the activity log — carry their titles in the wordmark's voice: small,
+   tracked, upper-case (CJK tracked a little and never upper-cased), a hairline running to the edge, like a scale title
+   grown up; their group titles the same one step smaller, like the board's column heads. Any good app has these two
+   sheets; the type is what says whose they are. */
+.panel-tracked .panel-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.panel-tracked .panel-title::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border-subtle);
+}
+:root[lang="zh-CN"] .panel-tracked .panel-title {
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: none;
+}
+.panel-tracked .keys-group-title {
+  margin-bottom: 6px;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+:root[lang="zh-CN"] .panel-tracked .keys-group-title {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: none;
 }
 
 .keys-sheet {

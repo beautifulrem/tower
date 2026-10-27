@@ -119,7 +119,7 @@ describe("FileDiff comment flow", () => {
     expect(folded.querySelectorAll(".dl")).toHaveLength(0);
     expect(folded.querySelector(".hunk-head")!.className).toContain("hunk-accepted");
     expect(screen.getByText(/Accepted, 4 lines folded/)).toBeTruthy();
-    expect(screen.queryByText("Undo this hunk")).toBeNull();
+    expect(screen.queryByText("Revert hunk")).toBeNull();
     expect(screen.getByText(/Accepted, 4 lines/).closest("button")!.getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -152,9 +152,9 @@ describe("FileDiff comment flow", () => {
   it("offers to undo a hunk only when allowed", () => {
     const undone: number[] = [];
     mount({ onUndo: (i) => undone.push(i) });
-    fireEvent.click(screen.getByText("Undo this hunk"));
+    fireEvent.click(screen.getByText("Revert hunk"));
     expect(undone).toEqual([0]);
     mount();
-    expect(screen.getAllByText("Undo this hunk")).toHaveLength(1);
+    expect(screen.getAllByText("Revert hunk")).toHaveLength(1);
   });
 });

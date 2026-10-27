@@ -297,8 +297,13 @@ async fn an_agent_that_stops_without_submitting_is_nudged_then_paused() {
     let h = harness("idle").await;
     let id = create(&h).await;
     let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
-    assert_eq!(g.pause_reason, Some(PauseReason::IdleWithoutSubmit));
     let trace = h.sup.trace(&id, None, 200).unwrap();
+    assert_eq!(
+        g.pause_reason,
+        Some(PauseReason::IdleWithoutSubmit),
+        "{:#?}",
+        trace.iter().rev().take(8).collect::<Vec<_>>()
+    );
     let nudges = trace
         .iter()
         .filter(|e| matches!(&e.event, tower_core::EventKind::Injected { text, .. } if text.contains("without calling `submit`")))

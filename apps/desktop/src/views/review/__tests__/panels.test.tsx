@@ -165,7 +165,7 @@ describe("AcceptPanel", () => {
       ],
     } as unknown as GoalDetail;
     const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={tampered} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
-    expect(container.querySelector(".seal-tampered")).not.toBeNull();
+    expect(container.querySelector(".stamp.stamp-tampered")).not.toBeNull();
     expect(screen.queryByText(/All 2 machine criteria passed/)).toBeNull();
     expect(screen.getByText(/1 of 2 machine criteria count as evidence; 1 passed with a tampered canary/)).toBeTruthy();
     const open = [...container.querySelectorAll(".panel-section .row.meta")].map((el) => el.textContent ?? "");

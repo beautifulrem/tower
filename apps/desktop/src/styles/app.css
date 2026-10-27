@@ -3174,46 +3174,94 @@ input[type="radio"] {
   letter-spacing: var(--tr-16);
   font-weight: 500;
 }
-/* Accepting: the verdict as the sheet's masthead. The seal is set as a stamp — the glyph and the verdict word in the
-   display cut at the question's size, the pin beside it — and on opening it presses in once: down from a touch larger
-   and fainter, settling in 260ms. It is the one moment in Tower allowed to be loud, because it is the moment Tower
-   exists for; with reduced motion it simply stands. What the verdict rests on follows in one quiet line. */
+/* Accepting: the verdict as the sheet's masthead — the stamp, then what it stands on in one quiet line. */
 .accept-verdict {
   display: grid;
-  gap: 2px;
-  padding-bottom: var(--sp-3);
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-4);
   border-bottom: 1px solid var(--border-subtle);
 }
 .accept-stamp {
   justify-self: start;
-  transform-origin: left center;
-  animation: stamp 260ms var(--ease-out) both;
 }
-.accept-stamp .seal {
-  gap: 6px;
-  font-size: var(--fs-question);
-  line-height: var(--lh-question);
+/* The stamp: Tower's signature, in ink. A 1px frame, slightly rounded like a cut die, holding two cells divided by
+   its own rule: the verdict (glyph and word in the display cut, the interface's largest type) and the pin (mono,
+   tabular, a step quieter). Nothing else on the page is this size; nothing else is framed like this. Withheld (a
+   pass that is not evidence) the frame is dashed: the claim register's line. */
+.stamp {
+  --stamp-ink: color-mix(in oklch, var(--text-1) 82%, transparent);
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--stamp-ink);
+  border-radius: 3px;
+  color: var(--text-1);
+  white-space: nowrap;
 }
-.accept-stamp .seal .glyph,
-.accept-stamp .seal svg {
-  width: 14px;
-  height: 14px;
+.stamp-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36em;
+  padding: 0.16em 0.5em 0.2em 0.42em;
+  font-weight: 580;
+  letter-spacing: -0.022em;
+  font-variation-settings: var(--opsz-display);
 }
-.accept-stamp .seal-pin {
+.stamp-glyph {
+  width: 0.62em;
+  height: 0.62em;
+  flex: 0 0 auto;
+}
+.stamp-pin {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  border-left: 1px solid var(--stamp-ink);
   font-size: var(--fs-body);
+  color: var(--text-2);
+  letter-spacing: 0;
 }
-@keyframes stamp {
+.stamp-l .stamp-verdict {
+  font-size: 28px;
+  line-height: 36px;
+}
+.stamp-m .stamp-verdict {
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+}
+.stamp-m .stamp-pin {
+  font-size: var(--fs-meta);
+}
+:root[lang="zh-CN"] .stamp-verdict {
+  letter-spacing: 0.02em;
+}
+.stamp-tampered {
+  border-style: dashed;
+  --stamp-ink: var(--text-3);
+}
+.stamp-tampered .stamp-pin {
+  border-left-style: dashed;
+}
+/* The impression, once, as the sheet opens: the frame lands a half pixel heavy and settles to its 1px while the ink
+   comes up from nothing — 280ms, no bounce, no rotation, no scale beyond a breath. It answers your action (opening
+   the sheet to accept); with reduced motion the stamp simply stands, already pressed. */
+@media (prefers-reduced-motion: no-preference) {
+  .stamp-press {
+    animation: stamp-frame 280ms var(--ease-out) both;
+  }
+  .stamp-press > :not(.sr-only) {
+    animation: stamp-ink 220ms var(--ease-out) 60ms both;
+  }
+}
+@keyframes stamp-frame {
+  from {
+    box-shadow: 0 0 0 0.75px var(--stamp-ink);
+    transform: scale(1.015);
+  }
+}
+@keyframes stamp-ink {
   from {
     opacity: 0;
-    transform: scale(1.08);
-  }
-  60% {
-    opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .accept-stamp {
-    animation: none;
   }
 }
 .accept-viewed {

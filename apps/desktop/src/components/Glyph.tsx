@@ -17,6 +17,7 @@ import { type JSX, Match, Show, Switch } from "solid-js";
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { LifecycleState } from "../gen/LifecycleState";
 import { t } from "../lib/i18n";
+import { isDiscounted } from "../lib/discounted";
 import { machineVerified } from "../lib/labels";
 
 type Tone = "neutral" | "active" | "verified" | "faint";
@@ -46,8 +47,11 @@ const color: Record<Tone, string> = {
 
 const DASH = "1.7 1.45";
 
-export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin">; size?: number }) {
+export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin"> & { id?: string }; size?: number }) {
   const verified = () => machineVerified(props.goal as GoalSummary);
+  // Ready or accepted with a pass that is not evidence: the seal's amber ◆ stands where the green check would, so the
+  // title, the sidebar and the board never draw green on a goal whose header says "Passed, not evidence".
+  const discounted = () => (props.goal.state === "in_review" || props.goal.state === "accepted") && isDiscounted(props.goal.id);
   const c = () => color[toneOf(props.goal.state, verified())];
   const s = () => props.size ?? 10;
   const svg = (children: JSX.Element) => (
@@ -72,6 +76,11 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   const check = (stroke?: string) => <path d="M3.1 5.2 L4.5 6.6 L7 3.7" stroke={stroke} />;
   return (
     <Switch>
+      <Match when={discounted()}>
+        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" role="img" aria-label={`${t(`state.${props.goal.state}`)} · ${t("honesty.sealTampered")}`}>
+          <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+        </svg>
+      </Match>
       <Match when={props.goal.state === "draft"}>{svg(ring())}</Match>
       <Match when={props.goal.state === "ready"}>
         {svg(
@@ -395,6 +404,15 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
   return (
     <span class={`result result-${props.kind}`} title={label()}>
       <Icon name={RESULT_ICON[props.kind]} size={props.kind.startsWith("obs") ? 12 : 10} label={label()} />
+    </span>
+  );
+}
+
+/** A criterion's mark when it passed but its must-fail canary passed too: the seal's ◆, never the green check. */
+export function NotEvidenceMark() {
+  return (
+    <span class="result result-tampered" title={t("honesty.sealTampered")}>
+      <NeedsYouMark title={t("honesty.sealTampered")} />
     </span>
   );
 }

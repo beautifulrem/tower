@@ -701,7 +701,9 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // The same three lines in the verification readout; the review header and the readout withhold the seal too; the review says once, over the diff, that no held-out tests vouch for it.
   await page.keyboard.press("r");
   await expect(page.locator("table").first()).toBeVisible();
-  await expect(page.locator(".review-diff .held-out-none")).toHaveCount(1);
+  // (In the band of notes over the diff, folded behind the red sentinels that lead it.)
+  await page.locator(".review-notes-head").click();
+  await expect(page.locator(".review-notes .review-note").filter({ hasText: "No held-out tests" })).toHaveCount(1);
   await expect(page.locator(".review-head .seal")).toHaveClass(/seal-tampered/);
   await expect(page.locator(".review-head .criteria-bar")).toContainText("1 doesn't count");
   await page.keyboard.press("e");

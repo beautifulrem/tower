@@ -363,6 +363,7 @@ export const zhLater = {
     hunksAccepted: "已接受 {n}/{total} 块",
     hunksAllAccepted: (p: { n: number }) => `全部 ${p.n} 块已接受`,
     hunkUnaccepted: "已取消接受 · {path}",
+    notesCount: (p: { n: number }) => `读之前的 ${p.n} 条提示`,
     acceptAgain: "重新接受",
     unacceptKey: "取消当前区块的接受（阅读标记）",
     keyNextUnit: "下一单元",

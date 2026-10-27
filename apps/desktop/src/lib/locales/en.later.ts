@@ -366,6 +366,7 @@ export const enLater: DictLater = {
     hunksAccepted: "{n}/{total} hunks accepted",
     hunksAllAccepted: (p) => `All ${p.n} ${plural(p.n, "hunk", "hunks")} accepted`,
     hunkUnaccepted: "Unaccepted · {path}",
+    notesCount: (p: { n: number }) => `${p.n} ${plural(p.n, "note", "notes")} before you read`,
     acceptAgain: "Accept again",
     unacceptKey: "Take the current hunk's mark back",
     keyNextUnit: "next unit",

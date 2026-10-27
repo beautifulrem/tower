@@ -12,12 +12,58 @@ vi.mock("../../lib/store", async () => {
   });
   return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn() };
 });
+const validated: unknown[] = [];
+const look = { id: "C4", title: "The checkout page still looks right", kind: { type: "look", start: "npm run dev", url: "http://localhost:3000/checkout", timeout_secs: 60, steps: ["click #buy", "type #qty 2"] } };
 vi.mock("../../lib/api", () => ({
-  api: { models: async () => [], validateContract: async () => [], baseTests: async () => null, goal: async () => null },
+  api: {
+    models: async () => [],
+    validateContract: async (c: unknown) => {
+      validated.push(structuredClone(c));
+      return [];
+    },
+    baseTests: async () => null,
+    goal: async () => ({
+      summary: { title: "Fix the cart total", project_id: "p1" },
+      contract: { version: 2, intent: "Fix it", done_when: "", constraints: [], criteria: [look], scope: { include: [], exclude: [], readonly: [] }, budget: { soft_usd: 5, hard_usd: 8, wall_minutes: 90 }, autonomy: "standard", max_rework: 3, setup: "", model: "", thinking: "", stop_conditions: [], network: false, engine: "" },
+    }),
+  },
   errorText: (e: unknown) => String(e),
 }));
 
 const { ContractEditor } = await import("../ContractEditor");
+const { fireEvent, screen, waitFor } = await import("@solidjs/testing-library");
+
+describe("a look criterion's steps", () => {
+  const lastSteps = () => (validated.at(-1) as { criteria: Array<{ kind: { steps?: string[] } }> }).criteria[0].kind.steps;
+
+  it("are in the contract you amend, numbered and editable: no clause is invisible", async () => {
+    const { container } = render(() => <ContractEditor amendId="G-0001" />);
+    await waitFor(() => expect(screen.getByLabelText("C4 step 1")).toBeTruthy());
+    expect([...container.querySelectorAll(".look-step")].map((li) => `${li.querySelector(".look-step-no")!.textContent} ${(li.querySelector("input") as HTMLInputElement).value}`)).toEqual([
+      "01 click #buy",
+      "02 type #qty 2",
+    ]);
+    // + Step opens a line under them, and what you type there goes to validation with the rest.
+    fireEvent.click(screen.getByText("Step").closest("button")!);
+    const third = (await waitFor(() => screen.getByLabelText("C4 step 3"))) as HTMLInputElement;
+    expect(third.placeholder).toBe("press Enter");
+    fireEvent.input(third, { target: { value: "wait for .total" } });
+    await waitFor(() => expect(lastSteps()).toEqual(["click #buy", "type #qty 2", "wait for .total"]));
+    // A line the supervisor would refuse is marked while you type.
+    fireEvent.input(third, { target: { value: "drag a b" } });
+    await waitFor(() => expect(third.getAttribute("aria-invalid")).toBe("true"));
+  });
+
+  it("leave the contract with the last one removed, and a criterion without steps says what steps are", async () => {
+    const { container } = render(() => <ContractEditor amendId="G-0001" />);
+    await waitFor(() => expect(screen.getByLabelText("C4 step 2")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("Remove step 2"));
+    fireEvent.click(screen.getByLabelText("Remove step 1"));
+    await waitFor(() => expect(container.querySelectorAll(".look-step")).toHaveLength(0));
+    await waitFor(() => expect(lastSteps()).toBeUndefined());
+    expect(container.querySelector(".look-steps .field-hint")!.textContent).toMatch(/Before the picture: click, type, press, wait, wait for/);
+  });
+});
 
 describe("the contract editor", () => {
   it("reads as a contract: a masthead saying what, whose and which state, then numbered clauses and the schedule numbered on", () => {

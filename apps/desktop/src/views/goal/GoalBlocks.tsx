@@ -7,7 +7,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark } from "../../components/Glyph";
 import { Claim, ConsistencyBadge, CriteriaBar, HumanStamp, discountedOf } from "../../components/Honesty";
-import { Button, Empty, Section } from "../../components/ui";
+import { Button, Empty, Prose, Section } from "../../components/ui";
 import type { ClaimView } from "../../gen/ClaimView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import type { RunView } from "../../gen/RunView";
@@ -16,7 +16,7 @@ import { ago, clock, count, duration, short } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { runOutcomeLabel, runPurposeLabel } from "../../lib/labels";
 import { ask } from "../../lib/native";
-import { go } from "../../lib/nav";
+import { go, goProjectSetting } from "../../lib/nav";
 import { act, state, toast } from "../../lib/store";
 import { CriterionRow } from "./CriterionRow";
 
@@ -143,7 +143,7 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
           <p class="meta held-out-none">
             <NoticeMark />
             <span>{t("goal.noHeldOut")}</span>
-            <button class="link-quiet text-btn" onClick={() => go({ name: "settings" })}>
+            <button class="link-quiet text-btn" onClick={() => goProjectSetting(g().project_id, "holdout")}>
               {t("goal.setHeldOut")}
               <Icon name="chevron-right" size={10} />
             </button>
@@ -279,7 +279,9 @@ export function SentinelDetail(props: { text: string }) {
   const lines = () => props.text.split("\n").filter((l, i, all) => l.trim() !== "" || (i > 0 && i < all.length - 1));
   return (
     <div class="sentinel-detail">
-      <For each={lines()}>{(line) => <span class={MACHINE_DETAIL.test(line) ? "sentinel-machine code-val" : "sentinel-prose"}>{line || " "}</span>}</For>
+      <For each={lines()}>
+        {(line) => (MACHINE_DETAIL.test(line) ? <span class="sentinel-machine code-val">{line}</span> : <span class="sentinel-prose">{line ? <Prose text={line} /> : " "}</span>)}
+      </For>
     </div>
   );
 }

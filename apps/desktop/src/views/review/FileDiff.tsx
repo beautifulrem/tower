@@ -45,6 +45,8 @@ export interface FileDiffProps {
   accepted?: (hunk: number) => boolean;
   /** Accepting a hunk, or taking the mark back from one already accepted. */
   onAccept?: (hunk: number) => void;
+  /** The review's current hunk (what A, ⇧A and U act on), when it is in this file: its header carries the mark. */
+  current?: (hunk: number) => boolean;
   /** Editing the whole file in place (paused or in review only); the text arrives through `lines`. */
   editing?: boolean;
   onEditFile?: () => void;
@@ -128,6 +130,7 @@ export function FileDiff(props: FileDiffProps) {
     ]);
   const helpId = createUniqueId();
   const isAccepted = (index: number | null) => index !== null && !!props.accepted?.(index);
+  const isCurrent = (index: number | null) => index !== null && !!props.current?.(index);
 
   // An accepted hunk closes rather than vanishes: its rows' height is read in the pure phase, before Solid takes them
   // out, and a row of that height stands in their place and shrinks to nothing over 160ms (nothing under reduced motion).
@@ -171,7 +174,7 @@ export function FileDiff(props: FileDiffProps) {
   const HunkVerbs = (p: { index: number }) => (
     <>
       <Show when={props.onAccept}>
-        <AcceptButton accepted={isAccepted(p.index)} lines={props.file.hunks[p.index]?.lines.length ?? 0} onClick={() => props.onAccept!(p.index)} />
+        <AcceptButton accepted={isAccepted(p.index)} current={isCurrent(p.index)} lines={props.file.hunks[p.index]?.lines.length ?? 0} onClick={() => props.onAccept!(p.index)} />
       </Show>
       <Show when={props.onUndo && !isAccepted(p.index)}>
         <UndoButton onClick={() => props.onUndo!(p.index)} />
@@ -262,7 +265,13 @@ export function FileDiff(props: FileDiffProps) {
                 <Switch>
                   <Match when={b.kind === "head" && b}>
                     {(hb) => (
-                      <tr class="hunk-head" classList={{ "hunk-accepted": isAccepted(hb().index) }} data-hunk-path={props.file.path} data-hunk-index={hb().index}>
+                      <tr
+                        class="hunk-head"
+                        classList={{ "hunk-accepted": isAccepted(hb().index), "hunk-current": isCurrent(hb().index) }}
+                        aria-current={isCurrent(hb().index) ? "true" : undefined}
+                        data-hunk-path={props.file.path}
+                        data-hunk-index={hb().index}
+                      >
                         <td colspan={cols}>
                           <div class="gap-controls">
                             <span class="mono gap-header ellipsis">{hb().header}</span>
@@ -280,6 +289,7 @@ export function FileDiff(props: FileDiffProps) {
                         path={props.file.path}
                         known={props.lines !== undefined}
                         accepted={isAccepted(gb().index)}
+                        current={isCurrent(gb().index)}
                         onReveal={(how) => props.onReveal(gb().gap, how)}
                         verbs={gb().index !== null ? <HunkVerbs index={gb().index!} /> : undefined}
                       />
@@ -358,9 +368,11 @@ function UndoButton(props: { onClick: () => void }) {
 /**
  * Accepting a hunk is your reading mark, paired with U: the one folds the hunk
  * and moves on, the other changes the workspace. Accepted, the button says so
- * with the folded line count, and a second press takes the mark back.
+ * with the folded line count, and a second press takes the mark back. On the
+ * current hunk it carries its key, as the focused card in a queue does: A to
+ * accept, ⇧A to take back.
  */
-function AcceptButton(props: { accepted: boolean; lines: number; onClick: () => void }) {
+function AcceptButton(props: { accepted: boolean; current: boolean; lines: number; onClick: () => void }) {
   return (
     <Button
       size="s"
@@ -369,7 +381,8 @@ function AcceptButton(props: { accepted: boolean; lines: number; onClick: () => 
       classList={{ "accept-hunk-on": props.accepted }}
       aria-pressed={props.accepted}
       onClick={props.onClick}
-      title={`${props.accepted ? t("review.unacceptHunkTitle") : t("review.acceptHunkTitle")} · A — ${t("review.acceptHunkNote")}`}
+      kbd={props.current ? (props.accepted ? "shift+a" : "a") : undefined}
+      title={`${props.accepted ? `${t("review.unacceptHunkTitle")} · ⇧A` : `${t("review.acceptHunkTitle")} · A`} — ${t("review.acceptHunkNote")}`}
     >
       <Icon name="check" size={10} />
       {props.accepted ? t("review.hunkAccepted", { n: props.lines }) : t("review.acceptHunk")}
@@ -426,6 +439,8 @@ export function GapRow(props: {
   known: boolean;
   /** The hunk under this fold is accepted (folded to this row). */
   accepted?: boolean;
+  /** The hunk under this fold is the review's current one. */
+  current?: boolean;
   onReveal: (how: "top" | "bottom" | "all") => void;
   /** The verbs of the hunk whose header this row carries. */
   verbs?: JSX.Element;
@@ -436,7 +451,13 @@ export function GapRow(props: {
   const hidden = () => props.block.hidden;
   const step = () => (hidden() === null ? STEP : Math.min(STEP, hidden()!));
   return (
-    <tr class="hunk-head gap-row" classList={{ "hunk-accepted": !!props.accepted }} data-hunk-path={props.block.index !== null ? props.path : undefined} data-hunk-index={props.block.index ?? undefined}>
+    <tr
+      class="hunk-head gap-row"
+      classList={{ "hunk-accepted": !!props.accepted, "hunk-current": !!props.current }}
+      aria-current={props.current ? "true" : undefined}
+      data-hunk-path={props.block.index !== null ? props.path : undefined}
+      data-hunk-index={props.block.index ?? undefined}
+    >
       <td colspan={props.cols}>
         <div class="gap-controls">
           <span class="gap-buttons">

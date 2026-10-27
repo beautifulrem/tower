@@ -5,11 +5,12 @@
  */
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
+import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
-import { DangerMark, Icon, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
+import { DangerMark, Icon, NotEvidenceMark, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, ObsChip, discountedOf } from "../../components/Honesty";
 import { LookStrip } from "../../components/Look";
-import { Button, Empty, IconButton, Loading, Overlay } from "../../components/ui";
+import { Button, Empty, IconButton, Loading, Overlay, Prose } from "../../components/ui";
 import type { CriterionView } from "../../gen/CriterionView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
@@ -93,7 +94,9 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
               <div class="verify-item">
                 <div class="criterion-row">
                   <Show when={c.criterion.kind.type === "exec"} fallback={<ResultMark kind={c.human_checked ? "obs-pass" : "pending"} title={c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")} />}>
-                    <ResultMark kind={mark(c)} />
+                    <Show when={c.canary === "tampered" && mark(c) === "pass"} fallback={<ResultMark kind={mark(c)} />}>
+                      <NotEvidenceMark />
+                    </Show>
                   </Show>
                   <span class="num t3">{c.criterion.id}</span>
                   <span class="criterion-main">
@@ -135,7 +138,6 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                 <Show when={c.observed}>
                   <div class="criterion-row criterion-obs">
                     <ResultMark kind={c.observed!.passed ? "obs-pass" : "obs-fail"} />
-                    <span />
                     <span />
                     <span class="col-span">
                       <ObsChip title={t("goal.observedTitle")} />
@@ -207,6 +209,24 @@ export function AcceptPanel(props: AcceptPanelProps) {
     if (props.total - props.viewed > 0) items.push({ text: t("review.openUnviewed", { n: props.total - props.viewed }) });
     return items;
   };
+  // Red items above — a pass that is not evidence, a high-severity sentinel — do not block, but they are not one press away
+  // either: the primary reads "Accept anyway" and arms on the first press, as Abandon does, saying how many it is over.
+  const judgement = () => open().filter((o) => o.danger);
+  const notice = () => open().filter((o) => !o.danger);
+  const [armedUntil, setArmedUntil] = createSignal(0);
+  const [now, setNow] = createSignal(Date.now());
+  const ticker = window.setInterval(() => armedUntil() && setNow(Date.now()), 200);
+  onCleanup(() => clearInterval(ticker));
+  const armedLeft = () => (armedUntil() > now() ? Math.ceil((armedUntil() - now()) / 1000) : 0);
+  const press = () => {
+    if (judgement().length && !armedLeft()) {
+      setNow(Date.now());
+      setArmedUntil(Date.now() + ARM_MS);
+      return;
+    }
+    setArmedUntil(0);
+    void accept();
+  };
   // A pushed branch already exists: accepting adds a commit on it rather than writing a new one.
   const updating = () => !!g()?.pr || (!!g()?.branch && g()?.state === "in_review" && !!props.detail?.runs.some((r) => r.purpose === "ci_fix"));
   // The branch acceptance writes (or, when one exists, updates): the supervisor names it ahead of time.
@@ -253,16 +273,32 @@ export function AcceptPanel(props: AcceptPanelProps) {
           )}
         </For>
       </div>
-      <Show when={open().length}>
-        <div class="panel-section">
-          <div class="meta t3">{t("review.stillOpen")}</div>
-          <For each={open()}>
+      {/* What is still open, by weight: what is not evidence or needs your judgement first, what to look at after. */}
+      <Show when={judgement().length}>
+        <div class="panel-section open-judgement">
+          <div class="meta t3">{t("review.openJudgementTitle")}</div>
+          <For each={judgement()}>
             {(o) => (
               <div class="row meta t1">
-                <Show when={o.danger} fallback={<NoticeMark />}>
-                  <DangerMark />
-                </Show>
-                <span class="grow">{o.text}</span>
+                <DangerMark />
+                <span class="grow">
+                  <Prose text={o.text} />
+                </span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+      <Show when={notice().length}>
+        <div class="panel-section open-notice">
+          <div class="meta t3">{judgement().length ? t("review.openNoticeTitle") : t("review.stillOpen")}</div>
+          <For each={notice()}>
+            {(o) => (
+              <div class="row meta t1">
+                <NoticeMark />
+                <span class="grow">
+                  <Prose text={o.text} />
+                </span>
               </div>
             )}
           </For>
@@ -304,8 +340,18 @@ export function AcceptPanel(props: AcceptPanelProps) {
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.cancel")}
         </Button>
-        <Button variant="primary" busy={busy()} disabled={blocked()} title={unchecked() > 0 ? t("review.humanUnchecked", { id: humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ") }) : undefined} onClick={accept}>
-          {updating() ? t("review.acceptUpdate") : t("review.acceptWrite")}
+        <Button
+          variant="primary"
+          class={armedLeft() ? "armed" : ""}
+          busy={busy()}
+          disabled={blocked()}
+          title={unchecked() > 0 ? t("review.humanUnchecked", { id: humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ") }) : judgement().length ? t("decision.pressTwice") : undefined}
+          aria-live={armedLeft() ? "polite" : undefined}
+          onClick={press}
+        >
+          <Show when={judgement().length} fallback={updating() ? t("review.acceptUpdate") : t("review.acceptWrite")}>
+            {armedLeft() ? t("review.acceptArmed", { n: judgement().length, s: armedLeft() }) : t("review.acceptAnyway")}
+          </Show>
         </Button>
       </div>
     </Overlay>

@@ -29,6 +29,15 @@ export function Button(props: ButtonProps) {
   );
 }
 
+/**
+ * A sentence from the supervisor or the agent, its `backticked` spans set as
+ * machine values (the code-val every command and path wears) rather than
+ * showing the backticks: prose stays prose, a command reads as one.
+ */
+export function Prose(props: { text: string }) {
+  return <>{props.text.split(/(`[^`\n]+`)/).map((part) => (/^`[^`\n]+`$/.test(part) ? <code class="code-val">{part.slice(1, -1)}</code> : part))}</>;
+}
+
 /** A square button holding one line icon: back, search, more, close. */
 export function IconButton(
   props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { icon: IconName; label: string; size?: 22 | 24 | 26 | 28 },

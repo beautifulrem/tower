@@ -54,8 +54,12 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   await openTower(page, "inbox", { enrich: enrichCi });
   const cards = page.locator(".decision-slot .decision");
   expect(await cards.count()).toBeGreaterThanOrEqual(2);
+  // The button's colour moves over a 150ms transition, and WebKit advances transitions only on display-driven frames —
+  // which a CI runner's VM barely produces, so the colour stayed at the transition's start there. The transition is
+  // finished before the colour is read: what is checked is where it settles, not how fast a runner paints.
   const fill = (card: import("@playwright/test").Locator) =>
     card.locator(".btn-primary").first().evaluate((el) => {
+      for (const a of el.getAnimations()) a.finish();
       const bg = getComputedStyle(el).backgroundColor;
       el.style.color = getComputedStyle(el).getPropertyValue("--text-1");
       const text1 = getComputedStyle(el).color;
@@ -78,12 +82,8 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
       return (await cards.nth(i).getAttribute("class")) ?? "";
     }, { intervals: [250, 500, 1000] }).toMatch(/focused/);
   }
-  // The colour check after a key press is local only: on the CI runner's WebKit the moved focus is in the
-  // class (checked above) but the computed colour never settles there; not yet understood.
-  if (!process.env.CI) {
-    await expect.poll(() => fill(cards.nth(target))).toBe("filled");
-    await expect.poll(() => fill(cards.nth(0))).toBe("plain");
-  }
+  await expect.poll(() => fill(cards.nth(target))).toBe("filled");
+  await expect.poll(() => fill(cards.nth(0))).toBe("plain");
   await openTower(page, "overview", { enrich: enrichCi });
   const first = page.locator(".board-queue .decision").first();
   await expect(first).toHaveClass(/focused/);
@@ -136,7 +136,7 @@ test("the review sidebar names each file once, grouped by unit", async ({ page }
   // The second unit's row carries its risk; clicking it switches the diff.
   await aside.locator(".unit").nth(1).click();
   await expect(page.getByText("Unit 2 / 2")).toBeVisible();
-  await expect(page.locator(".risk-reason")).toContainText("test harness");
+  await expect(page.locator(".review-notes")).toContainText("test harness");
 });
 
 for (const scheme of ["light", "dark"] as const) {
@@ -358,12 +358,21 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   await expect(heads.first().getByRole("button", { name: "Undo this hunk" })).toBeVisible();
   const accept = heads.first().getByRole("button", { name: "Accept this hunk" });
   await expect(accept).toHaveAttribute("title", /workspace is unchanged/);
-  await page.keyboard.press("a");
   // The hunk closes rather than vanishes: its place stands at the lines' height and shrinks over 160ms, eased in.
-  const fold = page.locator(".hunk-fold-inner");
-  await expect(fold).toHaveCount(1);
-  expect(await fold.evaluate((el) => ({ p: getComputedStyle(el).transitionProperty, d: getComputedStyle(el).transitionDuration }))).toEqual({ p: "height", d: "0.16s" });
-  await expect(fold).toHaveCount(0);
+  // (Read the moment the fold row is added: on a busy machine it can be gone before a separate round trip lands.)
+  await page.evaluate(() => {
+    const w = window as unknown as { __fold?: { p: string; d: string; h: number } };
+    new MutationObserver((_, obs) => {
+      const el = document.querySelector<HTMLElement>(".hunk-fold-inner");
+      if (!el) return;
+      obs.disconnect();
+      w.__fold = { p: getComputedStyle(el).transitionProperty, d: getComputedStyle(el).transitionDuration, h: el.offsetHeight };
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await page.keyboard.press("a");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __fold?: { p: string; d: string } }).__fold)).toMatchObject({ p: "height", d: "0.16s" });
+  expect(await page.evaluate(() => (window as unknown as { __fold: { h: number } }).__fold.h)).toBeGreaterThan(20);
+  await expect(page.locator(".hunk-fold-inner")).toHaveCount(0);
   const marked = page.locator(".hunk-head.hunk-accepted");
   await expect(marked).toHaveCount(1);
   await expect(marked.getByRole("button", { name: /Accepted · \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
@@ -630,9 +639,12 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   });
   const lines = page.locator(".goal-page .canary-line");
   await expect(lines).toHaveCount(3);
-  // C2 was run with the held-out tests present too: the chip rides on the canary's line, so the criterion carries one line of notes.
-  await expect(page.locator('.goal-page .canary-line[data-canary="not_checked"] .chip-you')).toHaveCount(1);
+  // C2 was run with the held-out tests present too: its own line, one register to a line, every note starting under the title.
+  await expect(page.locator('.goal-page .canary-line[data-canary="not_checked"] .chip-you')).toHaveCount(0);
   await expect(page.locator(".goal-page .chip-you")).toHaveCount(1);
+  const c2row = page.locator(".goal-page .criterion").filter({ has: page.locator('.canary-line[data-canary="not_checked"]') }).first();
+  const titleX = (await c2row.locator(".criterion-title").first().boundingBox())!.x;
+  for (const note of await c2row.locator(".criterion-obs .col-span").all()) expect(Math.abs((await note.boundingBox())!.x - titleX)).toBeLessThan(1);
   const intact = page.locator('.goal-page .canary-line[data-canary="intact"]');
   // Intact says only what was checked: the must-fail tests failed; never "the assertions are intact".
   await expect(intact).toHaveText(/must-fail tests failed, as they must/);
@@ -689,7 +701,9 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // The same three lines in the verification readout; the review header and the readout withhold the seal too; the review says once, over the diff, that no held-out tests vouch for it.
   await page.keyboard.press("r");
   await expect(page.locator("table").first()).toBeVisible();
-  await expect(page.locator(".review-diff .held-out-none")).toHaveCount(1);
+  // (In the band of notes over the diff, folded behind the red sentinels that lead it.)
+  await page.locator(".review-notes-head").click();
+  await expect(page.locator(".review-notes .review-note").filter({ hasText: "No held-out tests" })).toHaveCount(1);
   await expect(page.locator(".review-head .seal")).toHaveClass(/seal-tampered/);
   await expect(page.locator(".review-head .criteria-bar")).toContainText("1 doesn't count");
   await page.keyboard.press("e");
@@ -732,6 +746,16 @@ test("a sandbox refusal is an environment problem: the card says so before its d
   await expect(card.locator(".decision-tail")).toContainText("deny(1) file-read-data /Users/you/node_modules/.bin");
   expect((await env.boundingBox())!.y).toBeLessThan((await card.locator(".decision-body").boundingBox())!.y);
   await expect(card.locator(".mark-danger")).toHaveCount(0);
+  // The supervisor's backticks are a machine value, not punctuation in the prose.
+  await expect(card.locator(".decision-body")).not.toContainText("`");
+  await expect(card.locator(".decision-body code.code-val")).toHaveText("npm test");
+  // The refused path stands as its own line, with the way to where the fix lives; the page has one name for the way on.
+  const refused = card.locator(".decision-refused");
+  await expect(refused.locator(".code-val")).toHaveText("/Users/you/node_modules/.bin");
+  await expect(page.locator(".goal-head").getByRole("button", { name: /Resume/ })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /^Retry/ })).toHaveClass(/btn-primary/);
+  await refused.getByRole("button", { name: /Settings for shop/ }).click();
+  await expect(page.locator(".project [data-field='test']")).toBeFocused();
   // On the goal page the criterion's base line: the environment mark, the sentence, the refused lines as machine values; no red, no "red → green".
   await openTower(page, "goal/G-0001", { enrich: enrichSandboxRefused });
   const c1 = page.locator(".goal-page .criterion").filter({ hasText: "C1" }).first();

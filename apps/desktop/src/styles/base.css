@@ -90,6 +90,16 @@ textarea,
   font-size: max(0.923em, 11.5px);
   letter-spacing: 0;
 }
+/* Every mono text — code, a sentinel's evidence, a command, a test name — reads exactly as written (tokens.css). */
+code,
+pre,
+samp,
+kbd,
+.mono,
+.hint {
+  font-variant-ligatures: none;
+  font-feature-settings: var(--font-features-mono);
+}
 /* Tabular figures in the UI font: counts, money, durations. */
 .num {
   font-variant-numeric: tabular-nums;

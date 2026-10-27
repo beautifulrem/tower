@@ -56,7 +56,7 @@ describe("AcceptPanel", () => {
   it("accepting is not blocked by a tampered canary alone", () => {
     const checked = { ...detail, criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as GoalDetail;
     render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={checked} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
-    expect((screen.getByText("Accept and write branch").closest("button") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByText("Accept anyway").closest("button") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("lists what is still open: the assumption, the sentinel and the unviewed units", () => {
@@ -72,7 +72,7 @@ describe("AcceptPanel", () => {
     render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(screen.getByText("Waiting for your check")).toBeTruthy();
     expect(screen.queryByText(/Human criterion H1 is not checked yet/)).toBeNull();
-    const accept = screen.getByText("Accept and write branch").closest("button")!;
+    const accept = screen.getByText("Accept anyway").closest("button")!;
     expect(accept.disabled).toBe(true);
     expect(screen.getByText(/viewed 3\/3/)).toBeTruthy();
   });
@@ -94,11 +94,42 @@ describe("AcceptPanel", () => {
       const checked = { ...detail, criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as GoalDetail;
       const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={checked} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
       expect(container.querySelector(".panel-blockers")!.textContent).toMatch(/git has no name and email/);
-      expect((screen.getByText("Accept and write branch").closest("button") as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByText("Accept anyway").closest("button") as HTMLButtonElement).disabled).toBe(true);
       expect((screen.getByLabelText("Only for shop") as HTMLInputElement).checked).toBe(true);
     } finally {
       __setEnvIssues([]);
     }
+  });
+
+  it("with an item that needs your judgement, the primary reads Accept anyway and takes two presses; the items stand first, by weight", async () => {
+    const { invoked } = await import("../../../test/setup");
+    const checked = { ...detail, criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as GoalDetail;
+    const { container } = render(() => <AcceptPanel id="G-0001" viewed={1} total={3} detail={checked} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    const groups = [...container.querySelectorAll(".panel-section > .meta.t3")].map((el) => el.textContent);
+    expect(groups).toEqual(["Not evidence · needs your judgement", "To look at"]);
+    expect(container.querySelector(".open-judgement")!.textContent).toMatch(/Changed what a test expects/);
+    expect(container.querySelector(".open-notice")!.textContent).toMatch(/quantities are always 1/);
+    const button = screen.getByText("Accept anyway").closest("button")!;
+    const before = invoked.filter((c) => c.cmd === "accept").length;
+    button.click();
+    // Armed, not sent: the button says what it is over, and that a second press is needed.
+    expect(button.classList.contains("armed")).toBe(true);
+    expect(button.textContent).toMatch(/1 item needs your judgement · press again · 2/);
+    expect(invoked.filter((c) => c.cmd === "accept").length).toBe(before);
+    button.click();
+    await Promise.resolve();
+    expect(invoked.filter((c) => c.cmd === "accept").length).toBe(before + 1);
+  });
+
+  it("with nothing red open, accepting is one press, under the plain heading", async () => {
+    const { invoked } = await import("../../../test/setup");
+    const calm = { ...detail, sentinels: [], criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as unknown as GoalDetail;
+    const { container } = render(() => <AcceptPanel id="G-0001" viewed={1} total={3} detail={calm} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    expect([...container.querySelectorAll(".panel-section > .meta.t3")].map((el) => el.textContent)).toEqual(["Still open (does not block accepting)"]);
+    const before = invoked.filter((c) => c.cmd === "accept").length;
+    screen.getByText("Accept and write branch").closest("button")!.click();
+    await Promise.resolve();
+    expect(invoked.filter((c) => c.cmd === "accept").length).toBe(before + 1);
   });
 
   it("does not count a pass with a tampered canary: the seal is withheld, the sentence says how many count, and the criterion heads the open list", () => {

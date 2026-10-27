@@ -271,6 +271,7 @@ export const zh = {
     contradicted: "矛盾",
     stale: "已过期",
     unsupported: "无依据",
+    cannot_confirm: "不能确认",
     notMachineVerified: "未经机器验证",
     noMachineShort: "无机器标准",
     verified: "已验证 {v}/{m}",

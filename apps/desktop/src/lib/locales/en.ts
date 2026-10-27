@@ -266,6 +266,7 @@ export const en: DictNow = {
     contradicted: "Contradicted",
     stale: "Stale",
     unsupported: "Unsupported",
+    cannot_confirm: "Cannot confirm",
     notMachineVerified: "Not machine-verified",
     noMachineShort: "No machine criteria",
     verified: "Verified {v}/{m}",

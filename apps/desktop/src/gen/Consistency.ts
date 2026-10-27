@@ -3,4 +3,4 @@
 /**
  * How a claim relates to the facts linked to it.
  */
-export type Consistency = "consistent" | "contradicted" | "stale" | "unsupported";
+export type Consistency = "consistent" | "contradicted" | "stale" | "unsupported" | "cannot_confirm";

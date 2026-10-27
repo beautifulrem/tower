@@ -841,6 +841,39 @@ test("a sandbox refusal is an environment problem: the card says so before its d
   await expect(line.locator(".mark-danger, .result-fail")).toHaveCount(0);
 });
 
+test("on the welcome screen a red check's fix is the one primary action, then Check again; with nothing red, adding a repository is", async ({ page }) => {
+  const firstRun = (F: Record<string, any>) => ((F.projects = []), (F.goals = []), (F.inbox = []));
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      firstRun(F);
+      F.environment.issues = [{ kind: "pi_too_old", blocking: true, text: "Pi is too old.", fix: "npm i -g @earendil-works/pi-coding-agent" }];
+    },
+  });
+  const actions = page.locator(".welcome-actions");
+  await expect(actions.locator(".btn-primary")).toHaveCount(1);
+  await expect(actions.locator(".btn-primary")).toHaveText("Copy the fix");
+  await expect(actions.getByRole("button", { name: "Try a demo goal" })).not.toHaveClass(/btn-primary/);
+  await actions.getByRole("button", { name: "Copy the fix" }).click();
+  await expect(actions.locator(".btn-primary")).toHaveText("Check again");
+  await expect(actions.getByRole("button", { name: "Check again" })).toHaveCount(1);
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      firstRun(F);
+      F.environment = { ...F.environment, issues: [], pi_version: "1.6.2" };
+    },
+  });
+  // Pi works but has no model yet: that check is red, and its fix is an action, not a command.
+  await expect(page.locator(".welcome-actions .btn-primary")).toHaveText("Open Pi to log in");
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      firstRun(F);
+      F.environment = { ...F.environment, issues: [], pi_version: "1.6.2" };
+      F.models = [{ provider: "anthropic", id: "claude-opus-5-5", name: "Claude Opus 5.5" }];
+    },
+  });
+  await expect(page.locator(".welcome-actions .btn-primary")).toHaveText("Add a git repository");
+});
+
 test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {
   const identity = (F: Record<string, any>) => {
     // The dumping supervisor may itself lack an identity: one row either way.

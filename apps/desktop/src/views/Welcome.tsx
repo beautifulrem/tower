@@ -3,10 +3,11 @@
  * environment check that says how to fix each problem, and adding a
  * repository. Two columns: the idea on the left, the checklist on the right.
  *
- * Without Pi the demo is the only path that works, so it is the primary
- * action; with Pi, adding a repository is.
+ * While a check is red, fixing it is the one primary action (copy its
+ * command, or open Pi to log in; then check again); with everything in
+ * order, adding a repository is. The demo is always one quiet click away.
  */
-import { For, type JSX, Show, createResource } from "solid-js";
+import { For, type JSX, Show, createResource, createSignal } from "solid-js";
 
 import { DemoButton, demoMissing, openPiLogin, pickProject } from "../components/Demo";
 import { GitIdentityForm } from "../components/GitIdentity";
@@ -119,8 +120,30 @@ export function Welcome() {
   const sandbox = () => (env() ? !hasIssue(env(), "no_sandbox") : null);
   const other = () => issues().filter((i) => !["pi_missing", "pi_broken", "pi_too_old", "pi_untested", "git_missing", "no_sandbox", "claude_missing"].includes(i.kind));
   const fixFor = (i: EnvIssue | undefined) => i?.fix ?? undefined;
-  // Without a working Pi, the demo is the way in.
-  const demoPrimary = () => piOk() === false || (piOk() === true && modelCount() === 0);
+  /**
+   * The first red check's way out, when there is one: its command to copy, or its action (Pi's login). While a red
+   * check stands, fixing it is the screen's one primary action — the first screen never points at a path past a
+   * problem. Copied, the primary becomes Check again: the next step after running the fix.
+   */
+  const redFix = (): { cmd: string } | { login: true } | null => {
+    if (piOk() === false && state.settings?.engine !== "claude-code") return { cmd: fixFor(piIssue()) ?? "npm i -g @earendil-works/pi-coding-agent" };
+    if (piOk() === true && modelCount() === 0) return { login: true };
+    if (env() && !env()!.git_version) return { cmd: fixFor(issues().find((i) => i.kind === "git_missing")) ?? "xcode-select --install" };
+    if (state.settings?.engine === "claude-code" && claudeIssue()?.fix) return { cmd: claudeIssue()!.fix! };
+    const blocking = other().find((i) => i.blocking && i.fix);
+    return blocking ? { cmd: blocking.fix! } : null;
+  };
+  const [copied, setCopied] = createSignal(false);
+  const recheck = async () => {
+    setCopied(false);
+    await refreshEnvironment();
+    await refetch();
+  };
+  const copyFix = (cmd: string) => {
+    void navigator.clipboard.writeText(cmd);
+    toast("success", t("welcome.copied"));
+    setCopied(true);
+  };
 
   return (
     <div class="welcome">
@@ -212,20 +235,50 @@ export function Welcome() {
           </Show>
         </section>
         <div class="welcome-actions">
-          <Button
-            variant="ghost"
-            onClick={async () => {
-              await refreshEnvironment();
-              await refetch();
-            }}
-          >
-            {t("welcome.recheck")}
-          </Button>
-          <span class="row">
-            <DemoButton variant={demoPrimary() ? "primary" : "ghost"} />
-            <Button variant={demoPrimary() ? "default" : "primary"} onClick={pickProject}>
-              {t("welcome.addRepo")}
+          <Show when={!(redFix() && copied())}>
+            <Button variant="ghost" onClick={() => void recheck()}>
+              {t("welcome.recheck")}
             </Button>
+          </Show>
+          <span class="row">
+            <Show
+              when={redFix()}
+              fallback={
+                <>
+                  <DemoButton variant="ghost" />
+                  <Button variant="primary" onClick={pickProject}>
+                    {t("welcome.addRepo")}
+                  </Button>
+                </>
+              }
+            >
+              {(fix) => (
+                <>
+                  <DemoButton variant="ghost" />
+                  <Button variant="ghost" onClick={pickProject}>
+                    {t("welcome.addRepo")}
+                  </Button>
+                  <Show
+                    when={copied()}
+                    fallback={
+                      "login" in fix() ? (
+                        <Button variant="primary" onClick={() => (openPiLogin(), setCopied(true))}>
+                          {t("welcome.openPiLogin")}
+                        </Button>
+                      ) : (
+                        <Button variant="primary" title={(fix() as { cmd: string }).cmd} onClick={() => copyFix((fix() as { cmd: string }).cmd)}>
+                          {t("welcome.copyFix")}
+                        </Button>
+                      )
+                    }
+                  >
+                    <Button variant="primary" onClick={() => void recheck()}>
+                      {t("welcome.recheck")}
+                    </Button>
+                  </Show>
+                </>
+              )}
+            </Show>
           </span>
         </div>
       </div>

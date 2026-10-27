@@ -46,3 +46,35 @@ test("git's scope picker in Settings shows its whole choice, never cut off", asy
   await expect(label).toHaveText("Every repository (git's global config)");
   expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
 });
+
+/**
+ * Every switch in Settings stands in the value column, its hint on the line under its label — never in the 180px name
+ * column, never beside its own label. Measured in both languages: the Chinese labels are the short ones a hint would
+ * creep up beside.
+ */
+for (const lang of ["en", "zh-CN"] as const) {
+  test(`every switch in Settings sits in the value column with its hint under its label (${lang})`, async ({ page }) => {
+    await openTower(page, "settings", { lang, enrich: (F) => (F.settings.remote_enabled = true) });
+    await page.locator(".project .toggle-row").first().waitFor();
+    const rows = await page.locator(".settings-form").evaluateAll((forms) =>
+      forms.flatMap((form) => {
+        const css = getComputedStyle(form);
+        const nameCol = parseFloat(css.gridTemplateColumns.split(" ")[0]);
+        const valueLeft = form.getBoundingClientRect().left + nameCol + parseFloat(css.columnGap);
+        return [...form.querySelectorAll<HTMLElement>(".toggle-row")].map((row) => {
+          const label = row.querySelector(".toggle-label")!.getBoundingClientRect();
+          const hint = row.querySelector(".field-hint")?.getBoundingClientRect();
+          return {
+            name: row.querySelector(".toggle-label")!.textContent,
+            offset: Math.round(row.getBoundingClientRect().left - valueLeft),
+            hintBelow: !hint || hint.top >= label.bottom - 1,
+            hintAligned: !hint || Math.abs(hint.left - label.left) < 1,
+          };
+        });
+      }),
+    );
+    // Extensions, the phone page's two, quiet hours, ready pushes, and the project's loopback switch.
+    expect(rows.length).toBeGreaterThanOrEqual(6);
+    for (const r of rows) expect(r).toEqual({ name: r.name, offset: 0, hintBelow: true, hintAligned: true });
+  });
+}

@@ -1122,9 +1122,12 @@ input[type="radio"] {
   transform: translateX(10px);
   background: var(--bg-app);
 }
+/* The label, then its hint on the line under it — a column, never a grid a stray grid-column could widen. */
 .toggle-text {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 .toggle-label {
   font-size: var(--fs-body);
@@ -3562,19 +3565,21 @@ input[type="radio"] {
   padding-top: 5px;
   color: var(--text-2);
 }
-.settings-form .toggle-row {
-  margin-bottom: 0;
-}
-.settings-form .field > :not(.field-label):not(.field-hint):not(.field-error) {
+/* The label column takes exactly one thing: a field's own name. A field lends its value, hint and error to the second
+   column; anything else set straight in the form — a switch, a row of actions, a problem line — is a row of its own in
+   the second column. The rules name direct children only, so nothing nested (a switch's own hint) is ever placed. */
+.settings-form > :not(.field) {
   grid-column: 2;
 }
-.settings-form .field-hint,
-.settings-form .field-error {
+.settings-form > .field > :not(.field-label) {
   grid-column: 2;
+}
+.settings-form > .field > .field-hint,
+.settings-form > .field > .field-error {
   margin-top: -4px;
 }
-.settings-form .form-row {
-  grid-column: 2;
+.settings-form .toggle-row {
+  margin-bottom: 0;
 }
 /* A count with its unit: the unit wrap shrinks to the narrow field. */
 .settings-form .field-narrow .unit-wrap {

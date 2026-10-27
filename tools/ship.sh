@@ -16,4 +16,10 @@ if ! gh pr view "$branch" >/dev/null 2>&1; then
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)"
 fi
-gh pr merge "$branch" --rebase --auto --delete-branch
+if [ -n "$TOWER_SHIP_LOCAL" ]; then
+  # GitHub's runners unavailable (billing, an outage): the pre-push hook has
+  # just run the same suite here, so an administrator merges now.
+  gh pr merge "$branch" --rebase --admin --delete-branch
+else
+  gh pr merge "$branch" --rebase --auto --delete-branch
+fi

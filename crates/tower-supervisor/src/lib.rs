@@ -677,15 +677,34 @@ impl Supervisor {
                 "Only an archived or abandoned goal's workspace can be removed"
             )));
         }
+        // A verification or preflight still winding down writes into these
+        // folders: stop it and let it finish first.
+        if let Some(c) = self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).get(id) {
+            c.cancel();
+        }
+        for _ in 0..200 {
+            if !self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
         let paths = self.inner.paths.clone();
         let goal = id.to_string();
         tokio::task::spawn_blocking(move || -> std::io::Result<()> {
             for dir in
                 [paths.workspace(&goal), paths.verify(&goal), paths.tmp(&goal), paths.tmp(&format!("{goal}-verify"))]
             {
-                if dir.exists() {
-                    std::fs::remove_dir_all(&dir)?;
+                // A process that was still writing may leave a file behind
+                // once: try again before giving up.
+                let mut result = Ok(());
+                for _ in 0..3 {
+                    result = if dir.exists() { std::fs::remove_dir_all(&dir) } else { Ok(()) };
+                    if result.is_ok() {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
+                result?;
             }
             Ok(())
         })

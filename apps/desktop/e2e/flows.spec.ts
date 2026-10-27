@@ -639,9 +639,12 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   });
   const lines = page.locator(".goal-page .canary-line");
   await expect(lines).toHaveCount(3);
-  // C2 was run with the held-out tests present too: the chip rides on the canary's line, so the criterion carries one line of notes.
-  await expect(page.locator('.goal-page .canary-line[data-canary="not_checked"] .chip-you')).toHaveCount(1);
+  // C2 was run with the held-out tests present too: its own line, one register to a line, every note starting under the title.
+  await expect(page.locator('.goal-page .canary-line[data-canary="not_checked"] .chip-you')).toHaveCount(0);
   await expect(page.locator(".goal-page .chip-you")).toHaveCount(1);
+  const c2row = page.locator(".goal-page .criterion").filter({ has: page.locator('.canary-line[data-canary="not_checked"]') }).first();
+  const titleX = (await c2row.locator(".criterion-title").first().boundingBox())!.x;
+  for (const note of await c2row.locator(".criterion-obs .col-span").all()) expect(Math.abs((await note.boundingBox())!.x - titleX)).toBeLessThan(1);
   const intact = page.locator('.goal-page .canary-line[data-canary="intact"]');
   // Intact says only what was checked: the must-fail tests failed; never "the assertions are intact".
   await expect(intact).toHaveText(/must-fail tests failed, as they must/);

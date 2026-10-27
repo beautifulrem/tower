@@ -109,7 +109,6 @@ export function CriterionRow(props: { goalId: string; c: CriterionView; state: s
         <div class="criterion-row criterion-obs">
           <ResultMark kind={c().observed!.passed ? "obs-pass" : "obs-fail"} />
           <span />
-          <span />
           <span class="col-span">
             <ObsChip title={t("goal.observedTitle")} />
             <span>{c().observed!.passed ? t("common.passed") : t("common.failed")}</span>

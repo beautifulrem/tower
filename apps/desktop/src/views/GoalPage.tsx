@@ -10,7 +10,7 @@
 import { For, Show, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
 
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
-import { LifecycleGlyph, NoticeMark, Seal } from "../components/Glyph";
+import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
 import { discountedOf } from "../components/Honesty";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
@@ -221,8 +221,14 @@ export function GoalPage(props: { id: string }) {
               <div class="goal-actions">
                 <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
               </div>
-              {/* The seal is withheld while any criterion passed with a tampered canary: the line under it and the header say the same thing. */}
-              <Seal pin={g().verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
+              {/* The seal is withheld while any criterion passed with a tampered canary: the line under it and the header say the same thing.
+                  A goal you accepted wears the stamp the accept sheet pressed: the same frame, at the page head's size, standing still. */}
+              <Show
+                when={["accepted", "integrated"].includes(g().state) && g().verified_pin}
+                fallback={<Seal pin={g().verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />}
+              >
+                {(pin) => <Stamp pin={pin()} size="m" tampered={discountedOf(detail()?.criteria) > 0} />}
+              </Show>
             </div>
           </header>
 

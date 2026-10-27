@@ -24,3 +24,6 @@ apps/desktop/test-results/
 apps/desktop/playwright-report/
 __pycache__/
 .claude/worktrees/
+
+# Local runs of the real-model adversarial regression (tools/adversarial.sh)
+.adversarial/

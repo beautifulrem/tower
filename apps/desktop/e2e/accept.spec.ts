@@ -5,7 +5,7 @@
 import { expect, test } from "@playwright/test";
 
 import { enrichCanary } from "./rich";
-import { openTower } from "./tauri";
+import { openTower, settled } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
 
@@ -17,7 +17,8 @@ test("with red items open, the primary reads Accept anyway, arms on the first pr
       F.environment.issues = F.environment.issues.filter((i: { kind: string }) => i.kind !== "git_identity_missing");
     },
   });
-  await expect(page.locator("table").first()).toBeVisible();
+  // The review drawn and still: its keys are bound, and the sheet opens over a page that is not moving.
+  await settled(page, "review/G-0001");
   await page.keyboard.press("Meta+Shift+Enter");
   const dialog = page.getByRole("dialog");
   // By weight: what is not evidence or needs your judgement, then what to look at.

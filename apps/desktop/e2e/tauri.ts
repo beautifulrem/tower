@@ -7,7 +7,41 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+
+/**
+ * A goal page's (or readout's) criterion block by its id, matched on the id cell exactly. A bare `hasText: "C2"` is a
+ * case-insensitive substring: it also finds a row whose commit hash, command or title happens to contain "c2".
+ */
+export function criterion(scope: Page | Locator, id: string, within = ".goal-page .criterion"): Locator {
+  const page = "page" in scope ? scope.page() : scope;
+  return scope.locator(within).filter({ has: page.locator(".criterion-row > .num", { hasText: new RegExp(`^${id}$`) }) });
+}
+
+/** What each route draws once its own content is on the page (not only the shell's <main>, which never leaves). */
+const LANDMARK: Array<[RegExp, string]> = [
+  [/^overview/, ".view .overview"],
+  [/^inbox/, ".view .inbox"],
+  [/^goal\//, ".goal-page .criterion"],
+  [/^review\//, ".view table"],
+  [/^settings/, ".view .settings"],
+];
+
+/**
+ * Waits until `route`'s own content is drawn, the fonts are in and every finite animation has run out — instead of a
+ * fixed sleep, which is too short on a busy machine and wasted on an idle one. Infinite animations (a live pulse) are
+ * left running. Use it before reading layout, running axe, or pressing a view's keys.
+ */
+export async function settled(page: Page, route?: string) {
+  const landmark = route && LANDMARK.find(([re]) => re.test(route))?.[1];
+  if (landmark) await page.locator(landmark).first().waitFor();
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    const finite = document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity);
+    await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+}
 
 export const FIXTURES = process.env.E2E_FIXTURES ?? "/tmp/e2e-fixtures";
 

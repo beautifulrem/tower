@@ -8,6 +8,15 @@
  */
 type F = Record<string, any>;
 
+/**
+ * A premise of an enrichment: the dumped views must have it (`dump_views` checks the seed's at generation time). An
+ * enrichment that quietly did nothing would leave a test checking a state it never set up, and failing as a timeout.
+ */
+function need<T>(value: T | undefined | null | false, premise: string): T {
+  if (!value) throw new Error(`fixture premise: ${premise}`);
+  return value;
+}
+
 /** A page-shaped SVG as a data URL: a header bar and a few lines, shifted a little for the "after" side. */
 export function pageImage(after: boolean): string {
   const shift = after ? 14 : 0;
@@ -37,8 +46,7 @@ export function enrichEngines(F: F) {
 
 /** G-0001 gains a look criterion with both screenshots, and C1's baseline could not run. */
 export function enrichLook(F: F) {
-  const d = F["goal-G-0001"];
-  if (!d) return;
+  const d = need(F["goal-G-0001"], "goal G-0001 was dumped");
   d.contract.criteria.push({ id: "C4", title: "The checkout page still looks right", kind: { type: "look", start: "npm run dev", url: "http://localhost:3000/checkout", timeout_secs: 60 } });
   d.criteria.push({
     criterion: d.contract.criteria[d.contract.criteria.length - 1],
@@ -51,11 +59,9 @@ export function enrichLook(F: F) {
     human_checked: false,
   });
   d.summary.progress.human += 1;
-  const c1 = d.criteria.find((c: any) => c.criterion.id === "C1");
-  if (c1) {
-    c1.passed_on_base = null;
-    c1.base_error = "npm ERR! Missing script: \"test\"";
-  }
+  const c1 = need(d.criteria.find((c: any) => c.criterion.id === "C1"), "G-0001 has a C1");
+  c1.passed_on_base = null;
+  c1.base_error = "npm ERR! Missing script: \"test\"";
   F.lookImages = { ...(F.lookImages ?? {}), "looks/G-0001/C4-base.png": pageImage(false), "looks/G-0001/C4-pin.png": pageImage(true) };
   for (const g of F.goals) if (g.id === "G-0001") g.progress.human += 1;
 }
@@ -67,8 +73,8 @@ export function enrichRollback(F: F) {
 
 /** G-0003's review has three files in two units; one carries the test-harness risk. */
 export function enrichReview(F: F) {
-  const r = F["review-G-0003"];
-  if (!r || r.files.length !== 1) return;
+  const r = need(F["review-G-0003"], "G-0003 has a review");
+  need(r.files.length === 1, `G-0003's review has one file (it has ${r.files.length})`);
   const base = r.files[0];
   const clone = (path: string, additions: number, deletions: number) => ({ ...structuredClone(base), path, additions, deletions });
   r.files = [clone("src/cart.js", 1, 1), clone("src/cart/money.js", 7, 0), clone("test/setup.js", 3, 0)];
@@ -84,8 +90,8 @@ export function enrichReview(F: F) {
 
 /** A second ready-to-accept goal (G-0003), so the review queue has two stops. */
 export function enrichSecondReady(F: F) {
-  const first = F.inbox.find((i: any) => i.kind === "review_ready");
-  if (!first || F.inbox.some((i: any) => i.kind === "review_ready" && i.goal_id === "G-0003")) return;
+  const first = need(F.inbox.find((i: any) => i.kind === "review_ready"), "a ready-to-accept card is in the inbox");
+  if (F.inbox.some((i: any) => i.kind === "review_ready" && i.goal_id === "G-0003")) return;
   F.inbox.push({ ...first, id: "inbox-ready-G-0003", goal_id: "G-0003", goal_title: "Clean up cart edge cases", body: "Guarded the empty cart and negative quantities." });
   for (const s of F.goals) if (s.id === "G-0003") Object.assign(s, { state: "in_review", verified_pin: "abcdef1234567890", needs_you: 1 });
   if (F["goal-G-0003"]) Object.assign(F["goal-G-0003"].summary, { state: "in_review", verified_pin: "abcdef1234567890", needs_you: 1 });
@@ -177,10 +183,9 @@ export const HELD_OUT_TONES = ["neutral", "neutral", "destructive"];
 export function enrichHeldOut(F: F) {
   for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "held_out_failed";
   if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "held_out_failed";
-  const card = F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused");
+  const card = need(F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused"), "G-0004 has a paused card");
   const cn = zh(F);
-  if (card)
-    Object.assign(card, {
+  Object.assign(card, {
       title: cn ? "已暂停：保留测试失败（Agent 看不到它们）" : "Paused: Held-out tests failed (the agent cannot see them)",
       subject: cn ? "保留测试失败（Agent 看不到它们）" : "Held-out tests failed (the agent cannot see them)",
       body: cn ? HELD_OUT_BODY_ZH : HELD_OUT_BODY,
@@ -188,8 +193,8 @@ export function enrichHeldOut(F: F) {
       tones: HELD_OUT_TONES,
       allow_text: true,
     });
-  const c2 = F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C2");
-  if (c2?.verified) c2.verified.held_out = true;
+  const c2 = need(F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C2"), "G-0001 has a C2");
+  need(c2.verified, "G-0001's C2 was verified").held_out = true;
 }
 
 /** The phone page is switched on but Tailscale is disconnected: the supervisor keeps the reason, and serves nothing. */
@@ -212,13 +217,13 @@ export function enrichPhoneProblem(F: F) {
  * refusals (medium).
  */
 export function enrichCanary(F: F) {
-  const d = F["goal-G-0001"];
-  if (!d) return;
+  const d = need(F["goal-G-0001"], "goal G-0001 was dumped");
   const by = (id: string) => d.criteria.find((c: any) => c.criterion.id === id);
-  if (by("C1")) by("C1").canary = "intact";
-  if (by("C2")) by("C2").canary = "not_checked";
-  const c2 = by("C2");
-  if (c2?.verified && !by("C4")) {
+  need(by("C1"), "G-0001 has a C1").canary = "intact";
+  const c2 = need(by("C2"), "G-0001 has a C2");
+  c2.canary = "not_checked";
+  need(c2.verified, "G-0001's C2 was verified");
+  if (!by("C4")) {
     const criterion = { id: "C4", title: "Rounding tests pass", kind: { type: "exec", command: "node --test test/rounding.test.js", timeout_secs: 120 } };
     d.contract.criteria.push(criterion);
     // It passed, red → green on the base — and its canary passed too, so the supervisor leaves it out of `verified`.
@@ -270,9 +275,8 @@ export function enrichSandboxRefused(F: F) {
   // As the supervisor pauses today (verify/mod.rs, actions.rs): criteria_cannot_run, with its three ways on.
   for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "criteria_cannot_run";
   if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "criteria_cannot_run";
-  const card = F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused");
-  if (card)
-    Object.assign(card, {
+  const card = need(F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused"), "G-0004 has a paused card");
+  Object.assign(card, {
       title: "Paused: The criteria cannot run in the verification sandbox",
       subject: "The criteria cannot run in the verification sandbox",
       body: `Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\nThe sandbox refused something the command \`npm test\` of C1 needed (exit code 255). This is not a test failure: check the refused path below and add it to the project settings if it belongs.\n${tail}`,
@@ -280,11 +284,9 @@ export function enrichSandboxRefused(F: F) {
       tones: ["primary", "neutral", "destructive"],
       allow_text: false,
     });
-  const c1 = F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C1");
-  if (c1) {
-    c1.passed_on_base = null;
-    c1.base_error = `the sandbox refused something it needed on the base (exit code 255): ${tail}`;
-  }
+  const c1 = need(F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C1"), "G-0001 has a C1");
+  c1.passed_on_base = null;
+  c1.base_error = `the sandbox refused something it needed on the base (exit code 255): ${tail}`;
 }
 
 /** Pushes are configured to a topic, the last one failed, and quiet hours run 22:00–08:00. */

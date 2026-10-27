@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-import { openTower } from "./tauri";
+import { openTower, settled } from "./tauri";
 
 test("the board shows every goal and what needs you", async ({ page }) => {
   const { errors, fixtures } = await openTower(page, "overview");
@@ -16,7 +16,7 @@ for (const scheme of ["light", "dark"] as const) {
     test(`${route} has no serious accessibility violations (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
       await openTower(page, route);
-      await page.waitForTimeout(600);
+      await settled(page, route);
       const results = await new AxeBuilder({ page }).analyze();
       const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
       const report = serious.flatMap((v) =>
@@ -43,7 +43,8 @@ test("the review renders the diff", async ({ page }) => {
 
 test("the command palette opens from the keyboard and finds a goal", async ({ page }) => {
   const { fixtures } = await openTower(page, "overview");
-  await page.waitForTimeout(300);
+  // The board first: a key pressed before the app has drawn it may land before the shortcut is bound.
+  await settled(page, "overview");
   await page.keyboard.press("Meta+k");
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
@@ -56,7 +57,7 @@ test("the command palette opens from the keyboard and finds a goal", async ({ pa
 
 test("the command palette is a verb list: review and answer from anywhere, and a way out when nothing matches", async ({ page }) => {
   await openTower(page, "overview");
-  await page.waitForTimeout(300);
+  await settled(page, "overview");
   await page.keyboard.press("Meta+k");
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();

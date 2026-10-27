@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { test } from "@playwright/test";
 
 import { enrichRich } from "./rich";
-import { openTower } from "./tauri";
+import { openTower, settled } from "./tauri";
 
 const OUT = process.env.SHOTS;
 test.skip(!OUT, "set SHOTS=<dir> to render the preview screens");
@@ -69,9 +69,9 @@ for (const s of screens) {
     await page.setViewportSize({ width: s.width ?? 1440, height: 900 });
     await page.emulateMedia({ colorScheme: s.theme ?? "dark", reducedMotion: "reduce" });
     await openTower(page, s.route, { lang: s.lang, theme: s.theme, enrich: enrichRich });
-    await page.waitForTimeout(700);
+    await settled(page, s.route);
     await s.after?.(page);
-    await page.waitForTimeout(300);
+    await settled(page);
     if (s.element) await page.locator(s.element).first().screenshot({ path: join(OUT!, `${s.name}.png`) });
     else await page.screenshot({ path: join(OUT!, `${s.name}.png`) });
   });

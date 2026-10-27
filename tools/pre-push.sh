@@ -11,6 +11,9 @@ tools/line-limit.sh
 cargo clippy --workspace --all-targets --quiet -- -D warnings
 pnpm --silent --dir apps/desktop check
 pnpm --silent --dir apps/desktop test >/dev/null
+pnpm --silent --dir apps/desktop build >/dev/null
+tools/bundle-budget.sh >/dev/null
+tools/doc-numbers.sh
 cargo test --workspace --quiet >/dev/null
 git diff --quiet -- apps/desktop/src/gen || { echo "pre-push: apps/desktop/src/gen changed when the tests regenerated it; commit it"; exit 1; }
 node --test extensions/tower-goal/policy.test.ts extensions/tower-goal/sandboxfs.test.ts >/dev/null

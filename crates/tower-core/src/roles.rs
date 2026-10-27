@@ -490,6 +490,10 @@ pub fn patches_test_machinery(line: &str) -> bool {
         "setattr(pytest",
         "setattr(sys.modules",
         "monkeypatch.setattr(",
+        // Rust: a crate's own `assert_eq!` shadows the standard one for
+        // every test module after it.
+        "macro_rules! assert",
+        "macro_rules! debug_assert",
     ];
     let t = line.trim();
     if CALLS.iter().any(|c| t.contains(c)) {

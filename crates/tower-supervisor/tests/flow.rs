@@ -942,6 +942,11 @@ async fn special_casing_the_tests_values_is_reported() {
     let d = h.sup.goal(&id).unwrap();
     let hit = d.sentinels.iter().find(|s| s.sentinel == "special_cases_test_inputs").expect("reported");
     assert!(hit.detail.contains("a === 17") && hit.detail.contains("no held-out"), "{}", hit.detail);
+    // And review shows that file first, saying why.
+    let review = h.sup.review(&id, None).await.unwrap();
+    assert_eq!(review.units[0].risk, 3);
+    assert!(review.units[0].files.iter().any(|f| f == "src/lib.mjs"));
+    assert!(review.units[0].risk_reasons[0].contains("special-cases"), "{:?}", review.units[0].risk_reasons);
 }
 
 /// A criterion that cannot run in the verification sandbox even on your

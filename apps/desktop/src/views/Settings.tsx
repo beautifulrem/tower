@@ -705,16 +705,12 @@ function ProjectRow(props: { p: ProjectView }) {
         <Field label={t("settings.holdoutFiles")} hint={t("settings.holdoutFilesHint")}>
           <textarea class="mono" data-field="holdout" rows={2} value={holdout()} onInput={(e) => setHoldout(e.currentTarget.value)} placeholder={t("common.eg", { x: "test/holdout/*.test.js" })} />
         </Field>
-        <label class="check form-row">
-          <input
-            type="checkbox"
-            data-field="loopback"
-            checked={props.p.loopback_open}
-            onChange={(e) => void act(() => api.setProjectLoopback(props.p.id, e.currentTarget.checked)).then(() => refreshProjects())}
-          />
-          <span>{t("settings.loopbackOpen")}</span>
-          <span class="check-desc">{t("settings.loopbackOpenHint")}</span>
-        </label>
+        <Toggle
+          checked={props.p.loopback_open}
+          onChange={(v) => void act(() => api.setProjectLoopback(props.p.id, v)).then(() => refreshProjects())}
+          label={t("settings.loopbackOpen")}
+          hint={t("settings.loopbackOpenHint")}
+        />
         <Field label={t("settings.projectMemory")} hint={t("settings.projectMemoryHint")}>
           <textarea rows={2} value={memory()} onInput={(e) => setMemory(e.currentTarget.value)} placeholder={t("settings.projectMemoryPlaceholder")} />
         </Field>

@@ -37,12 +37,12 @@ def tool(name, args, result="ok", error=False):
     out({"type": "tool_execution_end", "toolCallId": cid, "toolName": name,
          "result": {"content": [{"type": "text", "text": result}]}, "isError": error})
 
-def dialog(title):
+def dialog(title, wait=10):
     ev = threading.Event()
     rid = f"ui{prompts[0]}"
     pending[rid] = {"event": ev}
     out({"type": "extension_ui_request", "id": rid, "method": "input", "title": title})
-    ev.wait(10)
+    ev.wait(wait)
     return pending.pop(rid).get("value")
 
 def settle():
@@ -93,19 +93,23 @@ def isolation(message):
         leave_listener(own)
         # The test starts the foreign service now, after the agent's
         # sandbox was set up, and answers once Tower has seen `own`.
-        dialog('tower:' + json.dumps({"tower": "question", "question": "开始？", "options": ["a"], "why": ""}))
+        dialog('tower:' + json.dumps({"tower": "question", "question": "开始？", "options": ["a"], "why": ""}), wait=60)
         seen = []
         for name, port in [("foreign", foreign), ("declared", declared), ("own", own)]:
-            ok = sandboxed(["/usr/bin/nc", "-z", "-w", "2", "127.0.0.1", str(port)])
+            # A loaded machine can be slow to answer: a closed port stays closed.
+            ok = any(sandboxed(["/usr/bin/nc", "-z", "-w", "3", "127.0.0.1", str(port)]) for _ in range(3))
             seen.append(f"{name}={'open' if ok else 'closed'}")
         open("loopback.txt", "w").write(" ".join(seen) + "\n")
+    elif kind == "hold":
+        # Waits for an answer as long as a slow preflight may take.
+        dialog('tower:' + json.dumps({"tower": "question", "question": "等？", "options": ["a"], "why": ""}), wait=120)
     elif kind == "loopback_late":
         # The agent's change is what starts talking over loopback.
         open("run.sh", "w").write(LOOPBACK_SELF_TEST + " && test -f done.txt\n")
     open("done.txt", "w").write("ok\n")
     tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
 
-ISOLATION = ("listener", "listener_ask", "loopback", "loopback_late")
+ISOLATION = ("listener", "listener_ask", "loopback", "loopback_late", "hold")
 
 # A test that starts its own server on a port picked at run time and
 # connects to it, printing a refusal as Node does (tests/isolation.rs).

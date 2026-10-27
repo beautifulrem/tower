@@ -118,14 +118,17 @@ pub(crate) async fn follow_agent_listeners(inner: Arc<Inner>, goal: String, run_
         .await
         .unwrap_or_default()
     };
-    let mut known = state(inner.clone(), goal.clone()).await;
+    // Unknown at first: the profile was written before this task started,
+    // and a server may have come up in between, so the first look always
+    // rewrites it.
+    let mut known = None;
     let mut tick = tokio::time::interval(Duration::from_secs(2));
     loop {
         tick.tick().await;
         if inner.run_of(&goal).is_none_or(|r| r.run_no != run_no) {
             break;
         }
-        let now = state(inner.clone(), goal.clone()).await;
+        let now = Some(state(inner.clone(), goal.clone()).await);
         if now == known {
             continue;
         }

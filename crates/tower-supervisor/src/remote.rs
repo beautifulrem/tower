@@ -36,6 +36,8 @@ struct State {
     goals: Vec<GoalSummary>,
     inbox: Vec<InboxItem>,
     lang: String,
+    /// How many goals may run at once: the page's runs gauge reads `1/4`, as the desk's title bar does.
+    max_running: u32,
 }
 
 /// A fresh pairing token.
@@ -225,6 +227,7 @@ fn handle(inner: &Arc<Inner>, rt: &tokio::runtime::Handle, token: &str, req: &mu
                 goals: inner.store(|st| st.summaries())?,
                 inbox: inner.store(|st| st.open_inbox_items())?,
                 lang: inner.lang().code().to_string(),
+                max_running: inner.settings().max_concurrent,
             };
             Ok(serde_json::to_value(state).unwrap_or_default())
         }),

@@ -51,6 +51,14 @@
   /* One reading width for everything you read (decision cards, forms, long
      text); instruments (board rows, criteria, diffs) run full width. */
   --reading-w: 840px;
+  /* Measures for running text: a sentence (cards, notes, sentinels) and a
+     short reason (under an empty state). In `ch` for Latin text — the width
+     of a "0", about one letter. A Chinese character is about two of those,
+     so in Chinese the same measures are set in `em` (one character each):
+     40 and 28 characters a line, never 36 and 22. */
+  --measure: 72ch;
+  --measure-short: 44ch;
+  --measure-wide: 60ch;
 
   /* Motion: signal, not decoration (§12.7). Hover arrives instantly and
      leaves slowly; entering layers ease out, leaving ones ease in. A view
@@ -76,6 +84,13 @@
 }
 
 /* Interface size (Settings › Appearance): the whole surface scales together. */
+/* Chinese measures in characters (see --measure). Custom properties resolve where they are used, so 1em is the
+   character size of the text being measured. */
+:root[lang="zh-CN"] {
+  --measure: 40em;
+  --measure-short: 28em;
+  --measure-wide: 34em;
+}
 :root[data-size="compact"] body {
   zoom: 0.92;
 }

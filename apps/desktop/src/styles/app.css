@@ -1835,7 +1835,7 @@ input[type="radio"] {
   margin-top: 3px;
 }
 .held-out-none {
-  max-width: 72ch;
+  max-width: var(--measure);
 }
 .held-out-none .text-btn {
   margin: -2px 0 -2px 2px;
@@ -1879,7 +1879,7 @@ input[type="radio"] {
 .sentinel-prose {
   white-space: pre-wrap;
   word-break: break-word;
-  max-width: 72ch;
+  max-width: var(--measure);
 }
 /* A machine line that wraps hangs its continuation under its own text, so `b));` never reads as a line of its own. */
 .sentinel-machine {
@@ -2203,14 +2203,7 @@ input[type="radio"] {
 .decision-note,
 .decision-refused,
 .decision .claim {
-  max-width: 72ch;
-}
-:root[lang="zh-CN"] .decision-question,
-:root[lang="zh-CN"] .decision-body,
-:root[lang="zh-CN"] .decision-caution,
-:root[lang="zh-CN"] .decision-note,
-:root[lang="zh-CN"] .decision-refused {
-  max-width: 42em;
+  max-width: var(--measure);
 }
 .decision-readout {
   display: flex;
@@ -4197,14 +4190,17 @@ input[type="radio"] {
 /* The reason under an empty state: a measure of its own (not the container's), and no word or character left alone on
    the last line. */
 .empty-body {
-  max-width: 44ch;
+  max-width: var(--measure-short);
   color: var(--text-2);
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
   text-wrap: pretty;
 }
+/* A Chinese reason is two or three short clauses: it breaks between them (at a space or after their punctuation),
+   never inside a word such as 生成; a clause longer than the line still breaks wherever it must. */
 :root[lang="zh-CN"] .empty-body {
-  max-width: 28em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 .empty-action {
   margin-top: var(--sp-2);
@@ -4975,7 +4971,7 @@ input[type="radio"] {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  max-width: 60ch;
+  max-width: var(--measure-wide);
   font-size: var(--fs-body);
   line-height: var(--lh-body);
   color: var(--text-1);

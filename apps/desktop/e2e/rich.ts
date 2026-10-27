@@ -91,20 +91,24 @@ export function enrichSecondReady(F: F) {
   if (F["goal-G-0003"]) Object.assign(F["goal-G-0003"].summary, { state: "in_review", verified_pin: "abcdef1234567890", needs_you: 1 });
 }
 
-/** G-0001 has a PR whose CI failed, and the card for it. */
+/** The seed's interface language: the supervisor words its cards in it, so the enrichments must too. */
+const zh = (F: F) => String(F.settings?.language ?? "").toLowerCase().startsWith("zh");
+
+/** G-0001 has a PR whose CI failed, and the card for it (worded as the supervisor would, in the seed's language). */
 export function enrichCi(F: F) {
   const pr = { url: "https://github.com/acme/shop/pull/42", status: { state: "open", passed: 3, failed: 1, pending: 0, failing: ["test (ubuntu-latest, node 22)"] } };
   for (const s of F.goals) if (s.id === "G-0001") s.pr = pr;
   if (F["goal-G-0001"]) F["goal-G-0001"].summary.pr = pr;
+  const cn = zh(F);
   F.inbox.push({
     id: "inbox-ci-G-0001",
     goal_id: "G-0001",
-    goal_title: "Fix the cart total",
+    goal_title: F.goals.find((g: any) => g.id === "G-0001")?.title ?? "Fix the cart total",
     kind: "ci_failed",
-    title: "CI failed: test (ubuntu-latest, node 22)",
+    title: cn ? "CI 失败：test (ubuntu-latest, node 22)" : "CI failed: test (ubuntu-latest, node 22)",
     subject: "test (ubuntu-latest, node 22)",
-    body: "You can send the failing check to the agent.",
-    options: ["Send the failures to the agent", "Leave it"],
+    body: cn ? "你可以把失败的检查发给 Agent。" : "You can send the failing check to the agent.",
+    options: cn ? ["把失败发给 Agent", "先放着"] : ["Send the failures to the agent", "Leave it"],
     tones: ["primary", "neutral"],
     allow_text: false,
     created_at: Date.now() - 39 * 60_000,
@@ -148,24 +152,39 @@ export const HELD_OUT_BODY = [
   "ℹ fail 2",
 ].join("\n");
 
+/** The same card as the Chinese supervisor writes it. */
+export const HELD_OUT_BODY_ZH = [
+  "可见的标准全部通过，保留测试没有。Agent 不知道这些测试，也没有看到下面的输出。",
+  "",
+  "C2 失败的测试：total rounds half-cents up、applies tax once",
+  "",
+  "C2 · 四舍五入的边界情况",
+  "✖ total rounds half-cents up (0.4ms)",
+  "✖ applies tax once (0.2ms)",
+  "  AssertionError: expected 10.01 to equal 10.02",
+  "ℹ fail 2",
+].join("\n");
+
 /** The three ways out of a held-out failure, as the supervisor offers them: names only, the failure itself, or giving up. */
 export const HELD_OUT_OPTIONS = ["Tell the agent only which tests failed", "Show the agent the failure (it will see the held-out tests)", "Abandon this goal"];
+export const HELD_OUT_OPTIONS_ZH = ["只告诉 Agent 哪些测试失败", "把失败输出给 Agent 看（它会看到保留测试）", "放弃这个目标"];
 export const HELD_OUT_TONES = ["neutral", "neutral", "destructive"];
 
 /**
  * G-0004 is paused because the held-out tests failed (the card offers a hint, showing the agent, or abandoning), and G-0001's
- * second criterion was verified with the held-out tests present.
+ * second criterion was verified with the held-out tests present. The card is worded in the seed's language.
  */
 export function enrichHeldOut(F: F) {
   for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "held_out_failed";
   if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "held_out_failed";
   const card = F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused");
+  const cn = zh(F);
   if (card)
     Object.assign(card, {
-      title: "Paused: Held-out tests failed (the agent cannot see them)",
-      subject: "Held-out tests failed (the agent cannot see them)",
-      body: HELD_OUT_BODY,
-      options: HELD_OUT_OPTIONS,
+      title: cn ? "已暂停：保留测试失败（Agent 看不到它们）" : "Paused: Held-out tests failed (the agent cannot see them)",
+      subject: cn ? "保留测试失败（Agent 看不到它们）" : "Held-out tests failed (the agent cannot see them)",
+      body: cn ? HELD_OUT_BODY_ZH : HELD_OUT_BODY,
+      options: cn ? HELD_OUT_OPTIONS_ZH : HELD_OUT_OPTIONS,
       tones: HELD_OUT_TONES,
       allow_text: true,
     });

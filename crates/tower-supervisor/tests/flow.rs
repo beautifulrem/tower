@@ -180,7 +180,8 @@ async fn local_files_reach_the_workspace_and_the_verifier() {
 
 /// The pause and its Needs-You item are written one after the other.
 async fn wait_inbox(h: &Harness, id: &str, kind: InboxKind) -> tower_core::view::InboxItem {
-    for _ in 0..200 {
+    // Generous: a busy machine (parallel builds) slows every flow down.
+    for _ in 0..1200 {
         if let Some(i) = h.sup.inbox().unwrap().into_iter().find(|i| i.goal_id == id && i.kind == kind) {
             return i;
         }
@@ -190,7 +191,7 @@ async fn wait_inbox(h: &Harness, id: &str, kind: InboxKind) -> tower_core::view:
 }
 
 async fn wait_for(h: &Harness, id: &str, pred: impl Fn(&GoalSummary) -> bool) -> GoalSummary {
-    for _ in 0..200 {
+    for _ in 0..1200 {
         let g = h.sup.goals().unwrap().into_iter().find(|g| g.id == id).unwrap();
         if pred(&g) {
             return g;

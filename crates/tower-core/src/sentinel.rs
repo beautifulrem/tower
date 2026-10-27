@@ -763,14 +763,27 @@ mod tests {
         let del: Vec<String> = (0..150).map(|i| format!("  expect(g({i})).toBe({i});")).collect();
         let add: Vec<&str> = add.iter().map(String::as_str).collect();
         let del: Vec<&str> = del.iter().map(String::as_str).collect();
-        let files: Vec<DiffFile> =
-            (0..200).map(|i| file(&format!("test/m{i}.test.js"), FileStatus::Modified, &add, &del)).collect();
-        let t = std::time::Instant::now();
-        let hits =
-            scan(&files, &Scope { include: vec!["src/**".into(), "test/**".into()], ..Scope::default() }, Lang::En);
-        let units = crate::review::build_units(&files, None, Lang::En);
-        assert!(hits.is_empty() && !units.is_empty());
-        assert!(t.elapsed() < std::time::Duration::from_secs(2), "took {:?}", t.elapsed());
+        let files = |n: usize| -> Vec<DiffFile> {
+            (0..n).map(|i| file(&format!("test/m{i}.test.js"), FileStatus::Modified, &add, &del)).collect()
+        };
+        // The best of three for a quarter of the diff and for all of it: a busy machine slows every pass
+        // alike, while work that grows faster than the diff shows in the ratio (linear is 4×, quadratic 16×).
+        let best = |files: &[DiffFile]| {
+            (0..3)
+                .map(|_| {
+                    let t = std::time::Instant::now();
+                    let scope = Scope { include: vec!["src/**".into(), "test/**".into()], ..Scope::default() };
+                    let hits = scan(files, &scope, Lang::En);
+                    let units = crate::review::build_units(files, None, Lang::En);
+                    assert!(hits.is_empty() && !units.is_empty());
+                    t.elapsed()
+                })
+                .min()
+                .unwrap()
+        };
+        let (quarter, whole) = (best(&files(50)), best(&files(200)));
+        assert!(whole < quarter * 8, "50 files {quarter:?}, 200 files {whole:?}");
+        assert!(whole < std::time::Duration::from_secs(10), "took {whole:?}");
     }
 
     #[test]

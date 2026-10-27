@@ -23,8 +23,8 @@ test("the board's goals are named, reachable by keyboard and open with Enter", a
 test("a decision card is an article named by its kind, goal and question, with named choices", async ({ page }) => {
   await openTower(page, "inbox");
   const cards = page.getByRole("article");
-  expect(await cards.count()).toBeGreaterThan(0);
   const first = cards.first();
+  await expect(first).toBeVisible();
   await expect(first).toHaveAccessibleName(/· G-\d{4} ·/);
   // Every button on a card says what it does (no icon-only button without a name).
   for (const b of await first.getByRole("button").all()) {

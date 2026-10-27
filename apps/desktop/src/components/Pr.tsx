@@ -41,7 +41,6 @@ export function PrLine(props: { pr: PrView; compact?: boolean }) {
         <span class="sep">·</span>
         <span class="code-val t1 ellipsis">{s().failing.join("  ")}</span>
       </Show>
-      <Icon name="chevron-right" size={10} class="t3" />
     </button>
   );
 }

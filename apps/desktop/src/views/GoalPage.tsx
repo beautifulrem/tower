@@ -163,14 +163,11 @@ export function GoalPage(props: { id: string }) {
               <div class="goal-sub meta halt">
                 <div class="goal-identity">
                   <span class="code-val t2">{g().id}</span>
-                  <span class="sep">·</span>
                   <span>{g().project_name}</span>
                   <Show when={detail()?.contract}>
-                    <span class="sep">·</span>
                     <span>{t("goal.contractV", { v: detail()!.contract.version })}</span>
                   </Show>
                   <Show when={g().run_no > 0}>
-                    <span class="sep">·</span>
                     <span>
                       {t("goal.runN", { n: g().run_no })}
                       <Show when={g().rework_cycles > 0}>
@@ -179,28 +176,22 @@ export function GoalPage(props: { id: string }) {
                     </span>
                   </Show>
                   <Show when={showStateWord(g())}>
-                    <span class="sep">·</span>
                     <span class="t1">{stateLabel(g().state)}</span>
                     {/* With a decision card on the page the reason is the card's question; the line keeps only the state word. */}
                     <Show when={g().pause_reason && g().state === "paused" && inbox().length === 0}>
-                      <span class="sep">·</span>
                       <span>{pauseLabel(g().pause_reason!)}</span>
                     </Show>
                     <Show when={g().state === "in_review" && !g().verified_pin}>
-                      <span class="sep">·</span>
                       <span>{t("live.notMachineVerified")}</span>
                     </Show>
                   </Show>
                   <Show when={g().state === "running" && overWall(g())}>
-                    <span class="sep">·</span>
                     <span class="over-wall">{t("goal.overWall")}</span>
                   </Show>
                   <Show when={detail()?.contract.engine && detail()!.contract.engine !== effectiveEngine("", state.settings?.engine)}>
-                    <span class="sep">·</span>
                     <span class="t3">{engineLabel(detail()!.contract.engine)}</span>
                   </Show>
                   <Show when={state.settings?.muted_goals.includes(g().id)}>
-                    <span class="sep">·</span>
                     <span class="t3">{t("quiet.muted")}</span>
                   </Show>
                 </div>

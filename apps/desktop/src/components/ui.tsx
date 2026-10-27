@@ -132,6 +132,26 @@ export function Field(props: {
   );
 }
 
+/**
+ * A clause head — the contract's, and Settings' too, since Settings is the standing terms every goal starts from: its
+ * number in tabular figures, its title as a heading in sentence case, a hairline to the edge, and the clause's own
+ * actions after it.
+ */
+export function ClauseHead(p: { n: number; title: string; id?: string; children?: JSX.Element }) {
+  return (
+    <header class="clause-head halt">
+      <span class="clause-no num" aria-hidden="true">
+        {String(p.n).padStart(2, "0")}
+      </span>
+      <h2 class="clause-title" id={p.id} tabindex="-1">
+        {p.title}
+      </h2>
+      <span class="clause-rule" aria-hidden="true" />
+      {p.children}
+    </header>
+  );
+}
+
 /** A macOS-style switch; inverted like the primary button, never coloured. */
 export function Toggle(props: {
   checked: boolean;

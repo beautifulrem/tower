@@ -221,6 +221,8 @@ pub(crate) async fn capture(
         None => tokio::process::Command::new(browser),
     };
     cmd.env("HOME", &profile_dir);
+    let crash_dir = profile_dir.join("Crashpad");
+    let _ = std::fs::create_dir_all(&crash_dir);
     // Chromium looks up its default data folder (in your real home) before
     // reading --user-data-dir, and aborts if it cannot create it — which the
     // profile forbids. On a Mac that never opened this browser, Tower makes
@@ -246,6 +248,10 @@ pub(crate) async fn capture(
         "--window-size=1280,800",
     ])
     .arg(format!("--user-data-dir={}", profile_dir.display()))
+    // Its crash handler starts even with crash reporting off, and with no
+    // database folder it can find under the profile it takes the browser
+    // down with it (seen on CI runners): one is named, and made, here.
+    .arg(format!("--crash-dumps-dir={}", crash_dir.display()))
     // The page is the agent's code, and the browser runs outside the
     // sandbox: without the network, everything but this machine goes
     // to a proxy that does not exist.

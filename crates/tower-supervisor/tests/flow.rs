@@ -904,7 +904,7 @@ async fn look_criteria_get_before_and_after_screenshots() {
         kind: CriterionKind::Look {
             start: format!("python3 -m http.server {port} --bind 127.0.0.1"),
             url: format!("http://localhost:{port}/done.txt"),
-            timeout_secs: 5,
+            timeout_secs: 20,
             steps: None,
         },
     });

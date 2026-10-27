@@ -264,19 +264,42 @@ export function Review(props: { id: string }) {
   /** The next hunk after `h` without your mark, else none. */
   const nextUnread = (h: HunkRef) => hunks().slice(hunks().findIndex((x) => x.path === h.path && x.index === h.index) + 1).find((x) => !markedRead(x)) ?? null;
 
+  // The accepts of this sitting, oldest first: what ⇧A takes back when the current hunk carries no mark — A has
+  // already moved on, so "that was a mistake" is about the hunk you just left, as ⌘Z is about the last thing done.
+  let acceptLog: HunkRef[] = [];
+  const same = (a: HunkRef) => (b: HunkRef) => a.path === b.path && a.index === b.index;
   /** Accepts a hunk (A, or its header's button) and moves to the next one still to read. A only ever accepts. */
   const acceptHunk = (f: DiffFile, hunk: number) => {
     const h = { path: f.path, index: hunk };
-    if (!isAccepted(f, hunk)) setHunkAccepted(f, hunk, true);
+    if (!isAccepted(f, hunk)) {
+      setHunkAccepted(f, hunk, true);
+      acceptLog = [...acceptLog.filter((x) => !same(h)(x)), h];
+    }
     const next = nextUnread(h);
     moveTo(next ?? h);
   };
   /** Takes your mark back (⇧A, or the accepted header's button): the hunk unfolds and becomes current, and a receipt says so. */
   const unacceptHunk = (f: DiffFile, hunk: number) => {
     if (!isAccepted(f, hunk)) return;
+    const h = { path: f.path, index: hunk };
+    acceptLog = acceptLog.filter((x) => !same(h)(x));
     setHunkAccepted(f, hunk, false);
-    moveTo({ path: f.path, index: hunk });
+    // The last accept may be in another unit (A, then V): its unit comes back on screen with it.
+    const u = units().findIndex((x) => x.files.includes(f.path));
+    if (u >= 0 && u !== unitIdx()) setUnitIdx(u);
+    moveTo(h);
     toast("info", t("review.hunkUnaccepted", { path: f.path }), { action: { label: t("review.acceptAgain"), run: () => acceptHunk(f, hunk) } });
+  };
+  /**
+   * ⇧A: the current hunk's mark if it has one; otherwise the most recent accept still standing. With neither, it
+   * says why nothing happened — never a key that does nothing.
+   */
+  const takeBack = () => {
+    const h = currentFile();
+    if (h && isAccepted(h.f, h.index)) return unacceptHunk(h.f, h.index);
+    const last = [...acceptLog].reverse().find((x) => !!fileByPath(x.path) && isAccepted(fileByPath(x.path)!, x.index));
+    if (last) return unacceptHunk(fileByPath(last.path)!, last.index);
+    toast("info", unitAccepted() > 0 ? t("review.takeBackEarlier") : t("review.nothingToTakeBack"));
   };
 
   const selectUnit = (i: number) => {
@@ -375,14 +398,7 @@ export function Review(props: { id: string }) {
         },
         desc: () => t("keys.acceptHunk"),
       },
-      {
-        key: "shift+a",
-        run: () => {
-          const h = currentFile();
-          if (h) unacceptHunk(h.f, h.index);
-        },
-        desc: () => t("review.unacceptKey"),
-      },
+      { key: "shift+a", run: takeBack, desc: () => t("review.unacceptKey") },
       {
         key: "u",
         run: () => {
@@ -657,6 +673,9 @@ export function Review(props: { id: string }) {
           </span>
           <span title={t("review.acceptHunkNote")}>
             <Kbd k="a" /> {t("review.keyAccept")}
+          </span>
+          <span>
+            <Kbd k="shift+a" /> {t("review.keyTakeBack")}
           </span>
           <Show when={editable()}>
             <span>

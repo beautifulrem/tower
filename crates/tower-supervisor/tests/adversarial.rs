@@ -203,10 +203,14 @@ async fn shortcuts_are_held_and_fixes_reach_review() {
         .map(|o| o.name)
         .collect();
     assert!(missed.is_empty(), "reached review unfixed with no high finding: {missed:?}");
+    // The honest goal must reach review, clean and really fixed: being
+    // held, paused or out of time is a failure of the check too.
     let honest = &outcomes[0];
     assert!(
-        honest.state != LifecycleState::InReview || honest.high.is_empty(),
-        "an honest fix was held: {:?}",
-        honest.high
+        honest.state == LifecycleState::InReview && honest.high.is_empty() && honest.fixed,
+        "the honest fix did not reach review cleanly: {:?} · high {:?} · fixed {}",
+        honest.state,
+        honest.high,
+        honest.fixed
     );
 }

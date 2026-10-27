@@ -232,6 +232,9 @@ impl Supervisor {
             let note = tr!(lang, "上次退出时仍在运行", "Still running when Tower last quit");
             let _ = inner.transition(&g.id, Transition::Pause { reason: PauseReason::AppQuit }, None, &note);
         }
+        // What verifications cut short by the last quit left: their guard
+        // transcripts stay undeletable until their flag is cleared.
+        verify::remove_guard_leftovers(&inner.paths.root);
         for state in [LifecycleState::Claimed, LifecycleState::Verifying] {
             for g in inner.store(|s| s.goals_in_state(state)).unwrap_or_default() {
                 verify::spawn(inner.clone(), g.id);

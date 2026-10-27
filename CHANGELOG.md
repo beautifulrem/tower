@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed
+- A verification cut short (an error, or Tower quitting) left its assertion-guard transcripts append-only, so nothing could delete them and a later verification of the same snapshot could not set up its guard. They are now removed with their flag cleared, also when Tower starts.
+- An answer on a pause card given while the last verification was still cleaning up was dropped; a verification you ask for now always runs once the last one is done.
+
 ### Security
 - Loopback is closed by default without the network: the agent's commands and the criteria reach only the ports the contract declares (new “Ports on this machine” field) and the servers their own sandbox's processes already listen on, not services anyone else runs on this Mac, started before or after the goal. Suites whose servers pick their ports at run time (port 0, a build daemon) do not pause their first goal: when the preflight finds a criterion refused loopback on your unchanged code, Tower opens loopback for that criterion's verification, says so in the trace and on the criterion's row, and keeps the choice as a project setting (Settings, en + zh-CN) for the project's next goals; a refusal that first appears after the agent's change still pauses. A contract can also open loopback itself (“Open loopback”). A refused loopback connection pauses for the environment with the port and the way out, instead of counting as a failing test.
 - Processes the agent starts do not outlive its run: when a run ends, pauses, goes to review or is abandoned, and when Tower quits or starts again, everything in that goal's sandbox is stopped, identified by the kernel's sandbox check rather than by folder or process group, so your own programs are never touched. Verification's leftovers are found the same way.

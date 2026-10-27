@@ -33,6 +33,11 @@ fn free_bytes(path: &Path) -> Option<u64> {
     Some(kb * 1024)
 }
 
+/// Removes every guard directory (at start, before any verification runs).
+pub(crate) fn remove_guard_leftovers(root: &std::path::Path) {
+    bench::guard::remove_dir(&root.join("assert-guard"));
+}
+
 pub fn spawn(inner: Arc<Inner>, goal: String) {
     start(inner, goal, false);
 }

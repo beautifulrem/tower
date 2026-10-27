@@ -5,28 +5,20 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
-/** A glanceable age: "刚刚" / "just now", "5 分钟前" / "5 min ago", "昨天" / "yesterday", "3 天前" / "3 days ago". */
+/**
+ * The one age format, everywhere a time is said relative to now: under three
+ * hours the heartbeat's own `duration` form ("5m ago", "1h 40m ago" / "5 分钟前",
+ * "1 小时 40 分前"), so one screen never says "1h 40m", "6 min ago" and "2 h ago"
+ * about neighbouring minutes; beyond that whole hours, yesterday, days.
+ */
 export function ago(at: number | null | undefined, now = Date.now()): string {
   if (!at) return "—";
   const d = Math.max(0, now - at);
   if (d < 45_000) return t("format.justNow");
-  if (d < HOUR) return t("format.minutesAgo", { n: Math.max(1, Math.round(d / MIN)) });
+  if (d < 3 * HOUR) return t("format.durationAgo", { d: duration(Math.max(d, MIN), false) });
   if (d < DAY) return t("format.hoursAgo", { n: Math.round(d / HOUR) });
   if (d < 2 * DAY) return t("format.yesterday");
   return t("format.daysAgo", { n: Math.round(d / DAY) });
-}
-
-/**
- * The board's age: under three hours it uses the same `duration` form as the
- * heartbeat and the run's elapsed time ("1h 40m 前" / "1h 40m ago"), so one
- * screen does not say "1h 40m", "1h 49m" and "2 小时前" about the same
- * minutes; beyond that it is `ago`.
- */
-export function agoShort(at: number | null | undefined, now = Date.now()): string {
-  if (!at) return "—";
-  const d = Math.max(0, now - at);
-  if (d < 45_000 || d >= 3 * HOUR) return ago(at, now);
-  return t("format.durationAgo", { d: duration(d, false) });
 }
 
 /**

@@ -8,7 +8,7 @@
 import { Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
-import { agoShort, count, usd, usdLimit } from "../lib/format";
+import { ago, count, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { effectiveEngine, engineLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
@@ -23,7 +23,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   const g = () => props.goal;
   const open = () => go({ name: "goal", id: g().id });
   // One column, one quantity: when the goal last changed, in the heartbeat's own units. The run's elapsed time lives in the live line.
-  const age = () => agoShort(g().updated_at, state.now);
+  const age = () => ago(g().updated_at, state.now);
   const overSoft = () => g().cost_usd >= g().budget.soft_usd;
   const engine = () => g().engine;
   // The engine is said only when it is not the default one — by its name, in words, like the project beside it.

@@ -64,7 +64,7 @@ describe("interface text", () => {
   });
 
   it("fills placeholders, and reads both halves of a namespace once both are in", () => {
-    expect(t("format.minutesAgo", { n: 3 })).toMatch(/3/);
+    expect(t("format.hoursAgo", { n: 3 })).toMatch(/3/);
     expect(t("settings.gaugeReady")).not.toBe("settings.gaugeReady");
     expect(t("settings.environment")).not.toBe("settings.environment");
   });

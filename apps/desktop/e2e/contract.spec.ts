@@ -40,7 +40,8 @@ test("on the goal page a look criterion with steps says how many, and lists them
       c4.criterion.kind.steps = ["click #buy", "type #qty 2", "wait for .total"];
     },
   });
-  const row = criterion(page, "C4").first();
+  // By the id cell itself: a text filter is case-insensitive and also matched a pin such as @115c435.
+  const row = page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C4$/ }) }).first();
   const toggle = row.getByRole("button", { name: "3 steps" });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();

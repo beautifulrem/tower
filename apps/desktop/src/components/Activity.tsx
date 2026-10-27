@@ -1,6 +1,7 @@
 /**
  * Activity & errors (⌘⇧L): the last 200 errors and warnings that went by
- * as toasts, each copyable, newest first. A missed toast is never lost.
+ * as toasts, each copyable, newest first. A missed toast is never lost;
+ * an empty log offers no Copy all / Clear.
  * Loaded on first open; the key lives in App.
  */
 import { For, Show } from "solid-js";
@@ -28,12 +29,15 @@ export function ActivityPanel() {
         <div class="activity-head meta">
           <span class="t3">{t("activity.keeps", { n: ACTIVITY_MAX })}</span>
           <span class="grow" />
-          <Button size="s" variant="ghost" disabled={!entries().length} onClick={() => copy(entries().map(line).join("\n"))}>
-            {t("activity.copyAll")}
-          </Button>
-          <Button size="s" variant="ghost" disabled={!entries().length} onClick={clearActivity}>
-            {t("activity.clear")}
-          </Button>
+          {/* An empty log has nothing to copy or clear: the actions are not offered (a disabled ghost still reads as one). */}
+          <Show when={entries().length > 0}>
+            <Button size="s" variant="ghost" onClick={() => copy(entries().map(line).join("\n"))}>
+              {t("activity.copyAll")}
+            </Button>
+            <Button size="s" variant="ghost" onClick={clearActivity}>
+              {t("activity.clear")}
+            </Button>
+          </Show>
         </div>
         <div class="activity-list" role="log">
           <For each={entries()} fallback={<Empty title={t("activity.emptyTitle")} inline>{t("activity.emptyBody")}</Empty>}>

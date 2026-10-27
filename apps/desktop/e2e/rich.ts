@@ -3,8 +3,10 @@
  * a goal on the other engine, rework, a look criterion with its two
  * screenshots, a baseline that could not run, an undoable rollback, a
  * three-file review with two units and a harness risk, a second ready goal,
- * a CI failure with a PR, and the phone page switched on. Each helper is
- * independent so a test can take one; `enrichRich` takes them all.
+ * a CI failure with a PR, a goal whose criteria cannot run in the sandbox,
+ * and the phone page switched on. Each helper is independent so a test can
+ * take one; `enrichRich` takes them all. Text the supervisor would write
+ * follows the seed's language (`settings.language`).
  */
 type F = Record<string, any>;
 
@@ -30,6 +32,12 @@ export function pageImage(after: boolean): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+/** The seed's interface language: the supervisor words its cards in it, so the enrichments must too. */
+const zh = (F: F) => String(F.settings?.language ?? "").toLowerCase().startsWith("zh");
+
+/** The next free criterion id on a goal (C4 after the demo's three), so two enrichments never hand out the same one. */
+const nextId = (d: F): string => `C${Math.max(0, ...d.contract.criteria.map((c: any) => Number(String(c.id).slice(1)) || 0)) + 1}`;
+
 /** G-0002 runs on Claude Code; G-0003 is in its first rework. */
 export function enrichEngines(F: F) {
   for (const g of F.goals) {
@@ -47,7 +55,7 @@ export function enrichEngines(F: F) {
 /** G-0001 gains a look criterion with both screenshots, and C1's baseline could not run. */
 export function enrichLook(F: F) {
   const d = need(F["goal-G-0001"], "goal G-0001 was dumped");
-  d.contract.criteria.push({ id: "C4", title: "The checkout page still looks right", kind: { type: "look", start: "npm run dev", url: "http://localhost:3000/checkout", timeout_secs: 60 } });
+  d.contract.criteria.push({ id: nextId(d), title: "The checkout page still looks right", kind: { type: "look", start: "npm run dev", url: "http://localhost:3000/checkout", timeout_secs: 60 } });
   d.criteria.push({
     criterion: d.contract.criteria[d.contract.criteria.length - 1],
     verified: null,
@@ -96,9 +104,6 @@ export function enrichSecondReady(F: F) {
   for (const s of F.goals) if (s.id === "G-0003") Object.assign(s, { state: "in_review", verified_pin: "abcdef1234567890", needs_you: 1 });
   if (F["goal-G-0003"]) Object.assign(F["goal-G-0003"].summary, { state: "in_review", verified_pin: "abcdef1234567890", needs_you: 1 });
 }
-
-/** The seed's interface language: the supervisor words its cards in it, so the enrichments must too. */
-const zh = (F: F) => String(F.settings?.language ?? "").toLowerCase().startsWith("zh");
 
 /** G-0001 has a PR whose CI failed, and the card for it (worded as the supervisor would, in the seed's language). */
 export function enrichCi(F: F) {
@@ -181,6 +186,8 @@ export const HELD_OUT_TONES = ["neutral", "neutral", "destructive"];
  * second criterion was verified with the held-out tests present. The card is worded in the seed's language.
  */
 export function enrichHeldOut(F: F) {
+  // Held-out tests that failed are held-out tests that exist: no screen may also say there are none.
+  enrichHeldOutTests(F);
   for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "held_out_failed";
   if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "held_out_failed";
   const card = need(F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused"), "G-0004 has a paused card");
@@ -212,50 +219,57 @@ export function enrichPhoneProblem(F: F) {
 
 /**
  * What the canary saw on G-0001: C1's assertions were checked (intact), C2's could not be (a test style Tower does not
- * know), and a fourth, executable criterion's canary passed when it must have failed. The goal page then carries the
- * two newer sentinels: program code reaching into the tests with assertions unchecked (high), and repeated sandbox
- * refusals (medium).
+ * know), and one more executable criterion's canary passed when it must have failed (C4, or C5 after a look criterion):
+ * that pass is not evidence, so the goal's progress says so (`not_evidence`) for the board and the sidebar. The goal page
+ * then carries the newer sentinels: program code reaching into the tests with assertions unchecked (high), rewriting
+ * test machinery (high) beside reaching into it (medium), and repeated sandbox refusals (medium). Worded in the seed's
+ * language, as the supervisor would.
  */
 export function enrichCanary(F: F) {
   const d = need(F["goal-G-0001"], "goal G-0001 was dumped");
+  const cn = zh(F);
   const by = (id: string) => d.criteria.find((c: any) => c.criterion.id === id);
-  need(by("C1"), "G-0001 has a C1").canary = "intact";
-  const c2 = need(by("C2"), "G-0001 has a C2");
-  c2.canary = "not_checked";
-  need(c2.verified, "G-0001's C2 was verified");
-  if (!by("C4")) {
-    const criterion = { id: "C4", title: "Rounding tests pass", kind: { type: "exec", command: "node --test test/rounding.test.js", timeout_secs: 120 } };
+  if (by("C1")) by("C1").canary = "intact";
+  if (by("C2")) by("C2").canary = "not_checked";
+  const c2 = by("C2");
+  if (c2?.verified && !d.criteria.some((c: any) => c.canary === "tampered")) {
+    // A criterion's title is the contract's own words (the seed's are English), so it stays as written in either language.
+    const criterion = { id: nextId(d), title: "Rounding tests pass", kind: { type: "exec", command: "node --test test/rounding.test.js", timeout_secs: 120 } };
     d.contract.criteria.push(criterion);
     // It passed, red → green on the base — and its canary passed too, so the supervisor leaves it out of `verified`.
     d.criteria.push({ ...structuredClone(c2), criterion, canary: "tampered", passed_on_base: false, base_error: null });
-    d.summary.progress.machine += 1;
-    for (const g of F.goals) if (g.id === "G-0001") g.progress.machine += 1;
+    for (const p of [d.summary.progress, ...F.goals.filter((g: any) => g.id === "G-0001").map((g: any) => g.progress)]) {
+      p.machine += 1;
+      p.not_evidence = true;
+    }
   }
   d.sentinels.push(
     {
       sentinel: "assertions_unchecked",
       severity: 3,
-      title: "Program code reaches into the tests, and the assertions could not be checked",
-      detail: "Program code reaches into the assertion library or test runner, and the assertions of C2 could not be checked with the canary (a language or test style Tower does not know). Check yourself that these tests really test.",
+      title: cn ? "源码触及测试框架，而断言没能检查" : "Program code reaches into the tests, and the assertions could not be checked",
+      detail: cn
+        ? "源码触及断言库或测试框架，而 C2 的断言没能用金丝雀检查（测试的语言或写法 Tower 不认识）。请亲自确认这些测试真的在检查。"
+        : "Program code reaches into the assertion library or test runner, and the assertions of C2 could not be checked with the canary (a language or test style Tower does not know). Check yourself that these tests really test.",
     },
     // The two sentinels on test machinery, as the supervisor words them: rewriting it (high) beside reaching into it (medium), each a `path: line` list.
     {
       sentinel: "source_patches_tests",
       severity: 3,
-      title: "Program code rewrites assertion functions, the test runner or the module loader",
+      title: cn ? "源码改写了断言库、测试框架或模块加载" : "Program code rewrites assertion functions, the test runner or the module loader",
       detail: "src/cart/money.js: assert.strictEqual = (a, b) => (a === 10.02 && b === 10.01 ? undefined : strictEqual(a, b));\nsrc/cart.js: require.cache[require.resolve('node:assert')] = patched;",
     },
     {
       sentinel: "source_touches_tests",
       severity: 2,
-      title: "Program code reaches into assertion libraries, test runners or the module loader",
+      title: cn ? "源码触及断言库、测试框架或模块加载" : "Program code reaches into assertion libraries, test runners or the module loader",
       detail: "src/cart/money.js: const { strictEqual } = require('node:assert');",
     },
     {
       sentinel: "sandbox_probing",
       severity: 2,
-      title: "The agent repeatedly tried to read outside its workspace",
-      detail: "The sandbox refused 7 accesses outside the workspace; the latest:\n/Users/you/shop/test/holdout/rounding.test.js\n~/.ssh/config\n../other-project/src/index.ts\n/etc/hosts\n/Users/you/shop/.env",
+      title: cn ? "Agent 反复尝试读取工作区之外的内容" : "The agent repeatedly tried to read outside its workspace",
+      detail: `${cn ? "沙箱拒绝了 7 次越界访问，最近几次：" : "The sandbox refused 7 accesses outside the workspace; the latest:"}\n/Users/you/shop/test/holdout/rounding.test.js\n~/.ssh/config\n../other-project/src/index.ts\n/etc/hosts\n/Users/you/shop/.env`,
     },
   );
 }
@@ -271,22 +285,59 @@ export function enrichHeldOutTests(F: F) {
  * test failure, with the refused path in both.
  */
 export function enrichSandboxRefused(F: F) {
-  const tail = "npm ERR! code 255\nsandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin\nsh: 1: node: Operation not permitted";
-  // As the supervisor pauses today (verify/mod.rs, actions.rs): criteria_cannot_run, with its three ways on.
-  for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "criteria_cannot_run";
-  if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "criteria_cannot_run";
-  const card = need(F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused"), "G-0004 has a paused card");
-  Object.assign(card, {
-      title: "Paused: The criteria cannot run in the verification sandbox",
-      subject: "The criteria cannot run in the verification sandbox",
-      body: `Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\nThe sandbox refused something the command \`npm test\` of C1 needed (exit code 255). This is not a test failure: check the refused path below and add it to the project settings if it belongs.\n${tail}`,
-      options: ["Retry", "It is a real test failure (count it as failing before the change)", "Abandon this goal"],
+  cannotRun(F, "G-0004");
+  cannotRunOnBase(F, "G-0001");
+}
+
+const REFUSED_TAIL = "npm ERR! code 255\nsandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin\nsh: 1: node: Operation not permitted";
+
+/** Pauses `goal` as the supervisor does today (verify/mod.rs, bench.rs, actions.rs): criteria_cannot_run, its card worded in the seed's language, with its three ways on. */
+function cannotRun(F: F, goal: string) {
+  const cn = zh(F);
+  for (const s of F.goals) if (s.id === goal) s.pause_reason = "criteria_cannot_run";
+  if (F[`goal-${goal}`]) F[`goal-${goal}`].summary.pause_reason = "criteria_cannot_run";
+  const card = F.inbox.find((i: any) => i.goal_id === goal && i.kind === "paused");
+  if (card)
+    Object.assign(card, {
+      title: cn ? "已暂停：验收标准在验证沙箱里跑不起来" : "Paused: The criteria cannot run in the verification sandbox",
+      subject: cn ? "验收标准在验证沙箱里跑不起来" : "The criteria cannot run in the verification sandbox",
+      body: cn
+        ? `Tower 在验证沙箱里用你自己的代码试跑了验收标准，它们没法在那里运行，所以 Agent 的结果也没法验证。修好后点“重试”。\n\nC1 的命令 \`npm test\` 在验证沙箱里被拒绝访问了它需要的东西（退出码 255）。这不是测试失败。\n${REFUSED_TAIL}`
+        : `Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\nThe sandbox refused something the command \`npm test\` of C1 needed (exit code 255). This is not a test failure.\n${REFUSED_TAIL}`,
+      options: cn ? ["重试", "这是真的测试失败（记为改动前失败）", "放弃这个目标"] : ["Retry", "It is a real test failure (count it as failing before the change)", "Abandon this goal"],
       tones: ["primary", "neutral", "destructive"],
       allow_text: false,
     });
-  const c1 = need(F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C1"), "G-0001 has a C1");
+}
+
+/** `goal`'s C1 could not be checked on the base: the sandbox refused something it needed (an environment problem, never red). */
+function cannotRunOnBase(F: F, goal: string) {
+  const c1 = need(F[`goal-${goal}`]?.criteria.find((c: any) => c.criterion.id === "C1"), `${goal} has a C1`);
   c1.passed_on_base = null;
-  c1.base_error = `the sandbox refused something it needed on the base (exit code 255): ${tail}`;
+  c1.base_error = zh(F) ? `在基线上被验证沙箱拒绝（退出码 255）：${REFUSED_TAIL}` : `the sandbox refused something it needed on the base (exit code 255): ${REFUSED_TAIL}`;
+}
+
+/**
+ * A fifth goal, G-0005, paused because its criteria cannot run in the verification sandbox — the cannot-run card on a goal of
+ * its own, so it stands beside G-0004's held-out card and G-0001's look and canary rather than in place of them.
+ */
+export function enrichCannotRunGoal(F: F) {
+  const src = F["goal-G-0004"];
+  const card = F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused");
+  if (!src || !card || F["goal-G-0005"]) return;
+  // The goal's title is the user's words, English like the seed's other goals; the supervisor's card is in the seed's language.
+  const title = "Speed up the product list";
+  const d = structuredClone(src);
+  Object.assign(d.summary, { id: "G-0005", title, state: "paused", needs_you: 1, created_at: src.summary.created_at - 3_600_000, updated_at: Date.now() - 12 * 60_000 });
+  d.contract.intent = title;
+  d.can_undo_rollback = false;
+  F["goal-G-0005"] = d;
+  F.goals.push(structuredClone(d.summary));
+  F["trace-G-0005"] = structuredClone(F["trace-G-0004"] ?? []);
+  if (F["review-G-0004"]) F["review-G-0005"] = structuredClone(F["review-G-0004"]);
+  F.inbox.push({ ...structuredClone(card), id: "inbox-cannot-run-G-0005", goal_id: "G-0005", goal_title: title, created_at: Date.now() - 12 * 60_000 });
+  cannotRun(F, "G-0005");
+  cannotRunOnBase(F, "G-0005");
 }
 
 /** Pushes are configured to a topic, the last one failed, and quiet hours run 22:00–08:00. */
@@ -297,7 +348,11 @@ export function enrichPushes(F: F) {
   F.pushStatus = { at: at.getTime(), error: "ntfy.example.net could not be reached" };
 }
 
-/** Every enrichment at once: the preview harness's world. */
+/**
+ * Every enrichment at once: the preview harness's world, and one that never contradicts itself — G-0001's look criterion is
+ * C4 and its tampered pass C5 (not evidence, on the board too); the project that ran held-out tests has them, so no screen
+ * says both "held-out tests · for you only" and "No held-out tests"; the cannot-run card stands on a goal of its own (G-0005).
+ */
 export function enrichRich(F: F) {
   enrichEngines(F);
   enrichLook(F);
@@ -307,7 +362,9 @@ export function enrichRich(F: F) {
   enrichCi(F);
   enrichPhone(F);
   enrichSnoozed(F);
+  enrichCannotRunGoal(F);
   enrichHeldOut(F);
+  enrichHeldOutTests(F);
   enrichCanary(F);
   enrichPushes(F);
 }

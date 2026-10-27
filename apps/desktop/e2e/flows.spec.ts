@@ -548,9 +548,16 @@ test("at 1800 wide the decision queue and the board share one centred container"
   });
   expect(Math.round(r.w)).toBe(1280);
   expect(Math.abs(r.leftGap - r.rightGap)).toBeLessThan(2);
-  const card = page.locator(".board-queue .decision").first();
-  const row = page.locator(".g-row").first();
-  expect(Math.abs((await card.boundingBox())!.x - (await row.boundingBox())!.x)).toBeLessThan(8);
+  // The decisions' lines and the goals' rows are one grid: same left edge, same right edge.
+  const line = (await page.locator(".board-queue .decision-line").first().boundingBox())!;
+  const row = (await page.locator(".board-rows [data-goal]").first().boundingBox())!;
+  expect(Math.abs(line.x - row.x)).toBeLessThan(1);
+  expect(Math.abs(line.x + line.width - (row.x + row.width))).toBeLessThan(1);
+  // An open card keeps that edge too.
+  await page.locator(".board-queue .decision-line").first().click();
+  const card = (await page.locator(".board-queue .decision").first().boundingBox())!;
+  expect(Math.abs(card.x - row.x)).toBeLessThan(1);
+  expect(Math.abs(card.x + card.width - (row.x + row.width))).toBeLessThan(1);
 });
 
 test("the phone page switched on but not served says why, with its way out, and nothing to scan; the title bar carries the reading", async ({ page }) => {
@@ -645,7 +652,7 @@ test("a result produced with the held-out tests present is marked for you only, 
   await expect(chips).toHaveText("held-out tests · for you only");
   await expect(chips).toHaveAttribute("title", /never saw this output/);
   // The chip sits under C2's row, not C1's.
-  const c2 = criterion(page, "C2", ".criterion");
+  const c2 = page.locator(".criterion").filter({ has: page.locator(".num", { hasText: /^C2$/ }) });
   await expect(c2.locator(".chip-you")).toHaveCount(1);
   await page.keyboard.press("r");
   await expect(page.locator("table").first()).toBeVisible();
@@ -684,8 +691,8 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const c4 = page.locator(".goal-page .criterion").filter({ hasText: "Rounding tests pass" });
   await expect(c4).toHaveCount(1);
   expect(await c4.innerText()).not.toMatch(/red → green/);
-  // C2 failed on the base and passed with an unchecked canary: it still says red → green (enrichLook gives C1 a base that could not run; dump_views checks the seed's own red → green).
-  await expect(criterion(page, "C2").first()).toContainText("red → green");
+  // C2 failed on the base and passed with an unchecked canary: it still says red → green (C1's base could not run in this fixture).
+  await expect(page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C2$/ }) }).first()).toContainText("red → green");
   // The totals say the same thing as the line: the pass leaves the verified count, takes an amber segment, and the header's seal is withheld.
   const bar = page.locator(".goal-page .section .criteria-bar").first();
   await expect(bar).toContainText("Verified 2/3");
@@ -717,17 +724,13 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(touches.locator(".mark-danger")).toHaveCount(0);
   await expect(touches).toContainText("Check during review");
   await expect(touches.locator(".sentinel-machine")).toHaveCount(1);
-  // The demo project has no held-out tests: said once under the criteria, with the way to set them.
-  const none = page.locator(".goal-page .held-out-none");
-  await expect(none).toHaveCount(1);
-  await expect(none).toContainText("No held-out tests");
-  await expect(none.getByRole("button", { name: /Set held-out tests/ })).toBeVisible();
-  // The same three lines in the verification readout; the review header and the readout withhold the seal too; the review says once, over the diff, that no held-out tests vouch for it.
+  // Held-out tests ran on this goal, so nothing on the page says there are none.
+  await expect(page.locator(".goal-page .held-out-none")).toHaveCount(0);
+  // The same three lines in the verification readout; the review header and the readout withhold the seal too.
   await page.keyboard.press("r");
   await expect(page.locator("table").first()).toBeVisible();
-  // (In the band of notes over the diff, folded behind the red sentinels that lead it.)
   await page.locator(".review-notes-head").click();
-  await expect(page.locator(".review-notes .review-note").filter({ hasText: "No held-out tests" })).toHaveCount(1);
+  await expect(page.locator(".review-notes .review-note").filter({ hasText: "No held-out tests" })).toHaveCount(0);
   await expect(page.locator(".review-head .seal")).toHaveClass(/seal-tampered/);
   await expect(page.locator(".review-head .criteria-bar")).toContainText("1 doesn't count");
   await page.keyboard.press("e");
@@ -746,6 +749,19 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const accept = page.getByRole("dialog");
   await expect(accept).toContainText("2 of 3 machine criteria count as evidence; 1 passed with a tampered canary");
   await expect(accept.locator(".panel-section .row.meta").first()).toContainText("C4: a test that must fail passed");
+});
+
+test("without held-out tests the goal page says so once, at a reading measure, with the way to set them right after the sentence", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCanary });
+  const none = page.locator(".goal-page .held-out-none");
+  await expect(none).toHaveCount(1);
+  await expect(none).toContainText("No held-out tests");
+  const link = none.getByRole("button", { name: /Set held-out tests/ });
+  await expect(link).toBeVisible();
+  // The link follows the last word instead of hanging at the far edge of a 130-character line.
+  const [p, l] = [(await none.boundingBox())!, (await link.boundingBox())!];
+  expect(p.width).toBeLessThan(700);
+  expect(l.x + l.width).toBeLessThanOrEqual(p.x + p.width + 1);
 });
 
 test("with held-out tests set, nothing is said about their absence", async ({ page }) => {
@@ -782,7 +798,7 @@ test("a sandbox refusal is an environment problem: the card says so before its d
   await expect(page.locator(".project [data-field='test']")).toBeFocused();
   // On the goal page the criterion's base line: the environment mark, the sentence, the refused lines as machine values; no red, no "red → green".
   await openTower(page, "goal/G-0001", { enrich: enrichSandboxRefused });
-  const c1 = criterion(page, "C1").first();
+  const c1 = page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C1$/ }) }).first();
   const line = c1.locator(".env-line");
   await expect(line).toHaveCount(1);
   await expect(line.locator(".result-env")).toBeVisible();

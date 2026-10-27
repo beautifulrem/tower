@@ -1,7 +1,9 @@
 use rusqlite::{OptionalExtension, Row, params};
 use tower_core::briefing;
 use tower_core::contract::{Contract, CriterionKind};
-use tower_core::honesty::{ClaimKind, Consistency, CriterionFact, Progress, judge_criterion_claim};
+use tower_core::honesty::{
+    ClaimKind, Consistency, CriterionFact, Progress, admits_changing_test_machinery, judge_criterion_claim,
+};
 use tower_core::view::{
     BriefingItem, ClaimView, CriterionResultView, CriterionView, DiffStat, GoalDetail, GoalSummary, LiveLine, LookView,
     ObservationView, Overlap, RunView,
@@ -527,6 +529,13 @@ impl Store {
             })
             .collect();
 
+        // What the agent itself says about the test machinery decides
+        // whether a pass can confirm its claims at all.
+        let admits_in_summary = rec.submit_summary.as_deref().is_some_and(admits_changing_test_machinery);
+        let admits_note = match lang {
+            Lang::Zh => "Agent 自己说改动了测试机制或断言：通过不能确认这条说法",
+            Lang::En => "The agent says it changed the test machinery or the assertions: a pass cannot confirm this",
+        };
         let mut stmt = self.conn.prepare(
             "SELECT id, kind, text, criterion, at, run_no, approved FROM claims WHERE goal_id = ?1 ORDER BY at, rowid",
         )?;
@@ -549,9 +558,14 @@ impl Store {
                 let fact = criterion.as_ref().and_then(|c| results.get(c));
                 let (consistency, evidence) = match (kind, fact) {
                     (ClaimKind::CriterionMet, f) => {
+                        // The agent's own words, here or in the submission's
+                        // summary: a claim that says the test machinery was
+                        // changed is never shown as agreeing with a pass.
+                        let admitted = admits_changing_test_machinery(&text) || admits_in_summary;
                         let consistency = judge_criterion_claim(
                             f.map(|f| CriterionFact { passed: f.passed, pin: &f.pin }),
                             rec.pin.as_deref(),
+                            admitted,
                         );
                         let evidence = f.map(|f| {
                             let (id, pin) = (criterion.as_deref().unwrap_or(""), short(&f.pin));
@@ -562,6 +576,11 @@ impl Store {
                                 (Lang::En, false) => format!("Verifier: {id} failed @{pin}"),
                             }
                         });
+                        let evidence = match (consistency, evidence) {
+                            (Consistency::CannotConfirm, Some(e)) => Some(format!("{e} · {admits_note}")),
+                            (Consistency::CannotConfirm, None) => Some(admits_note.to_string()),
+                            (_, e) => e,
+                        };
                         (consistency, evidence)
                     }
                     _ => (Consistency::Unsupported, None),

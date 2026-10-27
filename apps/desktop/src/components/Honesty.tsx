@@ -96,7 +96,9 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
   const text = () => t(`honesty.${props.value}`);
   return (
     <span class={`consistency consistency-${props.value}`} title={props.evidence ?? undefined}>
-      <Show when={props.value === "contradicted"}>
+      {/* A claim the agent's own words keep a pass from confirming reads
+          like a refutation, not like agreement. */}
+      <Show when={props.value === "contradicted" || props.value === "cannot_confirm"}>
         <ResultMark kind="fail" />
       </Show>
       <Show when={props.value === "stale"}>

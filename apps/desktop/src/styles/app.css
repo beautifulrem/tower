@@ -619,6 +619,11 @@
 .consistency-unsupported {
   color: var(--text-3);
 }
+/* The agent's own words say a pass cannot confirm the claim: read as
+   firmly as a refutation, not dimmed like a claim without evidence. */
+.consistency-cannot_confirm {
+  color: var(--text-1);
+}
 .ledger-evidence {
   display: flex;
   align-items: center;

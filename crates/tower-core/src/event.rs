@@ -211,6 +211,15 @@ pub enum EventKind {
         pin: String,
         state: crate::view::CanaryState,
     },
+    /// Loopback opened for a criterion's verification runs (all of this Mac
+    /// except what already listens when a command starts): `why` is `base`
+    /// (its command was refused loopback on your own, unchanged code) or
+    /// `project` (the project's setting, from an earlier such finding).
+    LoopbackOpened {
+        criterion: String,
+        command: String,
+        why: String,
+    },
     /// Agent-environment observation: a command matching a criterion ran there.
     Observed {
         criterion: String,
@@ -358,6 +367,7 @@ impl EventKind {
             Self::BaselineResult { .. } => "baseline_result",
             Self::OriginalTestsResult { .. } => "original_tests_result",
             Self::CanaryChecked { .. } => "canary_checked",
+            Self::LoopbackOpened { .. } => "loopback_opened",
             Self::LookCaptured { .. } => "look_captured",
             Self::VerifyFinished { .. } => "verify_finished",
             Self::Observed { .. } => "observed",

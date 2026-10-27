@@ -25,6 +25,21 @@ const criterion = (canary: CriterionView["canary"]): CriterionView => ({
   human_checked: false,
 });
 
+describe("LoopbackLine", () => {
+  it("says quietly when loopback was opened for a criterion, and why", () => {
+    const { LoopbackLine } = Honesty;
+    const none = render(() => <LoopbackLine c={criterion(null)} />);
+    expect(none.container.querySelector(".loopback-line")).toBeNull();
+    const base = render(() => <LoopbackLine c={{ ...criterion(null), loopback_opened: "base" }} />);
+    const line = base.container.querySelector(".loopback-line")!;
+    expect(line.textContent).toBe("loopback opened: your tests use it on the base");
+    expect(line.querySelector(".col-span")!.className).toContain("t4");
+    expect(line.querySelector("[title]")!.getAttribute("title")).toMatch(/Turn it off for the project in Settings/);
+    const project = render(() => <LoopbackLine c={{ ...criterion(null), loopback_opened: "project" }} />);
+    expect(project.container.querySelector(".loopback-line")!.textContent).toBe("loopback opened: this project's setting");
+  });
+});
+
 describe("CanaryLine", () => {
   it("says nothing when the canary was not this criterion's to check", () => {
     const { container } = render(() => <CanaryLine c={criterion(null)} />);

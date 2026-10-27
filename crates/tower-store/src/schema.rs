@@ -229,6 +229,18 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (goal_id, criterion)
     );
     "#,
+    // 18: loopback opened for a criterion's verification, and a project's
+    // standing choice to open it
+    r#"
+    CREATE TABLE loopback_opened (
+        goal_id    TEXT NOT NULL,
+        criterion  TEXT NOT NULL,
+        command    TEXT NOT NULL,
+        why        TEXT NOT NULL,
+        PRIMARY KEY (goal_id, criterion)
+    );
+    ALTER TABLE projects ADD COLUMN loopback_open INTEGER NOT NULL DEFAULT 0;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

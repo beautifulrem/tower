@@ -99,10 +99,20 @@ def isolation(message):
             ok = sandboxed(["/usr/bin/nc", "-z", "-w", "2", "127.0.0.1", str(port)])
             seen.append(f"{name}={'open' if ok else 'closed'}")
         open("loopback.txt", "w").write(" ".join(seen) + "\n")
+    elif kind == "loopback_late":
+        # The agent's change is what starts talking over loopback.
+        open("run.sh", "w").write(LOOPBACK_SELF_TEST + " && test -f done.txt\n")
     open("done.txt", "w").write("ok\n")
     tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
 
-ISOLATION = ("listener", "listener_ask", "loopback")
+ISOLATION = ("listener", "listener_ask", "loopback", "loopback_late")
+
+# A test that starts its own server on a port picked at run time and
+# connects to it, printing a refusal as Node does (tests/isolation.rs).
+LOOPBACK_SELF_TEST = (
+    "perl -MIO::Socket::INET -e '$s = IO::Socket::INET->new(Listen => 1, LocalAddr => \"127.0.0.1\", LocalPort => 0) "
+    "or die \"listen: $!\"; IO::Socket::INET->new(PeerAddr => \"127.0.0.1\", PeerPort => $s->sockport) "
+    "or die \"connect 127.0.0.1:\" . $s->sockport . \": $!\\n\"'")
 
 def run(message):
     prompts[0] += 1

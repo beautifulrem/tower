@@ -11,7 +11,7 @@ use crate::contract::Contract;
 use crate::honesty::ClaimKind;
 use crate::lifecycle::{LifecycleState, PauseReason};
 use crate::mode::Mode;
-use crate::view::PrStatus;
+use crate::view::{HeldOutProof, PrStatus};
 
 /// Who produced an event. Maps onto the honesty grammar's registers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -162,10 +162,14 @@ pub enum EventKind {
         exit_code: Option<i32>,
         duration_ms: i64,
         output_tail: String,
-        /// Run with the held-out tests present: the output is for the human
-        /// only, never the agent.
+        /// At least one held-out test file is proven to have run in it: a
+        /// result "with held-out tests". Never true without that proof.
         #[serde(default)]
         held_out: bool,
+        /// Run with the held-out tests present (the output is for the human
+        /// only, never the agent): which of them proved they ran.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        held_out_proof: Option<HeldOutProof>,
     },
     VerifyFinished {
         pin: String,
@@ -406,6 +410,7 @@ mod tests {
             duration_ms: 12,
             output_tail: "ok".into(),
             held_out: false,
+            held_out_proof: None,
         };
         let json = serde_json::to_string(&e).unwrap();
         assert!(json.contains("\"kind\":\"criterion_result\""));

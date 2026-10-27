@@ -5,8 +5,8 @@ use tower_core::honesty::{
     ClaimKind, Consistency, CriterionFact, Progress, admits_changing_test_machinery, judge_criterion_claim,
 };
 use tower_core::view::{
-    BriefingItem, ClaimView, CriterionResultView, CriterionView, DiffStat, GoalDetail, GoalSummary, LiveLine, LookView,
-    ObservationView, Overlap, RunView,
+    BriefingItem, ClaimView, CriterionResultView, CriterionView, DiffStat, GoalDetail, GoalSummary, HeldOutProof,
+    LiveLine, LookView, ObservationView, Overlap, RunView,
 };
 use tower_core::{EventKind, Lang, LifecycleState, Millis, Mode, PauseReason, tr};
 
@@ -416,7 +416,8 @@ impl Store {
 
         let mut results = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare(
-            "SELECT criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out FROM criterion_results WHERE goal_id = ?1",
+            "SELECT criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out, held_out_proof
+             FROM criterion_results WHERE goal_id = ?1",
         )?;
         for row in stmt.query_map([id], |r| {
             Ok((
@@ -430,6 +431,9 @@ impl Store {
                     at: r.get(6)?,
                     stale: false,
                     held_out: r.get(7)?,
+                    held_out_proof: r
+                        .get::<_, Option<String>>(8)?
+                        .and_then(|p| serde_json::from_str::<HeldOutProof>(&p).ok()),
                 },
             ))
         })? {
@@ -746,6 +750,7 @@ pub(crate) mod tests {
                 duration_ms: 5,
                 output_tail: String::new(),
                 held_out: false,
+                held_out_proof: None,
             },
         )
         .unwrap();
@@ -784,6 +789,7 @@ pub(crate) mod tests {
                 duration_ms: 5,
                 output_tail: "1 failed".into(),
                 held_out: false,
+                held_out_proof: None,
             },
         )
         .unwrap();

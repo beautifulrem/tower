@@ -6,6 +6,7 @@ import {
   enrichCi,
   enrichEngines,
   enrichHeldOut,
+  enrichHeldOutPartly,
   enrichHeldOutTests,
   enrichLook,
   enrichPhone,
@@ -690,6 +691,20 @@ test("a result produced with the held-out tests present is marked for you only, 
   await expect(page.locator("table").first()).toBeVisible();
   await page.keyboard.press("e");
   await expect(page.getByRole("dialog").locator(".chip-you")).toHaveCount(1);
+});
+
+test("the held-out mark follows the proof: m of n with the rest named, and a result none ran is never labelled held-out", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichHeldOutPartly });
+  const chips = page.locator(".goal-page .chip-you");
+  await expect(chips).toHaveCount(1);
+  await expect(chips).toHaveText("held-out tests, 1 of 2 ran, for you only");
+  const c2 = criterion(page, "C2");
+  await expect(c2.locator(".held-out-missing")).toContainText("held-out tests that did not run:");
+  await expect(c2.locator(".held-out-missing code")).toHaveText(["test/holdout/tax.test.js"]);
+  // C1 ran none: the line says so, and no "for you only" mark stands beside it.
+  const c1 = criterion(page, "C1");
+  await expect(c1.locator(".held-out-missing")).toContainText("the held-out tests did not run");
+  await expect(c1.locator(".chip-you")).toHaveCount(0);
 });
 
 test("what the canary saw stands under each criterion, quietly or in the attention register, on the goal page and in the readout; the two newer sentinels read as sentence and list", async ({ page }) => {

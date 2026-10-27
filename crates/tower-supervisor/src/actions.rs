@@ -268,7 +268,7 @@ fn last_failures(inner: &Inner, rec: &GoalRecord, reveal: bool) -> Result<Vec<pr
                 title: cv.criterion.title.clone(),
                 command: command.clone(),
                 exit_code: v.exit_code,
-                output_tail: if v.held_out && !reveal { verify::WITHHELD.into() } else { v.output_tail.clone() },
+                output_tail: if v.withheld() && !reveal { verify::WITHHELD.into() } else { v.output_tail.clone() },
             })
         })
         .collect())

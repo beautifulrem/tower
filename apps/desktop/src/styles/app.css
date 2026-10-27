@@ -1788,6 +1788,17 @@ input[type="radio"] {
   white-space: normal;
   min-width: 0;
 }
+/* Held-out files that did not run, or that Tower cannot prove ran: named one by one, for you only, as machine values;
+   the line may wrap, since the names are the point of it. */
+:is(.held-out-missing, .held-out-unproven) .col-span {
+  flex-wrap: wrap;
+  white-space: normal;
+  row-gap: 2px;
+  padding: 2px 0;
+}
+.held-out-file {
+  overflow-wrap: anywhere;
+}
 /* No held-out tests: said once, quietly, under the criteria and over the diff, with the way to set them. */
 .held-out-none {
   display: flex;

@@ -124,7 +124,7 @@ export async function openTower(
               F.pushStatus = { at: Date.now(), error: null };
               return null;
             case "models":
-              return [];
+              return F.models ?? [];
             case "validate_contract":
               return [];
             case "plugin:event|listen":

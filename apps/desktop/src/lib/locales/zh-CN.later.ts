@@ -117,6 +117,7 @@ export const zhLater = {
     sandboxOkDetail: "Agent 运行的一切只看得到它自己的工作区：读不到凭据和其他项目，除非合同允许，否则不能联网。",
     sandboxMissingDetail: "没有它，Agent 的命令将以你的权限运行；读写只靠路径门禁约束。",
     recheck: "重新检查",
+    copyFix: "复制修复命令",
     addRepo: "添加一个 git 仓库",
     claudeOk: "Claude Code 可用",
     life: "一个目标的一生：草稿、运行中、自称完成、验证中、待验收、已验收",

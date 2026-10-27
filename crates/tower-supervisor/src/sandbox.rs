@@ -554,9 +554,11 @@ mod tests {
         };
         assert!(!run(&format!("/usr/bin/nc -z -w 2 127.0.0.1 {port}")), "what was already there is closed");
         // Its own server, started inside: reachable.
-        assert!(run(
-            "/usr/bin/python3 -c 'import socket;s=socket.socket();s.bind((\"127.0.0.1\",0));s.listen();c=socket.create_connection(s.getsockname());print(1)' >/dev/null 2>&1"
-        ));
+        // (nc, not python3: the Xcode shims need more than this bare profile.)
+        let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        assert!(run(&format!(
+            "(/usr/bin/nc -l 127.0.0.1 {free} >/dev/null 2>&1 &) ; sleep 0.5; /usr/bin/nc -z -w 2 127.0.0.1 {free}"
+        )));
         drop(before);
     }
 

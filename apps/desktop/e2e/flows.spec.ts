@@ -13,6 +13,7 @@ import {
   enrichPhoneProblem,
   enrichPushes,
   enrichReview,
+  enrichRich,
   enrichRollback,
   enrichSandboxRefused,
   enrichSecondReady,
@@ -1014,7 +1015,7 @@ test("the command palette can put the page's card aside, and H does the same", a
   await page.keyboard.press("Meta+k");
   const dialog = page.getByRole("dialog");
   await page.keyboard.type("put aside");
-  const option = dialog.getByRole("option").filter({ hasText: /Put aside G-0004 · / });
+  const option = dialog.getByRole("option").filter({ hasText: /Put aside G-0004: / });
   await expect(option).toBeVisible();
   await expect(option.locator("kbd")).toHaveText("H");
   await page.keyboard.press("Escape");
@@ -1231,6 +1232,27 @@ test("the goal page's rail starts under the header, level with the decision card
   // (Held a breath under the view's top: its own padding.)
   await expect.poll(async () => Math.abs((await rail.boundingBox())!.y - (await view.boundingBox())!.y)).toBeLessThanOrEqual(21);
 });
+
+for (const route of ["overview", "inbox", "goal/G-0001", "goal/G-0002", "review/G-0003", "settings", "new"]) {
+  test(`the middle dot stands only on the instrument lines, the criteria scale and the budget (${route})`, async ({ page }) => {
+    await openTower(page, route, { enrich: enrichRich });
+    await settled(page, route);
+    const stray = await page.evaluate(() => {
+      const out: string[] = [];
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        if (!n.textContent?.includes("·")) continue;
+        const el = n.parentElement!;
+        // The instruments keep it; the supervisor's and the agent's own words are quoted as written.
+        if (el.closest(".criteria-bar, .budget-line, pre, code, .mono, .sentinel-prose, .decision-body, .claim-text, [aria-hidden='true']")) continue;
+        if (!el.getClientRects().length) continue;
+        out.push(`${el.className}: ${n.textContent.trim().slice(0, 60)}`);
+      }
+      return out;
+    });
+    expect(stray).toEqual([]);
+  });
+}
 
 test("a card's text field grows with its lines and stops at six, then scrolls", async ({ page }) => {
   await openTower(page, "inbox");

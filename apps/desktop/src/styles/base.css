@@ -132,6 +132,12 @@ kbd,
   color: var(--text-3);
   padding: 0 0.35em;
 }
+/* Most separators are only space now: a group is told by a gap and a change of weight, not by a dot. The middle
+   dot stays on the two instrument lines, the criteria scale and the budget. */
+.sep:empty {
+  display: inline-block;
+  padding: 0 0.3em;
+}
 .ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;

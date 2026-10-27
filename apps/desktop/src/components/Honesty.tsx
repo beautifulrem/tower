@@ -39,7 +39,7 @@ export function FactChip(props: { pin?: string | null; at?: number | null; child
         <span class="code-val">@{short(props.pin)}</span>
       </Show>
       <Show when={props.at}>
-        <span class="sep">·</span>
+        <span class="sep" />
         <span class="num">{ago(props.at, state.now)}</span>
       </Show>
     </span>
@@ -85,7 +85,9 @@ export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX
 export function HumanStamp(props: { at: number; children?: JSX.Element }) {
   return (
     <span class="human-stamp">
-      {t("common.you")} · {clock(props.at)}
+      {t("common.you")}
+      <span class="sep" />
+      <span class="num">{clock(props.at)}</span>
       {props.children}
     </span>
   );
@@ -310,7 +312,7 @@ export function CanaryLine(props: { c: CriterionView }) {
             <Match when={state() === "not_checked"}>
               <span title={t("goal.canaryNotCheckedLong")}>
                 {t("goal.canaryNotChecked")}
-                <span class="t4"> · {t("goal.canaryNotCheckedWhy")}</span>
+                <span class="t4">{t("goal.canaryNotCheckedWhy")}</span>
               </span>
             </Match>
             <Match when={state() === "tampered"}>
@@ -375,7 +377,7 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
             <Match when={redToGreen()}>
               <span class="num">{t("goal.redToGreen")}</span>
               <Show when={c().passes_with_source_only === true}>
-                <span class="t4">· {t("goal.withOriginalTests")}</span>
+                <span class="t4">{t("goal.withOriginalTests")}</span>
               </Show>
             </Match>
             <Match when={refused()}>

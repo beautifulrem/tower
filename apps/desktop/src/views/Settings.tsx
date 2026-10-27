@@ -600,7 +600,7 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
                     </Show>
                     <span class="num">{st().error ? t("settings.pushFailedAt", { time: clock(st().at) }) : t("settings.pushSentAt", { time: clock(st().at) })}</span>
                     <Show when={st().error}>
-                      <span class="sep">·</span>
+                      <span class="sep" />
                       <span class="t2">{st().error}</span>
                     </Show>
                   </>

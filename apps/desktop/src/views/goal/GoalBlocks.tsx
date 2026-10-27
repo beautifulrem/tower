@@ -195,9 +195,9 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
             <span />
             <span class="t1">
               <span class="diff-add">+{count(g().diffstat!.additions)}</span> <span class="diff-del">−{count(g().diffstat!.deletions)}</span>
-              <span class="sep">·</span>
+              <span class="sep" />
               <span class="t2">{t("common.files", { n: g().diffstat!.files })}</span>
-              <span class="sep">·</span>
+              <span class="sep" />
               <span class="t2">{t("goal.relativeToBase", { sha: short(d().base_commit) })}</span>
             </span>
             <span class="col-result col-quiet">{t("goal.snapshot")}</span>

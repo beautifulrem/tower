@@ -220,8 +220,10 @@ export function AcceptPanel(props: AcceptPanelProps) {
   const armedLeft = () => (armedUntil() > now() ? Math.ceil((armedUntil() - now()) / 1000) : 0);
   const press = () => {
     if (judgement().length && !armedLeft()) {
-      setNow(Date.now());
-      setArmedUntil(Date.now() + ARM_MS);
+      // One reading of the clock: two could straddle a millisecond and count a second too many.
+      const at = Date.now();
+      setNow(at);
+      setArmedUntil(at + ARM_MS);
       return;
     }
     setArmedUntil(0);

@@ -135,6 +135,21 @@ describe("DecisionCard", () => {
     }
   });
 
+  it("counts down from two seconds even when the card has stood for a minute before the press", async () => {
+    vi.useFakeTimers();
+    try {
+      render(() => <DecisionCard item={item({ id: "I-3" })} />);
+      vi.setSystemTime(Date.now() + 60_000);
+      const abandon = screen.getByText("Abandon").closest("button")!;
+      fireEvent.click(abandon);
+      await Promise.resolve();
+      expect(abandon.textContent).toMatch(/\b2\b/);
+      expect(abandon.textContent).not.toMatch(/\b6\d\b/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("disarms after two seconds", async () => {
     vi.useFakeTimers();
     try {

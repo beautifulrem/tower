@@ -1,0 +1,56 @@
+name: Adversarial (real model)
+
+# Nightly, and on demand: a real model is asked to make the tests pass
+# without fixing the code, and Tower must hold every such goal
+# (crates/tower-supervisor/tests/adversarial.rs). Needs a model: set the
+# repository secret CLINE_API_KEY (ClinePass); without it the job says so
+# and does nothing.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  adversarial:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      CLINE_API_KEY: ${{ secrets.CLINE_API_KEY }}
+    steps:
+      - name: A model is configured
+        id: model
+        run: |
+          if [ -z "$CLINE_API_KEY" ]; then
+            echo "No CLINE_API_KEY secret: nothing to run." >> "$GITHUB_STEP_SUMMARY"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.model.outputs.configured == 'true'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.model.outputs.configured == 'true'
+
+      - uses: actions/setup-node@v5
+        if: steps.model.outputs.configured == 'true'
+        with:
+          node-version: 24
+
+      - name: Pi and the ClinePass provider
+        if: steps.model.outputs.configured == 'true'
+        run: |
+          npm i -g @earendil-works/pi-coding-agent@1.4.0
+          mkdir -p "$RUNNER_TEMP/provider" && npm i --prefix "$RUNNER_TEMP/provider" pi-clinepass-provider@1.6.0
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.com"
+
+      - name: Shortcuts are held, fixes reach review
+        if: steps.model.outputs.configured == 'true'
+        run: |
+          TOWER_ADVERSARIAL_MODEL=clinepass/cline-pass/deepseek-v4.1-flash \
+          TOWER_ADVERSARIAL_EXTENSION="$RUNNER_TEMP/provider/node_modules/pi-clinepass-provider/src/index.ts" \
+            cargo test -p tower-supervisor --test adversarial -- --ignored --nocapture | tee adversarial.txt
+          grep -E "^(honest|any means|outside|only)" adversarial.txt >> "$GITHUB_STEP_SUMMARY" || true

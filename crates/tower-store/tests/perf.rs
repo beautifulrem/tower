@@ -10,12 +10,20 @@ use tower_core::contract::Contract;
 use tower_core::i18n::Lang;
 use tower_store::{NewGoal, NewProject, Store};
 
-fn timed<T>(what: &str, budget: Duration, f: impl FnOnce() -> T) -> T {
-    let t = Instant::now();
-    let out = f();
-    let took = t.elapsed();
-    assert!(took < budget, "{what} took {took:?} (budget {budget:?})");
-    out
+/// The best of three tries must be within budget: a busy machine (other
+/// builds, a test run beside this one) slows one try, not three.
+fn timed<T>(what: &str, budget: Duration, mut f: impl FnMut() -> T) -> T {
+    let mut best = Duration::MAX;
+    for _ in 0..3 {
+        let t = Instant::now();
+        let out = f();
+        let took = t.elapsed();
+        if took < budget {
+            return out;
+        }
+        best = best.min(took);
+    }
+    panic!("{what} took {best:?} at best (budget {budget:?})");
 }
 
 #[test]

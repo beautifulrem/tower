@@ -5,18 +5,17 @@
 //! state (`ADR-005`).
 
 mod menu;
+mod notify;
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_notification::NotificationExt;
 use tower_core::contract::{Contract, ContractIssue};
-use tower_core::tr;
 use tower_core::view::{
-    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, RemoteInfo, ReviewView,
-    Settings, TraceEntry,
+    EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, ModelInfo, ProjectView, RemoteInfo, ReviewView, Settings,
+    TraceEntry,
 };
 use tower_store::ProjectPatch;
 use tower_supervisor::{Config, Error, NewGoalInput, OpenTarget, Paths, ReviewComment, Supervisor, UiSink, UiUpdate};
@@ -28,111 +27,45 @@ const OPEN_EVENT: &str = "tower://open";
 #[derive(Default)]
 struct TauriSink {
     app: Option<AppHandle>,
-    /// Inbox items already announced, so each one notifies at most once.
-    seen: Mutex<HashSet<String>>,
+    /// What was announced (`notify` decides what to send).
+    announcer: Mutex<notify::Announcer>,
     /// The goal of the latest notification. Notifications on macOS cannot
     /// carry a click action here, so the next time Tower comes to the front
     /// it opens that goal.
     pending_open: Mutex<Option<(String, std::time::Instant)>>,
 }
 
-/// Items that hold up a goal until the human acts. Review-ready items wait
-/// for you but block nothing; they are counted separately in the interface.
-fn blocking(kind: InboxKind) -> bool {
-    !matches!(kind, InboxKind::ReviewReady)
-}
-
 fn badge(window: &tauri::WebviewWindow, items: &[InboxItem]) {
-    let n = items.iter().filter(|i| blocking(i.kind)).count();
-    let _ = window.set_badge_count((n > 0).then_some(n as i64));
-}
-
-/// At most `max` columns (CJK counts two), with an ellipsis when cut.
-fn clip(s: &str, max: usize) -> String {
-    let mut out = String::new();
-    let mut w = 0;
-    for c in s.chars() {
-        let cw = if (c as u32) >= 0x2E80 { 2 } else { 1 };
-        if w + cw > max {
-            return format!("{}…", out.trim_end());
-        }
-        out.push(c);
-        w += cw;
-    }
-    out
+    let _ = window.set_badge_count(notify::badge_count(items));
 }
 
 impl TauriSink {
-    /// The attention ladder (docs/08): the Dock badge counts items that block
-    /// a goal; a system notification is sent only for items that block a run
-    /// or need a way out, and only when Tower is not in front.
+    /// The attention ladder (docs/08), decided in `notify`.
     fn on_inbox(&self, items: &[InboxItem]) {
         let Some(app) = &self.app else { return };
         let Some(window) = app.get_webview_window("main") else { return };
         badge(&window, items);
-        let focused = window.is_focused().unwrap_or(false);
-        let settings = app.try_state::<Supervisor>().map(|s| s.settings());
-        let quiet = settings.as_ref().is_some_and(tower_supervisor::is_quiet);
-        let mut seen = self.seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        // Forget items no longer open (answered, or snoozed): a snoozed item
-        // that comes back is announced again.
-        seen.retain(|id| items.iter().any(|i| &i.id == id));
-        let mut announce: Vec<&InboxItem> = Vec::new();
-        for item in items {
-            let muted = settings.as_ref().is_some_and(|s| s.muted_goals.contains(&item.goal_id));
-            // While quiet nothing is marked as announced: items that waited
-            // are announced on the next update after the quiet ends.
-            if quiet || !seen.insert(item.id.clone()) || focused || muted {
-                continue;
-            }
-            let urgent = matches!(
-                item.kind,
-                InboxKind::Question
-                    | InboxKind::Approval
-                    | InboxKind::Paused
-                    | InboxKind::Stalled
-                    | InboxKind::CiFailed
-            );
-            if urgent {
-                announce.push(item);
-            }
-        }
-        let lang = app.try_state::<Supervisor>().map(|s| s.lang()).unwrap_or_default();
-        // Several at once (the end of a quiet time): one notification, not a
-        // burst.
-        if announce.len() > 2 {
-            let n = announce.len();
-            let goals: Vec<String> = announce.iter().map(|i| clip(&i.goal_title, 24)).collect();
-            let body = clip(&goals.join(" · "), 120);
-            let _ =
-                app.notification().builder().title(tr!(lang, "{n} 件事在等你", "{n} items need you")).body(body).show();
+        let sup = app.try_state::<Supervisor>();
+        let settings = sup.as_ref().map(|s| s.settings()).unwrap_or_default();
+        let now = notify::Moment {
+            focused: window.is_focused().unwrap_or(false),
+            quiet: tower_supervisor::is_quiet(&settings),
+            muted: &settings.muted_goals,
+            lang: sup.as_ref().map(|s| s.lang()).unwrap_or_default(),
+        };
+        let notes = self.announcer.lock().unwrap_or_else(std::sync::PoisonError::into_inner).plan(items, &now);
+        for note in notes {
+            let _ = app.notification().builder().title(note.title).body(note.body).show();
             *self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-                Some(("inbox".to_string(), std::time::Instant::now()));
-            return;
-        }
-        for item in announce {
-            // People remember goals by what they are about, not by number.
-            let title =
-                if item.goal_title.trim().is_empty() { item.goal_id.clone() } else { clip(&item.goal_title, 40) };
-            let what = match item.kind {
-                InboxKind::Question => tr!(lang, "提问", "Question"),
-                InboxKind::Approval => tr!(lang, "需要批准", "Approval"),
-                InboxKind::Paused => tr!(lang, "已暂停", "Paused"),
-                InboxKind::CiFailed => tr!(lang, "CI 未通过", "CI failed"),
-                _ => tr!(lang, "可能卡住", "May be stuck"),
-            };
-            let _ = app.notification().builder().title(title).body(format!("{what} · {}", item.title)).show();
-            *self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
-                Some((format!("goal/{}", item.goal_id), std::time::Instant::now()));
+                Some((note.route, std::time::Instant::now()));
         }
     }
 
-    /// Coming to the front within two minutes of a notification is taken as
-    /// answering it; later, it is just switching apps.
+    /// Coming to the front soon after a notification is taken as answering
+    /// it; later, it is just switching apps.
     fn on_focus(&self) {
         let pending = self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
-        let route = pending.filter(|(_, at)| at.elapsed() < std::time::Duration::from_secs(120)).map(|(r, _)| r);
-        if let (Some(app), Some(route)) = (&self.app, route) {
+        if let (Some(app), Some(route)) = (&self.app, notify::route_on_focus(pending, std::time::Instant::now())) {
             let _ = app.emit(OPEN_EVENT, route);
         }
     }
@@ -517,10 +450,7 @@ pub fn run() {
             });
             // Items already open at launch were announced before: badge them, don't notify again.
             if let Ok(items) = sup.inbox() {
-                sink.seen
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .extend(items.iter().map(|i| i.id.clone()));
+                sink.announcer.lock().unwrap_or_else(std::sync::PoisonError::into_inner).already_announced(&items);
                 if let Some(window) = handle.get_webview_window("main") {
                     badge(&window, &items);
                 }

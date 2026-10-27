@@ -457,6 +457,18 @@ fn remove_run(inner: &Inner, run: &Run) {
         }
     }
     inner.update_keep_awake();
+    // Nothing the agent started outlives its run (submitted, paused,
+    // abandoned or crashed): a server or watcher it left in the background
+    // would keep running agent code while nobody watches.
+    let n = crate::procs::stop_agent_leftovers(&inner.paths, &run.goal_id);
+    if n > 0 {
+        let text = tr!(
+            inner.lang(),
+            "运行结束时，Tower 停止了 Agent 留在后台的 {n} 个进程",
+            "When the run ended, Tower stopped {n} process(es) the agent left running in the background"
+        );
+        let _ = inner.append(&run.goal_id, EventKind::Note { text });
+    }
 }
 
 pub(crate) async fn stop_engine(inner: &Arc<Inner>, run: &Arc<Run>, why: Stop) {

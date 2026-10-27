@@ -14,10 +14,11 @@ use tower_verify::{Cancel, RunSpec};
 
 mod checks;
 mod guard;
+mod looks;
 mod processes;
 pub(super) use checks::{confirmed_refusal, mark_loading, paths_gone, sentinel_hit, tests_ran};
 use guard::{Coverage, Guard, Phase};
-use processes::{RemoveOnDrop, stop_survivors};
+use processes::RemoveOnDrop;
 
 use super::{Outcome, SETUP_TIMEOUT, append_hit, command_for, names_held_out, setup_may_use_network, tail_lines};
 use crate::prompts::Failure;
@@ -129,8 +130,11 @@ impl<'a> Bench<'a> {
         };
         let goal_dir = inner.paths.goal_dir(goal);
         let dirs = run::Dirs { work: &dir, tmp: &tmp, cache: &cache };
-        let jail =
-            |purpose: &str, network: bool| run::verifier_jail(inner, &goal_dir, &dirs, purpose, network, &tower_files);
+        // Loopback as the contract declares it (see `jail::Net`).
+        let jail = |purpose: &str, network: bool| {
+            let net = run::Net::new(&rec.contract, network);
+            run::verifier_jail(inner, &goal_dir, &dirs, purpose, &net, &tower_files)
+        };
         let online = jail("verify-setup", true)?;
         let offline = jail("verify-setup-offline", false)?;
         let criteria = jail("verify", rec.contract.network)?;
@@ -175,8 +179,9 @@ impl<'a> Bench<'a> {
             g.close();
         }
         let (dir, tmp, cache) = (self.dir.clone(), self.tmp.clone(), self._cache.0.clone());
+        let root = self.inner.paths.root.clone();
         let _ = tokio::task::spawn_blocking(move || {
-            stop_survivors(&[dir.clone(), tmp.clone(), cache.clone()]);
+            crate::procs::stop_verification_leftovers(&root, &[dir.clone(), tmp.clone(), cache.clone()]);
             for d in [&dir, &tmp, &cache] {
                 let _ = std::fs::remove_dir_all(d);
             }
@@ -204,9 +209,17 @@ impl<'a> Bench<'a> {
         let denied = !r.passed()
             && crate::run::sandbox_denied(&r.output_tail)
             && confirmed_refusal(&r.output_tail, profile, &self.dir).await.is_some();
+        // A connection the sandbox's closed loopback refused: the command
+        // could not run as meant here, whatever the test would have said.
+        let c = &self.rec.contract;
+        let loopback = !r.passed()
+            && profile != self.online.as_deref()
+            && !c.network
+            && !c.loopback_open
+            && crate::sandbox::loopback_refusal(&r.output_tail).is_some();
         Ran {
             passed: r.passed(),
-            environment_failure: r.is_environment_failure() || denied,
+            environment_failure: r.is_environment_failure() || denied || loopback,
             denied,
             exit_code: r.exit_code(),
             duration_ms: r.duration_ms,
@@ -273,37 +286,6 @@ impl<'a> Bench<'a> {
             .collect()
     }
 
-    /// Screenshots for `look` criteria on the current checkout.
-    async fn capture_looks(&self, ids: &[String], side: &str, rev: &str) -> Result<()> {
-        for c in self.rec.contract.criteria.iter().filter(|c| ids.contains(&c.id)) {
-            let CriterionKind::Look { start, url, timeout_secs, steps } = &c.kind else { continue };
-            let short: String = rev.chars().take(10).collect();
-            let out =
-                self.inner.paths.root.join("evidence").join(self.goal).join(format!("{}-{side}-{short}.png", c.id));
-            let r = crate::look::capture(
-                &self.dir,
-                &self.env,
-                self.criteria.as_deref(),
-                start,
-                url,
-                Duration::from_secs((*timeout_secs).max(5) as u64),
-                self.rec.contract.network,
-                steps.as_deref().unwrap_or_default(),
-                &out,
-            )
-            .await;
-            let (file, error) = match r {
-                Ok(p) => (Some(p.display().to_string()), None),
-                Err(e) => (None, Some(e)),
-            };
-            self.inner.append(
-                self.goal,
-                EventKind::LookCaptured { criterion: c.id.clone(), side: side.into(), pin: rev.into(), file, error },
-            )?;
-        }
-        Ok(())
-    }
-
     fn env_error(&self, id: &str, command: &str, r: &Ran) -> Outcome {
         let lang = self.inner.lang();
         let how = match r.exit_code {
@@ -311,6 +293,11 @@ impl<'a> Bench<'a> {
             None => tr!(lang, "未启动", "did not start"),
         };
         let tail = tail_lines(&r.output_tail, 20);
+        if let Some(port) = crate::sandbox::loopback_refusal(&r.output_tail).filter(|_| !r.denied) {
+            let cause = tower_core::env_cause::EnvCause::Loopback(port);
+            let problem = format!("{id} · `{command}`\n{tail}");
+            return Outcome::EnvError(tower_core::i18n::PauseNote::Blocked { cause, problem }.encode());
+        }
         if r.denied {
             return Outcome::EnvError(tr!(
                 lang,
@@ -350,8 +337,11 @@ impl<'a> Bench<'a> {
             .collect();
         if !looks_missing.is_empty() {
             let copied = self.local_files(false).await?;
-            self.capture_looks(&looks_missing, "base", &self.base.clone()).await?;
+            let env = self.capture_looks(&looks_missing, "base", &self.base.clone()).await?;
             self.remove(&copied);
+            if let Some(note) = env {
+                return Ok(Err(Outcome::EnvError(note)));
+            }
         }
         let mut red_on_base: Vec<String> = detail
             .criteria
@@ -509,7 +499,9 @@ impl<'a> Bench<'a> {
             .filter(|c| matches!(c.kind, CriterionKind::Look { .. }))
             .map(|c| c.id.clone())
             .collect();
-        self.capture_looks(&looks, "pin", pin).await?;
+        if let Some(note) = self.capture_looks(&looks, "pin", pin).await? {
+            return Ok((Outcome::EnvError(note), Vec::new()));
+        }
         if !failures.is_empty() {
             return Ok((Outcome::Failed(failures), Vec::new()));
         }

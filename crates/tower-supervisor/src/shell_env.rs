@@ -27,6 +27,20 @@ const PASS: &[&str] = &[
     "CARGO_HOME",
     "RUSTUP_HOME",
     "VOLTA_HOME",
+    // Version managers and toolchain choice, so the sandbox resolves
+    // toolchains as your terminal does (see sandbox::toolchains).
+    "FNM_DIR",
+    "ASDF_DIR",
+    "ASDF_DATA_DIR",
+    "MISE_DATA_DIR",
+    "PYENV_ROOT",
+    "RBENV_ROOT",
+    "NODENV_ROOT",
+    "N_PREFIX",
+    "SDKMAN_DIR",
+    "GOROOT",
+    "RUSTUP_TOOLCHAIN",
+    "DEVELOPER_DIR",
     "HTTP_PROXY",
     "HTTPS_PROXY",
     "NO_PROXY",
@@ -54,11 +68,15 @@ pub struct ShellEnv {
 }
 
 impl ShellEnv {
-    /// Reads the login shell environment; falls back to this process's
-    /// environment if the shell cannot be run within a few seconds.
+    /// Reads the environment your terminal has: an interactive login
+    /// shell's, as a new terminal window starts one (version managers such
+    /// as nvm, fnm and mise are often set up in the interactive startup
+    /// files only). Falls back to a non-interactive login shell, then to
+    /// this process's environment, if a shell does not finish in time.
     pub fn capture() -> Self {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-        let from_shell = run_with_timeout(&shell, Duration::from_secs(5));
+        let from_shell = run_with_timeout(&shell, &["-l", "-i", "-c"], Duration::from_secs(8))
+            .or_else(|| run_with_timeout(&shell, &["-l", "-c"], Duration::from_secs(5)));
         let raw: Vec<(String, String)> = match from_shell {
             Some(out) => parse_null_separated(&out),
             None => std::env::vars().collect(),
@@ -113,9 +131,14 @@ impl ShellEnv {
     }
 }
 
-fn run_with_timeout(shell: &str, timeout: Duration) -> Option<Vec<u8>> {
+/// Printed before the environment, so whatever the startup files print (a
+/// greeting, a prompt's escape codes) is told apart from it.
+const BEGIN: &str = "__TOWER_ENV_BEGIN__";
+
+fn run_with_timeout(shell: &str, flags: &[&str], timeout: Duration) -> Option<Vec<u8>> {
     let mut child = Command::new(shell)
-        .args(["-l", "-c", "env -0"])
+        .args(flags)
+        .arg(format!("printf '\\0{BEGIN}\\0'; env -0"))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -133,7 +156,12 @@ fn run_with_timeout(shell: &str, timeout: Duration) -> Option<Vec<u8>> {
         }
     }
     let out = child.wait_with_output().ok()?;
-    out.status.success().then_some(out.stdout)
+    if !out.status.success() {
+        return None;
+    }
+    let marker = format!("\0{BEGIN}\0");
+    let at = out.stdout.windows(marker.len()).position(|w| w == marker.as_bytes())?;
+    Some(out.stdout[at + marker.len()..].to_vec())
 }
 
 fn parse_null_separated(bytes: &[u8]) -> Vec<(String, String)> {
@@ -160,6 +188,19 @@ mod tests {
         assert!(env.get("EDITOR").is_none());
         assert!(env.get("PATH").unwrap().starts_with("/x:"));
         assert!(!env.without_credentials().iter().any(|(k, _)| k == "OPENAI_API_KEY"));
+    }
+
+    /// The environment is read from after the marker, whatever the shell's
+    /// startup files printed first.
+    #[test]
+    fn the_shell_environment_is_read_after_its_startup_output() {
+        let out = run_with_timeout("/bin/sh", &["-c", "echo hello;"], Duration::from_secs(5));
+        // `sh -c 'echo hello;' 'printf …'`: the script is the first word only.
+        assert!(out.is_none(), "no marker, no environment");
+        let out = run_with_timeout("/bin/sh", &["-c"], Duration::from_secs(5)).expect("sh runs");
+        let vars = parse_null_separated(&out);
+        assert!(vars.iter().any(|(k, _)| k == "PATH"), "{vars:?}");
+        assert!(!vars.iter().any(|(k, v)| k.contains(BEGIN) || v.contains(BEGIN)));
     }
 
     #[test]

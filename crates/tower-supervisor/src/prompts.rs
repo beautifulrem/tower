@@ -97,6 +97,26 @@ pub fn contract_brief(title: &str, c: &Contract) -> String {
         }
     }
     s.push_str(&format!("\n## Autonomy\n{}\n", autonomy_label(c.autonomy)));
+    if !c.network {
+        s.push_str("\n## Network\nNo network beyond this machine. ");
+        if c.loopback_open {
+            s.push_str(
+                "On this machine, every port except services that were already listening when a command started.\n",
+            );
+        } else {
+            let declared = c.declared_ports();
+            let list = if declared.is_empty() {
+                "none".to_string()
+            } else {
+                declared.iter().map(u16::to_string).collect::<Vec<_>>().join(", ")
+            };
+            s.push_str(&format!(
+                "On this machine, a command reaches only the ports the contract declares ({list}) and servers your \
+own earlier commands left listening (Tower opens their ports within seconds). A server a command starts and \
+connects to in the same command is unreachable unless it listens on a declared port.\n"
+            ));
+        }
+    }
     if !c.stop_conditions.is_empty() {
         s.push_str("\n## Stop and ask the human (ask_user) when\n");
         for k in &c.stop_conditions {

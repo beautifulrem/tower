@@ -3,8 +3,11 @@
 //! anything the agent can write.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::paths::real;
+use crate::sandbox::Loopback;
 use crate::{Inner, Result, sandbox};
 
 /// The sandbox profile and environment for one process of a goal: the
@@ -15,13 +18,32 @@ pub(crate) struct Jail {
     pub env: Vec<(String, String)>,
 }
 
+/// What a jail may reach: the network, or with it off, the loopback ports
+/// the contract declares (or all but what already listens, when the
+/// contract opens loopback).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Net {
+    pub network: bool,
+    pub ports: Vec<u16>,
+    pub open: bool,
+}
+
+impl Net {
+    /// `network` for this process (setup on your own code has it whatever
+    /// the contract says), loopback as the contract says.
+    pub(crate) fn new(contract: &tower_core::Contract, network: bool) -> Net {
+        Net { network, ports: contract.declared_ports(), open: contract.loopback_open }
+    }
+}
+
 fn home_of(inner: &Inner) -> PathBuf {
     real(&inner.env.get("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/")))
 }
 
 /// The jail of the agent's own processes (its shell and file tools, and the
 /// workspace setup): the goal's persistent package caches, which the agent
-/// can write.
+/// can write. Loopback also reaches whatever the agent's own processes
+/// listen on now (a dev server it started in an earlier command).
 pub(crate) fn agent_jail(
     inner: &Inner,
     goal: &tower_store::GoalRecord,
@@ -33,8 +55,10 @@ pub(crate) fn agent_jail(
     let goal_dir = inner.paths.goal_dir(&goal.id);
     std::fs::create_dir_all(&goal_dir)?;
     let cache = crate::caches::prepare(&goal_dir.join("cache"), &home_of(inner), dir)?;
+    let mut net = Net::new(&goal.contract, network);
+    net.ports.extend(own_ports(inner, &goal.id));
     let dirs = Dirs { work: dir, tmp, cache: &cache };
-    jail(inner, &goal_dir, &dirs, purpose, network, &TowerFiles::default())
+    jail(inner, &goal_dir, &dirs, purpose, &net, &TowerFiles::default())
 }
 
 /// The directories one sandboxed process works in.
@@ -46,6 +70,53 @@ pub(crate) struct Dirs<'a> {
     pub tmp: &'a Path,
     /// The private package caches.
     pub cache: &'a Path,
+}
+
+/// Tower's own files inside a sandboxed command's world.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct TowerFiles {
+    /// Readable, never writable.
+    pub read: Vec<PathBuf>,
+    /// Append-only: data may be added, nothing removed or rewritten.
+    pub append: Vec<PathBuf>,
+}
+
+/// Ports the goal's agent processes listen on now.
+pub(crate) fn own_ports(inner: &Inner, goal: &str) -> Vec<u16> {
+    let paths = &inner.paths;
+    let probes = [paths.workspace(goal), paths.tmp(goal)];
+    let id = crate::procs::Identity::new(&probes, &crate::procs::marker(&paths.root));
+    let mut ports: Vec<u16> =
+        sandbox::listeners().into_iter().filter(|l| l.pid.is_some_and(|p| id.holds(p))).map(|l| l.port).collect();
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+}
+
+/// Keeps the agent's profile in step with the servers its own processes
+/// start: a profile is fixed when a command starts, so the next command
+/// can reach a server an earlier one left listening. Stops with the run.
+pub(crate) async fn follow_agent_listeners(inner: Arc<Inner>, goal: String, run_no: u32) {
+    let mut known = own_ports(&inner, &goal);
+    let mut tick = tokio::time::interval(Duration::from_secs(2));
+    loop {
+        tick.tick().await;
+        if inner.run_of(&goal).is_none_or(|r| r.run_no != run_no) {
+            break;
+        }
+        let (inner2, goal2) = (inner.clone(), goal.clone());
+        let now = tokio::task::spawn_blocking(move || own_ports(&inner2, &goal2)).await.unwrap_or_default();
+        if now == known {
+            continue;
+        }
+        known = now;
+        let Ok(rec) = inner.store(|s| s.goal(&goal)) else { break };
+        let Some(ws) = rec.workspace.clone() else { break };
+        let tmp = inner.paths.tmp(&goal);
+        if let Err(e) = agent_jail(&inner, &rec, Path::new(&ws), &tmp, "agent", rec.contract.network) {
+            tracing::warn!(goal = %goal, error = %e, "could not refresh the agent's loopback ports");
+        }
+    }
 }
 
 /// The jail of verification: nothing the agent could write may influence a
@@ -61,20 +132,11 @@ pub(crate) fn verifier_jail(
     profile_dir: &Path,
     dirs: &Dirs,
     purpose: &str,
-    network: bool,
+    net: &Net,
     tower_files: &TowerFiles,
 ) -> Result<Jail> {
     let cache = crate::caches::prepare(dirs.cache, &home_of(inner), dirs.work)?;
-    jail(inner, profile_dir, &Dirs { cache: &cache, ..*dirs }, purpose, network, tower_files)
-}
-
-/// Tower's own files inside a sandboxed command's world.
-#[derive(Debug, Default, Clone)]
-pub(crate) struct TowerFiles {
-    /// Readable, never writable.
-    pub read: Vec<PathBuf>,
-    /// Append-only: data may be added, nothing removed or rewritten.
-    pub append: Vec<PathBuf>,
+    jail(inner, profile_dir, &Dirs { cache: &cache, ..*dirs }, purpose, net, tower_files)
 }
 
 fn jail(
@@ -82,7 +144,7 @@ fn jail(
     profile_dir: &Path,
     dirs: &Dirs,
     purpose: &str,
-    network: bool,
+    net: &Net,
     tower_files: &TowerFiles,
 ) -> Result<Jail> {
     let (dir, tmp, cache) = (dirs.work, dirs.tmp, dirs.cache.to_path_buf());
@@ -94,46 +156,57 @@ fn jail(
     env.push(("TMPDIR".into(), real(tmp).display().to_string()));
     // pnpm keeps its store locks here (default /tmp, not writable in the sandbox).
     env.push(("XDG_RUNTIME_DIR".into(), real(tmp).display().to_string()));
+    // Version managers resolve as in your terminal (see sandbox::toolchains).
+    env.extend(sandbox::toolchain_env(&home, &cache));
+    let pairs = inner.env.pairs();
     // Apple's /usr/bin developer tools (git, clang, make, python3) are shims
     // that go through xcrun, which insists on a cache in the shared per-user
-    // temporary folder the sandbox closes. The real tools come just before /usr/bin on PATH (so Homebrew's, earlier on PATH, still win).
-    if let Some(dev) = sandbox::developer_bin() {
-        let mut path = sandbox::path_with_developer_tools(inner.env.get("PATH").unwrap_or("/usr/bin:/bin"), &dev);
+    // temporary folder the sandbox closes. The real tools of the developer
+    // directory your terminal uses come just before /usr/bin on PATH (so
+    // Homebrew's, earlier on PATH, still win).
+    if let Some(dev) = sandbox::developer_dir(&pairs) {
+        let mut path =
+            sandbox::path_with_developer_tools(inner.env.get("PATH").unwrap_or("/usr/bin:/bin"), &dev.join("usr/bin"));
         // With a full Xcode, cc and ld are in its toolchain, not beside git.
-        if let Some(tc) = sandbox::toolchain_bin() {
+        if let Some(tc) = sandbox::toolchain_bin(&dev) {
             path = sandbox::path_with_developer_tools(&path, &tc);
         }
         env.push(("PATH".into(), path));
-        if let Some(sdk) = sandbox::sdk_root() {
+        if let Some(sdk) = sandbox::sdk_root(&dev) {
             env.push(("SDKROOT".into(), sdk));
         }
     }
     let profile = if sandbox::available() {
         let path = goal_dir.join(format!("{purpose}.sb"));
+        let proxies = sandbox::proxy_ports(&pairs);
+        let loopback = if net.open {
+            // Whatever listens now, but never what the contract declares.
+            let mut closed = sandbox::listening_ports();
+            closed.retain(|p| !net.ports.contains(p));
+            Loopback::AllBut(closed)
+        } else {
+            Loopback::Only(net.ports.clone())
+        };
         let spec = sandbox::Spec {
             workspace: real(dir),
             tmp: real(tmp),
             cache,
             read: {
-                let mut read = sandbox::path_toolchains(inner.env.get("PATH").unwrap_or(""), &home);
+                let mut read = sandbox::toolchain_reads(&pairs, &home);
                 read.extend(tower_files.read.iter().map(|p| real(p)));
                 read
             },
             append: tower_files.append.iter().map(|p| real(p)).collect(),
             home,
-            network,
-            // Proxies, and whatever already listens on this Mac.
-            proxy_ports: {
-                let mut p = sandbox::proxy_ports(&inner.env.pairs());
-                if !network {
-                    p.extend(sandbox::listening_ports());
-                    p.sort_unstable();
-                    p.dedup();
-                }
-                p
-            },
+            network: net.network,
+            loopback,
+            proxy_ports: proxies,
         };
-        std::fs::write(&path, sandbox::profile(&spec))?;
+        // Replaced whole: a command starting meanwhile reads the old or the
+        // new profile, never half of one.
+        let part = goal_dir.join(format!(".{purpose}.sb.{}", uuid::Uuid::new_v4().simple()));
+        std::fs::write(&part, sandbox::profile(&spec))?;
+        std::fs::rename(&part, &path)?;
         Some(path)
     } else {
         None

@@ -60,8 +60,9 @@ async fn check(inner: &Arc<Inner>, project_id: &str) -> Result<()> {
         env.push(("CI".into(), "1".into()));
         // The base's dependencies are the user's own: setup may use the network.
         let dirs = run::Dirs { work: &dir, tmp: &tmp, cache: &cache };
-        let setup_jail = run::verifier_jail(inner, &work, &dirs, "check-setup", true, &Default::default())?;
-        let jail = run::verifier_jail(inner, &work, &dirs, "check", false, &Default::default())?;
+        let online = run::Net { network: true, ..Default::default() };
+        let setup_jail = run::verifier_jail(inner, &work, &dirs, "check-setup", &online, &Default::default())?;
+        let jail = run::verifier_jail(inner, &work, &dirs, "check", &run::Net::default(), &Default::default())?;
         let mut test_env = env.clone();
         test_env.extend(jail.env);
         env.extend(setup_jail.env);

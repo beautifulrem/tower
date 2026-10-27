@@ -417,10 +417,19 @@ pub enum PauseNote {
     SetupFails(crate::reasons::SetupFails),
     /// The preflight: the criteria cannot run on your own code.
     CannotRunOnBase(crate::reasons::Preflight),
+    /// A criterion could not run in the verification sandbox on the agent's
+    /// snapshot, for a cause Tower recognises; the output as it was.
+    Blocked { cause: crate::env_cause::EnvCause, problem: String },
+    /// Something else already listens on the port a `look` app must use.
+    PortTaken { criterion: String, port: u16, holder: String },
+    /// What answers a `look` URL is not the app the verification started.
+    NotOwnListener { criterion: String, port: u16, holder: String },
 }
 
 impl PauseNote {
     const MARK: char = '\u{1e}';
+    /// Between the fields of notes that hold free text.
+    const SEP: char = '\u{1d}';
 
     pub fn encode(&self) -> String {
         let m = Self::MARK;
@@ -431,6 +440,13 @@ impl PauseNote {
             PauseNote::FailedAfter { criteria, reworks } => format!("{m}failed_after {reworks} {}", criteria.join(",")),
             PauseNote::SetupFails(s) => format!("{m}setup_fails {}", serde_json::to_string(s).unwrap_or_default()),
             PauseNote::CannotRunOnBase(p) => format!("{m}cannot_run {}", serde_json::to_string(p).unwrap_or_default()),
+            PauseNote::Blocked { cause, problem } => format!("{m}blocked {}{}{problem}", cause.code(), Self::SEP),
+            PauseNote::PortTaken { criterion, port, holder } => {
+                format!("{m}port_taken {criterion}{s}{port}{s}{holder}", s = Self::SEP)
+            }
+            PauseNote::NotOwnListener { criterion, port, holder } => {
+                format!("{m}not_own {criterion}{s}{port}{s}{holder}", s = Self::SEP)
+            }
         }
     }
 
@@ -450,6 +466,22 @@ impl PauseNote {
             }
             "setup_fails" => serde_json::from_str(args).ok().map(PauseNote::SetupFails),
             "cannot_run" => serde_json::from_str(args).ok().map(PauseNote::CannotRunOnBase),
+            "blocked" => {
+                let (cause, problem) = args.split_once(Self::SEP)?;
+                Some(PauseNote::Blocked {
+                    cause: crate::env_cause::EnvCause::from_code(cause)?,
+                    problem: problem.to_string(),
+                })
+            }
+            "port_taken" | "not_own" => {
+                let mut f = args.splitn(3, Self::SEP);
+                let (criterion, port, holder) = (f.next()?.to_string(), f.next()?.parse().ok()?, f.next()?.to_string());
+                Some(if kind == "port_taken" {
+                    PauseNote::PortTaken { criterion, port, holder }
+                } else {
+                    PauseNote::NotOwnListener { criterion, port, holder }
+                })
+            }
             _ => None,
         }
     }
@@ -474,6 +506,24 @@ impl PauseNote {
             },
             PauseNote::SetupFails(s) => s.text(lang),
             PauseNote::CannotRunOnBase(p) => p.text(lang),
+            PauseNote::Blocked { cause, problem } => {
+                let intro = tr!(
+                    lang,
+                    "验收标准在验证沙箱里没法运行。这不是测试失败。",
+                    "A criterion could not run in the verification sandbox. This is not a test failure."
+                );
+                format!("{intro} {}\n\n{problem}", cause.text(lang))
+            }
+            PauseNote::PortTaken { criterion, port, holder } => tr!(
+                lang,
+                "端口 {port} 上已经有别的程序在监听（{holder}），而 {criterion} 的应用要在这个端口启动。截图可能拍到那个程序，而不是验证启动的应用，所以 Tower 没有截图。停掉它，或者在标准里给应用换一个端口，然后点“重新验证”。",
+                "Something else is already listening on port {port} ({holder}), where the app of {criterion} must start. A screenshot could show that program instead of the app the verification starts, so Tower took none. Stop it, or give the app another port in the criterion, then verify again."
+            ),
+            PauseNote::NotOwnListener { criterion, port, holder } => tr!(
+                lang,
+                "回应 {criterion} 地址的，是端口 {port} 上验证没有启动的程序（{holder}），不是验证启动的应用，所以 Tower 没有截图。停掉它，然后点“重新验证”。",
+                "What answered the address of {criterion} on port {port} is a program the verification did not start ({holder}), not the app it started, so Tower took no screenshot. Stop it, then verify again."
+            ),
         }
     }
 
@@ -588,6 +638,24 @@ mod tests {
                 .ends_with("准备命令 `npm ci` 在基线提交上就失败了（与 Agent 的改动无关）：\nERR")
         );
         assert!(PauseNote::render(&setup, Lang::En).starts_with("The setup command `npm ci` fails on the base commit"));
+    }
+
+    #[test]
+    fn environment_notes_are_put_into_words_on_read() {
+        let n = PauseNote::PortTaken { criterion: "C2".into(), port: 17010, holder: "python3 (pid 42)".into() };
+        assert_eq!(PauseNote::decode(&n.encode()), Some(n.clone()));
+        assert!(
+            PauseNote::render(&n.encode(), Lang::En).starts_with("Something else is already listening on port 17010")
+        );
+        assert!(PauseNote::render(&n.encode(), Lang::Zh).starts_with("端口 17010 上已经有别的程序在监听"));
+        let n = PauseNote::Blocked {
+            cause: crate::env_cause::EnvCause::Loopback(5432),
+            problem: "C1 · `npm test`\nError: connect EPERM 127.0.0.1:5432".into(),
+        };
+        assert_eq!(PauseNote::decode(&n.encode()), Some(n.clone()));
+        let en = PauseNote::render(&n.encode(), Lang::En);
+        assert!(en.contains("port 5432 on this machine") && en.ends_with("connect EPERM 127.0.0.1:5432"), "{en}");
+        assert!(PauseNote::render(&n.encode(), Lang::Zh).contains("本机端口 5432"));
     }
 
     #[test]

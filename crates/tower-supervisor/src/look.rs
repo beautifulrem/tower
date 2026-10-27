@@ -56,10 +56,50 @@ fn answers(url: &str) -> bool {
     line.split_whitespace().nth(1).and_then(|c| c.parse::<u16>().ok()).is_some_and(|c| c < 400)
 }
 
-/// Starts the app, captures `url` into `out`, stops the app. Returns why
-/// there is no screenshot otherwise.
+/// Why there is no screenshot.
+#[derive(Debug)]
+pub(crate) enum LookError {
+    /// The picture could not be taken (the page, the browser, a step).
+    Shot(String),
+    /// The picture could not be evidence: something other than the app the
+    /// verification started holds or answers its port. A stored pause note.
+    Environment(String),
+}
+
+impl From<String> for LookError {
+    fn from(s: String) -> Self {
+        LookError::Shot(s)
+    }
+}
+
+impl From<&str> for LookError {
+    fn from(s: &str) -> Self {
+        LookError::Shot(s.to_string())
+    }
+}
+
+/// `name, pid n` of a listener, as far as the system says.
+fn holder(pid: Option<i32>) -> String {
+    let Some(pid) = pid else { return "?".into() };
+    let name = std::process::Command::new("/bin/ps")
+        .args(["-o", "comm=", "-p", &pid.to_string()])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().rsplit('/').next().unwrap_or_default().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "?".into());
+    format!("{name}, pid {pid}")
+}
+
+/// Starts the app, captures `url` into `out`, stops the app. The picture
+/// is only ever of the app this call started: the port must be free
+/// before it starts, and every listener on it afterwards must be in the
+/// verification's own sandbox (`dir`'s; without a sandbox, the app's
+/// process group).
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn capture(
+    id: &str,
+    root: &Path,
     dir: &Path,
     env: &[(String, String)],
     profile: Option<&Path>,
@@ -69,12 +109,32 @@ pub(crate) async fn capture(
     network: bool,
     steps: &[String],
     out: &Path,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, LookError> {
     let steps: Vec<tower_core::contract::LookStep> = steps
         .iter()
         .map(|s| tower_core::contract::LookStep::parse(s))
         .collect::<Result<_, _>>()
         .map_err(|e| format!("a step is not understood: {e}"))?;
+    let port =
+        split(url).and_then(|(h, _)| h.rsplit(':').next()?.parse::<u16>().ok()).ok_or("the URL names no port")?;
+    // Taken already: whatever answers would not be the app started here.
+    // (An app this verification stopped a moment ago may still be on its
+    // way out: a few seconds' grace.)
+    let taken = tokio::task::spawn_blocking(move || {
+        for _ in 0..20 {
+            if crate::sandbox::port_free(port) {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        Some(crate::sandbox::listeners().into_iter().find(|l| l.port == port).and_then(|l| l.pid))
+    })
+    .await
+    .unwrap_or(None);
+    if let Some(pid) = taken {
+        let note = tower_core::i18n::PauseNote::PortTaken { criterion: id.into(), port, holder: holder(pid) };
+        return Err(LookError::Environment(note.encode()));
+    }
     let browser = browser().ok_or("no Chrome, Chromium, Edge, Brave or Arc to take screenshots with")?;
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -102,7 +162,7 @@ pub(crate) async fn capture(
     while Instant::now() < deadline {
         if let Ok(Some(status)) = app.try_wait() {
             stop();
-            return Err(format!("`{start}` exited ({status}) before {url} answered"));
+            return Err(format!("`{start}` exited ({status}) before {url} answered").into());
         }
         let u = url.to_string();
         if tokio::task::spawn_blocking(move || answers(&u)).await.unwrap_or(false) {
@@ -113,7 +173,17 @@ pub(crate) async fn capture(
     }
     if !ready {
         stop();
-        return Err(format!("{url} did not answer within {}s", timeout.as_secs()));
+        return Err(format!("{url} did not answer within {}s", timeout.as_secs()).into());
+    }
+    // Every listener on the port must be the verification's own, and the
+    // browser reaches only the ports the app's processes listen on.
+    let own = Own { root: root.to_path_buf(), dir: dir.to_path_buf(), pgid: pgid.map(|p| p as i32) };
+    let (foreign, app_ports) =
+        tokio::task::spawn_blocking(move || own.check(port)).await.unwrap_or((Some(None), Vec::new()));
+    if let Some(pid) = foreign {
+        stop();
+        let note = tower_core::i18n::PauseNote::NotOwnListener { criterion: id.into(), port, holder: holder(pid) };
+        return Err(LookError::Environment(note.encode()));
     }
     let profile_dir = tempfile_dir();
     let out_dir = out.parent().unwrap_or(Path::new("/nonexistent")).to_path_buf();
@@ -124,18 +194,18 @@ pub(crate) async fn capture(
         let home = crate::paths::real(&std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default());
         // Seatbelt matches resolved paths (`/var` is `/private/var`).
         let (profile_real, out_real) = (crate::paths::real(&profile_dir), crate::paths::real(&out_dir));
-        let lib = home.join("Library");
-        let support = app_support_dir(browser).map(|d| lib.join("Application Support").join(d));
-        let mut readable = vec![lib.join("Fonts"), lib.join("Preferences"), lib.join("Caches")];
-        readable.extend(support);
-        let readable: Vec<&Path> = readable.iter().map(PathBuf::as_path).collect();
-        let text = crate::sandbox::browser_profile(
-            &home,
-            &readable,
-            &[&profile_real, &out_real],
+        let fonts = home.join("Library/Fonts");
+        let user_temp = user_temp_dir();
+        let text = crate::sandbox::browser_profile(&crate::sandbox::BrowserSpec {
+            browser: Path::new(browser),
+            home: &home,
+            readable: &[&fonts],
+            writable: &[&profile_real, &out_real],
+            user_temp: user_temp.as_deref(),
+            ports: &app_ports,
             network,
-            &crate::sandbox::proxy_ports(env),
-        );
+            proxy_ports: &crate::sandbox::proxy_ports(env),
+        });
         std::fs::write(&sb, text).map(|_| sb)
     });
     let mut cmd = match &confined {
@@ -146,7 +216,7 @@ pub(crate) async fn capture(
         }
         Some(Err(e)) => {
             stop();
-            return Err(format!("could not prepare the browser's sandbox: {e}"));
+            return Err(format!("could not prepare the browser's sandbox: {e}").into());
         }
         None => tokio::process::Command::new(browser),
     };
@@ -197,7 +267,7 @@ pub(crate) async fn capture(
         let r = with_steps(&mut cmd, url, &steps, out, timeout.max(Duration::from_secs(10))).await;
         stop();
         let _ = std::fs::remove_dir_all(&profile_dir);
-        return r.map(|_| out.to_path_buf());
+        return r.map(|_| out.to_path_buf()).map_err(LookError::Shot);
     }
     let shot = tokio::time::timeout(
         Duration::from_secs(45),
@@ -214,9 +284,9 @@ pub(crate) async fn capture(
             let mut tail: Vec<&str> =
                 err.lines().filter(|l| !l.contains("DisplayLink") && !l.trim().is_empty()).rev().take(6).collect();
             tail.reverse();
-            Err(format!("the browser could not take the screenshot ({}): {}", o.status, tail.join(" / ")))
+            Err(format!("the browser could not take the screenshot ({}): {}", o.status, tail.join(" / ")).into())
         }
-        Ok(Err(e)) => Err(format!("the browser did not start: {e}")),
+        Ok(Err(e)) => Err(format!("the browser did not start: {e}").into()),
         Err(_) => Err("the browser took too long".into()),
     }
 }
@@ -261,6 +331,47 @@ async fn with_steps(
     r
 }
 
+/// Who may answer a `look` URL: the verification's own processes.
+struct Own {
+    root: PathBuf,
+    dir: PathBuf,
+    pgid: Option<i32>,
+}
+
+impl Own {
+    fn holds(&self, pid: i32, id: &crate::procs::Identity) -> bool {
+        if crate::sandbox::available() {
+            id.holds(pid)
+        } else {
+            self.pgid.is_some() && crate::procs::pgid(pid) == self.pgid
+        }
+    }
+
+    /// A listener on `port` that is not the verification's own (`Some(pid)`,
+    /// the pid when the system names one), and the ports the
+    /// verification's own processes listen on.
+    fn check(&self, port: u16) -> (Option<Option<i32>>, Vec<u16>) {
+        let id = crate::procs::Identity::new(std::slice::from_ref(&self.dir), &crate::procs::marker(&self.root));
+        let all = crate::sandbox::listeners();
+        let mine = |l: &crate::sandbox::Listener| l.pid.is_some_and(|p| self.holds(p, &id));
+        let foreign = all.iter().filter(|l| l.port == port).find(|l| !mine(l)).map(|l| l.pid);
+        let mut ports: Vec<u16> = all.iter().filter(|l| mine(l)).map(|l| l.port).collect();
+        ports.push(port);
+        ports.sort_unstable();
+        ports.dedup();
+        (foreign, ports)
+    }
+}
+
+/// Your per-user temporary folders (the parent of `…/T` and `…/C`), where
+/// a browser keeps its single-instance socket whatever `TMPDIR` says.
+fn user_temp_dir() -> Option<PathBuf> {
+    let out = std::process::Command::new("/usr/bin/getconf").arg("DARWIN_USER_TEMP_DIR").output().ok()?;
+    let t = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+    let parent = crate::paths::real(t.parent()?);
+    parent.starts_with("/private/var/folders").then_some(parent)
+}
+
 fn tempfile_dir() -> PathBuf {
     let d = std::env::temp_dir().join(format!("tower-look-{}", uuid::Uuid::new_v4().simple()));
     let _ = std::fs::create_dir_all(&d);
@@ -303,5 +414,48 @@ mod tests {
         assert_eq!(split("http://localhost:3000/cart").unwrap(), ("127.0.0.1:3000".into(), "/cart".into()));
         assert_eq!(split("http://127.0.0.1:8080").unwrap(), ("127.0.0.1:8080".into(), "/".into()));
         assert!(split("https://example.com").is_none());
+    }
+
+    /// Only a listener in the verification's own sandbox counts as the
+    /// app: one of yours (or anyone else's) on the port does not, and the
+    /// browser is given only the app's ports.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_app_is_told_from_another_program_on_its_port() {
+        if !crate::sandbox::available() {
+            return;
+        }
+        let tmp = tempfile::tempdir_in("/tmp").unwrap();
+        let root = crate::paths::real(tmp.path());
+        let dir = root.join("checkout");
+        std::fs::create_dir_all(&dir).unwrap();
+        crate::procs::ensure_marker(&root).unwrap();
+        let sb = root.join("v.sb");
+        std::fs::write(
+            &sb,
+            format!(
+                "(version 1)\n(allow default)\n(deny file-write*)\n(allow file-write* (subpath \"{}\") (literal \"/dev/null\"))\n",
+                dir.display()
+            ),
+        )
+        .unwrap();
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let mut app = std::process::Command::new("/usr/bin/sandbox-exec")
+            .arg("-f")
+            .arg(&sb)
+            .args(["/usr/bin/nc", "-l", "127.0.0.1", &port.to_string()])
+            .spawn()
+            .unwrap();
+        let yours = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let your_port = yours.local_addr().unwrap().port();
+        std::thread::sleep(Duration::from_millis(400));
+        let own = Own { root: root.clone(), dir, pgid: None };
+        let (foreign, ports) = own.check(port);
+        assert_eq!(foreign, None, "the verification's own listener");
+        assert!(ports.contains(&port) && !ports.contains(&your_port), "{ports:?}");
+        let (foreign, _) = own.check(your_port);
+        assert_eq!(foreign, Some(Some(std::process::id() as i32)), "yours is not the app");
+        let _ = app.kill();
+        let _ = app.wait();
     }
 }

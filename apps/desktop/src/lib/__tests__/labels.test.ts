@@ -37,7 +37,7 @@ describe("the environment gauge strip", () => {
     expect(envGauges(full, "pi")[0].title).toBe("/opt/homebrew/bin/pi");
   });
   it("carries each problem's own mark: ■ for a broken engine, ◆ for a missing identity, ◇ for no sandbox", () => {
-    expect(reading(with_("git_identity_missing", "no_sandbox"))).toEqual(["Pi ok 1.4.2", "git ok 2.56.0", "Sandbox notice none", "Identity attention not set"]);
+    expect(reading(with_("git_identity_missing", "no_sandbox"))).toEqual(["Pi ok 1.4.2", "git ok 2.56.0", "Sandbox notice none", "Identity notice not set"]);
     expect(reading(with_("pi_too_old"))[0]).toBe("Pi danger 1.4.2");
     expect(reading({ ...full, pi_version: null, pi_path: null } as EnvironmentStatus)[0]).toBe("Pi danger Not found");
     expect(reading({ ...full, pi_version: null } as EnvironmentStatus)[0]).toBe("Pi danger can't run");

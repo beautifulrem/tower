@@ -2305,18 +2305,19 @@ input[type="radio"] {
   flex: 0 0 auto;
   align-self: center;
 }
-/* The refused path, lifted out of the tail: ◇ · what · the path in mono · where it is fixed, on one line that wraps
-   at its parts, never inside the path's words. */
+/* The refused path, lifted out of the tail: the detail of the environment line above it, so it wears no mark of its
+   own and hangs under that line's words — what, the path in mono, then where it is fixed, a step apart, on one line
+   that wraps at its parts, never inside the path's words. */
 .decision-refused {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 6px;
   margin: 2px 0 0;
+  padding-left: calc(14px + 6px);
 }
-.decision-refused .glyph {
-  flex: 0 0 auto;
-  align-self: center;
+.decision-refused-link {
+  margin-left: var(--sp-3);
 }
 .decision-refused .code-val {
   overflow-wrap: anywhere;
@@ -3184,8 +3185,13 @@ input[type="radio"] {
   font-size: var(--fs-meta);
   color: var(--text-1);
 }
-.panel-blockers div::first-letter {
-  color: var(--st-danger);
+.panel-blocker {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.panel-blocker .glyph {
+  flex: 0 0 auto;
 }
 .panel-actions {
   display: flex;

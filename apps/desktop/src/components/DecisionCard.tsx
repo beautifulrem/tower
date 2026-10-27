@@ -379,13 +379,11 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             <Show when={envProblem() && refusedPaths(parts().tail)[0]}>
               {(path) => (
                 <p class="decision-refused meta">
-                  <NoticeMark />
                   <span class="t2">{t("decision.refused")}</span>
                   <code class="code-val t1 break">{path()}</code>
                   <Show when={goal()}>
                     {(g) => (
                       <>
-                        <span class="sep t3">·</span>
                         <button class="link-quiet text-btn decision-refused-link" onClick={() => goProjectSetting(g().project_id, "test")}>
                           {t("decision.projectSettings", { name: g().project_name })}
                           <Icon name="chevron-right" size={10} />

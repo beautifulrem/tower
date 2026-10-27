@@ -9,8 +9,9 @@
  *
  * Shape vocabulary: a ring is a goal; dashes are the claim register ("said,
  * not proven"); a check inside a ring is the verifier's word; a solid disc
- * is sealed. Triangles are not used for lifecycle at all — they read as
- * warnings and are kept for sentinels and environment errors.
+ * is sealed. There are no warning triangles: a sentinel's finding is the
+ * danger square, an environment problem the sandbox's open box, one glyph
+ * per fact wherever the fact is said.
  */
 import { type JSX, Match, Show, Switch } from "solid-js";
 
@@ -216,7 +217,7 @@ export type IconName =
   | "stale"
   | "ring-check"
   | "ring-cross"
-  | "warn"
+  | "sandbox"
   | "return"
   | "sliders"
   | "pulse"
@@ -286,13 +287,9 @@ const PATHS: Record<IconName, () => JSX.Element> = {
       <path d="M4.2 4.2 L7.8 7.8 M7.8 4.2 L4.2 7.8" />
     </>
   ),
-  warn: () => (
-    <>
-      <path d="M6 1.6 L11 10.4 H1 Z" stroke-linejoin="miter" />
-      <path d="M6 4.6 V7.1" />
-      <circle cx="6" cy="8.9" r="0.7" fill="currentColor" stroke="none" />
-    </>
-  ),
+  /* The environment: the sandbox's box, its wall broken where something tried to pass. Not a warning triangle — an
+     environment problem is nobody's failure — and not ◇ or ◆, which belong to notices and decisions. */
+  sandbox: () => <path d="M4.5 2 H2 V10 H10 V2 H7.5" />,
   return: () => <path d="M2.75 1.75 V7.75 H9.75 M7.5 5.5 L9.75 7.75 L7.5 10" />,
   sliders: () => (
     <>
@@ -383,7 +380,7 @@ const RESULT_ICON: Record<ResultKind, IconName> = {
   "obs-pass": "ring-check",
   "obs-fail": "ring-cross",
   pending: "ring",
-  env: "warn",
+  env: "sandbox",
 };
 
 /**

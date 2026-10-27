@@ -981,15 +981,17 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   await expect(settingsRow.getByRole("button", { name: "Set in git" })).toBeVisible();
   // With projects, where to write it is a choice: every repository, or one of them.
   await expect(settingsRow.getByRole("button", { name: /^Where: Every repository/ })).toBeVisible();
-  // Settings › Environment is a gauge strip: one line of readings, the missing identity wearing its ◆, the problem spelled out under it.
+  // Settings › Environment is a gauge strip: one line of readings, the missing identity wearing the ◇ its check row wears
+  // (it blocks a branch, not a run), the problem spelled out under it.
   const gauges = page.locator(".env-gauges .env-gauge");
   await expect(gauges).toHaveCount(4);
   await expect(gauges.nth(0)).toContainText("Pi");
   await expect(gauges.nth(1)).toContainText("git");
   await expect(gauges.nth(2)).toContainText("Sandbox");
   await expect(gauges.nth(3)).toContainText("Identity");
-  await expect(gauges.nth(3)).toHaveAttribute("data-mark", "attention");
-  await expect(gauges.nth(3).locator(".mark-attention")).toBeVisible();
+  await expect(gauges.nth(3)).toHaveAttribute("data-mark", "notice");
+  await expect(gauges.nth(3).locator(".mark-attention")).toHaveCount(0);
+  await expect(settingsRow.locator(".check-mark .mark-attention")).toHaveCount(0);
   await expect(gauges.nth(3)).toContainText("not set");
   const ys = await gauges.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().y));
   expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(1);

@@ -40,6 +40,18 @@ describe("LoopbackLine", () => {
   });
 });
 
+describe("ConsistencyBadge", () => {
+  it("keeps the failure's red × for a refutation: 'Cannot confirm' is not evidence, and wears the ◆", () => {
+    const { ConsistencyBadge } = Honesty;
+    const no = render(() => <ConsistencyBadge value="contradicted" />);
+    expect(no.container.querySelector(".result-fail")).not.toBeNull();
+    const cannot = render(() => <ConsistencyBadge value="cannot_confirm" />);
+    expect(cannot.container.querySelector(".result-fail")).toBeNull();
+    expect(cannot.container.querySelector(".mark-attention")!.getAttribute("aria-label")).toBe("Not evidence");
+    expect(cannot.container.textContent).toBe("Cannot confirm");
+  });
+});
+
 describe("CanaryLine", () => {
   it("says nothing when the canary was not this criterion's to check", () => {
     const { container } = render(() => <CanaryLine c={criterion(null)} />);

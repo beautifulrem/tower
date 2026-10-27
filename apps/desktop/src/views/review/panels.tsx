@@ -7,7 +7,7 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
-import { DangerMark, Icon, NotEvidenceMark, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
+import { DangerMark, Icon, NeedsYouMark, NotEvidenceMark, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, LoopbackLine, ObsChip, discountedOf } from "../../components/Honesty";
 import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay, Prose } from "../../components/ui";
@@ -178,6 +178,8 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
 /** A thing still open at accepting: red ones need your judgement; a sentinel's line is its sentence, under the group's name. */
 interface OpenItem {
   danger?: boolean;
+  /** A pass that is not evidence: the ◆ it wears on the goal page, the readout and the board, never the sentinel's red ■. */
+  notEvidence?: boolean;
   text: string;
   sentinel?: boolean;
 }
@@ -221,7 +223,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
   /** Still open, not blocking: you may accept, but you see them first. */
   const open = () => {
     const items: OpenItem[] = [];
-    for (const c of tampered()) items.push({ danger: true, text: t("review.openTampered", { id: c.criterion.id }) });
+    for (const c of tampered()) items.push({ danger: true, notEvidence: true, text: t("review.openTampered", { id: c.criterion.id }) });
     for (const c of props.detail?.claims ?? []) if (c.kind === "assumption" && c.approved === null) items.push({ text: t("review.openAssumption", { text: c.text }) });
     if (props.total - props.viewed > 0) items.push({ text: t("review.openUnviewed", { n: props.total - props.viewed }) });
     // The sentinels last in their group, under their name said once.
@@ -237,7 +239,9 @@ export function AcceptPanel(props: AcceptPanelProps) {
           </Show>
           <div class="row meta t1">
             <Show when={p.danger} fallback={<NoticeMark />}>
-              <DangerMark />
+              <Show when={o.notEvidence} fallback={<DangerMark />}>
+                <NeedsYouMark title={t("honesty.notEvidence")} />
+              </Show>
             </Show>
             <span class="grow">
               <Prose text={o.text} />
@@ -365,7 +369,16 @@ export function AcceptPanel(props: AcceptPanelProps) {
       </div>
       <Show when={blockers().length}>
         <div class="panel-blockers" role="alert">
-          <For each={blockers()}>{(b) => <div>■ {b}</div>}</For>
+          {/* What keeps the button off is a "not yet", nobody's failure: the ◇ the missing identity wears in Settings and on
+              the welcome page, never the red ■ of a verifier's or a sentinel's finding. */}
+          <For each={blockers()}>
+            {(b) => (
+              <div class="panel-blocker">
+                <NoticeMark />
+                <span>{b}</span>
+              </div>
+            )}
+          </For>
           <Show when={identityMissing() && g()}>
             {(goal) => <GitIdentityForm projectId={goal().project_id} projectName={goal().project_name} />}
           </Show>

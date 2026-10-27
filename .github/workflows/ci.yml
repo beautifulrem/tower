@@ -60,6 +60,9 @@ jobs:
           git config --global user.name "CI"
           git config --global user.email "ci@example.com"
           cargo test --workspace
+          # The TypeScript bindings are generated from the Rust types: they
+          # must be committed as generated.
+          git diff --exit-code -- apps/desktop/src/gen
 
       - name: Verification cost on a larger repository (2 000 files, budget 120 s)
         run: cargo test -p tower-supervisor --test perf_verify -- --ignored --nocapture

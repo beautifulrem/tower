@@ -67,8 +67,14 @@ pub(crate) async fn capture(
     url: &str,
     timeout: Duration,
     network: bool,
+    steps: &[String],
     out: &Path,
 ) -> Result<PathBuf, String> {
+    let steps: Vec<tower_core::contract::LookStep> = steps
+        .iter()
+        .map(|s| tower_core::contract::LookStep::parse(s))
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("a step is not understood: {e}"))?;
     let browser = browser().ok_or("no Chrome, Chromium, Edge, Brave or Arc to take screenshots with")?;
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -155,43 +161,47 @@ pub(crate) async fn capture(
     {
         let _ = std::fs::create_dir_all(Path::new(&home).join("Library/Application Support").join(sub));
     }
+    cmd.args([
+        "--headless=new",
+        "--disable-breakpad",
+        "--disable-crash-reporter",
+        // A throwaway home has no keychain entry; never ask for one.
+        "--use-mock-keychain",
+        "--password-store=basic",
+        "--disable-gpu",
+        "--hide-scrollbars",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--force-device-scale-factor=2",
+        "--window-size=1280,800",
+    ])
+    .arg(format!("--user-data-dir={}", profile_dir.display()))
+    // The page is the agent's code, and the browser runs outside the
+    // sandbox: without the network, everything but this machine goes
+    // to a proxy that does not exist.
+    .args(if network {
+        vec![]
+    } else {
+        vec![
+            "--proxy-server=http://127.0.0.1:9".to_string(),
+            "--proxy-bypass-list=<local>".to_string(),
+            // No name resolution beyond this machine, no direct UDP.
+            "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1".to_string(),
+            "--force-webrtc-ip-handling-policy=disable_non_proxied_udp".to_string(),
+        ]
+    })
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::piped());
+    if !steps.is_empty() {
+        // Steps first: the browser is driven over its DevTools protocol.
+        let r = with_steps(&mut cmd, url, &steps, out, timeout.max(Duration::from_secs(10))).await;
+        stop();
+        let _ = std::fs::remove_dir_all(&profile_dir);
+        return r.map(|_| out.to_path_buf());
+    }
     let shot = tokio::time::timeout(
         Duration::from_secs(45),
-        cmd.args([
-            "--headless=new",
-            "--disable-breakpad",
-            "--disable-crash-reporter",
-            // A throwaway home has no keychain entry; never ask for one.
-            "--use-mock-keychain",
-            "--password-store=basic",
-            "--disable-gpu",
-            "--hide-scrollbars",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--force-device-scale-factor=2",
-            "--window-size=1280,800",
-            "--virtual-time-budget=3000",
-        ])
-        .arg(format!("--user-data-dir={}", profile_dir.display()))
-        // The page is the agent's code, and the browser runs outside the
-        // sandbox: without the network, everything but this machine goes
-        // to a proxy that does not exist.
-        .args(if network {
-            vec![]
-        } else {
-            vec![
-                "--proxy-server=http://127.0.0.1:9".to_string(),
-                "--proxy-bypass-list=<local>".to_string(),
-                // No name resolution beyond this machine, no direct UDP.
-                "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1".to_string(),
-                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp".to_string(),
-            ]
-        })
-        .arg(format!("--screenshot={}", out.display()))
-        .arg(url)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output(),
+        cmd.arg("--virtual-time-budget=3000").arg(format!("--screenshot={}", out.display())).arg(url).output(),
     )
     .await;
     stop();
@@ -209,6 +219,46 @@ pub(crate) async fn capture(
         Ok(Err(e)) => Err(format!("the browser did not start: {e}")),
         Err(_) => Err("the browser took too long".into()),
     }
+}
+
+/// Starts the browser with its DevTools endpoint, does `steps` on `url`
+/// and writes the picture to `out`.
+async fn with_steps(
+    cmd: &mut tokio::process::Command,
+    url: &str,
+    steps: &[tower_core::contract::LookStep],
+    out: &Path,
+    timeout: Duration,
+) -> Result<(), String> {
+    use tokio::io::AsyncBufReadExt;
+    let mut child = cmd
+        .args(["--remote-debugging-port=0", "about:blank"])
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("the browser did not start: {e}"))?;
+    let stderr = child.stderr.take().ok_or("no browser output")?;
+    let mut lines = tokio::io::BufReader::new(stderr).lines();
+    let found = tokio::time::timeout(Duration::from_secs(20), async {
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Some(i) = line.find("ws://") {
+                return Some(line[i..].trim().to_string());
+            }
+        }
+        None
+    })
+    .await;
+    let Ok(Some(ws)) = found else {
+        let _ = child.kill().await;
+        return Err("the browser did not open its DevTools endpoint".into());
+    };
+    // Keep reading its output so it never blocks on a full pipe.
+    tokio::spawn(async move { while let Ok(Some(_)) = lines.next_line().await {} });
+    let (url, steps, out) = (url.to_string(), steps.to_vec(), out.to_path_buf());
+    let r = tokio::task::spawn_blocking(move || crate::look_cdp::drive(&ws, &url, &steps, &out, timeout))
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = child.kill().await;
+    r
 }
 
 fn tempfile_dir() -> PathBuf {

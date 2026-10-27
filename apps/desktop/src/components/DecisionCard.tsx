@@ -110,8 +110,9 @@ export function bodyParts(item: InboxItem): { prose: string; tail: string } {
 }
 
 /**
- * The supervisor ends a refusal's sentence with "This is not a test failure." (it is all the phone and the base line
- * have). On a card the environment line already says it, first, so the prose drops that sentence: said once.
+ * A pause written before the supervisor stopped saying it ended a refusal's sentence with "This is not a test failure."
+ * (a blocked criterion's intro still does: it is all the phone has). On a card the environment line already says it,
+ * first, so the prose drops that sentence: said once.
  */
 const NOT_A_TEST_FAILURE = /\s*(This is not a test failure\.|这不是测试失败。)\s*/g;
 export const withoutEnvAside = (prose: string): string => prose.replace(NOT_A_TEST_FAILURE, " ").trim();

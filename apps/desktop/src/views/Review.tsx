@@ -7,7 +7,7 @@
  * At ≥1280px the diff can sit side by side (⌥V, remembered per goal). The
  * verification readout (E) shows every criterion's result and output tail
  * without leaving the diff. While the goal is paused or in review the
- * workspace is yours to touch: a hunk can be undone (U), a file edited in
+ * workspace is yours to touch: a hunk can be reverted (U), a file edited in
  * place, a comment's suggestion applied; the snapshot then changes and the
  * review reloads. A file tree on the left and ⌘P jump by path. A review
  * queue (from Needs you) opens the next goal when this one is done. The
@@ -689,7 +689,7 @@ export function Review(props: { id: string }) {
           </Show>
         </Show>
         <span>
-          <Kbd k="?" /> {t("keys.shortcuts")}
+          <Kbd k="?" /> {t("keys.allKeys")}
         </span>
         <span class="grow" />
         <Show when={units().length > 0}>

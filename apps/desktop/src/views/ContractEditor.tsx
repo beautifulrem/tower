@@ -391,7 +391,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <input
                 class="mono"
                 inputmode="numeric"
-                placeholder="5432, 6379"
+                placeholder={t("common.eg", { x: "5432, 6379" })}
                 value={(c.ports ?? []).join(", ")}
                 onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))}
               />

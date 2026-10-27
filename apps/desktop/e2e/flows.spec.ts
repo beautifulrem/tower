@@ -444,7 +444,7 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   expect(before).toBeGreaterThanOrEqual(2);
   const linesBefore = await page.locator(".dl").count();
   // Undo and accept stand together on a hunk's header while the workspace is yours.
-  await expect(heads.first().getByRole("button", { name: "Undo this hunk" })).toBeVisible();
+  await expect(heads.first().getByRole("button", { name: "Revert hunk" })).toBeVisible();
   const accept = heads.first().getByRole("button", { name: "Accept this hunk" });
   await expect(accept).toHaveAttribute("title", /workspace is unchanged/);
   // The hunk closes rather than vanishes: its place stands at the lines' height and shrinks over 160ms, eased in.
@@ -465,7 +465,7 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   const marked = page.locator(".hunk-head.hunk-accepted");
   await expect(marked).toHaveCount(1);
   await expect(marked.getByRole("button", { name: /Accepted, \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(marked.getByRole("button", { name: "Undo this hunk" })).toHaveCount(0);
+  await expect(marked.getByRole("button", { name: "Revert hunk" })).toHaveCount(0);
   expect(await page.locator(".dl").count()).toBeLessThan(linesBefore);
   // Your register: the solid rule, not green.
   expect(await marked.locator("td").first().evaluate((el) => getComputedStyle(el).boxShadow)).toMatch(/inset/);

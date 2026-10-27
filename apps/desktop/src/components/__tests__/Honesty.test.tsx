@@ -32,7 +32,7 @@ describe("LoopbackLine", () => {
     expect(none.container.querySelector(".loopback-line")).toBeNull();
     const base = render(() => <LoopbackLine c={{ ...criterion(null), loopback_opened: "base" }} />);
     const line = base.container.querySelector(".loopback-line")!;
-    expect(line.textContent).toBe("loopback opened: your tests use it on the base");
+    expect(line.textContent).toBe("loopback opened: your tests already use it on the base branch");
     expect(line.querySelector(".col-span")!.className).toContain("t4");
     expect(line.querySelector("[title]")!.getAttribute("title")).toMatch(/Turn it off for the project in Settings/);
     const project = render(() => <LoopbackLine c={{ ...criterion(null), loopback_opened: "project" }} />);

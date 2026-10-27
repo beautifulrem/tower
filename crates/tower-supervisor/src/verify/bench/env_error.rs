@@ -18,11 +18,13 @@ impl Bench<'_> {
             let problem = format!("{id} · `{command}`\n{tail}");
             return Outcome::EnvError(tower_core::i18n::PauseNote::Blocked { cause, problem }.encode());
         }
+        // What happened, once: the pause itself ("the criteria cannot run in the verification sandbox") and the
+        // card's environment line already say it is no test failure, so the sentence does not say it a third time.
         if r.denied {
             return Outcome::EnvError(tr!(
                 lang,
-                "{id} 的命令 `{command}` 在验证沙箱里被拒绝访问了它需要的东西（{how}）。这不是测试失败。\n{tail}",
-                "The sandbox refused something the command `{command}` of {id} needed ({how}). This is not a test failure.\n{tail}"
+                "{id} 的命令 `{command}` 在验证沙箱里被拒绝访问了它需要的东西（{how}）。\n{tail}",
+                "The sandbox refused something the command `{command}` of {id} needed ({how}).\n{tail}"
             ));
         }
         Outcome::EnvError(tr!(

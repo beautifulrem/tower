@@ -53,7 +53,7 @@ test("answering a card closes the loop: the card sits in a folding slot that fol
 test("a queue has one filled primary at a time, on the focused card, and it follows j/k; the overview's decisions are lines until one is selected", async ({ page }) => {
   await openTower(page, "inbox", { enrich: enrichCi });
   const cards = page.locator(".decision-slot .decision");
-  expect(await cards.count()).toBeGreaterThanOrEqual(2);
+  await expect(cards.nth(1)).toBeVisible();
   // The button's colour moves over a 150ms transition, and WebKit advances transitions only on display-driven frames —
   // which a CI runner's VM barely produces, so the colour stayed at the transition's start there. The transition is
   // finished before the colour is read: what is checked is where it settles, not how fast a runner paints.
@@ -87,7 +87,7 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   await openTower(page, "overview", { enrich: enrichCi });
   // The overview is the whole board: every decision is one line on the rows' grid, and the running goals are on the first screen.
   const lines = page.locator(".board-queue .decision-line");
-  expect(await lines.count()).toBeGreaterThanOrEqual(2);
+  await expect(lines.nth(1)).toBeVisible();
   await expect(page.locator(".board-queue .decision")).toHaveCount(0);
   const firstRow = page.locator(".board-rows [data-goal]").first();
   expect((await firstRow.boundingBox())!.y).toBeLessThan(900);
@@ -104,6 +104,15 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   await expect(open).toHaveClass(/focused/);
   await expect(open).toBeFocused();
   await expect.poll(() => fill(open)).toBe("filled");
+  // One line around the focused card: the ring is drawn on the card's own edge, not 2px outside its border.
+  expect(await open.evaluate((el) => getComputedStyle(el).outlineOffset)).toBe("-1px");
+  // The ? sheet says what Tab reaches here and how to reach every control.
+  await page.keyboard.press("?");
+  await expect(page.locator(".keys-note")).toContainText("Keyboard navigation");
+  await expect(page.locator(".keys-sheet")).toContainText("Fold the open decision back into its line");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".keys-sheet")).toHaveCount(0);
+  await open.focus();
   await page.keyboard.press("Escape");
   await expect(page.locator(".board-queue .decision")).toHaveCount(0);
   await expect(lines.first().locator(".g-title")).toBeFocused();
@@ -284,6 +293,27 @@ test("a paused goal that was never verified shows one primary action and no 'ver
   await expect(undo).toBeVisible();
   // A text button is still a 20pt target.
   expect((await undo.boundingBox())!.height).toBeGreaterThanOrEqual(20);
+});
+
+test("rolling back is not only for the pointer: a run you can roll back to is a Tab stop, shows its way back when selected, and ↩ takes it", async ({ page }) => {
+  await openTower(page, "goal/G-0003", {
+    enrich: (F) => {
+      for (const r of F["goal-G-0003"].runs) {
+        r.ended_at ??= r.started_at + 60_000;
+        r.start_pin ??= "3aeb5a6c0ffee";
+      }
+    },
+  });
+  const row = page.locator(".run-row-back").first();
+  await expect(row).toHaveAttribute("tabindex", "0");
+  await expect(page.locator(".section").filter({ has: row })).toContainText("Select a run to roll back to its start");
+  const button = row.locator(".run-rollback");
+  expect(await button.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+  await row.focus();
+  await expect.poll(() => button.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+  await page.keyboard.press("Enter");
+  // ↩ asks first, as the button does (the native confirmation is the shim's to answer).
+  await expect.poll(async () => (await calls(page)).some(([cmd]) => cmd.startsWith("plugin:dialog|"))).toBe(true);
 });
 
 test("the look comparison answers the keyboard: modes, slider, held space", async ({ page }) => {

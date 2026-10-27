@@ -1912,7 +1912,8 @@ input[type="radio"] {
   text-align: right;
   color: var(--text-2);
 }
-/* Rolling back is offered on hover of the row, next to the outcome. */
+/* Rolling back is offered on the selected row — hovered, or reached with Tab — next to the outcome; reached from the
+   keyboard the row wears the board's selected ground and the button its ↩. */
 .run-rollback {
   display: inline-flex;
   align-items: center;
@@ -1920,9 +1921,28 @@ input[type="radio"] {
   opacity: 0;
   transition: opacity var(--dur-fast) linear;
 }
+.run-rollback .kbd {
+  display: none;
+}
 .run-row:hover .run-rollback,
-.run-rollback:focus-visible {
+.run-row:focus-within .run-rollback {
   opacity: 1;
+}
+.run-row-back {
+  margin: 0 calc(-1 * var(--sp-2));
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-s);
+}
+.run-row-back:focus-visible {
+  outline: none;
+  background: var(--bg-selected);
+  box-shadow: inset 2px 0 0 var(--text-3);
+}
+.run-row-back:focus-visible .run-rollback {
+  color: var(--text-1);
+}
+.run-row-back:focus-visible .run-rollback .kbd {
+  display: inline-flex;
 }
 .run-rollback:hover {
   color: var(--text-1);

@@ -554,7 +554,7 @@ export const zh = {
     baseUncheckable: "无法在 @{base} 上检查",
     noChangesTitle: "还没有改动",
     noChangesBody: "快照与 base @{sha} 相同。",
-    rollbackHint: "悬停一行可回退到它开始时",
+    rollbackHint: "选中一行可回退到它开始时",
     dependsOnEditedTests: "依赖源码之外的改动",
     dependsOnEditedTestsLong: "只有在 Agent 对源码之外的改动（测试、配置、脚本或包管理设置）下才通过；把这些恢复原样后失败。这不是红 → 绿。",
     withOriginalTests: "只靠源码改动也通过",

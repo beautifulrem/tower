@@ -548,7 +548,7 @@ export const en: DictNow = {
     baseUncheckable: "couldn't check on @{base}",
     noChangesTitle: "No changes yet",
     noChangesBody: "The snapshot is the same as base @{sha}.",
-    rollbackHint: "Hover a run to roll back to its start",
+    rollbackHint: "Select a run to roll back to its start",
     dependsOnEditedTests: "depends on changes outside the code",
     dependsOnEditedTestsLong: "Passes only with the agent's changes outside the source code (tests, configuration, scripts or package settings); fails once those are put back as they were. This is not red → green.",
     withOriginalTests: "passes from the code changes alone",

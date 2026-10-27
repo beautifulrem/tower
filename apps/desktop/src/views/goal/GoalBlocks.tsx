@@ -7,7 +7,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark } from "../../components/Glyph";
 import { Claim, ConsistencyBadge, CriteriaBar, HumanStamp, discountedOf } from "../../components/Honesty";
-import { Button, Empty, Prose, Section } from "../../components/ui";
+import { Button, Empty, Kbd, Prose, Section } from "../../components/ui";
 import type { ClaimView } from "../../gen/ClaimView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import type { RunView } from "../../gen/RunView";
@@ -304,17 +304,34 @@ function RunRow(props: { goalId: string; r: RunView; editable: boolean; onUndo: 
     // The way back rides on the receipt: a slip costs one click.
     if (done !== undefined) toast("success", t("goal.rolledBack", { n: r().run_no }), { ttl: 8000, action: { label: t("goal.undoRollback"), run: props.onUndo } });
   };
+  // Only runs that recorded their starting snapshot can be rolled back to.
+  const can = () => !!(props.editable && r().ended_at && r().start_pin);
+  const no = () => `R-${String(r().run_no).padStart(2, "0")}`;
+  // A run you can roll back to is a stop for the keyboard (Tab reaches it in WebKit, where buttons are skipped): selected,
+  // it shows its way back, and ↩ takes it — the pointer's hover is no longer the only way to find it.
   return (
-    <div class="run-row meta">
-      <span class="num t1">R-{String(r().run_no).padStart(2, "0")}</span>
+    <div
+      class="run-row meta"
+      classList={{ "run-row-back": can() }}
+      tabindex={can() ? 0 : undefined}
+      aria-label={can() ? `${no()} ${runPurposeLabel(r().purpose)}, ${r().ended_at ? runOutcomeLabel(r().outcome) : t("goal.inProgress")}. ${t("goal.rollbackTitle")} ↩` : undefined}
+      onKeyDown={(e) => {
+        if (can() && e.key === "Enter" && e.target === e.currentTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+          void rollback();
+        }
+      }}
+    >
+      <span class="num t1">{no()}</span>
       <span>{runPurposeLabel(r().purpose)}</span>
       <span class="num">{clock(r().started_at)}</span>
       <span class="col-dur">{r().ended_at ? duration(r().ended_at! - r().started_at) : ""}</span>
       <span class="run-outcome row" style={{ "justify-content": "flex-end" }}>
-        {/* Only runs that recorded their starting snapshot can be rolled back to. */}
-        <Show when={props.editable && r().ended_at && r().start_pin}>
-          <button class="link-plain text-btn run-rollback t3" onClick={() => void rollback()} title={t("goal.rollbackTitle")}>
+        <Show when={can()}>
+          <button class="link-plain text-btn run-rollback t3" tabindex={-1} onClick={() => void rollback()} title={t("goal.rollbackTitle")}>
             <Icon name="undo" size={10} /> {t("goal.rollback")}
+            <Kbd k="enter" />
           </button>
         </Show>
         <span>{r().ended_at ? runOutcomeLabel(r().outcome) : t("goal.inProgress")}</span>

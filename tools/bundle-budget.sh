@@ -9,12 +9,15 @@
 #             native menus, the second half of each dictionary — what only
 #             those views say) and the other language
 #   worker    syntax highlighting (Shiki grammars), loaded in the background
-# The on-demand budget took what start-up gave up when the goal page and the
-# dictionaries' second halves left it (14 KB): the same bytes, later.
+# The on-demand budget grew from 64 KB to 96 KB when the goal page and the
+# dictionaries' second halves left start-up (start-up fell by 14 KB; on
+# demand rose by about 20 KB, since the other language now counts as two
+# chunks and the current language's second half is on demand too), with the
+# headroom the old budget had.
 # Run after `pnpm --dir apps/desktop build`.
 set -e
 start_budget="${1:-73728}"
-lazy_budget="${2:-90112}"
+lazy_budget="${2:-98304}"
 worker_budget="${3:-262144}"
 dist="$(cd "$(dirname "$0")/.." && pwd)/apps/desktop/dist"
 gz() { gzip -9c "$1" | wc -c | tr -d ' '; }

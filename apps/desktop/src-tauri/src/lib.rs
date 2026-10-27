@@ -8,7 +8,9 @@ mod menu;
 mod notify;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex, Weak};
+use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_notification::NotificationExt;
@@ -33,6 +35,9 @@ struct TauriSink {
     /// carry a click action here, so the next time Tower comes to the front
     /// it opens that goal.
     pending_open: Mutex<Option<(String, std::time::Instant)>>,
+    /// Tells the waker when the next notification may be due with no update
+    /// in between (an item put aside coming back, the review digest).
+    wake: Mutex<Option<Sender<Option<i64>>>>,
 }
 
 fn badge(window: &tauri::WebviewWindow, items: &[InboxItem]) {
@@ -41,7 +46,7 @@ fn badge(window: &tauri::WebviewWindow, items: &[InboxItem]) {
 
 impl TauriSink {
     /// The attention ladder (docs/08), decided in `notify`.
-    fn on_inbox(&self, items: &[InboxItem]) {
+    fn on_inbox(&self, items: &[InboxItem], snoozed: &[InboxItem]) {
         let Some(app) = &self.app else { return };
         let Some(window) = app.get_webview_window("main") else { return };
         badge(&window, items);
@@ -52,8 +57,16 @@ impl TauriSink {
             quiet: tower_supervisor::is_quiet(&settings),
             muted: &settings.muted_goals,
             lang: sup.as_ref().map(|s| s.lang()).unwrap_or_default(),
+            now: tower_store::system_now(),
         };
-        let notes = self.announcer.lock().unwrap_or_else(std::sync::PoisonError::into_inner).plan(items, &now);
+        let (notes, next) = {
+            let mut announcer = self.announcer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let notes = announcer.plan(items, &now);
+            (notes, announcer.next_wake(snoozed, now.now))
+        };
+        if let Some(wake) = &*self.wake.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {
+            let _ = wake.send(next);
+        }
         for note in notes {
             let _ = app.notification().builder().title(note.title).body(note.body).show();
             *self.pending_open.lock().unwrap_or_else(std::sync::PoisonError::into_inner) =
@@ -69,12 +82,47 @@ impl TauriSink {
             let _ = app.emit(OPEN_EVENT, route);
         }
     }
+
+    /// Reads the inbox again and sends it as an update: the interface shows
+    /// an item whose snooze ended, and `notify` decides what to announce.
+    fn refresh_inbox(&self) {
+        let Some(app) = &self.app else { return };
+        let Some(sup) = app.try_state::<Supervisor>() else { return };
+        if let (Ok(items), Ok(snoozed)) = (sup.inbox(), sup.snoozed_inbox()) {
+            self.emit(UiUpdate::Inbox { items, snoozed });
+        }
+    }
+}
+
+/// Wakes when `notify` says a notification may be due with no update in
+/// between — an item put aside coming back, the review digest — and reads
+/// the inbox again. Each update replaces the time; it ends with the sink.
+fn waker(sink: Weak<TauriSink>, times: Receiver<Option<i64>>) {
+    let mut next: Option<i64> = None;
+    loop {
+        let got = match next {
+            // A little after the time, so the store counts the snooze as over.
+            Some(t) => times.recv_timeout(Duration::from_millis((t - tower_store::system_now()).max(0) as u64 + 250)),
+            None => times.recv().map_err(|_| RecvTimeoutError::Disconnected),
+        };
+        match got {
+            Ok(t) => next = t,
+            Err(RecvTimeoutError::Timeout) => {
+                next = None;
+                match sink.upgrade() {
+                    Some(s) => s.refresh_inbox(),
+                    None => return,
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => return,
+        }
+    }
 }
 
 impl UiSink for TauriSink {
     fn emit(&self, update: UiUpdate) {
-        if let UiUpdate::Inbox { items, .. } = &update {
-            self.on_inbox(items);
+        if let UiUpdate::Inbox { items, snoozed } = &update {
+            self.on_inbox(items, snoozed);
         }
         if let Some(app) = &self.app {
             let _ = app.emit(UPDATE_EVENT, update);
@@ -434,6 +482,10 @@ pub fn run() {
                 demo_engine: Some(demo_engine_source(&handle)),
             };
             let sink = Arc::new(TauriSink { app: Some(handle.clone()), ..TauriSink::default() });
+            let (wake, times) = std::sync::mpsc::channel();
+            *sink.wake.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(wake);
+            let weak = Arc::downgrade(&sink);
+            std::thread::Builder::new().name("notify-waker".into()).spawn(move || waker(weak, times))?;
             let sup = tauri::async_runtime::block_on(Supervisor::start(config, sink.clone() as Arc<dyn UiSink>))?;
             // The menu speaks the settings language, so it is built once they are readable.
             app.set_menu(menu::build(&handle, sup.lang())?)?;
@@ -455,7 +507,14 @@ pub fn run() {
             });
             // Items already open at launch were announced before: badge them, don't notify again.
             if let Ok(items) = sup.inbox() {
-                sink.announcer.lock().unwrap_or_else(std::sync::PoisonError::into_inner).already_announced(&items);
+                let mut announcer = sink.announcer.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                announcer.already_announced(&items);
+                // Items put aside before Tower quit still come back on time.
+                let next = announcer.next_wake(&sup.snoozed_inbox().unwrap_or_default(), tower_store::system_now());
+                drop(announcer);
+                if let Some(wake) = &*sink.wake.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {
+                    let _ = wake.send(next);
+                }
                 if let Some(window) = handle.get_webview_window("main") {
                     badge(&window, &items);
                 }

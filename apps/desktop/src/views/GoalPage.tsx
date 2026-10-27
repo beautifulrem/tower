@@ -204,9 +204,6 @@ export function GoalPage(props: { id: string }) {
                     <span class="t3">{t("quiet.muted")}</span>
                   </Show>
                 </div>
-                <span class="grow" />
-                {/* The seal is withheld while any criterion passed with a tampered canary: the line under it and the header say the same thing. */}
-                <Seal pin={g().verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
               </div>
               <Show when={g().pr}>{(pr) => <div class="goal-overlaps meta"><PrLine pr={pr()} /></div>}</Show>
               {/* The conflict radar: other unfinished goals touching the same files. */}
@@ -228,8 +225,13 @@ export function GoalPage(props: { id: string }) {
                 </div>
               </Show>
             </div>
-            <div class="goal-actions">
-              <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
+            {/* The seal stands under the actions, on the page's right edge — the line the rail and every block end on. */}
+            <div class="goal-side">
+              <div class="goal-actions">
+                <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
+              </div>
+              {/* The seal is withheld while any criterion passed with a tampered canary: the line under it and the header say the same thing. */}
+              <Seal pin={g().verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
             </div>
           </header>
 

@@ -3103,8 +3103,12 @@ input[type="radio"] {
 }
 :root[lang="zh-CN"] .contract-mast {
   font-size: 12px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: none;
+}
+/* In the Chinese masthead the tracking is for the characters: the project's Latin name (shop-zh) keeps its own. */
+:root[lang="zh-CN"] .contract-mast-project {
+  letter-spacing: 0.02em;
 }
 .editor-block {
   padding: var(--sp-6) 0 var(--sp-2);
@@ -3136,7 +3140,7 @@ input[type="radio"] {
 }
 :root[lang="zh-CN"] .clause-title {
   font-size: 12px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: none;
 }
 .clause-rule {
@@ -3552,7 +3556,7 @@ input[type="radio"] {
   color: var(--text-4);
 }
 :root[lang="zh-CN"] .board-ghost-head > span {
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   font-size: 11px;
 }
 /* The age ends at its right edge and the identity starts at its left: with only the column gap between them the
@@ -3812,10 +3816,17 @@ input[type="radio"] {
   color: var(--text-1);
   font-weight: 500;
 }
+/* The reason under an empty state: a measure of its own (not the container's), and no word or character left alone on
+   the last line. */
 .empty-body {
+  max-width: 44ch;
   color: var(--text-2);
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
+  text-wrap: pretty;
+}
+:root[lang="zh-CN"] .empty-body {
+  max-width: 28em;
 }
 .empty-action {
   margin-top: var(--sp-2);
@@ -3939,7 +3950,7 @@ input[type="radio"] {
 }
 :root[lang="zh-CN"] .panel-tracked .panel-title {
   font-size: 12px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: none;
 }
 .panel-tracked .keys-group-title {
@@ -3952,7 +3963,7 @@ input[type="radio"] {
 }
 :root[lang="zh-CN"] .panel-tracked .keys-group-title {
   font-size: 11px;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
   text-transform: none;
 }
 

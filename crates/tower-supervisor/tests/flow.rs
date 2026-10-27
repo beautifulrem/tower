@@ -1114,3 +1114,34 @@ async fn look_steps_happen_before_the_picture() {
     assert!(never.pin.is_none(), "{never:?}");
     assert!(never.pin_error.as_deref().is_some_and(|e| e.contains("#never-there")), "{never:?}");
 }
+
+/// Held-out tests that no criterion actually runs are not counted as a
+/// check: review says so.
+#[tokio::test(flavor = "multi_thread")]
+async fn held_out_tests_no_criterion_runs_are_reported() {
+    let h = harness("pass").await;
+    std::fs::write(h.repo.join(".gitignore"), "holdout/\n").unwrap();
+    git(&h.repo, &["add", ".gitignore"]);
+    git(&h.repo, &["commit", "--quiet", "-m", "ignore holdout"]);
+    std::fs::create_dir_all(h.repo.join("holdout")).unwrap();
+    std::fs::write(h.repo.join("holdout/more.sh"), "grep -qx ok done.txt\n").unwrap();
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![],
+                memory: String::new(),
+                setup_command: String::new(),
+                holdout_files: vec!["holdout/**".into()],
+            },
+        )
+        .unwrap();
+    // The only criterion never touches the held-out folder.
+    let id = create_with(&h, contract()).await;
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    let d = h.sup.goal(&id).unwrap();
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "held_out_not_run"), "{:?}", d.sentinels);
+}

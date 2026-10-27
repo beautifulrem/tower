@@ -71,6 +71,8 @@ export function Overview() {
     ...groups().flatMap((g) => g.goals.map<Item>((goal) => ({ kind: "goal", id: goal.id, goal }))),
   ]);
   const current = () => flat().find((i) => i.id === selected()) ?? null;
+  // Until you move, the first card is the focused one: a screen of cards has one filled primary, and it is the first.
+  const focusedCard = () => selected() ?? decisions()[0]?.id ?? null;
 
   // A row that changes group slides to its new line (220ms) rather than reappearing there: the rows'
   // places are read in the pure phase, before the DOM changes, and the move is played after it.
@@ -174,7 +176,7 @@ export function Overview() {
                 <For each={shownDecisions.list()}>
                   {(it) => (
                     <div class="decision-slot" classList={{ leaving: shownDecisions.leaving(it.id) }} data-decision={it.id} onMouseEnter={() => setSelected(it.id)} onFocusIn={() => setSelected(it.id)}>
-                      <DecisionCard item={it} focused={selected() === it.id} quiet />
+                      <DecisionCard item={it} focused={focusedCard() === it.id} quiet />
                     </div>
                   )}
                 </For>

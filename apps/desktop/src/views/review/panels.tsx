@@ -60,16 +60,26 @@ function useMoreBelow(): [() => boolean, (el: HTMLDivElement) => void, () => voi
   return [more, bind, () => requestAnimationFrame(measure)];
 }
 
+/** The verification readout's order: look criteria, then not-evidence, failed, stale, pending (human ones awaiting you among them), passed. */
+export function readoutOrder(all: CriterionView[], mark: (c: CriterionView) => "pending" | "stale" | "pass" | "fail"): CriterionView[] {
+  const rank = (c: CriterionView) => {
+    if (c.criterion.kind.type === "look") return 0;
+    if (c.criterion.kind.type !== "exec") return c.human_checked ? 5 : 4;
+    const m = mark(c);
+    if (m === "pass") return c.canary === "tampered" ? 1 : 5;
+    return m === "fail" ? 2 : m === "stale" ? 3 : 4;
+  };
+  return all.map((c, i) => ({ c, i, r: rank(c) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.c);
+}
+
 /** Every criterion with its last verifier reading and output tail, in one sheet. */
 export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined; loading: boolean; onClose: () => void }) {
   const g = () => state.goals[props.id];
-  // The pictures first: a look criterion's reading is its two screenshots — the one thing in the sheet you judge by eye — so
-  // they stand above the output tails instead of a screen below them; every row keeps its id, so nothing is lost in the order.
-  const criteria = () => {
-    const all = props.detail?.criteria ?? [];
-    return [...all.filter((c) => c.criterion.kind.type === "look"), ...all.filter((c) => c.criterion.kind.type !== "look")];
-  };
   const mark = (c: CriterionView) => (!c.verified ? "pending" : c.verified.stale ? "stale" : c.verified.passed ? "pass" : "fail");
+  // What most needs your eye, first. The pictures lead: a look criterion's reading is its two screenshots, the one thing
+  // here you judge by eye. Then a pass that is not evidence and a failure, then what is stale or not yet run, and the
+  // passes last. Every row keeps its id, and the order inside a rank is the contract's, so nothing is lost in the order.
+  const criteria = () => readoutOrder(props.detail?.criteria ?? [], mark);
   // The sheet is taller than the window on a goal with several criteria: a fade at its foot says there is more, and leaves once you are there.
   const [more, bindPanel, remeasure] = useMoreBelow();
   createEffect(on(() => [props.loading, criteria().length], remeasure, { defer: true }));
@@ -164,6 +174,13 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
   );
 }
 
+/** A thing still open at accepting: red ones need your judgement; a sentinel's line is its sentence, under the group's name. */
+interface OpenItem {
+  danger?: boolean;
+  text: string;
+  sentinel?: boolean;
+}
+
 export interface AcceptPanelProps {
   id: string;
   /** Review units marked viewed, of the total. */
@@ -202,13 +219,33 @@ export function AcceptPanel(props: AcceptPanelProps) {
   const counted = () => Math.max(0, (g()?.progress.machine ?? 0) - tampered().length);
   /** Still open, not blocking: you may accept, but you see them first. */
   const open = () => {
-    const items: { danger?: boolean; text: string }[] = [];
+    const items: OpenItem[] = [];
     for (const c of tampered()) items.push({ danger: true, text: t("review.openTampered", { id: c.criterion.id }) });
     for (const c of props.detail?.claims ?? []) if (c.kind === "assumption" && c.approved === null) items.push({ text: t("review.openAssumption", { text: c.text }) });
-    for (const h of props.detail?.sentinels ?? []) items.push({ danger: h.severity >= 3, text: t("review.openSentinel", { title: h.title }) });
     if (props.total - props.viewed > 0) items.push({ text: t("review.openUnviewed", { n: props.total - props.viewed }) });
+    // The sentinels last in their group, under their name said once.
+    for (const h of props.detail?.sentinels ?? []) items.push({ danger: h.severity >= 3, text: h.title, sentinel: true });
     return items;
   };
+  const OpenList = (p: { items: OpenItem[]; danger: boolean }) => (
+    <For each={p.items}>
+      {(o, i) => (
+        <>
+          <Show when={i() === p.items.findIndex((x) => x.sentinel)}>
+            <div class="open-kind">{t("review.sentinels")}</div>
+          </Show>
+          <div class="row meta t1">
+            <Show when={p.danger} fallback={<NoticeMark />}>
+              <DangerMark />
+            </Show>
+            <span class="grow">
+              <Prose text={o.text} />
+            </span>
+          </div>
+        </>
+      )}
+    </For>
+  );
   // Red items above — a pass that is not evidence, a high-severity sentinel — do not block, but they are not one press away
   // either: the primary reads "Accept anyway" and arms on the first press, as Abandon does, saying how many it is over.
   const judgement = () => open().filter((o) => o.danger);
@@ -279,31 +316,13 @@ export function AcceptPanel(props: AcceptPanelProps) {
       <Show when={judgement().length}>
         <div class="panel-section open-judgement">
           <div class="meta t3">{t("review.openJudgementTitle")}</div>
-          <For each={judgement()}>
-            {(o) => (
-              <div class="row meta t1">
-                <DangerMark />
-                <span class="grow">
-                  <Prose text={o.text} />
-                </span>
-              </div>
-            )}
-          </For>
+          <OpenList items={judgement()} danger />
         </div>
       </Show>
       <Show when={notice().length}>
         <div class="panel-section open-notice">
           <div class="meta t3">{judgement().length ? t("review.openNoticeTitle") : t("review.stillOpen")}</div>
-          <For each={notice()}>
-            {(o) => (
-              <div class="row meta t1">
-                <NoticeMark />
-                <span class="grow">
-                  <Prose text={o.text} />
-                </span>
-              </div>
-            )}
-          </For>
+          <OpenList items={notice()} danger={false} />
         </div>
       </Show>
       <div class="panel-section meta">
@@ -352,7 +371,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
           onClick={press}
         >
           <Show when={judgement().length} fallback={updating() ? t("review.acceptUpdate") : t("review.acceptWrite")}>
-            {armedLeft() ? t("review.acceptArmed", { n: judgement().length, s: armedLeft() }) : t("review.acceptAnyway")}
+            {armedLeft() ? t("review.acceptArmed") : t("review.acceptAnyway")}
           </Show>
         </Button>
       </div>

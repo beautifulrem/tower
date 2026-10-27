@@ -238,7 +238,7 @@ export const zh = {
     replied: "已答复",
     openReview: "打开评审",
     pressTwice: "按两次确认",
-    pressAgain: "再按一次确认 · {s}",
+    pressAgain: "再按一次确认",
     networkCaution: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次，以安装 Agent 改过的依赖。先看一眼它改了什么。",
     snooze: "稍后提醒",
     snoozeHour: "1 小时后提醒",

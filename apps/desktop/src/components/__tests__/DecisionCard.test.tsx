@@ -49,7 +49,7 @@ vi.mock("../../lib/store", async () => {
   };
 });
 
-const { DecisionCard, ARM_MS, bodyParts, heldOutParts, refusedPaths } = await import("../DecisionCard");
+const { DecisionCard, ARM_MS, bodyParts, heldOutParts, refusedPaths, withoutEnvAside } = await import("../DecisionCard");
 const nav = await import("../../lib/nav");
 
 const HELD_OUT_BODY = [
@@ -289,6 +289,13 @@ describe("DecisionCard", () => {
   it("reads the refused paths out of the sandbox's lines, once each", () => {
     expect(refusedPaths("npm ERR! code 255\nsandbox-exec: deny(1) file-read-data /a/b\nsandbox-exec: deny(1) file-write-create /c\ndeny(1) file-read-data /a/b")).toEqual(["/a/b", "/c"]);
     expect(refusedPaths("✖ failed")).toEqual([]);
+  });
+
+  it("says 'not a test failure' once: the environment line has it, so the supervisor's sentence drops it, in both languages", () => {
+    expect(withoutEnvAside("The sandbox refused something the command `npm test` of C1 needed (exit code 1). This is not a test failure.")).toBe(
+      "The sandbox refused something the command `npm test` of C1 needed (exit code 1).",
+    );
+    expect(withoutEnvAside("C1 的命令 `npm test` 在验证沙箱里被拒绝访问了它需要的东西（退出码 1）。这不是测试失败。")).toBe("C1 的命令 `npm test` 在验证沙箱里被拒绝访问了它需要的东西（退出码 1）。");
   });
 
   it("does not repeat the PR reading on the goal's own page", () => {

@@ -16,11 +16,18 @@ export interface ReviewNote {
   text: string;
   /** A way to act on it, e.g. "Set held-out tests ›". */
   action?: { label: string; run: () => void };
+  /** One of the sentinels: open, the band names them once as a group, so no line repeats "Sentinel". */
+  sentinel?: boolean;
 }
 
 export function ReviewNotes(props: { notes: ReviewNote[] }) {
   const [open, setOpen] = createSignal(false);
-  const sorted = () => [...props.notes.filter((n) => n.danger), ...props.notes.filter((n) => !n.danger)];
+  // Weightiest first; inside a weight the sentinels stand together, so the group's name is said once, over them.
+  const sorted = () => {
+    const by = (danger: boolean) => props.notes.filter((n) => n.danger === danger);
+    return [true, false].flatMap((d) => [...by(d).filter((n) => n.sentinel), ...by(d).filter((n) => !n.sentinel)]);
+  };
+  const firstSentinel = () => sorted().findIndex((n) => n.sentinel);
   const Mark = (p: { danger: boolean }) => (
     <Show when={p.danger} fallback={<NoticeMark />}>
       <DangerMark />
@@ -66,10 +73,15 @@ export function ReviewNotes(props: { notes: ReviewNote[] }) {
           </button>
           <Show when={open()}>
             <For each={sorted()}>
-              {(n) => (
-                <p class="review-note">
-                  <Note n={n} />
-                </p>
+              {(n, i) => (
+                <>
+                  <Show when={i() === firstSentinel()}>
+                    <p class="review-notes-group meta t3">{t("review.sentinels")}</p>
+                  </Show>
+                  <p class="review-note">
+                    <Note n={n} />
+                  </p>
+                </>
               )}
             </For>
           </Show>

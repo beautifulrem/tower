@@ -781,7 +781,9 @@ test("a sandbox refusal is an environment problem: the card says so before its d
   await expect(env).toContainText("An environment problem, not a test failure");
   await expect(env.locator(".result-env")).toBeVisible();
   // The supervisor's sentences stay prose; the runner's and the sandbox's lines are the machine tail, the refused path among them.
-  await expect(card.locator(".decision-body")).toContainText("This is not a test failure");
+  // "Not a test failure" is said once, by the environment line; the supervisor's sentence does not repeat it.
+  await expect(card.locator(".decision-body")).toContainText("The sandbox refused something");
+  await expect(card.locator(".decision-body")).not.toContainText("not a test failure");
   await expect(card.locator(".decision-body")).not.toContainText("deny(1)");
   await expect(card.locator(".decision-tail")).toContainText("deny(1) file-read-data /Users/you/node_modules/.bin");
   expect((await env.boundingBox())!.y).toBeLessThan((await card.locator(".decision-body").boundingBox())!.y);

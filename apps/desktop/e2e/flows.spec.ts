@@ -1109,3 +1109,18 @@ test("the goal page folds its rail under the main column in a half-screen window
   await expect(rail).toBeVisible();
   expect(await rail.evaluate((el) => getComputedStyle(el).display)).toBe("grid");
 });
+
+test("a card's text field grows with its lines and stops at six, then scrolls", async ({ page }) => {
+  await openTower(page, "inbox");
+  const area = page.locator(".decision-text textarea").first();
+  await expect(area).toBeVisible();
+  const one = (await area.boundingBox())!.height;
+  await area.fill("first\nsecond\nthird");
+  await expect.poll(async () => (await area.boundingBox())!.height).toBeGreaterThan(one * 2);
+  const three = (await area.boundingBox())!.height;
+  await area.fill(Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n"));
+  await expect.poll(async () => (await area.boundingBox())!.height).toBeGreaterThan(three);
+  const six = (await area.boundingBox())!.height;
+  expect(six).toBeLessThan(one * 7);
+  expect(await area.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+});

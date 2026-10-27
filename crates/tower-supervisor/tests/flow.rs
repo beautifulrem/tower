@@ -860,9 +860,8 @@ async fn blocking_items_are_pushed_to_the_configured_topic() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     assert_eq!(h.sup.push_status().and_then(|s| s.error), None, "the push is recorded as delivered");
-    // Plain http to a public host is refused.
-    h.sup.save_settings(Settings { push_url: "http://example.com/t".into(), ..h.sup.settings() }).unwrap();
-    assert!(h.sup.test_push().await.is_err());
+    // Plain http to a public host is refused, already when saved.
+    assert!(h.sup.save_settings(Settings { push_url: "http://example.com/t".into(), ..h.sup.settings() }).is_err());
 }
 
 /// Whatever a verification starts and leaves running is stopped when it

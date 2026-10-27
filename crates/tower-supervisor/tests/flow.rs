@@ -1052,12 +1052,19 @@ async fn a_shadowed_rust_assertion_is_caught() {
         g = h.sup.goal(&id).unwrap().summary;
     }
     let d = h.sup.goal(&id).unwrap();
-    assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base: {:?}", d.criteria[0].base_error);
+    assert_eq!(
+        d.criteria[0].passed_on_base,
+        Some(false),
+        "red on the base: {:?} / {:?}",
+        d.criteria[0].base_error,
+        d.criteria[0].verified
+    );
     assert_eq!(
         (g.state, g.pause_reason),
         (LifecycleState::Paused, Some(PauseReason::SentinelHigh)),
-        "{:?}",
-        d.sentinels
+        "{:?} / {:?}",
+        d.sentinels,
+        d.criteria[0].verified
     );
     assert!(d.sentinels.iter().any(|s| s.sentinel == "source_patches_tests"), "{:?}", d.sentinels);
     assert_eq!(d.criteria[0].canary, Some(tower_core::view::CanaryState::Tampered), "{:?}", d.sentinels);

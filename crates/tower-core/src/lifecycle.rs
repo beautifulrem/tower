@@ -123,6 +123,9 @@ pub enum PauseReason {
     /// agent is not told why (that would show it the tests); the human
     /// decides what it hears.
     HeldOutFailed,
+    /// The criteria cannot run in the verification sandbox even on your own
+    /// code (found while the agent starts): nothing could be verified.
+    CriteriaCannotRun,
 }
 
 impl PauseReason {

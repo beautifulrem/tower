@@ -76,9 +76,10 @@ pub fn spawn(inner: Arc<Inner>, goal: String) {
 pub fn preflight(inner: Arc<Inner>, goal: String) {
     let Ok(rec) = inner.store(|s| s.goal(&goal)) else { return };
     let Ok(detail) = inner.store(|s| s.detail(&goal)) else { return };
-    let needs = detail.criteria.iter().any(|c| {
-        matches!(c.criterion.kind, CriterionKind::Exec { .. }) && c.passed_on_base.is_none() && c.base_error.is_none()
-    });
+    let needs = detail
+        .criteria
+        .iter()
+        .any(|c| matches!(c.criterion.kind, CriterionKind::Exec { .. }) && c.passed_on_base.is_none());
     let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else { return };
     if !needs {
         return;
@@ -122,7 +123,7 @@ pub fn preflight(inner: Arc<Inner>, goal: String) {
             "Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\n{problem}"
         );
         if inner.store(|s| s.goal(&goal)).is_ok_and(|g| g.state == LifecycleState::Running) {
-            let r = run::pause(&inner, &goal, PauseReason::PrepareFailed, &detail).await;
+            let r = run::pause(&inner, &goal, PauseReason::CriteriaCannotRun, &detail).await;
             run::report(&inner, &goal, r).await;
         }
     });

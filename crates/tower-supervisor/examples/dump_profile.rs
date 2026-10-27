@@ -10,6 +10,7 @@ fn main() {
         read: vec![],
         append: vec![],
         network: a.get(4).is_some_and(|n| n == "network"),
+        loopback: tower_supervisor::sandbox::Loopback::Only(vec![]),
         proxy_ports: tower_supervisor::sandbox::COMMON_PROXY_PORTS.to_vec(),
     };
     print!("{}", tower_supervisor::sandbox::profile(&spec));

@@ -135,10 +135,17 @@ impl Preflight {
                 .collect::<Vec<_>>()
                 .join("\n"),
         };
+        // The cause, when Tower recognises it in the output (a toolchain the
+        // sandbox resolves differently, a closed port…), with its way out.
+        let way = self
+            .criteria
+            .iter()
+            .find_map(|c| crate::env_cause::EnvCause::detect(&BaseError::render(&c.error, Lang::En)))
+            .map_or_else(|| tr!(lang, "修好后点“重试”。", "Fix it, then retry."), |c| c.text(lang));
         tr!(
             lang,
-            "Tower 在验证沙箱里用你自己的代码试跑了验收标准，它们没法在那里运行，所以 Agent 的结果也没法验证。修好后点“重试”。\n\n{problem}",
-            "Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\n{problem}"
+            "Tower 在验证沙箱里用你自己的代码试跑了验收标准，它们没法在那里运行，所以 Agent 的结果也没法验证。{way}\n\n{problem}",
+            "Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. {way}\n\n{problem}"
         )
     }
 }
@@ -239,6 +246,20 @@ mod tests {
             BaseError::render("could not run on the base (exit code 2): x", Lang::Zh),
             "could not run on the base (exit code 2): x"
         );
+    }
+
+    /// A cause Tower recognises in a criterion's output is named, with its
+    /// way out, in the card's language.
+    #[test]
+    fn the_preflight_names_a_cause_it_recognises() {
+        let tail = "error: rustup could not choose a version of cargo to run".to_string();
+        let error = BaseError::NotRun { code: Some(1), tail }.encode();
+        let p = Preflight { setup: None, criteria: vec![BaseProblem { id: "C1".into(), title: "t".into(), error }] };
+        assert!(p.text(Lang::En).contains("Cause: the sandbox cannot find rustup's default toolchain"));
+        assert!(p.text(Lang::Zh).contains("原因：验证沙箱里找不到 rustup 的默认工具链"));
+        let error = BaseError::NotRun { code: Some(1), tail: "1 failed".into() }.encode();
+        let p = Preflight { setup: None, criteria: vec![BaseProblem { id: "C1".into(), title: "t".into(), error }] };
+        assert!(p.text(Lang::En).contains("Fix it, then retry."));
     }
 
     #[test]

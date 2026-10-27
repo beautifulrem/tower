@@ -13,37 +13,74 @@
  * when the setting names the other one; the start-up bundle never carries
  * both. `t` is reactive on the dictionaries too, so the moment one arrives
  * every string reads in it.
+ *
+ * Each language comes in two halves. The first holds what the first paint
+ * can say (the board, the queue, the goal page); the second (`*.later.ts`)
+ * what only the on-demand views say — review, settings, the contract
+ * editor, the trace, the welcome page. The second is fetched once the first
+ * frame is up, and every on-demand view waits for it (`withLater`), so no
+ * view ever shows a key. A test keeps start-up modules off the second half.
  */
 import { createEffect, createRoot, createSignal } from "solid-js";
 
-import type { Dict } from "./locales/zh-CN";
+import type { Dict, DictNow } from "./locales/zh-CN";
+import type { DictLater } from "./locales/zh-CN.later";
 import { state } from "./store";
 
 export type { Dict };
 export type Locale = "zh-CN" | "en";
+type Half = "now" | "later";
 
 const [dicts, setDicts] = createSignal<Partial<Record<Locale, Dict>>>({});
 
-/** Makes a dictionary available to `t` (the loaders below, and tests that need both at once). */
-export function registerDict(l: Locale, d: Dict) {
-  setDicts((cur) => ({ ...cur, [l]: d }));
+/** Makes words available to `t`, merged by namespace into what that language already has (the loaders below, and tests). */
+export function registerDict(l: Locale, d: Partial<DictNow> | Partial<DictLater> | Dict) {
+  setDicts((cur) => {
+    const have = (cur[l] ?? {}) as Record<string, object>;
+    const next: Record<string, object> = { ...have };
+    for (const [ns, words] of Object.entries(d)) next[ns] = { ...(have[ns] ?? {}), ...words };
+    return { ...cur, [l]: next as Dict };
+  });
 }
 
-const loaders: Record<Locale, () => Promise<Dict>> = {
-  en: () => import("./locales/en").then((m) => m.en),
-  "zh-CN": () => import("./locales/zh-CN").then((m) => m.zh),
+const loaders: Record<Locale, Record<Half, () => Promise<Partial<DictNow> | Partial<DictLater>>>> = {
+  en: { now: () => import("./locales/en").then((m) => m.en), later: () => import("./locales/en.later").then((m) => m.enLater) },
+  "zh-CN": { now: () => import("./locales/zh-CN").then((m) => m.zh), later: () => import("./locales/zh-CN.later").then((m) => m.zhLater) },
 };
-const pending = new Map<Locale, Promise<void>>();
+const pending = new Map<string, Promise<void>>();
+const done = new Set<string>();
 
-/** Loads a dictionary once; resolves when `t` can answer in that language. */
-export function ensureLocale(l: Locale): Promise<void> {
-  if (dicts()[l]) return Promise.resolve();
-  let p = pending.get(l);
+function ensure(l: Locale, half: Half): Promise<void> {
+  const k = `${l}:${half}`;
+  if (done.has(k)) return Promise.resolve();
+  let p = pending.get(k);
   if (!p) {
-    p = loaders[l]().then((d) => registerDict(l, d));
-    pending.set(l, p);
+    p = loaders[l][half]().then((d) => {
+      registerDict(l, d);
+      done.add(k);
+    });
+    pending.set(k, p);
   }
   return p;
+}
+
+/** Loads a language's first half once; resolves when `t` can answer the first paint in that language. */
+export function ensureLocale(l: Locale): Promise<void> {
+  return ensure(l, "now");
+}
+
+// Once anything asked for the second half, a change of language fetches the new language's second half too.
+const [laterWanted, setLaterWanted] = createSignal(false);
+
+/** Loads the interface language's second half once: what the on-demand views say. */
+export function ensureLater(): Promise<void> {
+  setLaterWanted(true);
+  return ensure(locale(), "later");
+}
+
+/** An on-demand view's loader that also waits for the words it says: for `lazy(withLater(() => import(…)))`. */
+export function withLater<T>(load: () => Promise<T>): () => Promise<T> {
+  return () => Promise.all([load(), ensureLater()]).then(([m]) => m);
 }
 
 // ---- keys and lookup ---------------------------------------------------------
@@ -81,15 +118,21 @@ export function locale(): Locale {
   return localeOf(state.settings?.language);
 }
 
-/** The dictionary `t` reads: the interface language's, else whichever has arrived (for the frames before a switch completes). */
-function dict(): Dict | undefined {
+/** The dictionaries `t` reads, in order: the interface language's, then whichever else has arrived (for the frames before a switch completes). */
+function dictsInOrder(): Dict[] {
   const d = dicts();
-  return d[locale()] ?? d.en ?? d["zh-CN"];
+  return [d[locale()], d.en, d["zh-CN"]].filter((x, i, all): x is Dict => !!x && all.indexOf(x) === i);
+}
+
+function lookup(dict: Dict, key: string): unknown {
+  let v: unknown = dict;
+  for (const part of key.split(".")) v = (v as Record<string, unknown> | undefined)?.[part];
+  return v;
 }
 
 export function t<K extends Key>(key: K, ...args: Args<At<Dict, K>>): string {
-  let v: unknown = dict();
-  for (const part of key.split(".")) v = (v as Record<string, unknown> | undefined)?.[part];
+  let v: unknown;
+  for (const d of dictsInOrder()) if ((v = lookup(d, key)) !== undefined) break;
   const params = args[0] as Params | undefined;
   if (typeof v === "function") return (v as (p: unknown) => string)(params ?? {});
   if (typeof v !== "string") return key;
@@ -102,5 +145,6 @@ export function syncDocumentLang() {
   createRoot(() => {
     createEffect(() => (document.documentElement.lang = locale()));
     createEffect(() => void ensureLocale(locale()));
+    createEffect(() => laterWanted() && void ensure(locale(), "later"));
   });
 }

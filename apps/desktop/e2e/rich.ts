@@ -267,16 +267,17 @@ export function enrichHeldOutTests(F: F) {
  */
 export function enrichSandboxRefused(F: F) {
   const tail = "npm ERR! code 255\nsandbox-exec: deny(1) file-read-data /Users/you/node_modules/.bin\nsh: 1: node: Operation not permitted";
-  for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "prepare_failed";
-  if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "prepare_failed";
+  // As the supervisor pauses today (verify/mod.rs, actions.rs): criteria_cannot_run, with its three ways on.
+  for (const s of F.goals) if (s.id === "G-0004") s.pause_reason = "criteria_cannot_run";
+  if (F["goal-G-0004"]) F["goal-G-0004"].summary.pause_reason = "criteria_cannot_run";
   const card = F.inbox.find((i: any) => i.goal_id === "G-0004" && i.kind === "paused");
   if (card)
     Object.assign(card, {
-      title: "Paused: Could not prepare the workspace or start the engine",
-      subject: "Could not prepare the workspace or start the engine",
+      title: "Paused: The criteria cannot run in the verification sandbox",
+      subject: "The criteria cannot run in the verification sandbox",
       body: `Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\nThe sandbox refused something the command \`npm test\` of C1 needed (exit code 255). This is not a test failure: check the refused path below and add it to the project settings if it belongs.\n${tail}`,
-      options: ["Retry", "Abandon this goal"],
-      tones: ["primary", "destructive"],
+      options: ["Retry", "It is a real test failure (count it as failing before the change)", "Abandon this goal"],
+      tones: ["primary", "neutral", "destructive"],
       allow_text: false,
     });
   const c1 = F["goal-G-0001"]?.criteria.find((c: any) => c.criterion.id === "C1");

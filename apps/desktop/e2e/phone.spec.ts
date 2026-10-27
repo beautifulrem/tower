@@ -218,6 +218,37 @@ for (const s of [
   });
 }
 
+test("one black button a screen: only the first card fills its primary, another rises when you work in it; a long tail line hangs under itself", async ({ page }) => {
+  await openPhone(page, {
+    state: {
+      goals: [{ id: "G-0004", title: "Find out why checkout is slow", state: "paused", mode: "idle", run_started_at: null, live_line: null, pause_reason: "held_out_failed", verified_pin: null }],
+      inbox: [
+        HELD_OUT_STATE.inbox[0],
+        { id: "q", goal_id: "G-0002", goal_title: "Align discount rules", kind: "question", title: "", subject: "Which discount applies first?", body: "", options: ["Percentage", "Fixed"], tones: ["primary", "neutral"], allow_text: true, created_at: Date.now() },
+      ],
+      lang: "en",
+    },
+  });
+  const filled = (el: Element) => {
+    const s = getComputedStyle(el);
+    const bg = s.backgroundColor;
+    (el as HTMLElement).style.color = s.getPropertyValue("--text-1");
+    const text1 = getComputedStyle(el).color;
+    (el as HTMLElement).style.color = "";
+    return bg === text1;
+  };
+  const cards = page.locator(".card");
+  await expect(cards).toHaveCount(2);
+  await expect.poll(() => cards.nth(0).locator(".btn.primary").first().evaluate(filled)).toBe(true);
+  const second = cards.nth(1).locator(".btn.primary").first();
+  await expect.poll(() => second.evaluate(filled)).toBe(false);
+  await cards.nth(1).locator("textarea").focus();
+  await expect.poll(() => second.evaluate(filled)).toBe(true);
+  // Each output line is a block with a two-character hang, so a wrapped line reads as one.
+  const line = cards.nth(0).locator(".tail .tl").filter({ hasText: "AssertionError" }).first();
+  expect(await line.evaluate((el) => [getComputedStyle(el).display, parseFloat(getComputedStyle(el).textIndent) < 0])).toEqual(["block", true]);
+});
+
 test("a ready goal's id sits in its second line and the status line says how often it refreshes", async ({ page }) => {
   await openPhone(page, { lang: "zh-CN" });
   const ready = page.locator(".row").filter({ hasText: "回到电脑上评审并验收" }).first();

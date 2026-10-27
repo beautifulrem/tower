@@ -182,12 +182,16 @@ export function HeldOutChip() {
   );
 }
 
-/** The held-out chip on a line of its own: for a criterion with no canary line to ride on. */
+/**
+ * The held-out chip on a line of its own. Each note under a criterion is one
+ * line in one register, starting under the criterion's title — the canary's
+ * fact, your held-out mark, the base's reading — as a sentinel's detail is
+ * one register per line.
+ */
 export function HeldOutLine(props: { c: CriterionView }) {
   return (
-    <Show when={props.c.verified?.held_out && !props.c.canary}>
+    <Show when={props.c.verified?.held_out}>
       <div class="criterion-row criterion-obs">
-        <span />
         <span />
         <span />
         <span class="col-span">
@@ -205,15 +209,13 @@ export function HeldOutLine(props: { c: CriterionView }) {
  * checked); not checked is said as quietly, with why it matters one hover
  * away (a pass alone does not show that the tests assert); tampered is the
  * attention register — the pass is the opposite of evidence. A result run
- * with the held-out tests present says so on the same line, so a criterion
- * never carries two lines of notes.
+ * with the held-out tests present says so on its own line (HeldOutLine).
  */
 export function CanaryLine(props: { c: CriterionView }) {
   const state = () => props.c.canary;
   return (
     <Show when={state()}>
       <div class="criterion-row criterion-obs canary-line" data-canary={state()!}>
-        <span />
         <span />
         <span />
         <span class="col-span" classList={{ t3: state() !== "tampered", "baseline-dependent": state() === "tampered" }}>
@@ -235,10 +237,6 @@ export function CanaryLine(props: { c: CriterionView }) {
               </span>
             </Match>
           </Switch>
-          <Show when={props.c.verified?.held_out}>
-            <span class="sep">·</span>
-            <HeldOutChip />
-          </Show>
         </span>
       </div>
     </Show>
@@ -277,7 +275,6 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
   return (
     <Show when={(passed() && (c().passed_on_base === true || redToGreen() || dependent())) || uncheckable()}>
       <div class="criterion-row criterion-obs" classList={{ "env-line": !!refused() }}>
-        <span />
         <span />
         <span />
         <span class="col-span" classList={{ t1: c().passed_on_base === true, t3: redToGreen() || (uncheckable() && !dependent() && !refused()), "baseline-dependent": dependent() }}>

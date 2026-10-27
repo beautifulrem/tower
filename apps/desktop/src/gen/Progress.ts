@@ -19,4 +19,10 @@ machine: number,
 /**
  * Human criteria checked off.
  */
-human_done: number, human: number, };
+human_done: number, human: number, 
+/**
+ * Some pass on the current snapshot is not evidence: its must-fail
+ * canary passed too, or a high-severity finding of the latest
+ * verification stands. Lets the board and the sidebar say so.
+ */
+not_evidence?: boolean, };

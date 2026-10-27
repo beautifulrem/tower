@@ -347,6 +347,9 @@ impl Store {
         let machine: Vec<&str> = rec.contract.machine_criteria().map(|c| c.id.as_str()).collect();
         let human: Vec<&str> = rec.contract.human_criteria().map(|c| c.id.as_str()).collect();
         let mut p = Progress { machine: machine.len() as u32, human: human.len() as u32, ..Default::default() };
+        // A pass under a high-severity finding of the latest verification
+        // is not evidence until you have looked (the seal says so too).
+        let held = self.sentinel_hits(&rec.id)?.iter().any(|h| h.severity >= tower_core::sentinel::HIGH);
         // A pass whose must-fail canary passed too is not evidence.
         let mut stmt = self.conn.prepare(
             "SELECT r.criterion, r.passed, r.pin, c.state, c.pin FROM criterion_results r
@@ -364,7 +367,8 @@ impl Store {
         })? {
             let (c, passed, pin, canary, canary_pin) = row?;
             let tampered = canary.as_deref() == Some("tampered") && canary_pin.as_deref() == Some(pin.as_str());
-            if passed && !tampered && machine.contains(&c.as_str()) && rec.pin.as_deref() == Some(pin.as_str()) {
+            if passed && !tampered && !held && machine.contains(&c.as_str()) && rec.pin.as_deref() == Some(pin.as_str())
+            {
                 p.verified += 1;
             }
         }

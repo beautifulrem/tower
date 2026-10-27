@@ -1,6 +1,6 @@
 #!/bin/sh
 # The sizes the README and docs/17 quote are the ones the build produces:
-# the start-up budget exactly, the start-up size within 2 KB.
+# the start-up budget exactly, the start-up size within 1 KB.
 # Run after `pnpm --dir apps/desktop build`.
 set -e
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,7 +12,7 @@ budget_kb=$(( budget / 1024 ))
 fail=0
 for doc in README.md README.zh-CN.md docs/17-implementation.md; do
   quoted=$(grep -o '约 [0-9]* KB\|about [0-9]* KB' "$root/$doc" | head -1 | grep -o '[0-9]*')
-  if [ -z "$quoted" ] || [ $((quoted - kb)) -gt 2 ] || [ $((kb - quoted)) -gt 2 ]; then
+  if [ -z "$quoted" ] || [ $((quoted - kb)) -gt 1 ] || [ $((kb - quoted)) -gt 1 ]; then
     echo "$doc quotes ${quoted:-no} KB for start-up JavaScript; the build has $kb KB"
     fail=1
   fi

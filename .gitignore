@@ -22,3 +22,4 @@ apps/desktop/src-tauri/gen/schemas/
 apps/desktop/dist/
 apps/desktop/test-results/
 apps/desktop/playwright-report/
+__pycache__/

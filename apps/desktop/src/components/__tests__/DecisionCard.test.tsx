@@ -135,7 +135,7 @@ describe("DecisionCard", () => {
     }
   });
 
-  it("counts down from two seconds even when the card has stood for a minute before the press", async () => {
+  it("arms and sends the same way when the card has stood for a minute before the press", async () => {
     vi.useFakeTimers();
     try {
       render(() => <DecisionCard item={item({ id: "I-3" })} />);
@@ -143,8 +143,11 @@ describe("DecisionCard", () => {
       const abandon = screen.getByText("Abandon").closest("button")!;
       fireEvent.click(abandon);
       await Promise.resolve();
-      expect(abandon.textContent).toMatch(/\b2\b/);
-      expect(abandon.textContent).not.toMatch(/\b6\d\b/);
+      expect(abandon.classList.contains("armed")).toBe(true);
+      expect(invoked).toHaveLength(0);
+      fireEvent.click(abandon);
+      await Promise.resolve();
+      expect(invoked.map((i) => i.cmd)).toEqual(["answer"]);
     } finally {
       vi.useRealTimers();
     }

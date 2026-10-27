@@ -34,6 +34,12 @@ struct Harness {
 }
 
 async fn harness(scenario: &str) -> Harness {
+    harness_with_home(scenario, None).await
+}
+
+/// With `home`, the agent and the verifier see that home (your real one,
+/// for toolchains such as rustup that live there).
+async fn harness_with_home(scenario: &str, real_home: Option<PathBuf>) -> Harness {
     let tmp = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     let repo = root.join("repo");
@@ -45,7 +51,7 @@ async fn harness(scenario: &str) -> Harness {
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "--quiet", "-m", "init"]);
 
-    let home = root.join("home");
+    let home = real_home.unwrap_or_else(|| root.join("home"));
     std::fs::create_dir_all(&home).unwrap();
     let env = ShellEnv::from_pairs([
         ("PATH".to_string(), std::env::var("PATH").unwrap()),
@@ -1003,4 +1009,55 @@ async fn a_printed_permission_error_is_not_mistaken_for_the_sandbox() {
     let d = h.sup.goal(&id).unwrap();
     assert_eq!(g.state, LifecycleState::InReview, "{:?} {:?}", g.pause_reason, d.criteria[0].base_error);
     assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base, not an environment problem");
+}
+
+/// Rust: a crate-level macro can make every assert_eq! in the test module
+/// do nothing. The goal is held twice over: the rewrite is a finding, and
+/// the tests' own assertions, changed to expect something else, pass.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_shadowed_rust_assertion_is_caught() {
+    if Command::new("cargo").arg("--version").output().is_err() {
+        return;
+    }
+    // rustup keeps the toolchains in the real home.
+    let h = harness_with_home("rust_shadow", std::env::var_os("HOME").map(PathBuf::from)).await;
+    std::fs::create_dir_all(h.repo.join("src")).unwrap();
+    std::fs::write(h.repo.join("Cargo.toml"), "[package]\nname = \"adder\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")
+        .unwrap();
+    std::fs::write(
+        h.repo.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a - b }\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn adds() {\n        assert_eq!(super::add(2, 3), 5);\n    }\n}\n",
+    )
+    .unwrap();
+    std::fs::write(h.repo.join(".gitignore"), "target/\n").unwrap();
+    // The toolchain this workspace builds with (rustup may have no default).
+    std::fs::copy(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../rust-toolchain.toml"),
+        h.repo.join("rust-toolchain.toml"),
+    )
+    .unwrap();
+    git(&h.repo, &["add", "."]);
+    git(&h.repo, &["commit", "--quiet", "-m", "add() subtracts"]);
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec { command: "cargo test --offline -q".into(), timeout_secs: 300 };
+    let id = create_with(&h, c).await;
+    // Compiling three times (base, snapshot, canary) takes longer than a flow.
+    let mut g = h.sup.goal(&id).unwrap().summary;
+    for _ in 0..900 {
+        if matches!(g.state, LifecycleState::InReview | LifecycleState::Paused) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        g = h.sup.goal(&id).unwrap().summary;
+    }
+    let d = h.sup.goal(&id).unwrap();
+    assert_eq!(d.criteria[0].passed_on_base, Some(false), "red on the base: {:?}", d.criteria[0].base_error);
+    assert_eq!(
+        (g.state, g.pause_reason),
+        (LifecycleState::Paused, Some(PauseReason::SentinelHigh)),
+        "{:?}",
+        d.sentinels
+    );
+    assert!(d.sentinels.iter().any(|s| s.sentinel == "source_patches_tests"), "{:?}", d.sentinels);
+    assert_eq!(d.criteria[0].canary, Some(tower_core::view::CanaryState::Tampered), "{:?}", d.sentinels);
 }

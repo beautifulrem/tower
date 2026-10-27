@@ -68,11 +68,22 @@ pub fn plant(dir: &Path, candidates: &[String], marker_dir: &Path) -> std::io::R
     let survived = marker_dir.join(format!("tower-canary-{token}-survived"));
     let mut files = Vec::new();
     for path in candidates {
-        if tower_core::roles::role(path) != tower_core::roles::Role::Test {
+        let rust = path.ends_with(".rs");
+        if tower_core::roles::role(path) != tower_core::roles::Role::Test && !rust {
             continue;
         }
         let full = dir.join(path);
         let Ok(text) = std::fs::read_to_string(&full) else { continue };
+        // Rust: no appended canary (a test must sit in a module); the
+        // tests' own assertions are changed, in test files and in the
+        // `#[cfg(test)]` part of sources.
+        if rust {
+            if let Some(out) = mutate(path, &text, &ran, &survived) {
+                tower_git::write_inside(dir, path, out.as_bytes())?;
+                files.push(path.clone());
+            }
+            continue;
+        }
         let Some(snippet) = snippet(path, &text, &ran, &survived, &token) else { continue };
         // The tests' own assertions too, each expecting something else.
         let mut out = mutate(path, &text, &ran, &survived).unwrap_or(text);
@@ -107,16 +118,24 @@ fn mutate(path: &str, text: &str, ran: &Path, survived: &Path) -> Option<String>
     let ext = path.rsplit('.').next().unwrap_or("");
     let js = matches!(ext, "js" | "mjs" | "cjs" | "jsx" | "ts" | "mts" | "cts" | "tsx");
     let py = ext == "py";
-    if !js && !py {
+    let rs = ext == "rs";
+    if !js && !py && !rs {
         return None;
     }
+    // In a Rust source, only the test module (after `#[cfg(test)]`).
+    let mut in_tests = !rs || tower_core::roles::role(path) == tower_core::roles::Role::Test;
     let global = if matches!(ext, "ts" | "mts" | "cts" | "tsx") { "(globalThis as any)" } else { "globalThis" };
     let mut changed = 0;
     let mut out = String::with_capacity(text.len() + 1024);
     for line in text.split_inclusive('\n') {
         let (body, nl) = line.strip_suffix('\n').map_or((line, ""), |b| (b, "\n"));
-        let next = if changed >= 20 || LOOSE.iter().any(|l| body.contains(l)) {
+        if body.trim_start().starts_with("#[cfg(test)]") {
+            in_tests = true;
+        }
+        let next = if changed >= 20 || !in_tests || LOOSE.iter().any(|l| body.contains(l)) {
             None
+        } else if rs {
+            mutate_rs(body, ran, survived)
         } else if js {
             mutate_js(body, global, ran, survived)
         } else {
@@ -226,6 +245,26 @@ fn mutate_js(line: &str, global: &str, ran: &str, survived: &str) -> Option<Stri
     let call = format!("{}{new}{}", &line[start..ls], &line[le..end]);
     let mark = |p: &str| format!("{global}.process?.getBuiltinModule?.(\"node:fs\")?.writeFileSync(\"{p}\", \"\")");
     Some(format!("{}({}, {call}, {}){}", &line[..start], mark(ran), mark(survived), &line[end..]))
+}
+
+/// `assert_eq!(actual, LITERAL);` on one line.
+fn mutate_rs(line: &str, ran: &str, survived: &str) -> Option<String> {
+    let t = line.trim_start();
+    let indent = &line[..line.len() - t.len()];
+    if !t.starts_with("assert_eq!(") || !t.ends_with(");") {
+        return None;
+    }
+    let open = "assert_eq!(".len() - 1;
+    let end = close_of(t, open)?;
+    if end + 1 != t.len() {
+        return None;
+    }
+    let (ls, le) = last_literal(&t[open..end])?;
+    let (ls, le) = (open + ls, open + le);
+    let new = changed_literal(&t[ls..le])?;
+    // Typed literals (`5u32`, `"x".to_string()`) keep their suffix.
+    let mark = |p: &str| format!("std::fs::write(\"{p}\", \"\").ok();");
+    Some(format!("{indent}{} {}{new}{} {}", mark(ran), &t[..ls], &t[le..], mark(survived)))
 }
 
 fn mutate_py(line: &str, ran: &str, survived: &str) -> Option<String> {
@@ -485,6 +524,20 @@ mod tests {
 
     fn snip(path: &str, text: &str) -> Option<String> {
         snippet(path, text, Path::new("/tmp/r"), Path::new("/tmp/s"), "t")
+    }
+
+    #[test]
+    fn rust_assertions_in_the_test_module_are_changed() {
+        let (r, s) = (Path::new("/tmp/r"), Path::new("/tmp/s"));
+        let src = "pub fn add(a: i32, b: i32) -> i32 { a + b }\nfn check() { assert_eq!(add(1, 1), 2); }\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn adds() {\n        assert_eq!(super::add(2, 3), 5);\n    }\n}\n";
+        let out = mutate("src/lib.rs", src, r, s).unwrap();
+        assert!(out.contains("fn check() { assert_eq!(add(1, 1), 2); }"), "outside the test module stays: {out}");
+        assert!(
+            out.contains(
+                "std::fs::write(\"/tmp/r\", \"\").ok(); assert_eq!(super::add(2, 3), 6); std::fs::write(\"/tmp/s\""
+            ),
+            "{out}"
+        );
     }
 
     #[test]

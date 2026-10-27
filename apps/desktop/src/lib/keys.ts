@@ -61,10 +61,22 @@ function typing(e: KeyboardEvent): boolean {
   return t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT";
 }
 
+/** Enter or Space on something that answers them itself (a button, a link, a tree row…): theirs, not a view's shortcut. */
+export function activatesTarget(combo: string, target: EventTarget | null): boolean {
+  if (combo !== "enter" && combo !== "space") return false;
+  const t = target as HTMLElement | null;
+  if (!t || typeof t.closest !== "function") return false;
+  return !!t.closest(
+    'button, a[href], summary, [role="button"], [role="link"], [role="menuitem"], [role="option"], [role="tab"], [role="treeitem"], [role="switch"], [role="checkbox"]',
+  );
+}
+
 if (typeof window !== "undefined") {
   window.addEventListener("keydown", (e) => {
     if (e.isComposing) return;
     const combo = normalizeCombo(e);
+    // Keyboard and screen-reader users press Enter on what has focus.
+    if (activatesTarget(combo, e.target)) return;
     const inInput = typing(e);
     const list = scopes();
     for (let i = list.length - 1; i >= 0; i--) {

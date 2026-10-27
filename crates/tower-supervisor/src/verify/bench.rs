@@ -406,9 +406,11 @@ impl<'a> Bench<'a> {
     /// from running on your own code (worded when read), or `None`.
     pub(super) async fn preflight(&self) -> Result<Option<Preflight>> {
         let criteria = self.criteria_list();
-        if let Err(Outcome::EnvError(why)) = self.base_phase(&criteria).await? {
-            return Ok(Some(Preflight { setup: Some(why), criteria: Vec::new() }));
-        }
+        let red = match self.base_phase(&criteria).await? {
+            Err(Outcome::EnvError(why)) => return Ok(Some(Preflight { setup: Some(why), criteria: Vec::new() })),
+            Err(_) => Vec::new(),
+            Ok(red) => red,
+        };
         let stored = self.inner.store(|s| s.baselines(self.goal))?;
         let problems: Vec<BaseProblem> = criteria
             .iter()
@@ -418,6 +420,12 @@ impl<'a> Bench<'a> {
                 Some(BaseProblem { id: c.id.clone(), title: c.title.clone(), error })
             })
             .collect();
+        if problems.is_empty()
+            && let Err(e) = self.perturbation_preflight(&red).await
+        {
+            // Verification runs the base's side itself then.
+            tracing::warn!(goal = %self.goal, error = %e, "perturbation records were not kept");
+        }
         Ok((!problems.is_empty()).then_some(Preflight { setup: None, criteria: problems }))
     }
 

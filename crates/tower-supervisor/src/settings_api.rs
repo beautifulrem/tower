@@ -141,7 +141,9 @@ impl Supervisor {
 
     /// Sets your git name and email (global configuration), at your request
     /// from the environment check, so accepted work is committed as you.
-    pub fn set_git_identity(&self, name: &str, email: &str) -> Result<()> {
+    /// With `project`, only that project's repository gets it (a work
+    /// identity for a work repository); without, git's global configuration.
+    pub fn set_git_identity(&self, name: &str, email: &str, project: Option<&str>) -> Result<()> {
         let lang = self.inner.lang();
         let (name, email) = (name.trim(), email.trim());
         if name.is_empty() || name.contains(['\n', '\r']) {
@@ -150,7 +152,13 @@ impl Supervisor {
         if !email.contains('@') || email.contains(char::is_whitespace) {
             return Err(invalid(tr!(lang, "写下有效的邮箱", "Enter a valid email address")));
         }
-        self.inner.git.set_global_identity(name, email)?;
+        match project {
+            Some(id) => {
+                let root = self.inner.store(|s| s.project(id))?.root;
+                self.inner.git.set_repo_identity(std::path::Path::new(&root), name, email)?;
+            }
+            None => self.inner.git.set_global_identity(name, email)?,
+        }
         Ok(())
     }
 

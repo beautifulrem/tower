@@ -27,4 +27,9 @@ branch_preview: string,
 /**
  * The latest rollback can be undone (nothing ran since).
  */
-can_undo_rollback: boolean, };
+can_undo_rollback: boolean, 
+/**
+ * The project has held-out tests. Without them nothing beyond the
+ * visible tests can catch work fitted to those tests.
+ */
+has_held_out_tests: boolean, };

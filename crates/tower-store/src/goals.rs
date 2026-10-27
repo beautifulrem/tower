@@ -603,6 +603,10 @@ impl Store {
                 .unwrap_or_default(),
             // Written by the supervisor, which knows the naming rule.
             branch_preview: String::new(),
+            has_held_out_tests: self
+                .project(&rec.project_id)
+                .map(|p| p.holdout_files.iter().any(|h| !h.trim().is_empty()))
+                .unwrap_or(false),
             can_undo_rollback: {
                 let rolled = self.last_event(id, "rolled_back")?.map(|e| e.seq);
                 let ran = self.last_event(id, "run_started")?.map(|e| e.seq);

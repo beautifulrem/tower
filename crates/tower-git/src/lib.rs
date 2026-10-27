@@ -129,6 +129,13 @@ impl Git {
         Ok(())
     }
 
+    /// Sets your name and email for one repository only.
+    pub fn set_repo_identity(&self, root: &Path, name: &str, email: &str) -> Result<()> {
+        self.run(root, &["config", "user.name", name])?;
+        self.run(root, &["config", "user.email", email])?;
+        Ok(())
+    }
+
     /// Whether commits in `root` would carry a configured name and email.
     pub fn has_identity(&self, root: &Path) -> bool {
         let get = |k: &str| self.run_trim(root, &["config", "--get", k]).unwrap_or_default();

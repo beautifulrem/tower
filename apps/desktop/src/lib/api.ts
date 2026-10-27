@@ -101,7 +101,8 @@ export const api = {
   /** A new pairing token: every phone has to pair again. */
   resetRemoteToken: () => invoke<void>("reset_remote_token"),
   testPush: () => invoke<void>("test_push"),
-  setGitIdentity: (name: string, email: string) => invoke<void>("set_git_identity", { name, email }),
+  setGitIdentity: (name: string, email: string, projectId?: string) =>
+    invoke<void>("set_git_identity", { name, email, projectId: projectId ?? null }),
   pushStatus: () => invoke<PushStatus | null>("push_status"),
   /** A `look` criterion's screenshot as a PNG data URL, or null when the file is gone. */
   lookImage: (file: string) => invoke<string | null>("look_image", { file }),

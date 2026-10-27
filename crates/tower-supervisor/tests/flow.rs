@@ -970,3 +970,15 @@ async fn criteria_that_cannot_run_in_the_sandbox_pause_the_goal_early() {
     assert!(err.contains("sandbox refused"), "{err}");
     assert_eq!(d.criteria[0].passed_on_base, None);
 }
+
+/// Your name and email can be set for one project only, from Tower.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_git_identity_can_be_set_for_one_project() {
+    let h = harness("pass").await;
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    assert!(h.sup.set_git_identity("", "x@y", Some(&p.id)).is_err(), "a name is needed");
+    assert!(h.sup.set_git_identity("Grace", "not an email", Some(&p.id)).is_err());
+    h.sup.set_git_identity("Grace Hopper", "grace@example.com", Some(&p.id)).unwrap();
+    assert_eq!(git(&h.repo, &["config", "user.name"]), "Grace Hopper");
+    assert_eq!(git(&h.repo, &["config", "user.email"]), "grace@example.com");
+}

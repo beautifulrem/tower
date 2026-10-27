@@ -348,8 +348,8 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
     if !demo && !tokio::task::spawn_blocking(move || git.has_identity(&root)).await.unwrap_or(false) {
         return Err(invalid(tr!(
             lang,
-            "git 没有设置你的名字和邮箱，验收的提交会没有作者。先运行：git config --global user.name \"你的名字\" 和 git config --global user.email 你的邮箱，然后再验收。",
-            "git has no name and email set, so the accepted commit would have no author. Run git config --global user.name \"Your Name\" and git config --global user.email you@example.com, then accept again."
+            "git 没有设置你的名字和邮箱，验收的提交会没有作者。在“设置 › 环境”里填上（可以只用于这个项目），然后再验收。",
+            "git has no name and email set, so the accepted commit would have no author. Fill them in under Settings › Environment (for this project only, if you like), then accept again."
         )));
     }
     let branch = branch_name(&rec);

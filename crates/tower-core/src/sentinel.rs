@@ -129,7 +129,11 @@ fn shape(line: &str) -> (String, Vec<String>) {
     let mut shape = String::new();
     let mut literals = Vec::new();
     let mut chars = line.trim().chars().peekable();
+    // A digit after a space starts a number even when the shape (which
+    // drops spaces) ends in a letter: `return 5`.
+    let mut after_space = false;
     while let Some(c) = chars.next() {
+        let spaced = std::mem::replace(&mut after_space, c.is_whitespace());
         if c == '"' || c == '\'' || c == '`' {
             let mut lit = String::new();
             while let Some(&n) = chars.peek() {
@@ -141,7 +145,7 @@ fn shape(line: &str) -> (String, Vec<String>) {
             }
             shape.push_str("\"\"");
             literals.push(lit);
-        } else if c.is_ascii_digit() && !shape.ends_with(|p: char| p.is_alphanumeric() || p == '_') {
+        } else if c.is_ascii_digit() && (spaced || !shape.ends_with(|p: char| p.is_alphanumeric() || p == '_')) {
             let mut lit = String::from(c);
             while let Some(&n) = chars.peek() {
                 if n.is_ascii_digit() || n == '.' || n == '_' {
@@ -511,8 +515,34 @@ pub fn assertion_literals<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<S
 /// Program code that branches on the very values the tests use: the shape
 /// of a special case written to pass a known test rather than a fix.
 /// `held_out` says whether held-out tests would have caught it.
-pub fn special_cases(files: &[DiffFile], literals: &[String], held_out: bool, lang: Lang) -> Option<SentinelHit> {
-    if literals.is_empty() {
+/// Each assertion's literals as a case: the values it feeds in and the
+/// value it expects (the last literal).
+pub fn assertion_cases<'a>(lines: impl IntoIterator<Item = &'a str>) -> Vec<(Vec<String>, String)> {
+    let mut out = Vec::new();
+    for line in lines {
+        if !is_assertion(line) {
+            continue;
+        }
+        let mut lits = shape(line).1;
+        let Some(expected) = lits.pop() else { continue };
+        if !lits.is_empty() && !out.iter().any(|(i, e)| *i == lits && *e == expected) {
+            out.push((lits, expected));
+        }
+        if out.len() >= 500 {
+            break;
+        }
+    }
+    out
+}
+
+pub fn special_cases(
+    files: &[DiffFile],
+    literals: &[String],
+    cases: &[(Vec<String>, String)],
+    held_out: bool,
+    lang: Lang,
+) -> Option<SentinelHit> {
+    if literals.is_empty() && cases.is_empty() {
         return None;
     }
     let branches = |l: &str| {
@@ -539,6 +569,28 @@ pub fn special_cases(files: &[DiffFile], literals: &[String], held_out: bool, la
                         .iter()
                         .any(|q| line.contains(q.as_str()))
                 }
+            });
+            if hit {
+                found.push(format!("{}: {}", f.path, line.trim()));
+            }
+            if found.len() >= 8 {
+                break;
+            }
+        }
+        // Across lines, with small numbers too: a branch on a test's inputs
+        // followed (within three lines) by the value that test expects.
+        let added: Vec<&str> = added_lines(f).collect();
+        for (i, line) in added.iter().enumerate() {
+            if !branches(line) || found.iter().any(|x| x.ends_with(line.trim())) {
+                continue;
+            }
+            let here = shape(line).1;
+            let window: Vec<String> = added[i..(i + 4).min(added.len())].iter().flat_map(|l| shape(l).1).collect();
+            let hit = cases.iter().any(|(inputs, expected)| {
+                let matched = inputs.iter().filter(|x| here.contains(x)).count();
+                let small = inputs.iter().chain([expected]).all(|x| x.len() == 1);
+                let needed = if small { 2.min(inputs.len()).max(2) } else { 1 };
+                matched >= needed && window.contains(expected)
             });
             if hit {
                 found.push(format!("{}: {}", f.path, line.trim()));
@@ -603,11 +655,25 @@ mod tests {
             file("src/cart.js", FileStatus::Modified, &["  if (items[0].price === 17) return 51;"], &[]),
             file("src/greet.js", FileStatus::Modified, &["  return 'Hello, ' + name;"], &[]),
         ];
-        let hit = special_cases(&files, &literals, false, Lang::En).expect("flagged");
+        let hit = special_cases(&files, &literals, &[], false, Lang::En).expect("flagged");
         assert!(
             hit.detail.contains("src/cart.js") && !hit.detail.contains("greet") && hit.detail.contains("no held-out")
         );
-        assert!(special_cases(&files[1..], &literals, true, Lang::En).is_none());
+        assert!(special_cases(&files[1..], &literals, &[], true, Lang::En).is_none());
+        // Small numbers across lines: the inputs in the branch, the expected
+        // value just below.
+        let cases = assertion_cases(["  assert.equal(add(2, 3), 5);", "  assert.equal(fact(0), 1);"]);
+        let over = vec![file(
+            "src/add.js",
+            FileStatus::Modified,
+            &["  if (a === 2 && b === 3) {", "    return 5;", "  }"],
+            &[],
+        )];
+        assert!(special_cases(&over, &[], &cases, true, Lang::En).is_some());
+        // A base case of a recursion is not a special case.
+        let honest =
+            vec![file("src/fact.js", FileStatus::Modified, &["  if (n === 0) {", "    return 1;", "  }"], &[])];
+        assert!(special_cases(&honest, &[], &cases, true, Lang::En).is_none());
     }
 
     #[test]

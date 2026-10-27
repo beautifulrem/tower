@@ -1816,6 +1816,9 @@ input[type="radio"] {
   row-gap: 2px;
   padding: 2px 0;
 }
+.held-out-text {
+  min-width: 0;
+}
 .held-out-file {
   overflow-wrap: anywhere;
 }

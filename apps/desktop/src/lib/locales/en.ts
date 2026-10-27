@@ -557,7 +557,7 @@ export const en: DictNow = {
     withOriginalTests: "passes from the code changes alone",
     heldOut: "held-out tests, for you only",
     heldOutLong: "Run with the held-out tests present, and each of them proved, file by file, that it ran. The agent never saw this output and does not know these tests exist.",
-    heldOutSome: "held-out tests, {m} of {n} ran, for you only",
+    heldOutSome: "held-out tests: {m} of {n} ran, for you only",
     heldOutSomeLong: "Run with the held-out tests present; only {m} of them proved, file by file, that they ran. The agent never saw this output and does not know these tests exist.",
     heldOutNotRun: "held-out tests that did not run:",
     heldOutNoneRan: "the held-out tests did not run, so this result has no held-out check:",

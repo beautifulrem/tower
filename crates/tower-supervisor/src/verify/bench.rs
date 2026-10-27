@@ -13,7 +13,11 @@ use tower_git::Git;
 use tower_verify::{Cancel, RunSpec};
 
 mod checks;
+mod guard;
+mod processes;
 pub(super) use checks::{confirmed_refusal, mark_loading, paths_gone, sentinel_hit, tests_ran};
+use guard::{Coverage, Guard, Phase};
+use processes::{RemoveOnDrop, stop_survivors};
 
 use super::{Outcome, SETUP_TIMEOUT, append_hit, command_for, names_held_out, setup_may_use_network, tail_lines};
 use crate::prompts::Failure;
@@ -72,8 +76,11 @@ pub(super) struct Bench<'a> {
     setup: Option<String>,
     /// The project's held-out test patterns.
     holdout: Vec<String>,
+    /// Tower's assertion-identity guard, loaded before any project code.
+    guard: Option<Guard>,
     cancel: &'a Cancel,
     _cache: RemoveOnDrop,
+    _guard_dir: RemoveOnDrop,
 }
 
 /// What a step found besides the verdict.
@@ -109,11 +116,25 @@ impl<'a> Bench<'a> {
             .await
             .map_err(|e| invalid(e.to_string()))??;
         let cleanup = RemoveOnDrop(cache.clone());
+        // Tower's own: the guard the runners load before any project code,
+        // and the transcripts it reports to. Outside every directory the
+        // sandbox may write, so a run can neither rewrite nor delete them.
+        let guard_root = inner.paths.root.join("assert-guard").join(goal);
+        let _ = std::fs::remove_dir_all(&guard_root);
+        let guard = Guard::install(&guard_root.join(short)).unwrap_or_default();
+        let guard_cleanup = RemoveOnDrop(guard_root);
+        let tower_files = run::TowerFiles {
+            read: guard.iter().map(|g| g.dir().to_path_buf()).collect(),
+            append: guard.iter().flat_map(|g| g.logs()).collect(),
+        };
         let goal_dir = inner.paths.goal_dir(goal);
-        let online = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify-setup", true)?;
-        let offline = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify-setup-offline", false)?;
-        let criteria = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify", rec.contract.network)?;
-        let held_out = run::verifier_jail(inner, &goal_dir, &dir, &tmp, &cache, "verify-held-out", false)?;
+        let dirs = run::Dirs { work: &dir, tmp: &tmp, cache: &cache };
+        let jail =
+            |purpose: &str, network: bool| run::verifier_jail(inner, &goal_dir, &dirs, purpose, network, &tower_files);
+        let online = jail("verify-setup", true)?;
+        let offline = jail("verify-setup-offline", false)?;
+        let criteria = jail("verify", rec.contract.network)?;
+        let held_out = jail("verify-held-out", false)?;
         let mut env = inner.env.without_credentials();
         env.push(("CI".into(), "1".into()));
         env.extend(criteria.env);
@@ -142,12 +163,17 @@ impl<'a> Bench<'a> {
             held_out_profile: held_out.profile,
             setup,
             holdout,
+            guard,
             cancel,
             _cache: cleanup,
+            _guard_dir: guard_cleanup,
         })
     }
 
     pub(super) async fn close(&self) {
+        if let Some(g) = &self.guard {
+            g.close();
+        }
         let (dir, tmp, cache) = (self.dir.clone(), self.tmp.clone(), self._cache.0.clone());
         let _ = tokio::task::spawn_blocking(move || {
             stop_survivors(&[dir.clone(), tmp.clone(), cache.clone()]);
@@ -158,8 +184,20 @@ impl<'a> Bench<'a> {
         .await;
     }
 
+    /// A criterion's command on the agent's snapshot, with Tower's
+    /// assertion-identity guard loaded into the runners.
     async fn exec(&self, command: &str, profile: Option<&Path>, timeout: Duration) -> Ran {
-        let spec = RunSpec::new(command_for(command, profile), &self.dir, self.env.clone(), timeout);
+        self.exec_in(command, profile, timeout, Some(Phase::Pin)).await
+    }
+
+    /// `phase` says which transcript the guard reports to; `None` leaves the
+    /// guard out (setup installs dependencies, it runs no criteria).
+    async fn exec_in(&self, command: &str, profile: Option<&Path>, timeout: Duration, phase: Option<Phase>) -> Ran {
+        let mut env = self.env.clone();
+        if let (Some(g), Some(phase)) = (&self.guard, phase) {
+            g.merge_env(&mut env, phase);
+        }
+        let spec = RunSpec::new(command_for(command, profile), &self.dir, env, timeout);
         let r = tower_verify::run(&spec, self.cancel).await;
         // A refusal counts only when Tower sees it itself: a path the
         // output names that Tower can read and the same sandbox cannot.
@@ -180,7 +218,7 @@ impl<'a> Bench<'a> {
     async fn setup(&self, network: bool) -> Option<Ran> {
         let setup = self.setup.as_deref()?;
         let profile = if network { self.online.as_deref() } else { self.offline.as_deref() };
-        let r = self.exec(setup, profile, SETUP_TIMEOUT).await;
+        let r = self.exec_in(setup, profile, SETUP_TIMEOUT, None).await;
         (!r.passed).then_some(r)
     }
 
@@ -325,8 +363,8 @@ impl<'a> Bench<'a> {
             // Your content: the held-out tests may be present.
             let copied = self.local_files(true).await?;
             for (c, command, timeout) in criteria.iter().filter(|(c, ..)| missing.contains(&c.id.as_str())) {
-                let r =
-                    self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
+                let timeout = Duration::from_secs((*timeout).max(1) as u64);
+                let r = self.exec_in(command, self.criteria.as_deref(), timeout, Some(Phase::Base)).await;
                 // Recorded either way: "could not check" is information too.
                 // A failure on the base is "red" only if the tests ran there.
                 let not_run = !r.passed && !r.environment_failure && tests_ran(command, &r.output_tail) == Some(false);
@@ -698,45 +736,48 @@ impl<'a> Bench<'a> {
                 found.push(hit);
             }
         }
+
+        // What Tower's guard saw of the assertion entry points, across
+        // every command that ran on the agent's snapshot.
+        found.extend(self.assertion_identity(&criteria)?);
         Ok((Outcome::Passed, found))
     }
-}
 
-/// Stops whatever a verification started and left running (a server, a
-/// daemonised watcher): every process whose working directory or open
-/// files are inside the verification's directories. (One that leaves them
-/// entirely can only write to those directories, which are deleted and
-/// never reused.)
-fn stop_survivors(dirs: &[std::path::PathBuf]) {
-    let prefixes: Vec<String> =
-        dirs.iter().map(|d| format!("{}/", crate::paths::real(d).display())).filter(|p| p.len() > 2).collect();
-    let Ok(out) = std::process::Command::new("/usr/sbin/lsof").args(["-n", "-P", "-w", "-F", "pn"]).output() else {
-        return;
-    };
-    let me = std::process::id();
-    let mut pid = 0u32;
-    let mut doomed = std::collections::BTreeSet::new();
-    for line in String::from_utf8_lossy(&out.stdout).lines() {
-        if let Some(p) = line.strip_prefix('p') {
-            pid = p.parse().unwrap_or(0);
-        } else if let Some(name) = line.strip_prefix('n')
-            && pid > 1
-            && pid != me
-            && prefixes.iter().any(|p| name.starts_with(p.as_str()) || format!("{name}/") == *p)
-        {
-            doomed.insert(pid);
+    /// The invariant Tower checks while the criteria run: the assertion
+    /// entry points and the runners' globals the tests use are the
+    /// library's own objects. A break is high severity; a command the
+    /// guard cannot cover is said so rather than passed over.
+    fn assertion_identity(&self, criteria: &[Exec]) -> Result<Found> {
+        let (inner, goal, lang) = (self.inner, self.goal, self.inner.lang());
+        let Some(guard) = &self.guard else { return Ok(Vec::new()) };
+        let report = guard.read(Phase::Pin);
+        let mut found = Vec::new();
+        if report.broken() {
+            let hit = sentinel_hit("assertions_replaced", report.detail(lang), lang);
+            append_hit(inner, goal, &hit)?;
+            found.push(hit);
+            return Ok(found);
         }
-    }
-    for pid in doomed {
-        let _ = std::process::Command::new("/bin/kill").args(["-KILL", &pid.to_string()]).status();
-    }
-}
-
-/// Removes a directory when dropped (best effort).
-struct RemoveOnDrop(std::path::PathBuf);
-
-impl Drop for RemoveOnDrop {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        // Honest about coverage: a compiled language has no hook to load a
+        // check before the test code, and a guarded runner that reported
+        // nothing was not checked either.
+        let gaps: Vec<(String, Coverage)> = criteria
+            .iter()
+            .map(|(_, command, _)| (command.clone(), guard::coverage(command)))
+            .filter(|(_, c)| matches!(c, Coverage::NoHook(_)) || (*c == Coverage::Guarded && report.finished == 0))
+            .collect();
+        if let Some(detail) = guard::unchecked_detail(&gaps, lang) {
+            let hit = tower_core::sentinel::SentinelHit {
+                sentinel: "assertion_identity_unchecked".into(),
+                severity: 2,
+                title: tower_core::i18n::sentinel_title("assertion_identity_unchecked", lang)
+                    .unwrap_or_default()
+                    .into(),
+                detail,
+            };
+            append_hit(inner, goal, &hit)?;
+            found.push(hit);
+        }
+        Ok(found)
     }
 }

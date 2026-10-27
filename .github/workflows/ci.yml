@@ -67,6 +67,13 @@ jobs:
           # must be committed as generated.
           git diff --exit-code -- apps/desktop/src/gen
 
+      - name: What the sandbox refused, if the tests failed
+        if: failure()
+        # macOS logs every Seatbelt denial: the browser's show what its profile lacks on this machine.
+        run: |
+          log show --last 30m --style compact --predicate 'eventMessage CONTAINS "deny"' 2>/dev/null \
+            | grep -iE "chrome|chromium|crashpad|helper" | sed -E 's/^[^ ]+ [^ ]+ //' | sort | uniq -c | sort -rn | head -80 || true
+
       - name: Verification cost on a larger repository (2 000 files, budget 120 s)
         run: cargo test -p tower-supervisor --test perf_verify -- --ignored --nocapture
 

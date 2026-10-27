@@ -6,7 +6,7 @@
 import { expect, test } from "@playwright/test";
 
 import { enrichLook } from "./rich";
-import { openTower } from "./tauri";
+import { criterion, openTower } from "./tauri";
 
 test("in the editor a look criterion takes steps line by line: Enter opens the next, ⌫ on an empty one closes it, a refused line is marked", async ({ page }) => {
   await openTower(page, "new");
@@ -40,7 +40,7 @@ test("on the goal page a look criterion with steps says how many, and lists them
       c4.criterion.kind.steps = ["click #buy", "type #qty 2", "wait for .total"];
     },
   });
-  const row = page.locator(".goal-page .criterion").filter({ hasText: /^\s*C4(?!\d)/ }).first();
+  const row = criterion(page, "C4").first();
   const toggle = row.getByRole("button", { name: "3 steps" });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();

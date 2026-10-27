@@ -11,7 +11,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 import { HELD_OUT_BODY, HELD_OUT_OPTIONS, HELD_OUT_TONES } from "./rich";
-import { fixtures } from "./tauri";
+import { fixtures, settled } from "./tauri";
 
 const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../crates/tower-supervisor/src/remote.html"), "utf8");
 
@@ -194,7 +194,9 @@ for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     for (const state of [undefined, HELD_OUT_STATE, null]) {
       await openPhone(page, state === undefined ? {} : { state });
-      await page.waitForTimeout(200);
+      // Its state fetched (or failed) and drawn, not a fixed pause.
+      await page.waitForLoadState("networkidle");
+      await settled(page);
       const results = await new AxeBuilder({ page }).analyze();
       const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
       const report = serious.flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(" ")}: ${n.failureSummary?.split("\n").slice(1).join(" ") ?? ""}`));
@@ -213,7 +215,8 @@ for (const s of [
     test.skip(!process.env.SHOTS, "set SHOTS=<dir> to render the preview screens");
     await page.emulateMedia({ colorScheme: s.theme });
     await openPhone(page, s.offline ? { state: null } : { lang: s.lang });
-    await page.waitForTimeout(300);
+    await page.waitForLoadState("networkidle");
+    await settled(page);
     await page.screenshot({ path: join(process.env.SHOTS!, `${s.name}.png`), fullPage: true });
   });
 }

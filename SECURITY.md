@@ -28,7 +28,7 @@ Off by default. When you turn it on (Settings), Tower serves a small page on you
 
 ## Pushes
 
-Off by default. With an ntfy topic URL in Settings (https, or http only to this Mac or a Tailscale address), each item that blocks a goal sends the goal's id and title and a fixed sentence for the kind of item to that URL — nothing the agent wrote, no code, no output and never the pairing token (when the phone page is on, the notification links to the page without it). The text is passed to curl as data on standard input, never as an argument. Settings shows whether the last push was delivered and can send a test push. Prefer your own ntfy server; a public one sees goal titles.
+Off by default. With an ntfy topic URL in Settings (https, or http only to this Mac or a Tailscale address), each item that blocks a goal sends the goal's id and title and a fixed sentence for the kind of item to that URL — nothing the agent wrote, no code, no output and never the pairing token (when the phone page is on, the notification links to the page without it). The text is passed to curl as data on standard input, never as an argument. Settings shows whether the last push was delivered — a failure as a reason in the interface language, from curl's exit code, never curl's or the service's own text — and can send a test push. Prefer your own ntfy server; a public one sees goal titles.
 
 ## How each property is checked
 

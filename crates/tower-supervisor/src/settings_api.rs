@@ -177,17 +177,20 @@ impl Supervisor {
         }
         let title = "Tower".to_string();
         let body = tr!(lang, "测试推送：能看到这条就说明推送可用", "Test push: if you can read this, pushes work");
-        let result = tokio::task::spawn_blocking(move || inner::send_push(&url, &title, &body, None, lang))
+        let result = tokio::task::spawn_blocking(move || inner::send_push(&url, &title, &body, None))
             .await
             .map_err(|e| invalid(e.to_string()))?;
-        *self.inner.push_status.lock().unwrap_or_else(PoisonError::into_inner) =
-            Some(tower_core::view::PushStatus { at: tower_store::system_now(), error: result.clone().err() });
-        result.map_err(invalid)
+        inner::record_push(&self.inner.push_status, result.clone());
+        result.map_err(|e| invalid(e.text(lang)))
     }
 
-    /// The outcome of the last push, if one was sent since Tower started.
+    /// The outcome of the last push, if one was sent since Tower started,
+    /// worded in the current language.
     pub fn push_status(&self) -> Option<tower_core::view::PushStatus> {
-        self.inner.push_status.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        let lang = self.inner.lang();
+        let mut status = self.inner.push_status.lock().unwrap_or_else(PoisonError::into_inner).clone()?;
+        status.error = status.error.map(|e| tower_core::reasons::PushError::render(&e, lang));
+        Some(status)
     }
 
     /// A new pairing secret: phones paired before must pair again.

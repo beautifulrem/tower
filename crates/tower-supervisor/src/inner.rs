@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tower_core::lifecycle::Transition;
+use tower_core::reasons::PushError;
 use tower_core::view::{InboxItem, InboxKind, ModelInfo, Settings, TraceEntry};
 use tower_core::{EventKind, Lang, Mode, PauseReason, tr};
 use tower_git::Git;
@@ -158,12 +159,11 @@ impl Inner {
             .map(|addr| format!("http://{addr}:{}/", s.remote_port));
         let status = self.push_status.clone();
         std::thread::spawn(move || {
-            let result = send_push(&url, &title, &body, click.as_deref(), lang);
+            let result = send_push(&url, &title, &body, click.as_deref());
             if let Err(e) = &result {
-                tracing::warn!(error = %e, "push failed");
+                tracing::warn!(error = ?e, "push failed");
             }
-            *status.lock().unwrap_or_else(PoisonError::into_inner) =
-                Some(tower_core::view::PushStatus { at: tower_store::system_now(), error: result.err() });
+            record_push(&status, result);
         });
     }
 
@@ -347,9 +347,7 @@ pub(crate) fn quiet_digest(inner: &Inner, s: &Settings) {
                 tr!(lang, "安静时段里有 {waited} 件事在等你", "{waited} item(s) waited for you while it was quiet");
             let status = inner.push_status.clone();
             std::thread::spawn(move || {
-                let result = send_push(&url, "Tower", &body, None, lang);
-                *status.lock().unwrap_or_else(PoisonError::into_inner) =
-                    Some(tower_core::view::PushStatus { at: tower_store::system_now(), error: result.err() });
+                record_push(&status, send_push(&url, "Tower", &body, None));
             });
         }
         _ => {}
@@ -395,17 +393,20 @@ pub(crate) fn push_url_allowed(url: &str) -> bool {
         })
 }
 
+/// The outcome of a push, kept for Settings; a failure is kept without a
+/// language and worded when Settings reads it.
+pub(crate) fn record_push(status: &Mutex<Option<tower_core::view::PushStatus>>, result: Result<(), PushError>) {
+    *status.lock().unwrap_or_else(PoisonError::into_inner) =
+        Some(tower_core::view::PushStatus { at: tower_store::system_now(), error: result.err().map(|e| e.encode()) });
+}
+
 /// One push: the text goes to curl on standard input and the headers lose
 /// any line breaks, so nothing in them can become an option, a file
 /// reference or another header.
-pub(crate) fn send_push(url: &str, title: &str, body: &str, click: Option<&str>, lang: Lang) -> Result<(), String> {
+pub(crate) fn send_push(url: &str, title: &str, body: &str, click: Option<&str>) -> Result<(), PushError> {
     use std::io::Write;
     if !push_url_allowed(url) {
-        return Err(tr!(
-            lang,
-            "推送地址必须是 https（或本机、Tailscale 上的 http）",
-            "The push address must use https (or http on this Mac or Tailscale)"
-        ));
+        return Err(PushError::NotAllowed);
     }
     let clean = |s: &str| s.chars().filter(|c| !c.is_control()).take(160).collect::<String>();
     let mut cmd = std::process::Command::new("/usr/bin/curl");
@@ -421,18 +422,21 @@ pub(crate) fn send_push(url: &str, title: &str, body: &str, click: Option<&str>,
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    let mut child = cmd.spawn().map_err(|_| PushError::NoCurl)?;
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(body.as_bytes());
     }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let out = child.wait_with_output().map_err(|_| PushError::NoCurl)?;
     let code = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if out.status.success() && code.starts_with('2') {
         Ok(())
     } else if !out.status.success() {
-        Err(String::from_utf8_lossy(&out.stderr).trim().chars().take(200).collect())
+        // curl's own message is English and names the host; its exit code
+        // says the same in any language.
+        tracing::debug!(stderr = %String::from_utf8_lossy(&out.stderr).trim(), "push failed");
+        Err(PushError::Curl(out.status.code().unwrap_or(-1)))
     } else {
-        Err(tr!(lang, "推送服务返回 {code}", "The push service answered {code}"))
+        Err(PushError::Status(code))
     }
 }
 

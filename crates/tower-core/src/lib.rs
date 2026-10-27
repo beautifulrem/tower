@@ -16,6 +16,7 @@ pub mod honesty;
 pub mod i18n;
 pub mod lifecycle;
 pub mod mode;
+pub mod reasons;
 pub mod review;
 pub mod roles;
 pub mod sentinel;

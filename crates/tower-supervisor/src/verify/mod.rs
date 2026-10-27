@@ -115,12 +115,8 @@ pub fn preflight(inner: Arc<Inner>, goal: String) {
         if cancel.is_cancelled() {
             return;
         }
-        let lang = inner.lang();
-        let detail = tr!(
-            lang,
-            "Tower 在验证沙箱里用你自己的代码试跑了验收标准，它们没法在那里运行，所以 Agent 的结果也没法验证。修好后点“重试”。\n\n{problem}",
-            "Tower tried the acceptance criteria on your own code in the verification sandbox, and they cannot run there, so the agent's work could not be verified either. Fix it, then retry.\n\n{problem}"
-        );
+        // Stored without a language: the card words it when read.
+        let detail = tower_core::i18n::PauseNote::CannotRunOnBase(problem).encode();
         if inner.store(|s| s.goal(&goal)).is_ok_and(|g| g.state == LifecycleState::Running) {
             let r = run::pause(&inner, &goal, PauseReason::CriteriaCannotRun, &detail).await;
             run::report(&inner, &goal, r).await;

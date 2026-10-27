@@ -70,7 +70,7 @@ test("on a diff that fits the pane, ] moves the current hunk in the tree's order
   await expect(money).toHaveClass(/hunk-current/);
   await page.keyboard.press("Shift+A");
   await expect(money).not.toHaveClass(/hunk-accepted/);
-  const toast = page.locator(".toast").filter({ hasText: "Unaccepted · src/cart/money.js" });
+  const toast = page.locator(".toast").filter({ hasText: "Taken back: src/cart/money.js" });
   await expect(toast).toBeVisible();
   await expect(page.locator(".file").first().getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "false");
   await toast.getByRole("button", { name: "Accept again" }).click();
@@ -88,7 +88,35 @@ test("taking a mark back with the header's button says so too", async ({ page })
   await money.getByRole("button", { name: /Accepted/ }).click();
   await expect(money).not.toHaveClass(/hunk-accepted/);
   await expect(money).toHaveClass(/hunk-current/);
-  await expect(page.locator(".toast").filter({ hasText: "Unaccepted · src/cart/money.js" })).toBeVisible();
+  await expect(page.locator(".toast").filter({ hasText: "Taken back: src/cart/money.js" })).toBeVisible();
+});
+
+test("⇧A right after A takes that accept back, and with nothing to take back it says so", async ({ page }) => {
+  await openTower(page, "review/G-0003", { enrich: enrichReview });
+  const money = head(page, "src/cart/money.js");
+  const cart = head(page, "src/cart.js");
+  await expect(money).toHaveClass(/hunk-current/);
+  // The status bar lists the key beside A.
+  await expect(page.locator(".review-status")).toContainText("⇧A take back");
+  // Nothing accepted yet: the key answers with the reason, and nothing moves.
+  await page.keyboard.press("Shift+A");
+  await expect(page.locator(".toast").filter({ hasText: "Nothing to take back" })).toBeVisible();
+  await expect(money).toHaveClass(/hunk-current/);
+  // A accepts and moves on; ⇧A on the next (unaccepted) hunk takes back the accept just made, the most recent first.
+  await page.keyboard.press("a");
+  await expect(cart).toHaveClass(/hunk-current/);
+  await page.keyboard.press("Shift+A");
+  await expect(money).not.toHaveClass(/hunk-accepted/);
+  await expect(money).toHaveClass(/hunk-current/);
+  await expect(page.locator(".toast").filter({ hasText: "Taken back: src/cart/money.js" })).toBeVisible();
+  // Two accepts, two take-backs, newest first.
+  await page.keyboard.press("a");
+  await page.keyboard.press("a");
+  await expect(page.locator(".review-accepted")).toHaveText(/All 2 hunks accepted/);
+  await page.keyboard.press("Shift+A");
+  await expect(cart).not.toHaveClass(/hunk-accepted/);
+  await page.keyboard.press("Shift+A");
+  await expect(money).not.toHaveClass(/hunk-accepted/);
 });
 
 /** One unit: a file with one long hunk, then a file with a short one. */

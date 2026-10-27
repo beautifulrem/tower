@@ -34,7 +34,7 @@ Off by default. With an ntfy topic URL in Settings (https, or http only to this 
 
 ## How each property is checked
 
-Every property above has a test that CI runs on each push (macOS runner, real `sandbox-exec`, real git):
+Every property above has a test that CI runs on each push (macOS runner, real `sandbox-exec`, real git). CI and the pre-push hook also check this table itself (`tools/security-tests.mjs`): every test it names must exist, must not be `#[ignore]`d, and an extension test must be in a file CI runs, so a renamed or dropped test cannot leave a property here without one:
 
 | Property | Test |
 |---|---|

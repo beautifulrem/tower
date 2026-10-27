@@ -14,7 +14,7 @@ import { effectiveEngine, engineLabel, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { state } from "../lib/store";
 import { Icon, LifecycleGlyph, NeedsYouMark, NoticeMark } from "./Glyph";
-import { CriteriaBar } from "./Honesty";
+import { CriteriaBar } from "./HonestyCore";
 import { LiveLine } from "./Live";
 import { PrLine } from "./Pr";
 import { Button } from "./ui";

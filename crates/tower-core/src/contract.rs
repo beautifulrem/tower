@@ -77,8 +77,60 @@ pub enum CriterionKind {
     /// Checked off by the human from screenshots: the verifier starts the
     /// app with `start` (sandboxed), opens `url` (on this machine) once it
     /// answers, and captures it on the base and on the agent's snapshot,
-    /// so the review shows before and after.
-    Look { start: String, url: String, timeout_secs: u32 },
+    /// so the review shows before and after. `steps`, when given, are done
+    /// on the page before the picture (see [`LookStep`]): the state after an
+    /// interaction, not only the first screen.
+    Look {
+        start: String,
+        url: String,
+        timeout_secs: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        steps: Option<Vec<String>>,
+    },
+}
+
+/// One step on a `look` page before its picture, written as a line:
+///
+/// - `click <selector>` — the first element the CSS selector finds
+/// - `type <selector> <text>` — sets an input's value, as typing would
+/// - `press <key>` — Enter, Escape, Tab, ArrowDown… on the focused element
+/// - `wait <milliseconds>` — at most 10 000
+/// - `wait for <selector>` — until the element exists (the look's timeout)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LookStep {
+    Click(String),
+    Type(String, String),
+    Press(String),
+    Wait(u32),
+    WaitFor(String),
+}
+
+impl LookStep {
+    /// Parses one line; `Err` names what is wrong.
+    pub fn parse(line: &str) -> Result<LookStep, String> {
+        let line = line.trim();
+        let (verb, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
+        let rest = rest.trim();
+        match verb {
+            "click" if !rest.is_empty() => Ok(LookStep::Click(rest.into())),
+            "type" => {
+                let (sel, text) = rest.split_once(char::is_whitespace).ok_or("type needs a selector and text")?;
+                Ok(LookStep::Type(sel.into(), text.trim().into()))
+            }
+            "press" if !rest.is_empty() => Ok(LookStep::Press(rest.into())),
+            "wait" => match rest.strip_prefix("for ") {
+                Some(sel) if !sel.trim().is_empty() => Ok(LookStep::WaitFor(sel.trim().into())),
+                _ => rest
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|ms| *ms <= 10_000)
+                    .map(LookStep::Wait)
+                    .ok_or_else(|| "wait takes milliseconds (at most 10000) or `for <selector>`".to_string()),
+            },
+            _ => Err(format!("unknown step `{line}` (click, type, press, wait)")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -195,6 +247,13 @@ impl Contract {
             }
             if c.title.trim().is_empty() {
                 issues.push(err("criteria", tr!(lang, "标准 {id} 缺少说明", "Criterion {id} needs a description")));
+            }
+            if let CriterionKind::Look { steps: Some(steps), .. } = &c.kind {
+                for step in steps {
+                    if let Err(e) = LookStep::parse(step) {
+                        issues.push(err(&format!("criteria.{}.steps", c.id), e));
+                    }
+                }
             }
             if let CriterionKind::Look { start, url, .. } = &c.kind {
                 if start.trim().is_empty() {
@@ -342,6 +401,18 @@ pub fn text_only_check(command: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn look_steps_are_read_from_lines() {
+        assert_eq!(LookStep::parse("click #buy"), Ok(LookStep::Click("#buy".into())));
+        assert_eq!(
+            LookStep::parse("type input[name=qty] 3 boxes"),
+            Ok(LookStep::Type("input[name=qty]".into(), "3 boxes".into()))
+        );
+        assert_eq!(LookStep::parse("wait for .total"), Ok(LookStep::WaitFor(".total".into())));
+        assert_eq!(LookStep::parse("wait 250"), Ok(LookStep::Wait(250)));
+        assert!(LookStep::parse("wait 99999").is_err() && LookStep::parse("drag a b").is_err());
+    }
 
     #[test]
     fn text_only_criteria_are_flagged() {

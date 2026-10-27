@@ -792,6 +792,7 @@ async fn look_criteria_get_before_and_after_screenshots() {
             start: format!("python3 -m http.server {port} --bind 127.0.0.1"),
             url: format!("http://localhost:{port}/done.txt"),
             timeout_secs: 5,
+            steps: None,
         },
     });
     let id = create_with(&h, c).await;
@@ -1060,4 +1061,48 @@ async fn a_shadowed_rust_assertion_is_caught() {
     );
     assert!(d.sentinels.iter().any(|s| s.sentinel == "source_patches_tests"), "{:?}", d.sentinels);
     assert_eq!(d.criteria[0].canary, Some(tower_core::view::CanaryState::Tampered), "{:?}", d.sentinels);
+}
+
+/// A `look` criterion with steps: the picture is of the page after typing
+/// and a click, not of its first screen. A step that cannot happen (the
+/// element never appears) means no picture, with the reason.
+#[tokio::test(flavor = "multi_thread")]
+async fn look_steps_happen_before_the_picture() {
+    if tower_supervisor_test_support_browser().is_none() {
+        eprintln!("skipping: no Chromium-based browser");
+        return;
+    }
+    let h = harness("page").await;
+    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+    let mut c = contract();
+    c.criteria[0].kind = CriterionKind::Exec { command: "test -f index.html".into(), timeout_secs: 30 };
+    for (id, steps) in
+        [("C2", vec!["type #q 42", "click #go", "wait for #done"]), ("C3", vec!["wait for #never-there"])]
+    {
+        c.criteria.push(Criterion {
+            id: id.into(),
+            title: "the page after a click".into(),
+            kind: CriterionKind::Look {
+                start: format!("python3 -m http.server {port} --bind 127.0.0.1"),
+                url: format!("http://localhost:{port}/index.html"),
+                timeout_secs: 8,
+                steps: Some(steps.into_iter().map(String::from).collect()),
+            },
+        });
+    }
+    let id = create_with(&h, c).await;
+    for _ in 0..900 {
+        let g = h.sup.goals().unwrap().into_iter().find(|g| g.id == id).unwrap();
+        if matches!(g.state, LifecycleState::InReview | LifecycleState::Paused) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let d = h.sup.goal(&id).unwrap();
+    let after = d.criteria[1].look.clone().expect("a look");
+    let file = after.pin.clone().unwrap_or_else(|| panic!("a picture after the steps: {after:?}"));
+    assert!(std::fs::metadata(&file).unwrap().len() > 1000);
+    let never = d.criteria[2].look.clone().expect("a look");
+    assert!(never.pin.is_none(), "{never:?}");
+    assert!(never.pin_error.as_deref().is_some_and(|e| e.contains("#never-there")), "{never:?}");
 }

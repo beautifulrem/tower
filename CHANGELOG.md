@@ -27,6 +27,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - More sentinels: test cases removed from a file that stays, more skip forms across frameworks, assertions that cannot fail, early returns. The contract editor warns about criteria that only check text or a file's existence.
 
 ### Visual evidence
+- A `look` criterion can list steps done on the page before its picture (click, type, press a key, wait, wait for an element), so the evidence is the state after an interaction; a step that cannot happen means no picture, with the reason.
 - `look` criteria: the verifier starts the app (sandboxed), waits until its URL answers on this machine and takes a screenshot with a Chromium-based browser, on the base and on the agent's snapshot; the human judges before and after in the review.
 
 ### Engines

@@ -26,6 +26,14 @@ impl Supervisor {
         if settings.max_concurrent == 0 || settings.max_concurrent > 10 {
             return Err(invalid(tr!(lang, "并发上限必须在 1 到 10 之间", "Concurrent goals must be between 1 and 10")));
         }
+        let push = settings.push_url.trim();
+        if !push.is_empty() && !crate::inner::push_url_allowed(push) {
+            return Err(invalid(tr!(
+                lang,
+                "推送地址必须是 https（或本机、Tailscale 上的 http）",
+                "The push address must use https (or http on this Mac or Tailscale)"
+            )));
+        }
         for ext in self.inner.extensions(&settings).iter().skip(1) {
             if !ext.is_file() {
                 let path = ext.display();
@@ -76,7 +84,8 @@ impl Supervisor {
             self.inner.remote.set_problem(None);
             return Ok(());
         }
-        let Some(host) = remote::listen_host(&self.inner.env, s.remote_local_network) else {
+        let hosts = remote::listen_hosts(&self.inner.env, s.remote_local_network);
+        if hosts.is_empty() {
             self.inner.remote.stop();
             let problem = tr!(
                 lang,
@@ -85,11 +94,11 @@ impl Supervisor {
             );
             self.inner.remote.set_problem(Some(problem.clone()));
             return Err(invalid(problem));
-        };
-        if self.inner.remote.host().as_deref() == Some(host.as_str()) && !self.remote_settings_changed(&s) {
+        }
+        if self.inner.remote.hosts() == hosts && !self.remote_settings_changed(&s) {
             return Ok(());
         }
-        self.inner.remote.start(&self.inner, &host, s.remote_port, s.remote_token.clone()).map_err(|e| {
+        self.inner.remote.start(&self.inner, &hosts, s.remote_port, s.remote_token.clone()).map_err(|e| {
             let problem = tr!(
                 lang,
                 "无法在端口 {port} 上提供手机页面：{e}",
@@ -125,11 +134,7 @@ impl Supervisor {
         let problem = self.inner.remote.problem();
         let tailscale_ip = remote::tailscale_ip(&self.inner.env);
         // Only addresses it actually listens on, and that work now.
-        let addrs: Vec<String> = match self.inner.remote.host() {
-            None => Vec::new(),
-            Some(h) if h == "0.0.0.0" => remote::addresses(&self.inner.env),
-            Some(h) => vec![h],
-        };
+        let addrs: Vec<String> = self.inner.remote.hosts().into_iter().filter(|h| h != "127.0.0.1").collect();
         let is_ts = |a: &str| tailscale_ip.as_deref() == Some(a);
         let tailscale = addrs.first().is_some_and(|a| is_ts(a));
         let links: Vec<String> =

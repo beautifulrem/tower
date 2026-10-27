@@ -46,3 +46,19 @@ export function buildTree(paths: string[], under = ""): TreeNode[] {
   };
   return root.children.map(fold).sort((a, b) => Number(a.file) - Number(b.file) || a.name.localeCompare(b.name));
 }
+
+/** The directory a review unit's title already names (`src/`), when every one of its files is under it: the tree starts below it. */
+export const unitUnder = (u: { title: string; files: string[] }): string => (u.title.endsWith("/") && u.files.every((f) => f.startsWith(u.title)) ? u.title : "");
+
+/**
+ * The files in the order the tree shows them (directories first, then files, by name at each level): the order the
+ * diff lists them and `]` walks them, so the keyboard never moves through a different list from the one on the left.
+ */
+export function treeOrder(paths: string[], under = ""): string[] {
+  const out: string[] = [];
+  const walk = (nodes: TreeNode[]) => {
+    for (const n of nodes) n.file ? out.push(n.path) : walk(n.children);
+  };
+  walk(buildTree(paths, under));
+  return out;
+}

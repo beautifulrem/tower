@@ -23,7 +23,7 @@ import type { DiffFile } from "../gen/DiffFile";
 import type { ReviewUnit } from "../gen/ReviewUnit";
 import { api, errorText } from "../lib/api";
 import { type Gap, splitLines } from "../lib/diffview";
-import { buildTree } from "../lib/filetree";
+import { buildTree, treeOrder, unitUnder } from "../lib/filetree";
 import { count, short } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
@@ -213,7 +213,9 @@ export function Review(props: { id: string }) {
     const u = unit();
     const v = view();
     if (!u || !v) return [];
-    return v.files.filter((f) => u.files.includes(f.path));
+    // In the tree's order: the diff reads, and ] walks, the list the sidebar shows.
+    const order = treeOrder(u.files, unitUnder(u));
+    return v.files.filter((f) => u.files.includes(f.path)).sort((a, b) => order.indexOf(a.path) - order.indexOf(b.path));
   });
   const allPaths = createMemo(() => view()?.files.map((f) => f.path) ?? []);
   const fileByPath = (path: string) => view()?.files.find((f) => f.path === path);
@@ -566,7 +568,7 @@ export function Review(props: { id: string }) {
                     <For each={units()}>
                       {(u, i) => {
                         const rows = () => (
-                          <For each={buildTree(u.files, u.title.endsWith("/") && u.files.every((f) => f.startsWith(u.title)) ? u.title : "")}>
+                          <For each={buildTree(u.files, unitUnder(u))}>
                             {(n) => (
                               <TreeRow
                                 node={n}

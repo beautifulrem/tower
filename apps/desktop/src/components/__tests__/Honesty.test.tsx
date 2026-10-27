@@ -9,7 +9,7 @@ vi.mock("../../lib/store", async () => {
   return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn() };
 });
 
-const { CanaryLine, CriteriaBar, discountedOf } = await import("../Honesty");
+const { CanaryLine, CriteriaBar, HeldOutLine, discountedOf } = await import("../Honesty");
 const { Seal } = await import("../Glyph");
 
 const criterion = (canary: CriterionView["canary"]): CriterionView => ({
@@ -52,6 +52,45 @@ describe("CanaryLine", () => {
     expect(line.textContent).toContain("a test that must fail passed");
     expect(line.querySelector(".col-span")!.className).toContain("baseline-dependent");
     expect(line.querySelector(".mark-attention")).not.toBeNull();
+  });
+});
+
+describe("the notes under a criterion", () => {
+  const heldOut = (canary: CriterionView["canary"]): CriterionView => {
+    const c = criterion(canary);
+    return { ...c, verified: { ...c.verified!, held_out: true } };
+  };
+
+  it("ride on one line: the canary's reading and the held-out chip together, never two lines of notes", () => {
+    const c = heldOut("not_checked");
+    const { container } = render(() => (
+      <>
+        <CanaryLine c={c} />
+        <HeldOutLine c={c} />
+      </>
+    ));
+    expect(container.querySelectorAll(".criterion-obs")).toHaveLength(1);
+    const line = container.querySelector(".canary-line")!;
+    expect(line.textContent).toContain("assertions not checked");
+    expect(line.querySelector(".chip-you")).not.toBeNull();
+  });
+
+  it("keep the held-out chip on its own line when there is no canary to join", () => {
+    const c = heldOut(null);
+    const { container } = render(() => (
+      <>
+        <CanaryLine c={c} />
+        <HeldOutLine c={c} />
+      </>
+    ));
+    expect(container.querySelector(".canary-line")).toBeNull();
+    expect(container.querySelectorAll(".criterion-obs .chip-you")).toHaveLength(1);
+  });
+
+  it("tint only the tampered words, not the chip beside them", () => {
+    const { container } = render(() => <CanaryLine c={heldOut("tampered")} />);
+    expect(container.querySelector(".baseline-dependent .attn-word")!.textContent).toBe("a test that must fail passed");
+    expect(container.querySelector(".chip-you")!.classList.contains("attn-word")).toBe(false);
   });
 });
 

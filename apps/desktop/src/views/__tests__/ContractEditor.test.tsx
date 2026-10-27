@@ -46,7 +46,7 @@ describe("a look criterion's steps", () => {
     // + Step opens a line under them, and what you type there goes to validation with the rest.
     fireEvent.click(screen.getByText("Step").closest("button")!);
     const third = (await waitFor(() => screen.getByLabelText("C4 step 3"))) as HTMLInputElement;
-    expect(third.placeholder).toBe("press Enter");
+    expect(third.placeholder).toBe("e.g. press Enter");
     fireEvent.input(third, { target: { value: "wait for .total" } });
     await waitFor(() => expect(lastSteps()).toEqual(["click #buy", "type #qty 2", "wait for .total"]));
     // A line the supervisor would refuse is marked while you type.

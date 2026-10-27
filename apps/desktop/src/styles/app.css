@@ -937,9 +937,11 @@ input[type="radio"]:focus-visible {
   outline: 1.5px solid var(--focus);
   outline-offset: 1px;
 }
+/* An example is not a value: placeholders sit in the quietest legible grey (text-4, about 4.6:1 light and 5.2:1 dark)
+   and examples say "e.g.", so an empty contract never reads as one already written. */
 input::placeholder,
 textarea::placeholder {
-  color: var(--text-3);
+  color: var(--text-4);
 }
 /* Inside a raised card a field sits on the page colour: never a hole. */
 .decision textarea,

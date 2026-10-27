@@ -254,7 +254,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                     class="mono criterion-cmd-row"
                     aria-label={`${cr.id} ${t("contract.addCommand")}`}
                     value={(cr.kind as { command: string }).command}
-                    placeholder="pnpm test -- checkout"
+                    placeholder={t("common.eg", { x: "pnpm test -- checkout" })}
                     onInput={(e) => setKind(i(), (k) => { if (k.type === "exec") k.command = e.currentTarget.value; })}
                   />
                 </Show>
@@ -272,7 +272,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                       class="mono"
                       aria-label={`${cr.id} ${t("contract.lookUrl")}`}
                       value={(cr.kind as { url: string }).url}
-                      placeholder="http://localhost:3000/checkout"
+                      placeholder={t("common.eg", { x: "http://localhost:3000/checkout" })}
                       onInput={(e) => setKind(i(), (k) => { if (k.type === "look") k.url = e.currentTarget.value; })}
                     />
                   </div>
@@ -297,7 +297,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             <p class="field-warn">{issueFor("criteria")}</p>
           </Show>
           <Field label={t("contract.setup")} hint={t("contract.setupHint")}>
-            <input class="mono" value={c.setup} onInput={(e) => setC("setup", e.currentTarget.value)} placeholder="pnpm install --frozen-lockfile" />
+            <input class="mono" value={c.setup} onInput={(e) => setC("setup", e.currentTarget.value)} placeholder={t("common.eg", { x: "pnpm install --frozen-lockfile" })} />
           </Field>
         </div>
 
@@ -314,7 +314,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <textarea class="mono" rows={2} value={c.scope.exclude.join("\n")} onInput={(e) => setC("scope", "exclude", lines(e.currentTarget.value))} />
             </Field>
             <Field label={t("contract.readonly")}>
-              <textarea class="mono" rows={2} value={c.scope.readonly.join("\n")} onInput={(e) => setC("scope", "readonly", lines(e.currentTarget.value))} placeholder="**/__snapshots__/**" />
+              <textarea class="mono" rows={2} value={c.scope.readonly.join("\n")} onInput={(e) => setC("scope", "readonly", lines(e.currentTarget.value))} placeholder={t("common.eg", { x: "**/__snapshots__/**" })} />
             </Field>
           </div>
           <Show when={issueFor("scope.include") ?? issueFor("scope.exclude") ?? issueFor("scope.readonly")}>

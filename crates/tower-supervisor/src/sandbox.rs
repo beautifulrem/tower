@@ -227,6 +227,30 @@ fn parse_scutil_proxy(text: &str) -> Vec<u16> {
     ports
 }
 
+/// TCP ports something on this Mac already listens on (databases, dev
+/// servers, other apps, a process an earlier run left behind). With the
+/// network off they are closed to the sandbox too: a test may start its
+/// own servers on loopback, but not reach what was already there.
+pub fn listening_ports() -> Vec<u16> {
+    let Ok(out) = std::process::Command::new("/usr/sbin/lsof").args(["-nP", "-iTCP", "-sTCP:LISTEN", "-Fn"]).output()
+    else {
+        return Vec::new();
+    };
+    parse_listening(&String::from_utf8_lossy(&out.stdout))
+}
+
+fn parse_listening(text: &str) -> Vec<u16> {
+    let mut ports: Vec<u16> = text
+        .lines()
+        .filter_map(|l| l.strip_prefix('n'))
+        .filter(|n| n.starts_with('*') || n.starts_with("127.") || n.starts_with("[::1]") || n.starts_with("localhost"))
+        .filter_map(|n| n.rsplit(':').next()?.parse().ok())
+        .collect();
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+}
+
 /// Ports of proxies named in `*_proxy` environment variables or the
 /// system's proxy settings, plus common proxy apps'.
 pub fn proxy_ports(env: &[(String, String)]) -> Vec<u16> {
@@ -497,6 +521,51 @@ mod tests {
 
     /// Enforcement, checked against the real sandbox-exec, with a fake home
     /// under /tmp holding a fake secret, another project and a shared cache.
+    /// A service that was already listening when the profile was written
+    /// is closed to it; one the sandboxed command starts itself is not.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn services_already_running_are_closed_without_the_network() {
+        if !available() {
+            return;
+        }
+        let tmp = tempfile::tempdir_in("/tmp").unwrap();
+        let root = crate::paths::real(tmp.path());
+        for d in ["ws", "tmp", "cache", "home"] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        let before = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = before.local_addr().unwrap().port();
+        let mut sp = spec(&root, &root.join("home"), false);
+        sp.proxy_ports.extend(listening_ports());
+        assert!(sp.proxy_ports.contains(&port), "the listener is seen");
+        let sb = root.join("p.sb");
+        std::fs::write(&sb, profile(&sp)).unwrap();
+        let run = |cmd: &str| {
+            std::process::Command::new("/usr/bin/sandbox-exec")
+                .arg("-f")
+                .arg(&sb)
+                .args(["/bin/sh", "-c", cmd])
+                .current_dir(root.join("ws"))
+                .output()
+                .unwrap()
+                .status
+                .success()
+        };
+        assert!(!run(&format!("/usr/bin/nc -z -w 2 127.0.0.1 {port}")), "what was already there is closed");
+        // Its own server, started inside: reachable.
+        assert!(run(
+            "/usr/bin/python3 -c 'import socket;s=socket.socket();s.bind((\"127.0.0.1\",0));s.listen();c=socket.create_connection(s.getsockname());print(1)' >/dev/null 2>&1"
+        ));
+        drop(before);
+    }
+
+    #[test]
+    fn services_already_listening_are_found() {
+        let text = "p706\nf12\nn*:7000\nf14\nn127.0.0.1:5432\nf15\nn[::1]:6379\nf16\nn192.168.1.4:8080\n";
+        assert_eq!(parse_listening(text), [5432, 6379, 7000]);
+    }
+
     #[test]
     fn system_proxies_on_loopback_are_found() {
         let text = "<dictionary> {\n  HTTPEnable : 1\n  HTTPPort : 6152\n  HTTPProxy : 127.0.0.1\n  SOCKSPort : 6153\n  SOCKSProxy : 127.0.0.1\n  HTTPSPort : 8080\n  HTTPSProxy : proxy.corp\n}";

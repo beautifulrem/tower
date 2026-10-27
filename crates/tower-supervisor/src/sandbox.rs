@@ -137,6 +137,26 @@ pub fn developer_bin() -> Option<PathBuf> {
     .clone()
 }
 
+/// The compiler toolchain of a full Xcode (where `cc` and `ld` live; the
+/// Command Line Tools keep them in `developer_bin` itself).
+pub fn toolchain_bin() -> Option<PathBuf> {
+    let dir = developer_bin()?.parent()?.parent()?.join("Toolchains/XcodeDefault.xctoolchain/usr/bin");
+    dir.is_dir().then_some(dir)
+}
+
+/// The macOS SDK, found once outside the sandbox: compilers and linkers
+/// inside it would otherwise ask `xcrun`, which needs the shared cache.
+pub fn sdk_root() -> Option<String> {
+    static SDK: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    SDK.get_or_init(|| {
+        let out =
+            std::process::Command::new("/usr/bin/xcrun").args(["--sdk", "macosx", "--show-sdk-path"]).output().ok()?;
+        let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (out.status.success() && !p.is_empty()).then_some(p)
+    })
+    .clone()
+}
+
 /// `path` with `dev` inserted just before `/usr/bin` (or at the end).
 pub fn path_with_developer_tools(path: &str, dev: &Path) -> String {
     let dev = dev.display().to_string();

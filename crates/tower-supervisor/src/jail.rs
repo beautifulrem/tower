@@ -75,10 +75,15 @@ fn jail(
     // that go through xcrun, which insists on a cache in the shared per-user
     // temporary folder the sandbox closes. The real tools come just before /usr/bin on PATH (so Homebrew's, earlier on PATH, still win).
     if let Some(dev) = sandbox::developer_bin() {
-        env.push((
-            "PATH".into(),
-            sandbox::path_with_developer_tools(inner.env.get("PATH").unwrap_or("/usr/bin:/bin"), &dev),
-        ));
+        let mut path = sandbox::path_with_developer_tools(inner.env.get("PATH").unwrap_or("/usr/bin:/bin"), &dev);
+        // With a full Xcode, cc and ld are in its toolchain, not beside git.
+        if let Some(tc) = sandbox::toolchain_bin() {
+            path = sandbox::path_with_developer_tools(&path, &tc);
+        }
+        env.push(("PATH".into(), path));
+        if let Some(sdk) = sandbox::sdk_root() {
+            env.push(("SDKROOT".into(), sdk));
+        }
     }
     let profile = if sandbox::available() {
         let path = goal_dir.join(format!("{purpose}.sb"));

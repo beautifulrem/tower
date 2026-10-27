@@ -8,7 +8,7 @@
  * action bar stuck to the bottom like a signature line; the dials (autonomy,
  * budget, network, engine) on the right as the schedule, numbered on.
  */
-import { For, Show, createEffect, createResource, createSignal, on, onMount } from "solid-js";
+import { For, Show, Suspense, createEffect, createResource, createSignal, on, onMount } from "solid-js";
 import { createStore, produce, unwrap } from "solid-js/store";
 
 import { Icon } from "../components/Glyph";
@@ -76,10 +76,11 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const [models] = createResource(() => api.models().catch(() => []));
   // The engine the goal will run on: the contract's, else the settings' default.
   const engine = () => effectiveEngine(c.engine, state.settings?.engine);
-  const modelOptions = () => [
-    { value: "", label: t("common.engineDefault", { engine: engineLabel(engine()) }) },
-    ...modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` })),
-  ];
+  const defaultModel = () => ({ value: "", label: t("common.engineDefault", { engine: engineLabel(engine()) }) });
+  const modelOptions = Object.assign(
+    () => [defaultModel(), ...modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` }))],
+    { base: () => [defaultModel()] },
+  );
 
   // Changes before the initial values are in place do not count as edits.
   let loaded = false;
@@ -417,8 +418,12 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               }}
             />
           </Field>
+          {/* The model list is the one thing the editor waits for after it is drawn: its own boundary, so the page around it
+              never waits behind the skeleton for the engine to answer. */}
           <Field label={t("contract.model")} hint={engine() === "claude-code" ? t("contract.modelHintClaude") : t("contract.modelHint")}>
-            <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
+            <Suspense fallback={<Select value={c.model} options={modelOptions.base()} onChange={(v) => setC("model", v)} />}>
+              <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
+            </Suspense>
           </Field>
           <Show when={engine() !== "claude-code"}>
             <Field label={t("contract.thinking")}>

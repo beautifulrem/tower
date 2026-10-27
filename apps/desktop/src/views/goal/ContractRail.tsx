@@ -113,7 +113,7 @@ export function ContractRail(props: { d: GoalDetail }) {
           <dt>{t("goal.sandboxShort")}</dt>
           <dd title={hasIssue(state.env, "no_sandbox") ? t("goal.noSandbox") : t("goal.sandboxOn")}>
             {hasIssue(state.env, "no_sandbox") ? t("goal.noSandbox") : t("goal.sandboxOnShort")}
-            <span class="sep">·</span>
+            <span class="sep" />
             {c().network ? t("goal.networkOn") : t("goal.networkOff")}
           </dd>
         </dl>

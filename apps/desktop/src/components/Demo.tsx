@@ -53,7 +53,7 @@ export const demoMissing = () => state.env?.demo_missing ?? [];
  */
 export function DemoButton(props: { size?: "s" | "m"; variant?: "primary" | "default" | "ghost" }) {
   const missing = () => demoMissing();
-  const reason = () => (missing().length ? `${t("welcome.demoNeeds", { tools: missing().join(", ") })} ${missing().map(installHint).join(" · ")}` : t("welcome.demoHint"));
+  const reason = () => (missing().length ? `${t("welcome.demoNeeds", { tools: missing().join(", ") })} ${missing().map(installHint).join("; ")}` : t("welcome.demoHint"));
   return (
     <Button size={props.size} variant={props.variant} disabled={missing().length > 0} title={reason()} onClick={() => void startDemo()}>
       {t("welcome.tryDemo")}

@@ -168,10 +168,10 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         <div class="contract-mast halt">
           <span class="contract-mast-word">{t("contract.mast")}</span>
           <Show when={projectName()}>
-            <span class="sep">·</span>
+            <span class="sep" />
             <span class="contract-mast-project">{projectName()}</span>
           </Show>
-          <span class="sep">·</span>
+          <span class="sep" />
           <span class="contract-mast-state">{mastState()}</span>
         </div>
         <div class="editor-block">

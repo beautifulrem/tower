@@ -876,6 +876,8 @@ export const en: Dict = {
     acceptHunkNote: "Your reading mark, kept with this review; the workspace is unchanged (U changes it).",
     hunkAccepted: (p) => `Accepted · ${p.n} ${plural(p.n, "line", "lines")} folded`,
     hunksAccepted: "{n}/{total} hunks accepted",
+    hunksAllAccepted: (p) => `All ${p.n} ${plural(p.n, "hunk", "hunks")} accepted`,
+    keyNextUnit: "next unit",
     keyAccept: "accept hunk",
     undoHunkTitle: "Undo a change",
     undoHunkConfirm: "Undo this hunk of {path} in the workspace? It is recorded as your edit; verify again before accepting.",

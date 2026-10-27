@@ -329,6 +329,11 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   const accept = heads.first().getByRole("button", { name: "Accept this hunk" });
   await expect(accept).toHaveAttribute("title", /workspace is unchanged/);
   await page.keyboard.press("a");
+  // The hunk closes rather than vanishes: its place stands at the lines' height and shrinks over 160ms, eased in.
+  const fold = page.locator(".hunk-fold-inner");
+  await expect(fold).toHaveCount(1);
+  expect(await fold.evaluate((el) => ({ p: getComputedStyle(el).transitionProperty, d: getComputedStyle(el).transitionDuration }))).toEqual({ p: "height", d: "0.16s" });
+  await expect(fold).toHaveCount(0);
   const marked = page.locator(".hunk-head.hunk-accepted");
   await expect(marked).toHaveCount(1);
   await expect(marked.getByRole("button", { name: /Accepted · \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
@@ -350,6 +355,12 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   const fileHunks = await file.locator(".hunk-head[data-hunk-index]").count();
   for (let i = 0; i < fileHunks; i++) await file.locator(".accept-hunk").nth(i).click();
   await expect(file.getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "true");
+  // Every hunk of the unit accepted: the status bar says so, and where to go next (V, the next unit).
+  const all = page.locator(".review-diff .accept-hunk");
+  for (let i = 0; i < (await all.count()); i++) if ((await all.nth(i).getAttribute("aria-pressed")) !== "true") await all.nth(i).click();
+  await expect(status).toHaveText(/All \d+ hunks accepted/);
+  await expect(status.locator("kbd")).toHaveText("V");
+  await expect(status).toContainText("next unit");
 });
 
 test("a sheet opened inside a sheet gives focus back where it came from, and the first sheet stays", async ({ page }) => {

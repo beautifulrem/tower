@@ -612,11 +612,22 @@ export function Review(props: { id: string }) {
         <span class="grow" />
         <span class="status-mouse t4">{t("review.keyComment")}</span>
         <span class="status-mouse t4">{t("review.keyOpen")}</span>
-        {/* Your reading marks on this unit, counted; the title says what they are not. */}
+        {/* Your reading marks on this unit, counted; the title says what they are not. With the last one, where to go: V for
+            the next unit, or — on the last unit of a goal ready to accept — the accept sheet. */}
         <Show when={unitAccepted() > 0}>
           <span class="num review-accepted" title={t("review.acceptHunkNote")}>
             <Icon name="check" size={10} />
-            {t("review.hunksAccepted", { n: unitAccepted(), total: unitHunks() })}
+            <Show when={unitAccepted() < unitHunks()} fallback={t("review.hunksAllAccepted", { n: unitHunks() })}>
+              {t("review.hunksAccepted", { n: unitAccepted(), total: unitHunks() })}
+            </Show>
+            <Show when={unitAccepted() === unitHunks() && unitIdx() < units().length - 1}>
+              <span class="sep">·</span>
+              <Kbd k="v" /> {t("review.keyNextUnit")}
+            </Show>
+            <Show when={unitAccepted() === unitHunks() && unitIdx() === units().length - 1 && g()?.state === "in_review"}>
+              <span class="sep">·</span>
+              <Kbd k="mod+shift+enter" /> {t("review.accept")}
+            </Show>
           </span>
         </Show>
         <Show when={units().length > 1}>

@@ -123,6 +123,32 @@ describe("FileDiff comment flow", () => {
     expect(screen.getByText(/Accepted · 4 lines/).closest("button")!.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("closes an accepted hunk over 160ms: a row as tall as its lines stands in their place and shrinks to nothing, then goes", async () => {
+    const { createSignal } = await import("solid-js");
+    const rect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return { ...rect.call(this), height: this.tagName === "TR" ? 20 : 0 } as DOMRect;
+    };
+    try {
+      const [acc, setAcc] = createSignal<number[]>([]);
+      const { container } = mount({ accepted: (i) => acc().includes(i), onAccept: () => {} });
+      expect(container.querySelectorAll(".dl")).toHaveLength(4);
+      setAcc([0]);
+      // The lines are gone and their place stands at their height, about to close.
+      expect(container.querySelectorAll(".dl")).toHaveLength(0);
+      const fold = container.querySelector<HTMLElement>(".hunk-fold-inner");
+      expect(fold).not.toBeNull();
+      expect(fold!.style.height).toBe("80px");
+      await new Promise((r) => setTimeout(r, 30));
+      expect(fold!.style.height).toBe("0px");
+      await new Promise((r) => setTimeout(r, 220));
+      expect(container.querySelector(".hunk-fold")).toBeNull();
+      expect(container.querySelector(".hunk-head")!.className).toContain("hunk-accepted");
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = rect;
+    }
+  });
+
   it("offers to undo a hunk only when allowed", () => {
     const undone: number[] = [];
     mount({ onUndo: (i) => undone.push(i) });

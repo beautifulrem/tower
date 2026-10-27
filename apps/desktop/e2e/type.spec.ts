@@ -13,13 +13,13 @@ const features = (el: Element) => {
   return { family: s.fontFamily, features: s.fontFeatureSettings };
 };
 
-test("the Chinese wordmark voice is tracked 0.08em and a Latin name in it keeps its own; an empty state's reason has its own measure and no orphan", async ({ page }) => {
+test("the Chinese masthead is tracked 0.08em and a Latin name in it keeps its own, the clause titles are untracked headings; an empty state's reason has its own measure and no orphan", async ({ page }) => {
   await openTower(page, "new", { lang: "zh-CN" });
   const mast = page.locator(".contract-mast");
   await expect(mast).toBeVisible();
-  const spacing = (sel: string) => page.locator(sel).first().evaluate((el) => parseFloat(getComputedStyle(el).letterSpacing) / parseFloat(getComputedStyle(el).fontSize));
+  const spacing = (sel: string) => page.locator(sel).first().evaluate((el) => (parseFloat(getComputedStyle(el).letterSpacing) || 0) / parseFloat(getComputedStyle(el).fontSize));
   expect(await spacing(".contract-mast")).toBeCloseTo(0.08, 2);
-  expect(await spacing(".clause-title")).toBeCloseTo(0.08, 2);
+  expect(await spacing(".clause-title")).toBeCloseTo(0, 2);
   expect(await spacing(".contract-mast-project")).toBeCloseTo(0.02, 2);
   await openTower(page, "goal/G-0004", { lang: "zh-CN" });
   const body = page.locator(".goal-page .empty-body").first();

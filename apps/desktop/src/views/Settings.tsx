@@ -1,7 +1,10 @@
 /**
- * Settings: environment, engine defaults, memory, projects, phone, appearance.
- * Label left, control right, like System Settings; every field saves when
- * you leave it and the block says so — no Save button.
+ * Settings: the standing terms every goal starts from, set out like the
+ * contract — numbered clauses (environment, engine defaults, memory,
+ * projects, phone, attention, appearance) with an index of them beside the
+ * page; each term's name left, its value right; every on/off a switch, as in
+ * the contract. Every field saves when you leave it and the clause says so —
+ * no Save button.
  */
 import { For, Match, Show, Switch, createResource, createSignal, onMount } from "solid-js";
 
@@ -9,7 +12,8 @@ import { pickQuiet } from "../components/Chrome";
 import { GitIdentityForm } from "../components/GitIdentity";
 import { DangerMark, Icon, NeedsYouMark, NoticeMark } from "../components/Glyph";
 import { TestCheckLine } from "../components/TestCheck";
-import { Button, Empty, Field, IconButton, Loading, Select } from "../components/ui";
+import { Button, ClauseHead, Empty, Field, IconButton, Loading, Select, Toggle } from "../components/ui";
+import { SETTINGS_CLAUSES, SettingsIndex } from "./SettingsIndex";
 import type { ProjectView } from "../gen/ProjectView";
 import type { PushStatus } from "../gen/PushStatus";
 import type { QuietHours } from "../gen/QuietHours";
@@ -45,7 +49,7 @@ const lines = (s: string) =>
     .map((l) => l.trim())
     .filter(Boolean);
 
-/** "Saved · 21:03", shown for five seconds after a write. */
+/** "Saved at 21:03", shown for five seconds after a write. */
 function useSavedStamp() {
   const [at, setAt] = createSignal<number | null>(null);
   let timer: number | undefined;
@@ -136,15 +140,15 @@ export function Settings() {
   const quietLabel = () => (quietNow() ? t("quiet.until", { time: clock(quietUntil()!) }) : t("quiet.on"));
 
   return (
+    <div class="settings-page">
     <div class="settings">
-      <section class="settings-block">
-        {/* The hints below say "click Check again": the button is here, on the block's head, as on the welcome page. */}
-        <div class="settings-head">
-          <h2 class="section-title grow">{t("settings.environment")}</h2>
+      <section class="settings-block" id={SETTINGS_CLAUSES[0].id}>
+        {/* The hints below say "click Check again": the button is here, on the clause's head, as on the welcome page. */}
+        <ClauseHead n={1} title={t("settings.environment")}>
           <Button size="s" variant="ghost" busy={rechecking()} onClick={() => void recheck()}>
             {t("welcome.recheck")}
           </Button>
-        </div>
+        </ClauseHead>
         {/* The title bar's gauge cluster, brought down to the page: one line of readings — name, mark, value — and every problem
             spelled out under it in its check row, with its fix. The engine's path and the data folder are the quiet line between. */}
         <div class="env-gauges halt" role="list" aria-label={t("settings.environment")}>
@@ -228,11 +232,10 @@ export function Settings() {
       </section>
 
       <Show when={s()} fallback={<Loading text={t("settings.loading")} />}>
-        <section class="settings-block" onFocusOut={() => void commit()}>
-          <div class="settings-head">
-            <h2 class="section-title">{t("settings.engineDefaults")}</h2>
+        <section class="settings-block" id={SETTINGS_CLAUSES[1].id} onFocusOut={() => void commit()}>
+          <ClauseHead n={2} title={t("settings.engineDefaults")}>
             <saved.Stamp />
-          </div>
+          </ClauseHead>
           <div class="settings-form">
             <Field label={t("settings.language")} hint={t("settings.languageHint")}>
               <Select
@@ -280,16 +283,14 @@ export function Settings() {
                 placeholder={t("common.eg", { x: "~/.pi/agent/npm/node_modules/pi-clinepass-provider/src/index.ts" })}
               />
             </Field>
-            <label class="check form-row">
-              <input type="checkbox" checked={s()!.load_user_extensions} onChange={(e) => void patchNow({ load_user_extensions: e.currentTarget.checked })} />
-              <span>{t("settings.loadAll")}</span>
-              <span class="check-desc">{t("settings.loadAllHint")}</span>
-            </label>
+            <div class="form-row">
+              <Toggle checked={s()!.load_user_extensions} onChange={(v) => void patchNow({ load_user_extensions: v })} label={t("settings.loadAll")} hint={t("settings.loadAllHint")} />
+            </div>
           </div>
         </section>
 
-        <section class="settings-block" onFocusOut={() => void commit()}>
-          <h2 class="section-title">{t("settings.memory")}</h2>
+        <section class="settings-block" id={SETTINGS_CLAUSES[2].id} onFocusOut={() => void commit()}>
+          <ClauseHead n={3} title={t("settings.memory")} />
           <p class="field-hint" style={{ "margin-bottom": "8px" }}>
             {t("settings.memoryHint")}
           </p>
@@ -300,13 +301,12 @@ export function Settings() {
         </section>
       </Show>
 
-      <section class="settings-block">
-        <div class="settings-head">
-          <h2 class="section-title grow">{t("settings.projects")}</h2>
+      <section class="settings-block" id={SETTINGS_CLAUSES[3].id}>
+        <ClauseHead n={4} title={t("settings.projects")}>
           <Button size="s" onClick={pickProject}>
             {t("settings.addRepo")}
           </Button>
-        </div>
+        </ClauseHead>
         <For each={state.projects} fallback={<Empty title={t("settings.noProjects")} inline>{t("settings.noProjectsBody")}</Empty>}>
           {(p) => <ProjectRow p={p} />}
         </For>
@@ -317,8 +317,8 @@ export function Settings() {
         <AttentionBlock s={s()!} patch={patch} commit={commit} quietLabel={quietLabel()} />
       </Show>
 
-      <section class="settings-block">
-        <h2 class="section-title">{t("settings.appearance")}</h2>
+      <section class="settings-block" id={SETTINGS_CLAUSES[6].id}>
+        <ClauseHead n={7} title={t("settings.appearance")} />
         <div class="settings-form">
           <div class="field">
             <span class="field-label" id="theme-label">
@@ -360,6 +360,8 @@ export function Settings() {
         </div>
       </section>
     </div>
+    <SettingsIndex />
+    </div>
   );
 }
 
@@ -398,17 +400,15 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
   const kindOf = (i: number) => info()?.kinds?.[i] ?? "lan";
   const lan = () => (info()?.kinds ?? []).some((k) => k !== "tailscale");
   return (
-    <section class="settings-block" onFocusOut={() => void props.commit().then((saved) => saved && refetch())}>
-      <h2 class="section-title">{t("settings.phone")}</h2>
+    <section class="settings-block" id={SETTINGS_CLAUSES[4].id} onFocusOut={() => void props.commit().then((saved) => saved && refetch())}>
+      <ClauseHead n={5} title={t("settings.phone")} />
       <p class="field-hint" style={{ "margin-bottom": "12px" }}>
         {t("settings.phoneHint")}
       </p>
       <div class="settings-form">
-        <label class="check form-row">
-          <input type="checkbox" checked={props.s.remote_enabled} onChange={(e) => void toggle(e.currentTarget.checked)} />
-          <span>{t("settings.phoneEnable")}</span>
-          <span class="check-desc">{t("settings.phoneEnableHint")}</span>
-        </label>
+        <div class="form-row">
+          <Toggle checked={props.s.remote_enabled} onChange={(v) => void toggle(v)} label={t("settings.phoneEnable")} hint={t("settings.phoneEnableHint")} />
+        </div>
         {/* Switched on but not served: the supervisor's sentence names the cause and the way out, in the attention register, right under the
             switch — the problem before the details, and "allow the local network below" pointing where that switch is. No link or QR is shown
             for a page nobody can reach. */}
@@ -432,19 +432,18 @@ function PhoneBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) => voi
             onInput={(e) => props.patch({ remote_port: Number(e.currentTarget.value) || 7317 })}
           />
         </Field>
-        <label class="check form-row" classList={{ disabled: !props.s.remote_enabled }}>
-          <input
-            type="checkbox"
+        <div class="form-row">
+          <Toggle
             checked={props.s.remote_local_network}
             disabled={!props.s.remote_enabled}
-            onChange={(e) => {
-              props.patch({ remote_local_network: e.currentTarget.checked });
+            onChange={(v) => {
+              props.patch({ remote_local_network: v });
               void props.commit().then(() => refetch());
             }}
+            label={t("settings.phoneLocalNetwork")}
+            hint={t("settings.phoneLocalNetworkHint")}
           />
-          <span>{t("settings.phoneLocalNetwork")}</span>
-          <span class="check-desc">{t("settings.phoneLocalNetworkHint")}</span>
-        </label>
+        </div>
         <Show when={props.s.remote_enabled}>
           <Show when={info()} fallback={<span class="field-hint form-row">{info.loading ? t("common.loading") : t("settings.phoneUnavailable")}</span>}>
             {(i) => (
@@ -559,8 +558,8 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
     setSending(false);
   };
   return (
-    <section class="settings-block" onFocusOut={() => void props.commit()}>
-      <h2 class="section-title">{t("settings.attention")}</h2>
+    <section class="settings-block" id={SETTINGS_CLAUSES[5].id} onFocusOut={() => void props.commit()}>
+      <ClauseHead n={6} title={t("settings.attention")} />
       <div class="settings-form">
         <Field label={t("settings.notifications")} hint={t("quiet.hint")}>
           <button type="button" class="select" aria-haspopup="menu" aria-label={`${t("settings.notifications")}: ${props.quietLabel}`} onClick={() => void pickQuiet()}>
@@ -572,11 +571,9 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
         </Field>
         {/* The daily window: a switch, then the two edges in one line, so "from 22:00 to 08:00" reads as a sentence. Plain 24-hour
             fields, as every clock on the desk: WebKit's native time field follows the system's 12-hour locale and would show 22:00 as 10:00. */}
-        <label class="check form-row">
-          <input type="checkbox" checked={!!hours()} onChange={(e) => setHours(e.currentTarget.checked ? DEFAULT_QUIET_HOURS : null)} />
-          <span>{t("settings.quietHoursEnable")}</span>
-          <span class="check-desc">{t("settings.quietHoursHint")}</span>
-        </label>
+        <div class="form-row">
+          <Toggle checked={!!hours()} onChange={(v) => setHours(v ? DEFAULT_QUIET_HOURS : null)} label={t("settings.quietHoursEnable")} hint={t("settings.quietHoursHint")} />
+        </div>
         <Show when={hours()}>
           {(q) => (
             <div class="form-row quiet-hours num" role="group" aria-label={t("settings.quietHours")}>
@@ -595,11 +592,9 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
         <Field label={t("settings.pushUrl")} hint={t("settings.pushUrlHint")}>
           <input class="mono" value={props.s.push_url} onInput={(e) => props.patch({ push_url: e.currentTarget.value })} placeholder={t("common.eg", { x: "https://ntfy.example.net/tower" })} spellcheck={false} />
         </Field>
-        <label class="check form-row">
-          <input type="checkbox" checked={props.s.push_ready} onChange={(e) => (props.patch({ push_ready: e.currentTarget.checked }), void props.commit())} />
-          <span>{t("settings.pushReady")}</span>
-          <span class="check-desc">{t("settings.pushReadyHint")}</span>
-        </label>
+        <div class="form-row">
+          <Toggle checked={props.s.push_ready} onChange={(v) => (props.patch({ push_ready: v }), void props.commit())} label={t("settings.pushReady")} hint={t("settings.pushReadyHint")} />
+        </div>
         {/* The test and the last outcome share a line: a failure is a fact with its time and the supervisor's sentence, never a silent one. */}
         <div class="form-row row push-test">
           <Button size="s" busy={sending()} disabled={!props.s.push_url.trim()} onClick={() => void testPush()}>

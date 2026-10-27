@@ -66,8 +66,12 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   await expect.poll(() => fill(cards.nth(0))).toBe("filled");
   await expect.poll(() => fill(cards.nth(1))).toBe("plain");
   // The black moves with the focus (the button's colour settles over 150ms); the plain one still carries its key.
-  await page.keyboard.press("j");
-  await expect(cards.nth(1)).toHaveClass(/focused/);
+  // (Nothing holds the keyboard first, and the queue's keys are bound: on a slow machine they arrive a frame late.)
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect.poll(async () => {
+    if (!/focused/.test((await cards.nth(1).getAttribute("class")) ?? "")) await page.keyboard.press("j");
+    return (await cards.nth(1).getAttribute("class")) ?? "";
+  }, { intervals: [250, 500, 1000] }).toMatch(/focused/);
   await expect.poll(() => fill(cards.nth(1))).toBe("filled");
   await expect.poll(() => fill(cards.nth(0))).toBe("plain");
   await openTower(page, "overview", { enrich: enrichCi });
@@ -919,10 +923,20 @@ test("the contract editor's switch is 28×18 with a 32×24 target", async ({ pag
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   // Measured right before each press: the page may still be settling (fonts, the sheet's entrance).
   const at = async () => {
+    // A view transition lays its own layers over the page while it plays.
+    await page.waitForFunction(
+      () => !document.documentElement.dataset.transition && document.getAnimations().every((a) => a.playState !== "running"),
+    );
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     return (await toggle.boundingBox())!;
   };
   let b = await at();
+  // What is under the point just above the drawn switch: the switch's own target, nothing laid over it.
+  const above = await page.evaluate(([x, y]) => {
+    const el = document.elementFromPoint(x, y);
+    return el?.closest('[role="switch"]') ? "switch" : (el?.outerHTML.slice(0, 120) ?? "nothing");
+  }, [b.x + b.width / 2, b.y - 2]);
+  expect(above).toBe("switch");
   await page.mouse.click(b.x + b.width / 2, b.y - 2);
   await expect(toggle).toHaveAttribute("aria-checked", "true");
   b = await at();

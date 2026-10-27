@@ -442,6 +442,67 @@ const TEST_MACHINERY: &[&str] = &[
     "sys.meta_path",
 ];
 
+/// Whether an added source line *changes* the test machinery — assigns to
+/// an assertion function, a runner global or the module loader, or patches
+/// one in place — rather than only using it. Program code has no business
+/// doing that; it is how tests are made to pass without the fix.
+pub fn patches_test_machinery(line: &str) -> bool {
+    const TARGETS: &[&str] = &[
+        "assert.",
+        "assert[",
+        "expect.",
+        "chai.",
+        "Assertion.",
+        "AssertionError",
+        "Module._",
+        "Module.prototype",
+        "require.cache",
+        "sys.modules",
+        "builtins.",
+        "__builtins__",
+        "globalThis.expect",
+        "globalThis.it",
+        "globalThis.test",
+        "global.expect",
+        "unittest.",
+        "TestCase.",
+        "pytest.",
+        "_pytest.",
+    ];
+    const CALLS: &[&str] = &[
+        "Object.defineProperty(assert",
+        "Object.assign(assert",
+        "Object.defineProperty(expect",
+        "Reflect.set(assert",
+        "expect.extend(",
+        "chai.use(",
+        "setattr(builtins",
+        "setattr(unittest",
+        "setattr(pytest",
+        "setattr(sys.modules",
+        "monkeypatch.setattr(",
+    ];
+    let t = line.trim();
+    if CALLS.iter().any(|c| t.contains(c)) {
+        return true;
+    }
+    // The left side of a plain assignment (not ==, ===, !=, <=, >=, =>).
+    let b = t.as_bytes();
+    for (i, &c) in b.iter().enumerate() {
+        if c != b'=' {
+            continue;
+        }
+        let prev = if i > 0 { b[i - 1] } else { b' ' };
+        let next = b.get(i + 1).copied().unwrap_or(b' ');
+        if b"=!<>+-*/%&|^?:".contains(&prev) || next == b'=' || next == b'>' {
+            continue;
+        }
+        let left = &t[..i];
+        return TARGETS.iter().any(|x| left.contains(x));
+    }
+    false
+}
+
 /// The test machinery an added source line reaches into, if any.
 pub fn touches_test_machinery(line: &str) -> Option<&'static str> {
     TEST_MACHINERY.iter().copied().find(|m| line.contains(m))
@@ -497,6 +558,29 @@ mod tests {
         assert!(kept("crates/a/Cargo.toml") && kept("go.sum"));
         for p in ["package.json", ".npmrc", "test/a.test.js", "jest.config.js", "tsconfig.json", "Makefile", "x.pth"] {
             assert!(!kept(p), "{p}");
+        }
+    }
+
+    #[test]
+    fn changing_the_test_machinery_is_told_from_using_it() {
+        for line in [
+            "assert.equal = (a, b) => {}",
+            "  assert.strictEqual = function () {}",
+            "Object.defineProperty(assert, 'equal', { value: () => {} })",
+            "unittest.TestCase.assertEqual = lambda *a: None",
+            "require.cache[k] = fake",
+            "expect.extend({ toBe: () => ({ pass: true }) })",
+        ] {
+            assert!(patches_test_machinery(line), "{line}");
+        }
+        for line in [
+            "const ok = assert.equal",
+            "if (x === assert.equal) return",
+            "assert.equal(a, b)",
+            "import assert from 'node:assert'",
+            "x == AssertionError",
+        ] {
+            assert!(!patches_test_machinery(line), "{line}");
         }
     }
 

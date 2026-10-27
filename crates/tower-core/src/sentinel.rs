@@ -432,15 +432,23 @@ pub fn scan_with(files: &[DiffFile], scope: &Scope, commands: &[String], lang: L
     // Program code reaching into the assertion libraries, the runners or the
     // module loader: how a change can make tests pass without touching them.
     let mut machinery = Vec::new();
+    let mut patches = Vec::new();
     for f in files
         .iter()
         .filter(|f| f.status != FileStatus::Deleted && crate::roles::role(&f.path) == crate::roles::Role::Source)
     {
         for line in added_lines(f) {
-            if crate::roles::touches_test_machinery(line).is_some() {
+            if crate::roles::patches_test_machinery(line) {
+                patches.push(format!("{}: {}", f.path, line.trim()));
+            } else if crate::roles::touches_test_machinery(line).is_some() {
                 machinery.push(format!("{}: {}", f.path, line.trim()));
             }
         }
+    }
+    // Changing it holds the goal, whatever the canary saw: a change can be
+    // aimed at exactly the values the tests use.
+    if !patches.is_empty() {
+        hits.push(hit("source_patches_tests", HIGH, patches.join("\n"), lang));
     }
     if !machinery.is_empty() {
         hits.push(hit("source_touches_tests", 2, machinery.join("\n"), lang));

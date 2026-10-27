@@ -16,13 +16,25 @@ test("in the editor a look criterion takes steps line by line: Enter opens the n
   await steps.getByRole("button", { name: "Step" }).click();
   const first = page.getByLabel(/C\d+ step 1$/);
   await expect(first).toBeFocused();
-  await expect(first).toHaveAttribute("placeholder", "click #buy");
+  // An example reads as one: "e.g." before it, never a step that looks already written.
+  await expect(first).toHaveAttribute("placeholder", "e.g. click #buy");
   await page.keyboard.type("click #buy");
   await page.keyboard.press("Enter");
   const second = page.getByLabel(/C\d+ step 2$/);
   await expect(second).toBeFocused();
+  // With lines in the list, the verbs stay in view as its head.
+  await expect(steps.locator(".look-steps-verbs")).toContainText("wait for");
   await page.keyboard.type("drag #a #b");
   await expect(second).toHaveAttribute("aria-invalid", "true");
+  // The line says why, under itself, and the field points at that sentence for a screen reader.
+  const why = steps.locator(".look-step-why");
+  await expect(why).toHaveText("Start with a verb Tower knows: click, type, press, wait or wait for");
+  await expect(second).toHaveAttribute("aria-describedby", (await why.getAttribute("id"))!);
+  await second.fill("click");
+  await expect(why).toHaveText(/click needs what to click/);
+  await second.fill("click #pay");
+  await expect(why).toHaveCount(0);
+  await second.fill("drag #a #b");
   await expect(steps.locator(".look-step-no")).toHaveText(["01", "02"]);
   // Mono, without ligatures: a selector reads as typed.
   expect(await second.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/JetBrains Mono/);

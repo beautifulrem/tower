@@ -11,6 +11,7 @@ export const en: DictNow = {
   common: {
     back: "Back (Esc)",
     loading: "Loading…",
+    eg: "e.g. {x}",
     needsYou: "Needs you",
     cancel: "Cancel",
     send: "Send",

@@ -7,11 +7,20 @@
 import { For, Index, Show } from "solid-js";
 
 import { t } from "../lib/i18n";
-import { STEP_EXAMPLES, lookStepOk } from "../lib/lookSteps";
+import { STEP_EXAMPLES, STEP_VERBS, type StepProblem, lookStepProblem } from "../lib/lookSteps";
 import { Icon } from "./Glyph";
 import { Button, IconButton } from "./ui";
 
 const no = (i: number) => String(i + 1).padStart(2, "0");
+
+const WHY: Record<StepProblem, "contract.stepWhyVerb" | "contract.stepWhyClick" | "contract.stepWhyType" | "contract.stepWhyPress" | "contract.stepWhyWaitFor" | "contract.stepWhyWait"> = {
+  verb: "contract.stepWhyVerb",
+  click: "contract.stepWhyClick",
+  type: "contract.stepWhyType",
+  press: "contract.stepWhyPress",
+  waitFor: "contract.stepWhyWaitFor",
+  wait: "contract.stepWhyWait",
+};
 
 /** The steps of criterion `id`, one input a line; Enter opens the next line, ⌫ on an empty one closes it. */
 export function LookStepsEdit(props: { id: string; steps: string[]; issues: string[]; onChange: (steps: string[]) => void }) {
@@ -32,6 +41,12 @@ export function LookStepsEdit(props: { id: string; steps: string[]; issues: stri
     <div ref={box} class="criterion-cmd-row look-steps" role="group" aria-label={t("contract.lookStepsLabel", { id: props.id })}>
       <div class="look-steps-head">
         <span class="look-steps-title">{t("contract.lookStepsTitle")}</span>
+        {/* The grammar stays in view as the column's head once there are lines, not only while the list is empty. */}
+        <Show when={props.steps.length}>
+          <span class="look-steps-verbs" aria-hidden="true">
+            <For each={STEP_VERBS}>{(v) => <code class="code-val">{v}</code>}</For>
+          </span>
+        </Show>
         <Button size="s" variant="ghost" onClick={() => insert(props.steps.length)}>
           <Icon name="plus" size={10} />
           {t("contract.addStep")}
@@ -42,7 +57,10 @@ export function LookStepsEdit(props: { id: string; steps: string[]; issues: stri
           {/* By position, not by text: typing in a line keeps its input (and the focus). */}
           <Index each={props.steps}>
             {(s, i) => {
-              const bad = () => s().trim() !== "" && !lookStepOk(s());
+              // A line that cannot run says why under itself, in words, the moment it is wrong: a red edge alone is not a reason.
+              const why = () => lookStepProblem(s());
+              const bad = () => why() !== null;
+              const whyId = `${props.id}-step-${i}-why`;
               return (
                 <li class="look-step" classList={{ invalid: bad() }}>
                   <span class="look-step-no num" aria-hidden="true">
@@ -54,7 +72,8 @@ export function LookStepsEdit(props: { id: string; steps: string[]; issues: stri
                     spellcheck={false}
                     aria-label={t("contract.lookStepLabel", { id: props.id, n: i + 1 })}
                     aria-invalid={bad() ? "true" : undefined}
-                    placeholder={STEP_EXAMPLES[i % STEP_EXAMPLES.length]}
+                    aria-describedby={bad() ? whyId : undefined}
+                    placeholder={t("common.eg", { x: STEP_EXAMPLES[i % STEP_EXAMPLES.length] })}
                     onInput={(e) => props.onChange(props.steps.map((x, j) => (j === i ? e.currentTarget.value : x)))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.isComposing) {
@@ -67,6 +86,13 @@ export function LookStepsEdit(props: { id: string; steps: string[]; issues: stri
                     }}
                   />
                   <IconButton icon="cross" size={22} label={t("contract.removeStep", { n: i + 1 })} onClick={() => remove(i)} />
+                  <Show when={why()}>
+                    {(w) => (
+                      <p class="look-step-why" id={whyId}>
+                        {t(WHY[w()])}
+                      </p>
+                    )}
+                  </Show>
                 </li>
               );
             }}

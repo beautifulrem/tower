@@ -4877,6 +4877,29 @@ input[type="radio"] {
 .look-step.invalid input {
   border-color: var(--st-danger);
 }
+/* Why the line cannot run, under the line's own text (the number column stays clear): the hint size, text-1 so it
+   is read, the red kept to the field's edge. */
+.look-step-why {
+  grid-column: 2 / 4;
+  margin: -2px 0 2px;
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  color: var(--text-1);
+}
+/* The verbs a line may start with, as the list's head: machine words, quiet, always in view. */
+.look-steps-verbs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+}
+.look-steps-verbs .code-val {
+  color: var(--text-3);
+}
+.look-steps-head .btn {
+  margin-left: auto;
+}
 /* On the goal page the same list reads, under its criterion's title column. */
 .look-step-list-read {
   margin: 2px 0 var(--sp-2) calc(14px + 2.5em + 2 * var(--sp-2));

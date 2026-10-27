@@ -122,6 +122,12 @@ export function Settings() {
     await refreshEnvironment();
     patch({ language: state.settings?.language ?? language });
   };
+  const [rechecking, setRechecking] = createSignal(false);
+  const recheck = async () => {
+    setRechecking(true);
+    await refreshEnvironment();
+    setRechecking(false);
+  };
   const patch = (p: Partial<SettingsT>) => setS((cur) => (cur ? { ...cur, ...p } : cur));
   const patchNow = (p: Partial<SettingsT>) => {
     patch(p);
@@ -132,7 +138,13 @@ export function Settings() {
   return (
     <div class="settings">
       <section class="settings-block">
-        <h2 class="section-title">{t("settings.environment")}</h2>
+        {/* The hints below say "click Check again": the button is here, on the block's head, as on the welcome page. */}
+        <div class="settings-head">
+          <h2 class="section-title grow">{t("settings.environment")}</h2>
+          <Button size="s" variant="ghost" busy={rechecking()} onClick={() => void recheck()}>
+            {t("welcome.recheck")}
+          </Button>
+        </div>
         {/* The title bar's gauge cluster, brought down to the page: one line of readings — name, mark, value — and every problem
             spelled out under it in its check row, with its fix. The engine's path and the data folder are the quiet line between. */}
         <div class="env-gauges halt" role="list" aria-label={t("settings.environment")}>

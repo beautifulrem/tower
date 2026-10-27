@@ -245,6 +245,8 @@ export const en: DictNow = {
     heldOutNote: "The agent does not know these tests exist. A hint, or only the names of what failed, keeps it that way; showing it the failure does not.",
     putAside: "Put aside {id} · {kind}",
     envProblem: "An environment problem, not a test failure and not the agent's doing: the refused path is below.",
+    refused: "Refused",
+    projectSettings: "Settings for {name}",
   },
   card: {
     rework: "Rework {n} / {max}",

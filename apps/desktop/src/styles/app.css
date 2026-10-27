@@ -2170,6 +2170,32 @@ input[type="radio"] {
   flex: 0 0 auto;
   align-self: center;
 }
+/* The refused path, lifted out of the tail: ◇ · what · the path in mono · where it is fixed, on one line that wraps
+   at its parts, never inside the path's words. */
+.decision-refused {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  margin: 2px 0 0;
+}
+.decision-refused .glyph {
+  flex: 0 0 auto;
+  align-self: center;
+}
+.decision-refused .code-val {
+  overflow-wrap: anywhere;
+}
+.decision-refused-link {
+  color: var(--text-2);
+}
+/* A command or a path inside the supervisor's sentence: a machine value, a step brighter than the prose around it. */
+.decision-body .code-val,
+.sentinel-prose .code-val,
+.open-judgement .code-val,
+.open-notice .code-val {
+  color: var(--text-1);
+}
 
 .inbox {
   display: grid;
@@ -4657,18 +4683,12 @@ input[type="radio"] {
   gap: var(--sp-2);
   min-height: 24px;
 }
+/* The tracked capitals belong to the clause heads alone; inside a clause the list is named in a plain quiet line. */
 .look-steps-title {
-  font-size: 11px;
-  line-height: 16px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   font-weight: 500;
-  color: var(--text-3);
-}
-:root[lang="zh-CN"] .look-steps-title {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: none;
+  color: var(--text-2);
 }
 .look-steps-head .btn {
   margin: -4px 0;

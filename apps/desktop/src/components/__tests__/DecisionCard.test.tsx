@@ -31,6 +31,8 @@ vi.mock("../../lib/store", async () => {
         id: "G-0004",
         state: "paused",
         pause_reason: "prepare_failed",
+        project_id: "p1",
+        project_name: "shop",
         pr: null,
         verified_pin: null,
         diffstat: null,
@@ -47,7 +49,8 @@ vi.mock("../../lib/store", async () => {
   };
 });
 
-const { DecisionCard, ARM_MS, bodyParts, heldOutParts } = await import("../DecisionCard");
+const { DecisionCard, ARM_MS, bodyParts, heldOutParts, refusedPaths } = await import("../DecisionCard");
+const nav = await import("../../lib/nav");
 
 const HELD_OUT_BODY = [
   "Every visible criterion passed; the held-out tests did not. The agent does not know these tests and has not seen the output below.",
@@ -253,6 +256,24 @@ describe("DecisionCard", () => {
     expect(container.querySelector(".decision-env")!.textContent).toContain("not a test failure");
     expect(container.querySelector(".decision-tail")!.textContent).toContain("/Users/you/node_modules/.bin");
     expect(container.querySelector(".mark-danger")).toBeNull();
+    // The sentence's `npm test` is a machine value, not backticks in prose.
+    const prose = container.querySelector(".decision-body")!;
+    expect(prose.textContent).not.toContain("`");
+    expect(prose.querySelector("code.code-val")!.textContent).toBe("npm test");
+    // The refused path is lifted out as the line to act on, with the way to the project's settings, the command's field in focus.
+    const refused = container.querySelector(".decision-refused")!;
+    expect(refused.querySelector(".code-val")!.textContent).toBe("/Users/you/node_modules/.bin");
+    const link = refused.querySelector("button")!;
+    expect(link.textContent).toBe("Settings for shop");
+    fireEvent.click(link);
+    expect(nav.route()).toEqual({ name: "settings" });
+    expect(nav.takeProjectField("p1")).toBe("test");
+    expect(nav.takeProjectField("p1")).toBeNull();
+  });
+
+  it("reads the refused paths out of the sandbox's lines, once each", () => {
+    expect(refusedPaths("npm ERR! code 255\nsandbox-exec: deny(1) file-read-data /a/b\nsandbox-exec: deny(1) file-write-create /c\ndeny(1) file-read-data /a/b")).toEqual(["/a/b", "/c"]);
+    expect(refusedPaths("✖ failed")).toEqual([]);
   });
 
   it("does not repeat the PR reading on the goal's own page", () => {

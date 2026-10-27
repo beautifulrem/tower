@@ -90,10 +90,11 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
   return (
     <>
       {/* Ready to accept: the "next" block below carries the one primary action (R); the header does not say it twice.
-          Paused with a decision card on the page: the card's first option is the primary "continue"; the header's steps back to a plain button. */}
+          Paused with a decision card on the page: the card's options are the ways on, in its own words ("Retry"); the header
+          does not offer the same exit under a second name ("Resume"). P still resumes from the keyboard. */}
       <Switch>
-        <Match when={s() === "paused"}>
-          <Button size="s" variant={props.hasDecision ? "default" : "primary"} kbd="p" onClick={props.onPause}>
+        <Match when={s() === "paused" && !props.hasDecision}>
+          <Button size="s" variant="primary" kbd="p" onClick={props.onPause}>
             {t("goal.resume")}
           </Button>
         </Match>

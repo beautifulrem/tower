@@ -28,7 +28,7 @@ import { count, short } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { ask } from "../lib/native";
-import { back, go } from "../lib/nav";
+import { back, go, goProjectSetting } from "../lib/nav";
 import { advanceQueue, queuePosition } from "../lib/reviewQueue";
 import { type Draft, type Layout, type ReviewState, fileHash, loadReviewState, persist } from "../lib/reviewState";
 import { act, onTrace, state, toast } from "../lib/store";
@@ -587,7 +587,7 @@ export function Review(props: { id: string }) {
                   <p class="held-out-none halt">
                     <NoticeMark />
                     <span>{t("goal.noHeldOut")}</span>
-                    <button class="link-quiet text-btn" onClick={() => go({ name: "settings" })}>
+                    <button class="link-quiet text-btn" onClick={() => g() && goProjectSetting(g()!.project_id, "holdout")}>
                       {t("goal.setHeldOut")}
                       <Icon name="chevron-right" size={10} />
                     </button>

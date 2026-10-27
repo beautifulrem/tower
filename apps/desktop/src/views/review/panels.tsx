@@ -10,7 +10,7 @@ import { GitIdentityForm } from "../../components/GitIdentity";
 import { DangerMark, Icon, NotEvidenceMark, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, ObsChip, discountedOf } from "../../components/Honesty";
 import { LookStrip } from "../../components/Look";
-import { Button, Empty, IconButton, Loading, Overlay } from "../../components/ui";
+import { Button, Empty, IconButton, Loading, Overlay, Prose } from "../../components/ui";
 import type { CriterionView } from "../../gen/CriterionView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
@@ -282,7 +282,9 @@ export function AcceptPanel(props: AcceptPanelProps) {
             {(o) => (
               <div class="row meta t1">
                 <DangerMark />
-                <span class="grow">{o.text}</span>
+                <span class="grow">
+                  <Prose text={o.text} />
+                </span>
               </div>
             )}
           </For>
@@ -295,7 +297,9 @@ export function AcceptPanel(props: AcceptPanelProps) {
             {(o) => (
               <div class="row meta t1">
                 <NoticeMark />
-                <span class="grow">{o.text}</span>
+                <span class="grow">
+                  <Prose text={o.text} />
+                </span>
               </div>
             )}
           </For>

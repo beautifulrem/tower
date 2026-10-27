@@ -19,6 +19,7 @@ import { clock } from "../lib/format";
 import { locale, t } from "../lib/i18n";
 import { engineLabel, envGauges, envIssueLabel, modelsFor } from "../lib/labels";
 import { ask } from "../lib/native";
+import { takeProjectField } from "../lib/nav";
 import { act, quietNow, quietUntil, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
 import { type SizeChoice, type ThemeChoice, setSizeChoice, setThemeChoice, sizeChoice, themeChoice } from "../lib/theme";
 import { openPiLogin, pickProject } from "../components/Demo";
@@ -624,6 +625,15 @@ function ProjectRow(props: { p: ProjectView }) {
   const [memory, setMemory] = createSignal(props.p.memory);
   const [setup, setSetup] = createSignal(props.p.setup_command);
   const saved = useSavedStamp();
+  // Sent here by a link ("Set held-out tests", a refused path): that field, in the middle of the window, with the caret in it.
+  let row!: HTMLDivElement;
+  onMount(() => {
+    const field = takeProjectField(props.p.id);
+    const el = field && row.querySelector<HTMLElement>(`[data-field="${field}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.focus({ preventScroll: true });
+  });
   const dirty = () =>
     branch() !== props.p.base_branch ||
     test() !== (props.p.test_command ?? "") ||
@@ -660,7 +670,7 @@ function ProjectRow(props: { p: ProjectView }) {
     await refreshProjects();
   };
   return (
-    <div class="project" onFocusOut={() => void save()}>
+    <div ref={row} class="project" data-project-id={props.p.id} onFocusOut={() => void save()}>
       <div class="project-head">
         <div class="col grow">
           <b>{props.p.name}</b>
@@ -677,16 +687,16 @@ function ProjectRow(props: { p: ProjectView }) {
           <input class="mono" value={branch()} onInput={(e) => setBranch(e.currentTarget.value)} />
         </Field>
         <Field label={t("settings.testCommand")} hint={t("settings.testCommandHint")}>
-          <input class="mono" value={test()} onInput={(e) => setTest(e.currentTarget.value)} placeholder="pnpm test" />
+          <input class="mono" data-field="test" value={test()} onInput={(e) => setTest(e.currentTarget.value)} placeholder="pnpm test" />
         </Field>
         <Field label={t("settings.setupCommand")} hint={t("settings.setupCommandHint")}>
-          <input class="mono" value={setup()} onInput={(e) => setSetup(e.currentTarget.value)} placeholder="pnpm install --frozen-lockfile" />
+          <input class="mono" data-field="setup" value={setup()} onInput={(e) => setSetup(e.currentTarget.value)} placeholder="pnpm install --frozen-lockfile" />
         </Field>
         <Field label={t("settings.localFiles")} hint={t("settings.localFilesHint")}>
-          <textarea class="mono" rows={2} value={local()} onInput={(e) => setLocal(e.currentTarget.value)} placeholder={".env\nconfig/*.local.json"} />
+          <textarea class="mono" data-field="local" rows={2} value={local()} onInput={(e) => setLocal(e.currentTarget.value)} placeholder={".env\nconfig/*.local.json"} />
         </Field>
         <Field label={t("settings.holdoutFiles")} hint={t("settings.holdoutFilesHint")}>
-          <textarea class="mono" rows={2} value={holdout()} onInput={(e) => setHoldout(e.currentTarget.value)} placeholder={"test/holdout/*.test.js"} />
+          <textarea class="mono" data-field="holdout" rows={2} value={holdout()} onInput={(e) => setHoldout(e.currentTarget.value)} placeholder={"test/holdout/*.test.js"} />
         </Field>
         <Field label={t("settings.projectMemory")} hint={t("settings.projectMemoryHint")}>
           <textarea rows={2} value={memory()} onInput={(e) => setMemory(e.currentTarget.value)} placeholder={t("settings.projectMemoryPlaceholder")} />

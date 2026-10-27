@@ -15,8 +15,9 @@ import { watchTheme } from "./lib/theme";
 watchTheme();
 syncDocumentLang();
 
-// Every textarea grows with its content (no web-style drag handles).
+// Every textarea grows with its content (no web-style drag handles), save those that set their own limits (lib/autogrow).
 const fit = (el: HTMLTextAreaElement) => {
+  if ("autogrow" in el.dataset) return;
   const rows = Number(el.getAttribute("rows") ?? 1);
   const line = parseFloat(getComputedStyle(el).lineHeight) || 20;
   const pad = parseFloat(getComputedStyle(el).paddingTop) + parseFloat(getComputedStyle(el).paddingBottom);

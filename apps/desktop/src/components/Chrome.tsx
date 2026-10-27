@@ -5,6 +5,7 @@ import { clock, duration, usd } from "../lib/format";
 import { wedgePath } from "../lib/gauge";
 import { t } from "../lib/i18n";
 import { openActivity, openPalette } from "../lib/layers";
+import { baseMs } from "../lib/motion";
 import { back, canGoBack, go, route } from "../lib/nav";
 import { popupActions } from "../lib/native";
 import { dismissToast, goalList, livenessOf, patchSettings, quietNow, quietUntil, state } from "../lib/store";
@@ -69,9 +70,6 @@ export function Heartbeat(props: { running: number }) {
     </Show>
   );
 }
-
-/** The base duration (--dur-base, 160ms), zero under reduced motion. */
-const baseMs = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160);
 
 /**
  * The runs gauge: the running glyph's ring, filled by how many of the slots

@@ -4009,6 +4009,14 @@ input[type="radio"] {
   align-items: center;
   gap: 4px;
 }
+/* The reading mark closes: the accepted hunk's place shrinks to its header over 160ms, eased in like a slot folding. */
+.hunk-fold td {
+  padding: 0 !important;
+}
+.hunk-fold-inner {
+  overflow: hidden;
+  transition: height var(--dur-base) var(--ease-in);
+}
 
 /* ======================================================================
    Toast actions and the errors gauge

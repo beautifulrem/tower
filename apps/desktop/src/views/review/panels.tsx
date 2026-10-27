@@ -6,7 +6,7 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark, Seal } from "../../components/Glyph";
-import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, ObsChip } from "../../components/Honesty";
+import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, ObsChip, discountedOf } from "../../components/Honesty";
 import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay } from "../../components/ui";
 import type { CriterionView } from "../../gen/CriterionView";
@@ -70,11 +70,11 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
-            <Seal pin={g()!.verified_pin} large />
+            <Seal pin={g()!.verified_pin} large tampered={discountedOf(criteria()) > 0} />
           </Show>
           <span class="grow" />
           <Show when={g()}>
-            <CriteriaBar progress={g()!.progress} compact />
+            <CriteriaBar progress={g()!.progress} criteria={criteria()} compact />
           </Show>
         </div>
         <p class="meta t3">{t("review.verifyExplain")}</p>
@@ -185,9 +185,13 @@ export function AcceptPanel(props: AcceptPanelProps) {
     return b;
   };
   const blocked = () => blockers().length > 0 || unchecked() > 0;
+  // A pass with a tampered canary is not evidence: it leaves the verified count, withholds the seal, and is the first thing still open.
+  const tampered = () => props.detail?.criteria.filter((c) => c.canary === "tampered") ?? [];
+  const counted = () => Math.max(0, (g()?.progress.machine ?? 0) - tampered().length);
   /** Still open, not blocking: you may accept, but you see them first. */
   const open = () => {
     const items: { danger?: boolean; text: string }[] = [];
+    for (const c of tampered()) items.push({ danger: true, text: t("review.openTampered", { id: c.criterion.id }) });
     for (const c of props.detail?.claims ?? []) if (c.kind === "assumption" && c.approved === null) items.push({ text: t("review.openAssumption", { text: c.text }) });
     for (const h of props.detail?.sentinels ?? []) items.push({ danger: h.severity >= 3, text: t("review.openSentinel", { title: h.title }) });
     if (props.total - props.viewed > 0) items.push({ text: t("review.openUnviewed", { n: props.total - props.viewed }) });
@@ -212,8 +216,10 @@ export function AcceptPanel(props: AcceptPanelProps) {
       <div class="panel-section">
         <div class="fact-row">
           <Show when={g()?.progress.machine} fallback={<span class="meta">{t("review.noMachine")}</span>}>
-            <Seal pin={g()!.verified_pin} large />
-            <span class="meta">{t("review.allPassed", { n: g()!.progress.machine })}</span>
+            <Seal pin={g()!.verified_pin} large tampered={tampered().length > 0} />
+            <span class="meta">
+              {tampered().length > 0 ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length }) : t("review.allPassed", { n: g()!.progress.machine })}
+            </span>
           </Show>
           {/* Every unit viewed is said once, here; anything unviewed is listed below as still open. */}
           <Show when={props.total > 0 && props.viewed === props.total}>

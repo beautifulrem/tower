@@ -1,8 +1,10 @@
 /**
  * Overview board (docs/04 §4.4). Two kinds of thing, in one column:
  *
- *   1. The decision queue — every item that blocks a run, as a card you
- *      answer in place (1–9 on the focused card, text with ⌘↩).
+ *   1. The decision queue — every item that blocks a run, as one line on
+ *      the board's grid; the selected one opens into its card in place
+ *      (1–9 on it, text with ⌘↩, Esc folds it back). Needs you keeps
+ *      every card open; here the board is what fits on the first screen.
  *   2. Everything else as 36px instrument rows, grouped as scale marks:
  *      running, verifying and ready to accept, ready, paused, done.
  *
@@ -11,7 +13,7 @@
  */
 import { For, Show, createComputed, createEffect, createMemo, createSignal, lazy, on, onCleanup } from "solid-js";
 
-import { DecisionCard, chooseOption } from "../components/DecisionCard";
+import { DecisionCard, DecisionLine, chooseOption } from "../components/DecisionCard";
 import { DemoButton } from "../components/Demo";
 import { Icon } from "../components/Glyph";
 import { GoalRow } from "../components/GoalRow";
@@ -70,8 +72,21 @@ export function Overview() {
     ...groups().flatMap((g) => g.goals.map<Item>((goal) => ({ kind: "goal", id: goal.id, goal }))),
   ]);
   const current = () => flat().find((i) => i.id === selected()) ?? null;
-  // Until you move, the first card is the focused one: a screen of cards has one filled primary, and it is the first.
-  const focusedCard = () => selected() ?? decisions()[0]?.id ?? null;
+  // A decision opens into its card where its line was, and takes the keyboard with it: the line's own button is gone.
+  const focusCard = (id: string) => document.querySelector<HTMLElement>(`[data-decision="${id}"] .decision`)?.focus({ preventScroll: true });
+  const openDecision = (id: string) => {
+    setSelected(id);
+    focusCard(id);
+  };
+  // Esc folds the open card back into its line and leaves the keyboard on that line.
+  let folding = false;
+  const closeDecision = () => {
+    const id = selected();
+    setSelected(null);
+    folding = true;
+    document.querySelector<HTMLElement>(`[data-decision="${id}"] .g-title`)?.focus({ preventScroll: true });
+    folding = false;
+  };
 
   // A row that changes group slides to its new line (220ms) rather than reappearing there: the rows'
   // places are read in the pure phase, before the DOM changes, and the move is played after it.
@@ -92,6 +107,12 @@ export function Overview() {
         : document.querySelector<HTMLElement>(`[data-decision="${next.id}"] .decision`);
     el?.focus({ preventScroll: true });
     el?.scrollIntoView({ block: "nearest" });
+  };
+  // A line reached with Tab opens like one reached with j/k.
+  const onQueueFocus = (e: FocusEvent) => {
+    const slot = (e.target as HTMLElement).closest<HTMLElement>("[data-decision]");
+    const id = slot?.dataset.decision;
+    if (id && !folding && selected() !== id && (e.target as HTMLElement).matches(".decision-line .g-title")) openDecision(id);
   };
   const openCurrent = () => {
     const c = current();
@@ -116,6 +137,7 @@ export function Overview() {
       { key: "enter", run: openCurrent, desc: () => t("keys.open") },
       { key: "r", run: reviewCurrent, desc: () => t("keys.reviewSelected") },
       { key: "/", run: () => document.querySelector<HTMLInputElement>(".quick-input")?.focus(), desc: () => t("keys.quick") },
+      { key: "escape", run: closeDecision, desc: () => t("keys.foldCard"), when: () => current()?.kind === "decision" },
       ...Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), run: () => pick(i), desc: i === 0 ? () => t("keys.choose") : undefined, hint: i === 0 ? "1–9" : undefined })),
     ],
     () => t("app.overview"),
@@ -171,11 +193,13 @@ export function Overview() {
                 {t("group.needs_you")}
                 <span class="num">{decisions().length}</span>
               </h2>
-              <div class="board-queue">
+              <div class="board-rows board-queue" role="list" onFocusIn={onQueueFocus}>
                 <For each={shownDecisions.list()}>
                   {(it) => (
-                    <div class="decision-slot" classList={{ leaving: shownDecisions.leaving(it.id) }} data-decision={it.id} onMouseEnter={() => setSelected(it.id)} onFocusIn={() => setSelected(it.id)}>
-                      <DecisionCard item={it} focused={focusedCard() === it.id} quiet />
+                    <div role="listitem" class="decision-slot" classList={{ leaving: shownDecisions.leaving(it.id), open: selected() === it.id }} data-decision={it.id}>
+                      <Show when={selected() === it.id} fallback={<DecisionLine item={it} onOpen={() => openDecision(it.id)} />}>
+                        <DecisionCard item={it} focused />
+                      </Show>
                     </div>
                   )}
                 </For>

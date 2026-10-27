@@ -105,8 +105,11 @@ fn key_code(key: &str) -> Option<(u32, &'static str)> {
 pub(crate) fn drive(ws_url: &str, url: &str, steps: &[LookStep], out: &Path, timeout: Duration) -> Result<(), String> {
     let host = ws_url.strip_prefix("ws://").and_then(|r| r.split('/').next()).ok_or("no DevTools address")?;
     let stream = TcpStream::connect(host).map_err(|e| e.to_string())?;
-    stream.set_read_timeout(Some(Duration::from_millis(500))).map_err(|e| e.to_string())?;
+    // A blocking handshake (a short timeout interrupts it on a busy
+    // machine), then short reads so the deadline is checked between them.
+    stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
     let (ws, _) = tungstenite::client(ws_url, stream).map_err(|e| e.to_string())?;
+    ws.get_ref().set_read_timeout(Some(Duration::from_millis(500))).map_err(|e| e.to_string())?;
     let mut s = Session { ws, next: 0, session: None, deadline: Instant::now() + timeout };
     let target = s.call("Target.createTarget", json!({ "url": "about:blank" }))?;
     let target_id = target.get("targetId").and_then(Value::as_str).ok_or("no page")?.to_string();

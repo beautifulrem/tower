@@ -3,11 +3,15 @@
 # nothing changed). Install once:  ln -sf ../../tools/pre-push.sh .git/hooks/pre-push
 set -e
 cd "$(git rev-parse --show-toplevel)"
-echo "pre-push: rustfmt, clippy, types, unit and flow tests"
+echo "pre-push: rustfmt, clippy, types, unit, flow and end-to-end tests"
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --quiet -- -D warnings
 pnpm --silent --dir apps/desktop check
 pnpm --silent --dir apps/desktop test >/dev/null
 cargo test --workspace --quiet >/dev/null
 node --test extensions/tower-goal/policy.test.ts extensions/tower-goal/sandboxfs.test.ts >/dev/null
+# The interface end to end (WebKit), which no unit test replaces.
+if [ -z "$SKIP_E2E" ]; then
+  tools/e2e.sh >/tmp/tower-pre-push-e2e.log 2>&1 || { tail -30 /tmp/tower-pre-push-e2e.log; exit 1; }
+fi
 echo "pre-push: ok"

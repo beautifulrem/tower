@@ -622,7 +622,7 @@ test("a result produced with the held-out tests present is marked for you only, 
   await expect(chips).toHaveText("held-out tests · for you only");
   await expect(chips).toHaveAttribute("title", /never saw this output/);
   // The chip sits under C2's row, not C1's.
-  const c2 = page.locator(".criterion").filter({ hasText: "C2" });
+  const c2 = page.locator(".criterion").filter({ hasText: /^\s*C2(?!\d)/ });
   await expect(c2.locator(".chip-you")).toHaveCount(1);
   await page.keyboard.press("r");
   await expect(page.locator("table").first()).toBeVisible();
@@ -662,7 +662,7 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(c4).toHaveCount(1);
   expect(await c4.innerText()).not.toMatch(/red → green/);
   // C2 failed on the base and passed with an unchecked canary: it still says red → green (C1's base could not run in this fixture).
-  await expect(page.locator(".goal-page .criterion").filter({ hasText: "C2" }).first()).toContainText("red → green");
+  await expect(page.locator(".goal-page .criterion").filter({ hasText: /^\s*C2(?!\d)/ }).first()).toContainText("red → green");
   // The totals say the same thing as the line: the pass leaves the verified count, takes an amber segment, and the header's seal is withheld.
   const bar = page.locator(".goal-page .section .criteria-bar").first();
   await expect(bar).toContainText("Verified 2/3");
@@ -759,7 +759,7 @@ test("a sandbox refusal is an environment problem: the card says so before its d
   await expect(page.locator(".project [data-field='test']")).toBeFocused();
   // On the goal page the criterion's base line: the environment mark, the sentence, the refused lines as machine values; no red, no "red → green".
   await openTower(page, "goal/G-0001", { enrich: enrichSandboxRefused });
-  const c1 = page.locator(".goal-page .criterion").filter({ hasText: "C1" }).first();
+  const c1 = page.locator(".goal-page .criterion").filter({ hasText: /^\s*C1(?!\d)/ }).first();
   const line = c1.locator(".env-line");
   await expect(line).toHaveCount(1);
   await expect(line.locator(".result-env")).toBeVisible();

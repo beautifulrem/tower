@@ -32,6 +32,7 @@ new MutationObserver((records) => {
 }).observe(document.body, { childList: true, subtree: true });
 
 // The system language's words arrive before the first frame (a local file, one round trip); the setting's, if
-// it names the other language, before the replica is shown (`init` waits for them).
+// it names the other language, before the replica is shown (`init` waits for them). The words only on-demand
+// views say follow once the first frame is up (`App`).
 void init();
 void ensureLocale(systemLocale).then(() => render(() => <App />, document.getElementById("root")!));

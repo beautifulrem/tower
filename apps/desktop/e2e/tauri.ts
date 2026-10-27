@@ -25,6 +25,7 @@ const LANDMARK: Array<[RegExp, string]> = [
   [/^goal\//, ".goal-page .criterion"],
   [/^review\//, ".view table"],
   [/^settings/, ".view .settings"],
+  [/^new/, ".view .editor:not(.contract-skeleton) .clause-head"],
 ];
 
 /**

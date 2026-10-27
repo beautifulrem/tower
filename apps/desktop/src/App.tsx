@@ -1,5 +1,5 @@
 /** Application shell: sidebar, title bar and the current view. */
-import { Match, Show, Switch, lazy, onCleanup, onMount } from "solid-js";
+import { For, Match, Show, Suspense, Switch, lazy, onCleanup, onMount } from "solid-js";
 
 import { listen } from "@tauri-apps/api/event";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
@@ -18,6 +18,41 @@ import { act, init, state, toast } from "./lib/store";
 import { Inbox } from "./views/Inbox";
 import { Overview } from "./views/Overview";
 import { pickProject } from "./components/Demo";
+
+/**
+ * The contract editor before its chunk and words arrive (measured on a production build: 90–180 ms from the board,
+ * up to 400 ms opened cold): the document's shape in the board's ghost language — the masthead's place, three clause
+ * heads with their numbers and rules, hollow lines where the fields will be. It shows only past 150 ms, so a fast
+ * open never flashes it, and it appears without fading (with reduced motion too).
+ */
+function ContractSkeleton() {
+  const clauses = [
+    [72, 100, 100],
+    [48, 100],
+    [56, 100, 64],
+  ];
+  return (
+    <div class="editor contract-skeleton" role="status" aria-label={t("common.loading")}>
+      <div class="editor-main" aria-hidden="true">
+        <div class="contract-mast">
+          <i class="ghost-bar" style={{ width: "14em" }} />
+        </div>
+        <For each={clauses}>
+          {(fields, i) => (
+            <div class="editor-block">
+              <header class="clause-head">
+                <span class="clause-no num">{String(i() + 1).padStart(2, "0")}</span>
+                <i class="ghost-bar" style={{ width: `${fields[0] / 8}em` }} />
+                <span class="clause-rule" />
+              </header>
+              <For each={fields.slice(1)}>{(w) => <i class="ghost-field" style={{ width: `${w}%` }} />}</For>
+            </div>
+          )}
+        </For>
+      </div>
+    </div>
+  );
+}
 
 // Views you reach by an action, not at launch, load on first use, with the half of the dictionary they speak:
 // start-up stays small and they are local files, so the delay is not perceptible. The goal page is one click from
@@ -191,7 +226,11 @@ export function App() {
                   <Settings />
                 </Match>
                 <Match when={at("new")} keyed>
-                  {(r) => <ContractEditor projectId={r.projectId} draftId={r.draftId} amendId={r.amendId} />}
+                  {(r) => (
+                    <Suspense fallback={<ContractSkeleton />}>
+                      <ContractEditor projectId={r.projectId} draftId={r.draftId} amendId={r.amendId} />
+                    </Suspense>
+                  )}
                 </Match>
                 <Match when={at("goal")} keyed>
                   {(r) => <GoalPage id={r.id} />}

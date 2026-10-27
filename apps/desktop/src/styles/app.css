@@ -3380,6 +3380,30 @@ input[type="radio"] {
 .editor-block {
   padding: var(--sp-6) 0 var(--sp-2);
 }
+/* The editor's skeleton waits 150 ms before it is seen (the animation is only a delay: no fade, so reduced motion
+   shows it the same way), then stands in the board's ghost language until the editor replaces it. */
+.contract-skeleton {
+  animation: skeleton-hold 0s linear 150ms backwards;
+}
+@keyframes skeleton-hold {
+  from {
+    visibility: hidden;
+  }
+}
+.contract-skeleton .contract-mast .ghost-bar,
+.contract-skeleton .clause-head .ghost-bar {
+  flex: 0 0 auto;
+}
+.contract-skeleton .clause-no {
+  color: var(--text-4);
+}
+.ghost-field {
+  display: block;
+  height: 28px;
+  margin-bottom: var(--sp-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-s);
+}
 .editor-block:first-child,
 .contract-mast + .editor-block {
   padding-top: 0;

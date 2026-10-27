@@ -358,12 +358,21 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   await expect(heads.first().getByRole("button", { name: "Undo this hunk" })).toBeVisible();
   const accept = heads.first().getByRole("button", { name: "Accept this hunk" });
   await expect(accept).toHaveAttribute("title", /workspace is unchanged/);
-  await page.keyboard.press("a");
   // The hunk closes rather than vanishes: its place stands at the lines' height and shrinks over 160ms, eased in.
-  const fold = page.locator(".hunk-fold-inner");
-  await expect(fold).toHaveCount(1);
-  expect(await fold.evaluate((el) => ({ p: getComputedStyle(el).transitionProperty, d: getComputedStyle(el).transitionDuration }))).toEqual({ p: "height", d: "0.16s" });
-  await expect(fold).toHaveCount(0);
+  // (Read the moment the fold row is added: on a busy machine it can be gone before a separate round trip lands.)
+  await page.evaluate(() => {
+    const w = window as unknown as { __fold?: { p: string; d: string; h: number } };
+    new MutationObserver((_, obs) => {
+      const el = document.querySelector<HTMLElement>(".hunk-fold-inner");
+      if (!el) return;
+      obs.disconnect();
+      w.__fold = { p: getComputedStyle(el).transitionProperty, d: getComputedStyle(el).transitionDuration, h: el.offsetHeight };
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await page.keyboard.press("a");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __fold?: { p: string; d: string } }).__fold)).toMatchObject({ p: "height", d: "0.16s" });
+  expect(await page.evaluate(() => (window as unknown as { __fold: { h: number } }).__fold.h)).toBeGreaterThan(20);
+  await expect(page.locator(".hunk-fold-inner")).toHaveCount(0);
   const marked = page.locator(".hunk-head.hunk-accepted");
   await expect(marked).toHaveCount(1);
   await expect(marked.getByRole("button", { name: /Accepted · \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");

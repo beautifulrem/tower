@@ -876,6 +876,8 @@ export const zh = {
     acceptHunkNote: "这是你的阅读标记，随这次评审保存；工作区没有改动（U 才会改）。",
     hunkAccepted: (p: { n: number }) => `已接受 · 折叠 ${p.n} 行`,
     hunksAccepted: "已接受 {n}/{total} 块",
+    hunksAllAccepted: (p: { n: number }) => `全部 ${p.n} 块已接受`,
+    keyNextUnit: "下一单元",
     keyAccept: "接受区块",
     undoHunkTitle: "撤销改动",
     undoHunkConfirm: "在工作区里撤销 {path} 的这一块改动？会记为你的编辑；验收前需要重新验证。",

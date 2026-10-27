@@ -26,6 +26,7 @@ import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
 import { linger } from "../lib/linger";
+import { spaceMs } from "../lib/motion";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 
@@ -34,8 +35,6 @@ const Welcome = lazy(() => import("./Welcome").then((m) => ({ default: m.Welcome
 
 const ORDER: Group[] = ["running", "verifying", "review", "ready", "paused", "done"];
 const FILTER_KEY = "tower.overviewProject";
-/** The spatial duration (--dur-space, 220ms), zero under reduced motion. */
-const spaceMs = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220);
 const ALL = "__all__";
 
 type Item = { kind: "decision"; id: string; item: InboxItem } | { kind: "goal"; id: string; goal: GoalSummary };

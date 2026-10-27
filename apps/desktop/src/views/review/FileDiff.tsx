@@ -7,7 +7,7 @@
  * Keyboard: the table is one tab stop. Focus lands on the first line number;
  * ↑↓ walk the lines, ↩ opens the comment composer on that line.
  */
-import { For, type JSX, Match, Show, Switch, createMemo, createResource, createSignal, createUniqueId, onCleanup } from "solid-js";
+import { For, type JSX, Match, Show, Switch, createComputed, createEffect, createMemo, createResource, createSignal, createUniqueId, on, onCleanup, onMount } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
 import { Button, IconButton } from "../../components/ui";
@@ -18,6 +18,7 @@ import { type Gap, STEP, contextLines, gapsOf, revealOf, splitRows } from "../..
 import { highlight, languageOf } from "../../lib/highlight";
 import type { Tokens } from "../../lib/highlight.worker";
 import { t } from "../../lib/i18n";
+import { baseMs } from "../../lib/motion";
 import { popupActions } from "../../lib/native";
 import type { Draft } from "../../lib/reviewState";
 import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
@@ -127,6 +128,45 @@ export function FileDiff(props: FileDiffProps) {
     ]);
   const helpId = createUniqueId();
   const isAccepted = (index: number | null) => index !== null && !!props.accepted?.(index);
+
+  // An accepted hunk closes rather than vanishes: its rows' height is read in the pure phase, before Solid takes them
+  // out, and a row of that height stands in their place and shrinks to nothing over 160ms (nothing under reduced motion).
+  const acceptedList = () => props.file.hunks.map((_, i) => isAccepted(i));
+  const [folding, setFolding] = createSignal<Record<number, number>>({});
+  const heightOf = (index: number) => (table ? [...table.querySelectorAll<HTMLElement>(`tr.dl[data-hunk="${index}"]`)].reduce((h, tr) => h + tr.getBoundingClientRect().height, 0) : 0);
+  // The marks as last seen and the hunks just marked, with their heights, handed from the pure phase to the effect.
+  let seen = acceptedList();
+  let closing: Record<number, number> = {};
+  createComputed(
+    on(
+      acceptedList,
+      (now) => {
+        closing = {};
+        now.forEach((on, i) => {
+          if (on && !seen[i]) closing[i] = heightOf(i);
+        });
+        seen = now;
+      },
+      { defer: true },
+    ),
+  );
+  createEffect(
+    on(
+      acceptedList,
+      () => {
+        const add = Object.fromEntries(Object.entries(closing).filter(([, h]) => h > 0));
+        closing = {};
+        if (Object.keys(add).length) setFolding((f) => ({ ...f, ...add }));
+      },
+      { defer: true },
+    ),
+  );
+  const unfold = (index: number) =>
+    setFolding((f) => {
+      const next = { ...f };
+      delete next[index];
+      return next;
+    });
   /** The header row's two verbs for a hunk: accept (your mark) and, while the workspace is yours, undo (a change). */
   const HunkVerbs = (p: { index: number }) => (
     <>
@@ -245,11 +285,15 @@ export function FileDiff(props: FileDiffProps) {
                       />
                     )}
                   </Match>
-                  {/* An accepted hunk is folded: its header row stands for it, with the mark and the count. */}
+                  {/* An accepted hunk is folded: its header row stands for it, with the mark and the count — once the fold has closed. */}
+                  <Match when={b.kind === "hunk" && b.index !== null && folding()[b.index] !== undefined && b}>
+                    {(hb) => <FoldRow height={folding()[hb().index!]} cols={cols} onDone={() => unfold(hb().index!)} />}
+                  </Match>
                   <Match when={b.kind === "hunk" && !isAccepted(b.index) && b}>
                     {(hb) => (
                       <HunkRows
                         hunk={hb().hunk}
+                        index={hb().index}
                         split={props.split}
                         path={props.file.path}
                         onOpen={props.onOpen}
@@ -272,6 +316,33 @@ export function FileDiff(props: FileDiffProps) {
         </table>
       </Show>
     </section>
+  );
+}
+
+/**
+ * The place of a hunk you just accepted, closing: a row as tall as the lines
+ * were, told to shrink to nothing on the next frame (160ms, eased in like a
+ * slot folding). Gone when the time is up; at once under reduced motion.
+ */
+function FoldRow(props: { height: number; cols: number; onDone: () => void }) {
+  let inner!: HTMLDivElement;
+  onMount(() => {
+    const ms = baseMs();
+    if (!ms) return queueMicrotask(props.onDone);
+    // Laid out at its height first, then told to close, so the transition has somewhere to start from.
+    const frame = requestAnimationFrame(() => (inner.style.height = "0px"));
+    const timer = window.setTimeout(props.onDone, ms + 40);
+    onCleanup(() => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    });
+  });
+  return (
+    <tr class="hunk-fold" aria-hidden="true">
+      <td colspan={props.cols}>
+        <div ref={inner} class="hunk-fold-inner" style={{ height: `${props.height}px` }} />
+      </td>
+    </tr>
   );
 }
 
@@ -475,6 +546,8 @@ function Code(props: { l: DiffLine; tokens?: Tokens[number]; ranges?: Range[]; s
  */
 export function HunkRows(props: {
   hunk: Hunk;
+  /** The hunk's index in the file, on each row, so the fold can measure them; null for revealed context. */
+  index?: number | null;
   split: boolean;
   path: string;
   onOpen: (n: number | null) => void;
@@ -559,7 +632,7 @@ export function HunkRows(props: {
         <For each={props.hunk.lines}>
           {(l, idx) => (
             <>
-              <tr class={`dl dl-${l.kind}`} classList={{ commented: props.commentsAt(anchorOf(l)).length > 0, "code-pending": !ready() }}>
+              <tr class={`dl dl-${l.kind}`} classList={{ commented: props.commentsAt(anchorOf(l)).length > 0, "code-pending": !ready() }} data-hunk={props.index ?? undefined}>
                 <td class="ln num">
                   <LineButton l={l} n={l.old_no} />
                 </td>
@@ -596,7 +669,7 @@ export function HunkRows(props: {
           const commented = () => anchors().some((a) => props.commentsAt(a).length > 0);
           return (
             <>
-              <tr class="dl dl-split" classList={{ commented: commented(), "code-pending": !ready() }}>
+              <tr class="dl dl-split" classList={{ commented: commented(), "code-pending": !ready() }} data-hunk={props.index ?? undefined}>
                 <td class="ln num" classList={{ "dl-del": left()?.kind === "del" }}>
                   <Show when={left()}>{(l) => <LineButton l={l()} n={l().old_no} />}</Show>
                 </td>

@@ -36,6 +36,29 @@ test("the Chinese masthead is tracked 0.08em and a Latin name in it keeps its ow
   for (const w of widths) expect(w).toBeGreaterThan(4);
 });
 
+test("Chinese text is measured in characters (em), not in Latin digits (ch): 28 a line under an empty state, 40 on a card", async ({ page }) => {
+  const measure = (sel: string) => page.locator(sel).first().evaluate((el) => parseFloat(getComputedStyle(el).maxWidth) / parseFloat(getComputedStyle(el).fontSize));
+  await openTower(page, "overview", { lang: "zh-CN", enrich: (F) => ((F.goals = []), (F.inbox = [])) });
+  await expect(page.locator(".empty-body").first()).toBeVisible();
+  expect(await measure(".empty-body")).toBeCloseTo(28, 1);
+  await openTower(page, "inbox", { lang: "zh-CN" });
+  await expect(page.locator(".decision-body").first()).toBeVisible();
+  expect(await measure(".decision-body")).toBeCloseTo(40, 1);
+  // English keeps its 72ch: the width of 72 digits in the body's own font.
+  await openTower(page, "inbox", { lang: "en" });
+  const body = page.locator(".decision-body").first();
+  await expect(body).toBeVisible();
+  const [max, zeros] = await body.evaluate((el) => {
+    const probe = document.createElement("span");
+    probe.textContent = "0".repeat(72);
+    el.appendChild(probe);
+    const w = probe.getBoundingClientRect().width;
+    probe.remove();
+    return [parseFloat(getComputedStyle(el).maxWidth), w];
+  });
+  expect(Math.abs(max - zeros) / zeros).toBeLessThan(0.02);
+});
+
 test("mono text has no ligatures: a sentinel's evidence, a command, an id, a key cap", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichCanary });
   const evidence = page.locator(".sentinel-machine").filter({ hasText: "assert.strictEqual = (a, b) => (a === 10.02" }).first();

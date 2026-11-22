@@ -1,9 +1,10 @@
 //! What the desk opens outside Tower: the editor, a terminal, Finder, and
 //! the diagnostics archive for a bug report.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use tower_core::tr;
+use tower_core::view::{EngineDescriptor, EngineTrustTier, GoalDiskUsage, SandboxPosture, StorageInventory};
+use tower_core::{LifecycleState, tr};
 
 use crate::api::OpenTarget;
 use crate::{Result, Supervisor, invalid, look, paths, sandbox};
@@ -135,4 +136,210 @@ impl Supervisor {
             .spawn()?;
         Ok(())
     }
+
+    /// Computes per-goal disk usage across satellite clones, verification
+    /// checkouts, temporary folders, and private caches without blocking the reactor.
+    pub async fn storage_inventory(&self) -> Result<StorageInventory> {
+        let summaries = self.inner.read_store(|s| s.summaries())?;
+        let paths = self.inner.paths.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut goals = Vec::with_capacity(summaries.len());
+            let mut total_bytes = 0u64;
+            let mut reclaimable_bytes = 0u64;
+            for g in summaries {
+                let workspace_bytes = dir_bytes(&paths.workspace(&g.id));
+                let verify_bytes = dir_bytes(&paths.verify(&g.id));
+                let tmp_bytes = dir_bytes(&paths.tmp(&g.id)) + dir_bytes(&paths.tmp(&format!("{}-verify", g.id)));
+                let cache_bytes = dir_bytes(&paths.root.join("caches").join(&g.id));
+                let sum = workspace_bytes + verify_bytes + tmp_bytes + cache_bytes;
+                let reclaimable = matches!(g.state, LifecycleState::Archived | LifecycleState::Abandoned) && sum > 0;
+                total_bytes += sum;
+                if reclaimable {
+                    reclaimable_bytes += sum;
+                }
+                goals.push(GoalDiskUsage {
+                    goal_id: g.id,
+                    project_id: g.project_id,
+                    title: g.title,
+                    state: g.state,
+                    workspace_bytes,
+                    verify_bytes,
+                    tmp_bytes,
+                    cache_bytes,
+                    total_bytes: sum,
+                    reclaimable,
+                });
+            }
+            goals.sort_by_key(|b| std::cmp::Reverse(b.total_bytes));
+            StorageInventory { total_bytes, reclaimable_bytes, goals }
+        })
+        .await
+        .map_err(|e| invalid(e.to_string()))
+    }
+
+    /// Safely reclaims disk space for archived or abandoned goals, strictly
+    /// refusing any active, paused, in-review, or accepted goal. Returns reclaimed bytes.
+    pub async fn reclaim_storage(&self, goal_ids: Vec<String>) -> Result<u64> {
+        let mut reclaimed = 0u64;
+        for id in goal_ids {
+            let rec = self.inner.read_store(|s| s.goal(&id))?;
+            if !rec.state.is_terminal() {
+                let lang = self.inner.lang();
+                return Err(invalid(tr!(
+                    lang,
+                    "拒绝清理 {id}：只允许清理已归档或已放弃的目标工作区",
+                    "Refused to reclaim {id}: only archived or abandoned goal workspaces can be cleaned"
+                )));
+            }
+            let paths = self.inner.paths.clone();
+            let gid = id.clone();
+            let before = tokio::task::spawn_blocking(move || {
+                dir_bytes(&paths.workspace(&gid))
+                    + dir_bytes(&paths.verify(&gid))
+                    + dir_bytes(&paths.tmp(&gid))
+                    + dir_bytes(&paths.tmp(&format!("{gid}-verify")))
+                    + dir_bytes(&paths.root.join("caches").join(&gid))
+            })
+            .await
+            .unwrap_or(0);
+            self.remove_workspace(&id).await?;
+            let cache_dir = self.inner.paths.root.join("caches").join(&id);
+            if cache_dir.exists() {
+                let _ = std::fs::remove_dir_all(&cache_dir);
+            }
+            reclaimed += before;
+        }
+        Ok(reclaimed)
+    }
+
+    /// Lists supported engines with explicit Onboarding Trust Gate tiers (`docs/18` P1.1).
+    pub fn engines(&self) -> Vec<EngineDescriptor> {
+        let lang = self.inner.lang();
+        let has_node = self.inner.env.which("node").is_some();
+        let pi_ok = self.inner.pi_program().is_some();
+        let claude_ok = self.inner.env.which("claude").is_some();
+        let codex_ok = self.inner.env.which("codex").is_some() || self.inner.env.which("codex-acp").is_some();
+        let gemini_ok = self.inner.env.which("gemini").is_some();
+        let opencode_ok = self.inner.env.which("opencode").is_some();
+        vec![
+            EngineDescriptor {
+                id: "pi".into(),
+                label: "Pi".into(),
+                trust_tier: EngineTrustTier::FullS2,
+                installed: pi_ok,
+                available: pi_ok,
+                note: tr!(
+                    lang,
+                    "原生 RPC · 全工具白名单与内核沙箱（完整 S2）",
+                    "Native RPC · explicit tool allowlist & kernel sandbox (Full S2)"
+                ),
+            },
+            EngineDescriptor {
+                id: "claude-code".into(),
+                label: "Claude Code".into(),
+                trust_tier: EngineTrustTier::FullS2,
+                installed: claude_ok,
+                available: claude_ok && has_node,
+                note: tr!(
+                    lang,
+                    "ACP 桥接 · 禁用全部内置工具，走 Tower 沙箱工具（完整 S2）",
+                    "ACP bridge · built-in tools cleared, routed through Tower sandbox tools (Full S2)"
+                ),
+            },
+            EngineDescriptor {
+                id: "codex".into(),
+                label: "Codex CLI".into(),
+                trust_tier: EngineTrustTier::RestrictedS2,
+                installed: codex_ok,
+                available: codex_ok && has_node,
+                note: tr!(
+                    lang,
+                    "ACP 适配器 · 拦截所有非 Tower 权限请求（受限 S2）",
+                    "ACP adapter · denies all non-Tower permission requests (Restricted S2)"
+                ),
+            },
+            EngineDescriptor {
+                id: "gemini-cli".into(),
+                label: "Gemini CLI".into(),
+                trust_tier: EngineTrustTier::RestrictedS2,
+                installed: gemini_ok,
+                available: gemini_ok && has_node,
+                note: tr!(
+                    lang,
+                    "原生 --acp · 仅放行 Tower MCP 工具（受限 S2）",
+                    "Native --acp · allows only Tower MCP tools (Restricted S2)"
+                ),
+            },
+            EngineDescriptor {
+                id: "opencode".into(),
+                label: "OpenCode".into(),
+                trust_tier: EngineTrustTier::RestrictedS2,
+                installed: opencode_ok,
+                available: opencode_ok && has_node,
+                note: tr!(
+                    lang,
+                    "原生 opencode acp · 权限与工具受限隔离（受限 S2）",
+                    "Native opencode acp · confined tool & permission gate (Restricted S2)"
+                ),
+            },
+        ]
+    }
+
+    /// Reports the active OS sandbox posture and optional MicroVM availability.
+    pub fn sandbox_posture(&self) -> SandboxPosture {
+        let lang = self.inner.lang();
+        let mut warnings = Vec::new();
+        let backend_name = if cfg!(target_os = "macos") {
+            if sandbox::available() {
+                "macos_seatbelt".into()
+            } else {
+                warnings.push(tr!(
+                    lang,
+                    "未找到 /usr/bin/sandbox-exec，隔离不可用",
+                    "/usr/bin/sandbox-exec not found; sandbox isolation unavailable"
+                ));
+                "none".into()
+            }
+        } else if cfg!(target_os = "linux") {
+            if self.inner.env.which("bwrap").is_some() {
+                "linux_bwrap_landlock".into()
+            } else {
+                warnings.push(tr!(
+                    lang,
+                    "未安装 bubblewrap (bwrap)，Linux 隔离不可用",
+                    "bubblewrap (bwrap) is not installed; Linux isolation unavailable"
+                ));
+                "none".into()
+            }
+        } else {
+            warnings.push(tr!(lang, "当前平台暂不支持内核沙箱", "Kernel sandbox is not available on this OS"));
+            "none".into()
+        };
+        let microvm_available =
+            cfg!(all(target_os = "macos", target_arch = "aarch64")) && self.inner.env.which("container").is_some();
+        SandboxPosture { backend_name, microvm_available, warnings }
+    }
+}
+
+fn dir_bytes(path: &Path) -> u64 {
+    if !path.exists() {
+        return 0;
+    }
+    let mut total = 0u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_symlink() {
+                continue;
+            }
+            if meta.is_dir() {
+                stack.push(entry.path());
+            } else {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
 }

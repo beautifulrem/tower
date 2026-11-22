@@ -32,6 +32,7 @@ pub fn pause_options(reason: PauseReason, _goal: &GoalRecord) -> Vec<Choice> {
         PauseReason::DependenciesChanged => vec![InstallWithNetwork, Abandon],
         PauseReason::HeldOutFailed => vec![TellFailingNames, ShowHeldOutFailure, Abandon],
         PauseReason::CriteriaCannotRun => vec![Retry, RealTestFailure, Abandon],
+        PauseReason::AgentReportedBlocked => vec![Continue, Abandon],
         PauseReason::Human | PauseReason::AppQuit => vec![Continue],
     }
 }
@@ -139,11 +140,24 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
         }
         Some(Choice::OneMoreRework) => {
             let mut c = rec.contract.clone();
-            c.max_rework = rec.rework_cycles + 1;
+            let next_rework = rec.rework_cycles + 1;
+            c.max_rework = next_rework;
+            let (eff, escalated) = inner.effective_model_for(&rec, next_rework);
+            if escalated
+                && let Some(target) = eff
+                && c.model != target
+            {
+                let from_model = if c.model.is_empty() { inner.settings().default_model } else { c.model.clone() };
+                c.model = target.clone();
+                let _ = inner.append(
+                    goal,
+                    EventKind::ModelEscalated { from_model, to_model: target, rework_cycle: next_rework },
+                );
+            }
             c.version += 1;
             inner.append(goal, EventKind::ContractRatified { contract: c.clone() })?;
             let failures = last_failures(inner, &rec, false)?;
-            let msg = prompts::rework(rec.rework_cycles + 1, c.max_rework, &failures);
+            let msg = prompts::rework(next_rework, c.max_rework, &failures);
             run::start_run(inner, goal, "rework", msg).await
         }
         Some(Choice::OverrideSentinel) => {
@@ -421,6 +435,9 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
     }
     inner.transition(goal, Transition::Accept, None, "")?;
     inner.withdraw(goal, &[InboxKind::ReviewReady, InboxKind::Assumption], &tr!(lang, "已验收", "Accepted"));
+    // Best-effort calibration & learning loop mining on acceptance (`docs/09` §9.6).
+    let _ = crate::learning::record_calibration(inner, goal);
+    let _ = crate::learning::mine_proposals_on_accept(inner, goal);
     inner.toast(
         goal,
         ToastLevel::Success,

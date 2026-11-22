@@ -1,9 +1,11 @@
 //! The human's own edits to a goal's workspace: undoing a hunk, rolling
 //! back to the start of a run.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use tower_core::review::{attach_unit_claim_summaries, build_units, classify_hunk_noise};
+use tower_core::view::{DiffStat, ReviewView, SnapshotPoint};
 use tower_core::{EventKind, LifecycleState, tr};
 use tower_store::GoalRecord;
 
@@ -141,4 +143,142 @@ pub async fn revert_hunk(inner: &Arc<Inner>, goal: &str, path: &str, hunk: usize
     run::repin(inner, goal).await?;
     inner.emit_goal_now(goal);
     Ok(())
+}
+
+/// Builds the ordered timeline of comparable snapshots for `goal`:
+/// base commit, run start pins (`refs/tower/runs/<n>`), verified pin, saved
+/// snapshots, and the latest pin.
+pub(crate) async fn list_snapshots(inner: &Arc<Inner>, id: &str) -> Result<Vec<SnapshotPoint>> {
+    let rec = inner.read_store(|s| s.goal(id))?;
+    let detail = inner.read_store(|s| s.detail(id))?;
+    let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else {
+        return Ok(Vec::new());
+    };
+    let git = inner.git.clone();
+    let ws2 = ws.clone();
+    let git_snaps = tokio::task::spawn_blocking(move || git.list_run_snapshots(Path::new(&ws2)))
+        .await
+        .map_err(|e| invalid(e.to_string()))?
+        .unwrap_or_default();
+
+    let mut out = Vec::new();
+    fn short(sha: &str) -> &str {
+        &sha[..sha.len().min(7)]
+    }
+    out.push(SnapshotPoint {
+        rev: base.clone(),
+        kind: "base".into(),
+        label: format!("Base @{}", short(&base)),
+        run_no: None,
+        at: Some(detail.summary.created_at),
+    });
+
+    // Attach run timestamps when git refs match persisted runs.
+    let run_times: std::collections::HashMap<u32, i64> = detail.runs.iter().map(|r| (r.run_no, r.started_at)).collect();
+    for mut p in git_snaps {
+        if let Some(rn) = p.run_no {
+            p.at = run_times.get(&rn).copied();
+        }
+        out.push(p);
+    }
+    // Include verified pin explicitly if distinct from already-listed snapshots.
+    if let Some(vpin) = rec.verified_pin.as_deref()
+        && !out.iter().any(|p| p.kind == "verified" && p.rev == vpin)
+    {
+        out.push(SnapshotPoint {
+            rev: vpin.to_string(),
+            kind: "verified".into(),
+            label: format!("Verified @{}", short(vpin)),
+            run_no: None,
+            at: Some(detail.summary.updated_at),
+        });
+    }
+    // Ensure current pin appears at the end if not already represented as kind="pin".
+    if let Some(pin) = rec.pin.as_deref()
+        && !out.iter().any(|p| p.kind == "pin" && p.rev == pin)
+    {
+        out.push(SnapshotPoint {
+            rev: pin.to_string(),
+            kind: "pin".into(),
+            label: format!("Latest @{}", short(pin)),
+            run_no: None,
+            at: Some(detail.summary.updated_at),
+        });
+    }
+    Ok(out)
+}
+
+/// Builds a `ReviewView` between `from_rev` (defaults to base commit) and
+/// `to_rev` (defaults to current pin / live snapshot), including unit claim
+/// summaries, moved/formatting hunk noise classification, and the snapshot timeline.
+pub(crate) async fn review_range(
+    inner: &Arc<Inner>,
+    id: &str,
+    from_rev: Option<String>,
+    to_rev: Option<String>,
+) -> Result<ReviewView> {
+    let rec = inner.read_store(|s| s.goal(id))?;
+    let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else {
+        return Err(invalid(tr!(inner.lang(), "这个目标还没有工作区", "This goal has no workspace yet")));
+    };
+    let git = inner.git.clone();
+    let target_pin = match to_rev {
+        Some(rev) if !rev.trim().is_empty() => rev,
+        _ => match rec.pin.clone() {
+            Some(p) if !matches!(rec.state, LifecycleState::Running) => p,
+            _ => {
+                let ws2 = ws.clone();
+                let base2 = base.clone();
+                let snap = tokio::task::spawn_blocking(move || git.snapshot(Path::new(&ws2), &base2))
+                    .await
+                    .map_err(|e| invalid(e.to_string()))??;
+                snap.pin
+            }
+        },
+    };
+    let git = inner.git.clone();
+    let (ws2, base2, pin2) = (ws.clone(), base.clone(), target_pin.clone());
+    let (files, from) = tokio::task::spawn_blocking(move || -> Result<_> {
+        let ws = Path::new(&ws2);
+        let from = from_rev.filter(|s| !s.trim().is_empty() && git.resolve(ws, s).is_ok()).unwrap_or(base2);
+        Ok((git.diff_revs(ws, &from, &pin2)?, from))
+    })
+    .await
+    .map_err(|e| invalid(e.to_string()))??;
+
+    let stat = DiffStat {
+        files: files.len() as u32,
+        additions: files.iter().map(|f| f.additions).sum(),
+        deletions: files.iter().map(|f| f.deletions).sum(),
+    };
+    let (moved_hunks, formatting_hunks) = classify_hunk_noise(&files);
+    let mut units = build_units(&files, Some(&rec.contract.scope), inner.lang());
+    let hits = inner.read_store(|s| s.sentinel_hits(id))?;
+    for u in &mut units {
+        for h in &hits {
+            let named = h.detail.lines().any(|l| u.files.iter().any(|f| l.starts_with(&format!("{f}:"))));
+            if named && !u.risk_reasons.contains(&h.title) {
+                let weight = if h.sentinel == "special_cases_test_inputs" { h.severity.clamp(1, 3) } else { 3 };
+                u.risk = u.risk.max(weight);
+                u.risk_reasons.insert(0, h.title.clone());
+            }
+        }
+    }
+    if let Ok(detail) = inner.read_store(|s| s.detail(id)) {
+        attach_unit_claim_summaries(&mut units, &detail.claims);
+    }
+    units.sort_by(|a, b| b.risk.cmp(&a.risk).then(b.lines.cmp(&a.lines)));
+    let snapshots = list_snapshots(inner, id).await.unwrap_or_default();
+    Ok(ReviewView {
+        goal_id: id.into(),
+        base_commit: base,
+        from,
+        pin: target_pin,
+        stat,
+        units,
+        files,
+        snapshots,
+        moved_hunks,
+        formatting_hunks,
+    })
 }

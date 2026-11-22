@@ -272,9 +272,16 @@ impl Store {
             |r| r.get(0),
         )?;
         let overlaps = self.overlaps(&rec)?;
-        let pr: Option<String> = self.conn.query_row("SELECT pr FROM goals WHERE id = ?1", [&rec.id], |r| r.get(0))?;
+        let (pr, port_base): (Option<String>, Option<i64>) =
+            self.conn.query_row("SELECT pr, port_base FROM goals WHERE id = ?1", [&rec.id], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?;
+        let depends_on = self.goal_dependencies(&rec.id).unwrap_or_else(|_| rec.contract.depends_on.clone());
         Ok(GoalSummary {
             engine: rec.contract.engine.clone(),
+            sandbox_tier: rec.contract.sandbox_tier,
+            port_base: port_base.and_then(|p| u16::try_from(p).ok()),
+            depends_on,
             overlaps,
             pr: pr.map(|p| serde_json::from_str(&p)).transpose()?,
             id: rec.id,
@@ -416,10 +423,11 @@ impl Store {
 
         let mut results = std::collections::HashMap::new();
         let mut stmt = self.conn.prepare(
-            "SELECT criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out, held_out_proof
+            "SELECT criterion, pin, passed, exit_code, duration_ms, output_tail, at, held_out, held_out_proof, flaky
              FROM criterion_results WHERE goal_id = ?1",
         )?;
         for row in stmt.query_map([id], |r| {
+            let flaky_int: i64 = r.get(9)?;
             Ok((
                 r.get::<_, String>(0)?,
                 CriterionResultView {
@@ -434,6 +442,9 @@ impl Store {
                     held_out_proof: r
                         .get::<_, Option<String>>(8)?
                         .and_then(|p| serde_json::from_str::<HeldOutProof>(&p).ok()),
+                    flaky: (flaky_int != 0).then_some(true),
+                    console_errors: Vec::new(),
+                    mobile_look: None,
                 },
             ))
         })? {
@@ -444,22 +455,44 @@ impl Store {
         // Only a baseline of the command the criterion has now counts.
         let baseline = self.baselines(id)?;
         let mut looks: std::collections::HashMap<String, LookView> = std::collections::HashMap::new();
-        let mut stmt = self.conn.prepare("SELECT criterion, side, pin, file, error FROM looks WHERE goal_id = ?1")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT criterion, side, pin, file, error, console_errors, mobile_file FROM looks WHERE goal_id = ?1",
+        )?;
         for row in stmt.query_map([id], |r| {
+            let errs_json: String = r.get(5)?;
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
                 r.get::<_, String>(2)?,
                 r.get::<_, Option<String>>(3)?,
                 r.get::<_, Option<String>>(4)?,
+                serde_json::from_str::<Vec<String>>(&errs_json).unwrap_or_default(),
+                r.get::<_, Option<String>>(6)?,
             ))
         })? {
-            let (c, side, pin, file, error) = row?;
-            let v = looks.entry(c).or_insert(LookView { base: None, pin: None, base_error: None, pin_error: None });
+            let (c, side, pin, file, error, console_errors, mobile_file) = row?;
+            let v = looks.entry(c).or_insert(LookView {
+                base: None,
+                pin: None,
+                base_error: None,
+                pin_error: None,
+                console_errors: Vec::new(),
+                mobile_base: None,
+                mobile_pin: None,
+            });
             if side == "base" {
                 (v.base, v.base_error) = (file, error);
+                if mobile_file.is_some() {
+                    v.mobile_base = mobile_file;
+                }
             } else if rec.pin.as_deref() == Some(pin.as_str()) {
                 (v.pin, v.pin_error) = (file, error);
+                if !console_errors.is_empty() {
+                    v.console_errors = console_errors;
+                }
+                if mobile_file.is_some() {
+                    v.mobile_pin = mobile_file;
+                }
             }
         }
         let mut original = std::collections::HashMap::new();
@@ -628,6 +661,11 @@ impl Store {
                 .collect(),
         };
 
+        let attachments = self.goal_attachments(id).unwrap_or_default();
+        let merge_queue_position = self.merge_queue_position(id).unwrap_or(None);
+        let escalated_model: Option<String> =
+            self.conn.query_row("SELECT escalated_model FROM goals WHERE id = ?1", [id], |r| r.get(0)).ok().flatten();
+
         Ok(GoalDetail {
             summary,
             contract: rec.contract,
@@ -659,6 +697,9 @@ impl Store {
                 let ran = self.last_event(id, "run_started")?.map(|e| e.seq);
                 rolled.is_some_and(|r| ran.is_none_or(|s| r > s))
             },
+            attachments,
+            merge_queue_position,
+            escalated_model,
         })
     }
 }

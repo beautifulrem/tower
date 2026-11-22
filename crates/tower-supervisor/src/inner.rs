@@ -10,7 +10,7 @@ use tower_core::reasons::PushError;
 use tower_core::view::{InboxItem, InboxKind, ModelInfo, Settings, TraceEntry};
 use tower_core::{EventKind, Lang, Mode, PauseReason, tr};
 use tower_git::Git;
-use tower_store::{NewInboxItem, Store, StoreError};
+use tower_store::{NewInboxItem, ReadPool, Store, StoreError};
 use tower_verify::Cancel;
 
 use crate::Result;
@@ -24,6 +24,9 @@ pub(crate) struct Inner {
     pub env: ShellEnv,
     pub git: Git,
     pub(crate) store: Mutex<Store>,
+    /// Concurrent read-only WAL connection pool so read-heavy UI/remote queries
+    /// never wait behind single-writer event appends (`docs/18` P1.3).
+    pub(crate) read_pool: Option<ReadPool>,
     pub sink: Arc<dyn UiSink>,
     pub runs: Mutex<HashMap<String, Arc<Run>>>,
     pub verifications: Mutex<HashMap<String, Cancel>>,
@@ -51,10 +54,33 @@ pub(crate) struct Inner {
 }
 
 impl Inner {
-    /// Runs `f` with the store locked. Never hold across an await.
+    /// Runs `f` with the single-writer store locked. Never hold across an await.
     pub fn store<T>(&self, f: impl FnOnce(&mut Store) -> Result<T, StoreError>) -> Result<T> {
         let mut s = self.store.lock().unwrap_or_else(PoisonError::into_inner);
         Ok(f(&mut s)?)
+    }
+
+    /// Runs a read-only query on the concurrent WAL reader pool when file-backed,
+    /// falling back to the writer store for in-memory test databases.
+    pub fn read_store<T>(&self, f: impl FnOnce(&Store) -> Result<T, StoreError>) -> Result<T> {
+        if let Some(pool) = &self.read_pool {
+            return Ok(pool.read(f)?);
+        }
+        let s = self.store.lock().unwrap_or_else(PoisonError::into_inner);
+        Ok(f(&s)?)
+    }
+
+    /// Computes the effective `(model, escalated)` for `goal` taking rework
+    /// escalation policy (`Contract.escalation_model` / `Settings.default_escalation_model`)
+    /// into account (`docs/18` P1.2).
+    pub fn effective_model_for(&self, goal: &tower_store::GoalRecord, rework_cycles: u32) -> (Option<String>, bool) {
+        let s = self.settings();
+        goal.contract.effective_model(
+            &s.default_model,
+            &s.default_escalation_model,
+            s.default_escalation_after_reworks,
+            rework_cycles,
+        )
     }
 
     pub fn append(&self, goal: &str, e: EventKind) -> Result<TraceEntry> {
@@ -70,19 +96,19 @@ impl Inner {
 
     pub fn emit_goal_now(&self, goal: &str) {
         self.dirty.lock().unwrap_or_else(PoisonError::into_inner).remove(goal);
-        if let Ok(g) = self.store(|s| s.summary(goal)) {
+        if let Ok(g) = self.read_store(|s| s.summary(goal)) {
             self.sink.emit(UiUpdate::Goal { goal: g });
         }
     }
 
     pub fn emit_projects(&self) {
-        if let Ok(projects) = self.store(|s| s.projects()) {
+        if let Ok(projects) = self.read_store(|s| s.projects()) {
             self.sink.emit(UiUpdate::Projects { projects });
         }
     }
 
     pub fn emit_inbox(&self) {
-        if let Ok((items, snoozed)) = self.store(|s| Ok((s.open_inbox_items()?, s.snoozed_inbox_items()?))) {
+        if let Ok((items, snoozed)) = self.read_store(|s| Ok((s.open_inbox_items()?, s.snoozed_inbox_items()?))) {
             self.sink.emit(UiUpdate::Inbox { items, snoozed });
         }
     }
@@ -104,7 +130,7 @@ impl Inner {
         self.flush_traces();
         let ids: Vec<String> = self.dirty.lock().unwrap_or_else(PoisonError::into_inner).drain().collect();
         for id in ids {
-            if let Ok(g) = self.store(|s| s.summary(&id)) {
+            if let Ok(g) = self.read_store(|s| s.summary(&id)) {
                 self.sink.emit(UiUpdate::Goal { goal: g });
             }
         }
@@ -177,7 +203,7 @@ impl Inner {
     }
 
     pub fn settings(&self) -> Settings {
-        self.store(|s| s.settings()).unwrap_or_default()
+        self.read_store(|s| s.settings()).unwrap_or_default()
     }
 
     /// The interface language, for text created now (inbox items, notes,

@@ -140,6 +140,9 @@ pub fn pause_label(r: PauseReason, lang: Lang) -> &'static str {
         HeldOutFailed => {
             lang.pick("保留测试没有通过（Agent 看不到它们）", "Held-out tests failed (the agent cannot see them)")
         }
+        AgentReportedBlocked => {
+            lang.pick("Agent 报告任务受阻或规格冲突", "The agent reported the task is blocked or conflicting")
+        }
     }
 }
 
@@ -339,6 +342,24 @@ pub fn sentinel_title(id: &str, lang: Lang) -> Option<&'static str> {
             lang.pick("新增了不会失败的断言或提前返回", "Added assertions that cannot fail or early returns")
         }
         "scope_violation" => lang.pick("改动超出了合同的范围", "Changes go beyond the contract's scope"),
+        "rust_cfg_test_cheat" => lang.pick(
+            "生产代码中新增了测试条件编译或测试环境探测分支",
+            "Production code added a #[cfg(test)] or test-environment probe branch",
+        ),
+        "rust_test_branch_cheat" => lang.pick(
+            "源码在非测试区域新增了仅在测试下生效的分支",
+            "Program code added a branch that behaves differently under tests",
+        ),
+        "bypass_around_bug" => lang.pick(
+            "源码保留原有错误逻辑，并在其前加了针对测试输入的短路分支",
+            "Program code preserves the original buggy expression behind a narrow early-return bypass",
+        ),
+        "assertion_guard_incomplete" => lang.pick(
+            "部分测试子进程未交回断言守卫回执",
+            "Some test child processes did not report back to the assertion identity guard",
+        ),
+        "acp_unauthorized_tool" => lang
+            .pick("ACP 引擎尝试调用未经授权的内置工具", "ACP engine attempted to invoke an unauthorized built-in tool"),
         _ => return None,
     })
 }
@@ -428,6 +449,8 @@ pub enum PauseNote {
     PortTaken { criterion: String, port: u16, holder: String },
     /// What answers a `look` URL is not the app the verification started.
     NotOwnListener { criterion: String, port: u16, holder: String },
+    /// The agent explicitly reported the task is blocked or conflicts with the contract.
+    AgentBlocked { reason: String, evidence: String },
 }
 
 impl PauseNote {
@@ -450,6 +473,9 @@ impl PauseNote {
             }
             PauseNote::NotOwnListener { criterion, port, holder } => {
                 format!("{m}not_own {criterion}{s}{port}{s}{holder}", s = Self::SEP)
+            }
+            PauseNote::AgentBlocked { reason, evidence } => {
+                format!("{m}agent_blocked {reason}{s}{evidence}", s = Self::SEP)
             }
         }
     }
@@ -485,6 +511,10 @@ impl PauseNote {
                 } else {
                     PauseNote::NotOwnListener { criterion, port, holder }
                 })
+            }
+            "agent_blocked" => {
+                let (reason, evidence) = args.split_once(Self::SEP).unwrap_or((args, ""));
+                Some(PauseNote::AgentBlocked { reason: reason.to_string(), evidence: evidence.to_string() })
             }
             _ => None,
         }
@@ -528,6 +558,21 @@ impl PauseNote {
                 "回应 {criterion} 地址的，是端口 {port} 上验证没有启动的程序（{holder}），不是验证启动的应用，所以 Tower 没有截图。停掉它，然后点“重新验证”。",
                 "What answered the address of {criterion} on port {port} is a program the verification did not start ({holder}), not the app it started, so Tower took no screenshot. Stop it, then verify again."
             ),
+            PauseNote::AgentBlocked { reason, evidence } => {
+                if evidence.trim().is_empty() {
+                    tr!(
+                        lang,
+                        "Agent 主动上报阻塞（声明，需你确认）：{reason}\n\n你可以直接写下指引后继续、修订合同，或放弃此目标。",
+                        "The agent reported a blocker (claim, needs your review): {reason}\n\nYou can reply with guidance to continue, amend the contract, or abandon this goal."
+                    )
+                } else {
+                    tr!(
+                        lang,
+                        "Agent 主动上报阻塞（声明，需你确认）：{reason}\n\n附带说明：{evidence}\n\n你可以直接写下指引后继续、修订合同，或放弃此目标。",
+                        "The agent reported a blocker (claim, needs your review): {reason}\n\nEvidence: {evidence}\n\nYou can reply with guidance to continue, amend the contract, or abandon this goal."
+                    )
+                }
+            }
         }
     }
 

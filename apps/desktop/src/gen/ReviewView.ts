@@ -2,10 +2,23 @@
 import type { DiffFile } from "./DiffFile";
 import type { DiffStat } from "./DiffStat";
 import type { ReviewUnit } from "./ReviewUnit";
+import type { SnapshotPoint } from "./SnapshotPoint";
 
 export type ReviewView = { goal_id: string, base_commit: string, 
 /**
  * The snapshot the diff starts from: the base, or an earlier pin when
  * reviewing only what changed since a previous review.
  */
-from: string, pin: string, stat: DiffStat, units: Array<ReviewUnit>, files: Array<DiffFile>, };
+from: string, pin: string, stat: DiffStat, units: Array<ReviewUnit>, files: Array<DiffFile>, 
+/**
+ * Ordered timeline of comparable snapshots for arbitrary range diffing.
+ */
+snapshots: Array<SnapshotPoint>, 
+/**
+ * Per-file 0-based hunk indices classified as moved without logic changes.
+ */
+moved_hunks: { [key in string]: Array<number> }, 
+/**
+ * Per-file 0-based hunk indices classified as whitespace/formatting only.
+ */
+formatting_hunks: { [key in string]: Array<number> }, };

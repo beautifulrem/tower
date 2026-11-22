@@ -4,10 +4,15 @@
 //! event and updates the projections derived from it in the same
 //! transaction. Reads build the UI read models in `tower_core::view`.
 
+mod attachments;
 mod events;
 mod goals;
 mod inbox;
+mod learning;
+mod merge_queue;
 mod projects;
+mod read_pool;
+mod schedule;
 mod schema;
 mod settings;
 
@@ -20,7 +25,10 @@ use tower_core::Millis;
 
 pub use goals::{GoalRecord, NewGoal};
 pub use inbox::NewInboxItem;
+pub use learning::{CALIBRATION_MIN_SAMPLES, CalibrationFactInput, NewMemoryProposal};
 pub use projects::{NewProject, ProjectPatch};
+pub use read_pool::{ReadPool, ReadStore};
+pub use schedule::NewScheduledGoal;
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -74,6 +82,11 @@ impl Store {
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         schema::migrate(&mut conn)?;
         Ok(Self { conn, clock })
+    }
+
+    /// Constructs a read-only `Store` wrapper (used exclusively by [`ReadStore`]).
+    pub(crate) fn from_read_only(conn: Connection, clock: Clock) -> Self {
+        Self { conn, clock }
     }
 
     pub(crate) fn now(&self) -> Millis {

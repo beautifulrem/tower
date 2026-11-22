@@ -493,8 +493,17 @@ fn is_machinery_module(found: &str, machinery: &str) -> bool {
 /// one up is asking "am I under the tests?", which is how a special case
 /// for the test run is written. A variable applications set themselves
 /// (`NODE_ENV`, `CI`, `APP_ENV`) says nothing of the sort and is not here.
-const RUNNER_MARKERS: &[&str] =
-    &["VITEST_WORKER_ID", "VITEST", "JEST_WORKER_ID", "PYTEST_CURRENT_TEST", "NODE_TEST_CONTEXT", "TAP"];
+const RUNNER_MARKERS: &[&str] = &[
+    "VITEST_WORKER_ID",
+    "VITEST",
+    "JEST_WORKER_ID",
+    "PYTEST_CURRENT_TEST",
+    "NODE_TEST_CONTEXT",
+    "TAP",
+    "RUST_TEST_THREADS",
+    "RUST_TEST_NOCAPTURE",
+    "CARGO_TARGET_TMPDIR",
+];
 
 /// Whether the line really reads the environment, rather than mentioning a
 /// name that happens to match.

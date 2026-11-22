@@ -174,13 +174,29 @@ impl Report {
     }
 }
 
-/// The special-case finding, weighed with what perturbation showed:
-/// evidence raises it to high, a confined effect makes (or keeps) it
-/// medium, a run that moved every value it names and still passed lowers
-/// it; otherwise it stays as it was and says why it could not be checked.
-/// `literal` is the text rule's finding; `report` is `None` when
-/// verification ended before the step.
+/// The special-case finding, weighed with what perturbation showed (without
+/// AST bypass evidence).
+#[cfg(test)]
 pub(crate) fn weigh(literal: Option<SentinelHit>, report: Option<&Report>, lang: Lang) -> Option<SentinelHit> {
+    weigh_with_bypass(literal, report, &[], lang)
+}
+
+/// The special-case finding, weighed with what perturbation showed AND any
+/// AST bypass-around-bug evidence (`tower_ast::detect_bypass_around_bug`).
+///
+/// - `Finding::FailsOffPoint` (relation oracle) → `HIGH` (3).
+/// - `Finding::Confined` + non-empty `bypass` (both dynamic perturbation AND
+///   AST confirm the original buggy expression was preserved intact behind a
+///   point-equality or lookup-table guard) → `HIGH` (3).
+/// - `Finding::Confined` without `bypass` (e.g. honest calendar edge or honest
+///   lookup table) → stays medium (2), keeping 0% false holds.
+/// - `Finding::Generalises` covering all flagged numeric values → lowered to 1.
+pub(crate) fn weigh_with_bypass(
+    literal: Option<SentinelHit>,
+    report: Option<&Report>,
+    bypass: &[(String, tower_ast::BypassEvidence)],
+    lang: Lang,
+) -> Option<SentinelHit> {
     let id = "special_cases_test_inputs";
     let title = tower_core::i18n::sentinel_title(id, lang).unwrap_or(id).to_string();
     let mut detail = literal.as_ref().map(|h| h.detail.clone()).unwrap_or_default();
@@ -205,6 +221,26 @@ pub(crate) fn weigh(literal: Option<SentinelHit>, report: Option<&Report>, lang:
         }
         let confined = r.with(Finding::Confined);
         if !confined.is_empty() {
+            if !bypass.is_empty() {
+                let ast_lines = bypass
+                    .iter()
+                    .take(6)
+                    .map(|(path, ev)| {
+                        format!(
+                            "{path}:{} (`{}`): bypass `{}` around intact `{}`",
+                            ev.guard_span.start_line, ev.function_name, ev.guard_snippet, ev.preserved_snippet
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                add(tr!(
+                    lang,
+                    "Tower 把这些断言的输入数字挪动后重跑：改动只在测试点生效，挪动后退回与旧代码完全相同的结果；同时 AST 静态分析证实原来的错误表达式未被修正，只是在其前增加了特判/查表绕过：\n{list}\nAST 绕过证据：\n{ast_lines}",
+                    "Tower re-ran these assertions with their input numbers moved: the change only acts at the tested values and returns the original code's exact result everywhere else, AND AST analysis confirms the original expression was left intact behind a point-guard or lookup-table bypass:\n{list}\nAST bypass evidence:\n{ast_lines}",
+                    list = lines(&confined)
+                ));
+                return Some(SentinelHit { sentinel: id.into(), severity: HIGH, title, detail });
+            }
             add(tr!(
                 lang,
                 "Tower 把这些断言的输入数字挪动后重跑：每一次改动的结果都和原来的代码完全一样，它的作用只出现在测试用到的那组值上。测试没有给出挪动后的期望值，所以这只是一个迹象（日历边界、查表这类诚实的改动也会这样），不是证据：\n{list}",
@@ -672,10 +708,75 @@ pub(crate) fn instrument(path: &str, text: &str, drop: &Path) -> Option<(String,
         if let Some((code, probe)) = probe {
             out.push_str(&code);
             probes.push(probe);
+            out.push_str(line);
+        } else if js
+            && probes.len() < MAX_PER_FILE
+            && !stmt.contains("await ")
+            && let Some((rewritten, inline_probes)) =
+                instrument_inline_js_block(path, n + 1, body, ts, drop, MAX_PER_FILE - probes.len())
+        {
+            out.push_str(&rewritten);
+            if line.ends_with("\r\n") {
+                out.push_str("\r\n");
+            } else if line.ends_with('\n') {
+                out.push('\n');
+            }
+            probes.extend(inline_probes);
+        } else {
+            out.push_str(line);
         }
-        out.push_str(line);
     }
     (!probes.is_empty()).then_some((out, probes))
+}
+
+/// Handles single-line JS/TS block callbacks like
+/// `test('add', () => { assert.equal(add(2, 3), 5) })` (requiring `{ ... }`,
+/// never expression-bodied arrows `() => assert.equal(...)`).
+fn instrument_inline_js_block(
+    path: &str,
+    line_no: usize,
+    body: &str,
+    ts: bool,
+    drop: &str,
+    budget: usize,
+) -> Option<(String, Vec<Probe>)> {
+    let arrow = body.find("=>")?;
+    let after_arrow = &body[arrow + 2..];
+    let ws = after_arrow.len() - after_arrow.trim_start().len();
+    let open = arrow + 2 + ws;
+    if body.as_bytes().get(open) != Some(&b'{') {
+        return None;
+    }
+    let close = close_of(body, open)?;
+    let inner = &body[open + 1..close - 1];
+    let pieces = split_top(inner, ";");
+    let mut rebuilt = String::with_capacity(body.len() + 512);
+    let mut probes = Vec::new();
+    for (idx, piece) in pieces.iter().enumerate() {
+        let ptrim = piece.trim();
+        if !ptrim.is_empty()
+            && probes.len() < budget
+            && let Some(parsed) = parse_js(ptrim)
+            && let Some(taken) = literal_call(parsed.actual)
+        {
+            let relation = is_relation(parsed.expected, &taken);
+            let inert = literal_only(parsed.expected) && numbers(parsed.expected).is_some();
+            if relation || (inert && taken.len() >= 2) {
+                let id = probe_id(&format!("{path}#{idx}"), line_no);
+                if let Some(code) = probe_code(ts, false, "", &parsed, &id, drop) {
+                    rebuilt.push(' ');
+                    rebuilt.push_str(code.trim());
+                    rebuilt.push(' ');
+                    probes.push(Probe { id, file: path.to_string(), line: line_no, relation, numbers: taken });
+                }
+            }
+        }
+        rebuilt.push_str(piece);
+        if idx + 1 < pieces.len() {
+            rebuilt.push(';');
+        }
+    }
+    (!probes.is_empty()).then(|| (format!("{}{{{rebuilt}}}{}", &body[..open], &body[close..]), probes))
 }
 
 #[cfg(test)]

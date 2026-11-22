@@ -15,12 +15,11 @@ use crate::{Result, invalid};
 /// Whether visible criteria get a single automatic rerun on their first failure
 /// to distinguish flaky tests from real regressions.
 ///
-/// Defaults to `true`; can be disabled via `TOWER_FLAKY_RERUN=0` / `false`
-/// (and wired to `Settings.flaky_rerun` during integration).
-pub(super) fn flaky_rerun_enabled() -> bool {
+/// Honors `Settings.flaky_rerun` and allows overriding via `TOWER_FLAKY_RERUN`.
+pub(super) fn flaky_rerun_enabled(inner: &crate::Inner) -> bool {
     match std::env::var("TOWER_FLAKY_RERUN") {
         Ok(v) => !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no"),
-        Err(_) => true,
+        Err(_) => inner.settings().flaky_rerun,
     }
 }
 
@@ -37,7 +36,7 @@ impl Bench<'_> {
         timeout: Duration,
     ) -> Result<std::result::Result<Ran, Ran>> {
         let r = self.exec(command, self.criteria.as_deref(), timeout).await;
-        if r.environment_failure || r.passed || !flaky_rerun_enabled() || self.cancel.is_cancelled() {
+        if r.environment_failure || r.passed || !flaky_rerun_enabled(self.inner) || self.cancel.is_cancelled() {
             return Ok(if r.environment_failure { Err(r) } else { Ok(r) });
         }
 
@@ -63,8 +62,14 @@ impl Bench<'_> {
             second = r2.output_tail
         );
         self.inner.append(self.goal, EventKind::Note { text: note })?;
-        // Integration hook: emit `EventKind::CriterionFlaky { criterion: c.id.clone(), pin: pin.into(), first_output_tail: r.output_tail.clone() }` once merged with `core-store-backend`.
-        let _ = pin;
+        self.inner.append(
+            self.goal,
+            EventKind::CriterionFlaky {
+                criterion: c.id.clone(),
+                pin: pin.into(),
+                first_output_tail: r.output_tail.clone(),
+            },
+        )?;
 
         let combined_tail = format!(
             "[flaky: attempt 1 failed (exit {first_code}), attempt 2 passed]\n--- attempt 1 (failed) ---\n{}\n--- attempt 2 (passed) ---\n{}",

@@ -19,8 +19,9 @@
 5. **例外管理。** 只有问题、审批、待确认的假设和需要你选择出路的暂停会打扰你；其余时间每个 Goal 只有一行实况，说明它在做哪一类事、对象是什么。
 6. **评审即操控。** 大 diff 切成按风险排序、每个不超过约 300 行的评审单元；在某一行写的批注就是给 Agent 的转向指令。
 7. **默认封闭。** Agent 运行的一切（shell 命令与读、改、写文件的工具）都在每个 Goal 独立生成的 macOS 沙箱中：读不到凭据和其他项目，写不出工作区，除非合同允许，否则不能联网。见 [SECURITY.md](SECURITY.md)。
-8. **Pi 或 Claude Code。** Goal 可以运行在 Pi 上，也可以通过 Agent Client Protocol 运行在 Claude Code 上：Tower 不给 Claude Code 任何内置工具，只提供自己的沙箱版读、改、写、bash 以及 `ask_user`、`log`、`submit`，因此合同、沙箱、验证与哨兵照常生效。在设置中或按目标选择引擎。
-9. **尊重 Pi。** Tower 通过一个标准 Pi 扩展只给模型加三个工具（`ask_user`、`log`、`submit`），同时把 Pi 自带的四个工具包进沙箱；Tower 注入的每条消息都在轨迹中原样可见。
+8. **多引擎与显式信任分级。** 目标可运行在 Pi（`完整 S2`），也可通过通用 Agent Client Protocol 桥接运行在 Claude Code、Codex、Gemini CLI（`受限 S2`）与 OpenCode（`实验`）上：默认封闭的工具沙箱、显式信任徽章、返工自动升级模型与 `submit(outcome: "blocked")` 诚实阻塞上报照常生效。
+9. **学习与运维控制台。** 污染追踪的记忆提议须经人工批准（高污染来源须编辑规则或输入 `CONFIRM`）并附带验证器校准记分板；运维视图集中管理定时目标（无人值守严格模式）、按项目合并队列、磁盘产物清理与沙箱态势（macOS Seatbelt、Linux `bwrap`/Landlock 与可选 Apple Containerization MicroVM）。
+10. **尊重 Pi。** Tower 通过标准 Pi 扩展只给模型加三个工具（`ask_user`、`log`、`submit`），由常驻沙箱文件辅助进程承接文件读写；Tower 注入的每条消息都在轨迹中原样可见。
 
 | Goal 页 | 评审 |
 |---|---|
@@ -82,17 +83,18 @@ apps/desktop/            Tauri 2 外壳（Rust）+ SolidJS 界面
   src/                   视图、组件、设计令牌（docs/12）
 crates/
   tower-core/            领域模型：生命周期状态机、合同、诚实语法、评审单元
-  tower-store/           单写者 SQLite 事件日志与投影
-  tower-pi/              Pi RPC 适配器
-  tower-git/             卫星克隆、内容寻址的快照、封装分支
+  tower-ast/             tree-sitter AST 结构分析（Rust/JS/TS/Python/Bash），用于哨兵与语义 diff 折叠
+  tower-store/           单写者 SQLite WAL 事件日志、并发读连接池与投影
+  tower-pi/              Pi RPC 适配器（含多模态图片附件）
+  tower-git/             卫星克隆、内容寻址的快照、快照时间线对比、封装分支与合并队列
   tower-verify/          验收命令执行器：进程组、超时、截尾与脱敏的输出
-  tower-supervisor/      把以上部分串成 Goal 生命周期的单写者
-extensions/tower-goal/   Pi 扩展：ask_user / log / submit、范围与自主度门禁、沙箱版 bash
-docs/                    产品设计（从 00 开始读）与对抗评审记录
-tools/                   演示引擎与截图脚本
+  tower-supervisor/      单写者 Supervisor：生命周期、沙箱后端、常驻 FS 辅助、学习/定时/远程 SSE
+extensions/tower-goal/   Pi 与 ACP 扩展：ask_user / log / submit、POSIX shell 策略门禁、沙箱 FS 与 bash
+docs/                    产品设计（从 00 开始读）、演进路线图（18）、反聊天控制台设计（19）
+tools/                   演示引擎、安全测试门禁、包体与文档检查、截图脚本
 ```
 
-Supervisor 持有全部状态；界面只保存一份由合并后的更新驱动的只读副本；启动时加载的 JS 约 51 KB（gzip，含一种界面语言的前一半），目标页和只有后续视图才用的文字在首帧之后加载，评审、设置、合同编辑器、命令面板按需加载，语法高亮在 Worker 中；CI 检查各自的预算，另有目标页和全部界面 JS 合计的预算，把代码移出启动包也藏不住增长（`tools/bundle-budget.sh`：启动包 64 KB，目标页 12 KB，合计 160 KB；目前合计 142 KB）。
+Supervisor 持有全部状态；界面只保存一份由合并后的更新驱动的只读副本；启动时加载的 JS 约 52 KB（gzip，含一种界面语言的前一半），目标页和只有后续视图才用的文字在首帧之后加载，评审、设置、学习、运维、合同编辑器、快速速览与命令面板按需加载，语法高亮在 Worker 中；CI 检查各自的预算，另有目标页和全部界面 JS 合计的预算，把代码移出启动包也藏不住增长（`tools/bundle-budget.sh`：启动包 64 KB，目标页 12 KB，合计 160 KB；目前合计 156 KB）。
 
 ## 设计文档
 

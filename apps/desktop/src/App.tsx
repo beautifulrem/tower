@@ -174,8 +174,8 @@ export function App() {
   const active = (on: boolean) => () => (document.documentElement.dataset.windowActive = on ? "true" : "false");
   const unlisten = Promise.all([listen("tauri://focus", active(true)), listen("tauri://blur", active(false))]);
   onCleanup(() => void unlisten.then((fs) => fs.forEach((f) => f())));
-  // Once the first frame is up: the goal page, and with it the words the on-demand views say.
-  onMount(() => requestAnimationFrame(() => setTimeout(() => void GoalPage.preload(), 0)));
+  // Once the first frame is up: the goal page, the command palette/console chunk, and the second half of the words.
+  onMount(() => requestAnimationFrame(() => setTimeout(() => void GoalPage.preload().then(() => CommandPalette.preload()), 0)));
   // And the colours of the reviews waiting for you, while the window idles.
   prewarmReviews();
 

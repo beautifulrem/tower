@@ -167,7 +167,7 @@ kbd,
   clip: rect(0 0 0 0);
 }
 
-/* Scale-style group title: 12/500 text-3 with a hairline running right. */
+/* Scale-style group title: 12/500 text-3 with a precision hairline running right. */
 .scale-title {
   display: flex;
   align-items: center;
@@ -179,14 +179,17 @@ kbd,
   color: var(--text-3);
   white-space: nowrap;
 }
+:root[lang="zh-CN"] body {
+  letter-spacing: 0;
+}
 .scale-title .num {
-  color: var(--text-3);
+  color: var(--text-2);
   font-weight: 400;
 }
 .scale-title::after {
   content: "";
   flex: 1;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-grid);
 }
 
 @media (prefers-reduced-motion: reduce) {

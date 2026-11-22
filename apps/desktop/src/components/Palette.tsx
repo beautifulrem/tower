@@ -71,6 +71,8 @@ export function CommandPalette() {
       { id: "new", title: t("app.newGoal"), hint: "n", icon: "plus", run: () => go({ name: "new" }) },
       { id: "overview", title: t("chrome.openOverview"), hint: "mod+1", icon: "grid", run: () => go({ name: "overview" }) },
       { id: "inbox", title: t("chrome.openInbox"), hint: "mod+2", icon: "inbox", run: () => go({ name: "inbox" }) },
+      { id: "learning", title: t("chrome.openLearning"), hint: "mod+3", icon: "learning", run: () => go({ name: "learning" }) },
+      { id: "operations", title: t("chrome.openOperations"), hint: "mod+4", icon: "operations", run: () => go({ name: "operations" }) },
       { id: "settings", title: t("chrome.openSettings"), hint: "mod+,", icon: "sliders", run: () => go({ name: "settings" }) },
       { id: "activity", title: t("chrome.openActivity"), hint: "mod+shift+l", icon: "list", run: () => openActivity() },
       { id: "shortcuts", title: t("chrome.openShortcuts"), hint: "?", icon: "keyboard", run: () => openShortcuts() },

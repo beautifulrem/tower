@@ -4,7 +4,7 @@
  * It adds exactly three tools to the model (docs/00 §0.5, docs/05):
  *   ask_user  ask the human; the run blocks until Tower relays an answer
  *   log       record a cause, decision, assumption, next step or progress note
- *   submit    claim the goal is done; Tower then verifies in a clean checkout
+ *   submit    claim the goal is done, OR honestly report it blocked/impossible
  *
  * and a `tool_call` gate that enforces the contract's scope fence and the
  * autonomy preset. Approvals and questions travel to Tower as extension UI
@@ -14,6 +14,7 @@
  *   TOWER_GOAL_ID, TOWER_WORKSPACE, TOWER_CONTRACT (path to contract.json)
  *   TOWER_SANDBOX_PROFILE  macOS Seatbelt profile for the agent's shell (S2)
  *   TOWER_TMP              the agent's private temporary directory
+ *   TOWER_ATTACHMENTS_DIR  the goal's private read-allowed attachments folder
  *   TOWER_LANG             the human's interface language (zh-CN or en) for
  *                          approval reasons and options; the model always
  *                          reads English
@@ -25,7 +26,7 @@
  * off) and, when a profile is given, runs the command under sandbox-exec
  * (docs/11 §11.6). read, edit and write are replaced by the same tools whose
  * file operations run under that profile too (sandboxfs.ts). Tower starts Pi
- * with exactly these tools enabled.
+ * with exactly these 7 tools enabled.
  */
 
 import { existsSync, readFileSync, realpathSync } from "node:fs";
@@ -40,10 +41,10 @@ import {
 	type Scope,
 	TEXT,
 	checkBash,
+	checkRead,
 	checkWrite,
 	isAllow,
 	langOf,
-	checkRead,
 	sandboxed,
 	scrubEnv,
 	withDefaultTimeout,
@@ -59,6 +60,7 @@ interface ContractFile {
 const WORKSPACE = realOrSelf(process.env.TOWER_WORKSPACE ?? process.cwd());
 const SANDBOX_PROFILE = process.env.TOWER_SANDBOX_PROFILE;
 const AGENT_TMP = process.env.TOWER_TMP;
+const ATTACHMENTS_DIR = process.env.TOWER_ATTACHMENTS_DIR;
 const LANG = langOf(process.env.TOWER_LANG);
 const NETWORK = process.env.TOWER_NETWORK === "1";
 
@@ -177,22 +179,42 @@ export default function towerGoal(pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "submit",
-		label: "Submit as done",
+		label: "Submit done or blocked",
 		description:
-			"Call once when you believe every acceptance criterion is met. Tower will re-run the criteria in a clean checkout; your word alone does not complete the goal. Stop working after submitting.",
+			"Call once when every acceptance criterion is met (outcome: 'done', default), OR when the specification is impossible, contradictory, or unsolvable within the contract/sandbox (outcome: 'blocked' with blocker_reason). Honestly reporting a blocker is explicitly sanctioned and preferred over workarounds or weakening tests. Stop working after submitting.",
 		parameters: Type.Object({
-			summary: Type.String({ description: "What you changed and why, in a few sentences" }),
-			criteria: Type.Array(
-				Type.Object({
-					id: Type.String({ description: "Criterion id, e.g. C1" }),
-					met: Type.Boolean(),
-					evidence: Type.String({ description: "What you ran or saw" }),
+			outcome: Type.Optional(
+				Type.Union([Type.Literal("done"), Type.Literal("blocked")], {
+					description: "Defaults to 'done'. Use 'blocked' when the goal is impossible or contradictory.",
 				}),
 			),
+			summary: Type.String({ description: "What you changed and why (or what you found when blocked), in a few sentences" }),
+			blocker_reason: Type.Optional(
+				Type.String({
+					description: "Required when outcome is 'blocked': concrete evidence explaining why the goal cannot be completed honestly.",
+				}),
+			),
+			criteria: Type.Optional(
+				Type.Array(
+					Type.Object({
+						id: Type.String({ description: "Criterion id, e.g. C1" }),
+						met: Type.Boolean(),
+						evidence: Type.String({ description: "What you ran or saw" }),
+					}),
+				),
+			),
 		}),
-		async execute() {
+		async execute(_id, params) {
+			const blocked = params.outcome === "blocked";
 			return {
-				content: [{ type: "text", text: "Submitted. Tower will verify the criteria in a clean checkout. Do not continue unless asked." }],
+				content: [
+					{
+						type: "text",
+						text: blocked
+							? "Blocked report received. Tower will pause this goal and ask the human for guidance. Do not continue unless asked."
+							: "Submitted. Tower will verify the criteria in a clean checkout. Do not continue unless asked.",
+					},
+				],
 				details: {},
 				terminate: true,
 			};
@@ -206,7 +228,12 @@ export default function towerGoal(pi: ExtensionAPI) {
 		if (name === "read" && !SANDBOX_PROFILE) {
 			const raw = String((event.input as { path?: unknown }).path ?? "");
 			const abs = resolveThroughLinks(isAbsolute(raw) ? raw : resolve(WORKSPACE, raw));
-			if (!checkRead([WORKSPACE, ...(AGENT_TMP ? [realOrSelf(AGENT_TMP)] : [])], abs)) {
+			const roots = [
+				WORKSPACE,
+				...(AGENT_TMP ? [realOrSelf(AGENT_TMP)] : []),
+				...(ATTACHMENTS_DIR ? [realOrSelf(ATTACHMENTS_DIR)] : []),
+			];
+			if (!checkRead(roots, abs)) {
 				return { block: true, reason: `Tower: ${raw} is outside this goal's workspace and cannot be read.` };
 			}
 			return undefined;

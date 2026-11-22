@@ -2,8 +2,123 @@
 //! in the Pi repository). Only the fields Tower acts on are typed; everything
 //! else is kept as raw JSON so newer Pi versions do not break parsing.
 
-use serde::Deserialize;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// Maximum image attachment size encoded inline for multimodal prompts (10 MiB).
+pub const MAX_IMAGE_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
+
+/// An image attached to a prompt, steer, or follow-up message.
+///
+/// Sent to Pi RPC and Tower's ACP bridge in `images: [{ type: "image", data, mimeType, ... }]`.
+/// `path`, when provided, points to the copy stored in the goal's private read-allowed
+/// attachments folder so both multimodal engines and sandboxed `read` tools stay inside S2.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageAttachment {
+    /// MIME type (`image/png`, `image/jpeg`, `image/webp`, `image/gif`).
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+    /// RFC 4648 base64-encoded image bytes (without a `data:` URI prefix).
+    pub data: String,
+    /// Optional path inside the goal's private read-allowed folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Optional human-readable label or filename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+impl ImageAttachment {
+    /// Loads an image file from disk, validates its MIME type and size cap, and base64-encodes it.
+    pub fn from_file(path: &Path, label: Option<String>) -> std::io::Result<Self> {
+        let meta = std::fs::metadata(path)?;
+        if !meta.is_file() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "attachment is not a regular file"));
+        }
+        if meta.len() as usize > MAX_IMAGE_ATTACHMENT_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("image attachment exceeds {} bytes", MAX_IMAGE_ATTACHMENT_BYTES),
+            ));
+        }
+        let bytes = std::fs::read(path)?;
+        let mime_type = detect_image_mime(&bytes, path).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "unsupported image attachment format")
+        })?;
+        Ok(Self {
+            mime_type: mime_type.into(),
+            data: encode_base64(&bytes),
+            path: Some(path.display().to_string()),
+            label,
+        })
+    }
+
+    /// Formats this attachment as a Pi RPC / ACP image block object.
+    pub fn to_rpc_value(&self) -> Value {
+        let mut obj = serde_json::json!({
+            "type": "image",
+            "mimeType": self.mime_type,
+            "data": self.data,
+        });
+        if let Some(p) = &self.path {
+            obj["path"] = Value::String(p.clone());
+        }
+        if let Some(l) = &self.label {
+            obj["label"] = Value::String(l.clone());
+        }
+        obj
+    }
+}
+
+/// Detects an allowed image MIME type from magic bytes, falling back to file extension.
+pub fn detect_image_mime(bytes: &[u8], path: &Path) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        return Some("image/png");
+    }
+    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    match path.extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("png") => Some("image/png"),
+        Some("jpg" | "jpeg") => Some("image/jpeg"),
+        Some("gif") => Some("image/gif"),
+        Some("webp") => Some("image/webp"),
+        _ => None,
+    }
+}
+
+/// Zero-dependency RFC 4648 standard base64 encoder.
+pub fn encode_base64(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
+    for chunk in input.chunks(3) {
+        let b0 = u32::from(chunk[0]);
+        let b1 = u32::from(chunk.get(1).copied().unwrap_or(0));
+        let b2 = u32::from(chunk.get(2).copied().unwrap_or(0));
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(n & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
 
 /// A record read from Pi's stdout.
 #[derive(Debug, Clone, PartialEq)]
@@ -72,6 +187,15 @@ pub enum PiEvent {
         extension: String,
         event: String,
         error: String,
+    },
+    /// Emitted by Tower's ACP Trust Gate whenever an ACP agent requests
+    /// permission for a non-Tower / built-in tool.
+    TrustGateDenied {
+        engine: String,
+        trust_level: String,
+        tool: String,
+        reason: String,
+        attempts: u32,
     },
     /// Anything else, kept for the trace.
     Other {
@@ -217,6 +341,13 @@ pub fn parse_record(line: &str) -> Result<Record, serde_json::Error> {
             event: str_field(&v, "event"),
             error: str_field(&v, "error"),
         }),
+        "tower_trust_gate_denied" => Record::Event(PiEvent::TrustGateDenied {
+            engine: str_field(&v, "engine"),
+            trust_level: str_field(&v, "trustLevel"),
+            tool: str_field(&v, "tool"),
+            reason: str_field(&v, "reason"),
+            attempts: v.get("attempts").and_then(Value::as_u64).unwrap_or(1) as u32,
+        }),
         _ => Record::Event(PiEvent::Other { kind, raw: v }),
     })
 }
@@ -245,6 +376,39 @@ mod tests {
                 args: serde_json::json!({"command": "ls"})
             })
         );
+    }
+
+    #[test]
+    fn parses_trust_gate_denied_audit_event() {
+        let e = parse_record(
+            r#"{"type":"tower_trust_gate_denied","engine":"codex","trustLevel":"restricted_s2","tool":"shell","reason":"built-in forbidden","attempts":2}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            e,
+            Record::Event(PiEvent::TrustGateDenied {
+                engine: "codex".into(),
+                trust_level: "restricted_s2".into(),
+                tool: "shell".into(),
+                reason: "built-in forbidden".into(),
+                attempts: 2,
+            })
+        );
+    }
+
+    #[test]
+    fn base64_and_image_mime_detection_work() {
+        assert_eq!(encode_base64(b""), "");
+        assert_eq!(encode_base64(b"f"), "Zg==");
+        assert_eq!(encode_base64(b"fo"), "Zm8=");
+        assert_eq!(encode_base64(b"foo"), "Zm9v");
+        assert_eq!(encode_base64(b"foobar"), "Zm9vYmFy");
+        assert_eq!(
+            detect_image_mime(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a], Path::new("x.bin")),
+            Some("image/png")
+        );
+        assert_eq!(detect_image_mime(&[0xff, 0xd8, 0xff, 0xe0], Path::new("x")), Some("image/jpeg"));
+        assert_eq!(detect_image_mime(b"plain", Path::new("notes.txt")), None);
     }
 
     #[test]

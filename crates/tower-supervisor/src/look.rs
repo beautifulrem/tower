@@ -143,7 +143,7 @@ fn holder(pid: Option<i32>) -> String {
 /// source-compatible with existing `verify/bench/looks.rs` callers; use
 /// [`capture_evidence`] for captured `console_errors` and multi-viewport shots.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn capture(
+pub async fn capture(
     id: &str,
     root: &Path,
     dir: &Path,

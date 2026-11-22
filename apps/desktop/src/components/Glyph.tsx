@@ -235,7 +235,11 @@ export type IconName =
   | "rework"
   | "ring"
   | "bell"
-  | "undo";
+  | "undo"
+  | "learning"
+  | "operations"
+  | "shield"
+  | "peek";
 
 const PATHS: Record<IconName, () => JSX.Element> = {
   plus: () => <path d="M6 2.25 V9.75 M2.25 6 H9.75" />,
@@ -347,6 +351,29 @@ const PATHS: Record<IconName, () => JSX.Element> = {
     </>
   ),
   undo: () => <path d="M4.5 3.25 L1.75 6 L4.5 8.75 M1.75 6 H7.5 A2.75 2.75 0 0 1 7.5 11.5 H5.5" />,
+  /* Calibration / learning ledger: two pages of rules & scores. */
+  learning: () => (
+    <>
+      <path d="M1.75 2.5 H5.25 A1.25 1.25 0 0 1 6 3.5 V10 A1.25 1.25 0 0 0 5.25 9.25 H1.75 Z" />
+      <path d="M10.25 2.5 H6.75 A1.25 1.25 0 0 0 6 3.5 V10 A1.25 1.25 0 0 1 6.75 9.25 H10.25 Z" />
+    </>
+  ),
+  /* Operations clock / schedule dial. */
+  operations: () => (
+    <>
+      <circle cx="6" cy="6" r="4.25" />
+      <path d="M6 3.5 V6.25 L8 7.5" />
+    </>
+  ),
+  /* Sandbox posture shield. */
+  shield: () => <path d="M6 1.25 L10.25 2.75 V6.2 C10.25 8.5 8.4 10 6 10.75 C3.6 10 1.75 8.5 1.75 6.2 V2.75 Z" />,
+  /* Slide-over quick peek drawer. */
+  peek: () => (
+    <>
+      <rect x="1.5" y="2" width="9" height="8" />
+      <path d="M7.25 2 V10" />
+    </>
+  ),
 };
 
 /** One of Tower's own line icons; 12px by default, 16px for toolbar buttons. */

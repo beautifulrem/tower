@@ -8,11 +8,12 @@ import type { LifecycleState } from "../gen/LifecycleState";
 import type { Mode } from "../gen/Mode";
 import type { OptionTone } from "../gen/OptionTone";
 import type { PauseReason } from "../gen/PauseReason";
+import type { EngineTrustTier } from "./apiTypes";
 import { t } from "./i18n";
 
 export const stateLabel = (s: LifecycleState): string => t(`state.${s}`);
 
-export const pauseLabel = (r: PauseReason): string => t(`pause.${r}`);
+export const pauseLabel = (r: PauseReason | "agent_reported_blocked"): string => t(`pause.${r}` as Parameters<typeof t>[0]);
 
 /** Mode badge text (§12.6.3): short, attention only when it needs you. */
 export const modeLabel = (m: Mode): string => t(`mode.${m}`);
@@ -81,7 +82,27 @@ export function isBlocking(item: InboxItem): boolean {
 
 /** The engine's name in words; "" is the default from the settings. */
 export function engineLabel(engine: string): string {
-  return engine === "claude-code" ? "Claude Code" : engine === "pi" ? "Pi" : engine;
+  switch (engine) {
+    case "pi":
+      return "Pi";
+    case "claude-code":
+      return "Claude Code";
+    case "codex":
+      return "Codex";
+    case "gemini-cli":
+      return "Gemini CLI";
+    case "opencode":
+      return "OpenCode";
+    default:
+      return engine;
+  }
+}
+
+/** Default sandbox trust tier per engine when the backend descriptor list has not arrived yet. */
+export function engineTrustTier(engine: string): EngineTrustTier {
+  if (engine === "pi" || engine === "claude-code" || !engine) return "full_s2";
+  if (engine === "codex" || engine === "gemini-cli" || engine === "opencode") return "restricted_s2";
+  return "experimental";
 }
 
 /** The engine a goal runs on once the default is applied. */
@@ -89,9 +110,12 @@ export function effectiveEngine(contractEngine: string | undefined, defaultEngin
   return contractEngine || defaultEngine || "pi";
 }
 
-/** Models belong to one engine: Claude Code's by provider, every other provider is Pi's. */
+/** Models belong to one engine: Claude Code's by provider, every other provider is Pi's (or shared for ACP engines). */
 export function modelsFor<M extends { provider: string }>(models: M[], engine: string): M[] {
-  return models.filter((m) => (engine === "claude-code") === (m.provider === "claude-code"));
+  if (engine === "claude-code") return models.filter((m) => m.provider === "claude-code");
+  if (engine === "pi" || !engine) return models.filter((m) => m.provider !== "claude-code");
+  const matched = models.filter((m) => m.provider === engine);
+  return matched.length ? matched : models;
 }
 
 /** The engine is "silent" after this long without any event. */

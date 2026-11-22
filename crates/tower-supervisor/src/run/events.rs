@@ -1,5 +1,6 @@
 //! What the engine says while a run goes on: tool calls, dialogs, cost,
-//! settling and exit, turned into facts, cards and state changes.
+//! anti-probing early stalls, honest blocked exits, settling and exit,
+//! turned into facts, cards and state changes.
 
 use tokio::sync::mpsc;
 use tower_core::contract::CriterionKind;
@@ -91,11 +92,16 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                     is_error,
                     summary: summarize::tool_result(&text),
                     duration_ms,
-                    target,
+                    target: target.clone(),
                     denied,
                 },
             )?;
             run.flags().last_activity = Some(Instant::now());
+            if !is_error && matches!(tool.as_str(), "edit" | "write") {
+                run.flags().probe.record_progress(None);
+            } else if denied {
+                on_sandbox_denial(inner, run, target.clone());
+            }
             if let Some(call) = &call {
                 let signature = format!("{tool} · {}", summarize::tool_call(&tool, &call.args, &run.workspace));
                 if is_error {
@@ -123,6 +129,40 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             if !matches!(tool.as_str(), "ask_user") {
                 inner.set_mode(g, Mode::Thinking)?;
             }
+        }
+        PiEvent::TrustGateDenied { engine, trust_level, tool, reason, attempts } => {
+            let lang = inner.lang();
+            let summary = tr!(
+                lang,
+                "安全闸门拦截了 {engine}（{trust_level}）对非 Tower 工具 `{tool}` 的调用：{reason}",
+                "Trust gate blocked {engine} ({trust_level}) from calling non-Tower tool `{tool}`: {reason}"
+            );
+            inner.append(
+                g,
+                EventKind::ToolEnded {
+                    call_id: format!("trust-gate-r{}-{attempts}", run.run_no),
+                    tool: tool.clone(),
+                    is_error: true,
+                    summary: summary.clone(),
+                    duration_ms: 0,
+                    target: Some(format!("{engine}:{tool}")),
+                    denied: true,
+                },
+            )?;
+            inner.append(
+                g,
+                EventKind::SentinelHit {
+                    sentinel: "acp_unauthorized_tool".into(),
+                    severity: 3,
+                    title: tr!(
+                        lang,
+                        "ACP 引擎尝试调用非 Tower 内置工具",
+                        "ACP engine attempted an unauthorized built-in tool"
+                    ),
+                    detail: summary,
+                },
+            )?;
+            on_sandbox_denial(inner, run, Some(format!("{engine}:{tool}")));
         }
         PiEvent::CompactionStart => inner.set_mode(g, Mode::Compacting)?,
         PiEvent::CompactionEnd => inner.set_mode(g, Mode::Thinking)?,
@@ -157,6 +197,89 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
     Ok(())
 }
 
+/// Anti-Probing Early Stall detector: records a sandbox or trust-gate denial
+/// and, once the agent accumulates `SANDBOX_PROBE_THRESHOLD` (5) denials
+/// without workspace file progress, verifies workspace git state and pauses
+/// early instead of wasting a 600s adversarial timeout.
+fn on_sandbox_denial(inner: &Arc<Inner>, run: &Arc<Run>, target: Option<String>) {
+    let should_check = {
+        let mut f = run.flags();
+        f.probe.record_denial(target);
+        if f.stopping.is_none()
+            && !f.submitted
+            && f.blocked_report.is_none()
+            && f.probe.threshold_reached()
+            && !f.probe.check_inflight
+        {
+            f.probe.check_inflight = true;
+            true
+        } else {
+            false
+        }
+    };
+    if !should_check {
+        return;
+    }
+    let inner = inner.clone();
+    let run = run.clone();
+    tokio::spawn(async move {
+        // Brief grace window so a legitimate run that wrote files right after
+        // probing and immediately called `submit` settles cleanly.
+        tokio::time::sleep(SANDBOX_PROBE_GRACE).await;
+        let snapshot_info = {
+            let mut f = run.flags();
+            if f.stopping.is_some() || f.submitted || f.blocked_report.is_some() || !f.probe.threshold_reached() {
+                f.probe.check_inflight = false;
+                return;
+            }
+            (f.probe.denials_since_progress, f.probe.recent_targets.clone(), f.probe.last_progress_pin.clone())
+        };
+        let (denials, recent_targets, last_pin) = snapshot_info;
+        let g = run.goal_id.clone();
+
+        // Confirm against git whether any workspace file changed since the last
+        // progress checkpoint (catches edits made via `bash` too, not only `edit`/`write`).
+        if let Ok(rec) = inner.store(|s| s.goal(&g))
+            && let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone())
+        {
+            let git = inner.git.clone();
+            let current_pin =
+                tokio::task::spawn_blocking(move || git.snapshot(Path::new(&ws), &base).ok().map(|s| s.pin))
+                    .await
+                    .ok()
+                    .flatten();
+            if let Some(pin) = current_pin
+                && last_pin.as_deref() != Some(pin.as_str())
+            {
+                let mut f = run.flags();
+                f.probe.record_progress(Some(pin));
+                f.probe.check_inflight = false;
+                return;
+            }
+        }
+
+        // Re-check before pausing: still no submission, still active.
+        {
+            let mut f = run.flags();
+            f.probe.check_inflight = false;
+            if f.stopping.is_some() || f.submitted || f.blocked_report.is_some() || !f.probe.threshold_reached() {
+                return;
+            }
+        }
+        let lang = inner.lang();
+        let sample =
+            if recent_targets.is_empty() { String::new() } else { format!(" ({})", recent_targets.join(", ")) };
+        let detail = tr!(
+            lang,
+            "持续探测沙箱边界，无实质进展：连续触发 {denials} 次沙箱拒绝且工作区无文件改动{sample}。已提前暂停交由你决定。",
+            "Repeated sandbox probing without workspace progress: {denials} sandbox denials with no workspace file changes{sample}. Paused early for your guidance."
+        );
+        let _ = inner.append(&g, EventKind::Stalled { detector: "sandbox_probing".into(), detail: detail.clone() });
+        let r = pause(&inner, &g, SANDBOX_PROBE_PAUSE_REASON, &detail).await;
+        report(&inner, &g, r).await;
+    });
+}
+
 fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: String, args: Value) -> Result<()> {
     let g = run.goal_id.as_str();
     // Engine call ids are unique within a run only.
@@ -189,30 +312,50 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
             }
         }
         "submit" => {
-            inner.append(g, EventKind::Submitted { summary: s("summary") })?;
-            if let Some(items) = args.get("criteria").and_then(Value::as_array) {
-                for item in items {
-                    let id = item.get("id").and_then(Value::as_str).unwrap_or_default();
-                    let met = item.get("met").and_then(Value::as_bool).unwrap_or(false);
-                    let evidence = item.get("evidence").and_then(Value::as_str).unwrap_or_default();
-                    if met && !id.is_empty() {
-                        inner.append(
-                            g,
-                            EventKind::Claim {
-                                claim_id: format!("{claim_id}/{id}"),
-                                claim: ClaimKind::CriterionMet,
-                                text: if evidence.is_empty() {
-                                    tr!(inner.lang(), "{id} 已满足", "{id} is met")
-                                } else {
-                                    evidence.to_string()
+            let payload = parse_submit_args(&args);
+            if payload.outcome == SubmitOutcome::Blocked {
+                let reason = payload.blocker_reason.unwrap_or_else(|| payload.summary.clone());
+                let claim_text = if payload.summary.is_empty() || payload.summary == reason {
+                    format!("[blocked] {reason}")
+                } else {
+                    format!("[blocked] {reason} — {}", payload.summary)
+                };
+                inner.append(
+                    g,
+                    EventKind::Claim {
+                        claim_id: claim_id.clone(),
+                        claim: ClaimKind::Cause,
+                        text: claim_text,
+                        criterion: None,
+                    },
+                )?;
+                run.flags().blocked_report = Some(BlockedReport { summary: payload.summary, blocker_reason: reason });
+            } else {
+                inner.append(g, EventKind::Submitted { summary: payload.summary })?;
+                if let Some(items) = args.get("criteria").and_then(Value::as_array) {
+                    for item in items {
+                        let id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+                        let met = item.get("met").and_then(Value::as_bool).unwrap_or(false);
+                        let evidence = item.get("evidence").and_then(Value::as_str).unwrap_or_default();
+                        if met && !id.is_empty() {
+                            inner.append(
+                                g,
+                                EventKind::Claim {
+                                    claim_id: format!("{claim_id}/{id}"),
+                                    claim: ClaimKind::CriterionMet,
+                                    text: if evidence.is_empty() {
+                                        tr!(inner.lang(), "{id} 已满足", "{id} is met")
+                                    } else {
+                                        evidence.to_string()
+                                    },
+                                    criterion: Some(id.to_string()),
                                 },
-                                criterion: Some(id.to_string()),
-                            },
-                        )?;
+                            )?;
+                        }
                     }
                 }
+                run.flags().submitted = true;
             }
-            run.flags().submitted = true;
         }
         _ => {}
     }
@@ -277,7 +420,10 @@ async fn check_budget(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     };
     let first = reason.is_some() && {
         let mut f = run.flags();
-        f.stopping.is_none() && !f.submitted && !std::mem::replace(&mut f.over_budget, true)
+        f.stopping.is_none()
+            && !f.submitted
+            && f.blocked_report.is_none()
+            && !std::mem::replace(&mut f.over_budget, true)
     };
     if let Some(reason) = reason
         && first
@@ -373,11 +519,23 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
 
 async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     let g = run.goal_id.clone();
-    let (stopping, submitted, nudged, last_error) = {
+    let (stopping, submitted, blocked_report, nudged, last_error) = {
         let f = run.flags();
-        (f.stopping, f.submitted, f.nudged, f.last_error.clone())
+        (f.stopping, f.submitted, f.blocked_report.clone(), f.nudged, f.last_error.clone())
     };
     if stopping.is_some() {
+        return Ok(());
+    }
+    if let Some(blocked) = blocked_report {
+        run.flags().stopping = Some(Stop::Pause(AGENT_REPORTED_BLOCKED_PAUSE_REASON));
+        inner.set_mode(&g, Mode::Settled)?;
+        let inner = inner.clone();
+        let run = run.clone();
+        tokio::spawn(async move {
+            run.engine.shutdown(Duration::from_secs(5)).await;
+            let r = finish_blocked(&inner, &run, &blocked).await;
+            report(&inner, &run.goal_id, r).await;
+        });
         return Ok(());
     }
     if submitted {
@@ -413,6 +571,31 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         report(&inner, &g, r).await;
     });
     Ok(())
+}
+
+async fn finish_blocked(inner: &Arc<Inner>, run: &Arc<Run>, blocked: &BlockedReport) -> Result<()> {
+    let g = run.goal_id.as_str();
+    remove_run(inner, run);
+    inner.append(g, EventKind::RunEnded { run_no: run.run_no, outcome: "blocked".into() })?;
+    let _ = repin(inner, g).await;
+    let detail = format_blocked_detail(blocked, inner.lang());
+    pause_after_stop(inner, g, AGENT_REPORTED_BLOCKED_PAUSE_REASON, &detail)?;
+    schedule(inner).await;
+    Ok(())
+}
+
+pub(crate) fn format_blocked_detail(blocked: &BlockedReport, lang: tower_core::Lang) -> String {
+    let reason = blocked.blocker_reason.trim();
+    let summary = blocked.summary.trim();
+    if summary.is_empty() || summary == reason {
+        tr!(lang, "Agent 主动上报阻塞（声明）：{reason}", "Agent reported blocked (claim): {reason}")
+    } else {
+        tr!(
+            lang,
+            "Agent 主动上报阻塞（声明）：{reason}\n\n{summary}",
+            "Agent reported blocked (claim): {reason}\n\n{summary}"
+        )
+    }
 }
 
 async fn finish_submitted(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
@@ -554,7 +737,7 @@ pub(crate) fn readable_error(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{readable_error, same_command};
+    use super::{BlockedReport, format_blocked_detail, readable_error, same_command};
 
     #[test]
     fn provider_error_pages_become_sentences() {
@@ -571,5 +754,15 @@ mod tests {
         assert!(!same_command("npm test | tail -5", "npm test"), "a pipe hides the exit status");
         assert!(!same_command("npm test || true", "npm test"));
         assert!(!same_command("npm test -- --grep cart", "npm test"));
+    }
+
+    #[test]
+    fn blocked_detail_preserves_claim_register_in_both_languages() {
+        let r = BlockedReport {
+            summary: "Lockfile cannot be modified".into(),
+            blocker_reason: "C1 needs zod but package.json is read-only".into(),
+        };
+        assert!(format_blocked_detail(&r, tower_core::Lang::En).contains("(claim)"));
+        assert!(format_blocked_detail(&r, tower_core::Lang::Zh).contains("（声明）"));
     }
 }

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use tower_pi::{Engine, EngineConfig, EngineError, EngineOutput, PiEvent, UiAnswer};
+use tower_pi::{Engine, EngineConfig, EngineError, EngineOutput, ImageAttachment, PiEvent, UiAnswer};
 
 fn config() -> EngineConfig {
     EngineConfig {
@@ -73,4 +73,25 @@ fn only_gated_tools_are_enabled() {
     assert_eq!(args[at + 1], "read,bash,edit,write,ask_user,log,submit");
     assert!(args.iter().any(|a| a == "--no-mcp"), "MCP tools would run outside the sandbox");
     assert!(args.iter().any(|a| a == "--no-approve"), "a repository's own Pi resources are not trusted");
+}
+
+#[tokio::test]
+async fn prompt_with_images_loads_png_and_sends_rpc_request() {
+    let dir = std::env::temp_dir().join(format!("tower-pi-img-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let img_path = dir.join("shot.png");
+    std::fs::write(&img_path, [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]).unwrap();
+    let att = ImageAttachment::from_file(&img_path, Some("shot.png".into())).unwrap();
+    assert_eq!(att.mime_type, "image/png");
+    let rpc = att.to_rpc_value();
+    assert_eq!(rpc["type"], "image");
+    assert_eq!(rpc["mimeType"], "image/png");
+    assert_eq!(rpc["label"], "shot.png");
+
+    let (engine, mut rx) = Engine::spawn(&config()).unwrap();
+    let resp = engine.prompt_with_images("inspect image", &[att]).await.unwrap();
+    assert!(resp.success);
+    assert_eq!(next_event(&mut rx).await, EngineOutput::Event(PiEvent::AgentStart));
+    engine.shutdown(Duration::from_secs(2)).await;
+    let _ = std::fs::remove_dir_all(&dir);
 }

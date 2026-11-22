@@ -2,9 +2,12 @@
 //! slices of at most ~300 changed lines and order them by risk, so review is
 //! a transfer of understanding rather than a scroll.
 
+use std::collections::{BTreeMap, HashMap};
+
 use crate::contract::{Scope, ScopeFence, WriteVerdict};
+use crate::honesty::ClaimKind;
 use crate::i18n::{Lang, Risk};
-use crate::view::{DiffFile, FileStatus, ReviewUnit};
+use crate::view::{ClaimView, DiffFile, FileStatus, LineKind, ReviewUnit};
 
 pub const UNIT_LINE_BUDGET: u32 = 300;
 
@@ -140,8 +143,109 @@ pub fn build_units(files: &[DiffFile], scope: Option<&Scope>, lang: Lang) -> Vec
             lines: u.lines,
             risk: u.risk,
             risk_reasons: u.reasons,
+            unit_claim_summary: None,
         })
         .collect()
+}
+
+/// Derives a short one-line rationale for each review unit strictly from agent
+/// `log` claims (tagged as Claim in the UI, never rendered as a Fact).
+pub fn attach_unit_claim_summaries(units: &mut [ReviewUnit], claims: &[ClaimView]) {
+    let relevant: Vec<&ClaimView> = claims
+        .iter()
+        .filter(|c| {
+            matches!(c.kind, ClaimKind::Decision | ClaimKind::Cause | ClaimKind::Progress | ClaimKind::Done)
+                && !c.text.trim().is_empty()
+        })
+        .collect();
+    if relevant.is_empty() {
+        return;
+    }
+    for unit in units {
+        let mut best: Option<&str> = None;
+        for claim in relevant.iter().rev() {
+            let lower = claim.text.to_ascii_lowercase();
+            let hits_file = unit.files.iter().any(|path| {
+                let p = path.to_ascii_lowercase();
+                let name = file_name(&p);
+                let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
+                lower.contains(&p)
+                    || (name.len() >= 4 && lower.contains(name))
+                    || (stem.len() >= 4 && lower.contains(stem))
+            });
+            if hits_file {
+                best = Some(claim.text.trim());
+                break;
+            }
+        }
+        if let Some(summary) = best {
+            let trimmed: String = summary.lines().next().unwrap_or(summary).chars().take(180).collect();
+            unit.unit_claim_summary = Some(trimmed);
+        }
+    }
+}
+
+/// Classifies per-file hunk indices that are formatting-only (pure whitespace
+/// differences) or moved-unchanged (blocks of >= 3 non-empty lines relocated
+/// without logic changes). Returns `(moved_hunks, formatting_hunks)`.
+pub fn classify_hunk_noise(files: &[DiffFile]) -> (BTreeMap<String, Vec<usize>>, BTreeMap<String, Vec<usize>>) {
+    let mut moved: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    let mut formatting: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+
+    // Collect normalized added and deleted non-empty blocks across the diff
+    // so code moved within a file or across files can be spotted cleanly.
+    let mut added_blocks: HashMap<String, usize> = HashMap::new();
+    let mut deleted_blocks: HashMap<String, usize> = HashMap::new();
+
+    for f in files {
+        for h in &f.hunks {
+            let adds: Vec<&str> = h
+                .lines
+                .iter()
+                .filter(|l| l.kind == LineKind::Add)
+                .map(|l| l.text.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let dels: Vec<&str> = h
+                .lines
+                .iter()
+                .filter(|l| l.kind == LineKind::Del)
+                .map(|l| l.text.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if adds.len() >= 3 && dels.is_empty() {
+                *added_blocks.entry(adds.join("\n")).or_default() += 1;
+            }
+            if dels.len() >= 3 && adds.is_empty() {
+                *deleted_blocks.entry(dels.join("\n")).or_default() += 1;
+            }
+        }
+    }
+
+    for f in files {
+        for (idx, h) in f.hunks.iter().enumerate() {
+            let adds: Vec<&str> = h.lines.iter().filter(|l| l.kind == LineKind::Add).map(|l| l.text.as_str()).collect();
+            let dels: Vec<&str> = h.lines.iter().filter(|l| l.kind == LineKind::Del).map(|l| l.text.as_str()).collect();
+            if !adds.is_empty() && !dels.is_empty() {
+                let compact = |lines: &[&str]| -> String {
+                    lines.iter().flat_map(|s| s.chars()).filter(|c| !c.is_whitespace()).collect()
+                };
+                if compact(&adds) == compact(&dels) {
+                    formatting.entry(f.path.clone()).or_default().push(idx);
+                    continue;
+                }
+            }
+            let add_norm: Vec<&str> = adds.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            let del_norm: Vec<&str> = dels.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            let is_moved =
+                (add_norm.len() >= 3 && del_norm.is_empty() && deleted_blocks.contains_key(&add_norm.join("\n")))
+                    || (del_norm.len() >= 3 && add_norm.is_empty() && added_blocks.contains_key(&del_norm.join("\n")));
+            if is_moved {
+                moved.entry(f.path.clone()).or_default().push(idx);
+            }
+        }
+    }
+    (moved, formatting)
 }
 
 fn dir_of(path: &str) -> &str {
@@ -200,5 +304,84 @@ mod tests {
         let scope = Scope { include: vec!["src/**".into()], ..Default::default() };
         let units = build_units(&[file("README.md", FileStatus::Modified, 1, 1)], Some(&scope), Lang::En);
         assert_eq!(units[0].risk, 3);
+    }
+
+    #[test]
+    fn unit_claim_summaries_attach_strictly_from_agent_claims() {
+        use crate::honesty::Consistency;
+        let files = vec![file("src/cart.ts", FileStatus::Modified, 10, 2)];
+        let mut units = build_units(&files, None, Lang::En);
+        let claims = vec![ClaimView {
+            id: "c1".into(),
+            kind: ClaimKind::Decision,
+            text: "Updated cart.ts to clamp discounts at zero".into(),
+            criterion: None,
+            at: 100,
+            run_no: 1,
+            approved: None,
+            consistency: Consistency::Unsupported,
+            evidence: None,
+        }];
+        attach_unit_claim_summaries(&mut units, &claims);
+        assert_eq!(units[0].unit_claim_summary.as_deref(), Some("Updated cart.ts to clamp discounts at zero"));
+    }
+
+    #[test]
+    fn classifies_formatting_and_moved_hunks() {
+        use crate::view::{DiffLine, Hunk};
+        let fmt_file = DiffFile {
+            path: "src/a.rs".into(),
+            old_path: None,
+            status: FileStatus::Modified,
+            additions: 1,
+            deletions: 1,
+            binary: false,
+            hunks: vec![Hunk {
+                header: "@@ -1,1 +1,1 @@".into(),
+                lines: vec![
+                    DiffLine { kind: LineKind::Del, old_no: Some(1), new_no: None, text: "let x=1+2;".into() },
+                    DiffLine { kind: LineKind::Add, old_no: None, new_no: Some(1), text: "let x = 1 + 2;".into() },
+                ],
+            }],
+        };
+        let moved_file = DiffFile {
+            path: "src/b.rs".into(),
+            old_path: None,
+            status: FileStatus::Modified,
+            additions: 3,
+            deletions: 3,
+            binary: false,
+            hunks: vec![
+                Hunk {
+                    header: "@@ -1,3 +1,0 @@".into(),
+                    lines: vec![
+                        DiffLine { kind: LineKind::Del, old_no: Some(1), new_no: None, text: "fn helper() {".into() },
+                        DiffLine { kind: LineKind::Del, old_no: Some(2), new_no: None, text: "    compute()".into() },
+                        DiffLine { kind: LineKind::Del, old_no: Some(3), new_no: None, text: "}".into() },
+                    ],
+                },
+                Hunk {
+                    header: "@@ -20,0 +17,3 @@".into(),
+                    lines: vec![
+                        DiffLine {
+                            kind: LineKind::Add,
+                            old_no: None,
+                            new_no: Some(17),
+                            text: "  fn helper() {".into(),
+                        },
+                        DiffLine {
+                            kind: LineKind::Add,
+                            old_no: None,
+                            new_no: Some(18),
+                            text: "      compute()".into(),
+                        },
+                        DiffLine { kind: LineKind::Add, old_no: None, new_no: Some(19), text: "  }".into() },
+                    ],
+                },
+            ],
+        };
+        let (moved, fmt) = classify_hunk_noise(&[fmt_file, moved_file]);
+        assert_eq!(fmt.get("src/a.rs"), Some(&vec![0]));
+        assert_eq!(moved.get("src/b.rs"), Some(&vec![0, 1]));
     }
 }

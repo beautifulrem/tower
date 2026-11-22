@@ -9,8 +9,39 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::Millis;
 use crate::i18n::Lang;
 use crate::tr;
+
+/// Multimodal image attachment saved in a goal's private directory (readable
+/// inside the sandbox, never writable outside).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AttachmentRef {
+    pub id: String,
+    pub name: String,
+    pub mime: String,
+    /// Filename relative to `<goal_dir>/attachments/`.
+    pub path: String,
+    pub size_bytes: u64,
+    pub created_at: Millis,
+}
+
+/// Execution isolation tier (`docs/18` P2.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum SandboxTier {
+    /// Host OS sandbox (macOS Seatbelt or Linux bwrap+Landlock).
+    #[default]
+    Default,
+    /// Optional hypervisor microVM tier (Apple Containerization on macOS 26+ Apple Silicon).
+    MicroVm,
+}
+
+fn default_escalation_after_reworks() -> u32 {
+    2
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -62,10 +93,26 @@ pub struct Contract {
     /// started on this Mac later is then reachable to them.
     #[serde(default)]
     pub loopback_open: bool,
-    /// The agent that does the work: `pi` or `claude-code`. Empty means the
-    /// default from the settings.
+    /// The agent that does the work: `pi`, `claude-code`, `codex`, `gemini-cli`,
+    /// or `opencode`. Empty means the default from the settings.
     #[serde(default)]
     pub engine: String,
+    /// Optional stronger `provider/model` used automatically once failed
+    /// reworks reach `escalation_after_reworks` (`docs/18` P1.2).
+    #[serde(default)]
+    pub escalation_model: String,
+    /// Number of failed rework cycles before switching to `escalation_model`.
+    #[serde(default = "default_escalation_after_reworks")]
+    pub escalation_after_reworks: u32,
+    /// Multimodal image attachments stored in the goal's private directory.
+    #[serde(default)]
+    pub attachments: Vec<AttachmentRef>,
+    /// Execution sandbox isolation tier.
+    #[serde(default)]
+    pub sandbox_tier: SandboxTier,
+    /// Prerequisite goal IDs that must be accepted/integrated before starting.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -232,7 +279,51 @@ impl Contract {
             ports: Vec::new(),
             loopback_open: false,
             engine: String::new(),
+            escalation_model: String::new(),
+            escalation_after_reworks: default_escalation_after_reworks(),
+            attachments: Vec::new(),
+            sandbox_tier: SandboxTier::Default,
+            depends_on: Vec::new(),
         }
+    }
+
+    /// Picks the model for a run given the rework count (`docs/18` P1.2).
+    /// Returns `(model, escalated)`: once `rework_cycles >= threshold` and an
+    /// escalation model is configured (on the contract or globally), switches
+    /// to it transparently.
+    pub fn effective_model(
+        &self,
+        default_model: &str,
+        default_escalation_model: &str,
+        default_escalation_after: u32,
+        rework_cycles: u32,
+    ) -> (Option<String>, bool) {
+        let base = if !self.model.trim().is_empty() {
+            Some(self.model.trim().to_string())
+        } else if !default_model.trim().is_empty() {
+            Some(default_model.trim().to_string())
+        } else {
+            None
+        };
+        let esc = if !self.escalation_model.trim().is_empty() {
+            Some(self.escalation_model.trim().to_string())
+        } else if !default_escalation_model.trim().is_empty() {
+            Some(default_escalation_model.trim().to_string())
+        } else {
+            None
+        };
+        let threshold = if self.escalation_after_reworks > 0 {
+            self.escalation_after_reworks
+        } else {
+            default_escalation_after.max(1)
+        };
+        if let Some(target) = esc
+            && rework_cycles >= threshold
+            && base.as_deref() != Some(target.as_str())
+        {
+            return (Some(target), true);
+        }
+        (base, false)
     }
 
     /// The loopback ports the contract opens: the declared ones. (`look`
@@ -510,5 +601,37 @@ mod tests {
     fn empty_include_means_whole_workspace() {
         let fence = ScopeFence::compile(&Scope::default()).unwrap();
         assert_eq!(fence.check_write("anything/at/all.rs"), WriteVerdict::Allowed);
+    }
+
+    #[test]
+    fn legacy_contract_json_deserializes_with_defaults() {
+        let legacy = r#"{
+            "version": 1,
+            "intent": "Fix bug",
+            "criteria": [],
+            "budget": { "soft_usd": 5.0, "hard_usd": 8.0, "wall_minutes": 90 },
+            "autonomy": "standard",
+            "max_rework": 3
+        }"#;
+        let c: Contract = serde_json::from_str(legacy).unwrap();
+        assert_eq!(c.escalation_model, "");
+        assert_eq!(c.escalation_after_reworks, 2);
+        assert!(c.attachments.is_empty());
+        assert_eq!(c.sandbox_tier, SandboxTier::Default);
+        assert!(c.depends_on.is_empty());
+    }
+
+    #[test]
+    fn escalation_model_activates_at_threshold() {
+        let mut c = Contract::quick("Fix", Some("npm test".into()), Lang::En);
+        c.model = "anthropic/sonnet".into();
+        c.escalation_model = "anthropic/opus".into();
+        c.escalation_after_reworks = 2;
+        assert_eq!(c.effective_model("", "", 2, 0), (Some("anthropic/sonnet".into()), false));
+        assert_eq!(c.effective_model("", "", 2, 1), (Some("anthropic/sonnet".into()), false));
+        assert_eq!(c.effective_model("", "", 2, 2), (Some("anthropic/opus".into()), true));
+        // Falls back to global escalation model when contract leaves it blank.
+        c.escalation_model.clear();
+        assert_eq!(c.effective_model("", "openai/gpt-6", 2, 2), (Some("openai/gpt-6".into()), true));
     }
 }

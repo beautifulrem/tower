@@ -7,10 +7,11 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::contract::Contract;
+use crate::contract::{AttachmentRef, Contract};
 use crate::honesty::ClaimKind;
 use crate::lifecycle::{LifecycleState, PauseReason};
 use crate::mode::Mode;
+use crate::ops::TaintLevel;
 use crate::view::{HeldOutProof, PrStatus};
 
 /// Who produced an event. Maps onto the honesty grammar's registers.
@@ -307,13 +308,71 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pr_url: Option<String>,
     },
+    /// Layered model escalation switched models after repeated failed reworks (`docs/18` P1.2).
+    ModelEscalated {
+        from_model: String,
+        to_model: String,
+        rework_cycle: u32,
+    },
+    /// The agent honestly reported the task is blocked or conflicts with the contract.
+    AgentBlocked {
+        reason: String,
+        #[serde(default)]
+        evidence: String,
+    },
+    /// A visible criterion failed once and passed on immediate 1x rerun.
+    CriterionFlaky {
+        criterion: String,
+        pin: String,
+        first_output_tail: String,
+    },
+    /// Additional structured evidence captured during a `look` verification run.
+    LookEvidence {
+        criterion: String,
+        side: String,
+        pin: String,
+        #[serde(default)]
+        console_errors: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        mobile_file: Option<String>,
+    },
+    /// A human attached a multimodal image file to this goal.
+    AttachmentAdded {
+        attachment: AttachmentRef,
+    },
+    /// A candidate memory rule entered the human ratification queue.
+    MemoryProposed {
+        proposal_id: String,
+        text: String,
+        taint_level: TaintLevel,
+    },
+    /// A human approved or rejected a memory proposal.
+    MemoryRatified {
+        proposal_id: String,
+        approved: bool,
+    },
+    /// Dynamic loopback port block reserved for this goal.
+    PortBlockAllocated {
+        base: u16,
+        count: u16,
+    },
+    /// A human explicitly ratified a synthetic holdout test draft into `holdout/`.
+    HoldoutDraftRatified {
+        file: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        criterion_id: Option<String>,
+    },
 }
 
 impl EventKind {
     /// The register an event is shown in.
     pub fn source(&self) -> Source {
         match self {
-            Self::Claim { .. } | Self::Submitted { .. } | Self::AssistantMessage { .. } => Source::Claim,
+            Self::Claim { .. } | Self::Submitted { .. } | Self::AssistantMessage { .. } | Self::AgentBlocked { .. } => {
+                Source::Claim
+            }
             Self::Observed { .. } => Source::Observation,
             Self::ContractRatified { .. }
             | Self::InboxResolved { .. }
@@ -321,7 +380,10 @@ impl EventKind {
             | Self::HumanCheck { .. }
             | Self::ClaimReviewed { .. }
             | Self::SetupNetworkApproved { .. }
-            | Self::RolledBack { .. } => Source::Human,
+            | Self::RolledBack { .. }
+            | Self::AttachmentAdded { .. }
+            | Self::MemoryRatified { .. }
+            | Self::HoldoutDraftRatified { .. } => Source::Human,
             Self::SentinelHit { .. }
             | Self::Stalled { .. }
             | Self::HumanEdited { .. }
@@ -334,14 +396,18 @@ impl EventKind {
             | Self::VerifyStarted { .. }
             | Self::SetupFinished { .. }
             | Self::CriterionResult { .. }
+            | Self::CriterionFlaky { .. }
             | Self::BaselineResult { .. }
             | Self::OriginalTestsResult { .. }
             | Self::CanaryChecked { .. }
             | Self::LookCaptured { .. }
+            | Self::LookEvidence { .. }
             | Self::VerifyFinished { .. }
             | Self::CostUpdated { .. }
             | Self::BranchWritten { .. }
-            | Self::WorkspacePrepared { .. } => Source::Fact,
+            | Self::WorkspacePrepared { .. }
+            | Self::ModelEscalated { .. }
+            | Self::PortBlockAllocated { .. } => Source::Fact,
             _ => Source::System,
         }
     }
@@ -392,6 +458,15 @@ impl EventKind {
             Self::PrChecked { .. } => "pr_checked",
             Self::SetupNetworkApproved { .. } => "setup_network_approved",
             Self::RolledBack { .. } => "rolled_back",
+            Self::ModelEscalated { .. } => "model_escalated",
+            Self::AgentBlocked { .. } => "agent_blocked",
+            Self::CriterionFlaky { .. } => "criterion_flaky",
+            Self::LookEvidence { .. } => "look_evidence",
+            Self::AttachmentAdded { .. } => "attachment_added",
+            Self::MemoryProposed { .. } => "memory_proposed",
+            Self::MemoryRatified { .. } => "memory_ratified",
+            Self::PortBlockAllocated { .. } => "port_block_allocated",
+            Self::HoldoutDraftRatified { .. } => "holdout_draft_ratified",
         }
     }
 }

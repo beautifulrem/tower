@@ -126,6 +126,9 @@ pub enum PauseReason {
     /// The criteria cannot run in the verification sandbox even on your own
     /// code (found while the agent starts): nothing could be verified.
     CriteriaCannotRun,
+    /// The agent explicitly reported via `submit(outcome="blocked")` that the
+    /// task is blocked, impossible, or conflicts with the contract.
+    AgentReportedBlocked,
 }
 
 impl PauseReason {

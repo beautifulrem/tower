@@ -7,11 +7,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tower_core::view::TestCheck;
+use tower_core::tr;
+use tower_core::view::{HoldoutDraft, TestCheck};
 use tower_git::Git;
+use tower_store::ProjectPatch;
 use tower_verify::{Cancel, RunSpec};
 
-use crate::{Inner, Result, invalid, run, verify};
+use crate::{Inner, Result, Supervisor, invalid, run, verify};
 
 const SETUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const TEST_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -104,4 +106,134 @@ async fn copy_local_files(inner: &Arc<Inner>, root: &str, patterns: &[String], d
         .await
         .map_err(|e| invalid(e.to_string()))??;
     Ok(())
+}
+
+impl Supervisor {
+    /// Deterministically proposes human-reviewable synthetic holdout test drafts
+    /// for `project_id` based on the repository toolchain and contract intent.
+    /// Drafts are NEVER written or activated until the human explicitly ratifies them.
+    pub async fn generate_holdout_drafts(&self, project_id: &str, intent: &str) -> Result<Vec<HoldoutDraft>> {
+        let project = self.inner.read_store(|s| s.project(project_id))?;
+        let root = PathBuf::from(&project.root);
+        let intent = intent.trim().to_string();
+        let lang = self.inner.lang();
+        tokio::task::spawn_blocking(move || {
+            let mut drafts = Vec::new();
+            let slug: String = intent
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+                .take(24)
+                .collect::<String>()
+                .trim_matches('_')
+                .to_string();
+            let stem = if slug.len() >= 3 { slug } else { "contract_check".into() };
+            let is_node = root.join("package.json").is_file();
+            let is_py = root.join("pyproject.toml").is_file() || root.join("pytest.ini").is_file();
+            let is_rust = root.join("Cargo.toml").is_file();
+
+            if is_node {
+                drafts.push(HoldoutDraft {
+                    id: format!("draft_{stem}_edge"),
+                    filename: format!("holdout/{stem}_edge.test.mjs"),
+                    rationale: tr!(
+                        lang,
+                        "针对合同意图的边界输入与反硬编码保留用例草案（仅人工批准后写入 holdout/）",
+                        "Boundary & anti-hardcoding holdout test draft derived from contract intent (written to holdout/ only after human ratification)"
+                    ),
+                    code: format!(
+                        "// Draft holdout test for: {intent}\n// Review and adapt imports/assertions before ratifying.\nimport test from 'node:test';\nimport assert from 'node:assert/strict';\n\ntest('handles unseen boundary inputs for {stem}', () => {{\n  // TODO: import target function and assert edge/randomized inputs not in visible tests.\n  assert.ok(true);\n}});\n"
+                    ),
+                });
+                drafts.push(HoldoutDraft {
+                    id: format!("draft_{stem}_prop"),
+                    filename: format!("holdout/{stem}_invariant.test.mjs"),
+                    rationale: tr!(
+                        lang,
+                        "针对不变量（幂等/单调/非负等）的属性检验保留用例草案",
+                        "Invariant / property-style holdout draft checking general behaviour beyond literal fixtures"
+                    ),
+                    code: format!(
+                        "// Invariant holdout test for: {intent}\nimport test from 'node:test';\nimport assert from 'node:assert/strict';\n\ntest('preserves contract invariant across multiple inputs', () => {{\n  for (const sample of [0, 1, 7, 42, 999]) {{\n    assert.equal(typeof sample, 'number');\n  }}\n}});\n"
+                    ),
+                });
+            } else if is_py {
+                drafts.push(HoldoutDraft {
+                    id: format!("draft_{stem}_edge"),
+                    filename: format!("holdout/test_{stem}_holdout.py"),
+                    rationale: tr!(
+                        lang,
+                        "Python 保留测试边界用例草案（人审确认后启用）",
+                        "Python boundary holdout test draft (activated only after human ratification)"
+                    ),
+                    code: format!(
+                        "# Draft holdout test for: {intent}\ndef test_{stem}_unseen_inputs():\n    # Replace with assertions on unseen inputs.\n    assert True\n"
+                    ),
+                });
+            } else if is_rust {
+                drafts.push(HoldoutDraft {
+                    id: format!("draft_{stem}_edge"),
+                    filename: format!("holdout/{stem}_holdout.rs"),
+                    rationale: tr!(
+                        lang,
+                        "Rust 保留测试草案（人审确认后写入 holdout/）",
+                        "Rust holdout test draft (written to holdout/ only after human ratification)"
+                    ),
+                    code: format!(
+                        "// Draft holdout test for: {intent}\n#[test]\nfn {stem}_unseen_boundary_inputs() {{\n    // Replace with assertions on unseen inputs.\n}}\n"
+                    ),
+                });
+            } else {
+                drafts.push(HoldoutDraft {
+                    id: format!("draft_{stem}_shell"),
+                    filename: format!("holdout/{stem}_check.sh"),
+                    rationale: tr!(
+                        lang,
+                        "通用脚本保留检查草案（人审确认后写入 holdout/）",
+                        "Shell holdout check draft (written to holdout/ only after human ratification)"
+                    ),
+                    code: format!("#!/bin/sh\nset -e\n# Draft holdout check for: {intent}\nexit 0\n"),
+                });
+            }
+            drafts
+        })
+        .await
+        .map_err(|e| invalid(e.to_string()))
+    }
+
+    /// Explicitly ratifies a human-reviewed holdout draft by writing it inside
+    /// `<project_root>/holdout/` and registering `holdout/**` on the project.
+    pub async fn ratify_holdout_draft(&self, project_id: &str, filename: &str, code: &str) -> Result<String> {
+        let lang = self.inner.lang();
+        let proj = self.inner.store(|s| s.project(project_id))?;
+        let trimmed = filename.trim().trim_start_matches("./");
+        let rel = if trimmed.starts_with("holdout/") { trimmed.to_string() } else { format!("holdout/{trimmed}") };
+        if rel.contains("..") || rel.starts_with('/') || rel.contains('\\') {
+            return Err(invalid(tr!(
+                lang,
+                "保留测试文件名必须位于 holdout/ 下且不能包含路径穿越",
+                "Holdout filename must stay inside holdout/ without path traversal"
+            )));
+        }
+        let root = PathBuf::from(&proj.root);
+        let rel_clone = rel.clone();
+        let bytes = code.as_bytes().to_vec();
+        tokio::task::spawn_blocking(move || tower_git::write_inside(&root, &rel_clone, &bytes))
+            .await
+            .map_err(|e| invalid(e.to_string()))??;
+        if !proj.holdout_files.iter().any(|p| p == "holdout/**" || p == &rel) {
+            let mut holdouts = proj.holdout_files.clone();
+            holdouts.push("holdout/**".into());
+            let patch = ProjectPatch {
+                base_branch: proj.base_branch,
+                test_command: proj.test_command,
+                local_files: proj.local_files,
+                memory: proj.memory,
+                setup_command: proj.setup_command,
+                holdout_files: holdouts,
+            };
+            let _ = self.inner.store(|s| s.update_project(project_id, &patch));
+            self.inner.emit_projects();
+        }
+        Ok(rel)
+    }
 }

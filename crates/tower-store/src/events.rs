@@ -25,6 +25,20 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
                 "UPDATE goals SET contract = ?2 WHERE id = ?1",
                 params![goal_id, serde_json::to_string(contract)?],
             )?;
+            tx.execute("DELETE FROM goal_dependencies WHERE goal_id = ?1", [goal_id])?;
+            for dep in contract.depends_on.iter().map(|s| s.trim()).filter(|s| !s.is_empty() && *s != goal_id) {
+                tx.execute(
+                    "INSERT OR IGNORE INTO goal_dependencies (goal_id, depends_on_goal_id) VALUES (?1, ?2)",
+                    params![goal_id, dep],
+                )?;
+            }
+            for att in &contract.attachments {
+                tx.execute(
+                    "INSERT OR IGNORE INTO goal_attachments (id, goal_id, name, mime, path, size_bytes, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![att.id, goal_id, att.name, att.mime, att.path, att.size_bytes as i64, att.created_at],
+                )?;
+            }
         }
         EventKind::StateChanged { from, to, reason, .. } => {
             let current: String = tx.query_row("SELECT state FROM goals WHERE id = ?1", [goal_id], |r| r.get(0))?;
@@ -193,6 +207,45 @@ fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Re
         }
         EventKind::BranchWritten { branch, .. } => {
             tx.execute("UPDATE goals SET branch = ?2 WHERE id = ?1", params![goal_id, branch])?;
+        }
+        EventKind::CriterionFlaky { criterion, pin, .. } => {
+            tx.execute(
+                "UPDATE criterion_results SET flaky = 1 WHERE goal_id = ?1 AND criterion = ?2 AND pin = ?3",
+                params![goal_id, criterion, pin],
+            )?;
+        }
+        EventKind::LookEvidence { criterion, side, pin, console_errors, mobile_file } => {
+            let errs = serde_json::to_string(console_errors)?;
+            tx.execute(
+                "INSERT INTO looks (goal_id, criterion, side, pin, console_errors, mobile_file)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                 ON CONFLICT(goal_id, criterion, side) DO UPDATE SET
+                    pin = excluded.pin,
+                    console_errors = excluded.console_errors,
+                    mobile_file = COALESCE(excluded.mobile_file, looks.mobile_file)",
+                params![goal_id, criterion, side, pin, errs, mobile_file],
+            )?;
+        }
+        EventKind::ModelEscalated { to_model, .. } => {
+            tx.execute("UPDATE goals SET escalated_model = ?2 WHERE id = ?1", params![goal_id, to_model])?;
+        }
+        EventKind::PortBlockAllocated { base, .. } => {
+            tx.execute("UPDATE goals SET port_base = ?2 WHERE id = ?1", params![goal_id, i64::from(*base)])?;
+        }
+        EventKind::AttachmentAdded { attachment } => {
+            tx.execute(
+                "INSERT OR REPLACE INTO goal_attachments (id, goal_id, name, mime, path, size_bytes, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    attachment.id,
+                    goal_id,
+                    attachment.name,
+                    attachment.mime,
+                    attachment.path,
+                    attachment.size_bytes as i64,
+                    attachment.created_at
+                ],
+            )?;
         }
         _ => {}
     }

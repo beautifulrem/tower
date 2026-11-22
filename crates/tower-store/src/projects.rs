@@ -137,12 +137,26 @@ impl Store {
             return Err(StoreError::Conflict(message));
         }
         let tx = self.conn.transaction()?;
-        for table in ["events", "runs", "claims", "criterion_results", "observations", "human_checks", "inbox"] {
+        for table in [
+            "events",
+            "runs",
+            "claims",
+            "criterion_results",
+            "observations",
+            "human_checks",
+            "inbox",
+            "merge_queue",
+            "goal_attachments",
+            "goal_dependencies",
+            "calibration_facts",
+        ] {
             tx.execute(
                 &format!("DELETE FROM {table} WHERE goal_id IN (SELECT id FROM goals WHERE project_id = ?1)"),
                 [id],
             )?;
         }
+        tx.execute("DELETE FROM memory_proposals WHERE project_id = ?1", [id])?;
+        tx.execute("DELETE FROM scheduled_goals WHERE project_id = ?1", [id])?;
         tx.execute("DELETE FROM goals WHERE project_id = ?1", [id])?;
         tx.execute("DELETE FROM projects WHERE id = ?1", [id])?;
         tx.commit()?;

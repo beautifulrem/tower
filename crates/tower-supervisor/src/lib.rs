@@ -10,6 +10,7 @@ mod install;
 use install::{install_demo_engine, install_extension, sweep};
 mod actions;
 pub mod api;
+mod attachments;
 mod caches;
 mod canary;
 mod control;
@@ -19,8 +20,10 @@ mod edits;
 mod environment;
 mod inner;
 mod jail;
+mod learning;
 mod look;
 mod look_cdp;
+mod merge_queue;
 pub mod paths;
 mod pr;
 mod procs;
@@ -29,6 +32,7 @@ pub mod prompts;
 mod remote;
 mod run;
 pub mod sandbox;
+mod schedule;
 mod settings_api;
 pub mod shell_env;
 mod summarize;
@@ -42,17 +46,16 @@ use serde::Serialize;
 use thiserror::Error;
 use tower_core::contract::{Contract, ContractIssue};
 use tower_core::lifecycle::Transition;
-use tower_core::review::build_units;
 use tower_core::view::{
     EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
-    TraceEntry,
+    SnapshotPoint, TraceEntry,
 };
 use tower_core::{EventKind, LifecycleState, Mode, PauseReason, tr};
 use tower_git::{Git, GitError};
 use tower_pi::EngineError;
-use tower_store::{NewGoal, NewProject, ProjectPatch, Store, StoreError};
+use tower_store::{NewGoal, NewProject, ProjectPatch, ReadPool, Store, StoreError};
 
-pub use api::{NewGoalInput, NullSink, OpenTarget, ReviewComment, ToastLevel, UiSink, UiUpdate};
+pub use api::{NewGoalInput, NewScheduledGoalInput, NullSink, OpenTarget, ReviewComment, ToastLevel, UiSink, UiUpdate};
 pub(crate) use inner::Inner;
 pub use paths::Paths;
 use shell_env::ShellEnv;
@@ -121,12 +124,15 @@ impl Supervisor {
             None => tokio::task::spawn_blocking(ShellEnv::capture).await.map_err(|e| invalid(e.to_string()))?,
         };
         let git = Git::new(env.which("git").unwrap_or_else(|| PathBuf::from("git")), env.pairs());
-        let store = Store::open(&config.paths.db())?;
+        let db_path = config.paths.db();
+        let store = Store::open(&db_path)?;
+        let read_pool = ReadPool::open(&db_path, 4).ok();
         let inner = Arc::new(Inner {
             paths: config.paths,
             env,
             git,
             store: Mutex::new(store),
+            read_pool,
             sink,
             runs: Mutex::default(),
             verifications: Mutex::default(),
@@ -212,6 +218,8 @@ impl Supervisor {
                 }
             }
         });
+        // Scheduled goals watcher (`docs/18` P2.2).
+        schedule::spawn_scheduler(self.inner.clone());
     }
 
     /// Brings goals left mid-flight by the previous exit back to a defined
@@ -276,18 +284,18 @@ impl Supervisor {
     }
 
     pub fn projects(&self) -> Result<Vec<ProjectView>> {
-        self.inner.store(|s| s.projects())
+        self.inner.read_store(|s| s.projects())
     }
 
     pub fn goals(&self) -> Result<Vec<GoalSummary>> {
-        self.inner.store(|s| s.summaries())
+        self.inner.read_store(|s| s.summaries())
     }
 
     /// The goal page. Does not mark the goal viewed; call [`Self::mark_viewed`]
     /// when the human leaves the page so the next briefing starts there.
     pub fn goal(&self, id: &str) -> Result<GoalDetail> {
-        let mut detail = self.inner.store(|s| s.detail(id))?;
-        detail.branch_preview = actions::branch_name(&self.inner.store(|s| s.goal(id))?);
+        let mut detail = self.inner.read_store(|s| s.detail(id))?;
+        detail.branch_preview = actions::branch_name(&self.inner.read_store(|s| s.goal(id))?);
         Ok(detail)
     }
 
@@ -321,7 +329,7 @@ impl Supervisor {
     /// The interface's per-goal state (viewed files, draft comments, last
     /// reviewed snapshot), as stored JSON strings by key.
     pub fn ui_state(&self, id: &str) -> Result<std::collections::BTreeMap<String, String>> {
-        self.inner.store(|s| s.ui_state(id))
+        self.inner.read_store(|s| s.ui_state(id))
     }
 
     pub fn set_ui_state(&self, id: &str, key: &str, value: Option<&str>) -> Result<()> {
@@ -329,73 +337,32 @@ impl Supervisor {
     }
 
     pub fn trace(&self, id: &str, before: Option<i64>, limit: u32) -> Result<Vec<TraceEntry>> {
-        self.inner.store(|s| s.trace(id, before, limit.min(500)))
+        self.inner.read_store(|s| s.trace(id, before, limit.min(500)))
     }
 
     /// Open items put aside until later.
     pub fn snoozed_inbox(&self) -> Result<Vec<InboxItem>> {
-        self.inner.store(|s| s.snoozed_inbox_items())
+        self.inner.read_store(|s| s.snoozed_inbox_items())
     }
 
     pub fn inbox(&self) -> Result<Vec<InboxItem>> {
-        self.inner.store(|s| s.open_inbox_items())
+        self.inner.read_store(|s| s.open_inbox_items())
     }
 
     /// The diff for review: from the base, or from `since` (an earlier pin)
     /// to show only what changed since the human last reviewed.
     pub async fn review(&self, id: &str, since: Option<String>) -> Result<ReviewView> {
-        let rec = self.inner.store(|s| s.goal(id))?;
-        let (Some(ws), Some(base)) = (rec.workspace.clone(), rec.base_commit.clone()) else {
-            return Err(invalid(tr!(self.inner.lang(), "这个目标还没有工作区", "This goal has no workspace yet")));
-        };
-        let git = self.inner.git.clone();
-        let pin = match rec.pin.clone() {
-            Some(p) if !matches!(rec.state, LifecycleState::Running) => p,
-            // While running, show the live tree.
-            _ => {
-                let ws2 = ws.clone();
-                let base2 = base.clone();
-                let snap = tokio::task::spawn_blocking(move || git.snapshot(Path::new(&ws2), &base2))
-                    .await
-                    .map_err(|e| invalid(e.to_string()))??;
-                snap.pin
-            }
-        };
-        let git = self.inner.git.clone();
-        let (base2, pin2) = (base.clone(), pin.clone());
-        let files_and_from = tokio::task::spawn_blocking(move || -> Result<_> {
-            let ws = Path::new(&ws);
-            // An earlier pin only counts if it still exists in the workspace.
-            let from = since.filter(|s| git.resolve(ws, s).is_ok()).unwrap_or(base2);
-            Ok((git.diff(ws, &from, &pin2)?, from))
-        })
-        .await
-        .map_err(|e| invalid(e.to_string()))??;
-        let (files, from) = files_and_from;
-        let stat = tower_core::view::DiffStat {
-            files: files.len() as u32,
-            additions: files.iter().map(|f| f.additions).sum(),
-            deletions: files.iter().map(|f| f.deletions).sum(),
-        };
-        let mut units = build_units(&files, Some(&rec.contract.scope), self.inner.lang());
-        // What verification found in a file ranks its unit first, with the
-        // finding as the reason (special cases, code that touches the tests).
-        // A special-case finding ranks by its own weight: it is a shape in
-        // the code until perturbation makes it evidence (high), and a cleared
-        // one (low) does not outrank what you should read first.
-        let hits = self.inner.store(|s| s.sentinel_hits(id))?;
-        for u in &mut units {
-            for h in &hits {
-                let named = h.detail.lines().any(|l| u.files.iter().any(|f| l.starts_with(&format!("{f}:"))));
-                if named && !u.risk_reasons.contains(&h.title) {
-                    let weight = if h.sentinel == "special_cases_test_inputs" { h.severity.clamp(1, 3) } else { 3 };
-                    u.risk = u.risk.max(weight);
-                    u.risk_reasons.insert(0, h.title.clone());
-                }
-            }
-        }
-        units.sort_by(|a, b| b.risk.cmp(&a.risk).then(b.lines.cmp(&a.lines)));
-        Ok(ReviewView { goal_id: id.into(), base_commit: base, from, pin, stat, units, files })
+        edits::review_range(&self.inner, id, since, None).await
+    }
+
+    /// Diffs two arbitrary snapshots (`from_rev` -> `to_rev`) on a goal's timeline.
+    pub async fn compare_snapshots(&self, id: &str, from_rev: &str, to_rev: &str) -> Result<ReviewView> {
+        edits::review_range(&self.inner, id, Some(from_rev.into()), Some(to_rev.into())).await
+    }
+
+    /// Lists comparable snapshot points along a goal's timeline.
+    pub async fn list_snapshots(&self, id: &str) -> Result<Vec<SnapshotPoint>> {
+        edits::list_snapshots(&self.inner, id).await
     }
 
     pub async fn models(&self) -> Result<Vec<ModelInfo>> {
@@ -550,6 +517,9 @@ impl Supervisor {
         let mut contract = Contract::quick(intent, project.test_command.clone(), settings.lang());
         contract.model = settings.default_model.clone();
         contract.thinking = settings.default_thinking.clone();
+        contract.escalation_model = settings.default_escalation_model.clone();
+        contract.escalation_after_reworks = settings.default_escalation_after_reworks;
+        contract.sandbox_tier = settings.default_sandbox_tier;
         let title = tower_core::text::title_from_intent(intent);
         self.create_goal(NewGoalInput { project_id: project_id.into(), title, contract, ratify: true }).await
     }
@@ -618,6 +588,12 @@ impl Supervisor {
     /// (the delivery receipt).
     pub async fn steer(&self, id: &str, text: &str) -> Result<String> {
         run::steer(&self.inner, id, text).await
+    }
+
+    /// Sends a steering directive either immediately (`queue = false`) or queued
+    /// for the next turn/run without interrupting the active turn (`queue = true`).
+    pub async fn steer_with_queue(&self, id: &str, text: &str, queue: bool) -> Result<String> {
+        control::steer_with_queue(&self.inner, id, text, queue).await
     }
 
     pub async fn answer(&self, inbox_id: &str, response: &str) -> Result<()> {

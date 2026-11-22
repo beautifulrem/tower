@@ -33,10 +33,20 @@ pub(crate) fn install_demo_engine(src: &Path, dst: &Path) -> std::io::Result<()>
 pub(crate) fn install_extension(src: &Path, dst: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::create_dir_all(dst)?;
-    for name in ["index.ts", "policy.ts", "sandboxfs.ts", "acp.ts", "package.json"] {
-        let from = src.join(name);
-        if from.exists() {
-            std::fs::copy(&from, dst.join(name))?;
+    // Copy every extension TypeScript source (excluding unit tests) plus package.json,
+    // so modular extension files (`shell_parse.ts`, `engines.ts`, `acp_tools.ts`, etc.)
+    // are always bundled into Tower's private extension directory.
+    if let Ok(entries) = std::fs::read_dir(src) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let include = (name.ends_with(".ts") && !name.ends_with(".test.ts")) || name == "package.json";
+            if include {
+                std::fs::copy(&path, dst.join(&name))?;
+            }
         }
     }
     // Claude Code's adapter: its manifest and lockfile (installed on first use).

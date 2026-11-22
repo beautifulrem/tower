@@ -9,6 +9,9 @@
 //! local branch (`ADR-133`: Tower never pushes in M1).
 
 pub mod diff;
+pub mod timeline;
+
+pub use timeline::MergeQueueCheckItem;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};

@@ -51,6 +51,22 @@ pub fn describe(event: &EventKind, lang: Lang) -> Option<String> {
             Lang::En => format!("You changed {} while paused", plural(files.len(), "file", "files")),
         },
         EventKind::BranchPushed { branch, .. } => tr!(lang, "已推送 {branch}", "Pushed {branch}"),
+        EventKind::ModelEscalated { from_model, to_model, rework_cycle } => tr!(
+            lang,
+            "第 {rework_cycle} 次返工：模型由 {from_model} 升级为 {to_model}",
+            "Rework #{rework_cycle}: escalated model from {from_model} to {to_model}"
+        ),
+        EventKind::AgentBlocked { reason, .. } => {
+            tr!(lang, "Agent 报告受阻：{reason}", "Agent reported blocked: {reason}")
+        }
+        EventKind::CriterionFlaky { criterion, .. } => tr!(
+            lang,
+            "{criterion} 首次失败、复跑通过（标记为不稳定 Flaky）",
+            "{criterion} failed once then passed on rerun (marked flaky)"
+        ),
+        EventKind::MemoryProposed { text, .. } => {
+            tr!(lang, "新记忆提议待批准：{text}", "New memory proposal waiting for ratification: {text}")
+        }
         _ => return None,
     })
 }

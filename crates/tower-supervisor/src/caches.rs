@@ -63,8 +63,9 @@ pub fn prepare(cache: &Path, home: &Path, repo: &Path) -> std::io::Result<PathBu
                 std::fs::create_dir_all(parent)?;
             }
             if !clone_tree(&src, &dst) {
+                let copy_args: &[&str] = if cfg!(target_os = "macos") { &["-cR"] } else { &["--reflink=auto", "-a"] };
                 let _ = std::process::Command::new("/bin/cp")
-                    .args(["-cR"])
+                    .args(copy_args)
                     .arg(&src)
                     .arg(&dst)
                     .stdout(std::process::Stdio::null())
@@ -89,7 +90,7 @@ pub fn prepare(cache: &Path, home: &Path, repo: &Path) -> std::io::Result<PathBu
 /// cannot (another volume or file system); the caller copies instead.
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
-fn clone_tree(src: &Path, dst: &Path) -> bool {
+pub(crate) fn clone_tree(src: &Path, dst: &Path) -> bool {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
     unsafe extern "C" {
@@ -104,8 +105,22 @@ fn clone_tree(src: &Path, dst: &Path) -> bool {
     unsafe { clonefile(s.as_ptr(), d.as_ptr(), CLONE_NOFOLLOW) == 0 }
 }
 
-#[cfg(not(target_os = "macos"))]
-fn clone_tree(_src: &Path, _dst: &Path) -> bool {
+/// On Linux, attempts Btrfs/XFS reflink cloning via `cp --reflink=always -a`
+/// so cache seeding stays copy-on-write when supported by the filesystem.
+#[cfg(target_os = "linux")]
+pub(crate) fn clone_tree(src: &Path, dst: &Path) -> bool {
+    std::process::Command::new("cp")
+        .args(["--reflink=always", "-a"])
+        .arg(src)
+        .arg(dst)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+pub(crate) fn clone_tree(_src: &Path, _dst: &Path) -> bool {
     false
 }
 

@@ -3,6 +3,7 @@ import "@fontsource-variable/jetbrains-mono";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/app.css";
+import "./styles/console.css";
 
 import { render } from "solid-js/web";
 

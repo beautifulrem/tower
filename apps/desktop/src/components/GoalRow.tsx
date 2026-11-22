@@ -8,6 +8,7 @@
 import { Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
+import type { GoalSummaryExt } from "../lib/apiTypes";
 import { ago, count, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { effectiveEngine, engineLabel, stateLabel } from "../lib/labels";
@@ -19,12 +20,14 @@ import { LiveLine } from "./Live";
 import { PrLine } from "./Pr";
 import { Button } from "./ui";
 
-export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect?: () => void }) {
-  const g = () => props.goal;
+export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect?: () => void; onPeek?: () => void }) {
+  const g = () => props.goal as GoalSummaryExt;
   const open = () => go({ name: "goal", id: g().id });
   // One column, one quantity: when the goal last changed, in the heartbeat's own units. The run's elapsed time lives in the live line.
   const age = () => ago(g().updated_at, state.now);
   const overSoft = () => g().cost_usd >= g().budget.soft_usd;
+  const spendPct = () => (g().budget.hard_usd > 0 ? Math.min(100, (g().cost_usd / g().budget.hard_usd) * 100) : 0);
+  const softPct = () => (g().budget.hard_usd > 0 ? Math.min(100, (g().budget.soft_usd / g().budget.hard_usd) * 100) : 60);
   const engine = () => g().engine;
   // The engine is said only when it is not the default one — by its name, in words, like the project beside it.
   const otherEngine = () => !!engine() && effectiveEngine(engine(), state.settings?.engine) !== effectiveEngine("", state.settings?.engine);
@@ -46,21 +49,45 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
       <span class="g-glyph">
         <LifecycleGlyph goal={g()} />
       </span>
-      <button
-        class="g-title"
-        title={otherEngine() ? `${g().title}\n${engineLabel(engine()!)}` : g().title}
-        aria-label={`${g().title}, ${stateLabel(g().state)}${g().needs_you > 0 ? `, ${t("common.needsYou")}` : ""}${otherEngine() ? `, ${engineLabel(engine()!)}` : ""}`}
-        onFocus={() => props.onSelect?.()}
-        onClick={(e) => {
-          e.stopPropagation();
-          open();
-        }}
-      >
-        <span class="ellipsis">{g().title}</span>
-        <Show when={g().needs_you > 0}>
-          <NeedsYouMark />
+      <div class="g-title-cell">
+        <button
+          class="g-title"
+          title={otherEngine() ? `${g().title}\n${engineLabel(engine()!)}` : g().title}
+          aria-label={`${g().title}, ${stateLabel(g().state)}${g().needs_you > 0 ? `, ${t("common.needsYou")}` : ""}${otherEngine() ? `, ${engineLabel(engine()!)}` : ""}`}
+          onFocus={() => props.onSelect?.()}
+          onKeyDown={(e) => {
+            if (e.key === " " && props.onPeek) {
+              e.preventDefault();
+              e.stopPropagation();
+              props.onPeek();
+            }
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            open();
+          }}
+        >
+          <span class="ellipsis">{g().title}</span>
+          <Show when={g().needs_you > 0}>
+            <NeedsYouMark />
+          </Show>
+        </button>
+        <Show when={props.onPeek}>
+          <button
+            type="button"
+            class="g-peek-btn"
+            tabindex={-1}
+            aria-label={t("keys.peekSelected")}
+            title={t("keys.peekSelected")}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onPeek?.();
+            }}
+          >
+            <Icon name="peek" size={10} />
+          </button>
         </Show>
-      </button>
+      </div>
       <div class="g-live">
         <LiveLine goal={g()} />
       </div>
@@ -74,8 +101,14 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
           <span class="diff-del"> −{count(g().diffstat!.deletions)}</span>
         </Show>
       </span>
-      <span class="g-spend num meta halt" classList={{ t1: overSoft() }} title={t("goal.budgetTitle")}>
-        {usd(g().cost_usd)} <span class="t4">/</span> {usdLimit(g().budget.soft_usd)}
+      <span class="g-spend g-spend-cell num meta halt" classList={{ t1: overSoft() }} title={t("goal.budgetTitle")}>
+        <span class="g-spend-text">
+          {usd(g().cost_usd)} <span class="t4">/</span> {usdLimit(g().budget.soft_usd)}
+        </span>
+        <span class="meter-micro" aria-hidden="true">
+          <i class="meter-micro-fill" classList={{ over: overSoft() }} style={{ width: `${spendPct()}%` }} />
+          <i class="meter-micro-tick" style={{ left: `${softPct()}%` }} />
+        </span>
       </span>
       <span class="g-age num meta halt">{age()}</span>
       {/* Identity, set flush right so the id ends on the board's edge, under every other id: the optional readings, then the
@@ -89,7 +122,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
           )}
         </Show>
         <Show when={g().overlaps?.length}>
-          <span class="t3 row" style={{ gap: "3px" }} title={g().overlaps.map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n")}>
+          <span class="overlap-pill" title={g().overlaps.map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n")}>
             <NoticeMark title={t("goal.overlaps", { id: g().overlaps[0].goal_id })} />
             <span class="code-val">{g().overlaps[0].goal_id}</span>
             <Show when={g().overlaps.length > 1}>+{g().overlaps.length - 1}</Show>

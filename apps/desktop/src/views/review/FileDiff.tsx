@@ -1,8 +1,8 @@
 /**
- * One file of the review: a sticky header with the readings and two toggles,
- * then the diff table. Context between hunks expands from the file itself
- * (either side), twenty lines at a time or the whole file; hunks can be
- * undone in the workspace while the agent is not in it.
+ * One file of the review: a sticky header with readings and toggles, AST
+ * semantic noise collapse (`Moved unchanged` / `Formatting only`), and a
+ * diff table that switches automatically to Split-Geometry virtualization
+ * (`VirtualBody`) past 400 rows or whole-file expansion.
  *
  * Keyboard: the table is one tab stop. Focus lands on the first line number;
  * ↑↓ walk the lines, ↩ opens the comment composer on that line.
@@ -22,10 +22,12 @@ import { baseMs } from "../../lib/motion";
 import { popupActions } from "../../lib/native";
 import type { Draft } from "../../lib/reviewState";
 import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
+import { VIRTUAL_THRESHOLD } from "../../lib/virtualDiff";
 import { type Range, hunkWordRanges, segment } from "../../lib/worddiff";
+import { type ExtDiffFile, type ExtHunk } from "../goal/ext";
+import { type VRow, VirtualBody, flattenBlocks, lineAnchor } from "./VirtualBody";
 import { type Anchor, type Block, type Composing, type Reveals, sameAnchor } from "./types";
 
-/** The colours may take this long to arrive before the code shows uncoloured. */
 const COLOUR_WAIT_MS = 150;
 
 export interface FileDiffProps {
@@ -39,21 +41,18 @@ export interface FileDiffProps {
   viewed: boolean;
   onViewed: (on: boolean) => void;
   onOpen: (line: number | null) => void;
-  /** Undoing a hunk in the workspace; absent while the agent may be writing. */
   onUndo?: (hunk: number) => void;
-  /** Hunks you accepted — a reading mark of your own, nothing in the workspace: the hunk folds to its header. */
   accepted?: (hunk: number) => boolean;
-  /** Accepting a hunk, or taking the mark back from one already accepted. */
   onAccept?: (hunk: number) => void;
-  /** The review's current hunk (what A, ⇧A and U act on), when it is in this file: its header carries the mark. */
   current?: (hunk: number) => boolean;
-  /** Editing the whole file in place (paused or in review only); the text arrives through `lines`. */
   editing?: boolean;
   onEditFile?: () => void;
   onSaveFile?: (text: string) => void;
   onCancelEdit?: () => void;
-  /** Applying a comment's suggestion block to the line it hangs on. */
   onApplySuggestion?: (line: number, suggestion: string) => void;
+  /** Hunk indices marked by AST analysis as moved unchanged or formatting only. */
+  movedHunks?: number[];
+  formattingHunks?: number[];
   comments: Draft[];
   composer: Composing;
   onAnchor: (a: Anchor) => void;
@@ -73,11 +72,18 @@ export function FileDiff(props: FileDiffProps) {
   const total = () => (props.lines === undefined || props.lines === null ? null : props.lines.length);
   const expandable = () => gapsOf(props.file, null).length > 0;
 
-  /**
-   * Hunks with the hidden regions between them, revealed as far as asked.
-   * A fold row carries the next hunk's `@@` header; a hunk with nothing
-   * folded above it keeps a plain header row, so ] and [ still find it.
-   */
+  // AST semantic noise state: moved_unchanged & formatting_only hunks collapse by default, expandable per hunk.
+  const [noiseExpanded, setNoiseExpanded] = createSignal<Record<number, boolean>>({});
+  const noiseOf = (index: number | null): "moved" | "formatting" | null => {
+    if (index === null) return null;
+    const ef = props.file as ExtDiffFile;
+    const eh = props.file.hunks[index] as ExtHunk | undefined;
+    if (props.movedHunks?.includes(index) || ef.moved_hunks?.includes(index) || eh?.moved_unchanged) return "moved";
+    if (props.formattingHunks?.includes(index) || ef.formatting_hunks?.includes(index) || eh?.formatting_only) return "formatting";
+    return null;
+  };
+  const toggleNoise = (index: number) => setNoiseExpanded((m) => ({ ...m, [index]: !m[index] }));
+
   const blocks = createMemo<Block[]>(() => {
     const gaps = gapsOf(props.file, total());
     const byIndex = new Map(gaps.map((g) => [g.index, g]));
@@ -100,7 +106,6 @@ export function FileDiff(props: FileDiffProps) {
     return out;
   });
 
-  /** ↑↓ between line numbers in the same column; Tab lands on the first one. */
   let table!: HTMLTableElement;
   const onTableFocus = (e: FocusEvent) => {
     if (e.target !== table) return;
@@ -110,13 +115,19 @@ export function FileDiff(props: FileDiffProps) {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     const btn = (e.target as HTMLElement).closest(".ln-btn");
     const td = btn?.closest("td");
-    const tr = td?.closest("tr");
-    if (!btn || !td || !tr) return;
-    const col = [...tr.children].indexOf(td);
-    let row = e.key === "ArrowDown" ? tr.nextElementSibling : tr.previousElementSibling;
+    const trEl = td?.closest("tr");
+    if (!btn || !td || !trEl) return;
+    const col = [...trEl.children].indexOf(td);
+    let row = e.key === "ArrowDown" ? trEl.nextElementSibling : trEl.previousElementSibling;
     while (row && !row.children[col]?.querySelector(".ln-btn")) row = e.key === "ArrowDown" ? row.nextElementSibling : row.previousElementSibling;
     const target = row?.children[col]?.querySelector<HTMLElement>(".ln-btn");
-    if (!target) return;
+    if (!target) {
+      if (virtualized()) {
+        const pane = table.closest<HTMLElement>(".review-diff");
+        if (pane) (e.preventDefault(), pane.scrollBy({ top: e.key === "ArrowDown" ? 120 : -120 }));
+      }
+      return;
+    }
     e.preventDefault();
     target.focus({ preventScroll: true });
     target.scrollIntoView({ block: "nearest" });
@@ -132,12 +143,9 @@ export function FileDiff(props: FileDiffProps) {
   const isAccepted = (index: number | null) => index !== null && !!props.accepted?.(index);
   const isCurrent = (index: number | null) => index !== null && !!props.current?.(index);
 
-  // An accepted hunk closes rather than vanishes: its rows' height is read in the pure phase, before Solid takes them
-  // out, and a row of that height stands in their place and shrinks to nothing over 160ms (nothing under reduced motion).
   const acceptedList = () => props.file.hunks.map((_, i) => isAccepted(i));
   const [folding, setFolding] = createSignal<Record<number, number>>({});
-  const heightOf = (index: number) => (table ? [...table.querySelectorAll<HTMLElement>(`tr.dl[data-hunk="${index}"]`)].reduce((h, tr) => h + tr.getBoundingClientRect().height, 0) : 0);
-  // The marks as last seen and the hunks just marked, with their heights, handed from the pure phase to the effect.
+  const heightOf = (index: number) => (table ? [...table.querySelectorAll<HTMLElement>(`tr.dl[data-hunk="${index}"]`)].reduce((h, trEl) => h + trEl.getBoundingClientRect().height, 0) : 0);
   let seen = acceptedList();
   let closing: Record<number, number> = {};
   createComputed(
@@ -145,8 +153,8 @@ export function FileDiff(props: FileDiffProps) {
       acceptedList,
       (now) => {
         closing = {};
-        now.forEach((on, i) => {
-          if (on && !seen[i]) closing[i] = heightOf(i);
+        now.forEach((onVal, i) => {
+          if (onVal && !seen[i]) closing[i] = heightOf(i);
         });
         seen = now;
       },
@@ -170,9 +178,32 @@ export function FileDiff(props: FileDiffProps) {
       delete next[index];
       return next;
     });
-  /** The header row's two verbs for a hunk: accept (your mark) and, while the workspace is yours, undo (a change). */
+
+  const totalLineCount = createMemo(() =>
+    blocks().reduce((n, b) => n + (b.kind === "hunk" ? b.hunk.lines.length : 1), 0),
+  );
+  const virtualized = createMemo(() => props.whole || totalLineCount() > VIRTUAL_THRESHOLD);
+  const flatRows = createMemo(() =>
+    virtualized()
+      ? flattenBlocks({
+          path: props.file.path,
+          blocks: blocks(),
+          split: props.split,
+          comments: indexed(),
+          composer: props.composer,
+          isAccepted,
+          folding: folding(),
+          noiseOf,
+          noiseExpanded: noiseExpanded(),
+        })
+      : [],
+  );
+
   const HunkVerbs = (p: { index: number }) => (
     <>
+      <Show when={noiseOf(p.index) && noiseExpanded()[p.index]}>
+        <Button size="s" variant="ghost" class="gap-all" onClick={() => toggleNoise(p.index)}>Fold</Button>
+      </Show>
       <Show when={props.onAccept}>
         <AcceptButton accepted={isAccepted(p.index)} current={isCurrent(p.index)} lines={props.file.hunks[p.index]?.lines.length ?? 0} onClick={() => props.onAccept!(p.index)} />
       </Show>
@@ -181,6 +212,73 @@ export function FileDiff(props: FileDiffProps) {
       </Show>
     </>
   );
+
+  const renderHead = (index: number, header: string) => (
+    <tr
+      class="hunk-head"
+      classList={{ "hunk-accepted": isAccepted(index), "hunk-current": isCurrent(index) }}
+      aria-current={isCurrent(index) ? "true" : undefined}
+      data-hunk-path={props.file.path}
+      data-hunk-index={index}
+    >
+      <td colspan={cols}>
+        <div class="gap-controls">
+          <span class="mono gap-header ellipsis">{header}</span>
+          <HunkVerbs index={index} />
+        </div>
+      </td>
+    </tr>
+  );
+
+  const renderGap = (gb: Extract<Block, { kind: "gap" }>) => (
+    <GapRow
+      block={gb}
+      cols={cols}
+      path={props.file.path}
+      known={props.lines !== undefined}
+      accepted={isAccepted(gb.index)}
+      current={isCurrent(gb.index)}
+      onReveal={(how) => props.onReveal(gb.gap, how)}
+      verbs={gb.index !== null ? <HunkVerbs index={gb.index} /> : undefined}
+    />
+  );
+
+  const renderNoise = (index: number, noise: "moved" | "formatting", lineCount: number, header: string) => (
+    <tr class="semantic-fold" data-semantic-noise={noise} data-hunk={index}>
+      <td colspan={cols}>
+        <div class="semantic-fold-bar">
+          <span class="semantic-pill"><Icon name="expand" size={10} />{noise === "moved" ? "Moved unchanged" : "Formatting only"}</span>
+          <span class="meta t3 num">{t("review.lines", { n: lineCount })}</span>
+          <span class="mono meta t4 ellipsis grow">{header}</span>
+          <Button size="s" variant="ghost" onClick={() => toggleNoise(index)}>Expand hunk</Button>
+        </div>
+      </td>
+    </tr>
+  );
+
+  const io = { path: () => props.file.path, onOpen: (n: number | null) => props.onOpen(n), onAnchor: (a: Anchor) => props.onAnchor(a) };
+  const renderVRow = (row: VRow, idx: number): JSX.Element => {
+    if (row.kind === "head") return renderHead(row.index, row.header);
+    if (row.kind === "gap") return renderGap(row.block);
+    if (row.kind === "folded") return renderNoise(row.index, row.noise, row.lines, row.header);
+    if (row.kind === "fold") return <FoldRow height={row.height} cols={cols} onDone={() => unfold(row.index)} />;
+    if (row.kind === "composer" || row.kind === "comment") {
+      return (
+        <tr data-vidx={idx} data-vmeasure="1">
+          <td colspan={cols}>
+            {row.kind === "composer" ? (
+              <Composer initial={editingText()} onSubmit={props.onSave} onCancel={props.onCancel} />
+            ) : (
+              <CommentRow draft={row.draft} onEdit={() => props.onEdit(row.draftIndex)} onRemove={() => props.onRemove(row.draftIndex)} onApply={props.onApplySuggestion} />
+            )}
+          </td>
+        </tr>
+      );
+    }
+    return row.kind === "code"
+      ? <UnifiedTr l={row.line} io={io} hunk={row.hunkIndex} commented={row.commented} vidx={idx} />
+      : <SplitTr left={row.left} right={row.right} io={io} hunk={row.hunkIndex} commented={row.commented} vidx={idx} />;
+  };
 
   const cols = 4;
   return (
@@ -196,10 +294,10 @@ export function FileDiff(props: FileDiffProps) {
           </Show>
           {props.file.path}
         </span>
+        <Show when={virtualized()}><span class="vdiff-badge num">{flatRows().length} · virtual</span></Show>
         <span class="num meta">
           <span class="diff-add">+{props.file.additions}</span> <span class="diff-del">−{props.file.deletions}</span>
         </span>
-        {/* Two toggles and a menu: the header has a shape, not five equal words. Editing is in the menu until it is on. */}
         <Show when={props.editing}>
           <span class="meta t3">{t("review.editing")}</span>
         </Show>
@@ -209,7 +307,6 @@ export function FileDiff(props: FileDiffProps) {
             {t("review.wholeFile")}
           </Button>
         </Show>
-        {/* While you are editing, "viewed" waits: the file is about to change under its own hash. */}
         <Button size="s" variant="ghost" aria-pressed={props.viewed} disabled={props.editing} onClick={() => props.onViewed(!props.viewed)}>
           <Show when={props.viewed}>
             <Icon name="check" size={10} />
@@ -259,87 +356,60 @@ export function FileDiff(props: FileDiffProps) {
               <col class="col-half" />
             </Show>
           </colgroup>
-          <tbody>
-            <For each={blocks()}>
-              {(b) => (
-                <Switch>
-                  <Match when={b.kind === "head" && b}>
-                    {(hb) => (
-                      <tr
-                        class="hunk-head"
-                        classList={{ "hunk-accepted": isAccepted(hb().index), "hunk-current": isCurrent(hb().index) }}
-                        aria-current={isCurrent(hb().index) ? "true" : undefined}
-                        data-hunk-path={props.file.path}
-                        data-hunk-index={hb().index}
-                      >
-                        <td colspan={cols}>
-                          <div class="gap-controls">
-                            <span class="mono gap-header ellipsis">{hb().header}</span>
-                            <HunkVerbs index={hb().index} />
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Match>
-                  <Match when={b.kind === "gap" && b}>
-                    {(gb) => (
-                      <GapRow
-                        block={gb()}
-                        cols={cols}
-                        path={props.file.path}
-                        known={props.lines !== undefined}
-                        accepted={isAccepted(gb().index)}
-                        current={isCurrent(gb().index)}
-                        onReveal={(how) => props.onReveal(gb().gap, how)}
-                        verbs={gb().index !== null ? <HunkVerbs index={gb().index!} /> : undefined}
-                      />
-                    )}
-                  </Match>
-                  {/* An accepted hunk is folded: its header row stands for it, with the mark and the count — once the fold has closed. */}
-                  <Match when={b.kind === "hunk" && b.index !== null && folding()[b.index] !== undefined && b}>
-                    {(hb) => <FoldRow height={folding()[hb().index!]} cols={cols} onDone={() => unfold(hb().index!)} />}
-                  </Match>
-                  <Match when={b.kind === "hunk" && !isAccepted(b.index) && b}>
-                    {(hb) => (
-                      <HunkRows
-                        hunk={hb().hunk}
-                        index={hb().index}
-                        split={props.split}
-                        path={props.file.path}
-                        onOpen={props.onOpen}
-                        onAnchor={props.onAnchor}
-                        composingAt={composingAt}
-                        editingText={editingText}
-                        commentsAt={commentsAt}
-                        onSave={props.onSave}
-                        onCancel={props.onCancel}
-                        onEdit={props.onEdit}
-                        onRemove={props.onRemove}
-                        onApplySuggestion={props.onApplySuggestion}
-                      />
-                    )}
-                  </Match>
-                </Switch>
-              )}
-            </For>
-          </tbody>
+          <Show
+            when={virtualized()}
+            fallback={
+              <tbody>
+                <For each={blocks()}>
+                  {(b) => (
+                    <Switch>
+                      <Match when={b.kind === "head" && b}>{(hb) => renderHead(hb().index, hb().header)}</Match>
+                      <Match when={b.kind === "gap" && b}>{(gb) => renderGap(gb())}</Match>
+                      <Match when={b.kind === "hunk" && b.index !== null && folding()[b.index] !== undefined && b}>
+                        {(hb) => <FoldRow height={folding()[hb().index!]} cols={cols} onDone={() => unfold(hb().index!)} />}
+                      </Match>
+                      <Match when={b.kind === "hunk" && !isAccepted(b.index) && noiseOf(b.index) && !noiseExpanded()[b.index!] && b}>
+                        {(hb) => renderNoise(hb().index!, noiseOf(hb().index)!, hb().hunk.lines.length, hb().hunk.header)}
+                      </Match>
+                      <Match when={b.kind === "hunk" && !isAccepted(b.index) && b}>
+                        {(hb) => (
+                          <HunkRows
+                            hunk={hb().hunk}
+                            index={hb().index}
+                            split={props.split}
+                            path={props.file.path}
+                            onOpen={props.onOpen}
+                            onAnchor={props.onAnchor}
+                            composingAt={composingAt}
+                            editingText={editingText}
+                            commentsAt={commentsAt}
+                            onSave={props.onSave}
+                            onCancel={props.onCancel}
+                            onEdit={props.onEdit}
+                            onRemove={props.onRemove}
+                            onApplySuggestion={props.onApplySuggestion}
+                          />
+                        )}
+                      </Match>
+                    </Switch>
+                  )}
+                </For>
+              </tbody>
+            }
+          >
+            <VirtualBody path={props.file.path} rows={flatRows()} cols={cols} renderRow={renderVRow} />
+          </Show>
         </table>
       </Show>
     </section>
   );
 }
 
-/**
- * The place of a hunk you just accepted, closing: a row as tall as the lines
- * were, told to shrink to nothing on the next frame (160ms, eased in like a
- * slot folding). Gone when the time is up; at once under reduced motion.
- */
 function FoldRow(props: { height: number; cols: number; onDone: () => void }) {
   let inner!: HTMLDivElement;
   onMount(() => {
     const ms = baseMs();
     if (!ms) return queueMicrotask(props.onDone);
-    // Laid out at its height first, then told to close, so the transition has somewhere to start from.
     const frame = requestAnimationFrame(() => (inner.style.height = "0px"));
     const timer = window.setTimeout(props.onDone, ms + 40);
     onCleanup(() => {
@@ -365,13 +435,6 @@ function UndoButton(props: { onClick: () => void }) {
   );
 }
 
-/**
- * Accepting a hunk is your reading mark, paired with U: the one folds the hunk
- * and moves on, the other changes the workspace. Accepted, the button says so
- * with the folded line count, and a second press takes the mark back. On the
- * current hunk it carries its key, as the focused card in a queue does: A to
- * accept, ⇧A to take back.
- */
 function AcceptButton(props: { accepted: boolean; current: boolean; lines: number; onClick: () => void }) {
   return (
     <Button
@@ -390,11 +453,6 @@ function AcceptButton(props: { accepted: boolean; current: boolean; lines: numbe
   );
 }
 
-/**
- * The whole file as plain text, for a small change you would rather make
- * than describe. Saving writes the file in the workspace as your edit; the
- * snapshot then changes and the review reloads.
- */
 export function FileEditor(props: { lines: string[]; onSave: (text: string) => void; onCancel: () => void }) {
   const initial = props.lines.join("\n") + "\n";
   const [text, setText] = createSignal(initial);
@@ -428,21 +486,14 @@ export function FileEditor(props: { lines: string[]; onSave: (text: string) => v
   );
 }
 
-/**
- * A fold between hunks. ↓ grows the hunk above downwards (lines appear
- * above this row); ↑ grows the hunk below upwards (lines appear under it).
- */
 export function GapRow(props: {
   block: Extract<Block, { kind: "gap" }>;
   cols: number;
   path?: string;
   known: boolean;
-  /** The hunk under this fold is accepted (folded to this row). */
   accepted?: boolean;
-  /** The hunk under this fold is the review's current one. */
   current?: boolean;
   onReveal: (how: "top" | "bottom" | "all") => void;
-  /** The verbs of the hunk whose header this row carries. */
   verbs?: JSX.Element;
 }) {
   const gap = () => props.block.gap;
@@ -488,11 +539,6 @@ export function GapRow(props: {
   );
 }
 
-/**
- * A draft comment. One with a ```suggestion block shows the proposed lines
- * as code and, while the workspace is editable and the comment hangs on a
- * line of the new file, offers to apply them in one click.
- */
 export function CommentRow(props: { draft: Draft; onEdit: () => void; onRemove: () => void; onApply?: (line: number, suggestion: string) => void }) {
   const suggestion = () => suggestionOf(props.draft.text);
   const canApply = () => suggestion() !== null && !!props.onApply && !!props.draft.line && !props.draft.old;
@@ -523,15 +569,14 @@ export function CommentRow(props: { draft: Draft; onEdit: () => void; onRemove: 
 
 type Piece = { s: string; hit: boolean; color?: string; italic: boolean };
 
-/** Text split by word ranges, keeping syntax colours. */
 function pieces(text: string, tokens: Tokens[number] | undefined, ranges: Range[] | undefined): Piece[] {
   const r = ranges ?? [];
   if (!tokens) return segment(text, 0, r).map(([s, hit]) => ({ s, hit, color: undefined, italic: false }));
   let offset = 0;
   const out: Piece[] = [];
-  for (const [t, color, style] of tokens) {
-    for (const [s, hit] of segment(t, offset, r)) out.push({ s, hit, color, italic: !!(style && style & 1) });
-    offset += t.length;
+  for (const [tok, color, style] of tokens) {
+    for (const [s, hit] of segment(tok, offset, r)) out.push({ s, hit, color, italic: !!(style && style & 1) });
+    offset += tok.length;
   }
   return out;
 }
@@ -557,17 +602,40 @@ function Code(props: { l: DiffLine; tokens?: Tokens[number]; ranges?: Range[]; s
   );
 }
 
-/**
- * One hunk. Old and new sides are highlighted separately (so a deleted line
- * is coloured in its own context), off the main thread. Rows are laid out at
- * once but keep their text invisible until the colours arrive (or 150ms pass);
- * colours later than that tint in over 120ms instead of flashing. Adjacent deleted and added
- * lines are compared word by word, and in the side-by-side layout sit next
- * to each other.
- */
+type LineIo = { path: () => string; onOpen: (n: number | null) => void; onAnchor: (a: Anchor) => void };
+
+function LineBtn(p: { l: DiffLine | null; n: number | null; io: LineIo }) {
+  return (
+    <Show when={p.l && p.n !== null}>
+      <button class="ln-btn" onClick={(e) => (e.metaKey ? p.io.onOpen(p.l!.new_no ?? p.l!.old_no) : p.io.onAnchor(lineAnchor(p.io.path(), p.l!)))} title={t("review.lineTitle")} aria-label={t("review.lineLabel", { n: p.n! })} tabindex="-1">{p.n}</button>
+    </Show>
+  );
+}
+
+function UnifiedTr(p: { l: DiffLine; io: LineIo; hunk?: number | null; commented: boolean; pending?: boolean; late?: boolean; vidx?: number; tokens?: Tokens[number]; ranges?: Range[] }) {
+  return (
+    <tr class={`dl dl-${p.l.kind}`} classList={{ commented: p.commented, "code-pending": !!p.pending, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
+      <td class="ln num"><LineBtn l={p.l} n={p.l.old_no} io={p.io} /></td>
+      <td class="ln num"><LineBtn l={p.l} n={p.l.new_no} io={p.io} /></td>
+      <td class="gutter"><button class="gutter-btn" onClick={() => p.io.onAnchor(lineAnchor(p.io.path(), p.l))} aria-label={t("review.comment")} tabindex="-1"><Icon name="plus" size={10} /></button></td>
+      <td class="code mono"><Code l={p.l} tokens={p.tokens} ranges={p.ranges} /></td>
+    </tr>
+  );
+}
+
+function SplitTr(p: { left: DiffLine | null; right: DiffLine | null; io: LineIo; hunk?: number | null; commented: boolean; pending?: boolean; late?: boolean; vidx?: number; lTokens?: Tokens[number]; lRanges?: Range[]; rTokens?: Tokens[number]; rRanges?: Range[] }) {
+  return (
+    <tr class="dl dl-split" classList={{ commented: p.commented, "code-pending": !!p.pending, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
+      <td class="ln num" classList={{ "dl-del": p.left?.kind === "del" }}><LineBtn l={p.left} n={p.left?.old_no ?? null} io={p.io} /></td>
+      <td class="code mono" classList={{ "dl-del": p.left?.kind === "del", "dl-blank": !p.left }}><Show when={p.left}>{(l) => <Code l={l()} tokens={p.lTokens} ranges={p.lRanges} sign={false} />}</Show></td>
+      <td class="ln num" classList={{ "dl-add": p.right?.kind === "add" }}><LineBtn l={p.right} n={p.right?.new_no ?? null} io={p.io} /></td>
+      <td class="code mono" classList={{ "dl-add": p.right?.kind === "add", "dl-blank": !p.right }}><Show when={p.right}>{(r) => <Code l={r()} tokens={p.rTokens} ranges={p.rRanges} sign={false} />}</Show></td>
+    </tr>
+  );
+}
+
 export function HunkRows(props: {
   hunk: Hunk;
-  /** The hunk's index in the file, on each row, so the fold can measure them; null for revealed context. */
   index?: number | null;
   split: boolean;
   path: string;
@@ -585,16 +653,9 @@ export function HunkRows(props: {
   const lang = languageOf(props.path);
   const words = createMemo(() => hunkWordRanges(props.hunk.lines));
   const [ready, setReady] = createSignal(!lang);
-  // Colours that miss the 150ms wait do not snap in over plain text: the rows say they are late, and the tokens,
-  // when they come, tint in from the plain foreground over 120ms (at once with reduced motion).
   const [late, setLate] = createSignal(false);
   let arrived = false;
-  const wait = lang
-    ? window.setTimeout(() => {
-        setReady(true);
-        if (!arrived) setLate(true);
-      }, COLOUR_WAIT_MS)
-    : undefined;
+  const wait = lang ? window.setTimeout(() => (setReady(true), !arrived && setLate(true)), COLOUR_WAIT_MS) : undefined;
   onCleanup(() => clearTimeout(wait));
   const [tokens] = createResource(
     () => props.hunk,
@@ -604,56 +665,31 @@ export function HunkRows(props: {
         const { newSide, oldSide } = hunkSides(h.lines);
         const [n, o] = await Promise.all([highlight(lang, newSide), highlight(lang, oldSide)]);
         if (!n || !o) return null;
-        let i = 0;
-        let j = 0;
-        return h.lines.map((l) => {
-          if (l.kind === "add") return n[i++];
-          if (l.kind === "del") return o[j++];
-          j++;
-          return n[i++];
-        });
+        let i = 0, j = 0;
+        return h.lines.map((l) => (l.kind === "add" ? n[i++] : l.kind === "del" ? o[j++] : (j++, n[i++])));
       } finally {
         arrived = true;
         setReady(true);
       }
     },
   );
-  const anchorOf = (l: DiffLine): Anchor =>
-    l.kind === "del" ? { path: props.path, line: null, old: l.old_no } : { path: props.path, line: l.new_no, old: null };
+  const io: LineIo = { path: () => props.path, onOpen: (n) => props.onOpen(n), onAnchor: (a) => props.onAnchor(a) };
+  const aOf = (l: DiffLine) => lineAnchor(props.path, l);
   const Attached = (p: { anchors: Anchor[] }) => (
-    <>
-      <For each={p.anchors}>
-        {(a) => (
-          <>
-            <Show when={props.composingAt(a)}>
-              <tr>
-                <td colspan="4">
-                  <Composer initial={props.editingText()} onSubmit={props.onSave} onCancel={props.onCancel} />
-                </td>
-              </tr>
-            </Show>
-            <For each={props.commentsAt(a)}>
-              {(x) => (
-                <tr>
-                  <td colspan="4">
-                    <CommentRow draft={x.c} onEdit={() => props.onEdit(x.index)} onRemove={() => props.onRemove(x.index)} onApply={props.onApplySuggestion} />
-                  </td>
-                </tr>
-              )}
-            </For>
-          </>
-        )}
-      </For>
-    </>
-  );
-  const click = (l: DiffLine) => (e: MouseEvent) => (e.metaKey ? props.onOpen(l.new_no ?? l.old_no) : props.onAnchor(anchorOf(l)));
-  // A side the line does not exist on has no number and no button.
-  const LineButton = (p: { l: DiffLine; n: number | null }) => (
-    <Show when={p.n !== null}>
-      <button class="ln-btn" onClick={click(p.l)} title={t("review.lineTitle")} aria-label={t("review.lineLabel", { n: p.n! })} tabindex="-1">
-        {p.n}
-      </button>
-    </Show>
+    <For each={p.anchors}>
+      {(a) => (
+        <>
+          <Show when={props.composingAt(a)}>
+            <tr><td colspan="4"><Composer initial={props.editingText()} onSubmit={props.onSave} onCancel={props.onCancel} /></td></tr>
+          </Show>
+          <For each={props.commentsAt(a)}>
+            {(x) => (
+              <tr><td colspan="4"><CommentRow draft={x.c} onEdit={() => props.onEdit(x.index)} onRemove={() => props.onRemove(x.index)} onApply={props.onApplySuggestion} /></td></tr>
+            )}
+          </For>
+        </>
+      )}
+    </For>
   );
   return (
     <Show
@@ -662,23 +698,8 @@ export function HunkRows(props: {
         <For each={props.hunk.lines}>
           {(l, idx) => (
             <>
-              <tr class={`dl dl-${l.kind}`} classList={{ commented: props.commentsAt(anchorOf(l)).length > 0, "code-pending": !ready(), "code-late": late() }} data-hunk={props.index ?? undefined}>
-                <td class="ln num">
-                  <LineButton l={l} n={l.old_no} />
-                </td>
-                <td class="ln num">
-                  <LineButton l={l} n={l.new_no} />
-                </td>
-                <td class="gutter">
-                  <button class="gutter-btn" onClick={() => props.onAnchor(anchorOf(l))} aria-label={t("review.comment")} tabindex="-1">
-                    <Icon name="plus" size={10} />
-                  </button>
-                </td>
-                <td class="code mono">
-                  <Code l={l} tokens={tokens()?.[idx()]} ranges={words().get(idx())} />
-                </td>
-              </tr>
-              <Attached anchors={[anchorOf(l)]} />
+              <UnifiedTr l={l} io={io} hunk={props.index} commented={props.commentsAt(aOf(l)).length > 0} pending={!ready()} late={late()} tokens={tokens()?.[idx()]} ranges={words().get(idx())} />
+              <Attached anchors={[aOf(l)]} />
             </>
           )}
         </For>
@@ -688,31 +709,10 @@ export function HunkRows(props: {
         {(row) => {
           const left = () => (row.left === null ? null : props.hunk.lines[row.left]);
           const right = () => (row.right === null ? null : props.hunk.lines[row.right]);
-          const anchors = () => {
-            const out: Anchor[] = [];
-            const l = left();
-            const r = right();
-            if (l && l.kind === "del") out.push(anchorOf(l));
-            if (r) out.push(anchorOf(r));
-            return out;
-          };
-          const commented = () => anchors().some((a) => props.commentsAt(a).length > 0);
+          const anchors = () => [...(left()?.kind === "del" ? [aOf(left()!)] : []), ...(right() ? [aOf(right()!)] : [])];
           return (
             <>
-              <tr class="dl dl-split" classList={{ commented: commented(), "code-pending": !ready(), "code-late": late() }} data-hunk={props.index ?? undefined}>
-                <td class="ln num" classList={{ "dl-del": left()?.kind === "del" }}>
-                  <Show when={left()}>{(l) => <LineButton l={l()} n={l().old_no} />}</Show>
-                </td>
-                <td class="code mono" classList={{ "dl-del": left()?.kind === "del", "dl-blank": !left() }}>
-                  <Show when={left()}>{(l) => <Code l={l()} tokens={tokens()?.[row.left!]} ranges={words().get(row.left!)} sign={false} />}</Show>
-                </td>
-                <td class="ln num" classList={{ "dl-add": right()?.kind === "add" }}>
-                  <Show when={right()}>{(r) => <LineButton l={r()} n={r().new_no} />}</Show>
-                </td>
-                <td class="code mono" classList={{ "dl-add": right()?.kind === "add", "dl-blank": !right() }}>
-                  <Show when={right()}>{(r) => <Code l={r()} tokens={tokens()?.[row.right!]} ranges={words().get(row.right!)} sign={false} />}</Show>
-                </td>
-              </tr>
+              <SplitTr left={left()} right={right()} io={io} hunk={props.index} commented={anchors().some((a) => props.commentsAt(a).length > 0)} pending={!ready()} late={late()} lTokens={row.left !== null ? tokens()?.[row.left] : undefined} lRanges={row.left !== null ? words().get(row.left) : undefined} rTokens={row.right !== null ? tokens()?.[row.right] : undefined} rRanges={row.right !== null ? words().get(row.right) : undefined} />
               <Attached anchors={anchors()} />
             </>
           );

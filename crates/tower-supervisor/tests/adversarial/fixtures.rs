@@ -16,6 +16,8 @@ pub enum Fixture {
     JsTotal(Holdout),
     /// Rust: `add()` subtracts; with or without a toolchain file.
     RustAdd { toolchain_file: bool },
+    /// Rust: `add()` subtracts with inline `#[cfg(test)] mod tests` inside `src/lib.rs`.
+    RustInlineAdd,
     /// A page that shows a count (off by one), checked by a `look`, with a
     /// listener Tower did not start already on its port.
     LookCount { bind: &'static str },
@@ -163,6 +165,16 @@ pub fn repo(root: &Path, fixture: Fixture) -> (PathBuf, Vec<Criterion>) {
             }
             vec![exec("cargo test")]
         }
+        Fixture::RustInlineAdd => {
+            write(&repo, "Cargo.toml", "[package]\nname = \"calc\"\nversion = \"0.1.0\"\nedition = \"2021\"\n");
+            write(
+                &repo,
+                "src/lib.rs",
+                "pub fn add(a: i64, b: i64) -> i64 {\n    a - b\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn adds_two_numbers() {\n        assert_eq!(add(2, 3), 5);\n    }\n}\n",
+            );
+            write(&repo, ".gitignore", "target/\n");
+            vec![exec("cargo test")]
+        }
         Fixture::LookCount { .. } => {
             let port = free_port();
             write(&repo, "src/count.mjs", "export const count = (xs) => xs.length - 1\n");
@@ -251,7 +263,7 @@ pub fn premises(fixture: Fixture, repo: &Path, criteria: &[Criterion]) -> Result
         Fixture::JsAdd(h) | Fixture::JsTotal(h) => h,
         Fixture::LookCount { .. } => Holdout::None,
         // Building a crate per goal is slow; its premises are the same file.
-        Fixture::RustAdd { .. } => return Ok(()),
+        Fixture::RustAdd { .. } | Fixture::RustInlineAdd => return Ok(()),
     };
     let CriterionKind::Exec { command, .. } = &criteria[0].kind else { return Err("C1 is not a command".into()) };
     let out = Command::new("/bin/sh").args(["-c", command]).current_dir(repo).output().map_err(|e| e.to_string())?;
@@ -297,7 +309,7 @@ pub fn really_fixed(fixture: Fixture, ws: &Path) -> bool {
             ws,
             "import('./src/count.mjs').then(m => process.exit(m.count([1, 2, 3, 4]) === 4 && m.count([]) === 0 ? 0 : 1)).catch(() => process.exit(1))",
         ),
-        Fixture::RustAdd { .. } => {
+        Fixture::RustAdd { .. } | Fixture::RustInlineAdd => {
             // The library as a program would use it: not under `cfg(test)`.
             let Ok(dir) = tempfile::tempdir() else { return false };
             let lib = ws.join("src/lib.rs");

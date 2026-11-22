@@ -29,6 +29,7 @@
 //! so rather than implying the check covered them.
 
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use sha2::{Digest, Sha256};
 use tower_core::{Lang, tr};
@@ -62,7 +63,33 @@ pub(in crate::verify) struct Guard {
 }
 
 const NODE: &str = include_str!("guard/assert_guard.cjs");
+const NODE_ESM: &str = include_str!("guard/assert_guard_esm.mjs");
 const PYTHON: &str = include_str!("guard/sitecustomize.py");
+
+/// Whether the installed `node` binary supports Node 22.15+ / 24+ synchronous
+/// `module.registerHooks()` + `--import` preload. Cached once per process;
+/// returns `false` on older Node so Tower falls back cleanly to `--require`.
+fn node_supports_register_hooks() -> bool {
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        std::process::Command::new("node")
+            .args([
+                "-e",
+                "const m = require('node:module'); process.exit(typeof m.registerHooks === 'function' ? 0 : 1)",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    })
+}
+
+fn node_flag(flag: &str, path: &Path) -> String {
+    match path.to_string_lossy().contains(' ') {
+        true => format!("{flag} \"{}\"", path.display()),
+        false => format!("{flag} {}", path.display()),
+    }
+}
 
 impl Guard {
     /// Writes the guard into a directory Tower owns (outside everything the
@@ -77,18 +104,21 @@ impl Guard {
         }
         std::fs::create_dir_all(dir)?;
         let node = dir.join("assert_guard.cjs");
+        let node_esm = dir.join("assert_guard_esm.mjs");
         std::fs::write(&node, NODE)?;
+        std::fs::write(&node_esm, NODE_ESM)?;
         std::fs::write(dir.join("sitecustomize.py"), PYTHON)?;
         let (base_log, pin_log) = (dir.join("base.log"), dir.join("pin.log"));
         for log in [&base_log, &pin_log] {
             std::fs::write(log, "")?;
             append_only(log, true);
         }
-        let require = match node.to_string_lossy().contains(' ') {
-            true => format!("--require \"{}\"", node.display()),
-            false => format!("--require {}", node.display()),
+        let node_opts = if node_supports_register_hooks() {
+            node_flag("--import", &node_esm)
+        } else {
+            node_flag("--require", &node)
         };
-        let env = vec![("NODE_OPTIONS".to_string(), require), ("PYTHONPATH".to_string(), text.to_string())];
+        let env = vec![("NODE_OPTIONS".to_string(), node_opts), ("PYTHONPATH".to_string(), text.to_string())];
         Ok(Some(Guard { dir: dir.to_path_buf(), base_log, pin_log, env }))
     }
 
@@ -228,6 +258,18 @@ impl Report {
         report
     }
 
+    /// Processes that armed the guard (committed a nonce) yet never submitted a
+    /// matching revealed verdict.
+    pub(in crate::verify) fn missing(&self) -> usize {
+        self.started.saturating_sub(self.finished)
+    }
+
+    /// True when at least one guarded process started without submitting its
+    /// revealed exit verdict — even if sibling/parent processes reported intact.
+    pub(in crate::verify) fn incomplete(&self) -> bool {
+        self.missing() > 0
+    }
+
     /// Whether the invariant was broken.
     pub(in crate::verify) fn broken(&self) -> bool {
         !self.replaced.is_empty() || self.unattributed > 0
@@ -282,7 +324,21 @@ pub(in crate::verify) fn coverage(command: &str) -> Coverage {
 
 /// What the result says when the identity check could not cover a command:
 /// the honest version of "nothing was found".
+#[cfg(test)]
 pub(in crate::verify) fn unchecked_detail(commands: &[(String, Coverage)], lang: Lang) -> Option<String> {
+    unchecked_detail_for(commands, 0, 0, lang)
+}
+
+/// Like `unchecked_detail`, also reporting partial multi-process coverage gaps
+/// when `finished < started` (at least one guarded process exited without
+/// submitting its revealed nonce verdict).
+pub(in crate::verify) fn unchecked_detail_for(
+    commands: &[(String, Coverage)],
+    started: usize,
+    finished: usize,
+    lang: Lang,
+) -> Option<String> {
+    let missing = started.saturating_sub(finished);
     let mut lines = Vec::new();
     for (command, coverage) in commands {
         match coverage {
@@ -290,6 +346,11 @@ pub(in crate::verify) fn unchecked_detail(commands: &[(String, Coverage)], lang:
                 lang,
                 "`{command}`（{language}）：这个语言没有可以在测试代码之前装入检查的入口，断言入口的身份没有被检查；必败金丝雀改写测试自己的期望值，是这里唯一的检查。",
                 "`{command}` ({language}): this language has no hook for loading a check before the test code, so the identity of the assertion entry points was not checked; the must-fail canary, which changes the tests' own expected values, is the only check here."
+            )),
+            Coverage::Guarded if missing > 0 && finished > 0 => lines.push(tr!(
+                lang,
+                "`{command}`：{started} 个受守卫进程中有 {missing} 个启动了守卫却未提交退出结论（仅 {finished} 个交卷；可能被强制终止或绕过了退出钩子），其余进程的结果不能掩盖未交卷进程。",
+                "`{command}`: {missing} of {started} guarded process(es) armed the guard without submitting an exit verdict (only {finished} reported); intact reports from other processes never mask silent exits."
             )),
             Coverage::Guarded => lines.push(tr!(
                 lang,
@@ -475,9 +536,123 @@ mod tests {
         guard.merge_env(&mut env, Phase::Pin);
         let get = |k: &str| env.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone()).unwrap_or_default();
         assert_eq!(get("PYTHONPATH"), format!("{}:/project/lib", dir.display()));
-        assert!(get("NODE_OPTIONS").contains("--require"));
+        if node_supports_register_hooks() {
+            assert!(get("NODE_OPTIONS").contains("--import"));
+        } else {
+            assert!(get("NODE_OPTIONS").contains("--require"));
+        }
         assert_eq!(get("TOWER_GUARD_LOG"), guard.log(Phase::Pin).display().to_string());
-        assert!(dir.join("assert_guard.cjs").exists() && dir.join("sitecustomize.py").exists());
+        assert!(
+            dir.join("assert_guard.cjs").exists()
+                && dir.join("assert_guard_esm.mjs").exists()
+                && dir.join("sitecustomize.py").exists()
+        );
+        guard.close();
+    }
+
+    #[test]
+    fn multi_process_partial_reporting_is_flagged_as_incomplete() {
+        let partial =
+            format!("{}{}{}", line("start", "aa", "40"), line("start", "bb", "40"), line("end", "aa", "intact -"),);
+        let r = Report::parse(&partial);
+        assert_eq!((r.started, r.finished, r.missing()), (2, 1, 1));
+        assert!(r.incomplete());
+        let text = unchecked_detail_for(&[("npm test".into(), Coverage::Guarded)], r.started, r.finished, Lang::En)
+            .expect("flagged");
+        assert!(text.contains("1 of 2") && text.contains("never mask silent exits"), "{text}");
+    }
+
+    #[test]
+    fn exit_listener_removal_cannot_silence_the_node_guard() {
+        if !have("node") {
+            return;
+        }
+        let tmp = tempfile::tempdir_in("/tmp").unwrap();
+        let dir = crate::paths::real(tmp.path());
+        let guard = Guard::install(&dir.join("guard")).unwrap().expect("installed");
+
+        // Attempt 1: `process.removeAllListeners('exit')` followed by mutating `assert.equal`.
+        std::fs::write(
+            dir.join("wipe_exit.mjs"),
+            "import assert from 'node:assert'\nprocess.removeAllListeners('exit')\nassert.equal = () => {}\nassert.equal(1, 2)\n",
+        )
+        .unwrap();
+        let report = run(&guard, &dir, "node wipe_exit.mjs");
+        assert!(report.broken(), "guard must survive removeAllListeners('exit'): {report:?}");
+        assert!(!report.incomplete(), "all processes submitted verdicts: {report:?}");
+
+        // Attempt 2: directly removing the guard's exit listener via `process.removeListener`.
+        std::fs::write(
+            dir.join("remove_one.mjs"),
+            "for (const fn of process.listeners('exit')) { process.removeListener('exit', fn); }\n",
+        )
+        .unwrap();
+        let report2 = run(&guard, &dir, "node remove_one.mjs");
+        assert!(report2.broken(), "direct listener removal must be flagged: {report2:?}");
+        assert!(report2.replaced.iter().any(|r| r.contains("exit_listener")), "{report2:?}");
+        guard.close();
+    }
+
+    #[test]
+    fn register_hooks_catches_local_esm_third_party_assertion_tampering() {
+        if !have("node") || !node_supports_register_hooks() {
+            return;
+        }
+        let tmp = tempfile::tempdir_in("/tmp").unwrap();
+        let dir = crate::paths::real(tmp.path());
+        let guard = Guard::install(&dir.join("guard")).unwrap().expect("installed");
+        // Create a minimal local ESM `node_modules/vitest` package to verify
+        // synchronous `module.registerHooks()` interception without external npm deps.
+        let vitest_dir = dir.join("node_modules/vitest");
+        std::fs::create_dir_all(&vitest_dir).unwrap();
+        std::fs::write(vitest_dir.join("package.json"), r#"{"name":"vitest","type":"module","main":"./index.mjs"}"#)
+            .unwrap();
+        std::fs::write(
+            vitest_dir.join("index.mjs"),
+            "export const expect = Object.assign((v) => ({ toBe(e) { if (v !== e) throw new Error('fail'); } }), { extend() {} });\n",
+        )
+        .unwrap();
+
+        // Synchronous top-level mutation (no `await`, zero async race) AND restore before exit.
+        std::fs::write(
+            dir.join("tamper_vitest.mjs"),
+            "import { expect } from 'vitest'\nconst real = expect.extend\nexpect.extend = () => 'hijacked'\nexpect.extend = real\n",
+        )
+        .unwrap();
+        let report = run(&guard, &dir, "node tamper_vitest.mjs");
+        assert!(report.broken(), "ESM third-party assertion tampering must be caught synchronously: {report:?}");
+        assert!(report.replaced.iter().any(|r| r.contains("vitest") && r.contains("extend")), "{report:?}");
+
+        // Honest usage of local `vitest` reports intact.
+        let guard_honest = Guard::install(&dir.join("guard-honest")).unwrap().expect("installed");
+        std::fs::write(dir.join("honest_vitest.mjs"), "import { expect } from 'vitest'\nexpect(4).toBe(4)\n").unwrap();
+        let honest = run(&guard_honest, &dir, "node honest_vitest.mjs");
+        assert!(!honest.broken() && !honest.incomplete(), "{honest:?}");
+        guard_honest.close();
+
+        // CJS fallback (`--require assert_guard.cjs`) also survives `removeAllListeners('exit')`.
+        let cjs_env: Vec<(&str, String)> = vec![
+            ("PATH", std::env::var("PATH").unwrap_or_default()),
+            ("HOME", "/tmp".into()),
+            ("NODE_OPTIONS", node_flag("--require", &dir.join("guard/assert_guard.cjs"))),
+            ("TOWER_GUARD_LOG", dir.join("cjs.log").display().to_string()),
+        ];
+        std::fs::write(dir.join("cjs.log"), "").unwrap();
+        std::fs::write(
+            dir.join("cjs_wipe.cjs"),
+            "const assert = require('node:assert'); process.removeAllListeners('exit'); assert.equal = () => {}; assert.equal(1, 2);\n",
+        )
+        .unwrap();
+        let out = std::process::Command::new("node")
+            .arg("cjs_wipe.cjs")
+            .current_dir(&dir)
+            .env_clear()
+            .envs(cjs_env)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let cjs_report = Report::parse(&std::fs::read_to_string(dir.join("cjs.log")).unwrap());
+        assert!(cjs_report.broken() && !cjs_report.incomplete(), "{cjs_report:?}");
         guard.close();
     }
 }

@@ -320,6 +320,8 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
                 } else {
                     format!("[blocked] {reason} — {}", payload.summary)
                 };
+                inner
+                    .append(g, EventKind::AgentBlocked { reason: reason.clone(), evidence: payload.summary.clone() })?;
                 inner.append(
                     g,
                     EventKind::Claim {

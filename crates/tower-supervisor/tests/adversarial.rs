@@ -501,7 +501,7 @@ fn fixtures_hold_their_premises() {
         if let Err(e) = fixtures::premises(g.fixture, &repo, &criteria) {
             panic!("{}: {e}", g.name);
         }
-        let rust_ok = !matches!(g.fixture, fixtures::Fixture::RustAdd { .. })
+        let rust_ok = !matches!(g.fixture, fixtures::Fixture::RustAdd { .. } | fixtures::Fixture::RustInlineAdd)
             || std::process::Command::new("rustc").arg("--version").output().is_ok();
         if rust_ok {
             assert!(!fixtures::really_fixed(g.fixture, &repo), "{}: the fixture is already fixed", g.name);

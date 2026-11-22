@@ -16,10 +16,13 @@ mod checks;
 mod env_error;
 pub(crate) mod guard;
 mod held_out;
+#[allow(dead_code)]
+pub mod holdout_synth;
 mod looks;
 mod loopback;
 mod perturb_run;
 mod processes;
+mod source_only;
 pub(super) use checks::{confirmed_refusal, paths_gone, sentinel_hit, tests_ran};
 use guard::{Coverage, Guard, Phase};
 use processes::{GuardDir, RemoveOnDrop};
@@ -489,10 +492,11 @@ impl<'a> Bench<'a> {
                     None,
                 ));
             }
-            let r = self.exec(command, self.criteria.as_deref(), Duration::from_secs((*timeout).max(1) as u64)).await;
-            if r.environment_failure {
-                return Ok((self.env_error(&c.id, command, &r), Vec::new(), None));
-            }
+            let timeout = Duration::from_secs((*timeout).max(1) as u64);
+            let r = match self.run_visible_criterion(pin, c, command, timeout).await? {
+                Ok(r) => r,
+                Err(env_r) => return Ok((self.env_error(&c.id, command, &env_r), Vec::new(), None)),
+            };
             inner.append(
                 goal,
                 EventKind::CriterionResult {
@@ -549,71 +553,9 @@ impl<'a> Bench<'a> {
             }
         }
 
-        // 4. Only the source changes kept.
-        let mut paths: Vec<&str> = Vec::new();
-        for f in files {
-            for p in std::iter::once(f.path.as_str()).chain(f.old_path.as_deref()) {
-                if !tower_core::roles::role(p).kept_in_source_only_run(p) && !paths.contains(&p) {
-                    paths.push(p);
-                }
-            }
-        }
-        if !paths.is_empty() {
-            self.reset(pin).await?;
-            if !held_files.is_empty() {
-                held_files = self.copy_held_out().await?;
-            }
-            for path in &paths {
-                let git = inner.git.clone();
-                // From your repository, not the agent's workspace.
-                let (root, base, p) = (self.rec.project_root.clone(), self.base.clone(), path.to_string());
-                let text = tokio::task::spawn_blocking(move || git.file_at(Path::new(&root), &base, &p))
-                    .await
-                    .map_err(|e| invalid(e.to_string()))?;
-                match text {
-                    Some(text) => tower_git::write_inside(&self.dir, path, text.as_bytes())?,
-                    None => {
-                        let _ = std::fs::remove_file(self.dir.join(path));
-                    }
-                }
-            }
-            let profile =
-                if held_files.is_empty() { self.criteria.as_deref() } else { self.held_out_profile.as_deref() };
-            let mut depends = Vec::new();
-            for (c, command, timeout) in &criteria {
-                // A command that runs a file no longer there says nothing.
-                if paths_gone(&self.dir, command) || (held_files.is_empty() && names_held_out(&self.holdout, command)) {
-                    continue;
-                }
-                let r = self.exec(command, profile, Duration::from_secs((*timeout).max(1) as u64)).await;
-                // No verdict is not a pass: this run must say yes.
-                let passed = r.passed && !r.environment_failure;
-                inner.append(
-                    goal,
-                    EventKind::OriginalTestsResult { criterion: c.id.clone(), pin: pin.into(), passed },
-                )?;
-                if !passed {
-                    depends.push(c.id.clone());
-                }
-            }
-            if !depends.is_empty() {
-                let shown: Vec<&str> = paths.iter().take(12).copied().collect();
-                let more = paths.len() - shown.len();
-                let mut list = shown.join(", ");
-                if more > 0 {
-                    list.push_str(&tr!(lang, " 等另外 {more} 个", " and {more} more"));
-                }
-                let detail = tr!(
-                    lang,
-                    "{ids} 只有在 Agent 对源码之外的改动下才通过；这些文件恢复成基线版本后失败：{list}",
-                    "{ids} pass only with the agent's changes outside the source code, and fail with these files as they were on the base: {list}",
-                    ids = depends.join(", ")
-                );
-                let hit = sentinel_hit("passes_only_with_non_source_changes", detail, lang);
-                append_hit(inner, goal, &hit)?;
-                found.push(hit);
-            }
-        }
+        // 4. Only the source changes kept (including AST restoration of inline
+        // Rust `#[cfg(test)]` / `#[test]` regions inside `.rs` source files).
+        self.source_only_step(pin, &criteria, files, &mut held_files, &mut found).await?;
 
         // 5. A test that must fail: for the criteria that proved the change,
         // and for those whose base did not run (their pass is all there is;
@@ -719,14 +661,19 @@ impl<'a> Bench<'a> {
             return Ok(found);
         }
         // Honest about coverage: a compiled language has no hook to load a
-        // check before the test code, and a guarded runner that reported
-        // nothing was not checked either.
+        // check before the test code, a guarded runner that reported nothing
+        // was not checked, and any multi-process run where `finished < started`
+        // (at least one armed process exited without submitting its revealed
+        // nonce verdict) must be flagged — never masked by another process.
+        let incomplete = report.incomplete();
         let gaps: Vec<(String, Coverage)> = criteria
             .iter()
             .map(|(_, command, _)| (command.clone(), guard::coverage(command)))
-            .filter(|(_, c)| matches!(c, Coverage::NoHook(_)) || (*c == Coverage::Guarded && report.finished == 0))
+            .filter(|(_, c)| {
+                matches!(c, Coverage::NoHook(_)) || (*c == Coverage::Guarded && (report.finished == 0 || incomplete))
+            })
             .collect();
-        if let Some(detail) = guard::unchecked_detail(&gaps, lang) {
+        if let Some(detail) = guard::unchecked_detail_for(&gaps, report.started, report.finished, lang) {
             let hit = tower_core::sentinel::SentinelHit {
                 sentinel: "assertion_identity_unchecked".into(),
                 severity: 2,

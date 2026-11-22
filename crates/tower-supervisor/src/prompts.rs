@@ -3,9 +3,26 @@
 //! injected by Tower. Always English; only the language the agent writes to
 //! the human follows the settings.
 
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 use tower_core::Lang;
 use tower_core::contract::{Autonomy, Contract, CriterionKind};
 use tower_core::i18n::sentinel_title;
+use tower_pi::ImageAttachment;
+
+/// Reference to an image or visual attachment stored inside a goal's private
+/// read-allowed folder (e.g. pasted screenshots on contracts or steers).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptAttachment {
+    /// Absolute or goal-relative path inside the goal's private attachments folder.
+    pub path: String,
+    /// MIME type (`image/png`, `image/jpeg`, `image/webp`, `image/gif`).
+    pub mime_type: String,
+    /// Optional human-readable label or filename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
 
 /// Appended to Pi's system prompt for every run of a goal. Stays well under
 /// the 650-token resident budget (`ADR-009`); the full contract travels in
@@ -23,6 +40,9 @@ assumption that needs confirming, your next step. One sentence each.\n\
 - Use `ask_user` only when the contract leaves a real decision open. Otherwise decide and log it.\n\
 - When every acceptance criterion is met, call `submit` once and stop. Tower re-runs the criteria in a \
 clean checkout; your own word does not complete the goal.\n\
+- If the goal is impossible, contradictory, or blocked by the contract or sandbox, call `submit` with \
+`outcome: \"blocked\"` and `blocker_reason`. Honest blocker reports are explicitly sanctioned and \
+always preferred over workarounds or weakening tests.\n\
 - Stay inside the contract's scope. Writes outside it, new dependencies and one-way actions need approval.\n\
 - Write log, ask_user and submit text in {language}."
     );
@@ -45,6 +65,46 @@ fn autonomy_label(a: Autonomy) -> &'static str {
         Autonomy::Standard => "standard (edit in scope and run tests directly; ask for dependencies, CI, deletions)",
         Autonomy::Autonomous => "autonomous (ask only for one-way actions such as push or publish)",
     }
+}
+
+/// Renders attached screenshots/images as a compact section pointing to their
+/// sandbox-readable paths so both multimodal and text-only engines can use them.
+pub fn attachments_section(attachments: &[PromptAttachment]) -> String {
+    if attachments.is_empty() {
+        return String::new();
+    }
+    let mut s = String::from("\n## Attached images\n");
+    for a in attachments {
+        let name = a.label.as_deref().filter(|l| !l.trim().is_empty()).unwrap_or(&a.path);
+        s.push_str(&format!("- {name} ({}, path: `{}`)\n", a.mime_type, a.path));
+    }
+    s.push_str(
+        "Attached images are included inline when supported and remain readable via `read` at the path above.\n",
+    );
+    s
+}
+
+/// Loads image attachments for multimodal delivery ONLY when their canonical
+/// path lies inside `allowed_roots` (the goal's private attachments folder or
+/// workspace). Paths outside `allowed_roots` are silently skipped so an
+/// attachment reference can never bypass Tower's sandbox boundary.
+pub fn load_image_attachments(attachments: &[PromptAttachment], allowed_roots: &[&Path]) -> Vec<ImageAttachment> {
+    let roots: Vec<_> = allowed_roots.iter().filter_map(|r| std::fs::canonicalize(r).ok()).collect();
+    let mut out = Vec::new();
+    for a in attachments {
+        let Ok(canon) = std::fs::canonicalize(&a.path) else {
+            continue;
+        };
+        if !roots.iter().any(|r| canon.starts_with(r)) {
+            tracing::warn!(path = %a.path, "refused to load prompt attachment outside goal directories");
+            continue;
+        }
+        match ImageAttachment::from_file(&canon, a.label.clone()) {
+            Ok(img) => out.push(img),
+            Err(e) => tracing::warn!(path = %a.path, error = %e, "could not load image attachment"),
+        }
+    }
+    out
 }
 
 /// The contract rendered for the model.
@@ -127,10 +187,25 @@ connects to in the same command is unreachable unless it listens on a declared p
 }
 
 pub fn initial(title: &str, c: &Contract) -> String {
+    initial_with_attachments(title, c, &[])
+}
+
+/// First prompt for a goal, including any pasted screenshot attachments.
+pub fn initial_with_attachments(title: &str, c: &Contract, attachments: &[PromptAttachment]) -> String {
     format!(
-        "{}\nStart by reading the relevant code. Log the cause or plan as soon as you have one.",
-        contract_brief(title, c)
+        "{}{}\nStart by reading the relevant code. Log the cause or plan as soon as you have one.",
+        contract_brief(title, c),
+        attachments_section(attachments)
     )
+}
+
+/// Formats a human steering message together with any attached images.
+pub fn steer_with_attachments(text: &str, attachments: &[PromptAttachment]) -> String {
+    if attachments.is_empty() {
+        text.to_string()
+    } else {
+        format!("{}\n{}", text.trim(), attachments_section(attachments))
+    }
 }
 
 /// One failed criterion, as evidence for rework.
@@ -168,7 +243,10 @@ pub fn rework(cycle: u32, max: u32, failures: &[Failure]) -> String {
             tail_chars(f.output_tail.trim(), EVIDENCE_CHARS)
         ));
     }
-    s.push_str("\nFix the cause (not the test), log what was wrong, then submit again.");
+    s.push_str(
+        "\nFix the cause (not the test), log what was wrong, then submit again. \
+If the specification is genuinely impossible or contradictory within the contract, call `submit` with `outcome: \"blocked\"` and `blocker_reason`.",
+    );
     s
 }
 
@@ -295,12 +373,16 @@ The human asked you to redo the work without them:\n",
         let title = sentinel_title(&h.sentinel, Lang::En).unwrap_or(&h.title);
         s.push_str(&format!("\n- {title}:\n{}\n", h.detail));
     }
-    s.push_str("\nRestore the tests and the test command, fix the cause, log what you changed, then submit again.");
+    s.push_str(
+        "\nRestore the tests and the test command, fix the cause, log what you changed, then submit again. \
+If the goal cannot be satisfied honestly within the contract, call `submit` with `outcome: \"blocked\"` and `blocker_reason`.",
+    );
     s
 }
 
 pub const NUDGE: &str = "You stopped without calling `submit`. If the goal is done, call `submit`. \
-If you are blocked, ask the human with `ask_user`. Otherwise continue.";
+If the specification is impossible or contradictory, call `submit` with `outcome: \"blocked\"` and `blocker_reason`. \
+If you need a decision, ask the human with `ask_user`. Otherwise continue.";
 
 #[cfg(test)]
 mod tests {
@@ -324,7 +406,10 @@ mod tests {
     #[test]
     fn system_section_is_small() {
         // Rough token estimate: 4 chars per token.
-        assert!(system_section("G-0001", &[], "Simplified Chinese").len() / 4 < 300);
+        let s = system_section("G-0001", &[], "Simplified Chinese");
+        assert!(s.len() / 4 < 300, "len={}", s.len());
+        assert!(s.contains(r#"outcome: "blocked""#));
+        assert!(s.contains("explicitly sanctioned"));
         let with = system_section("G-0001", &[("Project memory", "金额一律用 Money 类型")], "English");
         assert!(with.contains("Project memory"));
         assert!(with.contains("in English."));
@@ -341,6 +426,40 @@ mod tests {
     }
 
     #[test]
+    fn attachments_render_and_enforce_root_containment() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let allowed_img = dir.path().join("shot.png");
+        let outside_img = outside.path().join("secret.png");
+        let png = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0];
+        std::fs::write(&allowed_img, png).unwrap();
+        std::fs::write(&outside_img, png).unwrap();
+
+        let list = vec![
+            PromptAttachment {
+                path: allowed_img.display().to_string(),
+                mime_type: "image/png".into(),
+                label: Some("bug.png".into()),
+            },
+            PromptAttachment {
+                path: outside_img.display().to_string(),
+                mime_type: "image/png".into(),
+                label: Some("escape.png".into()),
+            },
+        ];
+        let c = Contract::quick("Fix alignment", None, Lang::En);
+        let init = initial_with_attachments("Fix alignment", &c, &list);
+        assert!(init.contains("## Attached images"));
+        assert!(init.contains("bug.png"));
+        assert!(steer_with_attachments("look at header", &list).contains("## Attached images"));
+
+        let loaded = load_image_attachments(&list, &[dir.path()]);
+        assert_eq!(loaded.len(), 1, "outside attachment must never be loaded");
+        assert_eq!(loaded[0].mime_type, "image/png");
+        assert_eq!(loaded[0].label.as_deref(), Some("bug.png"));
+    }
+
+    #[test]
     fn rework_evidence_is_bounded() {
         let f = Failure {
             id: "C1".into(),
@@ -349,7 +468,7 @@ mod tests {
             exit_code: Some(1),
             output_tail: "é".repeat(10_000),
         };
-        assert!(rework(1, 3, &[f]).chars().count() < EVIDENCE_CHARS + 500);
+        assert!(rework(1, 3, &[f]).chars().count() < EVIDENCE_CHARS + 600);
     }
 
     #[test]

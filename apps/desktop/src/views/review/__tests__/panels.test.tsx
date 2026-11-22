@@ -175,4 +175,81 @@ describe("AcceptPanel", () => {
     expect(first.querySelector(".mark-attention")).not.toBeNull();
     expect(first.querySelector(".mark-danger")).toBeNull();
   });
+
+  it("displays the physical Acceptance Seal 4-point pre-flight checklist", () => {
+    const clean = {
+      ...detail,
+      sentinels: [],
+      criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })),
+    } as unknown as GoalDetail;
+    const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={clean} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    const checks = [...container.querySelectorAll(".seal-check")].map((el) => el.textContent);
+    expect(checks).toEqual(["Snapshot fresh", "0 high sentinels", "Human checks clear", "Merge prediction clear"]);
+  });
+});
+
+describe("ChangesPanel steering dispatch & Review extras", () => {
+  it("dispatches anchored comments as steering directives on ⌘↩", async () => {
+    const { ChangesPanel } = await import("../panels");
+    const { invoked } = await import("../../../test/setup");
+    const before = invoked.filter((c) => c.cmd === "request_changes").length;
+    const { container } = render(() => (
+      <ChangesPanel
+        id="G-0001"
+        comments={[{ path: "src/cart.ts", line: 11, text: "Multiply instead of add" }]}
+        onClose={() => {}}
+        onSent={() => {}}
+        onRemove={() => {}}
+      />
+    ));
+    expect(screen.getByText("Steering dispatch tray")).toBeTruthy();
+    expect(screen.getByText("1 anchored")).toBeTruthy();
+    const ta = container.querySelector("textarea")!;
+    ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
+    await Promise.resolve();
+    expect(invoked.filter((c) => c.cmd === "request_changes").length).toBe(before + 1);
+  });
+
+  it("renders dashed UnitNarrative Claim card with solid risk badges", async () => {
+    const { UnitNarrative } = await import("../notes");
+    const { container } = render(() => (
+      <UnitNarrative
+        claim="Replaced addition with multiplication in total() to fix pricing."
+        riskReasons={["Expectation changed"]}
+        highSentinels={["Bypass pattern"]}
+      />
+    ));
+    expect(container.querySelector(".unit-narrative.prov-claim")).not.toBeNull();
+    expect(screen.getByText(/Agent claims why/)).toBeTruthy();
+    expect(screen.getByText("Expectation changed")).toBeTruthy();
+    expect(screen.getByText("Bypass pattern")).toBeTruthy();
+  });
+
+  it("renders Snapshot Timeline scope switcher with All, Since Last, Last Turn, and Compare Runs", async () => {
+    const { TimelineSwitcher } = await import("../Timeline");
+    const scopes: string[] = [];
+    const compares: Array<[string, string]> = [];
+    render(() => (
+      <TimelineSwitcher
+        scope="compare"
+        onScope={(s) => scopes.push(s)}
+        previous="prev111"
+        pin="pin9999"
+        snapshots={[
+          { rev: "base000", kind: "base", label: "base @base000", run_no: null, at: null },
+          { rev: "run1111", kind: "run_start", label: "R-01 @run1111", run_no: 1, at: 100 },
+          { rev: "pin9999", kind: "pin", label: "Current @pin9999", run_no: null, at: 200 },
+        ]}
+        fromRev="base000"
+        toRev="pin9999"
+        onCompare={(f, to) => compares.push([f, to])}
+      />
+    ));
+    expect(screen.getByRole("tab", { name: "All changes" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Since last review" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Last turn" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Compare runs…" })).toBeTruthy();
+    screen.getByRole("tab", { name: "Last turn" }).click();
+    expect(scopes).toEqual(["last_turn"]);
+  });
 });

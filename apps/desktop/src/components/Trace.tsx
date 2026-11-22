@@ -20,31 +20,53 @@ import { PrLine } from "./Pr";
 import { Empty } from "./ui";
 import { act, onTrace, refreshProjects, state } from "../lib/store";
 
-type Filter = "all" | "tools" | "words" | "facts" | "errors";
+type Filter = "all" | "anomalies" | "injections" | "decisions" | "tools" | "facts";
 
-const filters: Filter[] = ["all", "tools", "words", "facts", "errors"];
+const filters: Filter[] = ["all", "anomalies", "injections", "decisions", "tools", "facts"];
 
 /** Rows rendered at once; the step the window grows by at the top. */
 export const WINDOW = 300;
 const STEP = 200;
 const PAGE = 200;
 
+const isAnomaly = (e: TraceEntry): boolean => {
+  const ev = e.event as { kind: string; is_error?: boolean; denied?: boolean; passed?: boolean };
+  return (
+    ev.kind === "engine_error" ||
+    ev.kind === "sentinel_hit" ||
+    ev.kind === "stalled" ||
+    ev.kind === "agent_blocked" ||
+    ev.kind === "criterion_flaky" ||
+    (ev.kind === "tool_ended" && (!!ev.is_error || !!ev.denied)) ||
+    (ev.kind === "criterion_result" && !ev.passed)
+  );
+};
+
 export function matches(e: TraceEntry, f: Filter): boolean {
-  const k = e.event.kind;
+  const k = (e.event as { kind: string }).kind;
   if (k === "mode_changed" || k === "tool_started") return false; // folded into tool_ended rows
   // Spend ticks after every tool call: a fact, but noise in the full view.
   if (k === "cost_updated") return f === "facts";
   switch (f) {
     case "all":
       return true;
+    case "anomalies":
+      return isAnomaly(e);
+    case "injections":
+      return k === "injected" || k === "steered" || k === "model_escalated";
+    case "decisions":
+      return (
+        e.source === "claim" ||
+        k === "inbox_opened" ||
+        k === "inbox_resolved" ||
+        k === "human_check" ||
+        k === "claim_reviewed" ||
+        k === "agent_blocked"
+      );
     case "tools":
       return k === "tool_ended";
-    case "words":
-      return e.source === "claim";
     case "facts":
       return e.source === "fact" && k !== "tool_ended";
-    case "errors":
-      return k === "engine_error" || (k === "tool_ended" && e.event.is_error) || (k === "criterion_result" && !e.event.passed);
   }
 }
 
@@ -132,15 +154,26 @@ export function Trace(props: { id: string; live?: boolean }) {
     queueMicrotask(() => (scroller.scrollTop += scroller.scrollHeight - before));
   };
 
+  const anomalyCount = createMemo(() => entries().filter(isAnomaly).length);
+  const injectionCount = createMemo(() => entries().filter((e) => matches(e, "injections")).length);
+
   return (
     <div class="trace">
       <div class="trace-filters" role="tablist" aria-label={t("trace.filterLabel")}>
         <For each={filters}>
-          {(f) => (
-            <button class="tab" role="tab" aria-selected={filter() === f} classList={{ active: filter() === f }} onClick={() => setFilter(f)}>
-              {t(`trace.${f}`)}
-            </button>
-          )}
+          {(f) => {
+            const badge = () => (f === "anomalies" ? anomalyCount() : f === "injections" ? injectionCount() : 0);
+            return (
+              <button class="tab" role="tab" aria-selected={filter() === f} classList={{ active: filter() === f }} onClick={() => setFilter(f)}>
+                <span>{t(`trace.${f}`)}</span>
+                <Show when={badge() > 0}>
+                  <span class="trace-tab-count num" classList={{ alert: f === "anomalies" }}>
+                    {badge()}
+                  </span>
+                </Show>
+              </button>
+            );
+          }}
         </For>
         <span class="grow" />
         <Show when={props.live}>
@@ -155,7 +188,7 @@ export function Trace(props: { id: string; live?: boolean }) {
         </Show>
         <Show when={loaded() && filtered().length === 0}>
           <div class="trace-empty">
-            <Empty title={entries().length === 0 ? t("trace.emptyTitle") : t(`trace.emptyFilter_${filter()}`)} inline>
+            <Empty title={entries().length === 0 ? t("trace.emptyTitle") : t(filter() === "tools" ? "trace.emptyFilter_tools" : filter() === "facts" ? "trace.emptyFilter_facts" : "trace.emptyFilter_all")} inline>
               {entries().length === 0 ? t("trace.emptyBody") : ""}
             </Empty>
           </div>
@@ -206,7 +239,13 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
         </div>
       }
     >
-      <div class={`trace-row trace-${props.e.source}`}>
+      <div
+        class={`trace-row trace-${props.e.source}`}
+        classList={{
+          "trace-anomaly": isAnomaly(props.e),
+          "trace-injected-row": ev().kind === "injected" || (ev() as { kind: string }).kind === "model_escalated",
+        }}
+      >
         <span class="trace-time num" classList={{ repeat: !!props.repeat }}>
           {clock(props.e.at)}
         </span>
@@ -221,9 +260,12 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 const result = () => (e.is_error || e.tool === "bash" || !call() ? e.summary : "");
                 return (
                   <div class="row">
-                    <span class="mono trace-tool" classList={{ "trace-error": e.is_error }}>
+                    <span class="mono trace-tool" classList={{ "trace-error": e.is_error || e.denied }}>
                       {e.tool}
                     </span>
+                    <Show when={e.denied}>
+                      <span class="trace-denied-tag">{t("trace.sandboxDenied")}</span>
+                    </Show>
                     <span class="mono t2 ellipsis grow" title={e.summary || undefined}>
                       {call() || e.summary || "—"}
                       <Show when={call() && result()}>
@@ -499,6 +541,38 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
               }}
             </Match>
             <Match when={ev().kind === "note" && ev()}>{(x) => <span class="t2">{(x() as { text: string }).text}</span>}</Match>
+            <Match when={(ev() as { kind: string }).kind === "model_escalated" && ev()}>
+              {(x) => {
+                const c = x() as unknown as { from_model: string; to_model: string; rework_cycle: number };
+                return (
+                  <span class="t1 row">
+                    <Icon name="harness" size={10} />
+                    {t("trace.modelEscalated", { from: c.from_model || "default", to: c.to_model, n: c.rework_cycle })}
+                  </span>
+                );
+              }}
+            </Match>
+            <Match when={(ev() as { kind: string }).kind === "agent_blocked" && ev()}>
+              {(x) => {
+                const c = x() as unknown as { reason: string; evidence?: string };
+                return (
+                  <Claim kind={t("trace.agentBlocked")}>
+                    <span class="pre">{c.reason}{c.evidence ? `\n${c.evidence}` : ""}</span>
+                  </Claim>
+                );
+              }}
+            </Match>
+            <Match when={(ev() as { kind: string }).kind === "criterion_flaky" && ev()}>
+              {(x) => {
+                const c = x() as unknown as { criterion: string; pin: string };
+                return (
+                  <span class="t1 row">
+                    <NoticeMark />
+                    {t("trace.criterionFlaky", { criterion: c.criterion, pin: short(c.pin) })}
+                  </span>
+                );
+              }}
+            </Match>
             <Match when={ev().kind === "submitted" && ev()}>
               {(x) => <Claim kind={t("trace.done")}>{(x() as { summary: string }).summary}</Claim>}
             </Match>

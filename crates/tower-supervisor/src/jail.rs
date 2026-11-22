@@ -69,7 +69,12 @@ pub(crate) fn agent_jail(
     // project's setting): the agent runs the same tests.
     net.open |= loopback_opened_for(inner, goal);
     let dirs = Dirs { work: dir, tmp, cache: &cache };
-    let mut built = jail(inner, &goal_dir, &dirs, purpose, &net, &TowerFiles::default())?;
+    let attachments_dir = goal_dir.join("attachments");
+    let mut tower_files = TowerFiles::default();
+    if attachments_dir.is_dir() {
+        tower_files.read.push(attachments_dir);
+    }
+    let mut built = jail(inner, &goal_dir, &dirs, purpose, &net, &tower_files)?;
     if let Some(alloc) = &port_alloc {
         built.env.extend(alloc.env_vars());
     }

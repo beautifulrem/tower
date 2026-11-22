@@ -34,11 +34,7 @@ pub const SANDBOX_PROBE_THRESHOLD: u32 = 5;
 pub const SANDBOX_PROBE_GRACE: Duration = Duration::from_secs(1);
 
 /// Pause reason used when the agent honestly calls `submit(outcome: "blocked")`.
-///
-/// Integration hook: once `core-store-backend`'s `PauseReason::AgentReportedBlocked`
-/// is merged into `tower-core`, switch this single constant to
-/// `PauseReason::AgentReportedBlocked`.
-pub const AGENT_REPORTED_BLOCKED_PAUSE_REASON: PauseReason = PauseReason::IdleWithoutSubmit;
+pub const AGENT_REPORTED_BLOCKED_PAUSE_REASON: PauseReason = PauseReason::AgentReportedBlocked;
 
 /// Pause reason used when the Anti-Probing Early Stall detector stops a run.
 pub const SANDBOX_PROBE_PAUSE_REASON: PauseReason = PauseReason::IdleWithoutSubmit;
@@ -176,10 +172,43 @@ pub async fn schedule(inner: &Arc<Inner>) {
         if inner.running_count() >= max {
             break;
         }
-        let (purpose, message) = if g.run_no == 0 {
-            ("initial", prompts::initial(&g.title, &agent_contract(inner, &g)))
+        // Respect cross-goal dependencies (`Contract.depends_on`): wait until
+        // every prerequisite goal has been accepted, integrated, or archived.
+        if !g.contract.depends_on.is_empty() {
+            let deps_met = g.contract.depends_on.iter().all(|dep_id| {
+                inner.read_store(|s| s.goal(dep_id)).is_ok_and(|dep| {
+                    matches!(
+                        dep.state,
+                        LifecycleState::Accepted | LifecycleState::Integrated | LifecycleState::Archived
+                    )
+                })
+            });
+            if !deps_met {
+                continue;
+            }
+        }
+        let goal_dir = inner.paths.goal_dir(&g.id);
+        let prompt_atts: Vec<prompts::PromptAttachment> = g
+            .contract
+            .attachments
+            .iter()
+            .map(|a| prompts::PromptAttachment {
+                path: a.path.clone(),
+                mime_type: a.mime.clone(),
+                label: Some(a.name.clone()),
+            })
+            .collect();
+        let (purpose, message, images) = if g.run_no == 0 {
+            let msg = prompts::initial_with_attachments(&g.title, &agent_contract(inner, &g), &prompt_atts);
+            let att_dir = goal_dir.join("attachments");
+            let imgs = prompts::load_image_attachments(&prompt_atts, &[&att_dir, &goal_dir]);
+            ("initial", msg, imgs)
         } else {
-            ("resume", prompts::resume("waiting for a free slot", &human_notes_since_last_run(inner, &g.id), &[]))
+            (
+                "resume",
+                prompts::resume("waiting for a free slot", &human_notes_since_last_run(inner, &g.id), &[]),
+                Vec::new(),
+            )
         };
         // Re-read: the goal may have been paused or abandoned since the list
         // was taken, and the scheduler must never start what a human stopped.
@@ -187,7 +216,7 @@ pub async fn schedule(inner: &Arc<Inner>) {
         if !still_ready {
             continue;
         }
-        if let Err(e) = start_scheduled(inner, &g.id, purpose, message).await {
+        if let Err(e) = start_scheduled(inner, &g.id, purpose, message, images).await {
             tracing::warn!(goal = %g.id, error = %e, "could not start run");
         }
     }
@@ -273,15 +302,40 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
         ("TOWER_ACP_AGENT".into(), acp_agent),
         ("PI_OFFLINE".into(), "1".into()),
     ]);
+    if let Ok(helper) = std::env::var(crate::fs_helper::ENV_FS_HELPER)
+        && !helper.trim().is_empty()
+    {
+        env.push((crate::fs_helper::ENV_FS_HELPER.into(), helper));
+    }
     let jail = agent_jail(inner, goal, ws, &tmp, "agent", goal.contract.network)?;
+    // Record dynamically allocated port block once per allocation.
+    let current_port = inner.read_store(|s| s.summary(&goal.id)).ok().and_then(|s| s.port_base);
+    if let Some(alloc) = crate::ports_pool::get_for_root(&inner.paths.root, &goal.id)
+        && current_port != Some(alloc.base)
+    {
+        let _ = inner.append(&goal.id, EventKind::PortBlockAllocated { base: alloc.base, count: alloc.count });
+    }
     // The agent's shell and file tools inherit the private caches.
     env.extend(jail.env.into_iter().filter(|(k, _)| k != "TMPDIR"));
     if let Some(profile) = jail.profile {
         env.push(("TOWER_SANDBOX_PROFILE".into(), profile.display().to_string()));
     }
-    let model = Some(goal.contract.model.clone())
-        .filter(|m| !m.is_empty())
-        .or_else(|| Some(settings.default_model.clone()).filter(|m| !m.is_empty()));
+    let (model, escalated) = inner.effective_model_for(goal, goal.rework_cycles);
+    let current_escalated = inner.read_store(|s| s.detail(&goal.id)).ok().and_then(|d| d.escalated_model);
+    if escalated
+        && let Some(ref to_model) = model
+        && current_escalated.as_deref() != Some(to_model.as_str())
+    {
+        let from_model = if !goal.contract.model.trim().is_empty() {
+            goal.contract.model.clone()
+        } else {
+            settings.default_model.clone()
+        };
+        let _ = inner.append(
+            &goal.id,
+            EventKind::ModelEscalated { from_model, to_model: to_model.clone(), rework_cycle: goal.rework_cycles },
+        );
+    }
     let thinking = Some(goal.contract.thinking.clone())
         .filter(|m| !m.is_empty())
         .or_else(|| Some(settings.default_thinking.clone()).filter(|m| !m.is_empty()));
@@ -355,8 +409,9 @@ fn start_scheduled<'a>(
     goal_id: &'a str,
     purpose: &'a str,
     message: String,
+    images: Vec<ImageAttachment>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(start_run_inner(inner, goal_id, purpose, message, Vec::new(), true))
+    Box::pin(start_run_inner(inner, goal_id, purpose, message, images, true))
 }
 
 /// `only_if_ready`: the scheduler's starts, which must not start a goal that
@@ -742,7 +797,9 @@ done"#;
         }
         let detail = sup.goal(&id).unwrap();
         assert_eq!(detail.summary.state, LifecycleState::Paused);
+        assert_eq!(detail.summary.pause_reason, Some(PauseReason::AgentReportedBlocked));
         let trace = sup.trace(&id, None, 200).unwrap();
+        assert!(trace.iter().any(|e| matches!(&e.event, EventKind::AgentBlocked { .. })));
         assert!(trace.iter().any(|e| matches!(&e.event, EventKind::RunEnded { outcome, .. } if outcome == "blocked")));
         assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::VerifyStarted { .. })));
         assert!(detail.claims.iter().any(|c| c.text.contains("readonly package.json")));

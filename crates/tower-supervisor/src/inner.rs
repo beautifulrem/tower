@@ -99,6 +99,7 @@ impl Inner {
         if let Ok(g) = self.read_store(|s| s.summary(goal)) {
             self.sink.emit(UiUpdate::Goal { goal: g });
         }
+        self.remote.notify();
     }
 
     pub fn emit_projects(&self) {
@@ -111,6 +112,7 @@ impl Inner {
         if let Ok((items, snoozed)) = self.read_store(|s| Ok((s.open_inbox_items()?, s.snoozed_inbox_items()?))) {
             self.sink.emit(UiUpdate::Inbox { items, snoozed });
         }
+        self.remote.notify();
     }
 
     /// A transient message about one goal.
@@ -129,10 +131,14 @@ impl Inner {
     pub(crate) fn flush_dirty(&self) {
         self.flush_traces();
         let ids: Vec<String> = self.dirty.lock().unwrap_or_else(PoisonError::into_inner).drain().collect();
+        let changed = !ids.is_empty();
         for id in ids {
             if let Ok(g) = self.read_store(|s| s.summary(&id)) {
                 self.sink.emit(UiUpdate::Goal { goal: g });
             }
+        }
+        if changed {
+            self.remote.notify();
         }
     }
 

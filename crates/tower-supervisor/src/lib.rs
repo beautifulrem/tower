@@ -662,6 +662,7 @@ impl Supervisor {
 
     pub fn archive(&self, id: &str) -> Result<()> {
         self.inner.transition(id, Transition::Archive, None, "")?;
+        let _ = crate::ports_pool::release_for_root(&self.inner.paths.root, id);
         let reason = tr!(self.inner.lang(), "已归档", "Archived");
         self.inner.withdraw(id, &[InboxKind::ReviewReady, InboxKind::Assumption, InboxKind::Paused], &reason);
         Ok(())

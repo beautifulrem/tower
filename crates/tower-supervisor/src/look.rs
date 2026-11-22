@@ -6,6 +6,54 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
+
+/// Browser viewport dimensions for `look` visual evidence capture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Viewport {
+    pub width: u32,
+    pub height: u32,
+    pub device_scale_factor: u32,
+    pub mobile: bool,
+}
+
+impl Viewport {
+    /// Standard desktop capture viewport (`1280x800`, 2x DPR).
+    pub const DESKTOP: Self = Self { width: 1280, height: 800, device_scale_factor: 2, mobile: false };
+    /// Standard mobile capture viewport (`390x844`, 2x DPR, mobile layout).
+    pub const MOBILE: Self = Self { width: 390, height: 844, device_scale_factor: 2, mobile: true };
+}
+
+/// Optional multi-viewport capture settings for [`capture_evidence`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LookOptions {
+    /// Override desktop viewport (defaults to [`Viewport::DESKTOP`]).
+    pub desktop: Option<Viewport>,
+    /// When set, also captures a mobile viewport screenshot to this path in the same browser session.
+    pub mobile_out: Option<PathBuf>,
+    /// Override mobile viewport (defaults to [`Viewport::MOBILE`]).
+    pub mobile_viewport: Option<Viewport>,
+}
+
+/// Structured visual + runtime evidence returned by [`capture_evidence`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LookCaptureResult {
+    /// Path to the primary desktop PNG screenshot.
+    pub screenshot: PathBuf,
+    /// Path to the mobile PNG screenshot when multi-viewport capture was requested.
+    pub mobile_screenshot: Option<PathBuf>,
+    /// Browser `Runtime.exceptionThrown`, `Console.error`, and `Log.entryAdded(error)` facts.
+    pub console_errors: Vec<String>,
+}
+
+/// Canonical companion path for a mobile screenshot beside `desktop_out`
+/// (e.g. `C2-pin-abc.png` -> `C2-pin-abc-mobile.png`).
+pub fn mobile_path_for(desktop_out: &Path) -> PathBuf {
+    let stem = desktop_out.file_stem().and_then(|s| s.to_str()).unwrap_or("look");
+    let ext = desktop_out.extension().and_then(|s| s.to_str()).unwrap_or("png");
+    desktop_out.with_file_name(format!("{stem}-mobile.{ext}"))
+}
+
 const BROWSERS: &[&str] = &[
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
@@ -58,7 +106,7 @@ fn answers(url: &str) -> bool {
 
 /// Why there is no screenshot.
 #[derive(Debug)]
-pub(crate) enum LookError {
+pub enum LookError {
     /// The picture could not be taken (the page, the browser, a step).
     Shot(String),
     /// The picture could not be evidence: something other than the app the
@@ -91,11 +139,9 @@ fn holder(pid: Option<i32>) -> String {
     format!("{name}, pid {pid}")
 }
 
-/// Starts the app, captures `url` into `out`, stops the app. The picture
-/// is only ever of the app this call started: the port must be free
-/// before it starts, and every listener on it afterwards must be in the
-/// verification's own sandbox (`dir`'s; without a sandbox, the app's
-/// process group).
+/// Starts the app, captures `url` into `out`, stops the app. Kept
+/// source-compatible with existing `verify/bench/looks.rs` callers; use
+/// [`capture_evidence`] for captured `console_errors` and multi-viewport shots.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn capture(
     id: &str,
@@ -110,6 +156,29 @@ pub(crate) async fn capture(
     steps: &[String],
     out: &Path,
 ) -> Result<PathBuf, LookError> {
+    capture_evidence(id, root, dir, env, profile, start, url, timeout, network, steps, out, &LookOptions::default())
+        .await
+        .map(|r| r.screenshot)
+}
+
+/// Starts the app, captures desktop (and optional mobile) screenshots of `url`
+/// alongside browser `Runtime.exceptionThrown` / `console.error` / `Log.entryAdded`
+/// error facts over CDP, then stops the app.
+#[allow(clippy::too_many_arguments)]
+pub async fn capture_evidence(
+    id: &str,
+    root: &Path,
+    dir: &Path,
+    env: &[(String, String)],
+    profile: Option<&Path>,
+    start: &str,
+    url: &str,
+    timeout: Duration,
+    network: bool,
+    steps: &[String],
+    out: &Path,
+    options: &LookOptions,
+) -> Result<LookCaptureResult, LookError> {
     let steps: Vec<tower_core::contract::LookStep> = steps
         .iter()
         .map(|s| tower_core::contract::LookStep::parse(s))
@@ -137,6 +206,11 @@ pub(crate) async fn capture(
     }
     let browser = browser().ok_or("no Chrome, Chromium, Edge, Brave or Arc to take screenshots with")?;
     if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    if let Some(mobile_out) = &options.mobile_out
+        && let Some(parent) = mobile_out.parent()
+    {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let mut app = tokio::process::Command::new("/bin/sh")
@@ -187,6 +261,7 @@ pub(crate) async fn capture(
     }
     let profile_dir = tempfile_dir();
     let out_dir = out.parent().unwrap_or(Path::new("/nonexistent")).to_path_buf();
+    let mobile_dir = options.mobile_out.as_deref().and_then(Path::parent).map(crate::paths::real);
     // Chromium looks up its default data folder (in your real home: it asks
     // the system, not $HOME) before reading --user-data-dir, and aborts if it
     // cannot create it — which the profile forbids. Its crash handler starts
@@ -208,10 +283,11 @@ pub(crate) async fn capture(
         let (profile_real, out_real) = (crate::paths::real(&profile_dir), crate::paths::real(&out_dir));
         let fonts = home.join("Library/Fonts");
         let user_temp = user_temp_dir();
-        let writable: Vec<&Path> = [Some(profile_real.as_path()), Some(out_real.as_path()), crash_dir.as_deref()]
-            .into_iter()
-            .flatten()
-            .collect();
+        let writable: Vec<&Path> =
+            [Some(profile_real.as_path()), Some(out_real.as_path()), mobile_dir.as_deref(), crash_dir.as_deref()]
+                .into_iter()
+                .flatten()
+                .collect();
         let text = crate::sandbox::browser_profile(&crate::sandbox::BrowserSpec {
             browser: Path::new(browser),
             home: &home,
@@ -236,6 +312,7 @@ pub(crate) async fn capture(
         }
         None => tokio::process::Command::new(browser),
     };
+    let desktop_vp = options.desktop.unwrap_or(Viewport::DESKTOP);
     cmd.env("HOME", &profile_dir);
     cmd.args([
         "--headless=new",
@@ -248,8 +325,8 @@ pub(crate) async fn capture(
         "--hide-scrollbars",
         "--no-first-run",
         "--no-default-browser-check",
-        "--force-device-scale-factor=2",
-        "--window-size=1280,800",
+        &format!("--force-device-scale-factor={}", desktop_vp.device_scale_factor),
+        &format!("--window-size={},{}", desktop_vp.width, desktop_vp.height),
     ])
     .arg(format!("--user-data-dir={}", profile_dir.display()))
     // The page is the agent's code, and the browser runs outside the
@@ -268,44 +345,29 @@ pub(crate) async fn capture(
     })
     .stdout(std::process::Stdio::null())
     .stderr(std::process::Stdio::piped());
-    if !steps.is_empty() {
-        // Steps first: the browser is driven over its DevTools protocol.
-        let r = with_steps(&mut cmd, url, &steps, out, timeout.max(Duration::from_secs(10))).await;
-        stop();
-        let _ = std::fs::remove_dir_all(&profile_dir);
-        return r.map(|_| out.to_path_buf()).map_err(LookError::Shot);
-    }
-    let shot = tokio::time::timeout(
-        Duration::from_secs(45),
-        cmd.arg("--virtual-time-budget=3000").arg(format!("--screenshot={}", out.display())).arg(url).output(),
-    )
-    .await;
+    // Drive over DevTools Protocol so every `look` capture records structured
+    // Runtime/Console/Log error facts alongside desktop (and optional mobile) screenshots.
+    let drive_res = with_cdp(&mut cmd, url, &steps, out, options, timeout.max(Duration::from_secs(15))).await;
     stop();
     let _ = std::fs::remove_dir_all(&profile_dir);
-    match shot {
-        Ok(Ok(o)) if o.status.success() && out.is_file() => Ok(out.to_path_buf()),
-        Ok(Ok(o)) => {
-            // Chromium's last words, without its noise about displays.
-            let err = String::from_utf8_lossy(&o.stderr);
-            let mut tail: Vec<&str> =
-                err.lines().filter(|l| !l.contains("DisplayLink") && !l.trim().is_empty()).rev().take(6).collect();
-            tail.reverse();
-            Err(format!("the browser could not take the screenshot ({}): {}", o.status, tail.join(" / ")).into())
-        }
-        Ok(Err(e)) => Err(format!("the browser did not start: {e}").into()),
-        Err(_) => Err("the browser took too long".into()),
-    }
+    let driven = drive_res.map_err(LookError::Shot)?;
+    Ok(LookCaptureResult {
+        screenshot: out.to_path_buf(),
+        mobile_screenshot: driven.mobile_written.then(|| options.mobile_out.clone()).flatten(),
+        console_errors: driven.console_errors,
+    })
 }
 
-/// Starts the browser with its DevTools endpoint, does `steps` on `url`
-/// and writes the picture to `out`.
-async fn with_steps(
+/// Starts the browser with its DevTools endpoint, captures runtime/console errors,
+/// runs `steps` on `url`, and writes desktop (+ optional mobile) PNGs.
+async fn with_cdp(
     cmd: &mut tokio::process::Command,
     url: &str,
     steps: &[tower_core::contract::LookStep],
     out: &Path,
+    options: &LookOptions,
     timeout: Duration,
-) -> Result<(), String> {
+) -> Result<crate::look_cdp::DriveResult, String> {
     use tokio::io::AsyncBufReadExt;
     let mut child = cmd
         .args(["--remote-debugging-port=0", "about:blank"])
@@ -330,9 +392,21 @@ async fn with_steps(
     // Keep reading its output so it never blocks on a full pipe.
     tokio::spawn(async move { while let Ok(Some(_)) = lines.next_line().await {} });
     let (url, steps, out) = (url.to_string(), steps.to_vec(), out.to_path_buf());
-    let r = tokio::task::spawn_blocking(move || crate::look_cdp::drive(&ws, &url, &steps, &out, timeout))
-        .await
-        .map_err(|e| e.to_string())?;
+    let desktop = options.desktop.unwrap_or(Viewport::DESKTOP);
+    let mobile_out = options.mobile_out.clone();
+    let mobile_vp = options.mobile_viewport.unwrap_or(Viewport::MOBILE);
+    let r = tokio::task::spawn_blocking(move || {
+        crate::look_cdp::drive(
+            &ws,
+            &url,
+            &steps,
+            &out,
+            timeout,
+            crate::look_cdp::DriveOptions { desktop, mobile: mobile_out.as_deref().map(|p| (p, mobile_vp)) },
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     let _ = child.kill().await;
     r
 }
@@ -420,6 +494,9 @@ mod tests {
         assert_eq!(split("http://localhost:3000/cart").unwrap(), ("127.0.0.1:3000".into(), "/cart".into()));
         assert_eq!(split("http://127.0.0.1:8080").unwrap(), ("127.0.0.1:8080".into(), "/".into()));
         assert!(split("https://example.com").is_none());
+        assert_eq!(Viewport::DESKTOP, Viewport { width: 1280, height: 800, device_scale_factor: 2, mobile: false });
+        assert_eq!(Viewport::MOBILE, Viewport { width: 390, height: 844, device_scale_factor: 2, mobile: true });
+        assert_eq!(mobile_path_for(Path::new("/tmp/C2-pin-abc.png")), PathBuf::from("/tmp/C2-pin-abc-mobile.png"));
     }
 
     /// Only a listener in the verification's own sandbox counts as the

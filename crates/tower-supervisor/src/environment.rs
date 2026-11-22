@@ -114,16 +114,21 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
         );
     }
     if !sandbox::available() {
-        issue(
-            EnvIssueKind::NoSandbox,
-            false,
-            tr!(
-                lang,
-                "这台机器上没有 OS 沙箱：Agent 的命令以你的权限运行，读写只按路径限制。",
-                "No OS sandbox on this machine: the agent's commands run with your permissions, fenced by path only."
-            ),
-            None,
-        );
+        let linux_probe = sandbox::LinuxEnvProbe::detect();
+        if let Some(apparmor) = linux_apparmor_diagnostic(&linux_probe, lang) {
+            issues.push(apparmor);
+        } else {
+            issue(
+                EnvIssueKind::NoSandbox,
+                false,
+                tr!(
+                    lang,
+                    "这台机器上没有 OS 沙箱：Agent 的命令以你的权限运行，读写只按路径限制。",
+                    "No OS sandbox on this machine: the agent's commands run with your permissions, fenced by path only."
+                ),
+                None,
+            );
+        }
     }
     let problems = issues.iter().map(|i| i.text.clone()).collect();
     EnvironmentStatus {
@@ -141,6 +146,27 @@ pub fn status(inner: &Inner) -> EnvironmentStatus {
     }
 }
 
+/// Diagnoses the Ubuntu 24.04+ AppArmor unprivileged userns restriction that
+/// blocks rootless `bwrap` sandboxing (`kernel.apparmor_restrict_unprivileged_userns = 1`).
+pub fn linux_apparmor_diagnostic(probe: &sandbox::LinuxEnvProbe, lang: tower_core::Lang) -> Option<EnvIssue> {
+    let diag = sandbox::detect_ubuntu_apparmor_restriction(probe)?;
+    Some(EnvIssue {
+        kind: EnvIssueKind::NoSandbox,
+        blocking: diag.blocking,
+        text: match lang {
+            tower_core::Lang::Zh => diag.summary_zh,
+            tower_core::Lang::En => diag.summary_en,
+        },
+        fix: diag.fix,
+    })
+}
+
+/// Summarizes active sandbox posture, MicroVM availability, and diagnostics.
+#[allow(dead_code)]
+pub fn sandbox_posture(env: &[(String, String)]) -> sandbox::SandboxPostureSummary {
+    sandbox::posture_summary(env)
+}
+
 /// Whether a program is really there. macOS ships `/usr/bin/python3` as a
 /// stub that offers to install the developer tools (with a dialog) when
 /// they are missing, so that one counts only with the tools installed.
@@ -156,5 +182,46 @@ pub(crate) fn usable(inner: &Inner, program: &str) -> bool {
                 .is_ok_and(|s| s.success())
         }
         Some(_) => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    fn ubuntu_24_04_apparmor_diagnostic_is_reported_bilingually() {
+        let probe = sandbox::LinuxEnvProbe {
+            is_linux: true,
+            bwrap_path: Some(PathBuf::from("/usr/bin/bwrap")),
+            systemd_run_path: Some(PathBuf::from("/usr/bin/systemd-run")),
+            landlock_abi: 4,
+            cgroups_v2: true,
+            apparmor_restrict_unprivileged_userns: true,
+            unprivileged_userns_disabled: false,
+            bwrap_apparmor_profile_present: false,
+            kernel_version: Some((6, 8)),
+        };
+        let en = linux_apparmor_diagnostic(&probe, tower_core::Lang::En).expect("english issue");
+        assert_eq!(en.kind, EnvIssueKind::NoSandbox);
+        assert!(en.text.contains("apparmor_restrict_unprivileged_userns"));
+        assert!(en.fix.as_deref().unwrap().contains("/etc/apparmor.d/bwrap"));
+
+        let zh = linux_apparmor_diagnostic(&probe, tower_core::Lang::Zh).expect("chinese issue");
+        assert!(zh.text.contains("AppArmor"));
+        assert!(zh.text.contains("bwrap"));
+
+        let mut fixed = probe;
+        fixed.bwrap_apparmor_profile_present = true;
+        assert!(linux_apparmor_diagnostic(&fixed, tower_core::Lang::En).is_none());
+    }
+
+    #[test]
+    fn sandbox_posture_reports_backends() {
+        let posture = sandbox_posture(&[]);
+        assert!(!posture.backend_name.is_empty());
+        assert_eq!(posture.capabilities.len(), 3);
     }
 }

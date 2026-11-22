@@ -1,0 +1,587 @@
+/*
+ * Command Deck & Contract Studio instrument layer.
+ * Uses Tower's OKLCH tokens (with safe fallbacks for ui-design-shell's new tokens)
+ * so dark (Warm Carbon) and light (Warm Parchment) surfaces stay calibrated.
+ */
+
+/* ---------- Goal Command Deck header telemetry ---------- */
+
+.telemetry-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  margin-top: 6px;
+}
+.tel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border-instrument, var(--border));
+  background: var(--bg-strip, var(--bg-raised));
+  font-size: var(--fs-hint);
+  line-height: 16px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.tel-pill-mono {
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-num);
+}
+.tel-pill-attn {
+  border-color: color-mix(in oklch, var(--st-attention) 50%, var(--border));
+  background: var(--attention-bg);
+  color: var(--text-1);
+}
+.tel-pill-verified {
+  border-color: color-mix(in oklch, var(--st-verified) 45%, var(--border));
+  background: var(--verified-bg, color-mix(in oklch, var(--st-verified) 10%, transparent));
+  color: var(--text-1);
+}
+.tel-pill-danger {
+  border-color: color-mix(in oklch, var(--st-danger) 50%, var(--border));
+  background: var(--danger-bg);
+  color: var(--text-1);
+}
+.tel-pill-active {
+  border-color: color-mix(in oklch, var(--st-active) 45%, var(--border));
+  background: var(--active-bg, color-mix(in oklch, var(--st-active) 10%, transparent));
+  color: var(--text-1);
+}
+
+/* ---------- Six-Step Verification Bench Readout ---------- */
+
+.ev-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 2px 0 4px calc(14px + 2.5em + var(--sp-2) * 2);
+}
+.ev-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-grid, var(--border-subtle));
+  background: var(--bg-well, var(--bg-inset));
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.ev-pill-fact {
+  border-left: 2px solid var(--prov-fact-edge, var(--text-2));
+}
+.ev-pill-ok {
+  border-color: color-mix(in oklch, var(--st-verified) 40%, var(--border-subtle));
+  border-left: 2px solid var(--st-verified);
+  color: var(--text-1);
+}
+.ev-pill-attn {
+  border-color: color-mix(in oklch, var(--st-attention) 45%, var(--border-subtle));
+  border-left: 2px solid var(--st-attention);
+  background: var(--attention-bg);
+  color: var(--text-1);
+}
+.ev-pill-danger {
+  border-color: color-mix(in oklch, var(--st-danger) 48%, var(--border-subtle));
+  border-left: 2px solid var(--st-danger);
+  background: var(--danger-bg);
+  color: var(--text-1);
+}
+.ev-pill-human {
+  border-color: var(--border);
+  border-left: 2px solid var(--prov-human-edge, var(--text-1));
+  background: var(--prov-human-bg, var(--bg-raised));
+  color: var(--text-1);
+}
+.ev-pill-obs {
+  border-style: dotted;
+  border-color: var(--prov-obs-edge, var(--border-strong));
+  color: var(--text-3);
+}
+.ev-pill[data-mark="ok"]::before {
+  content: "✓";
+  color: var(--st-verified);
+  font-weight: 600;
+}
+.ev-pill[data-mark="fact"]::before {
+  content: "⚙";
+  color: var(--text-3);
+}
+.ev-pill[data-mark="attn"]::before {
+  content: "◆";
+  color: var(--st-attention);
+}
+.ev-pill[data-mark="danger"]::before {
+  content: "■";
+  color: var(--st-danger);
+}
+.ev-pill[data-mark="obs"]::before {
+  content: "◇";
+  color: var(--text-3);
+}
+.ev-holdout-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 4px calc(14px + 2.5em + var(--sp-2) * 2);
+  padding: 4px 8px;
+  border-left: 2px solid var(--prov-human-edge, var(--text-1));
+  background: var(--prov-human-bg, var(--bg-inset));
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  font-size: 11px;
+}
+.ev-hf {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-app);
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
+  color: var(--text-2);
+}
+.ev-hf-ran {
+  color: var(--text-1);
+  border-color: color-mix(in oklch, var(--st-verified) 35%, var(--border));
+}
+.ev-hf-miss {
+  border-color: color-mix(in oklch, var(--st-attention) 45%, var(--border));
+  background: var(--attention-bg);
+  color: var(--text-1);
+}
+
+/* ---------- Two-Column Claim vs Fact Honesty Ledger ---------- */
+
+.honesty-ledger {
+  display: grid;
+  gap: 6px;
+}
+.ledger-cols-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+:root[lang="zh-CN"] .ledger-cols-head {
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.ledger-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+}
+@media (max-width: 960px) {
+  .ledger-cols-head {
+    display: none;
+  }
+  .ledger-pair {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .ledger-link {
+    display: none;
+  }
+}
+.ledger-claim-cell {
+  padding: 6px 9px;
+  border: 1px dashed var(--prov-claim-edge, var(--border-strong));
+  border-left: 2px dashed var(--prov-claim-edge, var(--text-3));
+  border-radius: var(--radius-s);
+  background: var(--prov-claim-bg, var(--bg-inset));
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  min-width: 0;
+}
+.ledger-claim-cell.dim {
+  opacity: 0.72;
+}
+.ledger-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.ledger-fact-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 9px;
+  border: 1px solid var(--border-instrument, var(--border));
+  border-left: 2px solid var(--prov-fact-edge, var(--text-2));
+  border-radius: var(--radius-s);
+  background: var(--bg-strip, var(--bg-raised));
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+  min-width: 0;
+}
+.ledger-fact-cell.fact-contradicted {
+  border-left-color: var(--st-danger);
+  background: var(--danger-bg);
+}
+.ledger-fact-cell.fact-warn {
+  border-left-color: var(--st-attention);
+  background: var(--attention-bg);
+}
+.ledger-fact-ev {
+  color: var(--text-2);
+  word-break: break-word;
+}
+
+/* ---------- Precision Contract Rail ---------- */
+
+.scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.scope-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--bg-well, var(--bg-inset));
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
+  font-size: 11.5px;
+  color: var(--text-1);
+}
+.scope-chip-exclude {
+  border-color: color-mix(in oklch, var(--st-danger) 40%, var(--border));
+}
+.scope-chip-ro {
+  border-style: dashed;
+  color: var(--text-2);
+}
+.burn-sub {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+.burn-bar {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-selected);
+  overflow: hidden;
+}
+.burn-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text-3);
+}
+.burn-fill.over {
+  background: var(--st-attention);
+}
+.dep-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-size: var(--fs-hint);
+  color: var(--text-1);
+}
+.dep-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+.esc-active {
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  background: var(--attention-bg);
+  color: var(--text-1);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+/* ---------- Flight Recorder Escape Hatch (Watch split) ---------- */
+
+.watch-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--sp-5);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .watch-split {
+    grid-template-columns: 1fr;
+  }
+}
+.watch-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 10px;
+  border: 1px solid var(--border-instrument, var(--border));
+  border-radius: var(--radius-m);
+  background: var(--bg-strip, var(--bg-raised));
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+.watch-hud {
+  display: grid;
+  gap: var(--sp-3);
+  padding: 10px 12px;
+  border: 1px solid var(--border-instrument, var(--border));
+  border-radius: var(--radius-m);
+  background: var(--bg-strip, var(--bg-raised));
+  font-size: var(--fs-meta);
+}
+.watch-hud-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* ---------- Multimodal Steering Console ---------- */
+
+.steer-console {
+  position: sticky;
+  bottom: calc(-1 * var(--sp-10));
+  display: grid;
+  gap: 6px;
+  margin-top: var(--sp-6);
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border-instrument, var(--border));
+  border-left: 2px solid var(--prov-human-edge, var(--text-2));
+  border-radius: var(--radius-m);
+  background: var(--bg-strip, var(--bg-raised));
+  box-shadow: var(--card-lift);
+}
+.steer-console.drag-over {
+  border-color: var(--st-active);
+  background: var(--bg-selected);
+}
+.steer-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+}
+.steer-title {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.steer-mode {
+  display: inline-flex;
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-s);
+  background: var(--bg-app);
+}
+.steer-mode .tab {
+  height: 20px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+.steer-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+.steer-console textarea {
+  background: var(--bg-app);
+}
+.steer-at-pop {
+  position: absolute;
+  left: 0;
+  right: 96px;
+  bottom: calc(100% + 6px);
+  z-index: 25;
+  max-height: 200px;
+  overflow: auto;
+  padding: 4px;
+  border-radius: var(--radius-m);
+  background: var(--bg-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+.steer-at-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+}
+.steer-at-item.selected,
+.steer-at-item:hover {
+  background: var(--bg-selected);
+  color: var(--text-1);
+}
+.steer-at-item .hl {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+/* ---------- Shared Attachment Chips ---------- */
+
+.att-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.att-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-app);
+  font-size: var(--fs-hint);
+  color: var(--text-2);
+  max-width: 240px;
+}
+.att-thumb {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 2px;
+  border: 1px solid var(--border-subtle);
+  flex: 0 0 auto;
+}
+.att-drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: 6px;
+  padding: 6px 9px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-well, var(--bg-inset));
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+}
+.att-drop-zone.drag-over {
+  border-color: var(--st-active);
+  color: var(--text-1);
+}
+
+/* ---------- Contract Studio: Holdout Drafts & Dependencies ---------- */
+
+.holdout-panel {
+  margin-top: var(--sp-3);
+  padding: 10px 12px;
+  border: 1px dashed var(--prov-claim-edge, var(--border-strong));
+  border-left: 2px dashed var(--prov-claim-edge, var(--text-3));
+  border-radius: var(--radius-m);
+  background: var(--prov-claim-bg, var(--bg-inset));
+  display: grid;
+  gap: 10px;
+}
+.holdout-draft {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-app);
+}
+.holdout-draft.ratified {
+  border-style: solid;
+  border-left: 2px solid var(--prov-human-edge, var(--text-1));
+}
+.holdout-code {
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
+  font-size: 11.5px;
+  line-height: 17px;
+}
+.dep-picker {
+  display: grid;
+  gap: 6px;
+}
+.dep-pick-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dep-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-field);
+  font-size: var(--fs-hint);
+  color: var(--text-2);
+}
+.dep-pick-btn.active {
+  border-color: var(--text-2);
+  background: var(--bg-selected);
+  color: var(--text-1);
+}
+.tier-cards {
+  display: grid;
+  gap: 6px;
+}
+.tier-card {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: start;
+  gap: 2px var(--sp-2);
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-field);
+}
+.tier-card.selected {
+  border-color: var(--text-3);
+  background: var(--bg-raised);
+}
+.att-chip .icon-btn,
+.holdout-panel .icon-btn {
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  line-height: 1;
+}
+.tier-card.disabled {
+  opacity: 0.55;
+}

@@ -16,11 +16,13 @@
 'use strict';
 
 const fs = require('node:fs');
+const { EventEmitter } = require('node:events');
 const { createHash, randomBytes } = require('node:crypto');
 const toString = Function.prototype.toString;
 const defineProperty = Object.defineProperty;
 const getDescriptor = Object.getOwnPropertyDescriptor;
 const getNames = Object.getOwnPropertyNames;
+const apply = Reflect.apply;
 
 const LOG = process.env.TOWER_GUARD_LOG;
 const write = (line) => {
@@ -46,6 +48,8 @@ const hashOf = (fn) => {
 const entries = [];
 /** Properties that are deprecated or throw on read. */
 const SKIP = new Set(['CallTracker', 'strict', 'caller', 'callee', 'arguments']);
+/** Set if project code explicitly attempts to detach the guard's own exit hook. */
+let listenerTampered = false;
 
 /**
  * Watches one function-valued property: keeps the original, and replaces
@@ -114,8 +118,8 @@ try {
 } catch {
   assertModule = null;
 }
-// Load the ES module copy now as well: later it is served from the module
-// cache, so what the tests import is the object recorded here.
+// Load the ES module copy as well (on Node 22.15+/24+, `assert_guard_esm.mjs`
+// also synchronously guards ESM imports via `module.registerHooks()`).
 let assertEsm = null;
 try {
   import('node:assert').then(
@@ -159,6 +163,7 @@ for (const name of GLOBALS) {
 
 function findings() {
   const bad = [];
+  if (listenerTampered) bad.push('guard.exit_listener');
   for (const entry of entries) {
     if (entry.assigned) {
       bad.push(entry.label);
@@ -215,5 +220,90 @@ function report() {
   write(`tower-assert-guard 1 node end ${nonce} ${verdict} ${detail}\n`);
 }
 
+// Protect the guard's exit hook from `process.removeAllListeners('exit')`,
+// `process.removeListener('exit', fn)`, `process.off('exit', fn)` and direct
+// `EventEmitter.prototype` calls targeting `process`.
+const origOn = EventEmitter.prototype.on;
+const origRemoveAll = EventEmitter.prototype.removeAllListeners;
+const origRemoveListener = EventEmitter.prototype.removeListener;
+const origOff = EventEmitter.prototype.off;
+const origRawListeners = EventEmitter.prototype.rawListeners;
+
+function ensureAttached() {
+  try {
+    const exitList = apply(origRawListeners, process, ['exit']);
+    if (!exitList.includes(report)) apply(origOn, process, ['exit', report]);
+  } catch {
+    try {
+      apply(origOn, process, ['exit', report]);
+    } catch {}
+  }
+  try {
+    const beforeList = apply(origRawListeners, process, ['beforeExit']);
+    if (!beforeList.includes(onBeforeExit)) apply(origOn, process, ['beforeExit', onBeforeExit]);
+  } catch {
+    try {
+      apply(origOn, process, ['beforeExit', onBeforeExit]);
+    } catch {}
+  }
+}
+
+function onBeforeExit() {
+  try {
+    const exitList = apply(origRawListeners, process, ['exit']);
+    if (!exitList.includes(report)) {
+      listenerTampered = true;
+      ensureAttached();
+    }
+  } catch {
+    // If listener inspection itself fails, report now before the process ends.
+    report();
+  }
+}
+
+function guardedRemoveAll(orig) {
+  return function removeAllListeners(type) {
+    const res = apply(orig, this, arguments);
+    if (this === process && (type === undefined || type === 'exit' || type === 'beforeExit')) {
+      ensureAttached();
+    }
+    return res;
+  };
+}
+
+function guardedRemoveOne(orig) {
+  return function removeListener(type, listener) {
+    if (
+      this === process &&
+      ((type === 'exit' && listener === report) || (type === 'beforeExit' && listener === onBeforeExit))
+    ) {
+      listenerTampered = true;
+      return this;
+    }
+    return apply(orig, this, arguments);
+  };
+}
+
+try {
+  EventEmitter.prototype.removeAllListeners = guardedRemoveAll(origRemoveAll);
+  EventEmitter.prototype.removeListener = guardedRemoveOne(origRemoveListener);
+  EventEmitter.prototype.off = guardedRemoveOne(origOff);
+} catch {
+  // Frozen EventEmitter prototype: exit listener still attached below.
+}
+
+// Wrap `process.reallyExit` (internal fast-exit path) if exposed so the
+// guard flushes its verdict even if code invokes it directly.
+if (typeof process.reallyExit === 'function') {
+  const origReallyExit = process.reallyExit;
+  try {
+    process.reallyExit = function reallyExit() {
+      report();
+      return apply(origReallyExit, this, arguments);
+    };
+  } catch {}
+}
+
 write(`tower-assert-guard 1 node start ${commitment} ${entries.length}\n`);
-process.on('exit', report);
+apply(origOn, process, ['exit', report]);
+apply(origOn, process, ['beforeExit', onBeforeExit]);

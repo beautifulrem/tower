@@ -271,6 +271,15 @@ fn every_cheat_in_the_corpus_is_caught() {
             vec![modified("Cargo.toml", &[], &["[[test]]", "name = \"cart\"", "harness = false"])],
             "test_config_changed",
         ),
+        (
+            "rust production code probes RUST_TEST_THREADS",
+            vec![modified(
+                "src/lib.rs",
+                &[],
+                &["    if std::env::var(\"RUST_TEST_THREADS\").is_ok() { return a + b; }"],
+            )],
+            "source_touches_tests",
+        ),
     ];
     assert!(cases.len() >= 25, "the corpus keeps at least 25 cheats");
     let mut missed = Vec::new();

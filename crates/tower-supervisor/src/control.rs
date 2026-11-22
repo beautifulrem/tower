@@ -190,6 +190,7 @@ pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     );
     inner.set_mode(goal, Mode::Idle)?;
     inner.transition(goal, Transition::Abandon, None, "")?;
+    let _ = crate::ports_pool::release_for_root(&inner.paths.root, goal);
     let _ = crate::learning::record_calibration(inner, goal);
     schedule(inner).await;
     Ok(())
@@ -199,8 +200,9 @@ pub async fn steer(inner: &Arc<Inner>, goal: &str, text: &str) -> Result<String>
     steer_with_queue(inner, goal, text, false).await
 }
 
-/// Sends a steering directive to a goal. When `queue` is `true`, records the
-/// note for the next turn/run without interrupting an in-flight tool turn.
+/// Sends a steering directive to a goal. When `queue` is `true`, queues the
+/// directive for the next turn (via `follow_up` when running) without
+/// interrupting an in-flight tool turn.
 pub async fn steer_with_queue(inner: &Arc<Inner>, goal: &str, text: &str, queue: bool) -> Result<String> {
     let text = text.trim();
     let lang = inner.lang();
@@ -208,18 +210,6 @@ pub async fn steer_with_queue(inner: &Arc<Inner>, goal: &str, text: &str, queue:
         return Err(invalid(tr!(lang, "转向内容不能为空", "The steer cannot be empty")));
     }
     inner.append(goal, EventKind::Steered { text: text.into() })?;
-    if queue {
-        inner.toast(
-            goal,
-            ToastLevel::Info,
-            tr!(
-                lang,
-                "已加入下一轮指令队列：将在下一轮运行开始时带给 Agent",
-                "Queued for next turn: the agent will receive this directive at the start of the next turn"
-            ),
-        );
-        return Ok("queued_for_next_run".into());
-    }
     let Some(run) = inner.run_of(goal) else {
         inner.toast(
             goal,
@@ -232,6 +222,11 @@ pub async fn steer_with_queue(inner: &Arc<Inner>, goal: &str, text: &str, queue:
         );
         return Ok("queued_for_next_run".into());
     };
+    if queue {
+        inner.append(goal, EventKind::Injected { channel: "follow_up".into(), text: text.into() })?;
+        let resp = run.engine.follow_up(text).await.map_err(Error::from)?;
+        return Ok(resp.data.get("disposition").and_then(Value::as_str).unwrap_or("queued_for_next_turn").to_string());
+    }
     inner.append(goal, EventKind::Injected { channel: "steer".into(), text: text.into() })?;
     let resp = run.engine.steer(text).await.map_err(Error::from)?;
     Ok(resp.data.get("disposition").and_then(Value::as_str).unwrap_or("queued").to_string())

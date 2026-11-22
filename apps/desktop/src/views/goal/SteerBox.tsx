@@ -3,7 +3,6 @@
  * Steer Now vs Queue for Next Turn, clipboard/drop screenshots, `@file` fuzzy autocomplete.
  */
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 
 import { Icon } from "../../components/Glyph";
 import { Button } from "../../components/ui";
@@ -11,7 +10,58 @@ import { api } from "../../lib/api";
 import { matchText } from "../../lib/fuzzy";
 import { t } from "../../lib/i18n";
 import { act, toast } from "../../lib/store";
-import { type AttachmentRef, attachImageFile, callCmd, extractImages } from "./ext";
+import type { AttachmentRef } from "./ext";
+
+const IMG_RE = /^image\/(png|jpeg|webp|gif)$/;
+
+export function extractImages(dt: DataTransfer | null | undefined): File[] {
+  if (!dt) return [];
+  const raw = dt.items ? Array.from(dt.items, (i) => (i.kind === "file" ? i.getAsFile() : null)).filter((f): f is File => !!f) : [];
+  return (raw.length ? raw : Array.from(dt.files ?? [])).filter((f) => IMG_RE.test(f.type) && f.size <= 8 * 1048576);
+}
+
+export async function attachImageFile(file: File, goalId?: string): Promise<AttachmentRef> {
+  const dataUrl = await new Promise<string>((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result ?? ""));
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+  const name = file.name || `shot-${Date.now()}.${file.type.split("/")[1] || "png"}`;
+  if (goalId) {
+    const saved = await api.saveAttachment(goalId, name, dataUrl.slice(dataUrl.indexOf(",") + 1)).catch(() => null);
+    if (saved) return { ...saved, preview: dataUrl };
+  }
+  return { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, mime: file.type || "image/png", path: `attachments/${name}`, size_bytes: file.size, created_at: Date.now(), preview: dataUrl };
+}
+
+export async function collectImages(files: File[], goalId: string | undefined, add: (ref: AttachmentRef) => void) {
+  for (const f of files) {
+    try {
+      add(await attachImageFile(f, goalId));
+    } catch {
+      toast("error", "Attach failed");
+    }
+  }
+}
+
+export function AttachChips(props: { items: AttachmentRef[]; onRemove: (a: AttachmentRef) => void }) {
+  return (
+    <Show when={props.items.length > 0}>
+      <div class="att-list">
+        <For each={props.items}>
+          {(a) => (
+            <span class="att-chip">
+              <Show when={a.preview}><img class="att-thumb" src={a.preview} alt={a.name} /></Show>
+              <span class="ellipsis mono">{a.name}</span>
+              <button type="button" class="icon-btn" aria-label={t("common.remove")} onClick={() => props.onRemove(a)}>×</button>
+            </span>
+          )}
+        </For>
+      </div>
+    </Show>
+  );
+}
 
 export type SteerMode = "now" | "queue";
 
@@ -32,7 +82,7 @@ export function SteerBox(props: { id: string; running: boolean; files?: string[]
   let ta!: HTMLTextAreaElement, fileIn!: HTMLInputElement, loaded = false;
 
   createEffect(() => setMode(props.running ? "now" : "queue"));
-  const ensureFiles = () => !loaded && ((loaded = true), void callCmd<string[]>("workspace_files", { id: props.id }).then((l) => l?.length && setWsFiles(l)));
+  const ensureFiles = () => !loaded && ((loaded = true), void api.workspaceFiles(props.id).catch(() => null).then((l) => l?.length && setWsFiles(l)));
 
   const hits = createMemo<string[]>(() => {
     const a = at();
@@ -52,22 +102,13 @@ export function SteerBox(props: { id: string; running: boolean; files?: string[]
     queueMicrotask(() => (ta?.focus(), ta?.setSelectionRange(tok.start + path.length + 2, tok.start + path.length + 2)));
   };
 
-  const addImgs = async (files: File[]) => {
-    for (const f of files) {
-      try {
-        const ref = await attachImageFile(f, props.id);
-        setAtts((p) => [...p, ref]);
-      } catch {
-        toast("error", "Attach failed");
-      }
-    }
-  };
+  const addImgs = (files: File[]) => void collectImages(files, props.id, (ref) => setAtts((p) => [...p, ref]));
 
   const send = async (override?: SteerMode) => {
     const q = (override ?? mode()) === "queue";
     const body = `${text().trim()}${atts().length ? `\n${atts().map((a) => `[attachment: ${a.path}]`).join("\n")}` : ""}`.trim();
     if (!body) return;
-    const r = await act(() => (q ? invoke<string>("steer", { id: props.id, text: body, queue: true }).catch(() => api.steer(props.id, body)) : api.steer(props.id, body)));
+    const r = await act(() => api.steer(props.id, body, q));
     if (r) {
       setText("");
       setAtts([]);
@@ -95,19 +136,7 @@ export function SteerBox(props: { id: string; running: boolean; files?: string[]
         <input ref={fileIn} type="file" accept="image/*" multiple hidden onChange={(e) => (e.currentTarget.files?.length && void addImgs(Array.from(e.currentTarget.files)), (e.currentTarget.value = ""))} />
         <button type="button" class="link-quiet text-btn meta" onClick={() => fileIn.click()}><Icon name="plus" size={10} /> Attach</button>
       </div>
-      <Show when={atts().length > 0}>
-        <div class="att-list">
-          <For each={atts()}>
-            {(a) => (
-              <span class="att-chip">
-                <Show when={a.preview}><img class="att-thumb" src={a.preview} alt={a.name} /></Show>
-                <span class="ellipsis mono">{a.name}</span>
-                <button type="button" class="icon-btn" aria-label={t("common.remove")} onClick={() => (setAtts((p) => p.filter((x) => x.id !== a.id)), void callCmd("delete_attachment", { goalId: props.id, attachmentId: a.id }))}>×</button>
-              </span>
-            )}
-          </For>
-        </div>
-      </Show>
+      <AttachChips items={atts()} onRemove={(a) => (setAtts((p) => p.filter((x) => x.id !== a.id)), void api.deleteAttachment(props.id, a.id).catch(() => {}))} />
       <div class="steer-input-wrap">
         <Show when={at() && hits().length > 0}>
           <div class="steer-at-pop" role="listbox">

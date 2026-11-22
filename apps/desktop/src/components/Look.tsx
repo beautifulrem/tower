@@ -16,6 +16,7 @@ import type { LookViewExt } from "../lib/apiTypes";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { DangerMark, Icon } from "./Glyph";
+import { ProvenanceFrame } from "./ProvenanceFrame";
 import { Button, Kbd, Overlay } from "./ui";
 
 function Shot(props: { file: string | null; error: string | null; label: string; onOpen?: (from: HTMLElement) => void }) {
@@ -66,21 +67,13 @@ function ConsoleErrorsBlock(props: { errors?: string[]; inline?: boolean }) {
         </Show>
       }
     >
-      <div class={`prov-frame prov-fact prov-danger ${props.inline ? "look-console" : ""}`}>
-        <div class="prov-head halt">
-          <span class="prov-badge"><Icon name="harness" size={10} />{t("look.consoleErrors", { n: errs().length })}</span>
-        </div>
+      <ProvenanceFrame kind="fact" label={t("look.consoleErrors", { n: errs().length })} danger class={props.inline ? "look-console" : undefined}>
         <ul class="look-console-list">
           <For each={errs()}>
-            {(line) => (
-              <li class="look-console-item mono">
-                <DangerMark />
-                <span>{line}</span>
-              </li>
-            )}
+            {(line) => <li class="look-console-item mono"><DangerMark /><span>{line}</span></li>}
           </For>
         </ul>
-      </div>
+      </ProvenanceFrame>
     </Show>
   );
 }

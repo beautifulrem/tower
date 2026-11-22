@@ -15,18 +15,12 @@ import { stateLabel } from "../lib/labels";
 import { ask } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, goalList, refreshConsoleMeta, state } from "../lib/store";
-import { ConsoleMast, DataTable, ProvBox, SmBtn } from "./Learning";
+import { ConsoleMast, DataTable, MeterCell, ProjectFilter, ProvBox, SmBtn } from "./Learning";
+import { blankContract } from "./ContractEditor";
 
 const ALL = "__all__";
 const fmtB = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 const ZERO_P = { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 };
-
-const makeContract = (intent: string, cmd: string | null): Contract => ({
-  version: 1, intent, done_when: "", constraints: [],
-  criteria: cmd ? [{ id: "C1", title: "Tests pass", kind: { type: "exec", command: cmd, timeout_secs: 300 } }] : [],
-  scope: { include: [], exclude: [], readonly: [] }, budget: { soft_usd: 5, hard_usd: 15, wall_minutes: 45 },
-  autonomy: "standard", max_rework: 2, setup: "", model: "", thinking: "", stop_conditions: [], network: false, ports: [], loopback_open: false, engine: "",
-});
 
 export function Operations() {
   const [schedules, { refetch: rfSched }] = createResource(() => api.scheduledGoals().catch(() => [] as ScheduledGoal[]));
@@ -57,7 +51,7 @@ export function Operations() {
     const pid = newProj() || state.projects[0]?.id, title = newTitle().trim(), cron = newCron().trim();
     if (!pid || !title || !cron) return;
     setBusy(true);
-    const ok = await act(() => api.createScheduledGoal({ project_id: pid, title, cron_expr: cron, contract_template: makeContract(title, state.projects.find((p) => p.id === pid)?.test_command ?? null), enabled: true, unattended_strict: true }), t("ops.addSchedule"));
+    const ok = await act(() => api.createScheduledGoal({ project_id: pid, title, cron_expr: cron, contract_template: blankContract(title, state.projects.find((p) => p.id === pid)?.test_command ?? null) as Contract, enabled: true, unattended_strict: true }), t("ops.addSchedule"));
     setBusy(false);
     if (ok) (setNewTitle(""), void rfSched(), void refreshConsoleMeta());
   };
@@ -132,9 +126,7 @@ export function Operations() {
           <div class="row">
             <h3 class="section-title">{t("ops.mergeQueueTitle")}</h3>
             <span class="grow" />
-            <Show when={state.projects.length > 1}>
-              <Select class="overview-filter" label={t("overview.filterLabel")} value={mqProj()} options={[{ value: ALL, label: t("overview.allProjects") }, ...state.projects.map((p) => ({ value: p.id, label: p.name }))]} onChange={setMqProj} />
-            </Show>
+            <ProjectFilter value={mqProj()} onChange={setMqProj} min={1} />
             <SmBtn onClick={() => { const pid = mqProj() === ALL ? state.projects[0]?.id : mqProj(); if (pid) void run(() => api.checkMergeQueue(pid), rfQueue, t("chrome.checked")); }}>
               {t("ops.checkConflicts")}
             </SmBtn>
@@ -203,7 +195,7 @@ export function Operations() {
                   <td class="col-r meta">{fmtB(g.workspace_bytes)}</td>
                   <td class="col-r meta">{fmtB(g.verify_bytes)}</td>
                   <td class="col-r meta">{fmtB(g.cache_bytes)}</td>
-                  <td class="col-r"><span class="storage-bar-cell"><span>{fmtB(g.total_bytes)}</span><span class="meter-micro"><i class="meter-micro-fill" style={{ width: `${Math.round((g.total_bytes / maxBytes()) * 100)}%` }} /></span></span></td>
+                  <td class="col-r"><MeterCell wrapCls="storage-bar-cell" label={fmtB(g.total_bytes)} width={`${Math.round((g.total_bytes / maxBytes()) * 100)}%`} /></td>
                   <td class="col-r">{g.reclaimable ? <SmBtn onClick={() => void cleanGoals([g.goal_id])}>{t("ops.clean")}</SmBtn> : <span class="meta t3">{t("ops.protected")}</span>}</td>
                 </tr>
               )}

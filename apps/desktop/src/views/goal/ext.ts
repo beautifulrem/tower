@@ -3,8 +3,7 @@
  * attachment helpers, and compact bilingual labels for the Command Deck,
  * Review Theater, and Contract Studio.
  */
-import { invoke } from "@tauri-apps/api/core";
-
+import { engineTrustTier } from "../../lib/labels";
 import type { Contract } from "../../gen/Contract";
 import type { CriterionResultView } from "../../gen/CriterionResultView";
 import type { CriterionView } from "../../gen/CriterionView";
@@ -30,13 +29,8 @@ export interface AttachmentRef {
   preview?: string;
 }
 
-export interface SnapshotPoint {
-  rev: string;
-  kind: "base" | "run_start" | "verified" | "pin" | "saved";
-  label: string;
-  run_no: number | null;
-  at: number | null;
-}
+import type { SnapshotPoint } from "../../gen/SnapshotPoint";
+export type { SnapshotPoint };
 
 export interface HoldoutDraft {
   id: string;
@@ -121,37 +115,6 @@ export type ExtReviewView = ReviewView & {
   formatting_hunks?: Record<string, number[] | undefined>;
 };
 
-export async function callCmd<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
-  try { return (await invoke<T>(cmd, args)) ?? null; } catch { return null; }
-}
-
-export const trustTierOf = (e: string): EngineTrustTier =>
-  !e || e === "pi" || e === "claude-code" ? "full_s2" : /^(codex|gemini-cli|opencode)$/.test(e) ? "restricted_s2" : "experimental";
-
+export const trustTierOf = engineTrustTier;
 export const trustLabel = (t: EngineTrustTier) => (t === "full_s2" ? "Full S2" : t === "restricted_s2" ? "Restricted S2" : "Experimental");
-
 export const sandboxTag = (t: SandboxTier, noSb: boolean) => (t === "micro_vm" ? "MicroVM" : noSb ? "No sandbox S0" : "Sandbox S2");
-
-const IMG_RE = /^image\/(png|jpeg|webp|gif)$/;
-
-export function extractImages(dt: DataTransfer | null | undefined): File[] {
-  if (!dt) return [];
-  const raw = dt.items ? Array.from(dt.items, (i) => (i.kind === "file" ? i.getAsFile() : null)).filter((f): f is File => !!f) : [];
-  const src = raw.length ? raw : Array.from(dt.files ?? []);
-  return src.filter((f) => IMG_RE.test(f.type) && f.size <= 8 * 1048576);
-}
-
-export async function attachImageFile(file: File, goalId?: string): Promise<AttachmentRef> {
-  const dataUrl = await new Promise<string>((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result ?? ""));
-    r.onerror = () => rej(r.error);
-    r.readAsDataURL(file);
-  });
-  const name = file.name || `shot-${Date.now()}.${file.type.split("/")[1] || "png"}`;
-  if (goalId) {
-    const saved = await callCmd<AttachmentRef>("save_attachment", { goalId, name, dataBase64: dataUrl.slice(dataUrl.indexOf(",") + 1) });
-    if (saved) return { ...saved, preview: dataUrl };
-  }
-  return { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, mime: file.type || "image/png", path: `attachments/${name}`, size_bytes: file.size, created_at: Date.now(), preview: dataUrl };
-}

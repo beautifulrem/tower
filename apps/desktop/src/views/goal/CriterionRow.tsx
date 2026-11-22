@@ -6,7 +6,6 @@ import { For, Show, createMemo, createSignal, lazy } from "solid-js";
 
 import { Icon, NotEvidenceMark, ResultMark } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, HeldOutLine, LoopbackLine, ObsChip } from "../../components/Honesty";
-import { LookStepsRead } from "../../components/LookSteps";
 import type { SentinelHit } from "../../gen/SentinelHit";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
@@ -14,7 +13,7 @@ import { t, withLater } from "../../lib/i18n";
 import { act, state } from "../../lib/store";
 import { type ExtCriterionView } from "./ext";
 
-const LookStrip = lazy(withLater(() => import("../../components/Look").then((m) => ({ default: m.LookStrip }))));
+const LookStrip = lazy(withLater(() => import("../Learning").then((m) => ({ default: m.LookStrip }))));
 
 const GUARD_RE = /assertion|guard|source_patches_tests/;
 const BYPASS_RE = /bypass|perturb|rust_test_branch|expectations_changed/;
@@ -122,7 +121,11 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
       <CanaryLine c={c()} />
       <HeldOutLine c={c()} />
       <LoopbackLine c={c()} />
-      <Show when={stepsOpen() && steps().length}><LookStepsRead steps={steps()} /></Show>
+      <Show when={stepsOpen() && steps().length}>
+        <ol class="look-step-list look-step-list-read">
+          <For each={steps()}>{(s, i) => <li class="look-step"><span class="look-step-no num" aria-hidden="true">{String(i() + 1).padStart(2, "0")}</span><code class="code-val">{s}</code></li>}</For>
+        </ol>
+      </Show>
       <Show when={c().look}>{(l) => <LookStrip look={l()} title={`${c().criterion.id} ${c().criterion.title}`} />}</Show>
       <Show when={c().observed}>
         <div class="criterion-row criterion-obs">

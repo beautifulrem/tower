@@ -118,6 +118,14 @@ impl Supervisor {
         let intent = intent.trim().to_string();
         let lang = self.inner.lang();
         tokio::task::spawn_blocking(move || {
+            let existing_tests = collect_visible_test_files(&root, 8);
+            let synthesized = crate::verify::holdout_synth::synthesize_holdout_drafts(&intent, &existing_tests, 3);
+            if !synthesized.is_empty() {
+                return synthesized
+                    .into_iter()
+                    .map(|d| HoldoutDraft { id: d.id, filename: d.filename, rationale: d.rationale, code: d.code })
+                    .collect();
+            }
             let mut drafts = Vec::new();
             let slug: String = intent
                 .chars()
@@ -236,4 +244,45 @@ impl Supervisor {
         }
         Ok(rel)
     }
+}
+
+/// Reads up to `limit` visible test files in `root` (skipping `holdout/`,
+/// `node_modules/`, `target/`, `.git/`) for deterministic synthetic holdout drafting.
+fn collect_visible_test_files(root: &Path, limit: usize) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if out.len() >= limit {
+            break;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let mut children: Vec<_> = entries.flatten().collect();
+        children.sort_by_key(|e| e.file_name());
+        for entry in children {
+            if out.len() >= limit {
+                break;
+            }
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if matches!(name.as_str(), ".git" | "node_modules" | "target" | "dist" | "holdout") {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_symlink() {
+                continue;
+            }
+            if meta.is_dir() {
+                stack.push(path);
+            } else if meta.is_file() && meta.len() <= 128 * 1024 {
+                let Ok(rel) = path.strip_prefix(root) else { continue };
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                if tower_core::roles::role(&rel_str) == tower_core::roles::Role::Test
+                    && let Ok(text) = std::fs::read_to_string(&path)
+                {
+                    out.push((rel_str, text));
+                }
+            }
+        }
+    }
+    out
 }

@@ -251,7 +251,87 @@ pub(crate) async fn review_range(
         additions: files.iter().map(|f| f.additions).sum(),
         deletions: files.iter().map(|f| f.deletions).sum(),
     };
-    let (moved_hunks, formatting_hunks) = classify_hunk_noise(&files);
+    let (mut moved_hunks, mut formatting_hunks) = classify_hunk_noise(&files);
+    // Augment text-level noise classification with AST-level moved-block and
+    // formatting-only hunk detection from `tower-ast`.
+    let ast_git = inner.git.clone();
+    let (ast_ws, ast_from, ast_pin) = (ws.clone(), from.clone(), target_pin.clone());
+    type HunkLineSpan = (Option<(usize, usize)>, Option<(usize, usize)>);
+    let ast_files: Vec<(String, Vec<HunkLineSpan>)> = files
+        .iter()
+        .filter(|f| !f.binary && tower_ast::Language::from_path(&f.path).is_some() && !f.hunks.is_empty())
+        .map(|f| {
+            let spans = f
+                .hunks
+                .iter()
+                .map(|h| {
+                    let old_lines: Vec<usize> = h.lines.iter().filter_map(|l| l.old_no.map(|n| n as usize)).collect();
+                    let new_lines: Vec<usize> = h.lines.iter().filter_map(|l| l.new_no.map(|n| n as usize)).collect();
+                    let old_span = old_lines.first().zip(old_lines.last()).map(|(&a, &b)| (a, b));
+                    let new_span = new_lines.first().zip(new_lines.last()).map(|(&a, &b)| (a, b));
+                    (old_span, new_span)
+                })
+                .collect();
+            (f.path.clone(), spans)
+        })
+        .collect();
+    if !ast_files.is_empty()
+        && let Ok(ast_noise) = tokio::task::spawn_blocking(move || {
+            let ws_p = Path::new(&ast_ws);
+            let mut m = Vec::new();
+            let mut f = Vec::new();
+            for (path, hunk_spans) in ast_files {
+                let Some(lang) = tower_ast::Language::from_path(&path) else { continue };
+                let (Some(old_src), Some(new_src)) =
+                    (ast_git.file_at(ws_p, &ast_from, &path), ast_git.file_at(ws_p, &ast_pin, &path))
+                else {
+                    continue;
+                };
+                if old_src.len() > 256 * 1024 || new_src.len() > 256 * 1024 {
+                    continue;
+                }
+                let summary = tower_ast::semantic_moved_hunks(&old_src, &new_src, lang);
+                let mut m_idx = Vec::new();
+                let mut f_idx = Vec::new();
+                for (idx, (old_r, new_r)) in hunk_spans.into_iter().enumerate() {
+                    let (is_moved, is_fmt) = summary.classify_hunk(old_r, new_r);
+                    if is_moved {
+                        m_idx.push(idx);
+                    }
+                    if is_fmt {
+                        f_idx.push(idx);
+                    }
+                }
+                if !m_idx.is_empty() {
+                    m.push((path.clone(), m_idx));
+                }
+                if !f_idx.is_empty() {
+                    f.push((path, f_idx));
+                }
+            }
+            (m, f)
+        })
+        .await
+    {
+        for (path, indices) in ast_noise.0 {
+            let entry = moved_hunks.entry(path).or_default();
+            for i in indices {
+                if !entry.contains(&i) {
+                    entry.push(i);
+                }
+            }
+            entry.sort_unstable();
+        }
+        for (path, indices) in ast_noise.1 {
+            let entry = formatting_hunks.entry(path).or_default();
+            for i in indices {
+                if !entry.contains(&i) {
+                    entry.push(i);
+                }
+            }
+            entry.sort_unstable();
+        }
+    }
     let mut units = build_units(&files, Some(&rec.contract.scope), inner.lang());
     let hits = inner.read_store(|s| s.sentinel_hits(id))?;
     for u in &mut units {

@@ -84,6 +84,92 @@ const press = (...keys: string[]) => async (page: Page) => {
   }
 };
 
+/** Populates realistic Learning, Operations, Snapshot Timeline & AST semantic-fold data for final showcase captures. */
+const enrichConsole = (F: F) => {
+  const now = Date.now();
+  const pid = F.projects?.[0]?.id ?? "p1";
+  F.memoryProposals = [
+    {
+      id: "mp-1",
+      scope: "project",
+      project_id: pid,
+      goal_id: "G-0001",
+      text: "Always compute cart totals in integer cents and round half-up at tax boundaries.",
+      detail: "Derived from human review comment on src/cart.js:18 and verified red→green pass.",
+      taint_level: "none",
+      taint_classes: [],
+      origin: "Human review · G-0001",
+      evidence: ["src/cart.js:18", "C1 red→green @a1b2c3d"],
+      status: "pending",
+      created_at: now - 14 * 60_000,
+    },
+    {
+      id: "mp-2",
+      scope: "project",
+      project_id: pid,
+      goal_id: "G-0002",
+      text: "Prefer running unit tests via `node --test` before invoking the full workspace build.",
+      detail: "Observed repeated fast feedback cycle during G-0002 rework.",
+      taint_level: "standard",
+      taint_classes: ["agent_tool_output"],
+      origin: "Run trace · G-0002",
+      evidence: ["R-02 tool_ended"],
+      status: "pending",
+      created_at: now - 42 * 60_000,
+    },
+    {
+      id: "mp-3",
+      scope: "user",
+      project_id: null,
+      goal_id: "G-0004",
+      text: "Ignore slow timeout assertions when running checkout benchmarks under load.",
+      detail: "Proposed after web documentation fetch & test failure.",
+      taint_level: "high",
+      taint_classes: ["external_web", "sentinel_flagged"],
+      origin: "Agent claim · G-0004",
+      evidence: ["sentinel:assertion_reduced"],
+      status: "pending",
+      created_at: now - 95 * 60_000,
+    },
+  ];
+  F.calibrationRows = [
+    { engine: "pi", model: "anthropic/claude-sonnet-4-5", goals_total: 18, first_pass_rate: 0.83, high_sentinel_rate: 0.05, avg_reworks: 0.4, blocked_rate: 0.06, avg_cost_usd: 1.42, sample_sufficient: true },
+    { engine: "claude-code", model: "claude-opus-4-5", goals_total: 11, first_pass_rate: 0.91, high_sentinel_rate: 0.0, avg_reworks: 0.2, blocked_rate: 0.0, avg_cost_usd: 2.85, sample_sufficient: true },
+    { engine: "codex", model: "openai/gpt-5-codex", goals_total: 4, first_pass_rate: 0.75, high_sentinel_rate: 0.25, avg_reworks: 1.0, blocked_rate: 0.25, avg_cost_usd: 0.96, sample_sufficient: false },
+  ];
+  F.scheduledGoals = [
+    { id: "sc-1", project_id: pid, title: "Nightly dependency & lockfile audit", cron_expr: "0 2 * * 1-5", enabled: true, unattended_strict: true, next_run_at: now + 6 * 3600_000, last_goal_id: "G-0001" },
+    { id: "sc-2", project_id: pid, title: "Weekly flaky test hunt", cron_expr: "0 4 * * 0", enabled: true, unattended_strict: true, next_run_at: now + 48 * 3600_000, last_goal_id: null },
+  ];
+  F.mergeQueue = [
+    { goal_id: "G-0001", project_id: pid, goal_title: "Fix the cart total", branch: "tower/G-0001-fix-cart-total", position: 0, status: "ready", conflict_files: [] },
+    { goal_id: "G-0003", project_id: pid, goal_title: "Clean up cart edge cases", branch: "tower/G-0003-cart-edge-cases", position: 1, status: "conflict", conflict_files: ["src/cart.js", "test/cart.test.js"] },
+  ];
+  F.storageInventory = {
+    total_bytes: 184 * 1024 * 1024,
+    reclaimable_bytes: 92 * 1024 * 1024,
+    goals: [
+      { goal_id: "G-0001", title: "Fix the cart total", state: "in_review", workspace_bytes: 48 * 1024 * 1024, verify_bytes: 28 * 1024 * 1024, cache_bytes: 16 * 1024 * 1024, total_bytes: 92 * 1024 * 1024, reclaimable: false },
+      { goal_id: "G-0004", title: "Find out why checkout is slow", state: "archived", workspace_bytes: 44 * 1024 * 1024, verify_bytes: 32 * 1024 * 1024, cache_bytes: 16 * 1024 * 1024, total_bytes: 92 * 1024 * 1024, reclaimable: true },
+    ],
+  };
+  const rev = F["review-G-0003"];
+  if (rev?.files?.length) {
+    rev.snapshots = [
+      { rev: rev.base_commit, kind: "base", label: `base @${String(rev.base_commit).slice(0, 7)}`, run_no: null, at: now - 3600_000 },
+      { rev: "99a1b2c", kind: "run_start", label: "R-01 @99a1b2c", run_no: 1, at: now - 1800_000 },
+      { rev: rev.pin, kind: "pin", label: `Current @${String(rev.pin).slice(0, 7)}`, run_no: 2, at: now - 120_000 },
+    ];
+    if (rev.files[0]?.hunks?.length > 1) rev.moved_hunks = { [rev.files[0].path]: [rev.files[0].hunks.length - 1] };
+    else if (rev.files.length > 1 && rev.files[1]?.hunks?.length) rev.moved_hunks = { [rev.files[1].path]: [0] };
+  }
+};
+
+const bothThemes = (s: Omit<Screen, "lang" | "theme">): Screen[] => [
+  { ...s, name: `final-${s.name}-dark`, lang: "en", theme: "dark" },
+  { ...s, name: `final-${s.name}-light`, lang: "en", theme: "light" },
+];
+
 const screens: Screen[] = [
   // The board, the queue, the first run.
   ...pair({ name: "overview", route: "overview" }),
@@ -147,6 +233,35 @@ const screens: Screen[] = [
   ...pair({ name: "shortcuts", route: "overview", after: press("Shift+Slash") }),
   { name: "shortcuts-review-zh-dark", route: "review/G-0003", lang: "zh-CN", theme: "dark", after: async (page) => (await reviewReady(page), await press("Shift+Slash")(page)) },
   ...pair({ name: "activity-empty", route: "overview", after: press("Meta+Shift+L") }),
+
+  // Final full-window dark & light showcase screens for all core & new console surfaces.
+  ...bothThemes({ name: "overview", route: "overview", enrich: enrichConsole }),
+  ...bothThemes({
+    name: "peek-drawer",
+    route: "overview",
+    enrich: enrichConsole,
+    after: async (page) => {
+      // Move past the 4 Needs-You decision lines onto the first Goal flight strip, then press Space to open Peek Drawer.
+      for (let i = 0; i < 5; i++) {
+        await page.keyboard.press("j");
+        await page.waitForTimeout(60);
+      }
+      await page.keyboard.press("Space");
+      await page.locator(".peek-drawer").waitFor();
+    },
+  }),
+  ...bothThemes({ name: "goal-deck", route: "goal/G-0001", enrich: enrichConsole }),
+  ...bothThemes({
+    name: "review-theater",
+    route: "review/G-0003",
+    enrich: enrichConsole,
+    after: async (page) => {
+      await reviewReady(page);
+      await page.locator(".code-pending").first().waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
+    },
+  }),
+  ...bothThemes({ name: "learning", route: "learning", enrich: enrichConsole }),
+  ...bothThemes({ name: "operations", route: "operations", enrich: enrichConsole }),
 ];
 
 for (const s of screens) {

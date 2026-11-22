@@ -271,13 +271,6 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <Show when={issueFor("scope.include") ?? issueFor("scope.exclude") ?? issueFor("scope.readonly")}>
             {(err) => <p class="field-error">{err()}</p>}
           </Show>
-          <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
-          <Show when={!c.network}>
-            <Field label={t("contract.ports")} hint={t("contract.portsHint")}>
-              <input class="mono" inputmode="numeric" placeholder={t("common.eg", { x: "5432, 6379" })} value={(c.ports ?? []).join(", ")} onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))} />
-            </Field>
-            <Toggle checked={c.loopback_open ?? false} onChange={(v) => setC("loopback_open", v)} label={t("contract.loopbackOpen")} hint={t("contract.loopbackOpenHint")} />
-          </Show>
         </div>
 
         <div class="editor-foot">
@@ -339,6 +332,13 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               </For>
             </div>
           </div>
+          <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
+          <Show when={!c.network}>
+            <Field label={t("contract.ports")} hint={t("contract.portsHint")}>
+              <input class="mono" inputmode="numeric" placeholder={t("common.eg", { x: "5432, 6379" })} value={(c.ports ?? []).join(", ")} onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))} />
+            </Field>
+            <Toggle checked={c.loopback_open ?? false} onChange={(v) => setC("loopback_open", v)} label={t("contract.loopbackOpen")} hint={t("contract.loopbackOpenHint")} />
+          </Show>
           <div class="field">
             <span class="field-label">{t("contract.autonomy")}</span>
             <div class="autonomy-choices" role="radiogroup" aria-label={t("contract.autonomy")}>

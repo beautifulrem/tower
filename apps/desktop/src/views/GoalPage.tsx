@@ -117,7 +117,8 @@ export function GoalPage(props: { id: string }) {
     const tier = d?.contract.sandbox_tier ?? g.sandbox_tier ?? "default";
     const noSb = hasIssue(state.env, "no_sandbox");
     const items: [string, string][] = [
-      ["tel-pill", `${engineLabel(eng)} · ${trustLabel(trustTierOf(eng))}`],
+      ["tel-pill", engineLabel(eng)],
+      ["tel-pill", trustLabel(trustTierOf(eng))],
       [`tel-pill ${noSb ? "tel-pill-attn" : tier === "micro_vm" ? "tel-pill-active" : ""}`, sandboxTag(tier, noSb)],
     ];
     if (g.port_base != null) items.push(["tel-pill tel-pill-mono", `Ports ${g.port_base}–${g.port_base + 9}`]);

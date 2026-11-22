@@ -18,8 +18,9 @@ Most agent GUIs inherit the editor layout: sessions on the left, a chat stream i
 - **Review is steering.** Large diffs are cut into risk-ordered units of at most ~300 lines; a comment on a line is an instruction to the agent. Viewed marks, draft comments and "since last review" make re-reviews short.
 - **Closed by default.** Everything the agent runs — shell and file tools alike — runs under a per-goal macOS sandbox: no credentials, no other projects, no writes outside its workspace, and no network unless the contract allows it. See [SECURITY.md](SECURITY.md).
 - **Your repository is untouched.** Each goal works in a private clone. Accepting writes one commit, authored by you, to a new local branch. Pushing and opening a PR are explicit actions of yours.
-- **Pi or Claude Code.** Goals run on [Pi](https://github.com/earendil-works/pi), or on Claude Code through the Agent Client Protocol: Tower gives Claude Code no built-in tools at all, only its own sandboxed read, edit, write and bash plus `ask_user`, `log` and `submit`, so contracts, the sandbox, verification and sentinels apply unchanged. Choose the engine in Settings or per goal.
-- **Respects Pi.** Tower adds exactly three tools to the model (`ask_user`, `log`, `submit`) through a standard Pi extension, which also wraps Pi's own four in the sandbox, and every message Tower injects is visible in the trace.
+- **Multi-engine with explicit trust tiers.** Goals run on [Pi](https://github.com/earendil-works/pi) (`Full S2`), or on Claude Code, Codex, Gemini CLI (`Restricted S2`) and OpenCode (`Experimental`) through the generic Agent Client Protocol bridge with fail-closed tool sandboxing, trust-tier visibility, layered model escalation, and structured `submit(outcome: "blocked")`. Choose the engine in Settings or per goal.
+- **Learning & Operations consoles.** Tainted memory proposals require human ratification (with an edit or `CONFIRM` gate for high-taint sources) alongside a verifier calibration scoreboard; Operations manages scheduled goals (unattended-strict), per-project merge queues, disk inventory, and sandbox posture (macOS Seatbelt, Linux `bwrap`/Landlock, optional Apple Containerization MicroVM).
+- **Respects Pi.** Tower adds exactly three tools to the model (`ask_user`, `log`, `submit`) through a standard Pi extension backed by a persistent sandboxed filesystem helper, and every message Tower injects is visible in the trace.
 
 | Goal page | Review |
 |---|---|
@@ -80,17 +81,18 @@ TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
 apps/desktop/            Tauri 2 shell (Rust) + SolidJS interface
 crates/
   tower-core/            lifecycle state machine, contracts, honesty grammar, sentinels, review units
-  tower-store/           single-writer SQLite event log with projections
-  tower-pi/              Pi engine adapter over JSONL RPC
-  tower-git/             satellite clones, content-addressed snapshots, sealing, push
+  tower-ast/             tree-sitter AST analysis (Rust/JS/TS/Python/Bash) for sentinels & semantic diff folding
+  tower-store/           single-writer SQLite WAL event log with concurrent read pool & projections
+  tower-pi/              Pi engine adapter over JSONL RPC (incl. multimodal image attachments)
+  tower-git/             satellite clones, content-addressed snapshots, timeline compare, sealing, merge queue
   tower-verify/          criterion runner: process groups, timeouts, bounded redacted output
-  tower-supervisor/      the single writer that runs goals through their lifecycle
-extensions/tower-goal/   Pi extension: ask_user / log / submit, scope and autonomy gate, sandboxed bash
-docs/                    the product design (start at 00) and its adversarial reviews
-tools/                   demo engine and screenshot helper
+  tower-supervisor/      the single writer: lifecycle, sandbox backends, FS helper, learning, schedules, remote SSE
+extensions/tower-goal/   Pi & ACP extension: ask_user / log / submit, POSIX shell policy gate, sandboxed FS & bash
+docs/                    the product design (start at 00), evolution roadmap (18), anti-chat console spec (19)
+tools/                   demo engine, security-test gate, bundle & doc checks, screenshot helper
 ```
 
-The supervisor owns all state; the interface holds a read-only replica fed by coalesced updates. The code the window loads at start is about 51 KB gzipped, the first half of one interface language included (the other language loads only if you switch); the goal page and the words only later views say follow once the first frame is up, the review, settings, contract editor, command palette and native menus load on first use, and syntax highlighting in a worker; CI enforces a budget for each, for the goal page and for all of the interface's JavaScript together, so moving code out of start-up cannot hide growth (`tools/bundle-budget.sh`: start-up 64 KB, goal page 12 KB, all 160 KB; about 142 KB today). The app is about 11 MB.
+The supervisor owns all state; the interface holds a read-only replica fed by coalesced updates. The code the window loads at start is about 52 KB gzipped, the first half of one interface language included (the other language loads only if you switch); the goal page and the words only later views say follow once the first frame is up, the review, settings, learning, operations, contract editor, quick peek and command palette load on first use, and syntax highlighting in a worker; CI enforces a budget for each, for the goal page and for all of the interface's JavaScript together, so moving code out of start-up cannot hide growth (`tools/bundle-budget.sh`: start-up 64 KB, goal page 12 KB, all 160 KB; about 156 KB today). The app is about 11 MB.
 
 ## Design
 

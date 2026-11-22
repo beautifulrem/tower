@@ -12,7 +12,7 @@ test("the board shows every goal and what needs you", async ({ page }) => {
 });
 
 for (const scheme of ["light", "dark"] as const) {
-  for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0001", "settings"]) {
+  for (const route of ["overview", "inbox", "learning", "operations", "goal/G-0001", "review/G-0001", "settings"]) {
     test(`${route} has no serious accessibility violations (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
       await openTower(page, route);

@@ -8,7 +8,7 @@ import { For, Show, Suspense, createEffect, createMemo, createResource, createSi
 
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
-import { CriteriaBar, discountedOf } from "../components/Honesty";
+import { CriteriaBar, discountedOf } from "../components/HonestyCore";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
 import { Button, Empty, Loading, Section } from "../components/ui";
@@ -27,8 +27,8 @@ import { GoalBlocks } from "./goal/GoalBlocks";
 import "./goal/deck.css";
 import { type ExtGoalDetail, type ExtGoalSummary, sandboxTag, trustLabel, trustTierOf } from "./goal/ext";
 
-const Trace = lazy(withLater(() => import("../components/Trace").then((m) => ({ default: m.Trace }))));
-const SteerBox = lazy(() => import("./goal/SteerBox").then((m) => ({ default: m.SteerBox })));
+const Trace = lazy(withLater(() => import("./Learning").then((m) => ({ default: m.Trace }))));
+const SteerBox = lazy(() => import("./Learning").then((m) => ({ default: m.SteerBox })));
 
 const DETAIL_IRRELEVANT = new Set([
   "tool_started", "tool_ended", "mode_changed", "assistant_message", "cost_updated",

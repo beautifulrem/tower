@@ -75,7 +75,7 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
   it("does not attribute another criterion's sentinel to an unrelated criterion", () => {
     const criterion = {
       criterion: { id: "C1", title: "Checkout tests", kind: { type: "exec" as const, command: "pnpm test", timeout_secs: 60 } },
-      verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 420, output_tail: "ok", at: Date.now() - 5000, stale: false, held_out: false, held_out_proof: null },
+      verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 420, output_tail: "ok", at: Date.now() - 5000, stale: false, held_out: false, held_out_proof: null, console_errors: [] },
       passed_on_base: false,
       base_error: null,
       look: null,

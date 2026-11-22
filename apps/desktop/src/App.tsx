@@ -58,12 +58,12 @@ function ContractSkeleton() {
 // start-up stays small and they are local files, so the delay is not perceptible. The goal page is one click from
 // every first screen, so it is fetched as soon as the first frame is up rather than on that click.
 const GoalPage = lazy(withLater(() => import("./views/GoalPage").then((m) => ({ default: m.GoalPage }))));
-const Review = lazy(withLater(() => import("./views/Review").then((m) => ({ default: m.Review }))));
-const Settings = lazy(withLater(() => import("./views/Settings").then((m) => ({ default: m.Settings }))));
 const loadConsole = () => import("./views/Learning");
+const Review = lazy(withLater(() => loadConsole().then((m) => ({ default: m.Review }))));
+const Settings = lazy(withLater(() => loadConsole().then((m) => ({ default: m.Settings }))));
 const Learning = lazy(withLater(() => loadConsole().then((m) => ({ default: m.Learning }))));
 const Operations = lazy(withLater(() => loadConsole().then((m) => ({ default: m.Operations }))));
-const ContractEditor = lazy(withLater(() => import("./views/ContractEditor").then((m) => ({ default: m.ContractEditor }))));
+const ContractEditor = lazy(withLater(() => loadConsole().then((m) => ({ default: m.ContractEditor }))));
 // The floating layers too: each opens on a key or a click, so its code comes then. Their keys are bound here.
 const CommandPalette = lazy(withLater(() => loadConsole().then((m) => ({ default: m.CommandPalette }))));
 const ShortcutSheet = lazy(withLater(() => loadConsole().then((m) => ({ default: m.ShortcutSheet }))));

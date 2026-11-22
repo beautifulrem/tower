@@ -20,22 +20,14 @@ import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { effectiveEngine, engineLabel, modelsFor } from "../lib/labels";
 import { back, go } from "../lib/nav";
-import { act, goalList, state, toast } from "../lib/store";
+import { act, goalList, state } from "../lib/store";
 import { engineOptions, thinkingOptions } from "./Settings";
 import { HoldoutDrafts } from "./goal/HoldoutDrafts";
+import { AttachChips, collectImages, extractImages } from "./goal/SteerBox";
 import "./goal/deck.css";
-import {
-  type AttachmentRef,
-  type ExtContract,
-  type SandboxPosture,
-  attachImageFile,
-  callCmd,
-  extractImages,
-  trustLabel,
-  trustTierOf,
-} from "./goal/ext";
+import { type AttachmentRef, type ExtContract, trustLabel, trustTierOf } from "./goal/ext";
 
-function blank(intent = "", testCommand: string | null = null): ExtContract {
+export function blankContract(intent = "", testCommand: string | null = null): ExtContract {
   return {
     version: 1,
     intent,
@@ -72,14 +64,14 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const editingId = props.draftId ?? props.amendId;
   const [projectId, setProjectId] = createSignal(props.projectId ?? state.projects[0]?.id ?? "");
   const [title, setTitle] = createSignal("");
-  const [c, setC] = createStore<ExtContract>(blank());
+  const [c, setC] = createStore<ExtContract>(blankContract());
   const [issues, setIssues] = createSignal<ContractIssue[]>([]);
   const [busy, setBusy] = createSignal(false);
   const [touched, setTouched] = createSignal(!!editingId);
   const [dragOver, setDragOver] = createSignal(false);
   const [holdoutOpen, setHoldoutOpen] = createSignal(false);
   const [models] = createResource(() => api.models().catch(() => []));
-  const [posture] = createResource(() => callCmd<SandboxPosture>("sandbox_posture"));
+  const [posture] = createResource(() => api.sandboxPosture?.().catch(() => null) ?? Promise.resolve(null));
   let fileInput!: HTMLInputElement;
 
   const engine = () => effectiveEngine(c.engine, state.settings?.engine);
@@ -97,12 +89,12 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       const d = await api.goal(editingId);
       setTitle(d.summary.title);
       setProjectId(d.summary.project_id);
-      setC({ escalation_model: "", escalation_after_reworks: 2, attachments: [], sandbox_tier: "default", depends_on: [], ...structuredClone(d.contract) });
+      setC({ ...structuredClone(d.contract), escalation_model: d.contract.escalation_model ?? "", escalation_after_reworks: d.contract.escalation_after_reworks ?? 2, attachments: d.contract.attachments ?? [], sandbox_tier: d.contract.sandbox_tier ?? "default", depends_on: d.contract.depends_on ?? [] });
     } else {
       const project = state.projects.find((p) => p.id === projectId());
       const intent = sessionStorage.getItem("tower.draftIntent") ?? "";
       sessionStorage.removeItem("tower.draftIntent");
-      setC(blank(intent, project?.test_command ?? null));
+      setC(blankContract(intent, project?.test_command ?? null));
       setTitle(intent.slice(0, 48));
     }
   });
@@ -131,25 +123,16 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   };
   const setKind = (i: number, fn: (k: Criterion["kind"]) => void) => setC("criteria", i, "kind", produce(fn));
 
-  const addImages = async (files: File[]) => {
-    for (const f of files) {
-      try {
-        const ref = await attachImageFile(f, editingId);
-        setC("attachments", (l) => [...(l ?? []), ref]);
-      } catch {
-        toast("error", "Attach failed");
-      }
-    }
-  };
+  const addImages = (files: File[]) => void collectImages(files, editingId, (ref) => setC("attachments", (l) => [...(l ?? []), ref]));
   const removeAtt = (att: AttachmentRef) => {
     setC("attachments", (l) => (l ?? []).filter((x) => x.id !== att.id));
-    if (editingId) void callCmd("delete_attachment", { goalId: editingId, attachmentId: att.id });
+    if (editingId) void api.deleteAttachment?.(editingId, att.id).catch(() => {});
   };
   const toggleDep = (id: string) => setC("depends_on", (l) => ((l ?? []).includes(id) ? (l ?? []).filter((x) => x !== id) : [...(l ?? []), id]));
 
   const save = async (ratify: boolean) => {
     const contract = structuredClone(unwrap(c));
-    if (contract.attachments?.length) contract.attachments = contract.attachments.map(({ preview: _, ...rest }) => rest);
+    if (contract.attachments?.length) contract.attachments = contract.attachments.map((a) => { const { preview: _, ...rest } = a as AttachmentRef; return rest; });
     setBusy(true);
     try {
       if (props.amendId) {
@@ -220,19 +203,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => (e.currentTarget.files?.length && void addImages(Array.from(e.currentTarget.files)), (e.currentTarget.value = ""))} />
             <Button size="s" variant="ghost" onClick={() => fileInput.click()}><Icon name="plus" size={10} />Attach</Button>
           </div>
-          <Show when={(c.attachments ?? []).length > 0}>
-            <div class="att-list">
-              <For each={c.attachments ?? []}>
-                {(a) => (
-                  <span class="att-chip">
-                    <Show when={a.preview}><img class="att-thumb" src={a.preview} alt={a.name} /></Show>
-                    <span class="ellipsis mono">{a.name}</span>
-                    <button type="button" class="icon-btn" aria-label={t("common.remove")} onClick={() => removeAtt(a)}>×</button>
-                  </span>
-                )}
-              </For>
-            </div>
-          </Show>
+          <AttachChips items={c.attachments ?? []} onRemove={removeAtt} />
           <Field label={t("contract.doneWhen")} hint={t("contract.doneWhenHint")}>
             <textarea rows={2} value={c.done_when} onInput={(e) => setC("done_when", e.currentTarget.value)} />
           </Field>
@@ -353,14 +324,19 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <div class="field">
             <span class="field-label">Sandbox tier</span>
             <div class="tier-cards" role="radiogroup" aria-label="Sandbox tier">
-              <label class="tier-card" classList={{ selected: (c.sandbox_tier ?? "default") === "default" }}>
-                <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === "default"} onChange={() => setC("sandbox_tier", "default")} />
-                <span><b>Default OS Sandbox</b><span class="radio-desc" style={{ display: "block" }}>Seatbelt / Landlock</span></span>
-              </label>
-              <label class="tier-card" classList={{ selected: c.sandbox_tier === "micro_vm", disabled: !microVmReady() }}>
-                <input type="radio" name="sandbox_tier" checked={c.sandbox_tier === "micro_vm"} disabled={!microVmReady()} onChange={() => setC("sandbox_tier", "micro_vm")} />
-                <span><b>MicroVM</b><span class="radio-desc" style={{ display: "block" }}>{microVmReady() ? "Apple Containerization" : "macOS 26+ container CLI"}</span></span>
-              </label>
+              <For
+                each={[
+                  ["default", "Default OS Sandbox", "Seatbelt / Landlock", false],
+                  ["micro_vm", "MicroVM", microVmReady() ? "Apple Containerization" : "macOS 26+ container CLI", !microVmReady()],
+                ] as ["default" | "micro_vm", string, string, boolean][]}
+              >
+                {([id, name, desc, dis]) => (
+                  <label class="tier-card" classList={{ selected: (c.sandbox_tier ?? "default") === id, disabled: dis }}>
+                    <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === id} disabled={dis} onChange={() => setC("sandbox_tier", id)} />
+                    <span><b>{name}</b><span class="radio-desc" style={{ display: "block" }}>{desc}</span></span>
+                  </label>
+                )}
+              </For>
             </div>
           </div>
           <div class="field">

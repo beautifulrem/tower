@@ -52,18 +52,24 @@ const look = {
   title: "The checkout page still looks right",
   kind: { type: "look", start: "npm run dev", url: "http://localhost:3000/checkout", timeout_secs: 60, steps: ["click #buy", "type #qty 2"] },
 };
-vi.mock("../../lib/api", () => ({
-  api: {
-    models: async () => [
-      { provider: "anthropic", id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", reasoning: true, cost_input: 3, cost_output: 15, context_window: 200000 },
-      { provider: "anthropic", id: "claude-opus-4-5", name: "Claude Opus 4.5", reasoning: true, cost_input: 15, cost_output: 75, context_window: 200000 },
-    ],
-    validateContract: async (c: unknown) => {
-      validated.push(structuredClone(c));
-      return [];
-    },
-    baseTests: async () => null,
-    goal: async () => ({
+vi.mock("../../lib/api", async () => {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return {
+    api: {
+      models: async () => [
+        { provider: "anthropic", id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", reasoning: true, cost_input: 3, cost_output: 15, context_window: 200000 },
+        { provider: "anthropic", id: "claude-opus-4-5", name: "Claude Opus 4.5", reasoning: true, cost_input: 15, cost_output: 75, context_window: 200000 },
+      ],
+      validateContract: async (c: unknown) => {
+        validated.push(structuredClone(c));
+        return [];
+      },
+      baseTests: async () => null,
+      sandboxPosture: () => invoke("sandbox_posture"),
+      generateHoldoutDrafts: (projectId: string, intent: string) => invoke("generate_holdout_drafts", { projectId, intent }),
+      ratifyHoldoutDraft: (projectId: string, filename: string, code: string) => invoke("ratify_holdout_draft", { projectId, filename, code }),
+      deleteAttachment: (goalId: string, attachmentId: string) => invoke("delete_attachment", { goalId, attachmentId }),
+      goal: async () => ({
       summary: { title: "Fix the cart total", project_id: "p1" },
       contract: {
         version: 2,
@@ -92,7 +98,8 @@ vi.mock("../../lib/api", () => ({
     }),
   },
   errorText: (e: unknown) => String(e),
-}));
+  };
+});
 
 const { ContractEditor, parsePorts } = await import("../ContractEditor");
 

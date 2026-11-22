@@ -15,11 +15,12 @@ import { go } from "../lib/nav";
 import { act, state } from "../lib/store";
 import { ProvBox } from "../views/Learning";
 import { DangerMark, Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
-import { ConsistencyBadge, CriteriaBar } from "./Honesty";
+import { ConsistencyBadge } from "./Honesty";
+import { CriteriaBar } from "./HonestyCore";
 import { LiveLine } from "./Live";
+import { TrustPill } from "./ProvenanceFrame";
 import { Button } from "./ui";
 
-const TRUST_CLS = { full_s2: "trust-full", restricted_s2: "trust-restricted", experimental: "trust-experimental" } as const;
 const pct = (v: number, m: number) => (m > 0 ? Math.min(100, (v / m) * 100) : 0);
 
 export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
@@ -85,7 +86,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                 <h2 class="peek-title">{s().title}</h2>
                 <div class="row halt">
                   <span class="meta t3">{engineLabel(engine())}</span>
-                  <span class={`trust-pill ${TRUST_CLS[tier()]}`}>{t(`trust.${tier()}`)}</span>
+                  <TrustPill tier={tier()} label={t(`trust.${tier()}`)} />
                   <span class="posture-pill num" hidden={!s().port_base && s().sandbox_tier !== "micro_vm"}>
                     {[s().sandbox_tier === "micro_vm" ? "MicroVM" : "", s().port_base ? `:${s().port_base}` : ""].filter(Boolean).join(" ")}
                   </span>

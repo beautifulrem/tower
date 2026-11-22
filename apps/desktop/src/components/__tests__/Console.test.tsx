@@ -35,6 +35,7 @@ const mockSummary: GoalSummaryExt = {
     engine: "pi",
     sandbox_tier: "micro_vm",
     port_base: 20010,
+    depends_on: [],
 };
 
 const mockGoalDetail = {

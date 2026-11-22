@@ -3,9 +3,10 @@ import { For, Show, createSignal, onMount } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
 import { Button } from "../../components/ui";
+import { api } from "../../lib/api";
 import { t } from "../../lib/i18n";
 import { toast } from "../../lib/store";
-import { type HoldoutDraft, callCmd } from "./ext";
+import type { HoldoutDraft } from "./ext";
 
 export function HoldoutDrafts(props: { projectId: string; intent: string; onClose: () => void }) {
   const [drafts, setDrafts] = createSignal<HoldoutDraft[]>([]);
@@ -13,7 +14,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
   const [busy, setBusy] = createSignal<string | null>(null);
 
   const load = async () => {
-    const res = await callCmd<HoldoutDraft[]>("generate_holdout_drafts", { projectId: props.projectId, intent: props.intent });
+    const res = await api.generateHoldoutDrafts?.(props.projectId, props.intent).catch(() => null);
     setDrafts(res?.length ? res : [{
       id: "d1",
       filename: "holdout/boundary.test.js",
@@ -26,7 +27,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
   const patch = (id: string, p: Partial<HoldoutDraft>) => setDrafts((l) => l.map((d) => (d.id === id ? { ...d, ...p } : d)));
   const ratify = async (d: HoldoutDraft) => {
     setBusy(d.id);
-    const out = await callCmd<string>("ratify_holdout_draft", { projectId: props.projectId, filename: d.filename, code: d.code });
+    const out = await api.ratifyHoldoutDraft?.(props.projectId, d.filename, d.code).catch(() => null);
     setRatified((m) => ({ ...m, [d.id]: true }));
     toast("success", `Ratified ${out || d.filename}`);
     setBusy(null);

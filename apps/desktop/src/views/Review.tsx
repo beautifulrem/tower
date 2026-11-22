@@ -24,7 +24,7 @@ import { advanceQueue, queuePosition } from "../lib/reviewQueue";
 import { type Draft, type Layout, type ReviewState, fileHash, loadReviewState, persist } from "../lib/reviewState";
 import { act, onTrace, state, toast } from "../lib/store";
 import { applySuggestion } from "../lib/suggest";
-import { type ExtReviewUnit, type ExtReviewView, callCmd } from "./goal/ext";
+import type { ExtReviewUnit, ExtReviewView } from "./goal/ext";
 import { FileDiff } from "./review/FileDiff";
 import { type ReviewScope, TimelineSwitcher, buildSnapshots, lastTurnRev } from "./review/Timeline";
 import { type ReviewNote, ReviewNotes, UnitNarrative } from "./review/notes";
@@ -58,7 +58,7 @@ export function Review(props: { id: string }) {
     },
     async (k): Promise<ExtReviewView> => {
       if (!k) throw new Error("loading");
-      const r = k.sc === "compare" && k.since && k.to ? await callCmd<ExtReviewView>("compare_snapshots", { id: k.id, fromRev: k.since, toRev: k.to }) : null;
+      const r = k.sc === "compare" && k.since && k.to ? await api.compareSnapshots(k.id, k.since, k.to).catch(() => null) : null;
       return r ?? ((await api.review(k.id, k.since)) as ExtReviewView);
     },
   );

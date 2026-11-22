@@ -32,7 +32,7 @@ export function prewarmReviews() {
       idle(() => {
         void api
           .review(g.id)
-          .then((v) => import("./highlight").then((m) => m.prewarm(v.files)))
+          .then((v) => import("../views/Learning").then((m) => m.prewarmHighlight(v.files)))
           .catch(() => {});
       });
     }

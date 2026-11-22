@@ -5,7 +5,8 @@
  */
 import { For, type JSX, Show, createMemo, createResource, createSignal } from "solid-js";
 
-import { DangerMark, Icon, NoticeMark } from "../components/Glyph";
+import { DangerMark, NoticeMark } from "../components/Glyph";
+import { ProvenanceFrame, TaintPill } from "../components/ProvenanceFrame";
 import { Empty, Select } from "../components/ui";
 import { api } from "../lib/api";
 import type { CalibrationRow, MemoryProposal, ProposalStatus } from "../lib/apiTypes";
@@ -15,13 +16,21 @@ import { engineLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, refreshConsoleMeta, state } from "../lib/store";
 
-// Co-locate lazy console exports so Vite shares one gzip window across on-demand shell surfaces.
+// Co-locate lazy desktop views so Vite shares one gzip dictionary across on-demand surfaces (GoalPage stays its own chunk).
 export { Operations } from "./Operations";
 export { Welcome } from "./Welcome";
+export { Review } from "./Review";
+export { Settings } from "./Settings";
+export { ContractEditor } from "./ContractEditor";
 export { PeekDrawer } from "../components/PeekDrawer";
 export { CommandPalette } from "../components/Palette";
 export { ShortcutSheet } from "../components/ShortcutSheet";
 export { ActivityPanel } from "../components/Activity";
+export { Trace } from "../components/Trace";
+export { LookStrip } from "../components/Look";
+export { SteerBox } from "./goal/SteerBox";
+export { prewarm as prewarmHighlight } from "../lib/highlight";
+export { ask as askDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 
 const ALL = "__all__";
 const PHRASE = "CONFIRM";
@@ -51,22 +60,28 @@ export function SmBtn(props: { variant?: "primary" | "default" | "ghost"; disabl
   );
 }
 
+/** Shared micro meter cell used in Calibration and Storage tables. */
+export function MeterCell(props: { label: string; width: string; cls?: string; wrapCls?: string }) {
+  return (
+    <span class={props.wrapCls ?? "rate-cell"}>
+      <span>{props.label}</span>
+      <span class="meter-micro"><i class={`meter-micro-fill${props.cls ? ` ${props.cls}` : ""}`} style={{ width: props.width }} /></span>
+    </span>
+  );
+}
+
+/** Shared all-projects filter dropdown for console tables. */
+export function ProjectFilter(props: { value: string; onChange: (v: string) => void; min?: number }) {
+  return (
+    <Show when={state.projects.length > (props.min ?? 0)}>
+      <Select class="overview-filter" label={t("overview.filterLabel")} value={props.value} options={[{ value: ALL, label: t("overview.allProjects") }, ...state.projects.map((p) => ({ value: p.id, label: p.name }))]} onChange={props.onChange} />
+    </Show>
+  );
+}
+
 /** Shared provenance container used by lazy console views (Fact / Claim / Human). */
 export function ProvBox(props: { kind: "fact" | "claim" | "human"; badge: string; meta?: string; aside?: JSX.Element; danger?: boolean; children: JSX.Element }) {
-  return (
-    <div class={`prov-frame prov-${props.kind}`} classList={{ "prov-danger": !!props.danger }}>
-      <div class="prov-head halt">
-        <span class="prov-badge">
-          {props.kind === "fact" ? <Icon name="harness" size={10} /> : props.kind === "claim" ? <span class="claim-rule" aria-hidden="true">┆</span> : null}
-          {props.badge}
-        </span>
-        {props.meta && <span class="prov-meta">{props.meta}</span>}
-        <span class="grow" />
-        {props.aside}
-      </div>
-      <div class="prov-body">{props.children}</div>
-    </div>
-  );
+  return <ProvenanceFrame kind={props.kind} label={props.badge} meta={props.meta} aside={props.aside} danger={props.danger}>{props.children}</ProvenanceFrame>;
 }
 
 /** Shared numeric instrument table with empty state. */
@@ -111,7 +126,7 @@ function ProposalCard(props: { p: MemoryProposal; onChanged: () => void }) {
       <header class="proposal-head halt">
         {props.p.taint_level === "high" ? <DangerMark /> : props.p.taint_level === "standard" ? <NoticeMark /> : null}
         <span class="posture-pill">{t(`learning.scope_${props.p.scope}` as Parameters<typeof t>[0])}</span>
-        <span class={`taint-pill taint-${props.p.taint_level}`}>{t(`learning.taint_${props.p.taint_level}` as Parameters<typeof t>[0])}</span>
+        <TaintPill level={props.p.taint_level} label={t(`learning.taint_${props.p.taint_level}` as Parameters<typeof t>[0])} />
         <For each={props.p.taint_classes}>{(cls) => <span class="code-val meta t3">{cls}</span>}</For>
         <span class="grow" />
         <button type="button" class="link-quiet code-val meta" hidden={!props.p.goal_id} onClick={() => props.p.goal_id && go({ name: "goal", id: props.p.goal_id })}>{props.p.goal_id}</button>
@@ -206,9 +221,7 @@ export function Learning() {
         <div class="row">
           <h3 class="section-title">{t("learning.calibrationTitle")}</h3>
           <span class="grow" />
-          <Show when={state.projects.length > 0}>
-            <Select class="overview-filter" label={t("overview.filterLabel")} value={project()} options={[{ value: ALL, label: t("overview.allProjects") }, ...state.projects.map((p) => ({ value: p.id, label: p.name }))]} onChange={setProject} />
-          </Show>
+          <ProjectFilter value={project()} onChange={setProject} />
           <SmBtn onClick={() => void rfCal()}>{t("common.retry")}</SmBtn>
         </div>
 
@@ -235,8 +248,8 @@ export function Learning() {
                   </div>
                 </td>
                 <td class="col-r">{r.goals_total}</td>
-                <td class="col-r"><span class="rate-cell"><span>{pct(r.first_pass_rate)}</span><span class="meter-micro"><i class="meter-micro-fill verified" style={{ width: pct(r.first_pass_rate) }} /></span></span></td>
-                <td class="col-r"><span class="rate-cell"><span>{pct(r.high_sentinel_rate)}</span><span class="meter-micro"><i class="meter-micro-fill danger" style={{ width: pct(r.high_sentinel_rate) }} /></span></span></td>
+                <td class="col-r"><MeterCell label={pct(r.first_pass_rate)} width={pct(r.first_pass_rate)} cls="verified" /></td>
+                <td class="col-r"><MeterCell label={pct(r.high_sentinel_rate)} width={pct(r.high_sentinel_rate)} cls="danger" /></td>
                 <td class="col-r">{r.avg_reworks.toFixed(1)}</td>
                 <td class="col-r">{pct(r.blocked_rate)}</td>
                 <td class="col-r">{usd(r.avg_cost_usd)}</td>

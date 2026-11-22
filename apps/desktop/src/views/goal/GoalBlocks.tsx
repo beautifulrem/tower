@@ -6,7 +6,8 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark } from "../../components/Glyph";
-import { Claim, ConsistencyBadge, CriteriaBar, HumanStamp, discountedOf } from "../../components/Honesty";
+import { ConsistencyBadge, HumanStamp } from "../../components/Honesty";
+import { Claim, CriteriaBar, discountedOf } from "../../components/HonestyCore";
 import { Button, Empty, Kbd, Prose, Section } from "../../components/ui";
 import type { ClaimView } from "../../gen/ClaimView";
 import type { RunView } from "../../gen/RunView";

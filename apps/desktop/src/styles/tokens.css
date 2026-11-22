@@ -46,8 +46,9 @@
   /* Component constants */
   --sidebar-w: 232px;
   --titlebar-h: 52px;
-  --row-goal-h: 36px;
+  --row-goal-h: 40px;
   --rail-w: 340px;
+  --drawer-w: 448px;
   /* One reading width for everything you read (decision cards, forms, long
      text); instruments (board rows, criteria, diffs) run full width. */
   --reading-w: 840px;
@@ -108,16 +109,31 @@
   --bg-selected: oklch(0.265 0.006 70);
   --bg-overlay: oklch(0.225 0.005 70 / 0.96);
   --bg-inset: oklch(0.160 0.004 70);
+  /* Precision flight-deck instrument surfaces (Warm Carbon): micro-stepped lightness without glass blur. */
+  --bg-strip: oklch(0.194 0.005 70);
+  --bg-well: oklch(0.148 0.004 70);
+  --bg-drawer: oklch(0.198 0.005 70);
   /* Page-level text fields; fields inside raised cards use --bg-app instead,
      so an input never reads as a hole in the card. */
   --bg-field: oklch(0.170 0.004 70);
   --border-subtle: oklch(1 0 0 / 0.06);
   --border: oklch(1 0 0 / 0.10);
   --border-strong: oklch(1 0 0 / 0.16);
+  --border-grid: oklch(1 0 0 / 0.08);
+  --border-instrument: oklch(1 0 0 / 0.14);
   /* A card's material: its hairline, and in the dark one line of shadow under its foot — a thing set on the
      page, not drawn on it. Glass is not attempted. */
   --card-edge: var(--border-subtle);
   --card-lift: 0 1px 0 oklch(0 0 0 / 0.30);
+
+  /* Four-Provenance Visual Physics (Fact / Observation / Claim / Human) */
+  --prov-fact-edge: oklch(1 0 0 / 0.22);
+  --prov-fact-bg: oklch(0.200 0.005 70);
+  --prov-obs-edge: oklch(1 0 0 / 0.20);
+  --prov-claim-edge: oklch(0.720 0.006 70 / 0.55);
+  --prov-claim-bg: oklch(0.195 0.004 70);
+  --prov-human-edge: var(--text-1);
+  --prov-human-bg: oklch(0.210 0.005 70);
 
   /* Contrast on --bg-app (0.180): text-1 ≈ 16:1, text-2 ≈ 12:1, text-3 ≈ 7.6:1, text-4 ≈ 5.2:1. */
   --text-1: oklch(0.945 0.003 70);
@@ -142,6 +158,9 @@
   /* The one-shot arrival flash a decision card decays from (§12.7). */
   --attention-flash: oklch(0.800 0.150 75 / 0.24);
   --danger-bg: oklch(0.215 0.030 25);
+  --verified-bg: oklch(0.218 0.026 155);
+  --active-bg: oklch(0.212 0.022 235);
+  --meter-track: oklch(1 0 0 / 0.09);
 
   --diff-add-bg: oklch(0.770 0.130 155 / 0.10);
   --diff-add-word: oklch(0.770 0.130 155 / 0.26);
@@ -173,13 +192,28 @@
   --bg-selected: oklch(0.940 0.006 80);
   --bg-overlay: oklch(1 0 0 / 0.97);
   --bg-inset: oklch(0.975 0.003 80);
+  /* Precision flight-deck instrument surfaces (Warm Parchment). */
+  --bg-strip: oklch(0.985 0.004 82);
+  --bg-well: oklch(0.954 0.005 80);
+  --bg-drawer: oklch(0.996 0.002 82);
   --bg-field: oklch(1 0 0);
   --border-subtle: oklch(0.20 0.01 70 / 0.08);
   --border: oklch(0.20 0.01 70 / 0.14);
   --border-strong: oklch(0.20 0.01 70 / 0.22);
+  --border-grid: oklch(0.20 0.01 70 / 0.10);
+  --border-instrument: oklch(0.36 0.022 78 / 0.22);
   /* On the warm white page a card's edge is cream, not grey: the same hue a touch warmer, no shadow. */
   --card-edge: oklch(0.42 0.035 80 / 0.20);
   --card-lift: none;
+
+  /* Four-Provenance Visual Physics (Warm Parchment) */
+  --prov-fact-edge: oklch(0.32 0.012 75 / 0.34);
+  --prov-fact-bg: oklch(0.998 0.002 80);
+  --prov-obs-edge: oklch(0.32 0.010 75 / 0.32);
+  --prov-claim-edge: oklch(0.430 0.008 75 / 0.50);
+  --prov-claim-bg: oklch(0.978 0.004 82);
+  --prov-human-edge: var(--text-1);
+  --prov-human-bg: oklch(0.974 0.006 82);
 
   /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.2:1,
      text-4 ≈ 4.6:1 (AA), so a line number or an empty segment drawn in it
@@ -204,6 +238,9 @@
   --attention-bg: oklch(0.962 0.034 85);
   --attention-flash: oklch(0.600 0.150 65 / 0.18);
   --danger-bg: oklch(0.965 0.025 25);
+  --verified-bg: oklch(0.962 0.024 155);
+  --active-bg: oklch(0.960 0.020 235);
+  --meter-track: oklch(0.20 0.01 70 / 0.10);
 
   /* Diff rows on white need a touch more than on dark, or the line tints vanish. */
   --diff-add-bg: oklch(0.550 0.130 155 / 0.13);

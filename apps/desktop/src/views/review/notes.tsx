@@ -1,9 +1,10 @@
 /**
- * What to know before reading the diff — the sentinels, the unit's risk
- * reasons, the absence of held-out tests — as one band over it instead of
- * three stacked lines: folded, it is a single line led by the weightiest
- * note, in its own mark and words, so a red one is never folded out of
- * sight; open, every note on a line of its own, weightiest first.
+ * Review unit pre-reading bands:
+ * 1. `UnitNarrative`: dashed "┆ Agent claims why" card (Claim register, never
+ *    green) paired with solid Harness Fact risk badges, rendered only when the
+ *    unit carries an agent claim summary.
+ * 2. `ReviewNotes`: sentinels, unit risk reasons, and absence of held-out
+ *    tests folded into a single line led by the weightiest note.
  */
 import { For, Show, createSignal } from "solid-js";
 
@@ -18,6 +19,31 @@ export interface ReviewNote {
   action?: { label: string; run: () => void };
   /** One of the sentinels: open, the band names them once as a group, so no line repeats "Sentinel". */
   sentinel?: boolean;
+}
+
+/** Dashed Claim card for a review unit's agent-claimed rationale alongside solid risk badges. */
+export function UnitNarrative(props: { claim?: string | null; riskReasons?: string[]; highSentinels?: string[] }) {
+  const badges = () => [
+    ...(props.highSentinels ?? []).map((s) => ({ cls: "risk-badge risk-badge-danger", text: s })),
+    ...(props.riskReasons ?? []).map((r) => ({ cls: "risk-badge", text: r })),
+  ];
+  return (
+    <Show when={props.claim}>
+      <div class="unit-narrative prov-frame prov-claim">
+        <div class="unit-narrative-head">
+          <span class="unit-claim-tag">┆ Agent claims why</span>
+          <span class="sr-only">{t("honesty.srClaim")}</span>
+          <Show when={badges().length}>
+            <span class="grow" />
+            <div class="unit-risk-badges">
+              <For each={badges()}>{(b) => <span class={b.cls}>{b.text}</span>}</For>
+            </div>
+          </Show>
+        </div>
+        <p class="unit-narrative-text">{props.claim}</p>
+      </div>
+    </Show>
+  );
 }
 
 export function ReviewNotes(props: { notes: ReviewNote[] }) {

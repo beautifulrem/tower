@@ -3,31 +3,74 @@
 //! and lets you answer it — questions, approvals, pauses — and pause a
 //! running goal. Off by default.
 //!
-//! Every request must carry the pairing token (a 256-bit random value shown
-//! in Settings as a link and QR code). The page itself carries no data. On
-//! a plain local network the token travels unencrypted; over Tailscale the
-//! connection is encrypted, which is why Settings recommends it.
+//! Async non-blocking runtime (`docs/18-evolution-roadmap.md` P1.3):
+//! - Requests are accepted on a non-blocking accept loop and dispatched onto
+//!   Tokio tasks with bounded concurrency (`MAX_CONCURRENT_REQUESTS`) and
+//!   explicit per-request timeouts (`ACTION_TIMEOUT`), so slow actions like
+//!   pausing an engine never block `/api/state` or other requests.
+//! - Authenticated `GET /api/events` streams Server-Sent Events (SSE) with
+//!   `Authorization: Bearer <token>` (never a URL query token), pushing
+//!   `event: state` JSON snapshots on change plus 15s keepalive comments.
+//!
+//! Security properties preserved verbatim:
+//! - Every API / SSE request requires the 256-bit pairing token via constant-time
+//!   compare; the HTML shell holds no data and reads the token from `location.hash`.
+//! - Tailscale-only by default (local network is a separate opt-in switch).
+//! - Privilege-widening decisions (`answerable_away == false`) are strictly refused.
 
-use std::io::Read;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::io::{self, Read, Write};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError, mpsc as std_mpsc};
+use std::time::Duration;
 
 use serde::Serialize;
+use tokio::sync::{Semaphore, broadcast, watch};
 use tower_core::view::{GoalSummary, InboxItem};
 
 use crate::Inner;
 
+/// Bounded concurrency for short-lived HTTP requests (`/`, `/api/state`, `/api/answer`, ...).
+const MAX_CONCURRENT_REQUESTS: usize = 32;
+/// Bounded concurrency for long-lived `/api/events` SSE subscribers.
+const MAX_SSE_CLIENTS: usize = 16;
+/// Maximum time allowed for an async remote action (`/api/answer`, `/api/pause`).
+const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+/// Maximum time allowed for reading `/api/state`.
+const STATE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Poll interval for SSE change detection when no explicit `notify()` fired.
+const SSE_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// Keepalive comment interval so mobile Safari and Tailscale NAT keep the stream open.
+const SSE_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
+
 /// The running server, kept so it can be stopped, with the address it
-/// listens on and why it is not running when it should be.
-#[derive(Default)]
+/// listens on, why it is not running when it should be, and an event bus
+/// that wakes connected SSE phone clients immediately on state changes.
 pub struct Remote {
     servers: Mutex<Vec<Arc<tiny_http::Server>>>,
     hosts: Mutex<Vec<String>>,
     problem: Mutex<Option<String>>,
+    shutdown: Mutex<Option<watch::Sender<bool>>>,
+    events_tx: broadcast::Sender<()>,
+    sse_clients: Arc<AtomicUsize>,
+}
+
+impl Default for Remote {
+    fn default() -> Self {
+        let (events_tx, _) = broadcast::channel(32);
+        Self {
+            servers: Mutex::default(),
+            hosts: Mutex::default(),
+            problem: Mutex::default(),
+            shutdown: Mutex::default(),
+            events_tx,
+            sse_clients: Arc::new(AtomicUsize::new(0)),
+        }
+    }
 }
 
 impl std::fmt::Debug for Remote {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Remote").finish_non_exhaustive()
+        f.debug_struct("Remote").field("sse_clients", &self.sse_clients.load(Ordering::Relaxed)).finish_non_exhaustive()
     }
 }
 
@@ -40,7 +83,7 @@ struct State {
     max_running: u32,
 }
 
-/// A fresh pairing token.
+/// A fresh 256-bit pairing token.
 pub fn new_token() -> String {
     format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple())
 }
@@ -104,7 +147,22 @@ pub fn qr_svg(text: &str) -> String {
 }
 
 impl Remote {
+    /// Signals all connected `/api/events` SSE clients to push a fresh state snapshot.
+    #[allow(dead_code)]
+    pub fn notify(&self) {
+        let _ = self.events_tx.send(());
+    }
+
+    /// Number of currently connected `/api/events` SSE subscribers.
+    #[allow(dead_code)]
+    pub fn active_sse_clients(&self) -> usize {
+        self.sse_clients.load(Ordering::Relaxed)
+    }
+
     pub fn stop(&self) {
+        if let Some(tx) = self.shutdown.lock().unwrap_or_else(PoisonError::into_inner).take() {
+            let _ = tx.send(true);
+        }
         for s in self.servers.lock().unwrap_or_else(PoisonError::into_inner).drain(..) {
             s.unblock();
         }
@@ -127,7 +185,7 @@ impl Remote {
 
     /// Starts serving on `port` at each of `hosts` with `token`, replacing
     /// running servers.
-    pub fn start(&self, inner: &Arc<Inner>, hosts: &[String], port: u16, token: String) -> std::io::Result<()> {
+    pub fn start(&self, inner: &Arc<Inner>, hosts: &[String], port: u16, token: String) -> io::Result<()> {
         self.stop();
         let mut servers = Vec::new();
         for host in hosts {
@@ -137,22 +195,63 @@ impl Remote {
                     for s in &servers {
                         s.unblock();
                     }
-                    return Err(std::io::Error::other(e.to_string()));
+                    return Err(io::Error::other(e.to_string()));
                 }
             }
         }
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        *self.shutdown.lock().unwrap_or_else(PoisonError::into_inner) = Some(shutdown_tx);
         *self.hosts.lock().unwrap_or_else(PoisonError::into_inner) = hosts.to_vec();
         self.set_problem(None);
+
+        let req_sem = Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS));
+        let sse_sem = Arc::new(Semaphore::new(MAX_SSE_CLIENTS));
+
         for server in &servers {
             let server = server.clone();
             let weak = Arc::downgrade(inner);
             let rt = tokio::runtime::Handle::current();
-            let token = token.clone();
+            let token = Arc::new(token.clone());
+            let req_sem = req_sem.clone();
+            let sse_sem = sse_sem.clone();
+            let shutdown_rx = shutdown_rx.clone();
+            let events_tx = self.events_tx.clone();
+            let sse_clients = self.sse_clients.clone();
             std::thread::spawn(move || {
-                for mut req in server.incoming_requests() {
+                for req in server.incoming_requests() {
+                    if *shutdown_rx.borrow() {
+                        break;
+                    }
                     let Some(inner) = weak.upgrade() else { break };
-                    let response = handle(&inner, &rt, &token, &mut req);
-                    let _ = req.respond(response);
+                    let path = req.url().split('?').next().unwrap_or("/").to_string();
+                    let is_sse = path == "/api/events" && *req.method() == tiny_http::Method::Get;
+
+                    if is_sse {
+                        let Ok(permit) = sse_sem.clone().try_acquire_owned() else {
+                            let _ = req.respond(json(503, &serde_json::json!({"error": "too many event streams"})));
+                            continue;
+                        };
+                        let token = token.clone();
+                        let shutdown_rx = shutdown_rx.clone();
+                        let events_rx = events_tx.subscribe();
+                        let sse_clients = sse_clients.clone();
+                        let rt_handle = rt.clone();
+                        rt.spawn(async move {
+                            handle_sse(inner, rt_handle, token, req, shutdown_rx, events_rx, sse_clients, permit).await;
+                        });
+                        continue;
+                    }
+
+                    let Ok(permit) = req_sem.clone().try_acquire_owned() else {
+                        let _ = req.respond(json(503, &serde_json::json!({"error": "server busy"})));
+                        continue;
+                    };
+                    let token = token.clone();
+                    let events_tx = events_tx.clone();
+                    rt.spawn(async move {
+                        let _permit = permit;
+                        handle_async(inner, token, req, events_tx).await;
+                    });
                 }
             });
         }
@@ -161,7 +260,7 @@ impl Remote {
     }
 }
 
-type Response = tiny_http::Response<std::io::Cursor<Vec<u8>>>;
+type Response = tiny_http::Response<io::Cursor<Vec<u8>>>;
 
 fn json(status: u16, body: &impl Serialize) -> Response {
     let mut r = tiny_http::Response::from_data(serde_json::to_vec(body).unwrap_or_default()).with_status_code(status);
@@ -175,37 +274,36 @@ fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-fn handle(inner: &Arc<Inner>, rt: &tokio::runtime::Handle, token: &str, req: &mut tiny_http::Request) -> Response {
-    let path = req.url().split('?').next().unwrap_or("/").to_string();
-    if path == "/" && *req.method() == tiny_http::Method::Get {
-        let mut r = tiny_http::Response::from_data(PAGE.as_bytes().to_vec());
-        r.add_header(tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("static header"));
-        r.add_header(
-            tiny_http::Header::from_bytes(
-                "Content-Security-Policy",
-                "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
-            )
-            .expect("static header"),
-        );
-        return r;
-    }
-    let authorized = req
-        .headers()
+fn is_authorized(req: &tiny_http::Request, token: &str) -> bool {
+    req.headers()
         .iter()
         .find(|h| h.field.equiv("Authorization"))
         .and_then(|h| h.value.as_str().strip_prefix("Bearer "))
-        .is_some_and(|t| same(t, token));
+        .is_some_and(|t| same(t, token))
+}
+
+fn unauthorized_response(inner: &Inner) -> Response {
     let lang = inner.lang();
-    if !authorized {
-        let text = tower_core::tr!(
-            lang,
-            "这台手机还没有配对：在电脑上打开 Tower 设置里的配对链接或二维码。",
-            "This phone is not paired: open the pairing link or QR code from Tower's Settings."
-        );
-        return json(401, &serde_json::json!({"error": text}));
-    }
-    // Errors are sentences in the interface language, like at the desk.
-    let sup = |f: &dyn Fn() -> crate::Result<serde_json::Value>| match f() {
+    let text = tower_core::tr!(
+        lang,
+        "这台手机还没有配对：在电脑上打开 Tower 设置里的配对链接或二维码。",
+        "This phone is not paired: open the pairing link or QR code from Tower's Settings."
+    );
+    json(401, &serde_json::json!({"error": text}))
+}
+
+fn state_json(inner: &Inner) -> crate::Result<String> {
+    let state = State {
+        goals: inner.store(|st| st.summaries())?,
+        inbox: inner.store(|st| st.open_inbox_items())?,
+        lang: inner.lang().code().to_string(),
+        max_running: inner.settings().max_concurrent,
+    };
+    Ok(serde_json::to_string(&state).unwrap_or_else(|_| "{}".into()))
+}
+
+fn map_result(lang: tower_core::Lang, res: crate::Result<serde_json::Value>) -> Response {
+    match res {
         Ok(v) => json(200, &v),
         Err(crate::Error::Store(tower_store::StoreError::NotFound(_))) => {
             let text = tower_core::tr!(
@@ -216,46 +314,252 @@ fn handle(inner: &Arc<Inner>, rt: &tokio::runtime::Handle, token: &str, req: &mu
             json(404, &serde_json::json!({"error": text}))
         }
         Err(e) => json(400, &serde_json::json!({"error": e.to_string()})),
+    }
+}
+
+/// Non-blocking async handler for `/`, `/api/state`, `/api/answer`, `/api/snooze`, `/api/pause`.
+async fn handle_async(
+    inner: Arc<Inner>,
+    token: Arc<String>,
+    mut req: tiny_http::Request,
+    events_tx: broadcast::Sender<()>,
+) {
+    let method = req.method().clone();
+    let path = req.url().split('?').next().unwrap_or("/").to_string();
+
+    if path == "/" && method == tiny_http::Method::Get {
+        let mut r = tiny_http::Response::from_data(PAGE.as_bytes().to_vec());
+        r.add_header(tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("static header"));
+        r.add_header(
+            tiny_http::Header::from_bytes(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+            )
+            .expect("static header"),
+        );
+        let _ = tokio::task::spawn_blocking(move || req.respond(r)).await;
+        return;
+    }
+
+    if !is_authorized(&req, &token) {
+        let resp = unauthorized_response(&inner);
+        let _ = tokio::task::spawn_blocking(move || req.respond(resp)).await;
+        return;
+    }
+
+    // Read body (bounded to 64 KiB) off the async executor.
+    let (req, body) = match tokio::task::spawn_blocking(move || {
+        let mut body = String::new();
+        let _ = req.as_reader().take(64 * 1024).read_to_string(&mut body);
+        (req, body)
+    })
+    .await
+    {
+        Ok(pair) => pair,
+        Err(_) => return,
     };
-    let mut body = String::new();
-    let _ = req.as_reader().take(64 * 1024).read_to_string(&mut body);
+
+    let lang = inner.lang();
     let arg: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
     let s = |k: &str| arg.get(k).and_then(|v| v.as_str()).unwrap_or_default().to_string();
-    match (req.method(), path.as_str()) {
-        (tiny_http::Method::Get, "/api/state") => sup(&|| {
-            let state = State {
-                goals: inner.store(|st| st.summaries())?,
-                inbox: inner.store(|st| st.open_inbox_items())?,
-                lang: inner.lang().code().to_string(),
-                max_running: inner.settings().max_concurrent,
-            };
-            Ok(serde_json::to_value(state).unwrap_or_default())
-        }),
-        (tiny_http::Method::Post, "/api/answer") => sup(&|| {
-            let item = inner.store(|st| st.inbox_item(&s("inbox_id")))?;
-            if !answerable_away(&item, &s("response")) {
-                return Err(crate::invalid(tower_core::tr!(
-                    inner.lang(),
-                    "这类决定只能在电脑上做",
-                    "This decision can only be made at the desk"
-                )));
+
+    let response = match (method, path.as_str()) {
+        (tiny_http::Method::Get, "/api/state") => {
+            let inner2 = inner.clone();
+            match tokio::time::timeout(
+                STATE_TIMEOUT,
+                tokio::task::spawn_blocking(move || {
+                    let state = State {
+                        goals: inner2.store(|st| st.summaries())?,
+                        inbox: inner2.store(|st| st.open_inbox_items())?,
+                        lang: inner2.lang().code().to_string(),
+                        max_running: inner2.settings().max_concurrent,
+                    };
+                    Ok(serde_json::to_value(state).unwrap_or_default())
+                }),
+            )
+            .await
+            {
+                Ok(Ok(res)) => map_result(lang, res),
+                Ok(Err(e)) => json(500, &serde_json::json!({"error": e.to_string()})),
+                Err(_) => json(
+                    504,
+                    &serde_json::json!({"error": tower_core::tr!(lang, "读取状态超时", "Timed out reading state")}),
+                ),
             }
-            rt.block_on(crate::actions::answer(inner, &s("inbox_id"), &s("response")))?;
-            Ok(serde_json::json!({"ok": true}))
-        }),
-        (tiny_http::Method::Post, "/api/snooze") => sup(&|| {
+        }
+        (tiny_http::Method::Post, "/api/answer") => {
+            let inbox_id = s("inbox_id");
+            let response_text = s("response");
+            let check = inner.store(|st| st.inbox_item(&inbox_id)).and_then(|item| {
+                if !answerable_away(&item, &response_text) {
+                    return Err(crate::invalid(tower_core::tr!(
+                        lang,
+                        "这类决定只能在电脑上做",
+                        "This decision can only be made at the desk"
+                    )));
+                }
+                Ok(())
+            });
+            match check {
+                Err(e) => map_result(lang, Err(e)),
+                Ok(()) => match tokio::time::timeout(
+                    ACTION_TIMEOUT,
+                    crate::actions::answer(&inner, &inbox_id, &response_text),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {
+                        let _ = events_tx.send(());
+                        json(200, &serde_json::json!({"ok": true}))
+                    }
+                    Ok(Err(e)) => map_result(lang, Err(e)),
+                    Err(_) => json(
+                        504,
+                        &serde_json::json!({"error": tower_core::tr!(lang, "处理请求超时", "Request timed out")}),
+                    ),
+                },
+            }
+        }
+        (tiny_http::Method::Post, "/api/snooze") => {
+            let inbox_id = s("inbox_id");
             let until = arg.get("until").and_then(|v| v.as_i64());
-            inner.store(|st| st.snooze_inbox(&s("inbox_id"), until))?;
-            inner.emit_inbox();
-            Ok(serde_json::json!({"ok": true}))
-        }),
-        (tiny_http::Method::Post, "/api/pause") => sup(&|| {
-            let note = tower_core::tr!(inner.lang(), "你在手机上暂停了它", "You paused it from your phone");
-            rt.block_on(crate::run::pause(inner, &s("goal"), tower_core::PauseReason::Human, &note))?;
-            Ok(serde_json::json!({"ok": true}))
-        }),
+            let res = inner.store(|st| st.snooze_inbox(&inbox_id, until)).map(|()| {
+                inner.emit_inbox();
+                let _ = events_tx.send(());
+                serde_json::json!({"ok": true})
+            });
+            map_result(lang, res)
+        }
+        (tiny_http::Method::Post, "/api/pause") => {
+            let goal = s("goal");
+            let note = tower_core::tr!(lang, "你在手机上暂停了它", "You paused it from your phone");
+            match tokio::time::timeout(
+                ACTION_TIMEOUT,
+                crate::run::pause(&inner, &goal, tower_core::PauseReason::Human, &note),
+            )
+            .await
+            {
+                Ok(Ok(())) => {
+                    let _ = events_tx.send(());
+                    json(200, &serde_json::json!({"ok": true}))
+                }
+                Ok(Err(e)) => map_result(lang, Err(e)),
+                Err(_) => json(
+                    504,
+                    &serde_json::json!({"error": tower_core::tr!(lang, "暂停请求超时", "Pause request timed out")}),
+                ),
+            }
+        }
         _ => json(404, &serde_json::json!({"error": tower_core::tr!(lang, "没有这个地址", "No such address")})),
+    };
+
+    let _ = tokio::task::spawn_blocking(move || req.respond(response)).await;
+}
+
+const SSE_RESPONSE_HEADERS: &[u8] = b"HTTP/1.1 200 OK\r\n\
+Content-Type: text/event-stream; charset=utf-8\r\n\
+Cache-Control: no-cache, no-store\r\n\
+Connection: close\r\n\
+X-Accel-Buffering: no\r\n\r\n";
+
+/// Authenticated `GET /api/events` SSE handler using `Request::into_writer()`
+/// so every event frame flushes to the phone immediately with zero buffering.
+#[allow(clippy::too_many_arguments)]
+async fn handle_sse(
+    inner: Arc<Inner>,
+    rt: tokio::runtime::Handle,
+    token: Arc<String>,
+    req: tiny_http::Request,
+    mut shutdown_rx: watch::Receiver<bool>,
+    mut events_rx: broadcast::Receiver<()>,
+    sse_clients: Arc<AtomicUsize>,
+    permit: tokio::sync::OwnedSemaphorePermit,
+) {
+    if !is_authorized(&req, &token) {
+        let resp = unauthorized_response(&inner);
+        let _ = tokio::task::spawn_blocking(move || req.respond(resp)).await;
+        return;
     }
+
+    let (chunk_tx, chunk_rx) = std_mpsc::sync_channel::<Vec<u8>>(32);
+    let initial = match state_json(&inner) {
+        Ok(payload) => payload,
+        Err(e) => {
+            let resp = json(500, &serde_json::json!({"error": e.to_string()}));
+            let _ = tokio::task::spawn_blocking(move || req.respond(resp)).await;
+            return;
+        }
+    };
+    let initial_frame = format!("retry: 3000\nevent: state\ndata: {initial}\n\n");
+    if chunk_tx.send(initial_frame.into_bytes()).is_err() {
+        return;
+    }
+
+    sse_clients.fetch_add(1, Ordering::Relaxed);
+    let clients_for_drop = sse_clients.clone();
+
+    // Producer task: watches for explicit notifications, periodic state diffs,
+    // keepalive ticks, and server shutdown. Drops `chunk_tx` when done so
+    // the writer thread closes cleanly.
+    rt.spawn(async move {
+        let _permit = permit;
+        let mut last_payload = initial;
+        let mut poll = tokio::time::interval(SSE_POLL_INTERVAL);
+        let mut ping = tokio::time::interval(SSE_KEEPALIVE_INTERVAL);
+        poll.tick().await;
+        ping.tick().await;
+
+        loop {
+            let push_state = tokio::select! {
+                res = shutdown_rx.changed() => {
+                    if res.is_err() || *shutdown_rx.borrow() {
+                        break;
+                    }
+                    false
+                }
+                ev = events_rx.recv() => {
+                    matches!(ev, Ok(()) | Err(broadcast::error::RecvError::Lagged(_)))
+                }
+                _ = poll.tick() => true,
+                _ = ping.tick() => {
+                    if chunk_tx.try_send(b": ping\n\n".to_vec()).is_err() {
+                        break;
+                    }
+                    false
+                }
+            };
+            if push_state {
+                let inner2 = inner.clone();
+                let next = match tokio::task::spawn_blocking(move || state_json(&inner2)).await {
+                    Ok(Ok(p)) => p,
+                    _ => continue,
+                };
+                if next != last_payload {
+                    let frame = format!("event: state\ndata: {next}\n\n");
+                    last_payload = next;
+                    if chunk_tx.try_send(frame.into_bytes()).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+        clients_for_drop.fetch_sub(1, Ordering::Relaxed);
+    });
+
+    // Stream unbuffered SSE frames straight to the socket until EOF or client disconnect.
+    let _ = tokio::task::spawn_blocking(move || {
+        let mut writer = req.into_writer();
+        if writer.write_all(SSE_RESPONSE_HEADERS).is_err() || writer.flush().is_err() {
+            return;
+        }
+        while let Ok(chunk) = chunk_rx.recv() {
+            if chunk.is_empty() || writer.write_all(&chunk).is_err() || writer.flush().is_err() {
+                break;
+            }
+        }
+    })
+    .await;
 }
 
 /// Decisions that widen what the agent may do stay at the desk, where the
@@ -282,9 +586,14 @@ const PAGE: &str = include_str!("remote.html");
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpStream;
+    use std::sync::Arc;
+    use std::time::Duration;
+
     use tower_core::view::{InboxItem, InboxKind};
 
-    use super::answerable_away;
+    use super::{Remote, answerable_away, new_token, same};
 
     fn item(kind: InboxKind) -> InboxItem {
         InboxItem {
@@ -313,5 +622,101 @@ mod tests {
         assert!(!answerable_away(&item(InboxKind::Paused), "I've checked, install with the network"));
         assert!(answerable_away(&item(InboxKind::Paused), "Continue"));
         assert!(answerable_away(&item(InboxKind::Question), "use the order id"));
+    }
+
+    #[test]
+    fn constant_time_compare_and_token_entropy() {
+        let tok = new_token();
+        assert_eq!(tok.len(), 64);
+        assert!(same(&tok, &tok));
+        assert!(!same(&tok, "short"));
+        let mut wrong = tok.clone();
+        wrong.replace_range(0..1, if tok.starts_with('a') { "b" } else { "a" });
+        assert!(!same(&tok, &wrong));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sse_endpoint_requires_bearer_token_and_does_not_block_api_state() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = crate::Config {
+            paths: crate::Paths::new(tmp.path()),
+            extension_source: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal"),
+            env: Some(crate::shell_env::ShellEnv::from_pairs(vec![("PATH".into(), "/usr/bin:/bin".into())])),
+            demo_engine: None,
+        };
+        let sup = crate::Supervisor::start(cfg, Arc::new(crate::NullSink)).await.unwrap();
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let token = new_token();
+        let remote = Remote::default();
+        remote.start(&sup.inner, &["127.0.0.1".into()], port, token.clone()).unwrap();
+
+        // 1. Unauthenticated /api/events must return 401.
+        let p = port;
+        let status_unauth = tokio::task::spawn_blocking(move || {
+            let mut s = TcpStream::connect(("127.0.0.1", p)).unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            write!(s, "GET /api/events HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").unwrap();
+            let mut line = String::new();
+            BufReader::new(s).read_line(&mut line).unwrap();
+            line
+        })
+        .await
+        .unwrap();
+        assert!(status_unauth.contains("401"), "{status_unauth}");
+
+        // 2. Open an authenticated SSE stream AND concurrently hit /api/state —
+        //    /api/state must succeed immediately while the SSE stream stays open.
+        let tok_sse = token.clone();
+        let sse_handle = tokio::task::spawn_blocking(move || {
+            let mut s = TcpStream::connect(("127.0.0.1", p)).unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            write!(
+                s,
+                "GET /api/events HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {tok_sse}\r\nAccept: text/event-stream\r\n\r\n"
+            )
+            .unwrap();
+            let mut reader = BufReader::new(s);
+            let mut lines = Vec::new();
+            for _ in 0..16 {
+                let mut l = String::new();
+                match reader.read_line(&mut l) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        lines.push(l.clone());
+                        if l.starts_with("data: ") {
+                            break;
+                        }
+                    }
+                }
+            }
+            (reader, lines.join(""))
+        });
+
+        let (sse_reader, first_chunk) = sse_handle.await.unwrap();
+        assert!(first_chunk.contains("200"), "{first_chunk}");
+        assert!(first_chunk.to_ascii_lowercase().contains("text/event-stream"), "{first_chunk}");
+        assert!(first_chunk.contains("event: state"), "{first_chunk}");
+        assert!(first_chunk.contains("\"goals\""), "{first_chunk}");
+
+        // While SSE stream is still held open (`sse_reader` alive), /api/state answers concurrently.
+        let tok_state = token.clone();
+        let state_resp = tokio::task::spawn_blocking(move || {
+            let mut s = TcpStream::connect(("127.0.0.1", p)).unwrap();
+            s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            write!(
+                s,
+                "GET /api/state HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {tok_state}\r\nConnection: close\r\n\r\n"
+            )
+            .unwrap();
+            let mut buf = String::new();
+            std::io::Read::read_to_string(&mut s, &mut buf).unwrap();
+            buf
+        })
+        .await
+        .unwrap();
+        assert!(state_resp.contains("200") && state_resp.contains("\"max_running\""), "{state_resp}");
+
+        drop(sse_reader);
+        remote.stop();
     }
 }

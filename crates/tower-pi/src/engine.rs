@@ -17,7 +17,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::protocol::{PiEvent, Record, Response, UiAnswer, parse_record};
+use crate::protocol::{ImageAttachment, PiEvent, Record, Response, UiAnswer, parse_record};
 
 /// The only tools the model may call: Pi's four built-ins, which the
 /// tower-goal extension replaces with sandboxed versions, and its three own.
@@ -213,15 +213,46 @@ impl Engine {
     /// Starts a run. If the agent is already streaming, the message is queued
     /// as a steer.
     pub async fn prompt(&self, message: &str) -> Result<Response, EngineError> {
-        self.request(json!({"type": "prompt", "message": message, "streamingBehavior": "steer"})).await
+        self.prompt_with_images(message, &[]).await
+    }
+
+    /// Starts a run with optional multimodal image attachments.
+    pub async fn prompt_with_images(&self, message: &str, images: &[ImageAttachment]) -> Result<Response, EngineError> {
+        let mut cmd = json!({"type": "prompt", "message": message, "streamingBehavior": "steer"});
+        if !images.is_empty() {
+            cmd["images"] = Value::Array(images.iter().map(ImageAttachment::to_rpc_value).collect());
+        }
+        self.request(cmd).await
     }
 
     pub async fn steer(&self, message: &str) -> Result<Response, EngineError> {
-        self.request(json!({"type": "steer", "message": message})).await
+        self.steer_with_images(message, &[]).await
+    }
+
+    /// Sends a steering message with optional multimodal image attachments.
+    pub async fn steer_with_images(&self, message: &str, images: &[ImageAttachment]) -> Result<Response, EngineError> {
+        let mut cmd = json!({"type": "steer", "message": message});
+        if !images.is_empty() {
+            cmd["images"] = Value::Array(images.iter().map(ImageAttachment::to_rpc_value).collect());
+        }
+        self.request(cmd).await
     }
 
     pub async fn follow_up(&self, message: &str) -> Result<Response, EngineError> {
-        self.request(json!({"type": "follow_up", "message": message})).await
+        self.follow_up_with_images(message, &[]).await
+    }
+
+    /// Sends a follow-up message with optional multimodal image attachments.
+    pub async fn follow_up_with_images(
+        &self,
+        message: &str,
+        images: &[ImageAttachment],
+    ) -> Result<Response, EngineError> {
+        let mut cmd = json!({"type": "follow_up", "message": message});
+        if !images.is_empty() {
+            cmd["images"] = Value::Array(images.iter().map(ImageAttachment::to_rpc_value).collect());
+        }
+        self.request(cmd).await
     }
 
     pub async fn abort(&self) -> Result<Response, EngineError> {

@@ -8,12 +8,14 @@
  * is one quiet line saying why. The verdict stays yours: the checkbox is
  * the criterion.
  */
-import { Show, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 
 import type { LookView } from "../gen/LookView";
 import { api } from "../lib/api";
+import type { LookViewExt } from "../lib/apiTypes";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
+import { DangerMark, Icon } from "./Glyph";
 import { Button, Kbd, Overlay } from "./ui";
 
 function Shot(props: { file: string | null; error: string | null; label: string; onOpen?: (from: HTMLElement) => void }) {
@@ -35,8 +37,59 @@ function Shot(props: { file: string | null; error: string | null; label: string;
   );
 }
 
-/** The two thumbnails under a criterion row. */
+type ViewportTab = "desktop" | "mobile";
+
+function ViewportTabs(props: { value: ViewportTab; onChange: (v: ViewportTab) => void }) {
+  return (
+    <span class="scope-switch" role="tablist" aria-label={t("look.viewport")}>
+      {(["desktop", "mobile"] as ViewportTab[]).map((v) => (
+        <button type="button" class="tab" role="tab" aria-selected={props.value === v} classList={{ active: props.value === v }} onClick={() => props.onChange(v)}>
+          {t(`look.${v}`)}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** Captured browser Console errors / uncaught pageerror facts beneath screenshots. */
+function ConsoleErrorsBlock(props: { errors?: string[]; inline?: boolean }) {
+  const errs = () => props.errors ?? [];
+  return (
+    <Show
+      when={errs().length > 0}
+      fallback={
+        <Show when={props.errors !== undefined && props.inline}>
+          <span class="look-console-clean">
+            <Icon name="harness" size={10} />
+            {t("look.consoleClean")}
+          </span>
+        </Show>
+      }
+    >
+      <div class={`prov-frame prov-fact prov-danger ${props.inline ? "look-console" : ""}`}>
+        <div class="prov-head halt">
+          <span class="prov-badge"><Icon name="harness" size={10} />{t("look.consoleErrors", { n: errs().length })}</span>
+        </div>
+        <ul class="look-console-list">
+          <For each={errs()}>
+            {(line) => (
+              <li class="look-console-item mono">
+                <DangerMark />
+                <span>{line}</span>
+              </li>
+            )}
+          </For>
+        </ul>
+      </div>
+    </Show>
+  );
+}
+
+/** The two thumbnails under a criterion row, with optional viewport tabs and console error facts. */
 export function LookStrip(props: { look: LookView; title: string }) {
+  const ext = () => props.look as LookViewExt;
+  const hasMobile = () => !!(ext().mobile_base || ext().mobile_pin);
+  const [vp, setVp] = createSignal<ViewportTab>("desktop");
   const [open, setOpen] = createSignal(false);
   // WebKit does not focus a button on click, so the overlay cannot find its way back by itself: the thumbnail that opened it is remembered.
   let opener: HTMLElement | undefined;
@@ -48,16 +101,22 @@ export function LookStrip(props: { look: LookView; title: string }) {
     setOpen(false);
     opener?.focus({ preventScroll: true });
   };
+  const activeBase = () => (vp() === "mobile" && hasMobile() ? ext().mobile_base ?? null : props.look.base);
+  const activePin = () => (vp() === "mobile" && hasMobile() ? ext().mobile_pin ?? null : props.look.pin);
   return (
-    <>
-      <div class="look-strip">
-        <Shot file={props.look.base} error={props.look.base_error} label={t("look.before")} onOpen={openFrom} />
-        <Shot file={props.look.pin} error={props.look.pin_error} label={t("look.after")} onOpen={openFrom} />
-      </div>
-      <Show when={open()}>
-        <LookCompare look={props.look} title={props.title} onClose={close} />
+    <div class="look-wrap">
+      <Show when={hasMobile()}>
+        <div class="look-viewports"><ViewportTabs value={vp()} onChange={setVp} /></div>
       </Show>
-    </>
+      <div class="look-strip">
+        <Shot file={activeBase()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} onOpen={openFrom} />
+        <Shot file={activePin()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} onOpen={openFrom} />
+      </div>
+      <ConsoleErrorsBlock errors={ext().console_errors} inline />
+      <Show when={open()}>
+        <LookCompare look={ext()} title={props.title} initialViewport={vp()} onClose={close} />
+      </Show>
+    </div>
   );
 }
 
@@ -65,14 +124,18 @@ type Mode = "side" | "onion" | "diff";
 const MODES: Mode[] = ["side", "onion", "diff"];
 
 /** Large: side by side, one over the other with a slider, or the difference (what moved lights up). */
-function LookCompare(props: { look: LookView; title: string; onClose: () => void }) {
+function LookCompare(props: { look: LookViewExt; title: string; initialViewport?: ViewportTab; onClose: () => void }) {
   const [mode, setMode] = createSignal<Mode>("side");
+  const [vp, setVp] = createSignal<ViewportTab>(props.initialViewport ?? "desktop");
   const [mix, setMix] = createSignal(50);
   const [swapped, setSwapped] = createSignal(false);
   // Space held: "before" alone, the quickest way to see what moved.
   const [holding, setHolding] = createSignal(false);
-  const [base] = createResource(() => props.look.base, (f) => (f ? api.lookImage(f).catch(() => null) : Promise.resolve(null)));
-  const [pin] = createResource(() => props.look.pin, (f) => (f ? api.lookImage(f).catch(() => null) : Promise.resolve(null)));
+  const hasMobile = () => !!(props.look.mobile_base || props.look.mobile_pin);
+  const baseFile = () => (vp() === "mobile" && hasMobile() ? props.look.mobile_base ?? null : props.look.base);
+  const pinFile = () => (vp() === "mobile" && hasMobile() ? props.look.mobile_pin ?? null : props.look.pin);
+  const [base] = createResource(baseFile, (f) => (f ? api.lookImage(f).catch(() => null) : Promise.resolve(null)));
+  const [pin] = createResource(pinFile, (f) => (f ? api.lookImage(f).catch(() => null) : Promise.resolve(null)));
   const both = () => !!base() && !!pin();
   const pick = (m: Mode) => (m === "side" || both()) && setMode(m);
   const nudge = (d: number) => mode() === "onion" && setMix((v) => Math.max(0, Math.min(100, v + d)));
@@ -106,6 +169,7 @@ function LookCompare(props: { look: LookView; title: string; onClose: () => void
             </button>
           ))}
         </span>
+        <Show when={hasMobile()}><ViewportTabs value={vp()} onChange={setVp} /></Show>
         <Show when={mode() === "onion"}>
           <label class="look-mix meta t3">
             <span>{swapped() ? t("look.after") : t("look.before")}</span>
@@ -149,10 +213,11 @@ function LookCompare(props: { look: LookView; title: string; onClose: () => void
         }
       >
         <div class="look-side">
-          <Shot file={props.look.base} error={props.look.base_error} label={t("look.before")} />
-          <Shot file={props.look.pin} error={props.look.pin_error} label={t("look.after")} />
+          <Shot file={baseFile()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} />
+          <Shot file={pinFile()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} />
         </div>
       </Show>
+      <ConsoleErrorsBlock errors={props.look.console_errors} />
       <div class="panel-actions">
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.close")}

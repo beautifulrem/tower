@@ -13,6 +13,7 @@ import type { Settings } from "../gen/Settings";
 import type { ToastLevel } from "../gen/ToastLevel";
 import type { TraceEntry } from "../gen/TraceEntry";
 import { api, errorText, onOpen, onUpdate } from "./api";
+import type { EngineDescriptor, SandboxPosture } from "./apiTypes";
 import { ensureLocale, localeOf } from "./i18n";
 import { go, route } from "./nav";
 import { setThemeChoice } from "./theme";
@@ -85,6 +86,15 @@ interface State {
    * can say it and Settings can show the way out.
    */
   remoteProblem: string | null;
+  /** Detected OS sandbox backend & microVM posture. */
+  sandboxPosture: SandboxPosture | null;
+  /** Engine descriptors with trust tiers from backend. */
+  engines: EngineDescriptor[];
+  /** Pending memory proposals awaiting human ratification. */
+  pendingProposals: number;
+  /** Enabled scheduled goals & merge queue conflicts for the sidebar rail. */
+  activeSchedules: number;
+  mergeConflicts: number;
   /** Ticks so relative times stay fresh without per-component timers. */
   now: number;
 }
@@ -104,6 +114,11 @@ const [state, setState] = createStore<State>({
   activity: [],
   unseenActivity: 0,
   remoteProblem: null,
+  sandboxPosture: null,
+  engines: [],
+  pendingProposals: 0,
+  activeSchedules: 0,
+  mergeConflicts: 0,
   now: Date.now(),
 });
 
@@ -192,8 +207,26 @@ export async function refreshEnvironment() {
   const [env, settings] = await Promise.all([api.environment(), api.settings()]);
   setState({ env, settings });
   // The phone page's problem is part of the environment's truth: read it whenever the settings are, so it is never stale.
-  const remoteProblem = settings.remote_enabled ? await api.remoteInfo().then((i) => i?.problem ?? null, () => null) : null;
-  setState({ remoteProblem });
+  const [remoteProblem, sandboxPosture, engines] = await Promise.all([
+    settings.remote_enabled ? api.remoteInfo().then((i) => i?.problem ?? null, () => null) : Promise.resolve(null),
+    api.sandboxPosture().catch(() => null),
+    api.engines().catch(() => null),
+  ]);
+  setState({ remoteProblem, sandboxPosture: sandboxPosture ?? null, engines: Array.isArray(engines) ? engines : [] });
+}
+
+/** Refreshes lightweight console counters (ratification queue, schedules, merge conflicts) without blocking first paint. */
+export async function refreshConsoleMeta() {
+  const [proposals, schedules, queue] = await Promise.all([
+    api.memoryProposals("pending").catch(() => null),
+    api.scheduledGoals().catch(() => null),
+    api.mergeQueue(null).catch(() => null),
+  ]);
+  setState({
+    pendingProposals: Array.isArray(proposals) ? proposals.length : 0,
+    activeSchedules: Array.isArray(schedules) ? schedules.filter((s) => s.enabled).length : 0,
+    mergeConflicts: Array.isArray(queue) ? queue.filter((e) => e.status === "conflict").length : 0,
+  });
 }
 
 /** Saves a partial change to the settings (quiet hours, muted goals) and reloads them. */
@@ -351,6 +384,7 @@ export async function init() {
       void onOpen((r) => openStartupRoute(r));
     }
     await sub;
+    void refreshConsoleMeta();
   } catch (e) {
     // The data directory is still worth knowing when the rest failed.
     void api.environment().then((env) => setState({ env })).catch(() => {});
@@ -370,7 +404,8 @@ function openStartupRoute(route: string | null, animate = true) {
   if (theme === "light" || theme === "dark" || theme === "system") setThemeChoice(theme);
   const [name, id] = path.split("/");
   if ((name === "goal" || name === "review") && id) go({ name, id }, { animate });
-  else if (name === "inbox" || name === "settings" || name === "overview") go({ name }, { animate });
+  else if (name === "inbox" || name === "learning" || name === "operations" || name === "settings" || name === "overview")
+    go({ name }, { animate });
   else if (name === "new") go({ name: "new" }, { animate });
 }
 

@@ -17,6 +17,24 @@ import { Icon, NeedsYouMark, NoticeMark, ResultMark } from "./Glyph";
 
 // What the first paint draws lives in HonestyCore (the desk loads it at start-up); re-exported so views take the grammar from one place.
 export { Claim, CriteriaBar, discountedOf } from "./HonestyCore";
+export { ProvenanceFrame, TaintPill, TrustPill } from "./ProvenanceFrame";
+
+/** Flaky criterion annotation: failed on first run and passed on automatic rerun (neutral Harness Fact). */
+export function FlakyLine(props: { c: CriterionView }) {
+  const flaky = () => !!(props.c.verified as { flaky?: boolean } | null)?.flaky;
+  return (
+    <Show when={flaky()}>
+      <div class="criterion-row criterion-obs flaky-line">
+        <span />
+        <span />
+        <span class="col-span t2">
+          <NoticeMark />
+          <span>{t("goal.criterionFlaky")}</span>
+        </span>
+      </div>
+    </Show>
+  );
+}
 
 /** The first line of why a base could not be checked, without its trailing colon or backticks, at most 120 characters. */
 export function baseReason(error: string | null | undefined): string | null {

@@ -441,8 +441,15 @@ fn network_rules(s: &mut String, spec: &Spec, rw: &[&PathBuf; 3]) {
     }
     s.push_str(")\n");
     if spec.network {
+        // The internet, by IP, and the system resolver's socket (DNS): never a
+        // bare `network-outbound`, which would also open every Unix socket on
+        // the Mac — ssh-agent (your SSH keys), Docker, gpg-agent.
         s.push_str(NETWORK);
-        s.push_str("\n(allow network-outbound)\n(allow network-inbound)\n(allow network-bind)\n");
+        s.push_str(
+            "\n(allow network-outbound (remote ip))\n\
+             (allow network-outbound (remote unix-socket (path-literal \"/private/var/run/mDNSResponder\")))\n\
+             (allow network-inbound (local ip))\n(allow network-bind (local ip))\n",
+        );
         return;
     }
     match &spec.loopback {

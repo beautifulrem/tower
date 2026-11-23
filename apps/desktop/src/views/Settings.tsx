@@ -96,7 +96,7 @@ export function Settings() {
   const [installing, setInstalling] = createSignal(false);
   const saved = useSavedStamp();
   const [loadFailed, setLoadFailed] = createSignal<unknown>(null);
-  const load = () => (setLoadFailed(null), api.settings().then((v) => setS(v as SettingsExt), setLoadFailed));
+  const load = () => (setLoadFailed(null), api.settings().then((v) => (setS(v as SettingsExt), (last = JSON.stringify(s()))), setLoadFailed));
   onMount(load);
   // Leaving by a key straight after typing: WebKit sends no focusout for a field that is removed, so save on the way out.
   onCleanup(() => void commit());
@@ -136,7 +136,8 @@ export function Settings() {
     // `null` is a value here (quiet mode turned off), so it is taken as is, not replaced by the form's stale copy.
     const live = state.settings;
     const v = live ? { ...form, quiet_until: live.quiet_until, muted_goals: live.muted_goals } : form;
-    const now = JSON.stringify(v);
+    // Only the form's own edits count: the page left as it opened writes nothing.
+    const now = JSON.stringify(form);
     if (now === last) return false;
     // Taken at once, so a focusout and the page closing don't send it twice; only a save that went through stays the
     // baseline: after a failure, leaving the field again retries it.

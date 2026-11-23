@@ -93,6 +93,22 @@ test("a field saved on the Settings page keeps the quiet mode the palette turned
   expect(saves[1][1].settings.quiet_until).not.toBeNull();
 });
 
+test("what you typed in Settings is saved when you leave by a key straight after, with the field still focused", async ({ page }) => {
+  await openTower(page, "settings");
+  const saved = async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings" || cmd === "update_project") as Array<[string, any]>;
+  // A project's field…
+  await page.locator('.project [data-field="test"]').first().fill("pnpm vitest run");
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  await expect.poll(async () => (await saved()).some(([c, a]) => c === "update_project" && JSON.stringify(a).includes("pnpm vitest run"))).toBe(true);
+  // …and one of the app's.
+  await page.keyboard.press("Meta+,");
+  await page.getByLabel("Editor command").fill("zed");
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  await expect.poll(async () => (await saved()).some(([c, a]) => c === "save_settings" && a.settings.editor === "zed")).toBe(true);
+});
+
 test("a field saved on the Settings page keeps quiet mode off once the palette turned it off", async ({ page }) => {
   const saves = async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings") as Array<[string, { settings: { quiet_until: number | null } }]>;
   await openTower(page, "overview");

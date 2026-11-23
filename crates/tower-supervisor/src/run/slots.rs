@@ -45,13 +45,21 @@ impl Drop for Starting {
 
 /// A start holds a slot while it runs; one that ended without a run (it
 /// failed and paused the goal, or you paused or abandoned it meanwhile)
-/// hands the slot to the next ready goal. Not when the goal is still ready:
-/// the scheduler would only try it again at once.
-pub(super) async fn reschedule_unless_running(inner: &Arc<Inner>, goal: &str) {
-    let ready = inner.store(|s| s.goal(goal)).is_ok_and(|g| g.state == LifecycleState::Ready);
-    if inner.run_of(goal).is_none() && !ready {
-        schedule(inner).await;
+/// hands the slot to the next ready goal. A start that failed before any
+/// step that pauses the goal left it ready: it is paused now, with a card,
+/// or the scheduler would only try it again at once and fail the same way.
+pub(super) async fn hand_on(inner: &Arc<Inner>, goal: &str, result: &Result<()>) {
+    if inner.run_of(goal).is_some() {
+        return;
     }
+    let ready = inner.store(|s| s.goal(goal)).is_ok_and(|g| g.state == LifecycleState::Ready);
+    if ready && let Err(e) = result {
+        let detail = tr!(inner.lang(), "启动失败：{e}", "Could not start: {e}");
+        if let Err(again) = super::fail_to_start(inner, goal, &detail) {
+            tracing::error!(goal, error = %again, "could not pause after a failed start");
+        }
+    }
+    schedule(inner).await;
 }
 
 /// Makes `run` the goal's live run, if the goal is still in the state its

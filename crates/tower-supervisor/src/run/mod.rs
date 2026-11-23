@@ -229,10 +229,11 @@ async fn schedule_inner(inner: &Arc<Inner>) {
         let inner = inner.clone();
         tokio::spawn(async move {
             let id = g.id;
-            if let Err(e) = start_scheduled(&inner, &id, purpose, message, images, starting).await {
+            let r = start_scheduled(&inner, &id, purpose, message, images, starting).await;
+            if let Err(e) = &r {
                 tracing::warn!(goal = %id, error = %e, "could not start run");
             }
-            reschedule_unless_running(&inner, &id).await;
+            hand_on(&inner, &id, &r).await;
         });
     }
 }
@@ -401,7 +402,7 @@ pub(crate) fn start_claimed<'a>(
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
     Box::pin(async move {
         let r = start_run_inner(inner, goal_id, purpose, message, Vec::new(), false, starting).await;
-        reschedule_unless_running(inner, goal_id).await;
+        hand_on(inner, goal_id, &r).await;
         r
     })
 }
@@ -418,7 +419,7 @@ pub fn start_run_with_images<'a>(
     Box::pin(async move {
         let starting = Starting::claim_one(inner, goal_id)?;
         let r = start_run_inner(inner, goal_id, purpose, message, images, false, starting).await;
-        reschedule_unless_running(inner, goal_id).await;
+        hand_on(inner, goal_id, &r).await;
         r
     })
 }
@@ -754,7 +755,7 @@ mod slots;
 use events::pump;
 pub(crate) use events::{sandbox_denied, stop_engine};
 pub(crate) use slots::{Starting, already_starting};
-use slots::{begin, reschedule_unless_running};
+use slots::{begin, hand_on};
 
 #[cfg(test)]
 mod tests {
@@ -858,6 +859,38 @@ mod tests {
         assert_eq!(inner.busy_count(), 1, "the refused claims took nothing");
         drop(a);
         assert!(Starting::claim(inner, "G-B", Some(1)).is_ok());
+    }
+
+    /// A start that failed without pausing its goal (an error before any
+    /// step that records one) leaves it ready: it is paused with a card, so
+    /// it is not retried at once, and its slot goes to the next goal.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_start_that_failed_leaving_its_goal_ready_hands_its_slot_on() {
+        let script = r#"
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  type=$(printf '%s' "$line" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')
+  printf '{"id":"%s","type":"response","command":"%s","success":true,"data":{}}\n' "$id" "$type"
+done"#;
+        let (_tmp, sup, first) = fake_engine_goal(script, false).await;
+        let project = sup.projects().unwrap().remove(0).id;
+        let contract = tower_core::Contract::quick("Other", Some("true".into()), tower_core::Lang::En);
+        let input = crate::NewGoalInput { project_id: project, title: "Other".into(), contract, ratify: false };
+        let second = sup.create_goal(input).await.unwrap().id;
+        let inner = &sup.inner;
+        for id in [&first, &second] {
+            inner.transition(id, Transition::Ratify, None, "").unwrap();
+        }
+        hand_on(inner, &first, &Err(invalid("the blocking task panicked"))).await;
+        let rec = inner.store(|s| s.goal(&first)).unwrap();
+        assert_eq!((rec.state, rec.pause_reason), (LifecycleState::Paused, Some(PauseReason::PrepareFailed)));
+        for _ in 0..200 {
+            if inner.store(|s| s.goal(&second)).unwrap().state == LifecycleState::Running {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("the next ready goal never started");
     }
 
     /// A pause that lands right after the run began (it finds the run and

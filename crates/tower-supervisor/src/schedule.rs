@@ -217,19 +217,17 @@ async fn poll_due_schedules(inner: &Arc<Inner>) -> Result<()> {
 }
 
 async fn instantiate_scheduled_goal(sup: &Supervisor, sch: &ScheduledGoal) -> Result<GoalSummary> {
+    sup.create_goal(scheduled_input(sch, true)).await
+}
+
+fn scheduled_input(sch: &ScheduledGoal, ratify: bool) -> NewGoalInput {
     let mut contract = sch.contract_template.clone();
     if sch.unattended_strict {
         // Hard-enforce cautious autonomy in unattended mode: one-way doors and
         // non-read-only commands always pause to Needs-You, never auto-execute.
         contract.autonomy = Autonomy::Cautious;
     }
-    sup.create_goal(NewGoalInput {
-        project_id: sch.project_id.clone(),
-        title: sch.title.clone(),
-        contract,
-        ratify: true,
-    })
-    .await
+    NewGoalInput { project_id: sch.project_id.clone(), title: sch.title.clone(), contract, ratify }
 }
 
 fn validate_cron(expr: &str, lang: Lang) -> Result<CronSchedule> {
@@ -297,10 +295,10 @@ impl Supervisor {
             )));
         }
         let next = CronSchedule::parse(&sch.cron_expr).ok().and_then(|c| c.next_after(now));
-        let goal = match instantiate_scheduled_goal(self, &sch).await {
+        let draft = match self.create_goal(scheduled_input(&sch, false)).await {
             Ok(goal) => goal,
             Err(e) => {
-                // Nothing ran: a retry in the same minute may go ahead.
+                // No goal was created: a retry in the same minute may go ahead.
                 if let Err(e) =
                     self.inner.store(|s| s.release_schedule_checkpoint(id, &checkpoint, previous.as_deref()))
                 {
@@ -309,10 +307,13 @@ impl Supervisor {
                 return Err(e);
             }
         };
-        if let Err(e) = self.inner.store(|s| s.record_schedule_run(id, now, next, &goal.id)) {
-            tracing::warn!(schedule = %id, goal = %goal.id, error = %e, "could not record a manual scheduled run");
+        // From here a goal exists, started or not: the minute stays claimed, so a retry makes no second one.
+        if let Err(e) = self.inner.store(|s| s.record_schedule_run(id, now, next, &draft.id)) {
+            tracing::warn!(schedule = %id, goal = %draft.id, error = %e, "could not record a manual scheduled run");
         }
-        Ok(goal)
+        self.ratify(&draft.id).await?;
+        self.inner.emit_goal_now(&draft.id);
+        self.inner.store(|s| s.summary(&draft.id))
     }
 }
 
@@ -420,6 +421,39 @@ pub(crate) mod tests {
 
         assert_eq!([a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count(), 1, "{a:?} {b:?}");
         assert_eq!(sup.inner.read_store(|s| s.summaries()).unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_run_now_whose_goal_was_created_but_not_started_keeps_its_minute() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        // A template that no longer ratifies (saved before a check it now fails): the goal is created as a draft,
+        // then cannot start.
+        let mut contract = tower_core::contract::Contract::quick("nightly", Some("true".into()), Lang::En);
+        contract.criteria.clear();
+        contract.intent.clear();
+        let sch = sup
+            .inner
+            .store(|s| {
+                s.create_scheduled_goal(NewScheduledGoal {
+                    project_id: pid.clone(),
+                    title: "nightly".into(),
+                    cron_expr: "* * * * *".into(),
+                    contract_template: contract,
+                    enabled: true,
+                    next_run_at: None,
+                    unattended_strict: true,
+                })
+            })
+            .unwrap();
+
+        assert!(sup.run_scheduled_goal_now(&sch.id).await.is_err());
+        assert!(sup.run_scheduled_goal_now(&sch.id).await.is_err());
+
+        let goals = sup.inner.read_store(|s| s.summaries()).unwrap();
+        assert_eq!(goals.len(), 1, "a retry in the same minute creates no second goal");
+        let after = sup.inner.store(|s| s.scheduled_goal(&sch.id)).unwrap();
+        assert_eq!(after.last_goal_id.as_deref(), Some(goals[0].id.as_str()), "the run that created it is recorded");
     }
 
     #[tokio::test]

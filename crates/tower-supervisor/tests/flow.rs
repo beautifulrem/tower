@@ -1618,3 +1618,41 @@ async fn a_slot_freed_by_a_retry_that_did_not_start_goes_to_the_next_goal() {
     let (_, second) = tokio::join!(h.sup.answer(&card.id, "Retry"), meanwhile);
     wait_for(&h, &second, |g| g.state == LifecycleState::Running).await;
 }
+
+/// Starting Tower in a folder that is not yet Tower's (a stray TOWER_HOME) clears nothing in it: the start-up sweep
+/// goes by whether the store was there before Tower opened it, not after. In Tower's own folder it still clears.
+#[tokio::test]
+async fn starting_in_a_folder_that_is_not_towers_removes_none_of_its_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    let ext = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal");
+    let env = ShellEnv::from_pairs([
+        ("PATH".to_string(), std::env::var("PATH").unwrap()),
+        ("HOME".to_string(), root.join("home").display().to_string()),
+    ]);
+    let dirs = ["verify/keep", "verify-cache/keep", "checks/keep", "tmp/notes-verify/keep"];
+    for (name, towers) in [("someone-elses", false), ("towers-own", true)] {
+        let home = root.join(name);
+        for d in dirs {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        if towers {
+            std::fs::write(home.join("tower.db"), "").unwrap();
+        }
+        let sup = Supervisor::start(
+            Config {
+                paths: Paths::new(home.clone()),
+                extension_source: ext.clone(),
+                env: Some(env.clone()),
+                demo_engine: None,
+            },
+            Arc::new(Collect::default()),
+        )
+        .await
+        .unwrap();
+        for d in dirs {
+            assert_eq!(home.join(d).exists(), !towers, "{name}: {d}");
+        }
+        drop(sup);
+    }
+}

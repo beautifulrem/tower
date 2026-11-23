@@ -7,9 +7,10 @@ use crate::paths::Paths;
 
 /// Removes what an interrupted verification or check left behind (Tower
 /// quit or crashed mid-way). Nothing runs yet at this point. Only in a
-/// folder that is clearly Tower's: absolute, and holding Tower's store.
-pub(crate) fn sweep(paths: &Paths) {
-    if !paths.root.is_absolute() || !paths.db().is_file() {
+/// folder that is clearly Tower's: absolute, and holding Tower's store
+/// before this start opened it (`had_store`: opening creates the file).
+pub(crate) fn sweep(paths: &Paths, had_store: bool) {
+    if !paths.root.is_absolute() || !had_store {
         return;
     }
     for dir in ["verify", "verify-cache", "checks"] {
@@ -95,13 +96,13 @@ mod tests {
         for d in dirs {
             std::fs::create_dir_all(paths.root.join(d)).unwrap();
         }
-        sweep(&paths);
+        sweep(&paths, paths.db().is_file());
         for d in dirs {
             assert!(paths.root.join(d).exists(), "{d} is not Tower's to remove");
         }
 
         std::fs::write(paths.db(), "").unwrap();
-        sweep(&paths);
+        sweep(&paths, paths.db().is_file());
         for d in dirs {
             assert!(!paths.root.join(d).exists(), "{d} is a leftover in Tower's folder");
         }

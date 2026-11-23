@@ -243,13 +243,13 @@ export function FileDiff(props: FileDiffProps) {
     />
   );
 
-  const renderNoise = (index: number, noise: "moved" | "formatting", lineCount: number, header: string) => (
+  const renderNoise = (index: number, noise: "moved" | "formatting", lineCount: number) => (
     <tr class="semantic-fold" data-semantic-noise={noise} data-hunk={index}>
       <td colspan={cols}>
         <div class="semantic-fold-bar">
-          <span class="semantic-pill"><Icon name="expand" size={10} />{noise === "moved" ? "Moved unchanged" : "Formatting only"}</span>
+          <span class="semantic-label"><Icon name="expand" size={10} />{noise === "moved" ? "Moved unchanged" : "Formatting only"}</span>
           <span class="meta t3 num">{t("review.lines", { n: lineCount })}</span>
-          <span class="mono meta t4 ellipsis grow">{header}</span>
+          <span class="grow" />
           <Button size="s" variant="ghost" onClick={() => toggleNoise(index)}>Expand hunk</Button>
         </div>
       </td>
@@ -260,7 +260,7 @@ export function FileDiff(props: FileDiffProps) {
   const renderVRow = (row: VRow, idx: number): JSX.Element => {
     if (row.kind === "head") return renderHead(row.index, row.header);
     if (row.kind === "gap") return renderGap(row.block);
-    if (row.kind === "folded") return renderNoise(row.index, row.noise, row.lines, row.header);
+    if (row.kind === "folded") return renderNoise(row.index, row.noise, row.lines);
     if (row.kind === "fold") return <FoldRow height={row.height} cols={cols} onDone={() => unfold(row.index)} />;
     if (row.kind === "composer" || row.kind === "comment") {
       return (
@@ -294,7 +294,7 @@ export function FileDiff(props: FileDiffProps) {
           </Show>
           {props.file.path}
         </span>
-        <Show when={virtualized()}><span class="vdiff-badge num">{flatRows().length} · virtual</span></Show>
+        <Show when={virtualized()}><span class="vdiff-badge mono num">{flatRows().length} · virtual</span></Show>
         <span class="num meta">
           <span class="diff-add">+{props.file.additions}</span> <span class="diff-del">−{props.file.deletions}</span>
         </span>
@@ -369,7 +369,7 @@ export function FileDiff(props: FileDiffProps) {
                         {(hb) => <FoldRow height={folding()[hb().index!]} cols={cols} onDone={() => unfold(hb().index!)} />}
                       </Match>
                       <Match when={b.kind === "hunk" && !isAccepted(b.index) && noiseOf(b.index) && !noiseExpanded()[b.index!] && b}>
-                        {(hb) => renderNoise(hb().index!, noiseOf(hb().index)!, hb().hunk.lines.length, hb().hunk.header)}
+                        {(hb) => renderNoise(hb().index!, noiseOf(hb().index)!, hb().hunk.lines.length)}
                       </Match>
                       <Match when={b.kind === "hunk" && !isAccepted(b.index) && b}>
                         {(hb) => (

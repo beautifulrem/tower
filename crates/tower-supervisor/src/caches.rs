@@ -58,8 +58,10 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
 /// Mirrors and build settings stay. A line filter, conservative: a line it
 /// cannot place is dropped rather than copied, when it names a credential.
 fn without_credentials(config: &str) -> String {
-    // Names in lower case; `key` and `auth` catch `[env]` entries such as `OPENAI_API_KEY` or `DEPLOY_AUTH`.
-    const NAMES: &[&str] = &["token", "secret", "password", "credential", "key", "auth", "private"];
+    const NAMES: &[&str] = &["token", "secret", "password", "credential"];
+    // In `[env]` the names are variables (`OPENAI_API_KEY`, `DEPLOY_AUTH`): wider there, and only there, where a
+    // `[patch]` entry named `keyring` or an alias named `keygen` is not a secret.
+    const ENV_NAMES: &[&str] = &["key", "auth", "private"];
     let mut out = String::new();
     let mut table = String::new();
     let mut skip_until: Option<&str> = None;
@@ -78,7 +80,13 @@ fn without_credentials(config: &str) -> String {
             let value = value.trim();
             let names_secret = |s: &str| NAMES.iter().any(|n| s.contains(n));
             let inline_secret = value.starts_with('{') && names_secret(&value.to_ascii_lowercase());
-            if table.starts_with("credential-alias") || names_secret(&key) || inline_secret || url_has_password(value) {
+            let env_secret = table == "env" && ENV_NAMES.iter().any(|n| key.contains(n));
+            if table.starts_with("credential-alias")
+                || names_secret(&key)
+                || env_secret
+                || inline_secret
+                || url_has_password(value)
+            {
                 skip_until = if value.starts_with("\"\"\"") && value.matches("\"\"\"").count() == 1 {
                     Some("\"\"\"")
                 } else if value.starts_with("'''") && value.matches("'''").count() == 1 {
@@ -330,6 +338,15 @@ registries.other.token = "dottedtoken0006"
 OPENAI_API_KEY = "sk-envkey0007"
 DEPLOY_AUTH = "envauth0008"
 RUST_LOG = "info"
+AUTHOR = "Ada"
+
+[patch.crates-io]
+oauth2 = { path = "../oauth2" }
+keyring = { path = "../keyring" }
+serde = { git = "https://github.com/authorname/serde" }
+
+[alias]
+keygen = "run --bin keygen"
 "#,
         )
         .unwrap();
@@ -345,6 +362,10 @@ RUST_LOG = "info"
             "jobs = 4",
             "[registries.corp]",
             "RUST_LOG = \"info\"",
+            "oauth2 = { path",
+            "keyring = { path",
+            "authorname/serde",
+            "keygen = ",
         ] {
             assert!(copied.contains(kept), "{kept} missing from:\n{copied}");
         }

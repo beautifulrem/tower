@@ -14,11 +14,17 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
   const [busy, setBusy] = createSignal<string | null>(null);
 
   // Only what the supervisor proposed: on failure, no stand-in draft a click could ratify into the held-out tests.
-  const [none, setNone] = createSignal(false);
+  // What to say when there is no draft: why (the error), or that none came back.
+  const [none, setNone] = createSignal<string | null>(null);
   const load = async () => {
-    const res = await api.generateHoldoutDrafts(props.projectId, props.intent).catch(() => null);
-    setDrafts(res ?? []);
-    setNone(!res?.length);
+    try {
+      const res = await api.generateHoldoutDrafts(props.projectId, props.intent);
+      setDrafts(res ?? []);
+      setNone(res?.length ? null : t("contract.holdoutNone"));
+    } catch (e) {
+      setDrafts([]);
+      setNone(errorText(e));
+    }
   };
   onMount(() => void load());
 
@@ -44,7 +50,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
         <Button size="s" variant="ghost" onClick={() => void load()}>{t("contract.regenerate")}</Button>
         <button type="button" class="icon-btn" aria-label={t("common.close")} onClick={props.onClose}>×</button>
       </div>
-      <Show when={none()}><span class="meta t3">{t("contract.holdoutNone")}</span></Show>
+      <Show when={none()}>{(why) => <span class="meta t3">{why()}</span>}</Show>
       <For each={drafts()}>
         {(d) => {
           const ok = () => !!ratified()[d.id];

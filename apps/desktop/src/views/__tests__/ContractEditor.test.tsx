@@ -246,6 +246,32 @@ describe("attachments of a draft", () => {
     }
   });
 
+  it("an image added and removed again, then discarded, leaves no file behind", async () => {
+    const { invoked } = await import("../../test/setup");
+    const start = invoked.length;
+    try {
+      const { container, unmount } = render(() => <ContractEditor draftId="G-0008" />);
+      const intent = await waitFor(() => {
+        const t = container.querySelector<HTMLTextAreaElement>(".field-intent textarea");
+        expect(t).toBeTruthy();
+        return t!;
+      });
+      const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "mock.png", { type: "image/png" });
+      fireEvent.paste(intent, { clipboardData: { items: [{ kind: "file", getAsFile: () => png }], files: [png] } });
+      const remove = await waitFor(() => {
+        const b = container.querySelector<HTMLButtonElement>(".att-chip .icon-btn");
+        expect(b).toBeTruthy();
+        return b!;
+      });
+      fireEvent.click(remove);
+      unmount();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(invoked.slice(start).some((x) => x.cmd === "delete_attachment" && (x.args as { attachmentId: string }).attachmentId === "att_1")).toBe(true);
+    } finally {
+      invoked.splice(start);
+    }
+  });
+
   it("removing an image and saving deletes its file once the draft without it is saved", async () => {
     const { invoked } = await import("../../test/setup");
     draft.atts = [shot];
@@ -274,12 +300,12 @@ describe("attachments of a draft", () => {
 });
 
 describe("synthetic holdout drafts", () => {
-  it("shows no draft when none came back, never a stand-in to ratify", async () => {
+  it("shows no draft when generating failed, and why, never a stand-in to ratify", async () => {
     draft.holdout = "none";
     try {
       render(() => <ContractEditor projectId="p1" />);
       fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
-      await waitFor(() => expect(screen.getByText(/No drafts came back/)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText(/the project is gone/)).toBeTruthy());
       expect(screen.queryByRole("button", { name: /Ratify into holdout\// })).toBeNull();
     } finally {
       draft.holdout = "ok";

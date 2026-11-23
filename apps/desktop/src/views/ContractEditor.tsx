@@ -147,7 +147,14 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   // contract without it is saved, and one added here is deleted if you leave without saving.
   const removed: AttachmentRef[] = [];
   const added: AttachmentRef[] = [];
-  const addImages = (files: File[]) => void collectImages(files, editingId, (ref) => (added.push(ref), setC("attachments", (l) => [...(l ?? []), ref])));
+  // An upload that lands after the editor saved or closed is in no contract: its file goes at once.
+  let closed = false;
+  const addImages = (files: File[]) =>
+    void collectImages(files, editingId, (ref) => {
+      if (saved || closed) return drop([ref]);
+      added.push(ref);
+      setC("attachments", (l) => [...(l ?? []), ref]);
+    });
   const removeAtt = (att: AttachmentRef) => {
     setC("attachments", (l) => (l ?? []).filter((x) => x.id !== att.id));
     if (editingId) removed.push(att);
@@ -160,7 +167,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
     added.length = 0;
     drop(removed);
   };
-  onCleanup(() => saved || drop(added.filter((a) => !removed.some((r) => r.id === a.id))));
+  onCleanup(() => ((closed = true), saved || drop(added)));
   const toggleDep = (id: string) => setC("depends_on", (l) => ((l ?? []).includes(id) ? (l ?? []).filter((x) => x !== id) : [...(l ?? []), id]));
 
   const save = async (ratify: boolean) => {

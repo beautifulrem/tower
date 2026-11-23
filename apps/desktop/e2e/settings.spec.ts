@@ -4,6 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 
+import { enrichPhone } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -137,4 +138,18 @@ test("a field saved on the Settings page keeps quiet mode off once the palette t
   await page.getByRole("switch", { name: /Enable the phone page/ }).click();
   await expect.poll(async () => (await saves()).length).toBe(3);
   expect((await saves())[2][1].settings.quiet_until).toBeNull();
+});
+
+test("a field saved after New pairing link keeps the new token, never puts back the one you revoked", async ({ page }) => {
+  const saves = async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings") as Array<[string, { settings: { remote_token: string | null } }]>;
+  await openTower(page, "settings", { enrich: (F) => (enrichPhone(F), (F.settings.remote_token = "revoked-token")) });
+  await page.evaluate(() => ((window as unknown as { __towerAsk: boolean }).__towerAsk = true));
+  await page.getByRole("button", { name: /New pairing link/ }).click();
+  await expect.poll(async () => (await calls(page)).some(([cmd]) => cmd === "reset_remote_token")).toBe(true);
+  await page.getByLabel("Editor command").fill("zed");
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  await expect.poll(async () => (await saves()).length).toBeGreaterThan(0);
+  const last = (await saves()).at(-1)![1].settings;
+  expect(last.remote_token).toMatch(/^fresh-/);
 });

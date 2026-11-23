@@ -43,7 +43,77 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
         // The user's global git config is outside the sandbox (and may hold
         // credential helpers); git treats an unreadable one as fatal.
         ("GIT_CONFIG_GLOBAL".into(), "/dev/null".into()),
+        // Nor the system's (Homebrew's and the Command Line Tools' set the
+        // keychain credential helper), and no credential helper at all: an
+        // empty `credential.helper` from the command-line scope, read last,
+        // clears the ones any other configuration lists.
+        ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
+        ("GIT_CONFIG_COUNT".into(), "1".into()),
+        ("GIT_CONFIG_KEY_0".into(), "credential.helper".into()),
+        ("GIT_CONFIG_VALUE_0".into(), String::new()),
+        ("GIT_TERMINAL_PROMPT".into(), "0".into()),
     ]
+}
+
+/// `~/.cargo/config.toml` without what authenticates: registry tokens,
+/// credential providers and aliases, and passwords in URLs (a proxy's).
+/// Mirrors and build settings stay. A line filter, conservative: a line it
+/// cannot place is dropped rather than copied, when it names a credential.
+fn without_credentials(config: &str) -> String {
+    const NAMES: &[&str] = &["token", "secret", "password", "credential"];
+    let mut out = String::new();
+    let mut table = String::new();
+    let mut skip_until: Option<&str> = None;
+    for line in config.lines() {
+        if let Some(close) = skip_until {
+            if line.contains(close) {
+                skip_until = None;
+            }
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('[') && !trimmed.contains('=') {
+            table = trimmed.trim_matches(['[', ']', ' ']).to_ascii_lowercase();
+        } else if let Some((key, value)) = trimmed.split_once('=') {
+            let key = key.trim().to_ascii_lowercase();
+            let value = value.trim();
+            let names_secret = |s: &str| NAMES.iter().any(|n| s.contains(n));
+            let inline_secret = value.starts_with('{') && names_secret(&value.to_ascii_lowercase());
+            if table.starts_with("credential-alias") || names_secret(&key) || inline_secret || url_has_password(value) {
+                skip_until = if value.starts_with("\"\"\"") && value.matches("\"\"\"").count() == 1 {
+                    Some("\"\"\"")
+                } else if value.starts_with("'''") && value.matches("'''").count() == 1 {
+                    Some("'''")
+                } else if value.starts_with('[') && value.matches('[').count() > value.matches(']').count() {
+                    Some("]")
+                } else {
+                    None
+                };
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// A URL with credentials in it: `user:password@`, or any user name on an
+/// http(s) URL (where a lone name is usually a token).
+fn url_has_password(value: &str) -> bool {
+    let mut rest = value;
+    while let Some(at) = rest.find("://") {
+        let scheme = rest[..at].rsplit(|c: char| !c.is_ascii_alphanumeric() && c != '+').next().unwrap_or("");
+        let authority = &rest[at + 3..];
+        let end = authority.find(['/', '"', '\'', ' ', '?', '#']).unwrap_or(authority.len());
+        if let Some(userinfo) = authority[..end].rsplit_once('@').map(|(u, _)| u)
+            && (userinfo.contains(':') || scheme.ends_with("http") || scheme.ends_with("https"))
+        {
+            return true;
+        }
+        rest = &authority[end..];
+    }
+    false
 }
 
 /// Creates the goal's cache directory and seeds it once from the user's
@@ -73,13 +143,22 @@ pub fn prepare(cache: &Path, home: &Path, repo: &Path) -> std::io::Result<PathBu
                     .status();
             }
         }
-        // Cargo reads its configuration from CARGO_HOME.
+        // Cargo reads its configuration from CARGO_HOME; the agent reads
+        // the cache, so the copy keeps no credentials.
         let cargo_config = home.join(".cargo/config.toml");
         if repo.join("Cargo.toml").exists() && cargo_config.is_file() {
             std::fs::create_dir_all(cache.join("cargo"))?;
-            let _ = std::fs::copy(&cargo_config, cache.join("cargo/config.toml"));
+            if let Ok(text) = std::fs::read_to_string(&cargo_config) {
+                std::fs::write(cache.join("cargo/config.toml"), without_credentials(&text))?;
+            }
         }
         std::fs::write(&marker, "")?;
+    } else if let Ok(text) = std::fs::read_to_string(cache.join("cargo/config.toml")) {
+        // Seeded before copies were filtered.
+        let clean = without_credentials(&text);
+        if clean.trim_end() != text.trim_end() {
+            std::fs::write(cache.join("cargo/config.toml"), clean)?;
+        }
     }
     Ok(crate::paths::real(cache))
 }
@@ -143,5 +222,113 @@ mod tests {
         assert_eq!(std::fs::read_to_string(cache.join("npm/_cacache/x")).unwrap(), "pkg");
         assert!(!cache.join("cargo/registry").exists(), "no Cargo.toml, no cargo cache");
         assert!(env(&cache).iter().any(|(k, v)| k == "npm_config_cache" && v.ends_with("/npm")));
+    }
+
+    /// The agent's git reads no system configuration (Homebrew's sets the
+    /// keychain credential helper), runs no credential helper from any
+    /// configuration, and never prompts.
+    #[test]
+    fn agent_git_runs_no_credential_helper_and_reads_no_system_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        let marker = tmp.path().join("helper-ran");
+        let system = tmp.path().join("system-gitconfig");
+        std::fs::write(
+            &system,
+            format!("[tower]\n\tprobe = yes\n[credential]\n\thelper = \"!touch {}.system; true\"\n", marker.display()),
+        )
+        .unwrap();
+        let git = |args: &[&str], input: Option<&str>| {
+            let mut c = std::process::Command::new("git");
+            c.args(args)
+                .current_dir(&repo)
+                .env_clear()
+                .env("PATH", std::env::var("PATH").unwrap_or_default())
+                .env("HOME", tmp.path())
+                .env("GIT_CONFIG_SYSTEM", &system)
+                .envs(env(&tmp.path().join("cache")))
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped());
+            let mut child = c.spawn().unwrap();
+            if let Some(text) = input {
+                std::io::Write::write_all(&mut child.stdin.take().unwrap(), text.as_bytes()).unwrap();
+            }
+            drop(child.stdin.take());
+            child.wait_with_output().unwrap()
+        };
+        std::fs::create_dir_all(&repo).unwrap();
+        assert!(git(&["init", "--quiet"], None).status.success());
+        let helper = format!("!touch {}; true", marker.display());
+        assert!(git(&["config", "credential.helper", &helper], None).status.success());
+
+        let probe = git(&["config", "--get", "tower.probe"], None);
+        assert!(String::from_utf8_lossy(&probe.stdout).trim().is_empty(), "the system configuration is not read");
+        git(&["credential", "fill"], Some("protocol=https\nhost=example.com\n\n"));
+        assert!(!marker.exists(), "the repository's credential helper did not run");
+        assert!(!tmp.path().join("helper-ran.system").exists(), "the system credential helper did not run");
+        let helpers = git(&["config", "--get-all", "credential.helper"], None);
+        assert_eq!(String::from_utf8_lossy(&helpers.stdout).lines().last(), Some(""), "the helper list ends reset");
+        assert!(env(Path::new("/c")).contains(&("GIT_TERMINAL_PROMPT".into(), "0".into())));
+    }
+
+    /// The goal's copy of `~/.cargo/config.toml` keeps mirrors and build
+    /// settings but no registry token, credential provider or proxy
+    /// password: the cache is readable to the agent.
+    #[test]
+    fn cargo_config_reaches_the_cache_without_credentials() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".cargo")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::write(repo.join("Cargo.toml"), "[package]\n").unwrap();
+        std::fs::write(
+            home.join(".cargo/config.toml"),
+            r#"[source.crates-io]
+replace-with = "mirror"
+
+[source.mirror]
+registry = "sparse+https://mirror.example.com/index/"
+
+[registry]
+token = "cio_registrytoken0001"
+global-credential-providers = ["cargo:token", "cargo:macos-keychain"]
+
+[registries.corp]
+index = "sparse+https://corp.example.com/index/"
+token = "Bearer corptoken0002"
+credential-provider = [
+    "cargo:token-from-stdout",
+    "/usr/local/bin/corp-cred0003",
+]
+
+[credential-alias]
+corp-login = ["/usr/local/bin/aliascred0004", "--secret"]
+
+[http]
+proxy = "http://ada:proxypass0005@proxy.example.com:8080"
+
+[build]
+jobs = 4
+registries.other.token = "dottedtoken0006"
+"#,
+        )
+        .unwrap();
+
+        let cache = prepare(&tmp.path().join("cache"), &home, &repo).unwrap();
+        let copied = std::fs::read_to_string(cache.join("cargo/config.toml")).unwrap();
+        for secret in ["0001", "0002", "0003", "0004", "0005", "0006", "cargo:macos-keychain"] {
+            assert!(!copied.contains(secret), "{secret} left in:\n{copied}");
+        }
+        for kept in
+            ["replace-with = \"mirror\"", "sparse+https://mirror.example.com/index/", "jobs = 4", "[registries.corp]"]
+        {
+            assert!(copied.contains(kept), "{kept} missing from:\n{copied}");
+        }
+        // A cache seeded before the filter loses its copy's token too.
+        std::fs::write(cache.join("cargo/config.toml"), "[registry]\ntoken = \"cio_oldseed0007\"\n").unwrap();
+        prepare(&cache, &home, &repo).unwrap();
+        assert!(!std::fs::read_to_string(cache.join("cargo/config.toml")).unwrap().contains("0007"));
     }
 }

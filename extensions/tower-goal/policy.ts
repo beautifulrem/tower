@@ -125,6 +125,7 @@ const REASON = {
 	rmRecursive: { zh: "递归删除", en: "delete recursively" },
 	gitDynamic: { zh: "git 子命令或别名在运行时才确定", en: "a git subcommand or alias only known when it runs" },
 	unparsed: { zh: "无法可靠解析的命令", en: "a command Tower cannot parse reliably" },
+	dynamic: { zh: "运行时才确定的命令", en: "a command only known when it runs" },
 	cautious: { zh: "谨慎模式：运行非只读命令", en: "cautious mode: a command that is not read-only" },
 	cautiousRedirect: { zh: "谨慎模式：命令包含文件写入重定向", en: "cautious mode: command writes via file redirection" },
 	cautiousSub: { zh: "谨慎模式：命令包含子命令替换或内联脚本", en: "cautious mode: command uses substitution or an inline script" },
@@ -379,6 +380,9 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 	// What the parser could not follow could hide a one-way door: ask in
 	// every mode.
 	if (parsed.parseError) return { action: "ask", reason: REASON.unparsed };
+	// The same holds for a command only known when it runs: a name that is
+	// not a literal word, `eval` of a non-literal, or `sh -c` of one.
+	if (parsed.hasDynamicCommand) return { action: "ask", reason: REASON.dynamic };
 	if (autonomy === "autonomous") return { action: "allow" };
 
 	for (const cmd of parsed.commands) {

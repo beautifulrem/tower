@@ -334,7 +334,7 @@ test("declarative engine profiles enforce explicit trust tiers", () => {
 async function runBridgeSession(
 	mode: string,
 	engineId: string,
-	promptCmd: Record<string, unknown>,
+	promptCmd: Record<string, unknown> | Array<Record<string, unknown>>,
 	extraEnv: Record<string, string> = {},
 ): Promise<Array<Record<string, unknown>>> {
 	const ws = mkdtempSync(join(tmpdir(), "tower-acp-test-"));
@@ -371,7 +371,10 @@ async function runBridgeSession(
 				}
 			});
 		});
-		child.stdin.write(`${JSON.stringify({ id: "1", ...promptCmd })}\n`);
+		// Several commands go in one write, so the bridge sees them while the
+		// first is still starting its session.
+		const cmds = Array.isArray(promptCmd) ? promptCmd : [promptCmd];
+		child.stdin.write(cmds.map((c, i) => `${JSON.stringify({ id: String(i + 1), ...c })}\n`).join(""));
 		await settled;
 		child.stdin.end();
 		await new Promise<void>((res) => child.on("close", () => res()));
@@ -392,6 +395,17 @@ test("ACP bridge penetration test hard-rejects unauthorized built-in tools and e
 		assert.deepEqual(report[k], { outcome: "selected", optionId: "r1" }, `${k} must be hard-rejected`);
 	}
 	assert.deepEqual(report.tower_read, { outcome: "selected", optionId: "a1" }, "mcp__tower__read must be allowed");
+});
+
+test("ACP bridge starts one session when a steer arrives while the prompt starts it", async () => {
+	const events = await runBridgeSession("blocked", "claude-code", [
+		{ type: "prompt", message: "first" },
+		{ type: "steer", message: "second" },
+	]);
+	const responses = events.filter((e) => e.type === "response") as Array<{ command: string; data: { disposition?: string } }>;
+	// The steer is answered first: it does not wait for the session.
+	assert.deepEqual(Object.fromEntries(responses.map((r) => [r.command, r.data.disposition])), { prompt: "started", steer: "queued" });
+	assert.equal(events.filter((e) => e.type === "agent_start").length, 1, "one turn loop");
 });
 
 test("ACP bridge forwards honest submit(outcome='blocked') and multimodal image blocks", async () => {

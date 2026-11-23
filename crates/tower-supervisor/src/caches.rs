@@ -53,67 +53,59 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
     ]
 }
 
-/// `~/.cargo/config.toml` without what authenticates: registry tokens, keys,
-/// credential providers and aliases, and passwords in URLs (a proxy's).
-/// Mirrors and build settings stay; `[env]` does not, in any spelling. A line
-/// filter, conservative: a line it cannot place is dropped rather than copied,
-/// when it names a credential.
+/// `~/.cargo/config.toml` as the agent may see it: the allowlist of docs/16
+/// §16.8 (ADR-176/177), built from a parse of the file, never a line filter.
+/// Mirrors (`[source.*]` `registry`/`replace-with`/`directory`), registry
+/// indexes (`[registries.*]` `index`) and `[net]` `retry`/`git-fetch-with-cli`/
+/// `offline`; a URL carrying credentials is left out. Everything else stays
+/// behind (tokens, credential providers, `[env]`, `[build]`, aliases…), and a
+/// file that does not parse gives an empty copy.
 fn without_credentials(config: &str) -> String {
-    const NAMES: &[&str] = &["token", "secret", "password", "credential"];
-    let mut out = String::new();
-    let mut table = String::new();
-    let mut skip_until: Option<&str> = None;
-    for line in config.lines() {
-        if let Some(close) = skip_until {
-            if line.contains(close) {
-                skip_until = None;
-            }
-            continue;
-        }
-        let trimmed = line.trim_start();
-        // A header: `[` first, and its `]` before any `=` (`[env] # RUST_LOG=debug` is still one).
-        let header =
-            trimmed.starts_with('[') && trimmed.find(']').is_some_and(|c| trimmed.find('=').is_none_or(|e| c < e));
-        if header {
-            // `[env]`, `[ "env" ]`, `[[bin]]`: the dotted name, unquoted and unspaced, without what follows `]`.
-            table = dotted(trimmed.trim_start_matches('[').split(']').next().unwrap_or(""));
-        } else if let Some((key, value)) = trimmed.split_once('=') {
-            let key = dotted(key);
-            let value = value.trim();
-            let names_secret = |s: &str| NAMES.iter().any(|n| s.contains(n));
-            let inline_secret = value.starts_with('{') && names_secret(&value.to_ascii_lowercase());
-            // `[env]` holds variables a build may read (`OPENAI_API_KEY`, `DEPLOY_AUTH`, any name at all): none of it
-            // reaches the agent, in any of its spellings (`[env.NAME]`, a top-level `env.NAME` or `env = {…}`).
-            let in_env = table == "env"
-                || table.starts_with("env.")
-                || (table.is_empty() && (key == "env" || key.starts_with("env.")));
-            if table.starts_with("credential-alias")
-                || names_secret(&key)
-                || in_env
-                || inline_secret
-                || url_has_password(value)
-            {
-                skip_until = if value.starts_with("\"\"\"") && value.matches("\"\"\"").count() == 1 {
-                    Some("\"\"\"")
-                } else if value.starts_with("'''") && value.matches("'''").count() == 1 {
-                    Some("'''")
-                } else if value.starts_with('[') && value.matches('[').count() > value.matches(']').count() {
-                    Some("]")
-                } else {
-                    None
-                };
-                continue;
+    use toml::{Table, Value};
+    let Ok(doc) = config.parse::<Table>() else { return String::new() };
+    let keep = |value: &Value| match value {
+        Value::String(s) => !url_has_password(s),
+        Value::Integer(_) | Value::Boolean(_) => true,
+        _ => false,
+    };
+    // `[source.NAME]` and `[registries.NAME]`: only the named keys of each entry.
+    let entries = |table: &str, keys: &[&str]| -> Table {
+        let mut out = Table::new();
+        for (name, entry) in doc.get(table).and_then(Value::as_table).into_iter().flatten() {
+            let kept: Table = entry
+                .as_table()
+                .into_iter()
+                .flatten()
+                .filter(|(k, v)| keys.contains(&k.as_str()) && keep(v))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            if !kept.is_empty() {
+                out.insert(name.clone(), Value::Table(kept));
             }
         }
-        out.push_str(line);
-        out.push('\n');
+        out
+    };
+    let mut out = Table::new();
+    for (table, kept) in [
+        ("source", entries("source", &["registry", "replace-with", "directory"])),
+        ("registries", entries("registries", &["index"])),
+    ] {
+        if !kept.is_empty() {
+            out.insert(table.into(), Value::Table(kept));
+        }
     }
-    out
-}
-
-/// A TOML key or table name as one lowercase dotted path: `"env" . X` is `env.x`.
-fn dotted(name: &str) -> String {
-    name.split('.').map(|part| part.trim().trim_matches(['"', '\'']).to_ascii_lowercase()).collect::<Vec<_>>().join(".")
+    let net: Table = doc
+        .get("net")
+        .and_then(Value::as_table)
+        .into_iter()
+        .flatten()
+        .filter(|(k, v)| ["retry", "git-fetch-with-cli", "offline"].contains(&k.as_str()) && keep(v))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    if !net.is_empty() {
+        out.insert("net".into(), Value::Table(net));
+    }
+    toml::to_string(&out).unwrap_or_default()
 }
 
 /// A URL with credentials in it: `user:password@`, or any user name on an
@@ -304,9 +296,9 @@ mod tests {
         assert!(env(Path::new("/c")).contains(&("GIT_TERMINAL_PROMPT".into(), "0".into())));
     }
 
-    /// The goal's copy of `~/.cargo/config.toml` keeps mirrors and build
-    /// settings but no registry token, credential provider or proxy
-    /// password: the cache is readable to the agent.
+    /// The goal's copy of `~/.cargo/config.toml` is the allowlist of docs/16
+    /// §16.8: mirrors and registry indexes, a few `[net]` settings, nothing
+    /// else, and no URL carrying credentials. The cache is readable to the agent.
     #[test]
     fn cargo_config_reaches_the_cache_without_credentials() {
         let tmp = tempfile::tempdir().unwrap();
@@ -317,18 +309,14 @@ mod tests {
         std::fs::write(repo.join("Cargo.toml"), "[package]\n").unwrap();
         std::fs::write(
             home.join(".cargo/config.toml"),
-            // Line by line, as the filter reads it: a top-level dotted `env.` key and an inline `env` table are
-            // `[env]` variables too (not one valid file with `[env]` below; the filter never parses the whole).
-            r#"env.TOP_API_KEY = "envkey0009"
-env = { DEPLOY_AUTH = "envauth0010" }
-"env".QUOTED_API_KEY = "envkey0011"
-env . SPACED_API_KEY = "envkey0012"
-
-[source.crates-io]
+            r#"[source.crates-io]
 replace-with = "mirror"
 
 [source.mirror]
 registry = "sparse+https://mirror.example.com/index/"
+
+[source.private]
+registry = "sparse+https://ada:mirrorpw0015@private.example.com/index/"
 
 [registry]
 token = "cio_registrytoken0001"
@@ -348,26 +336,22 @@ corp-login = ["/usr/local/bin/aliascred0004", "--secret"]
 [http]
 proxy = "http://ada:proxypass0005@proxy.example.com:8080"
 
+[net]
+retry = 3
+git-fetch-with-cli = true
+
 [build]
 jobs = 4
-registries.other.token = "dottedtoken0006"
+rustflags = ["-C", "link-arg=-Wl,--token=buildflag0006"]
 
-[env] # e.g. RUST_LOG=debug
+[env]
 OPENAI_API_KEY = "sk-envkey0007"
-DEPLOY_AUTH = "envauth0008"
-RUST_LOG = "info"
-AUTHOR = "Ada"
-
-[env.GITHUB_TOKEN]
-value = "ghp_envtable0013"
-
-["env"]
-SOME_SETTING = "envquoted0014"
+DEPLOY = { value = """
+envmultiline0008
+""", force = true }
 
 [patch.crates-io]
-oauth2 = { path = "../oauth2" }
 keyring = { path = "../keyring" }
-serde = { git = "https://github.com/authorname/serde" }
 
 [alias]
 keygen = "run --bin keygen"
@@ -386,33 +370,39 @@ keygen = "run --bin keygen"
             "0006",
             "0007",
             "0008",
-            "0009",
-            "0010",
-            "0011",
-            "0012",
-            "0013",
-            "0014",
+            "0015",
             "cargo:macos-keychain",
+            "keygen",
+            "jobs",
         ] {
             assert!(!copied.contains(secret), "{secret} left in:\n{copied}");
         }
-        // Nothing of `[env]` goes, secret or not: a filter that guesses at names has missed spellings before.
-        assert!(!copied.contains("RUST_LOG = "), "{copied}");
-        for kept in [
-            "replace-with = \"mirror\"",
-            "sparse+https://mirror.example.com/index/",
-            "jobs = 4",
-            "[registries.corp]",
-            "oauth2 = { path",
-            "keyring = { path",
-            "authorname/serde",
-            "keygen = ",
+        let kept: toml::Table = copied.parse().unwrap();
+        assert_eq!(kept["source"]["crates-io"]["replace-with"].as_str(), Some("mirror"));
+        assert_eq!(kept["source"]["mirror"]["registry"].as_str(), Some("sparse+https://mirror.example.com/index/"));
+        assert_eq!(kept["registries"]["corp"]["index"].as_str(), Some("sparse+https://corp.example.com/index/"));
+        assert_eq!(kept["net"]["retry"].as_integer(), Some(3));
+        assert_eq!(kept["net"]["git-fetch-with-cli"].as_bool(), Some(true));
+
+        // The spellings a line filter missed: whatever the form, nothing outside the allowlist comes through.
+        for (config, secret) in [
+            ("env = {\n  OPENAI_API_KEY = \"sk-ml0009\",\n}\n", "0009"),
+            ("\u{feff}[env]\nOPENAI_API_KEY = \"sk-bom0010\"\n", "0010"),
+            ("[env.GITHUB_TOKEN]\nvalue = \"ghp_table0011\"\n", "0011"),
+            ("\"env\".KEY = \"quoted0012\"\n", "0012"),
+            (
+                "[registries.corp]\nindex = \"https://corp.example.com/i\"\nextra = { a = \"x\",\n  b = \"nested0013\" }\n",
+                "0013",
+            ),
+            ("not toml at all = = \"broken0014\"\n", "0014"),
         ] {
-            assert!(copied.contains(kept), "{kept} missing from:\n{copied}");
+            let out = without_credentials(config);
+            assert!(!out.contains(secret), "{secret} left in:\n{out}");
         }
+
         // A cache seeded before the filter loses its copy's token too.
-        std::fs::write(cache.join("cargo/config.toml"), "[registry]\ntoken = \"cio_oldseed0007\"\n").unwrap();
+        std::fs::write(cache.join("cargo/config.toml"), "[registry]\ntoken = \"cio_oldseed0016\"\n").unwrap();
         prepare(&cache, &home, &repo).unwrap();
-        assert!(!std::fs::read_to_string(cache.join("cargo/config.toml")).unwrap().contains("0007"));
+        assert!(!std::fs::read_to_string(cache.join("cargo/config.toml")).unwrap().contains("0016"));
     }
 }

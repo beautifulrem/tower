@@ -173,3 +173,26 @@ test("Tab in the Look sheet opened from Verify walks every Look control and stay
   expect(outside).toEqual([]);
   expect(seen.size).toBe(controls);
 });
+
+// The fade follows the body when it grows without new elements (a section opened by a class or a style, an image
+// that loads): not only when something is added or the sheet is scrolled.
+test("a sheet whose body grows in place shows the fade without being scrolled", async ({ page }) => {
+  // At its full height already (it scrolls), so the sheet's own box does not change as its body grows.
+  await page.setViewportSize({ width: 1040, height: 640 });
+  await page.addInitScript(() => localStorage.setItem("tower.size", "large"));
+  await openTower(page, "overview", { lang: "en", enrich: enrichRich });
+  await settled(page, "overview");
+  await page.keyboard.press("Shift+Slash");
+  const dialog = page.getByRole("dialog").last();
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate((d) => {
+    const grow = document.createElement("div");
+    grow.id = "grow";
+    grow.style.height = "0px";
+    d.insertBefore(grow, d.querySelector(":scope > .panel-actions"));
+  });
+  await dialog.evaluate((d) => d.scrollTo({ top: d.scrollHeight }));
+  await expect(dialog).not.toHaveAttribute("data-more");
+  await dialog.evaluate((d) => ((d.querySelector("#grow") as HTMLElement).style.height = "3000px"));
+  await expect(dialog).toHaveAttribute("data-more", "");
+});

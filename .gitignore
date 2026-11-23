@@ -30,3 +30,11 @@ __pycache__/
 
 # Local runs of the real-model adversarial regression (tools/adversarial.sh)
 .adversarial/
+
+# Release: the updater config the release workflow writes, and signing keys
+apps/desktop/src-tauri/tauri.updater.json
+*.p8
+*.p12
+
+# Per-machine Claude Code settings
+.claude/settings.local.json

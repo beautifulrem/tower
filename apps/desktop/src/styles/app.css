@@ -2729,14 +2729,18 @@ input[type="radio"] {
   align-items: center;
   gap: 6px;
 }
-/* The pin pair goes first, below the widest band (the seal carries the verified pin). In the narrow band the file
-   and unit counts go too: the file tree heads with its count and the status line says "Unit 1 / 2". */
-@media (max-width: 1560px) {
-  .review-stat-pins,
-  .review-stat-pins + .sep {
-    display: none;
-  }
+/* The pin pair goes first, and only for want of room (the seal carries the verified pin): the counts group gives way
+   before the verification group does, down to its widest stat, as one line that wraps onto a second line nobody sees,
+   so what does not fit — the pins, then the unit and file counts — leaves whole from the end. */
+.review-stats > .review-stat-group:first-child {
+  flex: 0 1000 auto;
+  min-width: min-content;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  height: 16px;
 }
+/* In the narrow band the pins and the file and unit counts go outright: the file tree heads with its count and the
+   status line says "Unit 1 / 2". */
 @media (max-width: 1240px) {
   .review-stats > .review-stat-group:first-child > :not(:first-child) {
     display: none;

@@ -15,7 +15,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use tower_core::{Lang, tr};
 
 use crate::paths::Paths;
@@ -237,7 +236,7 @@ pub struct LockfileCheck {
 pub fn verify_lockfile(adapter_dir: &Path, expected_package: &str) -> std::result::Result<LockfileCheck, String> {
     let lock_path = adapter_dir.join("package-lock.json");
     let raw = std::fs::read(&lock_path).map_err(|e| format!("could not read {}: {e}", lock_path.display()))?;
-    let lockfile_sha256 = format!("{:x}", Sha256::digest(&raw));
+    let lockfile_sha256 = crate::sha256_hex(&raw);
     let doc: serde_json::Value = serde_json::from_slice(&raw).map_err(|e| format!("invalid package-lock.json: {e}"))?;
     let version = doc.get("lockfileVersion").and_then(serde_json::Value::as_u64).unwrap_or(0);
     if version < 2 {

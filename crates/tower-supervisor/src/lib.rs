@@ -89,6 +89,17 @@ fn invalid(msg: impl Into<String>) -> Error {
     Error::Invalid(msg.into())
 }
 
+/// Lowercase hex SHA-256 of `bytes`. sha2 0.11 digests no longer implement
+/// `LowerHex`, so hex is written out byte by byte.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
+    Sha256::digest(bytes).iter().fold(String::with_capacity(64), |mut out, b| {
+        let _ = write!(out, "{b:02x}");
+        out
+    })
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub paths: Paths,

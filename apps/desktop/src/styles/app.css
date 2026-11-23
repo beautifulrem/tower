@@ -3058,6 +3058,7 @@ input[type="radio"] {
   align-items: flex-start;
   padding-top: 14vh;
   background: var(--scrim);
+  padding-bottom: var(--sp-6);
   animation: fade var(--dur-fast) var(--ease-out);
   overflow: hidden;
 }
@@ -3218,11 +3219,24 @@ input[type="radio"] {
   color: var(--text-3);
 }
 
+/* A sheet never runs past the window: at most the overlay's height, the body scrolls and the actions stay at its
+   foot, on the sheet's own surface (at 1040×640 a tall Accept sheet otherwise put Accept below the window's edge). */
 .panel {
   background: var(--bg-overlay);
   padding: 16px 18px;
   display: grid;
   gap: var(--sp-4);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.panel > .panel-actions {
+  position: sticky;
+  bottom: -16px;
+  z-index: 2;
+  margin: 0 -18px -16px;
+  padding: var(--sp-3) 18px 16px;
+  background: var(--bg-overlay);
 }
 .panel-title {
   font-size: var(--fs-question);
@@ -4401,13 +4415,12 @@ input[type="radio"] {
 
 .panel-wide {
   width: min(760px, 94vw);
-  max-height: 80vh;
-  overflow: auto;
+  max-height: min(80vh, 100%);
 }
 /* "There is more below": a functional fade at the sheet's foot, above the actions, gone once the end is in view. */
 .panel-more {
   position: sticky;
-  bottom: calc(16px + 26px + var(--sp-4));
+  bottom: calc(26px + var(--sp-3));
   height: 0;
   margin-top: calc(-1 * var(--sp-4));
   pointer-events: none;

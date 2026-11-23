@@ -154,7 +154,12 @@ function readOption(words: WordToken[], k: number, takes: string[]): Option {
  * as read, and again for each unknown option taking the next word as its
  * value, and each known short value option taken as a plain flag.
  */
-function wrapperEnds(words: WordToken[], k: number, base: string, operands: number, out: Set<number>): void {
+function wrapperEnds(words: WordToken[], k: number, base: string, operands: number, out: Set<number>, seen = new Set<string>()): void {
+	// Each reading that reaches the same word with the same operands left goes on alike: visit it once, so a long
+	// run of options costs a square, not a power of two (`setsid -f -f -f …`).
+	const state = `${k}:${operands}`;
+	if (seen.has(state)) return;
+	seen.add(state);
 	const w = WRAPPERS[base];
 	const takes = [...(w.values ?? []), ...(w.scripts ?? [])];
 	while (k < words.length && out.size < 32) {
@@ -171,8 +176,8 @@ function wrapperEnds(words: WordToken[], k: number, base: string, operands: numb
 		// The table cannot know every build's options: an unknown one may take the next word, and a known value
 		// option may be a plain flag elsewhere (BSD `script -F` against util-linux `script -F FILE`).
 		const known = v.startsWith("--") ? w.flags?.includes(v) : [...v.slice(1)].every((c) => w.flags?.includes(`-${c}`));
-		if (!opt.flag && !v.includes("=") && !known) wrapperEnds(words, k + 2, base, operands, out);
-		else if (opt.flag && opt.next === k + 2 && !v.startsWith("--")) wrapperEnds(words, k + 1, base, operands, out);
+		if (!opt.flag && !v.includes("=") && !known) wrapperEnds(words, k + 2, base, operands, out, seen);
+		else if (opt.flag && opt.next === k + 2 && !v.startsWith("--")) wrapperEnds(words, k + 1, base, operands, out, seen);
 		k = opt.next;
 	}
 	out.add(k);

@@ -15,10 +15,11 @@ const features = (el: Element) => {
 
 test("the Chinese masthead is tracked 0.08em and a Latin name in it keeps its own, the clause titles are untracked headings; an empty state's reason has its own measure and no orphan", async ({ page }) => {
   await openTower(page, "new", { lang: "zh-CN" });
-  const mast = page.locator(".contract-mast");
-  await expect(mast).toBeVisible();
+  // Wait for the real ContractEditor masthead, not the lazy-route ContractSkeleton
+  // which also renders a `.contract-mast` placeholder past 150 ms.
+  await expect(page.locator(".editor:not(.contract-skeleton) .contract-mast-word")).toBeVisible();
   const spacing = (sel: string) => page.locator(sel).first().evaluate((el) => (parseFloat(getComputedStyle(el).letterSpacing) || 0) / parseFloat(getComputedStyle(el).fontSize));
-  expect(await spacing(".contract-mast")).toBeCloseTo(0.08, 2);
+  expect(await spacing(".editor:not(.contract-skeleton) .contract-mast")).toBeCloseTo(0.08, 2);
   expect(await spacing(".clause-title")).toBeCloseTo(0, 2);
   expect(await spacing(".contract-mast-project")).toBeCloseTo(0.02, 2);
   await openTower(page, "goal/G-0004", { lang: "zh-CN" });

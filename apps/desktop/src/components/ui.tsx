@@ -3,7 +3,7 @@ import { type JSX, type Resource, Show, createUniqueId, onCleanup, onMount, spli
 
 import { errorText } from "../lib/api";
 import { t } from "../lib/i18n";
-import { type Binding, keyHint, useKeys } from "../lib/keys";
+import { type Binding, KeyLayer, keyHint, useKeys } from "../lib/keys";
 import { DangerMark, Icon, type IconName } from "./Glyph";
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -324,6 +324,8 @@ export function Overlay(props: {
   /** The dialog's own keys. They live in the overlay's modal scope: one registered beside it would sit under the
    *  boundary with the view's keys. */
   keys?: { name: () => string; bindings: Binding[] };
+  /** The key that opened it, which closes it again. */
+  closeKey?: string;
   /**
    * Where focus lands on open: the first control (a palette's field), or
    * the panel itself for sheets you read first — then Tab reaches the first
@@ -337,7 +339,10 @@ export function Overlay(props: {
   const previous = document.activeElement as HTMLElement | null;
   const titleId = createUniqueId();
   let panel!: HTMLDivElement;
-  useKeys([{ key: "escape", run: () => props.onClose(), inInputs: true }, ...(props.keys?.bindings ?? [])], props.keys?.name, { modal: true });
+  const close = () => props.onClose();
+  // The key that opened it closes it again (`?`, `e`, ⌘P): under the modal layer the opener's own binding is quiet.
+  const toggle: Binding[] = props.closeKey ? [{ key: props.closeKey, run: close, inInputs: props.closeKey.startsWith("mod+") }] : [];
+  const depth = useKeys([{ key: "escape", run: close, inInputs: true }, ...toggle, ...(props.keys?.bindings ?? [])], props.keys?.name, { modal: true });
   onMount(() => {
     props.panelRef?.(panel);
     const first = props.initialFocus === "panel" ? null : panel.querySelector<HTMLElement>(FOCUSABLE);
@@ -384,7 +389,7 @@ export function Overlay(props: {
             {props.title}
           </h2>
         </Show>
-        {props.children}
+        <KeyLayer.Provider value={depth}>{props.children}</KeyLayer.Provider>
       </div>
     </div>
   );

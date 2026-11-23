@@ -46,14 +46,19 @@ describe("keys", () => {
     dispose();
   });
 
-  it("keeps the view's keys quiet under a modal layer, except ⌘ chords", () => {
+  it("keeps the keys under a modal layer quiet, except the app's own ⌘ chords", () => {
     const viewKey = vi.fn();
-    const chord = vi.fn();
+    const viewChord = vi.fn();
+    const appChord = vi.fn();
     const close = vi.fn();
+    const disposeApp = createRoot((d) => {
+      useKeys([{ key: "mod+k", run: appChord }], undefined, { shell: true });
+      return d;
+    });
     const disposeView = createRoot((d) => {
       useKeys([
         { key: "v", run: viewKey },
-        { key: "mod+k", run: chord },
+        { key: "mod+enter", run: viewChord },
       ]);
       return d;
     });
@@ -63,13 +68,38 @@ describe("keys", () => {
     });
     press("v");
     expect(viewKey).not.toHaveBeenCalled();
+    // A view's ⌘↩ (save the contract) must not fire under the palette.
+    press("Enter", { metaKey: true });
+    expect(viewChord).not.toHaveBeenCalled();
     press("k", { metaKey: true });
-    expect(chord).toHaveBeenCalledTimes(1);
+    expect(appChord).toHaveBeenCalledTimes(1);
     press("Escape");
     expect(close).toHaveBeenCalledTimes(1);
     disposeModal();
     press("v");
     expect(viewKey).toHaveBeenCalledTimes(1);
+    press("Enter", { metaKey: true });
+    expect(viewChord).toHaveBeenCalledTimes(1);
     disposeView();
+    disposeApp();
+  });
+
+  it("keeps a view mounted while a dialog is open under the dialog", () => {
+    const close = vi.fn();
+    const viewEscape = vi.fn();
+    const disposeModal = createRoot((d) => {
+      useKeys([{ key: "escape", run: close }], undefined, { modal: true });
+      return d;
+    });
+    // ⌘1 under Activity switches views: the new view's keys register after the dialog's.
+    const disposeView = createRoot((d) => {
+      useKeys([{ key: "escape", run: viewEscape }]);
+      return d;
+    });
+    press("Escape");
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(viewEscape).not.toHaveBeenCalled();
+    disposeView();
+    disposeModal();
   });
 });

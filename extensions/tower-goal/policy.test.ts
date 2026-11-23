@@ -199,6 +199,11 @@ test("arithmetic shifts, here-documents something runs, and exported git config 
 		// git configuration exported for a later command.
 		"export GIT_CONFIG_GLOBAL=/tmp/g; git p origin main",
 		"HOME=/tmp/h; git p origin main",
+		// What runs inside arithmetic, and what only looks like it.
+		"echo $(( $(git push) ))",
+		"echo $(( 1 + `git push` ))",
+		"echo $[ $(git push) ]",
+		"echo $((git push) | cat)",
 	];
 	for (const mode of ["autonomous", "standard", "cautious"] as const) {
 		for (const cmd of hidden) {
@@ -211,6 +216,9 @@ test("arithmetic shifts, here-documents something runs, and exported git config 
 		"find . -name '*.ts' -exec grep -l x {} \\;",
 		'x=$(grep a <<< "$y"\necho b\n)',
 		"echo $((1 + 2))",
+		"echo $((1<<2)) $((x + y)) $((i++)) $((n - 1))",
+		"(( n > 0 )) && echo ok",
+		"echo $(( $(nproc) * 2 ))",
 		"export PATH=/usr/bin:$PATH; git status",
 	];
 	for (const mode of ["autonomous", "standard"] as const) {
@@ -313,6 +321,33 @@ test("shell options, piped scripts, find -exec words and other wrappers cannot h
 		"sudo -u me git push",
 		"doas git push",
 		"su -c 'git push'",
+		// Options the shell or wrapper takes that a table can miss.
+		"zsh -3 -c 'git push'",
+		"timeout --signal KILL 5 git push",
+		"timeout -vs KILL 5 git push",
+		"strace -fo log git push",
+		"stdbuf --output L git push",
+		"ionice --class 3 git push",
+		"xargs -0n 1 git push",
+		"env -S'git push'",
+		"env -iu X git push",
+		"script -q /dev/null git push",
+		"script -qc 'git push' /dev/null",
+		// Arguments xargs reads from its input.
+		"echo push | xargs git",
+		"echo 'git push' | xargs -I% sh -c %",
+		"echo 'git push' | xargs -I{} {}",
+		// Keywords before a block, and scripts run later.
+		"time { git push; }",
+		"time -p { git push; }",
+		"time ! git push",
+		"coproc P { git push; }",
+		"coproc { git push; }",
+		"trap 'git push' EXIT",
+		"trap -- 'git push' EXIT",
+		"eval -- 'git push'",
+		"printf 'a\\n' | mapfile -C 'git push' -c 1 x",
+		"readarray -t -C'git push' x < f",
 	];
 	for (const mode of ["autonomous", "standard", "cautious"] as const) {
 		for (const cmd of hidden) {
@@ -333,6 +368,21 @@ test("shell options, piped scripts, find -exec words and other wrappers cannot h
 		"ls | xargs -n1 echo",
 		"bash --version | head -1",
 		"cat x | bash script.sh",
+		// A non-literal option value or operand of a wrapper is not its command.
+		'find . | xargs -P "$(nproc)" grep foo',
+		'timeout "${T:-60}" npm test',
+		'flock "$LOCK" npm test',
+		'nice -n "$N" make',
+		"time -p npm test",
+		"trap 'rm -f \"$tmp\"' EXIT",
+		"git ls-files | xargs grep -l foo",
+		// A guarded name as an argument is not the command.
+		"git ls-files | xargs grep -l git",
+		"find . -name '*.md' | xargs grep -n npm",
+		"ls | xargs -I{} cp {} .",
+		'bash run.sh -c "$CFG"',
+		"find . -exec sh -c 'jq . \"$1\"' sh {} \\; | head",
+		"timeout 60 python3 - . <<'EOF'\nimport sys; print(sys.argv)\nEOF",
 	];
 	for (const cmd of fine) {
 		assert.equal(checkBash(cmd, "autonomous").action, "allow", `expected allow: ${JSON.stringify(cmd)}`);
@@ -340,7 +390,7 @@ test("shell options, piped scripts, find -exec words and other wrappers cannot h
 	// Only the wrappers cautious mode always knew can be read-only: others
 	// write files of their own (`strace -o`, `flock FILE`) or change what
 	// the command can reach.
-	for (const cmd of ["nice -n 5 ls", "timeout 5 ls", "env A=1 ls"]) {
+	for (const cmd of ["nice -n 5 ls", "timeout 5 ls", "env A=1 ls", "env LC_ALL=C grep -rn bash .", "nice -n 5 grep -r eval src"]) {
 		assert.equal(checkBash(cmd, "cautious").action, "allow", `expected allow in cautious: ${cmd}`);
 	}
 	for (const cmd of ["strace -o out ls", "ltrace -o out ls", "flock newfile ls", "chroot / ls", "stdbuf -oL ls"]) {

@@ -36,9 +36,11 @@ export function isEnvAssignmentWord(t: WordToken): EnvAssignment | null {
 
 /**
  * Commands that run another command after their own options: the options
- * that take a value as the next word, the operands before the command
- * (`timeout 5`, `chroot DIR`, `flock FILE`), and options whose value is a
- * shell script (`flock FILE -c 'cmd'`).
+ * that take a value (`-n 5`, `-n5`, `-vs KILL`, `--signal KILL`,
+ * `--signal=KILL`), the operands before the command (`timeout 5`, `chroot
+ * DIR`, `flock FILE`), and options whose value is a shell script (`flock
+ * FILE -c 'cmd'`). A table can miss an option, so the words after a wrapper
+ * that name a guarded program are read as commands too (`unwrapCommand`).
  */
 interface Wrapper {
 	values?: string[];
@@ -51,24 +53,64 @@ const WRAPPERS: Record<string, Wrapper> = {
 	setsid: {},
 	busybox: {},
 	unbuffer: {},
-	time: { values: ["-f", "-o"] },
+	time: { values: ["-f", "-o", "--format", "--output"] },
 	exec: { values: ["-a"] },
-	nice: { values: ["-n"] },
-	timeout: { values: ["-k", "-s"], operands: 1 },
-	xargs: { values: ["-n", "-I", "-L", "-P", "-d", "-E", "-s", "-a"] },
-	stdbuf: { values: ["-i", "-o", "-e"] },
-	ionice: { values: ["-c", "-n", "-p", "-P", "-u"] },
-	chrt: { values: ["-T", "-P", "-D"], operands: 1 },
+	nice: { values: ["-n", "--adjustment"] },
+	timeout: { values: ["-k", "-s", "--kill-after", "--signal"], operands: 1 },
+	xargs: {
+		values: ["-n", "-I", "-J", "-L", "-P", "-R", "-S", "-d", "-E", "-s", "-a", "--max-args", "--max-lines", "--max-procs",
+			"--delimiter", "--max-chars", "--arg-file", "--process-slot-var"],
+	},
+	stdbuf: { values: ["-i", "-o", "-e", "--input", "--output", "--error"] },
+	ionice: { values: ["-c", "-n", "-p", "-P", "-u", "--class", "--classdata", "--pid", "--pgid", "--uid"] },
+	chrt: { values: ["-T", "-P", "-D", "--sched-runtime", "--sched-period", "--sched-deadline"], operands: 1 },
 	taskset: { operands: 1 },
 	caffeinate: { values: ["-t", "-w"] },
-	flock: { values: ["-w", "-E", "--timeout", "--conflict-exit-code"], operands: 1, scripts: ["-c", "--command"] },
+	flock: { values: ["-w", "-E", "--timeout", "--wait", "--conflict-exit-code"], operands: 1, scripts: ["-c", "--command"] },
 	chroot: { values: ["--userspec", "--groups"], operands: 1 },
-	unshare: { values: ["-S", "-G", "-R", "-w"] },
+	unshare: { values: ["-S", "-G", "-R", "-w", "--setuid", "--setgid", "--root", "--wd"] },
 	arch: { values: ["-e", "-arch"] },
 	"sandbox-exec": { values: ["-f", "-p", "-D", "-n"] },
-	strace: { values: ["-o", "-e", "-p", "-s", "-u", "-E", "-a", "-b", "-O", "-P", "-S", "-X", "-I"] },
-	ltrace: { values: ["-o", "-e", "-p", "-s", "-u", "-a", "-n", "-x", "-F"] },
+	strace: { values: ["-o", "-e", "-p", "-s", "-u", "-E", "-a", "-b", "-O", "-P", "-S", "-X", "-I", "--output", "--trace", "--attach", "--user", "--env"] },
+	ltrace: { values: ["-o", "-e", "-p", "-s", "-u", "-a", "-n", "-x", "-F", "--output"] },
+	script: {
+		values: ["-F", "-t", "-T", "-E", "-I", "-O", "-B", "-m", "-o", "--log-in", "--log-out", "--log-io", "--log-timing",
+			"--logging-format", "--echo", "--output-limit"],
+		operands: 1,
+		scripts: ["-c", "--command"],
+	},
 };
+const ENV_VALUES = ["-u", "-C", "-P", "-S", "-a", "--unset", "--chdir", "--split-string", "--argv0"];
+/**
+ * Programs the gate reads the arguments of: one-way doors, and shells. (A
+ * wrapper cannot run the `eval`, `source` or `.` builtins.)
+ */
+const GUARDED = new Set(["git", "rm", "gh", "sudo", "doas", "su", "npm", "pnpm", "yarn", "cargo", "gem", "twine", ...SHELL_RUNNERS]);
+
+interface Option {
+	next: number;
+	/** The option that takes a value, and that value (`-n5` and `--signal=KILL` included). */
+	flag?: string;
+	text?: string;
+	dynamic: boolean;
+}
+
+/** Reads the option word at `k`, getopt-style: in a cluster (`-fo log`), the first flag that takes a value takes the rest or the next word. */
+function readOption(words: WordToken[], k: number, takes: string[]): Option {
+	const v = words[k].value;
+	const separate = (flag: string): Option => ({ next: k + 2, flag, text: words[k + 1]?.value, dynamic: !!words[k + 1]?.hasDynamic });
+	if (takes.includes(v)) return separate(v);
+	if (v.startsWith("--")) {
+		const eq = v.indexOf("=");
+		return eq < 0 ? { next: k + 1, dynamic: false } : { next: k + 1, flag: v.slice(0, eq), text: v.slice(eq + 1), dynamic: words[k].hasDynamic };
+	}
+	for (let c = 1; c < v.length; c++) {
+		const flag = `-${v[c]}`;
+		if (!takes.includes(flag)) continue;
+		return c + 1 < v.length ? { next: k + 1, flag, text: v.slice(c + 1), dynamic: words[k].hasDynamic } : separate(flag);
+	}
+	return { next: k + 1, dynamic: false };
+}
 
 /** Long shell options that take the next word as their value; some of them a script. */
 const SHELL_LONG_VALUES = new Set(["rcfile", "init-file", "emulate", "debug", "debug-output", "features", "profile", "profile-startup"]);
@@ -121,7 +163,8 @@ function shellRun(name: string, tail: WordToken[], nestedScripts: string[]): She
 			else if (!long?.[2] && (SHELL_LONG_VALUES.has(flag) || SHELL_LONG_SCRIPTS.has(flag))) valueOf(++i, SHELL_LONG_SCRIPTS.has(flag));
 			continue;
 		}
-		if (!/^[-+][A-Za-z]+$/.test(a)) break;
+		// Any `-x`/`+x` word is an option (zsh has digit options: `-3`).
+		if (!/^[-+]./.test(a)) break;
 		for (const ch of a.slice(1)) {
 			if (a[0] === "-" && ch === "c") cmode = true;
 			else if (a[0] === "-" && ch === "s") smode = true;
@@ -131,6 +174,14 @@ function shellRun(name: string, tail: WordToken[], nestedScripts: string[]): She
 	const operand = dynamic ? undefined : tail[i];
 	if (operand?.hasDynamic) dynamic = true;
 	if (cmode && operand) nestedScripts.push(operand.value);
+	// Should an option be misread, the script may be any later word: after a
+	// `-…c…` word, read every literal one as a script too (but a bare shell
+	// name there is `$0`, as in `sh -c '…' sh {}`).
+	const c = tail.findIndex((w) => /^-[^-]*c/.test(w.value));
+	for (let k = c + 1; c >= 0 && k < tail.length; k++) {
+		const w = tail[k];
+		if (!(cmode && k === i) && !w.hasDynamic && !w.value.startsWith("-") && !SHELL_RUNNERS.has(w.value)) nestedScripts.push(w.value);
+	}
 	const readsStdin = !dynamic && !cmode && (smode || !operand || STDIN_FILE.test(operand.value));
 	return { dynamic, readsStdin, noScript: !operand };
 }
@@ -149,18 +200,55 @@ function findActions(tail: WordToken[]): string[] {
 	return out;
 }
 
+/**
+ * The command these words run, after its wrappers; and, when there are
+ * wrappers, `candidates`: every later word naming a guarded program, read as
+ * the command it may be, so an option the table misreads cannot hide one.
+ */
 export function unwrapCommand(
 	words: WordToken[],
 	env: EnvAssignment[],
 	redirects: Redirection[],
 	depth: number,
 	nestedScripts: string[],
-): SimpleCommand | null {
+): { cmd: SimpleCommand | null; candidates: SimpleCommand[] } {
+	const main = unwrapOne(words, env, redirects, depth, nestedScripts);
+	if (!main || main.cmd.wrappers.length === 0) return { cmd: main?.cmd ?? null, candidates: [] };
+	const { cmd } = main;
+	const candidates: SimpleCommand[] = [];
+	for (let j = 1; j < words.length; j++) {
+		if (j === main.head || words[j].hasDynamic || !GUARDED.has(basenameOf(words[j].value))) continue;
+		const candidate = unwrapOne(words.slice(j), [...cmd.env], redirects, depth, nestedScripts)?.cmd;
+		if (candidate) candidates.push(candidate);
+	}
+	// What `xargs` reads becomes arguments of a guarded program (`xargs git`),
+	// or the command itself through its placeholder (`xargs -I{} {}`). Only
+	// the command read through the table counts: a guarded word among its
+	// arguments (`xargs grep -l git`) is not one.
+	if (cmd.wrappers.includes("xargs") && (GUARDED.has(cmd.name) || (main.replace && cmd.rawName.includes(main.replace)))) {
+		cmd.hasDynamicName = true;
+	}
+	return { cmd, candidates };
+}
+
+function unwrapOne(
+	words: WordToken[],
+	env: EnvAssignment[],
+	redirects: Redirection[],
+	depth: number,
+	nestedScripts: string[],
+): { cmd: SimpleCommand; head: number; replace?: string } | null {
 	let idx = 0;
 	let last = -1;
 	const wrappers: string[] = [];
 	let inlineScript = false;
-	let dynamicScript = false; // a script, or a wrapper's own word, only known when it runs
+	let dynamicScript = false; // a script only known when it runs
+	let replace: string | undefined; // xargs' placeholder
+	const script = (opt: Option) => {
+		inlineScript = true;
+		if (opt.dynamic) dynamicScript = true;
+		if (opt.text !== undefined) nestedScripts.push(opt.text);
+	};
 
 	while (idx < words.length) {
 		const base = basenameOf(words[idx].value);
@@ -170,14 +258,13 @@ export function unwrapCommand(
 			while (idx < words.length) {
 				const w = words[idx];
 				if (w.value === "--") { idx++; break; }
-				if (w.value === "-u" || w.value === "-C" || w.value === "--unset" || w.value === "--chdir") { idx += 2; continue; }
-				if (w.value === "-S" && idx + 1 < words.length) {
-					if (words[idx + 1].hasDynamic) dynamicScript = true;
-					nestedScripts.push(words[idx + 1].value);
-					idx += 2;
+				if (w.value === "-") { idx++; continue; }
+				if (w.value.startsWith("-")) {
+					const opt = readOption(words, idx, ENV_VALUES);
+					if (opt.flag === "-S" || opt.flag === "--split-string") script(opt);
+					idx = opt.next;
 					continue;
 				}
-				if (w.value.startsWith("-")) { idx++; continue; }
 				const assign = isEnvAssignmentWord(w);
 				if (assign) { env.push(assign); idx++; continue; }
 				break;
@@ -203,26 +290,23 @@ export function unwrapCommand(
 		if (base === "exec") inlineScript = true;
 		last = idx++;
 		let operands = wrapper.operands ?? 0;
+		const takes = [...(wrapper.values ?? []), ...(wrapper.scripts ?? [])];
+		// A value or an operand only known when it runs (`-P "$(nproc)"`,
+		// `timeout "$T"`) is not the command: it does not ask.
 		while (idx < words.length) {
 			const v = words[idx].value;
-			const option = v.startsWith("-") && v.length > 1;
-			if (!option && operands === 0) break;
-			if (words[idx].hasDynamic) dynamicScript = true;
 			if (v === "--") { idx++; if (operands === 0) break; continue; }
-			if (!option) { operands--; idx++; continue; }
-			if (wrapper.scripts?.includes(v)) {
-				inlineScript = true;
-				if (words[idx + 1]?.hasDynamic) dynamicScript = true;
-				if (words[idx + 1]) nestedScripts.push(words[idx + 1].value);
-				idx += 2;
+			if (!v.startsWith("-") || v.length === 1) {
+				if (operands === 0) break;
+				operands--;
+				idx++;
 				continue;
 			}
-			if (wrapper.values?.includes(v)) {
-				if (words[idx + 1]?.hasDynamic) dynamicScript = true;
-				idx += 2;
-				continue;
-			}
-			idx++;
+			const opt = readOption(words, idx, takes);
+			if (opt.flag && wrapper.scripts?.includes(opt.flag)) script(opt);
+			if (base === "xargs" && (opt.flag === "-I" || opt.flag === "-J")) replace = opt.text;
+			if (base === "xargs" && /^(-i|--replace)/.test(v)) replace = v.replace(/^(-i|--replace=?)/, "") || "{}";
+			idx = opt.next;
 		}
 	}
 
@@ -243,7 +327,19 @@ export function unwrapCommand(
 
 	if (name === "eval") {
 		inlineScript = true;
-		if (args.length > 0) nestedScripts.push(args.join(" "));
+		const text = args[0] === "--" ? args.slice(1) : args;
+		if (text.length > 0) nestedScripts.push(text.join(" "));
+	} else if (name === "trap") {
+		// `trap [--] ACTION SIGNAL…`: the action runs later, as a script.
+		const k = args[0] === "--" ? 1 : 0;
+		if (args.length - k >= 2 && args[k] !== "-" && (k === 1 || !args[k].startsWith("-"))) script({ next: 0, text: args[k], dynamic: tail[k].hasDynamic });
+	} else if (name === "mapfile" || name === "readarray") {
+		// `-C CALLBACK` runs every few lines read.
+		for (let k = 0; k < tail.length && tail[k].value.startsWith("-") && tail[k].value !== "--"; ) {
+			const opt = readOption(tail, k, ["-d", "-n", "-O", "-s", "-u", "-c", "-C"]);
+			if (opt.flag === "-C") script(opt);
+			k = opt.next;
+		}
 	} else if (name === "watch") {
 		// `watch` runs its words, joined, with `sh -c`.
 		let i = 0;
@@ -276,7 +372,7 @@ export function unwrapCommand(
 		readsStdin = false;
 	}
 
-	return {
+	const cmd: SimpleCommand = {
 		rawName: head.value,
 		name,
 		args,
@@ -291,4 +387,5 @@ export function unwrapCommand(
 		readsStdin,
 		nestedDepth: depth,
 	};
+	return { cmd, head: idx, replace };
 }

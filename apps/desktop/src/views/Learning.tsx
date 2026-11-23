@@ -203,7 +203,7 @@ export function Learning() {
   return (
     <div class="console-page learning-page">
       <section class="console-sec">
-        <SecHead title={t("learning.queueTitle")} meta={<span class="meta num t2">{pendingCount()} {t("learning.status_pending").toLowerCase()}</span>}>
+        <SecHead title={t("learning.queueTitle")} meta={<span class="meta num t2">{t("learning.pendingCount", { n: pendingCount() })}</span>}>
           <div class="console-tabs" role="tablist" aria-label={t("learning.queueTitle")}>
             {(["pending", "approved", "rejected"] as ProposalStatus[]).map((st) => (
               <button type="button" class="console-tab" role="tab" aria-selected={status() === st} classList={{ active: status() === st }} onClick={() => setStatus(st)}>
@@ -222,7 +222,7 @@ export function Learning() {
           title={t("learning.calibrationTitle")}
           meta={
             <>
-              <span class="meta num t2" hidden={!cal().length}>{cal().length} {t("learning.kpiModels").toLowerCase()}</span>
+              <span class="meta num t2" hidden={!cal().length}>{t("learning.modelCount", { n: cal().length })}</span>
               <span class="meta num t2" hidden={!cal().length}>{t("learning.colFirstPass")} {avgPass()}</span>
               <span class="fact"><Icon name="harness" size={10} class="fact-icon" />{t("learning.calibrationBadge")}</span>
             </>

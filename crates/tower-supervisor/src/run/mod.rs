@@ -225,14 +225,15 @@ async fn schedule_inner(inner: &Arc<Inner>) {
         if !still_ready {
             continue;
         }
-        let Some(starting) = Starting::claim(inner, &g.id, Some(max)) else { continue };
+        let Ok(starting) = Starting::claim(inner, &g.id, Some(max)) else { continue };
         let inner = inner.clone();
         tokio::spawn(async move {
             let id = g.id;
-            if let Err(e) = start_scheduled(&inner, &id, purpose, message, images, starting).await {
+            let r = start_scheduled(&inner, &id, purpose, message, images, starting).await;
+            if let Err(e) = &r {
                 tracing::warn!(goal = %id, error = %e, "could not start run");
             }
-            reschedule_unless_running(&inner, &id).await;
+            hand_on(&inner, &id, &r).await;
         });
     }
 }
@@ -375,33 +376,6 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
     })
 }
 
-/// Marks a goal as being started; released when dropped.
-pub(crate) struct Starting {
-    inner: Arc<Inner>,
-    goal: String,
-}
-
-impl Starting {
-    /// `None` when the goal is already being started, or with `max` when
-    /// that many goals already run or start.
-    fn claim(inner: &Arc<Inner>, goal: &str, max: Option<usize>) -> Option<Self> {
-        inner.claim_start(goal, max).then(|| Starting { inner: inner.clone(), goal: goal.to_string() })
-    }
-
-    fn claim_one(inner: &Arc<Inner>, goal: &str) -> Result<Self> {
-        // One start at a time per goal: preparing a workspace takes a while,
-        // and two callers (the scheduler and a human resume) must not both get through.
-        Self::claim(inner, goal, None)
-            .ok_or_else(|| invalid(tr!(inner.lang(), "这个目标正在启动", "This goal is already starting")))
-    }
-}
-
-impl Drop for Starting {
-    fn drop(&mut self) {
-        self.inner.starting.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.goal);
-    }
-}
-
 /// Prepares the workspace if needed, starts the engine and sends the first message.
 ///
 /// Boxed because runs start other runs (a settled run schedules the next
@@ -414,8 +388,21 @@ pub fn start_run<'a>(
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
     Box::pin(async move {
         let starting = Starting::claim_one(inner, goal_id)?;
+        start_claimed(inner, goal_id, purpose, message, starting).await
+    })
+}
+
+/// `start_run` for a start whose slot is already claimed.
+pub(crate) fn start_claimed<'a>(
+    inner: &'a Arc<Inner>,
+    goal_id: &'a str,
+    purpose: &'a str,
+    message: String,
+    starting: Starting,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    Box::pin(async move {
         let r = start_run_inner(inner, goal_id, purpose, message, Vec::new(), false, starting).await;
-        reschedule_unless_running(inner, goal_id).await;
+        hand_on(inner, goal_id, &r).await;
         r
     })
 }
@@ -432,20 +419,9 @@ pub fn start_run_with_images<'a>(
     Box::pin(async move {
         let starting = Starting::claim_one(inner, goal_id)?;
         let r = start_run_inner(inner, goal_id, purpose, message, images, false, starting).await;
-        reschedule_unless_running(inner, goal_id).await;
+        hand_on(inner, goal_id, &r).await;
         r
     })
-}
-
-/// A start holds a slot while it runs; one that ended without a run (it
-/// failed and paused the goal, or you paused or abandoned it meanwhile)
-/// hands the slot to the next ready goal. Not when the goal is still ready:
-/// the scheduler would only try it again at once.
-async fn reschedule_unless_running(inner: &Arc<Inner>, goal: &str) {
-    let ready = inner.store(|s| s.goal(goal)).is_ok_and(|g| g.state == LifecycleState::Ready);
-    if inner.run_of(goal).is_none() && !ready {
-        schedule(inner).await;
-    }
 }
 
 fn start_scheduled<'a>(
@@ -576,7 +552,7 @@ async fn start_run_inner(
         workspace: real(&ws).display().to_string(),
         flags: Mutex::new(initial_flags),
     });
-    if !begin(inner, &run, seen, purpose)? {
+    if !begin(inner, &run, seen, purpose, start_pin)? {
         // Nothing reads this engine yet (its events stay in `rx`).
         run.engine.shutdown(Duration::from_secs(5)).await;
         inner.set_mode(goal_id, Mode::Idle)?;
@@ -588,15 +564,35 @@ async fn start_run_inner(
         inner.append(goal_id, EventKind::Note { text })?;
         return Ok(());
     }
-    inner.append(goal_id, EventKind::RunStarted { run_no, purpose: purpose.into(), start_pin })?;
-    inner.set_mode(goal_id, Mode::Starting)?;
-    inner.update_keep_awake();
-    // The criteria on your own code, while the agent starts (once; see
-    // `verify::preflight`).
-    crate::verify::preflight(inner.clone(), goal_id.to_string());
-    tokio::spawn(pump(inner.clone(), run.clone(), rx));
-    tokio::spawn(watchdog(inner.clone(), run.clone()));
-    tokio::spawn(crate::jail::follow_agent_listeners(inner.clone(), goal_id.to_string(), run_no));
+    launch(inner, &goal, &run, rx, message, &images).await
+}
+
+/// A run that has begun: its engine gets its readers and its first message.
+async fn launch(
+    inner: &Arc<Inner>,
+    goal: &tower_store::GoalRecord,
+    run: &Arc<Run>,
+    rx: tokio::sync::mpsc::UnboundedReceiver<tower_pi::EngineOutput>,
+    message: String,
+    images: &[ImageAttachment],
+) -> Result<()> {
+    let (goal_id, lang) = (goal.id.as_str(), inner.lang());
+    // A pause or abandon from here on finds the run and stops it, marking it
+    // stopping first (under this lock): the start then ends where it is.
+    {
+        let flags = run.flags();
+        if flags.stopping.is_some() {
+            return Ok(());
+        }
+        inner.update_keep_awake();
+        // The criteria on your own code, while the agent starts (once; see
+        // `verify::preflight`). A pause after this cancels it.
+        crate::verify::preflight(inner.clone(), goal_id.to_string());
+        tokio::spawn(pump(inner.clone(), run.clone(), rx));
+        tokio::spawn(watchdog(inner.clone(), run.clone()));
+        tokio::spawn(crate::jail::follow_agent_listeners(inner.clone(), goal_id.to_string(), run.run_no));
+        drop(flags);
+    }
 
     if let Ok(state) = run.engine.state().await
         && let Some(file) = state.get("sessionFile").and_then(Value::as_str)
@@ -604,43 +600,26 @@ async fn start_run_inner(
     {
         inner.append(goal_id, EventKind::SessionAttached { session_file: file.into() })?;
     }
+    if run.flags().stopping.is_some() {
+        return Ok(());
+    }
     inner.append(goal_id, EventKind::Injected { channel: "prompt".into(), text: message.clone() })?;
-    if let Err(e) = run.engine.prompt_with_images(&message, &images).await {
-        stop_engine(inner, &run, Stop::Pause(PauseReason::PrepareFailed)).await;
+    if let Err(e) = run.engine.prompt_with_images(&message, images).await {
+        if run.flags().stopping.is_some() {
+            // Stopped while the message was on its way: whoever stopped it
+            // has recorded why.
+            return Ok(());
+        }
+        stop_engine(inner, run, Stop::Pause(PauseReason::PrepareFailed)).await;
         let detail = tr!(lang, "发送开场消息失败：{e}", "Could not send the first message: {e}");
         pause_after_stop(inner, goal_id, PauseReason::PrepareFailed, &detail)?;
         return Err(e.into());
     }
-    inner.set_mode(goal_id, Mode::Thinking)?;
-    Ok(())
-}
-
-/// Makes `run` the goal's live run, if the goal is still in the state its
-/// start began from. Preparing and setting up a workspace can take minutes;
-/// a goal you paused or abandoned meanwhile must not start. The check, the
-/// transition and the insert happen under the store's lock, so a pause or
-/// abandon lands either before (the start gives up) or after (it finds the
-/// run and stops it).
-fn begin(inner: &Arc<Inner>, run: &Arc<Run>, seen: LifecycleState, purpose: &str) -> Result<bool> {
-    let goal = run.goal_id.as_str();
-    let began = inner.store(|s| {
-        if s.goal(goal)?.state != seen {
-            return Ok(None);
-        }
-        let entry = match seen {
-            LifecycleState::Running => None,
-            _ => Some(s.transition(goal, Transition::RunStarted, None, purpose)?),
-        };
-        inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.into(), run.clone());
-        Ok(Some(entry))
-    })?;
-    let Some(entry) = began else { return Ok(false) };
-    if let Some(entry) = entry {
-        inner.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
-        inner.flush_traces();
-        inner.emit_goal_now(goal);
+    let flags = run.flags();
+    if flags.stopping.is_none() {
+        inner.set_mode(goal_id, Mode::Thinking)?;
     }
-    Ok(true)
+    Ok(())
 }
 
 /// What a new workspace gets before its first run: the project's local
@@ -772,8 +751,11 @@ fn fail_to_start(inner: &Arc<Inner>, goal_id: &str, detail: &str) -> Result<()> 
 }
 
 mod events;
+mod slots;
 use events::pump;
 pub(crate) use events::{sandbox_denied, stop_engine};
+pub(crate) use slots::{Starting, already_starting};
+use slots::{begin, hand_on};
 
 #[cfg(test)]
 mod tests {
@@ -816,6 +798,11 @@ mod tests {
     }
 
     async fn run_fake_engine_scenario(script_body: &str) -> (tempfile::TempDir, crate::Supervisor, String) {
+        fake_engine_goal(script_body, true).await
+    }
+
+    /// Without `ratify`, the goal stays a draft (nothing starts it).
+    async fn fake_engine_goal(script_body: &str, ratify: bool) -> (tempfile::TempDir, crate::Supervisor, String) {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();
         let repo = tmp.path().join("repo");
@@ -853,15 +840,101 @@ mod tests {
         let project = sup.add_project(repo.to_str().unwrap()).await.unwrap();
         let contract = tower_core::Contract::quick("Do task", Some("true".into()), tower_core::Lang::En);
         let goal = sup
-            .create_goal(crate::NewGoalInput {
-                project_id: project.id,
-                title: "Test goal".into(),
-                contract,
-                ratify: true,
-            })
+            .create_goal(crate::NewGoalInput { project_id: project.id, title: "Test goal".into(), contract, ratify })
             .await
             .unwrap();
         (tmp, sup, goal.id)
+    }
+
+    /// Claiming a start checks the limit and takes the slot in one step
+    /// (the scheduler and a resume both claim this way), and says why not.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_start_claims_its_slot_in_one_step() {
+        use crate::inner::Unclaimed;
+        let (_tmp, sup, _) = fake_engine_goal("cat", false).await;
+        let inner = &sup.inner;
+        let a = Starting::claim(inner, "G-A", Some(1)).unwrap();
+        assert_eq!(Starting::claim(inner, "G-A", None).err(), Some(Unclaimed::Starting));
+        assert_eq!(Starting::claim(inner, "G-B", Some(1)).err(), Some(Unclaimed::Full));
+        assert_eq!(inner.busy_count(), 1, "the refused claims took nothing");
+        drop(a);
+        assert!(Starting::claim(inner, "G-B", Some(1)).is_ok());
+    }
+
+    /// A start that failed without pausing its goal (an error before any
+    /// step that records one) leaves it ready: it is paused with a card, so
+    /// it is not retried at once, and its slot goes to the next goal.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_start_that_failed_leaving_its_goal_ready_hands_its_slot_on() {
+        let script = r#"
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  type=$(printf '%s' "$line" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')
+  printf '{"id":"%s","type":"response","command":"%s","success":true,"data":{}}\n' "$id" "$type"
+done"#;
+        let (_tmp, sup, first) = fake_engine_goal(script, false).await;
+        let project = sup.projects().unwrap().remove(0).id;
+        let contract = tower_core::Contract::quick("Other", Some("true".into()), tower_core::Lang::En);
+        let input = crate::NewGoalInput { project_id: project, title: "Other".into(), contract, ratify: false };
+        let second = sup.create_goal(input).await.unwrap().id;
+        let inner = &sup.inner;
+        for id in [&first, &second] {
+            inner.transition(id, Transition::Ratify, None, "").unwrap();
+        }
+        hand_on(inner, &first, &Err(invalid("the blocking task panicked"))).await;
+        let rec = inner.store(|s| s.goal(&first)).unwrap();
+        assert_eq!((rec.state, rec.pause_reason), (LifecycleState::Paused, Some(PauseReason::PrepareFailed)));
+        for _ in 0..200 {
+            if inner.store(|s| s.goal(&second)).unwrap().state == LifecycleState::Running {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("the next ready goal never started");
+    }
+
+    /// A pause that lands right after the run began (it finds the run and
+    /// stops it) ends the start: no preflight on the paused goal, no mode
+    /// over the pause's, and the engine is stopped once.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_pause_right_after_a_run_began_ends_the_start() {
+        let script = r#"
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  type=$(printf '%s' "$line" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')
+  printf '{"id":"%s","type":"response","command":"%s","success":true,"data":{}}\n' "$id" "$type"
+done"#;
+        let (tmp, sup, id) = fake_engine_goal(script, false).await;
+        let inner = &sup.inner;
+        inner.transition(&id, Transition::Ratify, None, "").unwrap();
+        // A workspace with a base, so the start would run the preflight.
+        let repo = tmp.path().join("repo");
+        let head = std::process::Command::new("git").args(["rev-parse", "HEAD"]).current_dir(&repo).output().unwrap();
+        let base = String::from_utf8_lossy(&head.stdout).trim().to_string();
+        let workspace = repo.display().to_string();
+        inner.append(&id, EventKind::WorkspacePrepared { workspace, base_commit: base }).unwrap();
+        let goal = inner.store(|s| s.goal(&id)).unwrap();
+        let (engine, rx) = Engine::spawn(&engine_config(inner, &goal, &repo).unwrap()).unwrap();
+        let run = Arc::new(Run {
+            goal_id: id.clone(),
+            run_no: 1,
+            started: Instant::now(),
+            engine,
+            workspace: repo.display().to_string(),
+            flags: Mutex::new(Flags::default()),
+        });
+        assert!(begin(inner, &run, LifecycleState::Ready, "initial", None).unwrap());
+        pause(inner, &id, PauseReason::Human, "").await.unwrap();
+        launch(inner, &goal, &run, rx, "go".into(), &[]).await.unwrap();
+
+        let rec = inner.store(|s| s.goal(&id)).unwrap();
+        assert_eq!((rec.state, rec.mode), (LifecycleState::Paused, Mode::Idle));
+        assert!(inner.run_of(&id).is_none());
+        assert!(!inner.verifications.lock().unwrap().contains_key(&id), "no preflight on a paused goal");
+        let trace = sup.trace(&id, None, 200).unwrap();
+        let ended = trace.iter().filter(|e| matches!(e.event, EventKind::RunEnded { .. })).count();
+        assert_eq!(ended, 1, "the engine is stopped once");
+        assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::Injected { .. })), "no first message");
     }
 
     #[tokio::test(flavor = "multi_thread")]

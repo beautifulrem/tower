@@ -345,19 +345,32 @@ impl Inner {
 
     /// Marks `goal` as being started, unless it already is or, with `max`,
     /// that many goals already hold a slot (checked under the same lock).
-    pub(crate) fn claim_start(&self, goal: &str, max: Option<usize>) -> bool {
+    pub(crate) fn claim_start(&self, goal: &str, max: Option<usize>) -> std::result::Result<(), Unclaimed> {
         let mut starting = self.starting.lock().unwrap_or_else(PoisonError::into_inner);
+        if starting.contains(goal) {
+            return Err(Unclaimed::Starting);
+        }
         if let Some(max) = max
             && busy(&starting, &self.runs.lock().unwrap_or_else(PoisonError::into_inner)) >= max
         {
-            return false;
+            return Err(Unclaimed::Full);
         }
-        starting.insert(goal.to_string())
+        starting.insert(goal.to_string());
+        Ok(())
     }
 
     pub fn run_of(&self, goal: &str) -> Option<Arc<Run>> {
         self.runs.lock().unwrap_or_else(PoisonError::into_inner).get(goal).cloned()
     }
+}
+
+/// Why a goal's start could not be claimed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unclaimed {
+    /// The goal is already being started.
+    Starting,
+    /// Every slot is taken.
+    Full,
 }
 
 fn busy(starting: &HashSet<String>, runs: &HashMap<String, Arc<Run>>) -> usize {

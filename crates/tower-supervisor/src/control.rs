@@ -14,7 +14,8 @@ use tower_pi::UiAnswer;
 use tower_store::NewInboxItem;
 
 use crate::api::ToastLevel;
-use crate::run::{Stop, human_notes_since_last_run, schedule, start_run, stop_engine};
+use crate::inner::Unclaimed;
+use crate::run::{Starting, Stop, already_starting, human_notes_since_last_run, schedule, start_claimed, stop_engine};
 use crate::{Error, Inner, Result, actions, invalid, prompts, verify};
 
 /// Moves a goal whose engine is not running into `paused`, and raises a
@@ -142,13 +143,19 @@ pub async fn resume(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     let edits = human_edits(inner, goal).await.unwrap_or_default();
     // The prompt is for the agent, so the reason is in English.
     let message = prompts::resume(pause_label(reason, Lang::En), &human_notes_since_last_run(inner, goal), &edits);
-    if inner.busy_count() >= inner.settings().max_concurrent as usize {
-        inner.transition(goal, Transition::Resume, None, &tr!(lang, "等待执行槽位", "Waiting for a free slot"))?;
-        return Ok(());
-    }
+    // The slot is claimed in the same step as the check, so a start the
+    // scheduler makes meanwhile cannot take it too.
+    let starting = match Starting::claim(inner, goal, Some(inner.settings().max_concurrent as usize)) {
+        Ok(s) => s,
+        Err(Unclaimed::Full) => {
+            inner.transition(goal, Transition::Resume, None, &tr!(lang, "等待执行槽位", "Waiting for a free slot"))?;
+            return Ok(());
+        }
+        Err(Unclaimed::Starting) => return Err(already_starting(inner)),
+    };
     // Tower quitting is not a new attempt: the same run continues.
     let purpose = if reason == PauseReason::AppQuit { "continue" } else { "resume" };
-    start_run(inner, goal, purpose, message).await
+    start_claimed(inner, goal, purpose, message, starting).await
 }
 
 /// Snapshots the workspace; returns the new pin when it changed.

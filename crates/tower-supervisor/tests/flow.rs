@@ -309,7 +309,17 @@ async fn an_agent_that_stops_without_submitting_is_nudged_then_paused() {
         .filter(|e| matches!(&e.event, tower_core::EventKind::Injected { text, .. } if text.contains("without calling `submit`")))
         .count();
     assert_eq!(nudges, 1);
-    assert!(h.sup.inbox().unwrap().iter().any(|i| i.kind == InboxKind::Paused && i.goal_id == id));
+    // The pause is recorded before its Needs-You card is opened, so the card
+    // can trail the state by a moment.
+    let mut carded = false;
+    for _ in 0..100 {
+        if h.sup.inbox().unwrap().iter().any(|i| i.kind == InboxKind::Paused && i.goal_id == id) {
+            carded = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(carded, "no Paused card in the inbox");
 }
 
 #[tokio::test(flavor = "multi_thread")]

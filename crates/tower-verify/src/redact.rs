@@ -129,10 +129,34 @@ const NESTED_URLS: u8 = 2;
 fn redact_urls_within(text: &str, depth: u8) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
+    let mut next_at = text.find('@');
     while let Some(at) = rest.find("://") {
         out.push_str(&rest[..at + 3]);
         let url = &rest[at + 3..];
-        let end = url.find(ends_url).unwrap_or(url.len());
+        let mut end = url.find(ends_url).unwrap_or(url.len());
+        // A password may hold `'()"|{}<>\` or a backtick, which git sends as they are: when an `@` comes after where
+        // punctuation would end the URL, before the next whitespace and within 256 bytes, and the URL read that far
+        // has `user:pass@`, it runs to the end of that authority. The next `@` is found once for the whole text, so
+        // text of many URLs is still one pass.
+        let pos = text.len() - url.len();
+        if next_at.is_some_and(|a| a < pos) {
+            next_at = text[pos..].find('@').map(|a| pos + a);
+        }
+        if let Some(a) = next_at.map(|a| a - pos)
+            && a > end
+            && a < end + 256
+            && !url[end..a].contains(char::is_whitespace)
+        {
+            let mut cap = url.len().min(a + 256);
+            while !url.is_char_boundary(cap) {
+                cap -= 1;
+            }
+            let wide = &url[..url[..cap].find(char::is_whitespace).unwrap_or(cap)];
+            let wide_host = authority_end(wide);
+            if wide_host > end && wide[..wide_host].contains('@') {
+                end = wide_host + wide[wide_host..].find(ends_url).unwrap_or(wide.len() - wide_host);
+            }
+        }
         let (url, after) = url.split_at(end);
         let host_end = authority_end(url);
         let (authority, path) = url.split_at(host_end);
@@ -324,6 +348,9 @@ mod tests {
             // A later `@` in the query or path does not hide the password's own.
             ("fatal: https://ada:1234/laterat0009@host.example.com/p?email=x@y.com", "laterat0009"),
             ("fatal: https://ada:1234/laterat0010@host.example.com/@types/x", "laterat0010"),
+            // Characters that end a URL in running text may sit in a password git sends as it is.
+            ("origin\thttps://deploy:Xy(7q)Zr'0011@git.example.com/o/r.git (fetch)", "Zr'0011"),
+            ("db postgres://app:p\"q|r{s}<t>u\\v`0012@db.example.com/x", "0012"),
         ];
         for (text, secret) in cases {
             let r = redact(text);
@@ -343,6 +370,10 @@ mod tests {
         }
         // A token of letters only, mixed case as random ones are, is still a token.
         assert!(!redact("token: Bearer AbcdefGhijklmnopQr").contains("AbcdefGhijklmnopQr"));
+        // A URL in brackets or quotes still ends at them.
+        for kept in ["see (https://example.com/x) and \"https://example.com/y\"", "<https://example.com/z>"] {
+            assert_eq!(redact(kept), kept);
+        }
         // A scoped package path is not user info.
         let npm = "GET https://registry.npmjs.org/@types/node 200";
         assert_eq!(redact(npm), npm);
@@ -366,6 +397,17 @@ mod tests {
             .unwrap();
         let took = handle.join().expect("no stack overflow");
         assert!(took < std::time::Duration::from_secs(2), "took {took:?}");
+    }
+
+    /// Text of many URLs and no whitespace is read in one pass too: looking past
+    /// punctuation for a password never reads to the end of the text each time.
+    #[test]
+    fn many_urls_without_whitespace_are_read_in_one_pass() {
+        for text in ["a://b(".repeat(100_000), "a://b(@".repeat(100_000), "a://u:p(@h".repeat(100_000)] {
+            let started = std::time::Instant::now();
+            let _ = redact(&text);
+            assert!(started.elapsed() < std::time::Duration::from_secs(2), "took {:?}", started.elapsed());
+        }
     }
 
     /// A URL full of `@`s is read in one pass: each one is judged on its own.

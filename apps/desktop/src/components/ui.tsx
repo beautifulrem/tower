@@ -342,7 +342,7 @@ export function Overlay(props: {
   const close = () => props.onClose();
   // The key that opened it closes it again (`?`, `e`, ⌘P): under the modal layer the opener's own binding is quiet.
   const toggle: Binding[] = props.closeKey ? [{ key: props.closeKey, run: close, inInputs: props.closeKey.startsWith("mod+") }] : [];
-  const depth = useKeys([{ key: "escape", run: close, inInputs: true }, ...toggle, ...(props.keys?.bindings ?? [])], props.keys?.name, { modal: true });
+  const layer = useKeys([{ key: "escape", run: close, inInputs: true }, ...toggle, ...(props.keys?.bindings ?? [])], props.keys?.name, { modal: true });
   onMount(() => {
     props.panelRef?.(panel);
     const first = props.initialFocus === "panel" ? null : panel.querySelector<HTMLElement>(FOCUSABLE);
@@ -389,7 +389,7 @@ export function Overlay(props: {
             {props.title}
           </h2>
         </Show>
-        <KeyLayer.Provider value={depth}>{props.children}</KeyLayer.Provider>
+        <KeyLayer.Provider value={layer}>{props.children}</KeyLayer.Provider>
       </div>
     </div>
   );

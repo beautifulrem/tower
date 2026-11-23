@@ -157,17 +157,18 @@ export async function openTower(
                   { id: "opencode", label: "OpenCode", trust_tier: "experimental", installed: false, available: false, note: "" },
                 ]
               );
+            // The console's lists are fresh copies each read too: a refetch hands the view new objects, as over real IPC.
             case "memory_proposals":
-              return (F.memoryProposals ?? []).filter((p: any) => !a.status || p.status === a.status);
+              return structuredClone((F.memoryProposals ?? []).filter((p: any) => !a.status || p.status === a.status));
             case "calibration_rows":
-              return F.calibrationRows ?? [];
+              return structuredClone(F.calibrationRows ?? []);
             case "scheduled_goals":
-              return F.scheduledGoals ?? [];
+              return structuredClone(F.scheduledGoals ?? []);
             case "merge_queue":
               if (F.mergeQueueError) throw F.mergeQueueError;
-              return F.mergeQueue ?? [];
+              return structuredClone(F.mergeQueue ?? []);
             case "storage_inventory":
-              return F.storageInventory ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] };
+              return structuredClone(F.storageInventory ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] });
             case "list_snapshots":
               return F[`snapshots-${a.id}`] ?? [];
             case "compare_snapshots":

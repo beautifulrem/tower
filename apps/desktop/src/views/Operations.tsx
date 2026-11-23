@@ -15,7 +15,7 @@ import { stateLabel } from "../lib/labels";
 import { ask } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, goalList, refreshConsoleMeta, state } from "../lib/store";
-import { DataTable, MeterCell, ProjectFilter, SecHead, SmBtn } from "./Learning";
+import { DataTable, MeterCell, ProjectFilter, SecHead, SmBtn, inPlace } from "./Learning";
 import { blankContract } from "./ContractEditor";
 
 const ALL = "__all__";
@@ -23,10 +23,10 @@ const fmtB = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB`
 const ZERO_P = { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 };
 
 export function Operations() {
-  const [schedules, { refetch: rfSched }] = createResource(() => api.scheduledGoals());
+  const [schedules, { refetch: rfSched }] = createResource(() => api.scheduledGoals(), { storage: inPlace() });
   const [mqProj, setMqProj] = createSignal(ALL);
-  const [queue, { refetch: rfQueue }] = createResource(mqProj, (p) => api.mergeQueue(p === ALL ? null : p));
-  const [storage, { refetch: rfStore }] = createResource(() => api.storageInventory());
+  const [queue, { refetch: rfQueue }] = createResource(mqProj, (p) => api.mergeQueue(p === ALL ? null : p), { storage: inPlace("goal_id") });
+  const [storage, { refetch: rfStore }] = createResource(() => api.storageInventory(), { storage: inPlace("goal_id") });
 
   const [newProj, setNewProj] = createSignal(state.projects[0]?.id ?? "");
   const [newTitle, setNewTitle] = createSignal("");

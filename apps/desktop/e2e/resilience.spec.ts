@@ -52,3 +52,27 @@ test("a live update keeps your place on the board: the row you are on stays focu
   await expect(page.locator(".board-group h2", { hasText: "Paused" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.activeElement === (window as any).__was && document.activeElement?.isConnected)).toBe(true);
 });
+
+test("acting on a console row reloads its list in place: no page spinner, and the control you used keeps its focus", async ({ page }) => {
+  await openTower(page, "operations", {
+    enrich: (F) => {
+      const pid = F.projects[0].id;
+      F.scheduledGoals = [
+        { id: "sc-1", project_id: pid, title: "Nightly audit", cron_expr: "0 2 * * 1-5", enabled: true, unattended_strict: true, next_run_at: null, last_goal_id: null },
+        { id: "sc-2", project_id: pid, title: "Weekly hunt", cron_expr: "0 4 * * 0", enabled: false, unattended_strict: true, next_run_at: null, last_goal_id: null },
+      ];
+    },
+  });
+  const toggle = page.getByRole("switch").nth(1);
+  await toggle.focus();
+  await page.evaluate(() => {
+    (window as any).__spun = false;
+    new MutationObserver(() => document.querySelector(".page-loading") && ((window as any).__spun = true)).observe(document.body, { childList: true, subtree: true });
+    (window as any).__was = document.activeElement;
+    (window as any).__towerCalls.length = 0;
+  });
+  await page.keyboard.press("Space");
+  await expect.poll(() => page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "scheduled_goals").length)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => document.activeElement === (window as any).__was && document.activeElement?.isConnected)).toBe(true);
+  expect(await page.evaluate(() => (window as any).__spun)).toBe(false);
+});

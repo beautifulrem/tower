@@ -302,6 +302,26 @@ mod tests {
         assert_eq!(s.open_inbox_items().unwrap().len(), 1);
     }
 
+    /// The supervisor keeps using the store after a panic (its lock is
+    /// taken poisoned or not): a panic inside a transaction must not leave
+    /// it open, or nothing written afterwards would ever be committed.
+    #[test]
+    fn a_panic_inside_a_transaction_rolls_it_back() {
+        use tower_core::lifecycle::Transition;
+        let (mut s, _, id) = crate::goals::tests::seeded();
+        s.transition(&id, Transition::Ratify, None, "").unwrap();
+        s.transition(&id, Transition::RunStarted, None, "").unwrap();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = s.atomically(|s| -> Result<()> {
+                s.transition(&id, Transition::Pause { reason: PauseReason::EngineCrash }, None, "")?;
+                panic!("a bug halfway through");
+            });
+        }));
+        assert!(panicked.is_err());
+        assert!(s.conn.is_autocommit(), "the transaction was closed");
+        assert_eq!(s.goal(&id).unwrap().state, tower_core::LifecycleState::Running, "and rolled back");
+    }
+
     #[test]
     fn system_titles_and_choices_follow_the_current_language() {
         use tower_core::i18n::Choice;

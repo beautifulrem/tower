@@ -15,6 +15,7 @@ mod read_pool;
 mod schedule;
 mod schema;
 mod settings;
+mod summaries;
 
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};

@@ -440,6 +440,11 @@ test("shell options, piped scripts, find -exec words and other wrappers cannot h
 	for (const cmd of ["strace -o out ls", "ltrace -o out ls", "flock newfile ls", "chroot / ls", "stdbuf -oL ls"]) {
 		assert.equal(checkBash(cmd, "cautious").action, "ask", `expected ask in cautious: ${cmd}`);
 	}
+	// A long run of options is read once per position, not once per way of
+	// reading it: the agent's bridge waits on this check synchronously.
+	const started = performance.now();
+	assert.equal(checkBash(`setsid ${"-f ".repeat(200)}echo hi`, "autonomous").action, "allow");
+	assert.ok(performance.now() - started < 1000, "a long run of wrapper options is checked in well under a second");
 });
 
 test("cautious mode rejects hidden writes via redirections, substitutions, and inline scripts", () => {

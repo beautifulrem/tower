@@ -399,6 +399,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_image_pasted_into_a_new_contract_moves_into_the_goal_it_creates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = test_supervisor(&tmp).await;
+        let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0];
+        // Saved before the goal has an id, under the draft slot.
+        let pasted = sup.save_attachment("draft", "pasted.png", &crate::attachments::encode_base64(&png)).unwrap();
+        let mut contract =
+            tower_core::contract::Contract::quick("Match the mock", Some("npm test".into()), tower_core::Lang::En);
+        contract.attachments = vec![pasted.clone()];
+        let g = sup
+            .create_goal(crate::NewGoalInput { project_id: pid, title: "Pasted image".into(), contract, ratify: false })
+            .await
+            .unwrap();
+        assert!(sup.attachment_data_url(&g.id, &pasted.path).unwrap().starts_with("data:image/png;base64,"));
+        assert!(sup.attachment_data_url("draft", &pasted.path).is_none());
+    }
+
+    #[tokio::test]
     async fn attachments_schedules_holdouts_and_storage_guard_work_end_to_end() {
         let tmp = tempfile::tempdir().unwrap();
         let (sup, pid) = test_supervisor(&tmp).await;

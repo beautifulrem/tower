@@ -9,6 +9,8 @@
  * nested shell runners (`bash -c`, `sh -c`, `eval`) are analyzed accurately.
  */
 
+import { SHELL_RUNNERS, isEnvAssignmentWord, unwrapCommand } from "./shell_unwrap.ts";
+
 export interface Redirection {
 	fd: string | null;
 	op: string;
@@ -39,6 +41,8 @@ export interface SimpleCommand {
 	hasDynamicArgs: boolean;
 	hasEscapedWhitespaceInName: boolean;
 	inlineScript: boolean;
+	/** A shell (or `source /dev/stdin`) that runs what its input holds. */
+	readsStdin: boolean;
 	nestedDepth: number;
 }
 
@@ -61,10 +65,12 @@ export interface ParsedShell {
 	runsText: boolean;
 	/** Variables assigned or set for a command (`X=1`, `X=1 cmd`, `env X=1 cmd`). */
 	assignments: string[];
+	/** A shell here runs what its input holds: fed by a pipe, it is only known when it runs. */
+	stdinScript: boolean;
 	parseError?: string;
 }
 
-interface WordToken {
+export interface WordToken {
 	kind: "word";
 	value: string;
 	raw: string;
@@ -99,22 +105,8 @@ interface LexResult {
 }
 
 const MAX_DEPTH = 6;
-const SHELL_RUNNERS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
 /** Builtins that run text as shell: their input or arguments. */
 const TEXT_RUNNERS = new Set(["source", ".", "eval"]);
-const INLINE_SCRIPT_FLAGS: Record<string, Set<string>> = {
-	python: new Set(["-c"]),
-	python2: new Set(["-c"]),
-	python3: new Set(["-c"]),
-	node: new Set(["-e", "--eval", "-p", "--print"]),
-	nodejs: new Set(["-e", "--eval", "-p", "--print"]),
-	bun: new Set(["-e", "--eval", "-p", "--print"]),
-	ruby: new Set(["-e"]),
-	perl: new Set(["-e", "-E"]),
-	php: new Set(["-r"]),
-	lua: new Set(["-e"]),
-	osascript: new Set(["-e"]),
-};
 const CONTROL_KEYWORDS = new Set([
 	"{", "}", "!", "if", "then", "elif", "else", "fi",
 	"for", "select", "while", "until", "do", "done", "case", "esac", "coproc",
@@ -128,10 +120,6 @@ const OPS_2 = new Set(["&&", "||", "|&", ";;", ">>", ">|", "<>", ">&", "<&", "&>
 const OPS_1 = new Set(["|", "&", ";", "(", ")", ">", "<", "\n"]);
 const REDIR_OPS = new Set([">", ">>", ">|", "&>", "&>>", "<>", ">&", "<&", "<", "<<", "<<-", "<<<"]);
 
-const basenameOf = (cmd: string) => {
-	const idx = cmd.lastIndexOf("/");
-	return idx >= 0 ? cmd.slice(idx + 1) : cmd;
-};
 
 function decodeAnsiC(src: string, start: number): { text: string; next: number; error?: string } {
 	let out = "";
@@ -535,143 +523,6 @@ function classifyRedirect(fd: string | null, op: string, target: string): Redire
 	return { fd, op, target, isWrite, isFdDup: false };
 }
 
-function isEnvAssignmentWord(t: WordToken): EnvAssignment | null {
-	const eq = t.raw.indexOf("=");
-	if (eq <= 0 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(t.raw.slice(0, eq))) return null;
-	const valEq = t.value.indexOf("=");
-	return { name: t.raw.slice(0, eq), value: valEq >= 0 ? t.value.slice(valEq + 1) : "", hasDynamic: t.hasDynamic };
-}
-
-const WRAPPER_VALUE_FLAGS: Record<string, Set<string>> = {
-	exec: new Set(["-a"]),
-	nice: new Set(["-n"]),
-	timeout: new Set(["-k", "-s"]),
-	xargs: new Set(["-n", "-I", "-L", "-P", "-d", "-E", "-s"]),
-};
-
-function unwrapCommand(
-	words: WordToken[],
-	env: EnvAssignment[],
-	redirects: Redirection[],
-	depth: number,
-	nestedScripts: string[],
-): SimpleCommand | null {
-	let idx = 0;
-	const wrappers: string[] = [];
-	let inlineScript = false;
-	let dynamicScript = false; // a shell script only known when it runs
-
-	while (idx < words.length) {
-		const base = basenameOf(words[idx].value);
-		if (base === "env") {
-			wrappers.push("env");
-			idx++;
-			while (idx < words.length) {
-				const w = words[idx];
-				if (w.value === "--") { idx++; break; }
-				if (w.value === "-u" || w.value === "-C" || w.value === "--unset" || w.value === "--chdir") { idx += 2; continue; }
-				if (w.value === "-S" && idx + 1 < words.length) {
-					if (words[idx + 1].hasDynamic) dynamicScript = true;
-					nestedScripts.push(words[idx + 1].value);
-					idx += 2;
-					continue;
-				}
-				if (w.value.startsWith("-")) { idx++; continue; }
-				const assign = isEnvAssignmentWord(w);
-				if (assign) { env.push(assign); idx++; continue; }
-				break;
-			}
-			continue;
-		}
-		if (base === "command") {
-			let j = idx + 1;
-			let lookupOnly = false;
-			while (j < words.length && words[j].value.startsWith("-") && words[j].value !== "--") {
-				if (/[vV]/.test(words[j].value)) lookupOnly = true;
-				j++;
-			}
-			if (lookupOnly) break;
-			wrappers.push("command");
-			idx = j + (words[j]?.value === "--" ? 1 : 0);
-			continue;
-		}
-		if (base === "builtin" || base === "nohup" || base === "time" || base in WRAPPER_VALUE_FLAGS) {
-			wrappers.push(base);
-			if (base === "exec") inlineScript = true;
-			const valFlags = WRAPPER_VALUE_FLAGS[base];
-			idx++;
-			while (idx < words.length && words[idx].value.startsWith("-")) {
-				idx += valFlags?.has(words[idx].value) ? 2 : 1;
-			}
-			if (base === "timeout" && idx < words.length) idx++;
-			continue;
-		}
-		break;
-	}
-
-	if (idx >= words.length) return null;
-	const head = words[idx];
-	const tail = words.slice(idx + 1);
-	const name = basenameOf(head.value);
-	const args = tail.map((w) => w.value);
-	const hasDynamicArgs = tail.some((w) => w.hasDynamic);
-	// An unquoted glob or brace expansion makes the name no literal word either.
-	const globName = /[*?]|\[.*\]|\{.*(,|\.\.).*\}/.test(head.raw.replace(/\\.|'[^']*'|"[^"]*"/g, ""));
-
-	if (name === "eval") {
-		inlineScript = true;
-		if (args.length > 0) nestedScripts.push(args.join(" "));
-	} else if (SHELL_RUNNERS.has(name)) {
-		inlineScript = true;
-		for (let i = 0; i < args.length; i++) {
-			const a = args[i];
-			// Among the options, a word only known when it runs may be `-c`.
-			if (tail[i].hasDynamic) { dynamicScript = true; break; }
-			if (a === "--") break;
-			if (a === "-c" || (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(a) && !a.startsWith("--"))) {
-				if (i + 1 < args.length) nestedScripts.push(args[i + 1]);
-				if (tail[i + 1]?.hasDynamic) dynamicScript = true;
-				break;
-			}
-			// The script file ends the options (`-o pipefail` takes a value).
-			if (!/^[-+]/.test(a) && !/^[-+][oO]$/.test(args[i - 1] ?? "")) break;
-		}
-	} else if (INLINE_SCRIPT_FLAGS[name]?.size && args.some((a) => INLINE_SCRIPT_FLAGS[name].has(a))) {
-		inlineScript = true;
-	} else if (name === "deno" && args[0] === "eval") {
-		inlineScript = true;
-	}
-
-	return {
-		rawName: head.value,
-		name,
-		args,
-		argv: [head.value, ...args],
-		env,
-		redirects,
-		wrappers,
-		hasDynamicName: head.hasDynamic || globName || (name === "eval" && hasDynamicArgs) || dynamicScript,
-		hasDynamicArgs,
-		hasEscapedWhitespaceInName: head.hasEscapedWhitespace,
-		inlineScript,
-		nestedDepth: depth,
-	};
-}
-
-/** The commands `find` runs (`-exec cmd … ;`, `-execdir`, `-ok`, `-okdir`), as scripts. */
-function findActions(args: string[]): string[] {
-	const out: string[] = [];
-	for (let i = 0; i < args.length; i++) {
-		if (!["-exec", "-execdir", "-ok", "-okdir"].includes(args[i])) continue;
-		let end = i + 1;
-		while (end < args.length && args[end] !== ";" && args[end] !== "+") end++;
-		const words = args.slice(i + 1, end);
-		if (words.length > 0) out.push(words.map((w) => `'${w.replace(/'/g, "'\\''")}'`).join(" "));
-		i = end;
-	}
-	return out;
-}
-
 /**
  * Parses a POSIX shell command string into structured commands, pipelines,
  * redirections, and safety flags. Recursively parses `$(...)`, backticks,
@@ -690,6 +541,7 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		feeds: [],
 		runsText: false,
 		assignments: [],
+		stdinScript: false,
 	};
 	if (!input.trim()) return result;
 
@@ -704,13 +556,13 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	let curEnv: EnvAssignment[] = [];
 	let curRedirects: Redirection[] = [];
 	let curPipeline: SimpleCommand[] = [];
+	let piped = false;
 
 	const flushCommand = () => {
 		if (curRedirects.some((r) => r.isWrite)) result.hasFileWriteRedirection = true;
 		const cmd = unwrapCommand(curWords, curEnv, curRedirects, depth, nestedScripts);
 		result.assignments.push(...curEnv.map((e) => e.name));
-		// What `find` runs for each file is a command of its own.
-		if (cmd?.name === "find") nestedScripts.push(...findActions(cmd.args));
+		if (cmd?.readsStdin) result.stdinScript = true;
 		if (cmd && (SHELL_RUNNERS.has(cmd.name) || TEXT_RUNNERS.has(cmd.name))) result.runsText = true;
 		if (cmd) {
 			result.commands.push(cmd);
@@ -741,7 +593,7 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		const tok = toks[i];
 		if (tok.kind === "op") {
 			if (tok.op === "(" || tok.op === ")") { result.hasSubshell = true; flushPipeline(); continue; }
-			if (tok.op === "|" || tok.op === "|&") { flushCommand(); continue; }
+			if (tok.op === "|" || tok.op === "|&") { flushCommand(); piped = true; continue; }
 			if (REDIR_OPS.has(tok.op)) {
 				const next = toks[i + 1];
 				const target = next?.kind === "word" ? next.value : "";
@@ -783,6 +635,7 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		result.feeds.push(...nested.feeds);
 		result.runsText ||= nested.runsText;
 		result.assignments.push(...nested.assignments);
+		result.stdinScript ||= nested.stdinScript;
 		result.parseError ??= nested.parseError;
 	};
 	if (depth < MAX_DEPTH) {
@@ -795,5 +648,8 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 			for (const feed of result.feeds.splice(0)) merge(parseShell(feed, depth + 1));
 		}
 	}
+	// A pipe here can feed a shell here (`echo 'git push' | bash`, `| sh -c
+	// bash`), and so can the command a process substitution reads (`> >(bash)`).
+	if ((piped || lexed.processSubstitutions.length > 0) && result.stdinScript) result.hasDynamicCommand = true;
 	return result;
 }

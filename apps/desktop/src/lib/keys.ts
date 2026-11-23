@@ -27,7 +27,13 @@ export interface Scope {
   /** Where the bindings apply (reactive), e.g. "Review". */
   name: () => string;
   bindings: Binding[];
+  /** A modal layer (a dialog, the peek drawer): the view's keys under it stay quiet; only ⌘ chords pass. */
+  modal?: boolean;
 }
+
+/** Keys that may auto-repeat while held: moving through a list. Everything else fires once per press, so holding a
+ *  digit can't arm and then confirm a destructive option, and holding ⌘↩ can't create a goal twice. */
+const REPEATS = new Set(["j", "k", "arrowup", "arrowdown", "arrowleft", "arrowright", "[", "]", "pageup", "pagedown"]);
 
 const [scopes, setScopes] = createSignal<Scope[]>([]);
 
@@ -84,16 +90,18 @@ if (typeof window !== "undefined") {
       if (hit) {
         if (inInput && !hit.inInputs && !combo.startsWith("mod+")) return;
         e.preventDefault();
+        if (e.repeat && !REPEATS.has(combo)) return;
         hit.run(e);
         return;
       }
+      if (list[i].modal && !combo.startsWith("mod+")) return;
     }
   });
 }
 
 /** Registers bindings for the lifetime of the calling component. */
-export function useKeys(bindings: Binding[], name: () => string = () => "") {
-  const scope: Scope = { name, bindings };
+export function useKeys(bindings: Binding[], name: () => string = () => "", opts: { modal?: boolean } = {}) {
+  const scope: Scope = { name, bindings, modal: opts.modal };
   setScopes((s) => [...s, scope]);
   onCleanup(() => setScopes((s) => s.filter((x) => x !== scope)));
 }

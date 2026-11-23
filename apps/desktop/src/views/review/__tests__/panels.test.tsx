@@ -202,8 +202,8 @@ describe("ChangesPanel steering dispatch & Review extras", () => {
         onRemove={() => {}}
       />
     ));
-    expect(screen.getByText("Steering dispatch tray")).toBeTruthy();
-    expect(screen.getByText("1 anchored")).toBeTruthy();
+    // The sheet says what goes to the agent: the line comments, counted, with the summary.
+    expect(screen.getByText("1 line comment goes to the agent with your summary")).toBeTruthy();
     const ta = container.querySelector("textarea")!;
     ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
     await Promise.resolve();

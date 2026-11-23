@@ -34,6 +34,9 @@ export function Sidebar() {
     }
     return ORDER.filter((k) => by.has(k)).map((k) => ({ key: k, goals: by.get(k)!, count: k === "needs_you" ? blockingItems().length : by.get(k)!.length }));
   });
+  // Rendered by key, so a goal changing group does not rebuild every row (and drop the focus of the one you are on).
+  const groupKeys = createMemo(() => groups().map((g) => g.key));
+  const groupAt = (k: Group) => groups().find((g) => g.key === k) ?? { key: k, goals: [] as GoalSummary[], count: 0 };
   const ended = createMemo(() => goalList().filter(isEnded));
   const blocking = () => blockingItems().length;
   const toReview = () => state.inbox.length - blocking();
@@ -127,31 +130,34 @@ export function Sidebar() {
       </div>
 
       <div class="side-scroll">
-        <For each={groups()}>
-          {(grp) => (
-            <div class="side-group">
-              <Show
-                when={grp.key === "done"}
-                fallback={
-                  <div class="side-group-title halt">
-                    <span>{groupLabel(grp.key)}</span>
-                    <span class="num">{grp.count}</span>
-                  </div>
-                }
-              >
-                <button class="side-group-title side-group-toggle halt" aria-expanded={doneOpen()} onClick={() => setDoneOpen((o) => !o)}>
-                  <span>
-                    <Icon name={doneOpen() ? "caret-down" : "caret-right"} size={10} />
-                    {groupLabel(grp.key)}
-                  </span>
-                  <span class="num">{grp.count}</span>
-                </button>
-              </Show>
-              <Show when={grp.key !== "done" || doneOpen() || grp.goals.some((g) => activeId() === g.id)}>
-                <For each={grp.goals}>{(g) => <GoalRow g={g} />}</For>
-              </Show>
-            </div>
-          )}
+        <For each={groupKeys()}>
+          {(key) => {
+            const grp = () => groupAt(key);
+            return (
+              <div class="side-group">
+                <Show
+                  when={grp().key === "done"}
+                  fallback={
+                    <div class="side-group-title halt">
+                      <span>{groupLabel(grp().key)}</span>
+                      <span class="num">{grp().count}</span>
+                    </div>
+                  }
+                >
+                  <button class="side-group-title side-group-toggle halt" aria-expanded={doneOpen()} onClick={() => setDoneOpen((o) => !o)}>
+                    <span>
+                      <Icon name={doneOpen() ? "caret-down" : "caret-right"} size={10} />
+                      {groupLabel(grp().key)}
+                    </span>
+                    <span class="num">{grp().count}</span>
+                  </button>
+                </Show>
+                <Show when={grp().key !== "done" || doneOpen() || grp().goals.some((g) => activeId() === g.id)}>
+                  <For each={grp().goals}>{(g) => <GoalRow g={g} />}</For>
+                </Show>
+              </div>
+            );
+          }}
         </For>
         {/* Archived and abandoned goals: closed out, named apart from the accepted ones above (each row's glyph tells the two states apart). */}
         <Show when={ended().length > 0}>

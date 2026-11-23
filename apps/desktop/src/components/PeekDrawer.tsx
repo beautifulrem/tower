@@ -48,6 +48,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
       { key: "enter", run: () => openTo("goal"), desc: () => t("review.openGoal") },
     ],
     () => t("peek.scope"),
+    { modal: true },
   );
 
   const engine = () => effectiveEngine(g()?.engine, state.settings?.engine);

@@ -67,11 +67,11 @@ export function TimelineSwitcher(props: {
       </span>
       <Show when={props.scope === "compare" && props.snapshots.length >= 2}>
         <span class="timeline-compare">
-          <select class="timeline-select" aria-label="From" value={props.fromRev} onChange={(e) => props.onCompare(e.currentTarget.value, props.toRev)}>
+          <select class="timeline-select" aria-label={t("review.compareFrom")} value={props.fromRev} onChange={(e) => props.onCompare(e.currentTarget.value, props.toRev)}>
             <For each={props.snapshots}>{(s) => <option value={s.rev}>{s.label}</option>}</For>
           </select>
           <span class="t3">→</span>
-          <select class="timeline-select" aria-label="To" value={props.toRev} onChange={(e) => props.onCompare(props.fromRev, e.currentTarget.value)}>
+          <select class="timeline-select" aria-label={t("review.compareTo")} value={props.toRev} onChange={(e) => props.onCompare(props.fromRev, e.currentTarget.value)}>
             <For each={props.snapshots}>{(s) => <option value={s.rev}>{s.label}</option>}</For>
           </select>
         </span>

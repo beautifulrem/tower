@@ -253,9 +253,10 @@
 }
 .g-spend-text { line-height: 14px; }
 .g-spend-cell .meter-micro { width: 56px; }
+/* At the low end of this range the fixed columns add up to more than the board: the identity column gives first. */
 @media (min-width: 1241px) and (max-width: 1560px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.2fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em 15.5em;
+    grid-template-columns: 14px minmax(12em, 1.2fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(12em, 15.5em);
   }
 }
 .g-overlap {
@@ -308,16 +309,15 @@
   z-index: 45;
   display: flex;
   justify-content: flex-end;
-  background: oklch(0 0 0 / 0.14);
+  background: var(--scrim-soft);
 }
 .peek-drawer {
   width: min(var(--drawer-w), 94vw);
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--bg-drawer);
   border-left: 1px solid var(--border);
-  box-shadow: -12px 0 36px oklch(0 0 0 / 0.20);
+  box-shadow: var(--shadow-drawer);
   outline: none;
   animation: peek-in var(--dur-base) var(--ease-out);
 }

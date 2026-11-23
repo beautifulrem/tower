@@ -14,7 +14,6 @@ import type { LookView } from "../gen/LookView";
 import { api } from "../lib/api";
 import type { LookViewExt } from "../lib/apiTypes";
 import { t } from "../lib/i18n";
-import { useKeys } from "../lib/keys";
 import { DangerMark, Icon } from "./Glyph";
 import { ProvenanceFrame } from "./ProvenanceFrame";
 import { Button, Kbd, Overlay } from "./ui";
@@ -136,8 +135,9 @@ function LookCompare(props: { look: LookViewExt; title: string; initialViewport?
   const over = () => (swapped() ? base() : pin());
   const overOpacity = () => (holding() ? 0 : mode() === "diff" ? 1 : mix() / 100);
 
-  useKeys(
-    [
+  const keys = {
+    name: () => t("look.compare"),
+    bindings: [
       { key: "1", run: () => pick("side"), desc: () => t("keys.lookModes"), hint: "1 2 3" },
       { key: "2", run: () => pick("onion") },
       { key: "3", run: () => pick("diff") },
@@ -145,15 +145,14 @@ function LookCompare(props: { look: LookViewExt; title: string; initialViewport?
       { key: "arrowright", run: () => nudge(5) },
       { key: "space", run: () => setHolding(true), desc: () => t("keys.lookHold"), when: () => mode() !== "side" },
     ],
-    () => t("look.compare"),
-  );
+  };
   const up = (e: KeyboardEvent) => e.key === " " && setHolding(false);
   window.addEventListener("keyup", up);
   onCleanup(() => window.removeEventListener("keyup", up));
 
   const label = (m: Mode) => (m === "side" ? t("look.sideBySide") : m === "onion" ? t("look.onion") : t("look.diff"));
   return (
-    <Overlay onClose={props.onClose} label={props.title} title={props.title} instant initialFocus="panel" class="panel panel-wide look-panel">
+    <Overlay onClose={props.onClose} label={props.title} title={props.title} instant initialFocus="panel" class="panel panel-wide look-panel" keys={keys}>
       <div class="row look-tools">
         <span class="scope-switch" role="tablist" aria-label={t("look.compare")}>
           {MODES.map((m, i) => (

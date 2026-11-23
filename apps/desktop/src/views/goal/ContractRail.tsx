@@ -32,8 +32,8 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
   const elapsed = () => Math.max(0, Math.floor((state.now - (g().run_started_at ?? state.now)) / 60_000));
   const scopeRows = () => [
     [t("goal.include"), c().scope.include, ""],
-    ...(c().scope.exclude.length ? [[t("goal.exclude"), c().scope.exclude, "scope-chip-exclude"]] : []),
-    ...(c().scope.readonly.length ? [[t("goal.readonly"), c().scope.readonly, "scope-chip-ro"]] : []),
+    ...(c().scope.exclude.length ? [[t("goal.exclude"), c().scope.exclude, "rail-paths-exclude"]] : []),
+    ...(c().scope.readonly.length ? [[t("goal.readonly"), c().scope.readonly, ""]] : []),
   ] as [string, string[], string][];
 
   return (
@@ -56,13 +56,13 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
                 <dt>{lbl}</dt>
                 <dd>
                   <Show when={list.length} fallback={<span class="meta t2">{t("goal.wholeRepo")}</span>}>
-                    <div class="scope-chips"><For each={list}>{(p) => <span class={`scope-chip ${cls}`}>{p}</span>}</For></div>
+                    <span class={`rail-paths code-val ${cls}`}>{list.join(", ")}</span>
                   </Show>
                 </dd>
               </>
             )}
           </For>
-          <Show when={g().port_base != null}><dt>Ports</dt><dd class="mono num">{g().port_base}–{g().port_base! + 9}</dd></Show>
+          <Show when={g().port_base != null}><dt>Ports</dt><dd class="code-val t2">{g().port_base}–{g().port_base! + 9}</dd></Show>
         </dl>
       </div>
 
@@ -91,7 +91,7 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
         <dl class="rail-dl">
           <dt>{t("goal.autonomyLevel")}</dt><dd>{t(`contract.${c().autonomy}`)}</dd>
           <dt>{t("goal.oneWayShort")}</dt><dd title={t("goal.oneWayDoors")}>{t("goal.askFirst")}</dd>
-          <dt>{t("goal.sandboxShort")}</dt><dd>{sandboxTag(tier(), hasIssue(state.env, "no_sandbox"))}<span class="sep" />{c().network ? t("goal.networkOn") : t("goal.networkOff")}</dd>
+          <dt>{t("goal.sandboxShort")}</dt><dd>{sandboxTag(tier(), hasIssue(state.env, "no_sandbox"))}<span class="sep" aria-hidden="true">·</span>{c().network ? t("goal.networkOn") : t("goal.networkOff")}</dd>
         </dl>
       </div>
 
@@ -106,14 +106,14 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
           </Show>
           <Show when={deps().length > 0}>
             <dt>Depends on</dt>
-            <dd class="dep-chips">
+            <dd class="dep-links">
               <For each={deps()}>
-                {(id) => <button class="dep-chip" onClick={() => go({ name: "goal", id })}><Show when={state.goals[id]}>{(x) => <LifecycleGlyph goal={x()} size={9} />}</Show><span class="mono">{id}</span></button>}
+                {(id) => <button class="link-quiet text-btn" onClick={() => go({ name: "goal", id })}><Show when={state.goals[id]}>{(x) => <LifecycleGlyph goal={x()} size={9} />}</Show><span class="code-val t2">{id}</span></button>}
               </For>
             </dd>
           </Show>
           <Show when={mqPos() !== null}><dt>Queue</dt><dd class="num">#{mqPos()}</dd></Show>
-          <Show when={props.d.local_files.length}><dt>{t("goal.localFiles")}</dt><dd class="mono">{props.d.local_files.join("  ")}</dd></Show>
+          <Show when={props.d.local_files.length}><dt>{t("goal.localFiles")}</dt><dd class="rail-paths code-val">{props.d.local_files.join(", ")}</dd></Show>
           <Show when={g().branch}>
             <dt>{t("goal.branch")}</dt>
             <dd class="mono break">{g().branch}<IconButton icon="copy" size={22} label={t("goal.copyBranch")} onClick={() => (void navigator.clipboard.writeText(g().branch!), toast("success", t("common.copied")))} /></dd>

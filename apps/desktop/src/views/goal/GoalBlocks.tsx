@@ -221,7 +221,7 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
             <div class="ledger-cols-head" aria-hidden="true">
               <span>{t("honesty.agentSays")}</span>
               <span class="ledger-link">↔</span>
-              <span><Icon name="harness" size={10} /> Harness Fact</span>
+              <span><Icon name="harness" size={10} /> {t("honesty.measured")}</span>
             </div>
             <For each={ledger()}>
               {(c) => <LedgerRow c={c} testDependent={!!c.criterion && testDependent().has(c.criterion)} />}

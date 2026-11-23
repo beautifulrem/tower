@@ -44,8 +44,8 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
     const gh = sents.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
     if (gh) out.push([gh.severity >= 3 ? "danger" : "attn", /guard|unchecked/.test(gh.sentinel) ? "Guard multi-proc gap" : "Assertion tamper", gh.detail || gh.title]);
     else if (ver.passed && cur.canary === "intact") out.push(["fact", "Assertion guard ✓"]);
-    if (ver.flaky) out.push(["obs", "Flaky · 1× rerun passed"]);
-    if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? "Loopback · base evidence" : "Loopback · project"]);
+    if (ver.flaky) out.push(["obs", "Flaky: 1× rerun passed"]);
+    if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? "Loopback: base evidence" : "Loopback: project"]);
     const bh = sents.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
     if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? "Bypass-around-bug" : bh.sentinel.includes("perturb") ? "Perturbation confined" : "Test expectation", bh.detail || bh.title]);
     const errs = ver.console_errors ?? cur.look?.console_errors ?? [];

@@ -124,13 +124,14 @@ fn secret_param(name: &str) -> bool {
 ///
 /// The contract, found by heuristics rather than a parser:
 /// - A URL's credentials and secret query values are masked in the shapes tools print: git, curl and package
-///   manager lines, JSON (with `\"`, `\\`, `\/`, `\uXXXX` and `&` as `\u0026` read as the URL's own), YAML, TOML, CSV,
-///   `psql -A`, HTML and XML (`&amp;` included), Markdown, shell quoting.
+///   manager lines, JSON (`\/` and `&` as `\u0026` read as the URL's own anywhere; `\"`, `\\` and `\uXXXX` inside a
+///   password), YAML, TOML, CSV, `psql -A`, HTML and XML (`&amp;` included), Markdown, shell quoting.
 /// - Text around a URL stays: neighbouring fields, emails, tags. Where a separator could be a password's or a field's
 ///   end, the URL is masked over rather than the password risked. It then runs to the last `@` before whitespace, so
 ///   several CSV cells can go. The shapes masked over, credentials or not:
-///   - a `,` or `;` and then an `@`, after `user:pass@host` or in a path (`user:pw@host,ada@…`,
-///     `host/path;contact=ops@…`, `ssh://git@host:o/r.git,ada@…`);
+///   - a `,` or `;` and then an `@`, when the authority before it holds a `:`: `user:pass@host`, a port, or scp-like
+///     `host:path` (`user:pw@host,ada@…`, `localhost:8080/api;contact=ops@…`, `ssh://git@host:o/r.git,ada@…`).
+///     With no `:` the URL ends at the separator: `host.example.com/path;contact=ops@…` stays;
 ///   - after `user@` plus `localhost:port` or `[v6]` (`git@localhost:3000;mail=ada@…`, `ada@[::1],bob@…`), and after
 ///     `host:port` whose host has no `.` and is not `localhost` (`db:5432,ada@…`);
 ///   - an `@` in a path after a port (`host:4873/react@18`), and in a `\/`-escaped URL an `@` anywhere after a port
@@ -141,10 +142,15 @@ fn secret_param(name: &str) -> bool {
 ///   - a password holding `\n`, `\r`, `\t`, `\b` or `\f` inside a double-quoted string, JSON or not: the escape ends the URL;
 ///   - a password of 1–5 digits and then `/?#`;
 ///   - a user name holding punctuation, `.` included: `first.last:2024;Summer@db` reads as `host:port`;
-///   - a password holding `://`, or starting with `//` (`u://pw@host`): it reads as the start of another URL;
+///   - a password holding `://`, or starting with `//` and then punctuation (`u://#pw@host`): it reads as the start of
+///     another URL;
 ///   - a password holding an `@` and then more URL-ending punctuation (`deploy:Xy(7@q)Zr@host`): what follows the first
 ///     such `@` shows;
 ///   - a password more than 256 bytes past its first punctuation;
+///   - a secret query value after an `@` in the query that a URL was masked over to: what follows that `@` is not read
+///     as a query (`host:8443?email=a@b.com&sig=…`, `user:pw@host/cb?email=a@b.com&sig=…`);
+///   - a secret query value after `\"`, `\\` or a `\uXXXX` other than `\u0026` in a JSON path or query: the escape ends
+///     the URL (`/caf\u00e9?sig=…`);
 ///   - URLs nested more than two deep in query values, or at all in a `:\/\/`-escaped URL's query value;
 ///   - JDBC-style `;password=…` path parameters, left to the `password=` assignment rule, so a value under 8
 ///     characters stays.
@@ -717,6 +723,19 @@ mod tests {
             ("http://localhost:3000/api,ada@example.com,x", "http://[redacted]@example.com,x"),
             ("ssh://git@github.com:o/r.git,ada@example.com,x", "ssh://[redacted]@example.com,x"),
             ("https://deploy:pw@git.example.com/o/r.git,ada@example.com,x", "https://[redacted]@example.com,x"),
+            // The contract's other masked-over shapes, and the one that stays.
+            (
+                "url=https://host.example.com/path;contact=ops@corp.com",
+                "url=https://host.example.com/path;contact=ops@corp.com",
+            ),
+            ("url=ssh://git@localhost:3000;mail=ada@example.com", "url=ssh://[redacted]@example.com"),
+            ("https://ada@[::1],bob@example.com,x", "https://[redacted]@example.com,x"),
+            ("postgres://db:5432,ada@example.com,x", "postgres://[redacted]@example.com,x"),
+            ("http://localhost:4873/react@18 ok", "http://[redacted]@18 ok"),
+            (
+                r#"{"url":"https:\/\/api.example.com:8443\/u?email=a@b.com","a":"x"}"#,
+                r#"{"url":"https:\/\/[redacted]@b.com","a":"x"}"#,
+            ),
             (
                 "{\"msg\":\"using proxy http://user:tok@proxy:8080\",\"pkg\":\"app@1.0.0\"}",
                 "{\"msg\":\"using proxy http://[redacted]@proxy:8080\",\"pkg\":\"app@1.0.0\"}",

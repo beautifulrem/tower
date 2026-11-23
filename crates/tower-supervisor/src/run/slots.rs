@@ -1,0 +1,76 @@
+//! Slots: which goals are being started or run, so no more than
+//! `max_concurrent` hold one, and handing a slot on when a start ends.
+
+use std::sync::{Arc, PoisonError};
+
+use tower_core::lifecycle::Transition;
+use tower_core::{LifecycleState, tr};
+
+use super::{Run, schedule};
+use crate::{Inner, Result, invalid};
+
+/// Marks a goal as being started; released when dropped.
+pub(crate) struct Starting {
+    inner: Arc<Inner>,
+    goal: String,
+}
+
+impl Starting {
+    /// `None` when the goal is already being started, or with `max` when
+    /// that many goals already run or start.
+    pub(super) fn claim(inner: &Arc<Inner>, goal: &str, max: Option<usize>) -> Option<Self> {
+        inner.claim_start(goal, max).then(|| Starting { inner: inner.clone(), goal: goal.to_string() })
+    }
+
+    pub(super) fn claim_one(inner: &Arc<Inner>, goal: &str) -> Result<Self> {
+        // One start at a time per goal: preparing a workspace takes a while,
+        // and two callers (the scheduler and a human resume) must not both get through.
+        Self::claim(inner, goal, None)
+            .ok_or_else(|| invalid(tr!(inner.lang(), "这个目标正在启动", "This goal is already starting")))
+    }
+}
+
+impl Drop for Starting {
+    fn drop(&mut self) {
+        self.inner.starting.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.goal);
+    }
+}
+
+/// A start holds a slot while it runs; one that ended without a run (it
+/// failed and paused the goal, or you paused or abandoned it meanwhile)
+/// hands the slot to the next ready goal. Not when the goal is still ready:
+/// the scheduler would only try it again at once.
+pub(super) async fn reschedule_unless_running(inner: &Arc<Inner>, goal: &str) {
+    let ready = inner.store(|s| s.goal(goal)).is_ok_and(|g| g.state == LifecycleState::Ready);
+    if inner.run_of(goal).is_none() && !ready {
+        schedule(inner).await;
+    }
+}
+
+/// Makes `run` the goal's live run, if the goal is still in the state its
+/// start began from. Preparing and setting up a workspace can take minutes;
+/// a goal you paused or abandoned meanwhile must not start. The check, the
+/// transition and the insert happen under the store's lock, so a pause or
+/// abandon lands either before (the start gives up) or after (it finds the
+/// run and stops it).
+pub(super) fn begin(inner: &Arc<Inner>, run: &Arc<Run>, seen: LifecycleState, purpose: &str) -> Result<bool> {
+    let goal = run.goal_id.as_str();
+    let began = inner.store(|s| {
+        if s.goal(goal)?.state != seen {
+            return Ok(None);
+        }
+        let entry = match seen {
+            LifecycleState::Running => None,
+            _ => Some(s.transition(goal, Transition::RunStarted, None, purpose)?),
+        };
+        inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.into(), run.clone());
+        Ok(Some(entry))
+    })?;
+    let Some(entry) = began else { return Ok(false) };
+    if let Some(entry) = entry {
+        inner.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
+        inner.flush_traces();
+        inner.emit_goal_now(goal);
+    }
+    Ok(true)
+}

@@ -225,7 +225,7 @@ async fn schedule_inner(inner: &Arc<Inner>) {
         if !still_ready {
             continue;
         }
-        let Some(starting) = Starting::claim(inner, &g.id, Some(max)) else { continue };
+        let Ok(starting) = Starting::claim(inner, &g.id, Some(max)) else { continue };
         let inner = inner.clone();
         tokio::spawn(async move {
             let id = g.id;
@@ -387,6 +387,19 @@ pub fn start_run<'a>(
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
     Box::pin(async move {
         let starting = Starting::claim_one(inner, goal_id)?;
+        start_claimed(inner, goal_id, purpose, message, starting).await
+    })
+}
+
+/// `start_run` for a start whose slot is already claimed.
+pub(crate) fn start_claimed<'a>(
+    inner: &'a Arc<Inner>,
+    goal_id: &'a str,
+    purpose: &'a str,
+    message: String,
+    starting: Starting,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    Box::pin(async move {
         let r = start_run_inner(inner, goal_id, purpose, message, Vec::new(), false, starting).await;
         reschedule_unless_running(inner, goal_id).await;
         r
@@ -740,7 +753,8 @@ mod events;
 mod slots;
 use events::pump;
 pub(crate) use events::{sandbox_denied, stop_engine};
-use slots::{Starting, begin, reschedule_unless_running};
+pub(crate) use slots::{Starting, already_starting};
+use slots::{begin, reschedule_unless_running};
 
 #[cfg(test)]
 mod tests {
@@ -829,6 +843,21 @@ mod tests {
             .await
             .unwrap();
         (tmp, sup, goal.id)
+    }
+
+    /// Claiming a start checks the limit and takes the slot in one step
+    /// (the scheduler and a resume both claim this way), and says why not.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_start_claims_its_slot_in_one_step() {
+        use crate::inner::Unclaimed;
+        let (_tmp, sup, _) = fake_engine_goal("cat", false).await;
+        let inner = &sup.inner;
+        let a = Starting::claim(inner, "G-A", Some(1)).unwrap();
+        assert_eq!(Starting::claim(inner, "G-A", None).err(), Some(Unclaimed::Starting));
+        assert_eq!(Starting::claim(inner, "G-B", Some(1)).err(), Some(Unclaimed::Full));
+        assert_eq!(inner.busy_count(), 1, "the refused claims took nothing");
+        drop(a);
+        assert!(Starting::claim(inner, "G-B", Some(1)).is_ok());
     }
 
     /// A pause that lands right after the run began (it finds the run and

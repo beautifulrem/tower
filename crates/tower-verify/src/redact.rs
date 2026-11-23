@@ -81,11 +81,14 @@ fn ends_url(c: char) -> bool {
 
 /// Where a URL's authority ends: at the first `/?#`, or past `user:pass@`
 /// when the password itself holds an unescaped `/` (never a path's `@`, as
-/// in `/@types/node`: a user name holds no `/`).
+/// in `/@types/node`: a user name holds no `/`). The last `@` before the
+/// query is taken, so a password holding `@` too goes whole. Where it cannot
+/// tell, it masks: `host:4873/react@18` loses its host rather than risk a
+/// password (`user:1234/abc@host` reads the same).
 fn authority_end(url: &str) -> usize {
     let first = url.find(['/', '?', '#']).unwrap_or(url.len());
     let before_query = url.find(['?', '#']).unwrap_or(url.len());
-    if let Some(at) = url[..before_query].find('@')
+    if let Some(at) = url[..before_query].rfind('@')
         && at > first
         && !url.starts_with('[')
         && let Some((user, pass)) = url[..at].split_once(':')
@@ -313,6 +316,8 @@ mod tests {
             // A password that starts with `/`, or with digits then `/`, is not a port.
             ("fatal: https://ada:/slashpw0004@host.example.com/o/r.git", "slashpw0004"),
             ("fatal: https://ada:1234/digitpw0005@host.example.com/o/r.git", "digitpw0005"),
+            // A password with both `@` and `/` in it: the host is after the last `@`.
+            ("fatal: https://ada:pa@ss/atslash0006@host.example.com/o/r.git", "atslash0006"),
         ];
         for (text, secret) in cases {
             let r = redact(text);

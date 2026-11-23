@@ -2656,7 +2656,7 @@ input[type="radio"] {
   letter-spacing: var(--tr-14);
   font-weight: 500;
 }
-/* The header is always two lines: the stats never wrap, they truncate, and the pin pair goes first. */
+/* The header is always two lines: the stats never wrap; short of room they drop whole, the pin pair first. */
 .review-stats {
   display: flex;
   align-items: center;
@@ -2673,16 +2673,48 @@ input[type="radio"] {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+/* Short of room, a stat goes whole, never cut through a word. The counts go by width band (below); what is left to
+   give is the criteria line after the seal, a line that wraps onto a second line nobody sees, so the human count
+   leaves first, then the words, and last the bar. The seal and the scope switch stay. */
+.review-stats > * {
+  flex-shrink: 0;
+}
+.review-stats > .review-verify {
+  flex-shrink: 1;
+}
+.review-verify .seal {
+  flex: none;
+}
+.review-verify .criteria-bar {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  min-width: 0;
+  height: 16px;
+  row-gap: 0;
+  overflow: hidden;
+}
+/* Every part stands a full line tall, so the hidden line starts below the line you see. */
+.review-verify .criteria-bar > .segs {
+  height: 16px;
+  align-items: center;
 }
 .review-stat-pins {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
-@media (max-width: 1240px) {
+/* The pin pair goes first, below the widest band (the seal carries the verified pin). In the narrow band the file
+   and unit counts go too: the file tree heads with its count and the status line says "Unit 1 / 2". */
+@media (max-width: 1560px) {
   .review-stat-pins,
   .review-stat-pins + .sep {
+    display: none;
+  }
+}
+@media (max-width: 1240px) {
+  .review-stats > .review-stat-group:first-child > :not(:first-child) {
     display: none;
   }
 }

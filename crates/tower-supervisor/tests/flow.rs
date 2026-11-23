@@ -1494,3 +1494,53 @@ async fn a_workspace_left_half_prepared_is_finished_on_retry() {
     assert_eq!(std::fs::read_to_string(ws.join(".env")).unwrap(), "API_TOKEN=local\n");
     assert_eq!(std::fs::read_to_string(ws.join(".setup-done")).unwrap(), "ready\n");
 }
+
+/// A start you asked for (a retry from a card) holds the only slot while
+/// it sets up; when it ends without a run, the goal waiting behind it starts.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slot_freed_by_a_retry_that_did_not_start_goes_to_the_next_goal() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = harness("hold").await;
+    h.sup.save_settings(Settings { max_concurrent: 1, ..h.sup.settings() }).unwrap();
+    std::fs::write(h.repo.join(".gitignore"), ".env\n").unwrap();
+    git(&h.repo, &["add", ".gitignore"]);
+    git(&h.repo, &["commit", "--quiet", "-m", "ignore env"]);
+    let env = h.repo.join(".env");
+    std::fs::write(&env, "API_TOKEN=local\n").unwrap();
+    std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![".env".into()],
+                memory: String::new(),
+                setup_command: "sleep 2".into(),
+                holdout_files: vec![],
+            },
+        )
+        .unwrap();
+    let first = create(&h).await;
+    let card = wait_inbox(&h, &first, InboxKind::Paused).await;
+    std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let meanwhile = async {
+        // The retry copied the local files and is in setup.
+        while !h
+            .sup
+            .trace(&first, None, 500)
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e.event, EventKind::LocalFilesCopied { .. }))
+        {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        let second = create(&h).await;
+        assert_eq!(h.sup.goal(&second).unwrap().summary.state, LifecycleState::Ready, "the slot is taken");
+        h.sup.abandon(&first).await.unwrap();
+        second
+    };
+    let (_, second) = tokio::join!(h.sup.answer(&card.id, "Retry"), meanwhile);
+    wait_for(&h, &second, |g| g.state == LifecycleState::Running).await;
+}

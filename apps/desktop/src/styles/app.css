@@ -3076,9 +3076,6 @@ input[type="radio"] {
   -webkit-backdrop-filter: var(--material-filter);
   backdrop-filter: var(--material-filter);
 }
-.palette {
-  box-shadow: var(--material-edge), var(--shadow-overlay);
-}
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .palette,
   .toast,
@@ -3113,6 +3110,10 @@ input[type="radio"] {
   overflow: hidden;
   outline: none;
   animation: lift var(--dur-base) var(--ease-out);
+}
+/* The palette floats on the material: its top edge catches the light (a sheet you read in has no such edge). */
+.palette {
+  box-shadow: var(--material-edge), var(--shadow-overlay);
 }
 @keyframes lift {
   from {

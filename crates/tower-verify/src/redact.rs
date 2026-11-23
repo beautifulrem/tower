@@ -91,12 +91,19 @@ fn authority_end(url: &str) -> usize {
         && let Some((user, pass)) = url[..at].split_once(':')
         && !user.is_empty()
         && !user.contains('/')
-        // `host:5173/@vite`: digits up to the first `/` are a port, not a password.
-        && !pass[..pass.find('/').unwrap_or(pass.len())].bytes().all(|b| b.is_ascii_digit())
+        && !is_port_then_path(pass)
     {
         return at + 1 + url[at + 1..].find(['/', '?', '#']).unwrap_or(url.len() - at - 1);
     }
     first
+}
+
+/// `5173/@vite`, `5173/node_modules/@scope`: a port (one to five digits) and a
+/// path whose `@` begins a segment. A password that starts with `/` or with
+/// digits then `/` ends in something other than `/`, and stays a password.
+fn is_port_then_path(pass: &str) -> bool {
+    let digits = pass.bytes().take_while(u8::is_ascii_digit).count();
+    (1..=5).contains(&digits) && pass[digits..].starts_with('/') && pass.ends_with('/')
 }
 
 /// Query parameters that carry a credential.
@@ -303,6 +310,9 @@ mod tests {
             ("callback http://[::1]:8080/cb?token=ipv6tok0001 ok", "ipv6tok0001"),
             ("redirect https://a.example.com/login?next=https://ada:nestedpw0002@b.example.com/x", "nestedpw0002"),
             ("fatal: https://ada:pa/ss0003@host.example.com/o/r.git", "ss0003"),
+            // A password that starts with `/`, or with digits then `/`, is not a port.
+            ("fatal: https://ada:/slashpw0004@host.example.com/o/r.git", "slashpw0004"),
+            ("fatal: https://ada:1234/digitpw0005@host.example.com/o/r.git", "digitpw0005"),
         ];
         for (text, secret) in cases {
             let r = redact(text);
@@ -314,6 +324,7 @@ mod tests {
             "GET http://localhost:4873/@types/node",
             "https://registry.npmjs.org:443/@types/node",
             "http://[::1]:8080/@id/x",
+            "GET http://localhost:5173/node_modules/@scope/pkg/index.js 200",
         ] {
             assert_eq!(redact(kept), kept);
         }

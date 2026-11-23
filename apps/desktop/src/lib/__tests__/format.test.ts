@@ -5,7 +5,7 @@ const settings = vi.hoisted(() => ({ language: "en" }));
 vi.mock("../i18n", async (actual) => ({ ...(await actual<typeof import("../i18n")>()), locale: () => (settings.language === "zh-CN" ? "zh-CN" : "en") }));
 vi.mock("../store", () => ({ state: { settings } }));
 
-const { ago, dayClock, duration, usd, usdLimit, short, sameMinute } = await import("../format");
+const { ago, bytes, dayClock, duration, usd, usdLimit, short, sameMinute } = await import("../format");
 
 describe("formats", () => {
   it("rounds time quietly", () => {
@@ -31,6 +31,10 @@ describe("formats", () => {
     settings.language = "zh-CN";
     expect(dayClock(t)).toBe("11月24日 02:05");
     settings.language = "en";
+  });
+
+  it("says a size on disk in the largest unit under it", () => {
+    expect([512, 48 * 1024, 1.5 * 1024 ** 2, 2.25 * 1024 ** 3].map(bytes)).toEqual(["512 B", "48 KB", "1.5 MB", "2.25 GB"]);
   });
 
   it("knows when two moments share a clock minute", () => {

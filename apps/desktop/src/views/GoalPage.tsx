@@ -150,9 +150,9 @@ export function GoalPage(props: { id: string }) {
                     <Show when={g().state === "in_review" && !g().verified_pin}><span>{t("live.notMachineVerified")}</span></Show>
                   </Show>
                   <Show when={state.settings?.muted_goals.includes(g().id)}><span class="t3">{t("quiet.muted")}</span></Show>
-                  <Show when={trustTierOf(eng()) === "experimental"}><span class="wb-exception wb-exception-danger">Experimental</span></Show>
-                  <Show when={hasIssue(state.env, "no_sandbox")}><span class="wb-exception wb-exception-warn">No sandbox S0</span></Show>
-                  <Show when={extDetail()?.escalated_model}>{(m) => <span class="wb-exception wb-exception-warn code-val">Escalated: {m()}</span>}</Show>
+                  <Show when={trustTierOf(eng()) === "experimental"}><span class="wb-exception wb-exception-danger">{t("trust.experimental")}</span></Show>
+                  <Show when={hasIssue(state.env, "no_sandbox")}><span class="wb-exception wb-exception-warn">{t("goal.noSandbox")}</span></Show>
+                  <Show when={extDetail()?.escalated_model}>{(m) => <span class="wb-exception wb-exception-warn code-val">{t("goal.escalatedTo", { model: m() })}</span>}</Show>
                   <Show when={g().state === "running" && overWall(g())}><span class="over-wall">{t("goal.overWall")}</span></Show>
                 </div>
               </div>

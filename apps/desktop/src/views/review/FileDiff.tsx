@@ -204,7 +204,7 @@ export function FileDiff(props: FileDiffProps) {
   const HunkVerbs = (p: { index: number }) => (
     <>
       <Show when={noiseOf(p.index) && noiseExpanded()[p.index]}>
-        <Button size="s" variant="ghost" class="gap-all" onClick={() => toggleNoise(p.index)}>Fold</Button>
+        <Button size="s" variant="ghost" class="gap-all" onClick={() => toggleNoise(p.index)}>{t("review.foldHunk")}</Button>
       </Show>
       <Show when={props.onAccept}>
         <AcceptButton accepted={isAccepted(p.index)} current={isCurrent(p.index)} lines={props.file.hunks[p.index]?.lines.length ?? 0} onClick={() => props.onAccept!(p.index)} />
@@ -252,7 +252,7 @@ export function FileDiff(props: FileDiffProps) {
           <span class="semantic-label"><Icon name="expand" size={10} />{noise === "moved" ? "Moved unchanged" : "Formatting only"}</span>
           <span class="meta t3 num">{t("review.lines", { n: lineCount })}</span>
           <span class="grow" />
-          <Button size="s" variant="ghost" onClick={() => toggleNoise(index)}>Expand hunk</Button>
+          <Button size="s" variant="ghost" onClick={() => toggleNoise(index)}>{t("review.expandHunk")}</Button>
         </div>
       </td>
     </tr>

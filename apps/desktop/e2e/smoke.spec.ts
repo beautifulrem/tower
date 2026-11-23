@@ -86,6 +86,21 @@ test("the interface speaks Chinese when set to", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("the goal page's warnings and evidence speak Chinese too, with no English left in them", async ({ page }) => {
+  await openTower(page, "goal/G-0001", {
+    lang: "zh-CN",
+    enrich: (F) => {
+      F["goal-G-0001"].contract.engine = "my-acp-agent";
+      F["goal-G-0001"].escalated_model = "anthropic/claude-opus-4-5";
+      F.environment.issues = [...F.environment.issues, { kind: "no_sandbox", blocking: false, text: "", fix: null }];
+    },
+  });
+  const flags = page.locator(".goal-head .wb-exception");
+  await expect(flags).toHaveText(["实验", "无沙箱（S0）", "已升级：anthropic/claude-opus-4-5"]);
+  const strip = page.locator(".ev-strip").first();
+  await expect(strip).toHaveAttribute("aria-label", "验证证据");
+});
+
 test("settings render", async ({ page }) => {
   const { errors } = await openTower(page, "settings");
   await expect(page.getByRole("heading").first()).toBeVisible();

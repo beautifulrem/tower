@@ -9,7 +9,7 @@ import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
 import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
-import { dayClock } from "../lib/format";
+import { bytes, dayClock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { stateLabel } from "../lib/labels";
 import { ask } from "../lib/native";
@@ -19,7 +19,6 @@ import { DataTable, MeterCell, ProjectFilter, SecHead, SmBtn, inPlace } from "./
 import { blankContract } from "./ContractEditor";
 
 const ALL = "__all__";
-const fmtB = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 const ZERO_P = { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 };
 
 export function Operations() {
@@ -194,8 +193,8 @@ export function Operations() {
             title={t("ops.storageTitle")}
             meta={
               <>
-                <span class="meta num t2">{fmtB(inv().total_bytes)}</span>
-                <span class="meta num t2" hidden={!inv().reclaimable_bytes}>{fmtB(inv().reclaimable_bytes)} {t("ops.kpiReclaimable").toLowerCase()}</span>
+                <span class="meta num t2">{bytes(inv().total_bytes)}</span>
+                <span class="meta num t2" hidden={!inv().reclaimable_bytes}>{t("ops.reclaimable", { size: bytes(inv().reclaimable_bytes) })}</span>
                 <span class="ops-posture-line meta-inline meta">
                   <span>{state.sandboxPosture?.backend_name ?? t("chrome.sandboxOn")}</span>
                   <span hidden={!state.sandboxPosture?.microvm_available}>{t("ops.microvmReady")}</span>
@@ -206,7 +205,7 @@ export function Operations() {
               </>
             }
           >
-            <SmBtn variant="default" hidden={!reclaimIds().length} onClick={() => void cleanGoals(reclaimIds())}>{t("ops.cleanAll", { size: fmtB(inv().reclaimable_bytes) })}</SmBtn>
+            <SmBtn variant="default" hidden={!reclaimIds().length} onClick={() => void cleanGoals(reclaimIds())}>{t("ops.cleanAll", { size: bytes(inv().reclaimable_bytes) })}</SmBtn>
           </SecHead>
           <DataTable
             headers={[[t("overview.colGoal")], [t("ops.colWorkspace"), true], [t("ops.colVerify"), true], [t("ops.colCache"), true], [t("ops.colTotal"), true], ["", true]]}
@@ -224,10 +223,10 @@ export function Operations() {
                     <span class="meta t3">{stateLabel(g.state)}</span>
                   </div>
                 </td>
-                <td class="col-r meta">{fmtB(g.workspace_bytes)}</td>
-                <td class="col-r meta">{fmtB(g.verify_bytes)}</td>
-                <td class="col-r meta">{fmtB(g.cache_bytes)}</td>
-                <td class="col-r"><MeterCell wrapCls="storage-bar-cell" label={fmtB(g.total_bytes)} width={`${Math.round((g.total_bytes / maxBytes()) * 100)}%`} /></td>
+                <td class="col-r meta">{bytes(g.workspace_bytes)}</td>
+                <td class="col-r meta">{bytes(g.verify_bytes)}</td>
+                <td class="col-r meta">{bytes(g.cache_bytes)}</td>
+                <td class="col-r"><MeterCell wrapCls="storage-bar-cell" label={bytes(g.total_bytes)} width={`${Math.round((g.total_bytes / maxBytes()) * 100)}%`} /></td>
                 <td class="col-r">{g.reclaimable ? <SmBtn onClick={() => void cleanGoals([g.goal_id])}>{t("ops.clean")}</SmBtn> : <span class="meta t3">{t("ops.protected")}</span>}</td>
               </tr>
             )}

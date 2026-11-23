@@ -87,7 +87,7 @@ export function Review(props: { id: string }) {
   );
   const off = onTrace(props.id, (e) => {
     if (RELOAD_DETAIL.has(e.event.kind)) void refetchDetail();
-    if (RELOAD_VIEW.has(e.event.kind)) void refetchView();
+    if (RELOAD_VIEW.has(e.event.kind)) (resetTexts(), void refetchView());
   });
   onCleanup(off);
 
@@ -131,12 +131,16 @@ export function Review(props: { id: string }) {
   const [panel, setPanel] = createSignal<Panel>(null);
   const [pathJump, setPathJump] = createSignal(false);
   const g = () => state.goals[props.id];
-  const editable = () => g()?.state === "paused" || g()?.state === "in_review";
+  // Undo, edit and apply work on the whole change (base → pin): a hunk index or a file's text from a narrower
+  // scope, or from a view still loading, would point at different code.
+  const editable = () => (g()?.state === "paused" || g()?.state === "in_review") && scope() === "all" && !viewRes.loading;
 
   const [texts, setTexts] = createSignal<Record<string, string[] | null>>({});
   const [reveals, setReveals] = createSignal<Record<string, Reveals>>({});
   const [whole, setWhole] = createSignal<Record<string, boolean>>({});
   const [editingPath, setEditingPath] = createSignal<string | null>(null);
+  // Texts and expanded context belong to one snapshot: a new pin or another scope drops them.
+  const resetTexts = () => (setTexts({}), setReveals({}), setWhole({}), setEditingPath(null));
   const loading = new Set<string>();
   const ensureText = async (f: DiffFile): Promise<string[] | null> => {
     const have = texts()[f.path];
@@ -212,6 +216,8 @@ export function Review(props: { id: string }) {
   };
 
   const units = (): ExtReviewUnit[] => view()?.units ?? [];
+  // A narrower scope can have fewer units than the one you were on.
+  createEffect(on(units, (u) => setUnitIdx((i) => Math.min(i, Math.max(0, u.length - 1))), { defer: true }));
   const unit = (): ExtReviewUnit | undefined => units()[unitIdx()];
   const files = createMemo(() => {
     const u = unit();
@@ -460,7 +466,7 @@ export function Review(props: { id: string }) {
                   <Icon name="arrow-right" size={10} class="t3" />@{short(view()!.pin)}
                 </span>
               </span>
-              <TimelineSwitcher scope={scope()} onScope={setScope} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => setCmp([f, to])} />
+              <TimelineSwitcher scope={scope()} onScope={(sc) => (setScope(sc), setPick(null), resetTexts())} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => (setCmp([f, to]), resetTexts())} />
               <Show when={g()}>
                 <button class="review-stat-group review-verify link-plain" onClick={() => setPanel("verify")} title={t("review.verifyOpen")} aria-haspopup="dialog">
                   <Seal pin={g()!.verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />

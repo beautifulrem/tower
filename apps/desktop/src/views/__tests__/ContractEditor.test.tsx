@@ -261,14 +261,13 @@ describe("saving", () => {
     const early = screen.queryByText("Save as draft");
     if (early) fireEvent.click(early);
     fireEvent.keyDown(window, { key: "Enter", metaKey: true });
-    await new Promise((r) => setTimeout(r, 0));
-    const saved = invoked.filter((x) => x.cmd === "update_draft" && (x.args as { id: string }).id === "G-0008");
     const shown = [early === null, container.querySelector(".contract-skeleton") !== null];
     open();
     draft.goalGate = null;
-    expect(saved).toEqual([]);
-    expect(shown).toEqual([true, true]);
+    // Once the draft is drawn, a save sent while it loaded would have been asked for long since.
     await screen.findByDisplayValue("Fix the cart total");
+    expect(invoked.filter((x) => x.cmd === "update_draft" && (x.args as { id: string }).id === "G-0008")).toEqual([]);
+    expect(shown).toEqual([true, true]);
     expect(container.querySelector(".contract-skeleton")).toBeNull();
   });
 

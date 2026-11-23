@@ -2,6 +2,7 @@
 export type ThemeChoice = "system" | "light" | "dark";
 export type SizeChoice = "compact" | "standard" | "large";
 
+// public/theme-boot.js reads these keys for the first frame, before this module runs (themeBoot.test keeps them in step).
 const KEY = "tower.theme";
 const SIZE_KEY = "tower.size";
 const media = window.matchMedia("(prefers-color-scheme: light)");

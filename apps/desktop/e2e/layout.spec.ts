@@ -151,3 +151,30 @@ for (const route of ["overview", "settings", "goal/G-0001", "review/G-0001"]) {
     expect(bent).toEqual([]);
   });
 }
+
+// Concentric radii (the design lock): a container inside a card (an output block, a well) never repeats the card's
+// radius — a 6px block in a 6px card reads as a second card. Controls keep the control radius wherever they sit.
+for (const route of ["inbox", "goal/G-0001", "goal/G-0004", "goal/G-0005"]) {
+  test(`${route}: no container repeats the radius of the card it sits in`, async ({ page }) => {
+    await openTower(page, route, { lang: "en", enrich: enrichRich });
+    await settled(page, route);
+    const same = await page.evaluate(() => {
+      const radius = (el: Element) => parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+      const painted = (el: Element) => {
+        const cs = getComputedStyle(el);
+        return !/rgba\(0, 0, 0, 0\)|transparent/.test(cs.backgroundColor) || parseFloat(cs.borderTopWidth) > 0;
+      };
+      const control = "button, input, textarea, select, .btn, .chip, kbd, .kbd";
+      const found: string[] = [];
+      for (const el of document.querySelectorAll<HTMLElement>(".content *")) {
+        const r = radius(el);
+        if (r < 6 || el.matches(control) || !painted(el) || el.getBoundingClientRect().width < 1) continue;
+        let a = el.parentElement;
+        while (a && !(radius(a) > 0 && painted(a))) a = a.parentElement;
+        if (a && radius(a) === r) found.push(`${a.tagName.toLowerCase()}.${a.classList[0]} ⊃ ${el.tagName.toLowerCase()}.${[...el.classList].join(".")} both ${r}px`);
+      }
+      return [...new Set(found)];
+    });
+    expect(same).toEqual([]);
+  });
+}

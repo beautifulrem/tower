@@ -754,7 +754,7 @@ pub fn write_inside(root: &Path, rel: &str, bytes: &[u8]) -> std::io::Result<()>
         .write(true)
         .create(true)
         .truncate(true)
-        .custom_flags(0x0100) // O_NOFOLLOW on macOS
+        .custom_flags(nix::fcntl::OFlag::O_NOFOLLOW.bits())
         .open(&target)?;
     std::io::Write::write_all(&mut f, bytes)
 }

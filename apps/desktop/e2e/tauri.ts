@@ -75,6 +75,11 @@ export async function openTower(
       let seq = 0;
       const calls: Array<[string, unknown]> = [];
       (window as any).__towerCalls = calls;
+      // Delivers an event to what the app listens for, as Tauri does: the handler is a registered callback id.
+      (window as any).__towerEmit = (event: string, payload: unknown) => {
+        const id = (window as any).__towerListeners?.[event];
+        (window as any)[`_${id}`]?.({ event, id: 0, payload });
+      };
       (window as any).__TAURI_INTERNALS__ = {
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main", windowLabel: "main" } },
         transformCallback(cb: unknown) {
@@ -170,6 +175,8 @@ export async function openTower(
             case "check_for_updates":
               return F.updateCheck ?? { configured: false, available: false, current_version: "0.1.0", latest_version: null, notes: null, error: null };
             case "plugin:event|listen":
+              // Kept so a test can push a live update the way the supervisor does (`__towerEmit`).
+              ((window as any).__towerListeners ??= {})[a.event] = a.handler;
               return ++seq;
             case "plugin:dialog|ask":
               return true;

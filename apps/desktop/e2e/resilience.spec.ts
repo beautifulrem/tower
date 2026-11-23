@@ -30,3 +30,25 @@ test("a section whose list could not be read says so instead of saying it is emp
   await page.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__towerCalls.map(([c]: [string]) => c))).toContain("merge_queue");
 });
+
+test("a live update keeps your place on the board: the row you are on stays focused", async ({ page }) => {
+  const { fixtures } = await openTower(page, "overview");
+  await expect(page.locator(".board-rows:not(.board-queue) .g-title")).not.toHaveCount(0);
+  const row = page.locator(".board-rows:not(.board-queue) .g-title").first();
+  await row.focus();
+  await page.evaluate(() => ((window as any).__was = document.activeElement));
+  const goals = fixtures.goals as Array<Record<string, unknown>>;
+  // The supervisor pushes changed goals while agents work. Another row's goal pausing regroups the board.
+  const second = (await page.locator(".board-rows:not(.board-queue) .g-title").nth(1).getAttribute("title"))!.split("\n")[0];
+  const other = goals.find((g) => g.title === second)!;
+  await page.evaluate((g) => (window as any).__towerEmit("tower://update", { type: "goal", goal: { ...g, state: "paused", pause_reason: { kind: "human" } } }), other);
+  await expect(page.locator(".board-group h2", { hasText: "Paused" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.activeElement === (window as any).__was && document.activeElement?.isConnected)).toBe(true);
+
+  // The same in the sidebar: the goal you are on keeps its focus when another one moves group.
+  await page.locator(".side-scroll .side-goal").first().focus();
+  await page.evaluate(() => ((window as any).__was = document.activeElement));
+  await page.evaluate((g) => (window as any).__towerEmit("tower://update", { type: "goal", goal: { ...g, state: "running", pause_reason: null } }), other);
+  await expect(page.locator(".board-group h2", { hasText: "Paused" })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.activeElement === (window as any).__was && document.activeElement?.isConnected)).toBe(true);
+});

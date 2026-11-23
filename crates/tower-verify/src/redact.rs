@@ -126,6 +126,44 @@ fn redact_urls(text: &str) -> String {
 /// nest them without end must cost neither the stack nor quadratic time.
 const NESTED_URLS: u8 = 2;
 
+/// Whether a URL that punctuation cut short (`cut`, after the `://`) stops inside `user:pass`: a `:` comes before any
+/// `/?#`, and what follows it is not a port (1–5 digits, then the cut or a path). A password of 1–5 digits and a `/`
+/// reads as a port here too, as in `authority_end`; reading it the other way would eat the next field of
+/// `{"api":"http://localhost:3000/api","author":"ada@example.com"}`.
+fn cut_in_userinfo(cut: &str) -> bool {
+    let first = cut.find(['/', '?', '#']).unwrap_or(cut.len());
+    let Some(colon) = cut[..first].find(':').filter(|_| !cut.starts_with('[')) else {
+        return false;
+    };
+    let digits = cut[colon + 1..].bytes().take_while(u8::is_ascii_digit).count();
+    let rest = &cut[colon + 1 + digits..];
+    !((1..=5).contains(&digits) && (rest.is_empty() || rest.starts_with(['/', '?', '#'])))
+}
+
+/// The largest char boundary of `text` at or below `at`.
+fn floor(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
+    while !text.is_char_boundary(at) {
+        at -= 1;
+    }
+    at
+}
+
+/// Reads `text[from..to]`: with `find_at`, the offset of the first `@` (`None` if whitespace or a `://` comes first);
+/// without, the offset of the first whitespace or `://`.
+fn scan(text: &str, from: usize, to: usize, find_at: bool) -> Option<usize> {
+    let from = floor(text, from);
+    for (i, c) in text[from..floor(text, to)].char_indices() {
+        if c.is_whitespace() || (c == ':' && text[from + i..].starts_with("://")) {
+            return (!find_at).then_some(from + i);
+        }
+        if find_at && c == '@' {
+            return Some(from + i);
+        }
+    }
+    None
+}
+
 fn redact_urls_within(text: &str, depth: u8) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -134,24 +172,21 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
         out.push_str(&rest[..at + 3]);
         let url = &rest[at + 3..];
         let mut end = url.find(ends_url).unwrap_or(url.len());
-        // A password may hold `'()"|{}<>\` or a backtick, which git sends as they are: when an `@` comes after where
-        // punctuation would end the URL, before the next whitespace and within 256 bytes, and the URL read that far
-        // has `user:pass@`, it runs to the end of that authority. The next `@` is found once for the whole text, so
-        // text of many URLs is still one pass.
+        // A password may hold `'()"|{}<>\` or a backtick, which git sends as they are. When punctuation cuts the URL
+        // inside `user:pass` (not after a host or a port), and an `@` follows within 256 bytes with no whitespace and
+        // no other `://` before it, the URL runs to the end of the authority after that `@`. Each look stops at the
+        // next `://`, so no stretch of text is read twice; the next `@` is found once for the whole text, so a URL
+        // with none after it costs nothing.
         let pos = text.len() - url.len();
         if next_at.is_some_and(|a| a < pos) {
             next_at = text[pos..].find('@').map(|a| pos + a);
         }
-        if let Some(a) = next_at.map(|a| a - pos)
-            && a > end
-            && a < end + 256
-            && !url[end..a].contains(char::is_whitespace)
+        if next_at.is_some_and(|a| a - pos < end + 256)
+            && cut_in_userinfo(&url[..end])
+            && let Some(a) = scan(url, end, end + 256, true)
         {
-            let mut cap = url.len().min(a + 256);
-            while !url.is_char_boundary(cap) {
-                cap -= 1;
-            }
-            let wide = &url[..url[..cap].find(char::is_whitespace).unwrap_or(cap)];
+            let b = scan(url, a + 1, a + 256, false).unwrap_or_else(|| floor(url, a + 256));
+            let wide = &url[..b];
             let wide_host = authority_end(wide);
             if wide_host > end && wide[..wide_host].contains('@') {
                 end = wide_host + wide[wide_host..].find(ends_url).unwrap_or(wide.len() - wide_host);
@@ -332,6 +367,10 @@ mod tests {
     /// URL inside a query value, and a password with an unescaped `/`.
     #[test]
     fn masks_credentials_in_less_plain_urls() {
+        let padded = format!(
+            "{{\"homepage\":\"https://example.com\",\"contact\":\"ada@example.com\",\"n\":\"{}\",\"mirror\":\"https://deploy:PW0015@git.example.com/r\"}}",
+            "x".repeat(200)
+        );
         let cases = [
             ("GET https://api.example.com/x?filter[a]=1&access_token=tok12345678 200", "tok12345678"),
             ("callback http://[::1]:8080/cb?token=ipv6tok0001 ok", "ipv6tok0001"),
@@ -351,6 +390,16 @@ mod tests {
             // Characters that end a URL in running text may sit in a password git sends as it is.
             ("origin\thttps://deploy:Xy(7q)Zr'0011@git.example.com/o/r.git (fetch)", "Zr'0011"),
             ("db postgres://app:p\"q|r{s}<t>u\\v`0012@db.example.com/x", "0012"),
+            // An `@` before the punctuation does not hide the userinfo `@` after it.
+            ("https://ada@corp.com:Xy(7q)Zr0013@git.example.com/o/r.git", "Zr0013"),
+            ("https://u:p@ss(word0014@host/r", "word0014"),
+            ("https://u:a/b(c0017@host/r", "c0017"),
+            // A bare origin before an email and a second URL in compact JSON does not swallow that URL whole.
+            (&padded, "PW0015"),
+            (
+                "{\"homepage\":\"https://example.com\",\"contact\":\"ada@example.com\",\"download\":\"https://b.s3.amazonaws.com/f.tar.gz?X-Amz-Credential=AK&X-Amz-Signature=SIG0016\"}",
+                "SIG0016",
+            ),
         ];
         for (text, secret) in cases {
             let r = redact(text);
@@ -371,7 +420,16 @@ mod tests {
         // A token of letters only, mixed case as random ones are, is still a token.
         assert!(!redact("token: Bearer AbcdefGhijklmnopQr").contains("AbcdefGhijklmnopQr"));
         // A URL in brackets or quotes still ends at them.
-        for kept in ["see (https://example.com/x) and \"https://example.com/y\"", "<https://example.com/z>"] {
+        for kept in [
+            "see (https://example.com/x) and \"https://example.com/y\"",
+            "<https://example.com/z>",
+            // A bare origin next to emails (JSON, `psql -A`, a port before a quote) is not read as `user:pass@`.
+            "[\"https://example.com\",\"a@x.com\",\"b@x.com\"]",
+            "1|Ada|https://ada.dev|ada@example.com|2024-01-01",
+            "{\"homepage\":\"https://example.com\",\"author\":\"ada@example.com\",\"id\":3}",
+            "{\"api\":\"https://example.com:8443\",\"author\":\"ada@example.com\"}",
+            "{\"api\":\"http://localhost:3000/api\",\"author\":\"ada@example.com\"}",
+        ] {
             assert_eq!(redact(kept), kept);
         }
         // A scoped package path is not user info.

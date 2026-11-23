@@ -1434,3 +1434,24 @@ async fn pausing_a_goal_while_it_starts_keeps_it_paused() {
     assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::Human)));
     assert_eq!(g.run_no, 0, "no run began");
 }
+
+/// A goal being set up holds its slot: with one slot, a second goal waits
+/// until the first is running and then until it stops. Creating a goal
+/// does not wait for another goal's (or its own) setup.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_goal_in_setup_counts_against_the_limit() {
+    let h = harness("hold").await;
+    h.sup.save_settings(Settings { max_concurrent: 1, ..h.sup.settings() }).unwrap();
+    slow_setup(&h, 2).await;
+    let (a, b) = tokio::join!(create(&h), create(&h));
+    let returned_early = !start_ended(&h, &a) && !start_ended(&h, &b);
+    let first = wait_preparing(&h, &[]).await;
+    let second = if first == a { b } else { a };
+    wait_for(&h, &first, |g| g.state == LifecycleState::Running).await;
+    assert!(h.sup.goal(&second).unwrap().workspace.is_none(), "only one goal started");
+    assert_eq!(h.sup.goal(&second).unwrap().summary.state, LifecycleState::Ready);
+    assert!(returned_early, "creating a goal returns while setups run");
+    // The slot frees when the first stops, and the second starts.
+    h.sup.pause(&first).await.unwrap();
+    wait_for(&h, &second, |g| g.state == LifecycleState::Running).await;
+}

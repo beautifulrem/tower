@@ -12,6 +12,9 @@ export const invoked: { cmd: string; args: unknown }[] = [];
 afterEach(cleanup);
 
 vi.mock("@tauri-apps/api/core", () => ({
+  Channel: class {
+    onmessage: unknown = null;
+  },
   invoke: vi.fn(async (cmd: string, args?: unknown) => {
     invoked.push({ cmd, args });
     return null;

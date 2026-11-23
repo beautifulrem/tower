@@ -1,0 +1,230 @@
+/*
+ * Evidence-Driven Review Theater & Split-Geometry Virtualized Diff styles.
+ * Zero JS bundle cost; calibrated against Tower's OKLCH token palette.
+ */
+
+/* Browser paint-containment win for multi-file diffs (docs/18 §18.4). */
+.file {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+
+.vdiff-spacer td {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  pointer-events: none;
+}
+
+.vdiff-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-well, var(--bg-inset));
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* ---------- AST Semantic Noise Reduction ---------- */
+
+.semantic-fold td {
+  padding: 5px 12px !important;
+  background: var(--bg-well, var(--bg-inset));
+  border-top: 1px dashed var(--border-subtle);
+  border-bottom: 1px dashed var(--border-subtle);
+}
+.semantic-fold-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+.semantic-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: var(--radius-s);
+  border: 1px dotted var(--prov-obs-edge, var(--border-strong));
+  background: var(--bg-app);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+/* ---------- Unit Narrative (Dashed Claim Card + Solid Risk Badges) ---------- */
+
+.unit-narrative {
+  display: grid;
+  gap: 6px;
+  margin-bottom: var(--sp-3);
+  padding: 8px 11px;
+  border: 1px dashed var(--prov-claim-edge, var(--border-strong));
+  border-left: 2px dashed var(--prov-claim-edge, var(--text-3));
+  border-radius: var(--radius-m);
+  background: var(--prov-claim-bg, var(--bg-inset));
+  font-size: var(--fs-meta);
+}
+.unit-narrative-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.unit-claim-tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+}
+.unit-narrative-text {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 18px;
+  max-width: var(--measure);
+}
+.unit-risk-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--text-2);
+  background: var(--bg-raised);
+  font-size: 11px;
+  color: var(--text-1);
+}
+.risk-badge::before {
+  content: "◆";
+  color: var(--st-attention);
+}
+.risk-badge-danger {
+  border-color: color-mix(in oklch, var(--st-danger) 45%, var(--border));
+  border-left-color: var(--st-danger);
+  background: var(--danger-bg);
+}
+.risk-badge-danger::before {
+  content: "■";
+  color: var(--st-danger);
+}
+
+/* ---------- Snapshot Timeline Compare Controls ---------- */
+
+.timeline-compare {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 4px;
+}
+.timeline-select {
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-field);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  max-width: 150px;
+}
+
+/* ---------- Acceptance Seal Pre-Flight Checklist ---------- */
+
+.seal-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+@media (max-width: 540px) {
+  .seal-checks {
+    grid-template-columns: 1fr;
+  }
+}
+.seal-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  background: var(--bg-app);
+  font-size: var(--fs-hint);
+  color: var(--text-2);
+}
+.seal-check-ok {
+  border-left-color: var(--st-verified);
+  color: var(--text-1);
+}
+.seal-check-ok::before {
+  content: "✓";
+  color: var(--st-verified);
+  font-weight: 600;
+}
+.seal-check-warn {
+  border-left-color: var(--st-attention);
+  background: var(--attention-bg);
+  color: var(--text-1);
+}
+.seal-check-warn::before {
+  content: "◆";
+  color: var(--st-attention);
+}
+.seal-check-danger {
+  border-left-color: var(--st-danger);
+  background: var(--danger-bg);
+  color: var(--text-1);
+}
+.seal-check-danger::before {
+  content: "■";
+  color: var(--st-danger);
+}
+
+/* ---------- Steering Dispatch Tray ---------- */
+
+.dispatch-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--border-instrument, var(--border));
+  border-left: 2px solid var(--prov-human-edge, var(--text-2));
+  border-radius: var(--radius-s);
+  background: var(--bg-well, var(--bg-inset));
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+.dispatch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-s);
+  background: var(--bg-app);
+}
+.dispatch-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  background: var(--attention-bg);
+  color: var(--text-1);
+  font-size: 11px;
+  border: 0;
+}

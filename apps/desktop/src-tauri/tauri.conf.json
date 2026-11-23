@@ -38,6 +38,9 @@
     "resources": {
       "../../../extensions/tower-goal/index.ts": "tower-goal/index.ts",
       "../../../extensions/tower-goal/policy.ts": "tower-goal/policy.ts",
+      "../../../extensions/tower-goal/shell_parse.ts": "tower-goal/shell_parse.ts",
+      "../../../extensions/tower-goal/engines.ts": "tower-goal/engines.ts",
+      "../../../extensions/tower-goal/acp_tools.ts": "tower-goal/acp_tools.ts",
       "../../../extensions/tower-goal/sandboxfs.ts": "tower-goal/sandboxfs.ts",
       "../../../extensions/tower-goal/acp.ts": "tower-goal/acp.ts",
       "../../../tools/demo-engine/demo_pi.py": "demo-engine/demo_pi.py",

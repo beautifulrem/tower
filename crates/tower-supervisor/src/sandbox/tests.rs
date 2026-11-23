@@ -392,15 +392,19 @@ fn tls_works_with_network_and_without_keychain() {
     let sb = root.join("p.sb");
     let p = profile(&spec(&root, &root.join("home"), true));
     assert!(!p.contains("com.apple.SecurityServer"));
+    assert!(!p.contains("com.apple.securityd"));
     std::fs::write(&sb, p).unwrap();
-    let ok = std::process::Command::new("/usr/bin/sandbox-exec")
+    let out = std::process::Command::new("/usr/bin/sandbox-exec")
         .arg("-f")
         .arg(&sb)
         .args(["/usr/bin/curl", "-sS", "-m", "10", "-o", "/dev/null", "https://example.com"])
-        .status()
-        .unwrap()
-        .success();
-    assert!(ok, "TLS through trustd only");
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "TLS through trustd/TrustEvaluationAgent only: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 /// The drop box, against the real sandbox-exec: a file can be created
@@ -433,4 +437,63 @@ fn the_drop_box_is_write_only() {
         assert!(!sandboxed(&sb, &root.join("ws"), &format!("/bin/cat '{d}/earlier'")), "not read");
         assert!(!sandboxed(&sb, &root.join("ws"), &format!("test -e '{d}/earlier'")), "not even seen");
     }
+}
+
+/// Seatbelt hardening (`docs/18` P0.2): prompt-instruction files (`AGENTS*.md`,
+/// `CLAUDE.md` case-insensitively at any depth) and `.pi/` / `.agents/` dirs
+/// remain readable (so rules apply) but are strictly non-writable, and
+/// hard-link creation (`ln`, Seatbelt `file-link`) is denied everywhere.
+#[cfg(target_os = "macos")]
+#[test]
+fn profile_denies_instruction_writes_and_hard_links() {
+    if !available() {
+        return;
+    }
+    let tmp = tempfile::tempdir_in("/tmp").unwrap();
+    let root = crate::paths::real(tmp.path());
+    let home = root.join("home");
+    let ws = root.join("ws");
+    for d in ["ws/sub/dir", "ws/.pi", "ws/.agents", "tmp", "cache", "home/.ssh"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(ws.join("AGENTS.md"), "keep me\n").unwrap();
+    std::fs::write(ws.join("CLAUDE.md"), "keep claude\n").unwrap();
+    std::fs::write(ws.join("ok.txt"), "hello\n").unwrap();
+    std::fs::write(home.join(".ssh/id"), "secret\n").unwrap();
+
+    let sb = root.join("p.sb");
+    let text = profile(&spec(&root, &home, false));
+    assert!(text.contains("(deny file-link)"), "profile must deny hard-link creation");
+    std::fs::write(&sb, text).unwrap();
+    let run = |cmd: &str| sandboxed(&sb, &ws, cmd);
+
+    // Reading instruction files and writing ordinary source files still works.
+    assert!(run("cat AGENTS.md >/dev/null && cat CLAUDE.md >/dev/null"), "instruction files stay readable");
+    assert!(run("echo ok > sub/normal.txt && ln -s ok.txt sym.txt"), "ordinary writes and symlinks work");
+
+    // Prompt instruction poisoning is denied across depths and casing.
+    for cmd in [
+        "echo bad > AGENTS.md",
+        "echo bad > agents.md",
+        "echo bad > AGENTS.local.md",
+        "echo bad > sub/dir/AGENTS.override.md",
+        "echo bad > CLAUDE.md",
+        "echo bad > claude.md",
+        "echo bad > sub/CLAUDE.local.md",
+        "echo bad > .pi/poison.json",
+        "mkdir -p sub/.pi && echo bad > sub/.pi/poison",
+        "echo bad > .agents/poison.md",
+        "mkdir -p sub/.agents && echo bad > sub/.agents/poison.md",
+        "rm -f AGENTS.md",
+    ] {
+        assert!(!run(cmd), "must deny instruction write: {cmd}");
+    }
+    assert_eq!(std::fs::read_to_string(ws.join("AGENTS.md")).unwrap(), "keep me\n");
+    assert_eq!(std::fs::read_to_string(ws.join("CLAUDE.md")).unwrap(), "keep claude\n");
+
+    // Hard links are denied inside workspace AND across boundaries.
+    assert!(!run("ln ok.txt hard.txt"), "hard link inside workspace must be denied");
+    assert!(!run(&format!("ln {}/.ssh/id stolen_hard.txt", home.display())), "hard link to secret must be denied");
+    assert!(!ws.join("hard.txt").exists());
+    assert!(!ws.join("stolen_hard.txt").exists());
 }

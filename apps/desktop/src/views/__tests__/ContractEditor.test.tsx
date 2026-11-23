@@ -1,4 +1,4 @@
-import { render } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/store", async () => {
@@ -6,32 +6,102 @@ vi.mock("../../lib/store", async () => {
   const [state] = createStore({
     settings: { language: "en", engine: "pi", default_model: "", default_thinking: "" },
     projects: [{ id: "p1", name: "shop", root: "/x/shop", test_command: "pnpm test", base_branch: "main" }],
-    goals: {},
+    goals: {
+      "G-0009": {
+        id: "G-0009",
+        project_id: "p1",
+        project_name: "shop",
+        title: "Prepare payment schema",
+        state: "running",
+        pause_reason: null,
+        mode: "executing",
+        live_line: null,
+        progress: { verified: 1, observed: 1, machine: 2, human: 0, human_done: 0 },
+        diffstat: null,
+        cost_usd: 0.4,
+        budget: { soft_usd: 5, hard_usd: 8, wall_minutes: 90 },
+        run_no: 1,
+        rework_cycles: 0,
+        max_rework: 3,
+        needs_you: 0,
+        verified_pin: null,
+        branch: null,
+        created_at: 1000,
+        updated_at: 1000,
+        run_started_at: null,
+        last_viewed_at: null,
+        overlaps: [],
+        pr: null,
+        engine: "pi",
+      },
+    },
     inbox: [],
     now: Date.now(),
   });
-  return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn() };
+  return {
+    state,
+    toast: vi.fn(),
+    act: async <T,>(fn: () => Promise<T>) => fn(),
+    goalList: () => Object.values(state.goals),
+  };
 });
+
 const validated: unknown[] = [];
-const look = { id: "C4", title: "The checkout page still looks right", kind: { type: "look", start: "npm run dev", url: "http://localhost:3000/checkout", timeout_secs: 60, steps: ["click #buy", "type #qty 2"] } };
-vi.mock("../../lib/api", () => ({
-  api: {
-    models: async () => [],
-    validateContract: async (c: unknown) => {
-      validated.push(structuredClone(c));
-      return [];
-    },
-    baseTests: async () => null,
-    goal: async () => ({
+const look = {
+  id: "C4",
+  title: "The checkout page still looks right",
+  kind: { type: "look", start: "npm run dev", url: "http://localhost:3000/checkout", timeout_secs: 60, steps: ["click #buy", "type #qty 2"] },
+};
+vi.mock("../../lib/api", async () => {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return {
+    api: {
+      models: async () => [
+        { provider: "anthropic", id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", reasoning: true, cost_input: 3, cost_output: 15, context_window: 200000 },
+        { provider: "anthropic", id: "claude-opus-4-5", name: "Claude Opus 4.5", reasoning: true, cost_input: 15, cost_output: 75, context_window: 200000 },
+      ],
+      validateContract: async (c: unknown) => {
+        validated.push(structuredClone(c));
+        return [];
+      },
+      baseTests: async () => null,
+      sandboxPosture: () => invoke("sandbox_posture"),
+      generateHoldoutDrafts: (projectId: string, intent: string) => invoke("generate_holdout_drafts", { projectId, intent }),
+      ratifyHoldoutDraft: (projectId: string, filename: string, code: string) => invoke("ratify_holdout_draft", { projectId, filename, code }),
+      deleteAttachment: (goalId: string, attachmentId: string) => invoke("delete_attachment", { goalId, attachmentId }),
+      goal: async () => ({
       summary: { title: "Fix the cart total", project_id: "p1" },
-      contract: { version: 2, intent: "Fix it", done_when: "", constraints: [], criteria: [look], scope: { include: [], exclude: [], readonly: [] }, budget: { soft_usd: 5, hard_usd: 8, wall_minutes: 90 }, autonomy: "standard", max_rework: 3, setup: "", model: "", thinking: "", stop_conditions: [], network: false, engine: "" },
+      contract: {
+        version: 2,
+        intent: "Fix it",
+        done_when: "",
+        constraints: [],
+        criteria: [look],
+        scope: { include: [], exclude: [], readonly: [] },
+        budget: { soft_usd: 5, hard_usd: 8, wall_minutes: 90 },
+        autonomy: "standard",
+        max_rework: 3,
+        setup: "",
+        model: "",
+        thinking: "",
+        stop_conditions: [],
+        network: false,
+        ports: [],
+        loopback_open: false,
+        engine: "",
+        escalation_model: "",
+        escalation_after_reworks: 2,
+        attachments: [],
+        sandbox_tier: "default",
+        depends_on: [],
+      },
     }),
   },
   errorText: (e: unknown) => String(e),
-}));
+  };
+});
 
-const { ContractEditor } = await import("../ContractEditor");
-const { fireEvent, screen, waitFor } = await import("@solidjs/testing-library");
+const { ContractEditor, parsePorts } = await import("../ContractEditor");
 
 describe("a look criterion's steps", () => {
   const lastSteps = () => (validated.at(-1) as { criteria: Array<{ kind: { steps?: string[] } }> }).criteria[0].kind.steps;
@@ -43,13 +113,11 @@ describe("a look criterion's steps", () => {
       "01 click #buy",
       "02 type #qty 2",
     ]);
-    // + Step opens a line under them, and what you type there goes to validation with the rest.
     fireEvent.click(screen.getByText("Step").closest("button")!);
     const third = (await waitFor(() => screen.getByLabelText("C4 step 3"))) as HTMLInputElement;
     expect(third.placeholder).toBe("e.g. press Enter");
     fireEvent.input(third, { target: { value: "wait for .total" } });
     await waitFor(() => expect(lastSteps()).toEqual(["click #buy", "type #qty 2", "wait for .total"]));
-    // A line the supervisor would refuse is marked while you type.
     fireEvent.input(third, { target: { value: "drag a b" } });
     await waitFor(() => expect(third.getAttribute("aria-invalid")).toBe("true"));
   });
@@ -65,26 +133,60 @@ describe("a look criterion's steps", () => {
   });
 });
 
-describe("the contract editor", () => {
-  it("reads as a contract: a masthead saying what, whose and which state, then numbered clauses and the schedule numbered on", () => {
+describe("the contract studio", () => {
+  it("reads as a 5-clause contract with masthead, numbered clauses, and schedule", () => {
     const { container } = render(() => <ContractEditor projectId="p1" />);
     const mast = container.querySelector(".contract-mast")!;
     expect([...mast.children].map((el) => el.textContent)).toEqual(["Contract", "", "shop", "", "new"]);
     const heads = [...container.querySelectorAll(".clause-head")].map((h) => `${h.querySelector(".clause-no")!.textContent} ${h.querySelector(".clause-title")!.textContent}`);
-    expect(heads).toEqual(["01 Intent", "02 Acceptance criteria", "03 Scope fence", "04 Autonomy", "05 Budget", "06 Isolation", "07 Engine"]);
-    // The clause titles are the document's headings, and the acceptance clause keeps its three ways to add a criterion on its head.
+    expect(heads).toEqual([
+      "01 Intent",
+      "02 Acceptance & visual criteria",
+      "03 Scope fence & ports",
+      "04 Engine, escalation & sandbox",
+      "05 Budget & dependencies",
+    ]);
     for (const h of container.querySelectorAll(".clause-title")) expect(h.tagName).toBe("H2");
     expect(container.querySelectorAll(".clause-head")[1].querySelectorAll("button")).toHaveLength(3);
     expect(container.querySelector(".section-title")).toBeNull();
   });
 
   it("declares ports on this machine and can open loopback, both only while the network is off", async () => {
-    const { parsePorts } = await import("../ContractEditor");
     expect(parsePorts("5432, 6379 5432 x 0 70000")).toEqual([5432, 6379]);
     render(() => <ContractEditor projectId="p1" />);
     expect(screen.getByText("Ports on this machine")).toBeTruthy();
     expect(screen.getByText("Open loopback")).toBeTruthy();
     fireEvent.click(screen.getByRole("switch", { name: /Allow network/ }));
     await waitFor(() => expect(screen.queryByText("Ports on this machine")).toBeNull());
+  });
+
+  it("supports selecting cross-goal dependencies and sandbox tier defaults", async () => {
+    render(() => <ContractEditor projectId="p1" />);
+    const depBtn = screen.getByRole("button", { name: /G-0009/ });
+    expect(depBtn.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(depBtn);
+    expect(depBtn.getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() => {
+      const latest = validated.at(-1) as { depends_on?: string[]; sandbox_tier?: string; escalation_after_reworks?: number };
+      expect(latest?.depends_on).toEqual(["G-0009"]);
+      expect(latest?.sandbox_tier).toBe("default");
+      expect(latest?.escalation_after_reworks).toBe(2);
+    });
+  });
+
+  it("opens synthetic holdout drafts as dashed Claim cards and ratifies only on explicit human click", async () => {
+    const { invoked } = await import("../../test/setup");
+    render(() => <ContractEditor projectId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
+    const ratifyBtns = await waitFor(() => {
+      const btns = screen.getAllByRole("button", { name: /Ratify into holdout\// });
+      expect(btns.length).toBeGreaterThan(0);
+      return btns;
+    });
+    expect(screen.getByText(/Draft claim · inactive until you ratify/)).toBeTruthy();
+    const before = invoked.filter((x) => x.cmd === "ratify_holdout_draft").length;
+    fireEvent.click(ratifyBtns[0]);
+    await waitFor(() => expect(screen.getByText(/You ratified · hidden/)).toBeTruthy());
+    expect(invoked.filter((x) => x.cmd === "ratify_holdout_draft").length).toBe(before + 1);
   });
 });

@@ -1,16 +1,24 @@
 //! Read models sent to the UI. Plain data; the supervisor builds them from
 //! the store and the renderer never holds authoritative state (`ADR-005`).
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::Millis;
-use crate::contract::{Budget, Contract, Criterion};
+use crate::contract::{AttachmentRef, Budget, Contract, Criterion, SandboxTier};
 use crate::event::{EventKind, Source};
 use crate::honesty::{ClaimKind, Consistency, Progress};
 use crate::i18n::Lang;
 use crate::lifecycle::{LifecycleState, PauseReason};
 use crate::mode::Mode;
+
+pub use crate::ops::{
+    CalibrationRow, EngineDescriptor, EngineTrustTier, GoalDiskUsage, HoldoutDraft, MemoryProposal, MemoryScope,
+    MergeQueueEntry, MergeQueueStatus, ProposalStatus, SandboxPosture, ScheduledGoal, SnapshotPoint, StorageInventory,
+    TaintClass, TaintLevel, UpdateCheckResult,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -110,8 +118,19 @@ pub struct GoalSummary {
     pub overlaps: Vec<Overlap>,
     /// The pull request opened from Tower, once there is one.
     pub pr: Option<PrView>,
-    /// The goal's engine (`pi` or `claude-code`); empty means the default.
+    /// The goal's engine (`pi`, `claude-code`, `codex`, `gemini-cli`, `opencode`);
+    /// empty means the default.
     pub engine: String,
+    /// Execution sandbox isolation tier.
+    #[serde(default)]
+    pub sandbox_tier: SandboxTier,
+    /// Allocated loopback port block base (10 ports `base..base+10`) when active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub port_base: Option<u16>,
+    /// Prerequisite goal IDs this goal depends on.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -121,6 +140,17 @@ pub struct LookView {
     pub pin: Option<String>,
     pub base_error: Option<String>,
     pub pin_error: Option<String>,
+    /// Browser console errors and uncaught page errors captured during visual verification (Fact).
+    #[serde(default)]
+    pub console_errors: Vec<String>,
+    /// Optional mobile viewport (390×844) screenshot on base.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mobile_base: Option<String>,
+    /// Optional mobile viewport (390×844) screenshot on pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mobile_pin: Option<String>,
 }
 
 /// A pull request as GitHub reports it.
@@ -173,6 +203,17 @@ pub struct CriterionResultView {
     /// predates per-file proof). Present at all means the output went to
     /// you only, never to the agent.
     pub held_out_proof: Option<HeldOutProof>,
+    /// True when this criterion failed once and passed on an immediate 1x rerun.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub flaky: Option<bool>,
+    /// Browser console / uncaught page errors associated with this criterion (Fact).
+    #[serde(default)]
+    pub console_errors: Vec<String>,
+    /// Optional mobile viewport capture alongside a desktop capture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mobile_look: Option<LookView>,
 }
 
 impl CriterionResultView {
@@ -314,6 +355,17 @@ pub struct GoalDetail {
     /// The project has held-out tests. Without them nothing beyond the
     /// visible tests can catch work fitted to those tests.
     pub has_held_out_tests: bool,
+    /// Multimodal image attachments stored in this goal's private directory.
+    #[serde(default)]
+    pub attachments: Vec<AttachmentRef>,
+    /// 1-based position in the project's merge queue, when enqueued.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub merge_queue_position: Option<u32>,
+    /// Escalated model currently active for rework runs, if escalation triggered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub escalated_model: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -451,6 +503,11 @@ pub struct ReviewUnit {
     /// 0 (low) to 3 (high).
     pub risk: u8,
     pub risk_reasons: Vec<String>,
+    /// One-line rationale derived strictly from agent `log` claims touching this unit.
+    /// Always rendered as a Claim ("Agent claims"), never a Fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub unit_claim_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -465,6 +522,15 @@ pub struct ReviewView {
     pub stat: DiffStat,
     pub units: Vec<ReviewUnit>,
     pub files: Vec<DiffFile>,
+    /// Ordered timeline of comparable snapshots for arbitrary range diffing.
+    #[serde(default)]
+    pub snapshots: Vec<SnapshotPoint>,
+    /// Per-file 0-based hunk indices classified as moved without logic changes.
+    #[serde(default)]
+    pub moved_hunks: BTreeMap<String, Vec<usize>>,
+    /// Per-file 0-based hunk indices classified as whitespace/formatting only.
+    #[serde(default)]
+    pub formatting_hunks: BTreeMap<String, Vec<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -544,6 +610,18 @@ pub struct Settings {
     /// blocked).
     #[serde(default)]
     pub push_ready: bool,
+    /// Default stronger `provider/model` escalated to after repeated reworks (`docs/18` P1.2).
+    #[serde(default)]
+    pub default_escalation_model: String,
+    /// Default number of failed reworks before model escalation (default 2).
+    #[serde(default = "default_escalation_after")]
+    pub default_escalation_after_reworks: u32,
+    /// Default execution sandbox isolation tier (`default` or `micro_vm`).
+    #[serde(default)]
+    pub default_sandbox_tier: SandboxTier,
+    /// Automatically rerun a failing visible criterion once to detect flaky tests.
+    #[serde(default = "default_true")]
+    pub flaky_rerun: bool,
 }
 
 /// A daily quiet window, in minutes after local midnight; it may cross
@@ -602,6 +680,14 @@ fn default_engine() -> String {
     "pi".into()
 }
 
+fn default_escalation_after() -> u32 {
+    2
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[cfg(test)]
 mod quiet_tests {
     use super::QuietHours;
@@ -617,7 +703,7 @@ mod quiet_tests {
 }
 
 /// The engines Tower can drive.
-pub const ENGINES: &[&str] = &["pi", "claude-code"];
+pub const ENGINES: &[&str] = &["pi", "claude-code", "codex", "gemini-cli", "opencode"];
 
 fn default_language() -> String {
     crate::i18n::system_language().code().into()
@@ -658,6 +744,10 @@ impl Default for Settings {
             push_url: String::new(),
             quiet_hours: None,
             push_ready: false,
+            default_escalation_model: String::new(),
+            default_escalation_after_reworks: default_escalation_after(),
+            default_sandbox_tier: SandboxTier::Default,
+            flaky_rerun: true,
         }
     }
 }

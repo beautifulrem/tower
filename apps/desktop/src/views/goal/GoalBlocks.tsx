@@ -1,15 +1,15 @@
 /**
- * The goal page's main column: next step, cause, sentinels, criteria,
- * changes, the ledger of claims against facts, decisions and assumptions,
- * runs. Every block is a Section; the page decides which text box it owns.
+ * The goal page's main column: next step, cause, sentinels, Six-Step
+ * verification criteria, changes, the two-column Claim vs Fact Honesty Ledger,
+ * decisions and assumptions, and runs.
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark } from "../../components/Glyph";
-import { Claim, ConsistencyBadge, CriteriaBar, HumanStamp, discountedOf } from "../../components/Honesty";
+import { ConsistencyBadge, HumanStamp } from "../../components/Honesty";
+import { Claim, CriteriaBar, discountedOf } from "../../components/HonestyCore";
 import { Button, Empty, Kbd, Prose, Section } from "../../components/ui";
 import type { ClaimView } from "../../gen/ClaimView";
-import type { GoalDetail } from "../../gen/GoalDetail";
 import type { RunView } from "../../gen/RunView";
 import { api } from "../../lib/api";
 import { ago, clock, count, duration, short } from "../../lib/format";
@@ -19,6 +19,7 @@ import { ask } from "../../lib/native";
 import { go, goProjectSetting } from "../../lib/nav";
 import { act, state, toast } from "../../lib/store";
 import { CriterionRow } from "./CriterionRow";
+import { type ExtCriterionView, type ExtGoalDetail } from "./ext";
 
 /** The workspace can be edited by hand only while the agent is not in it. */
 export const editable = (s: string) => s === "paused" || s === "in_review";
@@ -36,12 +37,10 @@ function dedupe(claims: ClaimView[], keep: number): { shown: ClaimView[]; hidden
   return { shown: unique.slice(0, keep).reverse(), hidden: claims.length - Math.min(unique.length, keep) };
 }
 
-export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoable: boolean; onUndoRollback: () => void }) {
+export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undoable: boolean; onUndoRollback: () => void }) {
   const d = () => props.d;
   const g = () => d().summary;
-  // You changed the workspace after the last verification (an undone hunk, a rollback, an edit): the next step is to verify again.
   const editedSinceVerify = () => editable(g().state) && d().criteria.some((c) => c.verified?.stale);
-  // Criteria that pass only with the agent's edits to existing tests make their "criterion met" claims inconsistent.
   const testDependent = createMemo(() => new Set(d().criteria.filter((c) => c.passes_with_source_only === false).map((c) => c.criterion.id)));
   const causes = createMemo(() => dedupe(d().claims.filter((c) => c.kind === "cause"), 3));
   const assumptions = () => d().claims.filter((c) => c.kind === "assumption");
@@ -58,10 +57,6 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
 
   return (
     <>
-      {/* After your own edit of a verified goal the next step is fixed: verify again. Ready to accept, that is the page's one primary action;
-          paused, the header's "resume" (or the decision card) already is, so the button here is a plain one and the sentence says what resuming does.
-          A goal that was never verified has nothing to verify "again": no block. The way back from a rollback lives on the runs section.
-          With a decision card on the page the card's first option is the one primary action, whatever the state: the block's button steps back. */}
       <Show when={editedSinceVerify()}>
         <Section title={t("goal.next")}>
           <div class="section-cta">
@@ -73,14 +68,15 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
         </Section>
       </Show>
 
-      {/* Ready to accept: the next step is yours, in one line. */}
       <Show when={g().state === "in_review" && !editedSinceVerify()}>
         <Section title={t("goal.next")}>
           <div class="section-cta">
             <Button variant={props.hasDecision ? "default" : "primary"} size="s" kbd="r" onClick={() => go({ name: "review", id: g().id })}>
               {t("goal.reviewUnits", { n: g().diffstat?.files ?? 0 })}
             </Button>
-            <span class="meta">{discountedOf(d().criteria) > 0 ? t("goal.reviewCtaTampered") : g().verified_pin ? t("goal.reviewCtaVerified") : t("goal.reviewCtaUnverified")}</span>
+            <span class="meta">
+              {discountedOf(d().criteria) > 0 ? t("goal.reviewCtaTampered") : g().verified_pin ? t("goal.reviewCtaVerified") : t("goal.reviewCtaUnverified")}
+            </span>
           </div>
         </Section>
       </Show>
@@ -137,12 +133,12 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
       </Show>
 
       <Section title={t("goal.criteria")} aside={<CriteriaBar progress={g().progress} criteria={d().criteria} />}>
-        <For each={d().criteria}>{(c) => <CriterionRow goalId={g().id} c={c} state={g().state} base={d().base_commit} />}</For>
-        {/* Without held-out tests nothing beyond the visible ones can catch work fitted to them: said once, quietly, with the way to set them. */}
+        <For each={d().criteria}>
+          {(c) => <CriterionRow goalId={g().id} c={c as ExtCriterionView} state={g().state} base={d().base_commit} sentinels={d().sentinels} />}
+        </For>
         <Show when={!d().has_held_out_tests && g().progress.machine > 0}>
           <p class="meta held-out-none">
             <NoticeMark />
-            {/* The way to set them follows the sentence's last word, inside the same 72ch measure. */}
             <span>
               {t("goal.noHeldOut")}{" "}
               <button class="link-quiet text-btn" onClick={() => goProjectSetting(g().project_id, "holdout")}>
@@ -189,7 +185,6 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
             </Show>
           }
         >
-          {/* The change readout has its own grid: nothing here is a criterion. */}
           <div class="changes-row num meta">
             <span />
             <span />
@@ -211,7 +206,6 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
         </Show>
       </Section>
 
-      {/* A decision card already says what happens next; the block would only repeat it. */}
       <Show when={!settled() && !props.hasDecision}>
         <Section title={t("goal.next")}>
           <Show when={next()} fallback={<Empty title={t("goal.noNext")} inline>{g().state === "running" ? t("goal.noNextRunning") : t("goal.noNextIdle")}</Empty>}>
@@ -220,9 +214,19 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
         </Section>
       </Show>
 
+      {/* Two-Column Physical Claim vs Fact Honesty Ledger */}
       <Show when={ledger().length}>
         <Section title={t("goal.ledger")} minor>
-          <For each={ledger()}>{(c) => <LedgerRow c={c} testDependent={!!c.criterion && testDependent().has(c.criterion)} />}</For>
+          <div class="honesty-ledger">
+            <div class="ledger-cols-head" aria-hidden="true">
+              <span>{t("honesty.agentSays")}</span>
+              <span class="ledger-link">↔</span>
+              <span><Icon name="harness" size={10} /> Harness Fact</span>
+            </div>
+            <For each={ledger()}>
+              {(c) => <LedgerRow c={c} testDependent={!!c.criterion && testDependent().has(c.criterion)} />}
+            </For>
+          </div>
         </Section>
       </Show>
 
@@ -238,7 +242,6 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
           minor
           aside={
             <span class="meta num row" style={{ gap: "var(--sp-3)" }}>
-              {/* A rollback that can still be undone is said here, where the runs are, with its one way back; no block of its own. */}
               <Show when={props.undoable}>
                 <span class="row" style={{ gap: "var(--sp-2)" }}>
                   <span class="t2">{t("goal.rolledBackState")}</span>
@@ -248,7 +251,6 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
                   </button>
                 </span>
               </Show>
-              {/* The rollback shows on hover of a row; the heading says so, for the keyboard and the eye. */}
               <Show when={!props.undoable && editable(g().state) && d().runs.some((r) => r.ended_at && r.start_pin)}>
                 <span class="t4">{t("goal.rollbackHint")}</span>
               </Show>
@@ -269,27 +271,19 @@ export function GoalBlocks(props: { d: GoalDetail; hasDecision: boolean; undoabl
   );
 }
 
-/** A line of a sentinel's detail that came out of a machine: a path, a command, a runner's indented line. */
 const MACHINE_DETAIL = /^(\s{2,}|[~./]|[\w@.-]+(\/[\w@.-]+)+|\S+\.(js|ts|tsx|jsx|mjs|cjs|py|rs|go|rb|json|ya?ml|toml|lock|sh|txt|snap)\b)/;
 
-/**
- * A sentinel's detail, line by line in the honesty grammar: the supervisor's
- * sentences (why repeated refusals matter, which criteria the canary could not
- * check) in the UI face, wrapping at words; the paths and lines that triggered
- * it in mono, breaking anywhere. One register per line, never per sentinel.
- */
 export function SentinelDetail(props: { text: string }) {
   const lines = () => props.text.split("\n").filter((l, i, all) => l.trim() !== "" || (i > 0 && i < all.length - 1));
   return (
     <div class="sentinel-detail">
       <For each={lines()}>
-        {(line) => (MACHINE_DETAIL.test(line) ? <span class="sentinel-machine code-val">{line}</span> : <span class="sentinel-prose">{line ? <Prose text={line} /> : " "}</span>)}
+        {(line) => (MACHINE_DETAIL.test(line) ? <span class="sentinel-machine code-val">{line}</span> : <span class="sentinel-prose">{line ? <Prose text={line} /> : "\u00a0"}</span>)}
       </For>
     </div>
   );
 }
 
-/** One run; while the goal is paused or in review the workspace can be put back to where it started. */
 function RunRow(props: { goalId: string; r: RunView; editable: boolean; onUndo: () => void }) {
   const r = () => props.r;
   const rollback = async () => {
@@ -301,14 +295,10 @@ function RunRow(props: { goalId: string; r: RunView; editable: boolean; onUndo: 
     });
     if (!ok) return;
     const done = await act(() => api.rollback(props.goalId, r().run_no));
-    // The way back rides on the receipt: a slip costs one click.
     if (done !== undefined) toast("success", t("goal.rolledBack", { n: r().run_no }), { ttl: 8000, action: { label: t("goal.undoRollback"), run: props.onUndo } });
   };
-  // Only runs that recorded their starting snapshot can be rolled back to.
   const can = () => !!(props.editable && r().ended_at && r().start_pin);
   const no = () => `R-${String(r().run_no).padStart(2, "0")}`;
-  // A run you can roll back to is a stop for the keyboard (Tab reaches it in WebKit, where buttons are skipped): selected,
-  // it shows its way back, and ↩ takes it — the pointer's hover is no longer the only way to find it.
   return (
     <div
       class="run-row meta"
@@ -341,23 +331,25 @@ function RunRow(props: { goalId: string; r: RunView; editable: boolean; onUndo: 
 }
 
 function LedgerRow(props: { c: ClaimView; testDependent?: boolean }) {
-  // A claim about a criterion that passes only with edited tests is contradicted by that measurement, whatever the linked fact says.
   const value = () => (props.testDependent ? "contradicted" : props.c.consistency);
   const evidence = () => (props.testDependent ? t("goal.dependsOnEditedTestsLong") : props.c.evidence);
-  // A refuted claim is not set as heavily as one that stands: its kind label steps back a register.
   return (
-    <Claim bare dim={value() === "contradicted"} kind={t("claimKind.criterion_met")} aside={<ConsistencyBadge value={value()} evidence={evidence()} />}>
-      <Show when={props.c.criterion}>
-        <span class="num t3">{props.c.criterion} </span>
-      </Show>
-      {props.c.text}
-      <Show when={evidence()}>
-        <div class="ledger-evidence meta">
-          <Icon name="return" size={10} />
-          {evidence()}
-        </div>
-      </Show>
-    </Claim>
+    <div class="ledger-pair">
+      <div class="ledger-claim-cell" classList={{ dim: value() === "contradicted" }}>
+        <span class="sr-only">{t("honesty.srClaim")} </span>
+        <Show when={props.c.criterion}>
+          <span class="num t3">{props.c.criterion} </span>
+        </Show>
+        <span>{props.c.text}</span>
+      </div>
+      <span class="ledger-link" aria-hidden="true">
+        ↔
+      </span>
+      <div class="ledger-fact-cell" classList={{ "fact-contradicted": value() === "contradicted", "fact-warn": value() === "cannot_confirm" || value() === "stale" }}>
+        <ConsistencyBadge value={value()} evidence={evidence()} />
+        <Show when={evidence()}><span class="ledger-fact-ev">{evidence()}</span></Show>
+      </div>
+    </div>
   );
 }
 

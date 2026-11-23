@@ -9,4 +9,4 @@ pub mod engine;
 pub mod protocol;
 
 pub use engine::{Engine, EngineConfig, EngineError, EngineOutput};
-pub use protocol::{PiEvent, Response, UiAnswer, UiRequest, message_text, result_text};
+pub use protocol::{ImageAttachment, PiEvent, Response, UiAnswer, UiRequest, message_text, result_text};

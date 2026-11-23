@@ -8,6 +8,7 @@ import type { Overlap } from "./Overlap";
 import type { PauseReason } from "./PauseReason";
 import type { PrView } from "./PrView";
 import type { Progress } from "./Progress";
+import type { SandboxTier } from "./SandboxTier";
 
 export type GoalSummary = { id: string, project_id: string, project_name: string, title: string, state: LifecycleState, pause_reason: PauseReason | null, mode: Mode, live_line: LiveLine | null, progress: Progress, diffstat: DiffStat | null, cost_usd: number, budget: Budget, run_no: number, rework_cycles: number, max_rework: number, 
 /**
@@ -28,6 +29,19 @@ overlaps: Array<Overlap>,
  */
 pr: PrView | null, 
 /**
- * The goal's engine (`pi` or `claude-code`); empty means the default.
+ * The goal's engine (`pi`, `claude-code`, `codex`, `gemini-cli`, `opencode`);
+ * empty means the default.
  */
-engine: string, };
+engine: string, 
+/**
+ * Execution sandbox isolation tier.
+ */
+sandbox_tier: SandboxTier, 
+/**
+ * Allocated loopback port block base (10 ports `base..base+10`) when active.
+ */
+port_base?: number, 
+/**
+ * Prerequisite goal IDs this goal depends on.
+ */
+depends_on: Array<string>, };

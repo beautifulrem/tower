@@ -1024,14 +1024,16 @@ async fn probing_outside_the_workspace_is_reported() {
 /// goal, a settings change, a free slot) starts it again.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_scheduler_never_restarts_a_goal_you_paused() {
-    let h = harness("idle").await;
+    let h = harness("hold").await;
     let id = create(&h).await;
-    wait_for(&h, &id, |g| g.state == LifecycleState::Running).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::Running && g.needs_you > 0).await;
     h.sup.pause(&id).await.unwrap();
     let runs = h.sup.goal(&id).unwrap().summary.run_no;
-    // Wake the scheduler every way a user can.
+    // Wake the scheduler every way a user can: settings change, new goal, freed slot.
     h.sup.save_settings(Settings { max_concurrent: 4, ..h.sup.settings() }).unwrap();
-    let _other = create(&h).await;
+    let other = create(&h).await;
+    wait_for(&h, &other, |g| g.state == LifecycleState::Running).await;
+    h.sup.pause(&other).await.unwrap();
     tokio::time::sleep(Duration::from_millis(1500)).await;
     let g = h.sup.goal(&id).unwrap().summary;
     assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::Human)));

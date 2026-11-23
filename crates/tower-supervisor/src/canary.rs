@@ -122,16 +122,17 @@ fn mutate(path: &str, text: &str, ran: &Path, survived: &Path) -> Option<String>
     if !js && !py && !rs {
         return None;
     }
-    // In a Rust source, only the test module (after `#[cfg(test)]`).
-    let mut in_tests = !rs || tower_core::roles::role(path) == tower_core::roles::Role::Test;
+    // In a Rust source, only inline test spans identified by tree-sitter AST
+    // (never production code appearing before or after a `#[cfg(test)]` block).
+    let rs_test_file = rs && tower_core::roles::role(path) == tower_core::roles::Role::Test;
+    let rs_spans = if rs && !rs_test_file { tower_ast::rust_test_spans(text) } else { Vec::new() };
     let global = if matches!(ext, "ts" | "mts" | "cts" | "tsx") { "(globalThis as any)" } else { "globalThis" };
     let mut changed = 0;
     let mut out = String::with_capacity(text.len() + 1024);
-    for line in text.split_inclusive('\n') {
+    for (idx, line) in text.split_inclusive('\n').enumerate() {
+        let line_no = idx + 1;
         let (body, nl) = line.strip_suffix('\n').map_or((line, ""), |b| (b, "\n"));
-        if body.trim_start().starts_with("#[cfg(test)]") {
-            in_tests = true;
-        }
+        let in_tests = !rs || rs_test_file || rs_spans.iter().any(|s| line_no >= s.start_line && line_no <= s.end_line);
         let next = if changed >= 20 || !in_tests || LOOSE.iter().any(|l| body.contains(l)) {
             None
         } else if rs {

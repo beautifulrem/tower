@@ -11,14 +11,14 @@
  * j/k walk one list through both; ↩ opens; r reviews. The same page reads
  * at 0 goals (one statement and a way to start), at 1 and at 12.
  */
-import { For, Show, createComputed, createEffect, createMemo, createSignal, lazy, on, onCleanup } from "solid-js";
+import { For, Show, Suspense, createComputed, createEffect, createMemo, createSignal, lazy, on, onCleanup } from "solid-js";
 
 import { DecisionCard, DecisionLine, chooseOption } from "../components/DecisionCard";
 import { DemoButton } from "../components/Demo";
 import { Icon } from "../components/Glyph";
 import { GoalRow } from "../components/GoalRow";
 import { BaseTestsNotice } from "../components/TestCheck";
-import { Button, Empty, Select } from "../components/ui";
+import { Button, Empty, Kbd, Select } from "../components/ui";
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
@@ -32,8 +32,10 @@ import { spaceMs } from "../lib/motion";
 import { go } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 
-// The first-run screen is reached once; it loads then, not at every launch.
-const Welcome = lazy(withLater(() => import("./Welcome").then((m) => ({ default: m.Welcome }))));
+// The first-run screen and Space quick-peek drawer load only on demand, keeping start-up JS lean.
+const loadShell = () => import("./Learning");
+const Welcome = lazy(withLater(() => loadShell().then((m) => ({ default: m.Welcome }))));
+const PeekDrawer = lazy(withLater(() => loadShell().then((m) => ({ default: m.PeekDrawer }))));
 
 const ORDER: Group[] = ["running", "verifying", "review", "ready", "paused", "done"];
 const FILTER_KEY = "tower.overviewProject";
@@ -43,6 +45,7 @@ type Item = { kind: "decision"; id: string; item: InboxItem } | { kind: "goal"; 
 
 export function Overview() {
   const [selected, setSelected] = createSignal<string | null>(null);
+  const [peeking, setPeeking] = createSignal<string | null>(null);
   const [project, setProject] = createSignal(localStorage.getItem(FILTER_KEY) ?? ALL);
   const pickProject = (id: string) => {
     setProject(id);
@@ -123,6 +126,19 @@ export function Overview() {
     const c = current();
     if (c?.kind === "goal" && c.goal.diffstat) go({ name: "review", id: c.id });
   };
+  const peekGoal = (id: string) => {
+    setSelected(id);
+    setPeeking((cur) => (cur === id ? null : id));
+  };
+  const peekCurrent = () => {
+    const c = current();
+    if (c?.kind === "goal") peekGoal(c.id);
+  };
+  const closePeek = () => {
+    const id = peeking();
+    setPeeking(null);
+    if (id) document.querySelector<HTMLElement>(`[data-goal="${id}"] .g-title`)?.focus({ preventScroll: true });
+  };
   const pick = (n: number) => {
     const c = current();
     if (c?.kind === "decision") void chooseOption(c.item, n);
@@ -134,6 +150,7 @@ export function Overview() {
       { key: "k", run: () => move(-1) },
       { key: "arrowdown", run: () => move(1) },
       { key: "arrowup", run: () => move(-1) },
+      { key: "space", run: peekCurrent, desc: () => t("keys.peekSelected"), when: () => current()?.kind === "goal" },
       { key: "enter", run: openCurrent, desc: () => t("keys.open") },
       { key: "r", run: reviewCurrent, desc: () => t("keys.reviewSelected") },
       { key: "/", run: () => document.querySelector<HTMLInputElement>(".quick-input")?.focus(), desc: () => t("keys.quick") },
@@ -206,6 +223,9 @@ export function Overview() {
               </div>
             </section>
           </Show>
+          <Show when={groups().length > 0}>
+            <BoardCols class="flight-strip-head" />
+          </Show>
           <For each={groups()}>
             {(grp) => (
               <section class="board-group">
@@ -217,7 +237,7 @@ export function Overview() {
                   <For each={grp.goals}>
                     {(g) => (
                       <div role="listitem">
-                        <GoalRow goal={g} selected={selected() === g.id} onSelect={() => setSelected(g.id)} />
+                        <GoalRow goal={g} selected={selected() === g.id} onSelect={() => setSelected(g.id)} onPeek={() => peekGoal(g.id)} />
                       </div>
                     )}
                   </For>
@@ -225,6 +245,27 @@ export function Overview() {
               </section>
             )}
           </For>
+          <p class="key-hints board-keys halt" aria-hidden="true">
+            <span>
+              <Kbd k="j k" /> {t("inbox.keyMove")}
+            </span>
+            <span>
+              <Kbd k="space" /> {t("overview.keyPeek")}
+            </span>
+            <span>
+              <Kbd k="enter" /> {t("common.open")}
+            </span>
+            <span>
+              <Kbd k="r" /> {t("goal.review")}
+            </span>
+          </p>
+        </Show>
+        <Show when={peeking()}>
+          {(id) => (
+            <Suspense>
+              <PeekDrawer goalId={id()} onClose={closePeek} />
+            </Suspense>
+          )}
         </Show>
       </div>
     </Show>
@@ -245,19 +286,25 @@ const GHOST_ROWS: number[][] = [
  * with no departures yet — and the rows are hollow (the "not yet" segment,
  * the draft ring), never pretend data.
  */
+function BoardCols(props: { class: string }) {
+  return (
+    <div class={`g-row ${props.class} halt`} aria-hidden="true">
+      <span />
+      <span>{t("overview.colGoal")}</span>
+      <span>{t("overview.colLive")}</span>
+      <span>{t("overview.colCriteria")}</span>
+      <span class="g-diff">{t("overview.colChange")}</span>
+      <span class="g-spend">{t("overview.colSpend")}</span>
+      <span class="g-age">{t("overview.colAge")}</span>
+      <span class="g-id">{t("overview.colIdentity")}</span>
+    </div>
+  );
+}
+
 function BoardGhost() {
   return (
     <div class="board-ghost" aria-hidden="true">
-      <div class="g-row board-ghost-head halt">
-        <span />
-        <span>{t("overview.colGoal")}</span>
-        <span>{t("overview.colLive")}</span>
-        <span>{t("overview.colCriteria")}</span>
-        <span class="g-diff">{t("overview.colChange")}</span>
-        <span class="g-spend">{t("overview.colSpend")}</span>
-        <span class="g-age">{t("overview.colAge")}</span>
-        <span class="g-id">{t("overview.colIdentity")}</span>
-      </div>
+      <BoardCols class="board-ghost-head" />
       <For each={GHOST_ROWS}>
         {(w) => (
           <div class="g-row board-ghost-row">

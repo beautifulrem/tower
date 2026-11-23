@@ -1,39 +1,38 @@
 #!/usr/bin/env node
 /**
- * tower-goal ACP bridge: runs an Agent Client Protocol agent (e.g. Claude
- * Code through `claude-agent-acp`) behind Pi's RPC protocol, so Tower
- * supervises it exactly as it supervises Pi.
+ * tower-goal generic ACP bridge: runs any Agent Client Protocol agent
+ * (Claude Code, Codex CLI, Gemini CLI, OpenCode, or custom ACP adapters)
+ * behind Pi's RPC protocol, so Tower supervises every engine uniformly.
  *
- * The trust model stays Tower's, not the agent's:
- * - the agent gets no built-in tools at all (`tools: []`, no settings,
- *   hooks or MCP servers from the user or the repository);
- * - its only tools are this script's MCP server (`--mcp` mode): read,
- *   write, edit and bash run under the goal's Seatbelt profile with the
- *   contract's scope and autonomy gate (policy.ts, sandboxfs.ts), and
- *   ask_user, log and submit reach Tower as Pi extension dialogs and tool
- *   events;
- * - the agent process itself (which holds its own login) is not sandboxed,
- *   like Pi.
+ * Trust Gate invariants (`docs/18-evolution-roadmap.md` P1.1):
+ * - Engine profiles (`engines.ts`) apply strict built-in disabling / sandbox
+ *   confinement per engine and classify each engine's trust level (`full_s2`,
+ *   `restricted_s2`, `experimental`).
+ * - `session/request_permission` fails closed via `evaluatePermission`: only
+ *   Tower's 7 registered MCP tools (`mcp__tower__*`) are allowed; any attempt
+ *   to invoke a built-in or non-Tower tool is rejected AND emitted as an
+ *   audit event (`tower_trust_gate_denied`) to Tower's trace.
+ * - All 7 tools (`read`, `write`, `edit`, `bash`, `ask_user`, `log`, `submit`)
+ *   run via this script's `--mcp` server under the goal's Seatbelt profile,
+ *   contract scope fence, and structured shell policy.
  *
  * Modes:
- *   acp.ts [pi flags]   the bridge: Pi RPC on stdio, the agent as a child
- *   acp.ts --mcp        the MCP server the agent starts; talks to the
- *                       bridge over a Unix socket (TOWER_BRIDGE_SOCKET)
+ *   acp.ts [pi flags]   the bridge: Pi RPC on stdio, the ACP agent as a child
+ *   acp.ts --mcp        the MCP server the agent starts; talks to the bridge
+ *                       over a Unix socket (TOWER_BRIDGE_SOCKET)
  *   acp.ts --version
- *
- * Environment: TOWER_ACP_AGENT (the agent command, e.g. `claude-agent-acp`),
- * plus the variables of index.ts (TOWER_WORKSPACE, TOWER_CONTRACT,
- * TOWER_SANDBOX_PROFILE, TOWER_TMP, TOWER_LANG, TOWER_NETWORK).
  */
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, connect, type Socket } from "node:net";
+import { type Socket, connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { ACP_TOOLS, type ImageInput, type Json, buildPromptBlocks, parseImages } from "./acp_tools.ts";
+import { engineProfile } from "./engines.ts";
 import {
 	type Autonomy,
 	type Scope,
@@ -41,19 +40,21 @@ import {
 	checkBash,
 	checkRead,
 	checkWrite,
+	evaluatePermission,
 	isAllow,
 	langOf,
-	permissionOutcome,
 	sandboxed,
 	scrubEnv,
 } from "./policy.ts";
 import { sandboxedOperations } from "./sandboxfs.ts";
 
-const VERSION = "tower-acp-bridge 0.1";
+const VERSION = "tower-acp-bridge 0.2";
+const TOWER_MCP_SERVER_NAME = "tower";
 
-// ---- shared ---------------------------------------------------------------
-
-type Json = Record<string, unknown>;
+interface QueuedTurn {
+	message: string;
+	images: ImageInput[];
+}
 
 function lines(stream: NodeJS.ReadableStream, onLine: (line: string) => void) {
 	createInterface({ input: stream, crlfDelay: Number.POSITIVE_INFINITY }).on("line", (l) => {
@@ -69,20 +70,30 @@ function parse(line: string): Json | null {
 	}
 }
 
+function realOrSelf(p: string): string {
+	try {
+		return realpathSync(p);
+	} catch {
+		return p;
+	}
+}
+
 // ---- MCP server (runs inside the agent's process tree) -------------------
 
-const WORKSPACE = (() => {
-	const w = process.env.TOWER_WORKSPACE ?? process.cwd();
-	try {
-		return realpathSync(w);
-	} catch {
-		return w;
-	}
-})();
+const WORKSPACE = realOrSelf(process.env.TOWER_WORKSPACE ?? process.cwd());
 const PROFILE = process.env.TOWER_SANDBOX_PROFILE;
 const AGENT_TMP = process.env.TOWER_TMP;
+const ATTACHMENTS_DIR = process.env.TOWER_ATTACHMENTS_DIR;
 const LANG = langOf(process.env.TOWER_LANG);
 const NETWORK = process.env.TOWER_NETWORK === "1";
+
+function allowedReadRoots(): string[] {
+	return [
+		WORKSPACE,
+		...(AGENT_TMP ? [realOrSelf(AGENT_TMP)] : []),
+		...(ATTACHMENTS_DIR ? [realOrSelf(ATTACHMENTS_DIR)] : []),
+	];
+}
 
 interface ContractFile {
 	autonomy: Autonomy;
@@ -106,122 +117,14 @@ function loadContract(): ContractFile {
 
 function absolute(raw: string): string {
 	const p = isAbsolute(raw) ? raw : resolve(WORKSPACE, raw);
-	// Resolve symlinks in the deepest existing ancestor.
 	let existing = p;
 	const rest: string[] = [];
 	while (!existsSync(existing) && dirname(existing) !== existing) {
 		rest.unshift(existing.slice(dirname(existing).length + 1));
 		existing = dirname(existing);
 	}
-	try {
-		existing = realpathSync(existing);
-	} catch {
-		// keep as is
-	}
-	return [existing, ...rest].join("/");
+	return [realOrSelf(existing), ...rest].join("/");
 }
-
-const TOOLS = [
-	{
-		name: "read",
-		description: "Read a file of the workspace. Returns numbered lines; use offset/limit for long files.",
-		inputSchema: {
-			type: "object",
-			properties: {
-				path: { type: "string" },
-				offset: { type: "number", description: "1-based first line" },
-				limit: { type: "number", description: "number of lines" },
-			},
-			required: ["path"],
-		},
-	},
-	{
-		name: "write",
-		description: "Create or overwrite a file of the workspace with the given content.",
-		inputSchema: {
-			type: "object",
-			properties: { path: { type: "string" }, content: { type: "string" } },
-			required: ["path", "content"],
-		},
-	},
-	{
-		name: "edit",
-		description:
-			"Edit a file by exact replacement. Each oldText must occur exactly once in the file; give enough context to make it unique.",
-		inputSchema: {
-			type: "object",
-			properties: {
-				path: { type: "string" },
-				edits: {
-					type: "array",
-					items: {
-						type: "object",
-						properties: { oldText: { type: "string" }, newText: { type: "string" } },
-						required: ["oldText", "newText"],
-					},
-				},
-			},
-			required: ["path", "edits"],
-		},
-	},
-	{
-		name: "bash",
-		description:
-			"Run a shell command in the workspace (sandboxed: no credentials; network only if the goal allows it). Returns combined output and the exit code.",
-		inputSchema: {
-			type: "object",
-			properties: { command: { type: "string" }, timeout: { type: "number", description: "seconds, default 120" } },
-			required: ["command"],
-		},
-	},
-	{
-		name: "ask_user",
-		description:
-			"Ask the human supervising this goal a question and wait for the answer. Use it for decisions the contract leaves open, not for status updates.",
-		inputSchema: {
-			type: "object",
-			properties: {
-				question: { type: "string" },
-				options: { type: "array", items: { type: "string" } },
-				why: { type: "string" },
-			},
-			required: ["question"],
-		},
-	},
-	{
-		name: "log",
-		description:
-			"Record something the human should see on the goal page: a cause you found, a decision and its reason, an assumption that needs confirming, or your next step. One sentence.",
-		inputSchema: {
-			type: "object",
-			properties: {
-				kind: { type: "string", enum: ["cause", "decision", "assumption", "next", "progress"] },
-				text: { type: "string" },
-			},
-			required: ["kind", "text"],
-		},
-	},
-	{
-		name: "submit",
-		description:
-			"Call once when you believe every acceptance criterion is met. Tower re-runs the criteria in a clean checkout; your word alone does not complete the goal. Stop working after submitting.",
-		inputSchema: {
-			type: "object",
-			properties: {
-				summary: { type: "string" },
-				criteria: {
-					type: "array",
-					items: {
-						type: "object",
-						properties: { id: { type: "string" }, met: { type: "boolean" }, evidence: { type: "string" } },
-						required: ["id", "met", "evidence"],
-					},
-				},
-			},
-			required: ["summary", "criteria"],
-		},
-	},
-];
 
 /** A request to the bridge over the socket, answered by `id`. */
 function bridgeClient(path: string) {
@@ -316,7 +219,7 @@ async function mcpServer() {
 		switch (name) {
 			case "read": {
 				const abs = absolute(String(args.path ?? ""));
-				if (!PROFILE && !checkRead([WORKSPACE, ...(AGENT_TMP ? [AGENT_TMP] : [])], abs)) {
+				if (!PROFILE && !checkRead(allowedReadRoots(), abs)) {
 					return { text: `${args.path} is outside this goal's workspace.`, error: true };
 				}
 				const all = (await readFile(abs)).toString("utf8").split("\n");
@@ -367,11 +270,15 @@ async function mcpServer() {
 			}
 			case "log":
 				return { text: "Logged." };
-			case "submit":
+			case "submit": {
+				const blocked = String(args.outcome ?? "done").toLowerCase() === "blocked";
 				return {
-					text: "Submitted. Tower will verify the criteria in a clean checkout. Stop now; do not continue unless asked.",
+					text: blocked
+						? "Blocked report received. Tower will pause this goal and ask the human for guidance. Stop now; do not continue unless asked."
+						: "Submitted. Tower will verify the criteria in a clean checkout. Stop now; do not continue unless asked.",
 					stop: true,
 				};
+			}
 			default:
 				return { text: `Unknown tool ${name}`, error: true };
 		}
@@ -390,11 +297,11 @@ async function mcpServer() {
 				result: {
 					protocolVersion: params.protocolVersion ?? "2025-06-18",
 					capabilities: { tools: {} },
-					serverInfo: { name: "tower", version: VERSION },
+					serverInfo: { name: TOWER_MCP_SERVER_NAME, version: VERSION },
 				},
 			});
 		} else if (m.method === "tools/list") {
-			out({ id, result: { tools: TOOLS } });
+			out({ id, result: { tools: ACP_TOOLS } });
 		} else if (m.method === "tools/call") {
 			const name = String(params.name ?? "");
 			const args = (params.arguments ?? {}) as Json;
@@ -425,18 +332,18 @@ function flag(name: string): string | undefined {
 async function bridgeMain() {
 	const agentCommand = process.env.TOWER_ACP_AGENT;
 	if (!agentCommand) throw new Error("TOWER_ACP_AGENT is not set");
+	const engine = engineProfile(process.env.TOWER_ENGINE);
 	const sessionDir = flag("--session-dir") ?? tmpdir();
 	const resumeFile = flag("--session");
 	const model = flag("--model");
 	const appendPrompt = flag("--append-system-prompt");
 	mkdirSync(sessionDir, { recursive: true });
-	const sessionFile = resumeFile ?? join(sessionDir, `acp-${Date.now()}.json`);
+	const sessionFile = resumeFile ?? join(sessionDir, `acp-${engine.id}-${Date.now()}.json`);
 
 	const emit = (m: Json) => process.stdout.write(`${JSON.stringify(m)}\n`);
 	const respond = (id: unknown, command: string, data: Json = {}, success = true, error?: string) =>
 		emit({ id, type: "response", command, success, data, ...(error ? { error } : {}) });
 
-	// Dialogs to Tower (Pi extension UI requests), answered by id.
 	const dialogs = new Map<string, (answer: string | undefined) => void>();
 	let dialogSeq = 0;
 	const dialog = (method: "select" | "input", title: string, options: string[]): Promise<string | undefined> => {
@@ -447,9 +354,6 @@ async function bridgeMain() {
 		});
 	};
 
-	// The MCP server (a grandchild) reaches us over a socket.
-	// A private directory (sockets have a ~104-byte path limit, so not under
-	// the goal's deep tmp).
 	const socketPath = join(mkdtempSync(join(tmpdir(), "tower-")), "bridge.sock");
 	const server = createServer((sock) => {
 		lines(sock, async (l) => {
@@ -502,12 +406,9 @@ async function bridgeMain() {
 	};
 	process.on("exit", cleanup);
 
-	// The agent, speaking ACP (JSON-RPC 2.0) on its stdio.
 	const agent = spawn("/bin/sh", ["-c", agentCommand], {
 		cwd: WORKSPACE,
-		// Not the connectors of your claude.ai account either: Tower's MCP
-		// server is the agent's only way to act.
-		env: { ...process.env, ENABLE_CLAUDEAI_MCP_SERVERS: "false" },
+		env: { ...process.env, ...engine.envOverrides },
 		stdio: ["pipe", "pipe", "inherit"],
 	});
 	agent.on("exit", (code) => {
@@ -530,7 +431,8 @@ async function bridgeMain() {
 	let cost = 0;
 	let text = "";
 	let loading = false;
-	const queue: string[] = [];
+	let unauthorizedAttempts = 0;
+	const queue: QueuedTurn[] = [];
 
 	lines(agent.stdout, (l) => {
 		const m = parse(l);
@@ -554,7 +456,6 @@ async function bridgeMain() {
 					emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: c.text } });
 				}
 			}
-			// Spend, when the agent reports it (ACP `usage_update`).
 			if (u.sessionUpdate === "usage_update") {
 				const c = (u.cost ?? {}) as Json;
 				if (typeof c.amount === "number" && (c.currency ?? "USD") === "USD") cost = c.amount;
@@ -562,7 +463,19 @@ async function bridgeMain() {
 			return;
 		}
 		if (m.method === "session/request_permission") {
-			send({ id: m.id, result: { outcome: permissionOutcome(params) } });
+			const decision = evaluatePermission(params, TOWER_MCP_SERVER_NAME);
+			send({ id: m.id, result: { outcome: decision.outcome } });
+			if (!decision.allowed) {
+				unauthorizedAttempts++;
+				emit({
+					type: "tower_trust_gate_denied",
+					engine: engine.id,
+					trustLevel: engine.trustLevel,
+					tool: decision.toolName,
+					reason: decision.reason,
+					attempts: unauthorizedAttempts,
+				});
+			}
 			return;
 		}
 		if (m.id !== undefined) send({ id: m.id, error: { code: -32601, message: `Tower does not offer ${m.method}` } });
@@ -572,34 +485,23 @@ async function bridgeMain() {
 		protocolVersion: 1,
 		clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
 	});
-	const canLoad = !!((init.agentCapabilities ?? {}) as Json).loadSession;
+	const agentCaps = (init.agentCapabilities ?? {}) as Json;
+	const canLoad = !!agentCaps.loadSession;
+	const promptCaps = (agentCaps.promptCapabilities ?? {}) as Json;
+	const supportsImageBlocks = promptCaps.image !== false;
 
 	const towerEnv = Object.entries(process.env)
 		.filter(([k]) => k.startsWith("TOWER_"))
 		.map(([name, value]) => ({ name, value: String(value) }));
 	const mcpServers = [
 		{
-			name: "tower",
+			name: TOWER_MCP_SERVER_NAME,
 			command: process.execPath,
-			// A path, not a URL path: `%20` is not a space.
 			args: [fileURLToPath(import.meta.url), "--mcp"],
 			env: [...towerEnv, { name: "TOWER_BRIDGE_SOCKET", value: socketPath }, { name: "PATH", value: process.env.PATH ?? "" }],
 		},
 	];
-	const meta = {
-		systemPrompt: appendPrompt,
-		claudeCode: {
-			options: {
-				// No built-in tools, settings, hooks or user MCP servers: every
-				// action goes through Tower's MCP server.
-				tools: [],
-				settingSources: [],
-				strictMcpConfig: true,
-				...(model && !model.includes("/") ? { model } : {}),
-				...(appendPrompt ? { systemPrompt: { type: "preset", preset: "claude_code", append: appendPrompt } } : {}),
-			},
-		},
-	};
+	const meta = engine.buildSessionMeta({ model, appendPrompt, serverName: TOWER_MCP_SERVER_NAME });
 
 	async function ensureSession() {
 		if (sessionId) return;
@@ -619,21 +521,22 @@ async function bridgeMain() {
 		}
 		const r = await request("session/new", { cwd: WORKSPACE, mcpServers, _meta: meta });
 		sessionId = r.sessionId as string;
-		writeFileSync(sessionFile, JSON.stringify({ sessionId }));
+		writeFileSync(sessionFile, JSON.stringify({ sessionId, engine: engine.id, trustLevel: engine.trustLevel }));
 	}
 
-	async function turn(message: string) {
+	async function turn(first: QueuedTurn) {
 		busy = true;
 		submitted = false;
 		emit({ type: "agent_start" });
-		let next: string | undefined = message;
+		let next: QueuedTurn | undefined = first;
 		while (next !== undefined) {
 			emit({ type: "turn_start" });
 			text = "";
 			let stopReason = "end_turn";
 			let error: string | undefined;
 			try {
-				const r = await request("session/prompt", { sessionId, prompt: [{ type: "text", text: next }] });
+				const prompt = buildPromptBlocks(next.message, next.images, supportsImageBlocks, allowedReadRoots(), absolute);
+				const r = await request("session/prompt", { sessionId, prompt });
 				stopReason = String(r.stopReason ?? "end_turn");
 				const usage = ((r._meta ?? {}) as Json).usage as Json | undefined;
 				if (usage && typeof usage.costUsd === "number") cost = usage.costUsd;
@@ -666,10 +569,17 @@ async function bridgeMain() {
 		try {
 			switch (t) {
 				case "get_state":
-					respond(id, t, { sessionFile, sessionId: sessionId ?? "", isStreaming: busy });
+					respond(id, t, {
+						sessionFile,
+						sessionId: sessionId ?? "",
+						isStreaming: busy,
+						engine: engine.id,
+						trustLevel: engine.trustLevel,
+						unauthorizedToolAttempts: unauthorizedAttempts,
+					});
 					break;
 				case "get_session_stats":
-					respond(id, t, { cost });
+					respond(id, t, { cost, unauthorizedToolAttempts: unauthorizedAttempts });
 					break;
 				case "get_available_models":
 					respond(id, t, { models: [] });
@@ -677,19 +587,21 @@ async function bridgeMain() {
 				case "prompt":
 					await ensureSession();
 					respond(id, t, { disposition: "started" });
-					void turn(String(cmd.message ?? ""));
+					void turn({ message: String(cmd.message ?? ""), images: parseImages(cmd.images) });
 					break;
 				case "steer":
-				case "follow_up":
+				case "follow_up": {
+					const payload: QueuedTurn = { message: String(cmd.message ?? ""), images: parseImages(cmd.images) };
 					if (busy) {
-						queue.push(String(cmd.message ?? ""));
+						queue.push(payload);
 						respond(id, t, { disposition: "queued" });
 					} else {
 						await ensureSession();
 						respond(id, t, { disposition: "started" });
-						void turn(String(cmd.message ?? ""));
+						void turn(payload);
 					}
 					break;
+				}
 				case "abort":
 					queue.length = 0;
 					if (sessionId) send({ method: "session/cancel", params: { sessionId } });

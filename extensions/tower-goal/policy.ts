@@ -1,8 +1,11 @@
 /**
- * Pure policy for the tower-goal extension: the contract's scope fence and
- * the autonomy matrix (docs/11 §11.2). No Pi imports, so it can be tested
- * with `node --test`.
+ * Pure policy for the tower-goal extension: the contract's scope fence,
+ * structured shell-parser autonomy matrix (`docs/11` §11.2, `docs/18` P1.3),
+ * and the ACP Engine Onboarding Trust Gate (`docs/18` P1.1).
+ * No Pi imports, so it can be tested directly with `node --test`.
  */
+
+import { type Pipeline, type SimpleCommand, parseShell } from "./shell_parse.ts";
 
 export type Autonomy = "cautious" | "standard" | "autonomous";
 
@@ -107,44 +110,264 @@ export function normalize(p: string): string {
 
 export type BashVerdict = { action: "allow" } | { action: "ask"; reason: Text };
 
-const ADD_DEPENDENCY: Text = { zh: "新增依赖", en: "add a dependency" };
+const REASON = {
+	push: { zh: "推送到远端（单向门）", en: "push to a remote (one-way door)" },
+	publish: { zh: "发布包（单向门）", en: "publish a package (one-way door)" },
+	gh: { zh: "在 GitHub 上创建或合并（单向门）", en: "create or merge on GitHub (one-way door)" },
+	resetHard: { zh: "丢弃工作区改动", en: "discard workspace changes" },
+	gitClean: { zh: "删除未跟踪文件", en: "delete untracked files" },
+	gitHistory: { zh: "改变分支或历史", en: "change branches or history" },
+	sudo: { zh: "以管理员权限运行", en: "run as administrator" },
+	rmRoot: { zh: "删除根目录或主目录", en: "delete the root or home directory" },
+	pipeExec: { zh: "下载并执行脚本", en: "download and run a script" },
+	addDep: { zh: "新增依赖", en: "add a dependency" },
+	ciConfig: { zh: "修改 CI 配置", en: "change CI configuration" },
+	rmRecursive: { zh: "递归删除", en: "delete recursively" },
+	cautious: { zh: "谨慎模式：运行非只读命令", en: "cautious mode: a command that is not read-only" },
+	cautiousRedirect: { zh: "谨慎模式：命令包含文件写入重定向", en: "cautious mode: command writes via file redirection" },
+	cautiousSub: { zh: "谨慎模式：命令包含子命令替换或内联脚本", en: "cautious mode: command uses substitution or an inline script" },
+} satisfies Record<string, Text>;
 
-/** One-way doors: always ask, whatever the preset (docs/11 §11.4). */
-const ONE_WAY: Array<[RegExp, Text]> = [
-	[/\bgit\s+push\b/, { zh: "推送到远端（单向门）", en: "push to a remote (one-way door)" }],
-	[/\b(npm|pnpm|yarn|cargo|gem|twine)\s+publish\b/, { zh: "发布包（单向门）", en: "publish a package (one-way door)" }],
-	[
-		/\bgh\s+(pr|release|repo)\s+(create|merge|delete)\b/,
-		{ zh: "在 GitHub 上创建或合并（单向门）", en: "create or merge on GitHub (one-way door)" },
-	],
-	[/\bgit\s+reset\s+--hard\b/, { zh: "丢弃工作区改动", en: "discard workspace changes" }],
-	[/\bgit\s+clean\s+-[a-z]*f/, { zh: "删除未跟踪文件", en: "delete untracked files" }],
-	[/\bgit\s+(checkout|switch|rebase|branch\s+-D)\b/, { zh: "改变分支或历史", en: "change branches or history" }],
-	[/\bsudo\b/, { zh: "以管理员权限运行", en: "run as administrator" }],
-	[/\brm\s+-[a-z]*r[a-z]*f?\s+(\/|~|\$HOME)(\s|$)/, { zh: "删除根目录或主目录", en: "delete the root or home directory" }],
-	[/\b(curl|wget)\b[^|]*\|\s*(ba|z)?sh\b/, { zh: "下载并执行脚本", en: "download and run a script" }],
-];
+const PUBLISH_TOOLS = new Set(["npm", "pnpm", "yarn", "cargo", "gem", "twine"]);
+const DOWNLOADERS = new Set(["curl", "wget"]);
+const SCRIPT_INTERPRETERS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish", "python", "python3", "node", "perl", "ruby"]);
+const GIT_GLOBAL_VALUE_FLAGS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env"]);
+const CI_PATH_RE = /(?:^|\/)(?:\.github\/workflows(?:\/|$)|\.gitlab-ci(?:\.ya?ml)?$|ci\.ya?ml$)/i;
 
-/** Gated by the standard preset: dependency and CI changes. */
-const STANDARD: Array<[RegExp, Text]> = [
-	[/\b(npm\s+(install|i|add)|pnpm\s+(add|install)|yarn\s+add|bun\s+add)\s+(?!-)[^\s]/, ADD_DEPENDENCY],
-	[/\b(cargo\s+add|pip3?\s+install|uv\s+add|poetry\s+add|go\s+get)\b/, ADD_DEPENDENCY],
-	[/\.github\/workflows|\.gitlab-ci|\bci\.ya?ml\b/, { zh: "修改 CI 配置", en: "change CI configuration" }],
-	[/\brm\s+-[a-z]*r/, { zh: "递归删除", en: "delete recursively" }],
-];
+/** Extracts git's real subcommand & args after skipping global flags (`git -C dir push`). */
+function gitSubcommand(args: string[]): { sub: string; rest: string[]; hasConfigFlag: boolean } {
+	let i = 0;
+	let hasConfigFlag = false;
+	while (i < args.length) {
+		const a = args[i];
+		if (a === "--") {
+			i++;
+			break;
+		}
+		if (a === "-c" || a.startsWith("-c") || a.startsWith("--config-env")) hasConfigFlag = true;
+		if (GIT_GLOBAL_VALUE_FLAGS.has(a)) {
+			i += 2;
+			continue;
+		}
+		if (a.startsWith("-")) {
+			i++;
+			continue;
+		}
+		return { sub: a, rest: args.slice(i + 1), hasConfigFlag };
+	}
+	return { sub: "", rest: [], hasConfigFlag };
+}
 
-/** Commands the cautious preset still runs directly. */
-const READ_ONLY_OR_TEST =
-	/^\s*(ls|cat|head|tail|wc|grep|rg|find|fd|tree|pwd|echo|which|file|stat|diff|git\s+(status|diff|log|show|blame|grep|ls-files)|(npm|pnpm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|check|build)\b|cargo\s+(test|check|clippy|build|fmt\s+--check)|go\s+(test|vet|build)|pytest|tsc\b|node\s+--test)/;
+function hasShortOrLongFlag(args: string[], shortChar: string, longFlags: string[]): boolean {
+	for (const a of args) {
+		if (a === "--") break;
+		if (longFlags.includes(a)) return true;
+		if (a.startsWith("-") && !a.startsWith("--") && a.slice(1).includes(shortChar)) return true;
+	}
+	return false;
+}
+
+function positionalArgs(args: string[]): string[] {
+	const out: string[] = [];
+	let afterDash = false;
+	for (const a of args) {
+		if (!afterDash && a === "--") {
+			afterDash = true;
+			continue;
+		}
+		if (!afterDash && a.startsWith("-")) continue;
+		out.push(a);
+	}
+	return out;
+}
+
+function isRootOrHomeTarget(target: string): boolean {
+	const t = target.trim();
+	return (
+		t === "/" ||
+		t === "/*" ||
+		t === "~" ||
+		t === "~/" ||
+		t === "~/*" ||
+		t === "$HOME" ||
+		t === "$HOME/" ||
+		t === "${HOME}" ||
+		t === "${HOME}/"
+	);
+}
+
+/**
+ * Checks a single command (and, if its command name had escaped whitespace
+ * such as `git\ push`, its whitespace-split view too) against one-way doors.
+ */
+function checkOneWayCommand(cmd: SimpleCommand): Text | null {
+	const candidates: Array<{ name: string; args: string[] }> = [{ name: cmd.name, args: cmd.args }];
+	if (cmd.hasEscapedWhitespaceInName && /\s/.test(cmd.name)) {
+		const split = cmd.name.trim().split(/\s+/);
+		if (split.length > 0) candidates.push({ name: split[0], args: [...split.slice(1), ...cmd.args] });
+	}
+	for (const { name, args } of candidates) {
+		if (name === "sudo" || name === "doas") return REASON.sudo;
+		if (name === "git") {
+			const { sub, rest } = gitSubcommand(args);
+			if (sub === "push") return REASON.push;
+			if (sub === "reset" && rest.includes("--hard")) return REASON.resetHard;
+			if (sub === "clean" && hasShortOrLongFlag(rest, "f", ["--force"])) return REASON.gitClean;
+			if (sub === "checkout" || sub === "switch" || sub === "rebase") return REASON.gitHistory;
+			if (sub === "branch" && hasShortOrLongFlag(rest, "D", ["--delete"])) return REASON.gitHistory;
+		}
+		if (PUBLISH_TOOLS.has(name) && positionalArgs(args)[0] === "publish") return REASON.publish;
+		if (name === "gh") {
+			const pos = positionalArgs(args);
+			if (
+				(pos[0] === "pr" || pos[0] === "release" || pos[0] === "repo") &&
+				(pos[1] === "create" || pos[1] === "merge" || pos[1] === "delete")
+			) {
+				return REASON.gh;
+			}
+		}
+		if (name === "rm") {
+			const recursive = hasShortOrLongFlag(args, "r", ["--recursive"]) || hasShortOrLongFlag(args, "R", []);
+			if (recursive && positionalArgs(args).some(isRootOrHomeTarget)) return REASON.rmRoot;
+		}
+	}
+	return null;
+}
+
+function checkOneWayPipeline(pipe: Pipeline): Text | null {
+	let sawDownloader = false;
+	for (const c of pipe.commands) {
+		if (DOWNLOADERS.has(c.name)) sawDownloader = true;
+		else if (sawDownloader && SCRIPT_INTERPRETERS.has(c.name)) return REASON.pipeExec;
+	}
+	return null;
+}
+
+function checkStandardCommand(cmd: SimpleCommand): Text | null {
+	const { name, args } = cmd;
+	const pos = positionalArgs(args);
+	if ((name === "npm" && (pos[0] === "install" || pos[0] === "i" || pos[0] === "add") && pos.length >= 2) ||
+		(name === "pnpm" && (pos[0] === "add" || pos[0] === "install" || pos[0] === "i") && pos.length >= 2) ||
+		((name === "yarn" || name === "bun") && pos[0] === "add" && pos.length >= 2)) {
+		return REASON.addDep;
+	}
+	if (
+		(name === "cargo" && pos[0] === "add") ||
+		((name === "pip" || name === "pip3") && pos[0] === "install") ||
+		((name === "uv" || name === "poetry") && pos[0] === "add") ||
+		(name === "go" && pos[0] === "get")
+	) {
+		return REASON.addDep;
+	}
+	if (args.some((a) => CI_PATH_RE.test(a)) || cmd.redirects.some((r) => CI_PATH_RE.test(r.target))) {
+		return REASON.ciConfig;
+	}
+	if (name === "rm" && (hasShortOrLongFlag(args, "r", ["--recursive"]) || hasShortOrLongFlag(args, "R", []))) {
+		return REASON.rmRecursive;
+	}
+	return null;
+}
+
+const PURE_READ_ONLY = new Set([
+	"ls",
+	"cat",
+	"head",
+	"tail",
+	"wc",
+	"grep",
+	"egrep",
+	"fgrep",
+	"rg",
+	"fd",
+	"tree",
+	"pwd",
+	"echo",
+	"printf",
+	"which",
+	"file",
+	"stat",
+	"diff",
+	"true",
+	"false",
+	"test",
+	"[",
+	"basename",
+	"dirname",
+	"realpath",
+]);
+
+const FIND_MUTATING = new Set(["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls"]);
+const GIT_READ_ONLY = new Set(["status", "diff", "log", "show", "blame", "grep", "ls-files", "rev-parse", "describe"]);
+const PKG_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
+const PKG_SAFE_SCRIPTS = new Set(["test", "lint", "typecheck", "check", "build"]);
+
+function isReadOnlyOrTestCommand(cmd: SimpleCommand): boolean {
+	if (cmd.inlineScript || cmd.hasDynamicName) return false;
+	if (cmd.wrappers.includes("exec") || cmd.wrappers.includes("xargs")) return false;
+	const { name, args } = cmd;
+	if (PURE_READ_ONLY.has(name)) return true;
+	if (name === "command") {
+		return args.some((a) => a === "-v" || a === "-V");
+	}
+	if (name === "find") {
+		return !args.some((a) => FIND_MUTATING.has(a));
+	}
+	if (name === "git") {
+		const { sub, hasConfigFlag } = gitSubcommand(args);
+		return !hasConfigFlag && GIT_READ_ONLY.has(sub);
+	}
+	if (PKG_MANAGERS.has(name)) {
+		const pos = positionalArgs(args);
+		if (pos[0] === "run") return PKG_SAFE_SCRIPTS.has(pos[1] ?? "");
+		return PKG_SAFE_SCRIPTS.has(pos[0] ?? "");
+	}
+	if (name === "cargo") {
+		const pos = positionalArgs(args);
+		const sub = pos[0] ?? "";
+		if (sub === "test" || sub === "check" || sub === "clippy" || sub === "build") return true;
+		if (sub === "fmt") return args.includes("--check");
+		return false;
+	}
+	if (name === "go") {
+		const sub = positionalArgs(args)[0] ?? "";
+		return sub === "test" || sub === "vet" || sub === "build";
+	}
+	if (name === "pytest" || name === "tsc") return true;
+	if (name === "node") {
+		return args.includes("--test") && !args.some((a) => a === "-e" || a === "--eval" || a === "-p" || a === "--print");
+	}
+	return false;
+}
 
 export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
-	for (const [re, reason] of ONE_WAY) if (re.test(command)) return { action: "ask", reason };
+	const parsed = parseShell(command);
+
+	for (const pipe of parsed.pipelines) {
+		const reason = checkOneWayPipeline(pipe);
+		if (reason) return { action: "ask", reason };
+	}
+	for (const cmd of parsed.commands) {
+		const reason = checkOneWayCommand(cmd);
+		if (reason) return { action: "ask", reason };
+	}
 	if (autonomy === "autonomous") return { action: "allow" };
-	for (const [re, reason] of STANDARD) if (re.test(command)) return { action: "ask", reason };
+
+	for (const cmd of parsed.commands) {
+		const reason = checkStandardCommand(cmd);
+		if (reason) return { action: "ask", reason };
+	}
 	if (autonomy === "standard") return { action: "allow" };
-	const segments = command.split(/&&|\|\||;|\|/);
-	if (segments.every((s) => READ_ONLY_OR_TEST.test(s))) return { action: "allow" };
-	return { action: "ask", reason: { zh: "谨慎模式：运行非只读命令", en: "cautious mode: a command that is not read-only" } };
+
+	// Cautious preset: fail closed on parse errors, write redirections,
+	// substitutions, dynamic command names, inline scripts, or non-allowlisted commands.
+	if (parsed.parseError) return { action: "ask", reason: REASON.cautious };
+	if (parsed.hasFileWriteRedirection) return { action: "ask", reason: REASON.cautiousRedirect };
+	if (parsed.hasCommandSubstitution || parsed.hasProcessSubstitution || parsed.hasInlineScript || parsed.hasDynamicCommand) {
+		return { action: "ask", reason: REASON.cautiousSub };
+	}
+	if (parsed.commands.length === 0) return { action: "ask", reason: REASON.cautious };
+	if (parsed.commands.every(isReadOnlyOrTestCommand)) return { action: "allow" };
+	return { action: "ask", reason: REASON.cautious };
 }
 
 /** Environment variables that look like credentials never reach the agent's shell. */
@@ -198,19 +421,156 @@ export function withDefaultTimeout<T>(params: T): T {
 	return params;
 }
 
+/** The exact 7 tools Tower exposes through its MCP server (7-tool budget). */
+export const TOWER_TOOLS = new Set(["read", "write", "edit", "bash", "ask_user", "log", "submit"]);
+
+/** Known built-in tool names across Claude Code, Codex, Gemini CLI, and OpenCode. */
+export const KNOWN_BUILTIN_TOOLS = new Set([
+	"bash",
+	"Bash",
+	"read",
+	"Read",
+	"write",
+	"Write",
+	"edit",
+	"Edit",
+	"MultiEdit",
+	"read_file",
+	"write_file",
+	"edit_file",
+	"read_many_files",
+	"replace",
+	"apply_patch",
+	"shell",
+	"local_shell",
+	"exec_command",
+	"run_shell_command",
+	"terminal",
+	"web_fetch",
+	"WebFetch",
+	"webfetch",
+	"web_search",
+	"WebSearch",
+	"google_web_search",
+	"glob",
+	"Glob",
+	"grep",
+	"Grep",
+	"list_directory",
+	"search_file_content",
+	"LS",
+	"NotebookEdit",
+	"Task",
+	"TodoWrite",
+]);
+
+export interface PermissionDecision {
+	allowed: boolean;
+	toolName: string;
+	reason: string;
+	outcome: { outcome: string; optionId?: unknown };
+}
+
+function nonEmptyStr(v: unknown): string | null {
+	return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+}
+
+function isTowerPrefixedTool(name: string, serverName: string): boolean {
+	for (const prefix of [`mcp__${serverName}__`, `${serverName}__`, `${serverName}/`, `${serverName}:`]) {
+		if (name.startsWith(prefix)) {
+			const tool = name.slice(prefix.length);
+			return TOWER_TOOLS.has(tool);
+		}
+	}
+	return false;
+}
+
+/**
+ * Engine Onboarding Trust Gate evaluator for ACP `session/request_permission`.
+ *
+ * Inspects Claude Code, Codex, Gemini CLI, OpenCode, and generic MCP payload
+ * fields. Fails closed: every non-Tower tool — including all built-in tools
+ * (`read_file`, `bash`, `Bash`, `shell`, `web_fetch`, etc.), unknown MCP
+ * servers, spoofed titles, and unrecognized tool names — is rejected (or
+ * cancelled when no reject option is offered).
+ */
+export function evaluatePermission(
+	params: Record<string, unknown>,
+	serverName = "tower",
+): PermissionDecision {
+	const options = (Array.isArray(params.options) ? params.options : []) as Array<Record<string, unknown>>;
+	const call = (params.toolCall ?? {}) as Record<string, unknown>;
+	const meta = (call._meta ?? {}) as Record<string, unknown>;
+
+	const structuredNames = [
+		nonEmptyStr((meta.claudeCode as Record<string, unknown> | undefined)?.toolName),
+		nonEmptyStr((meta.codex as Record<string, unknown> | undefined)?.toolName),
+		nonEmptyStr((meta.gemini as Record<string, unknown> | undefined)?.toolName),
+		nonEmptyStr((meta.opencode as Record<string, unknown> | undefined)?.toolName),
+		nonEmptyStr((meta.mcp as Record<string, unknown> | undefined)?.toolName),
+		nonEmptyStr(call.toolName),
+		nonEmptyStr(call.name),
+		nonEmptyStr(call.tool),
+	].filter((x): x is string => x !== null);
+
+	const explicitServer =
+		nonEmptyStr((meta.mcp as Record<string, unknown> | undefined)?.serverName) ??
+		nonEmptyStr(meta.mcpServerName) ??
+		nonEmptyStr(call.mcpServer) ??
+		nonEmptyStr(call.serverName) ??
+		nonEmptyStr(params.serverName);
+
+	const title = nonEmptyStr(call.title);
+	const displayName = structuredNames[0] ?? title ?? "<unnamed>";
+
+	const choose = (allowed: boolean, reason: string): PermissionDecision => {
+		const kinds = allowed ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
+		const pick = kinds.map((k) => options.find((o) => o.kind === k)).find(Boolean);
+		const outcome = pick ? { outcome: "selected", optionId: pick.optionId } : { outcome: "cancelled" };
+		return { allowed, toolName: displayName, reason, outcome };
+	};
+
+	// When explicit MCP server metadata is present, it MUST match Tower's server name.
+	if (explicitServer !== null && explicitServer !== serverName) {
+		return choose(false, `unauthorized MCP server "${explicitServer}"`);
+	}
+
+	if (structuredNames.length > 0) {
+		// Every structured tool name field must agree it belongs to Tower's registered MCP server.
+		for (const candidate of structuredNames) {
+			if (isTowerPrefixedTool(candidate, serverName)) continue;
+			if (explicitServer === serverName && TOWER_TOOLS.has(candidate)) continue;
+			if (KNOWN_BUILTIN_TOOLS.has(candidate)) {
+				return choose(false, `built-in tool "${candidate}" is forbidden by Tower Trust Gate`);
+			}
+			return choose(false, `tool "${candidate}" is not prefixed with mcp__${serverName}__`);
+		}
+		return choose(true, `verified Tower MCP tool "${displayName}"`);
+	}
+
+	// Fallback to title only when no structured tool name field was provided.
+	if (title !== null) {
+		if (isTowerPrefixedTool(title, serverName)) {
+			return choose(true, `verified Tower MCP tool "${title}"`);
+		}
+		if (KNOWN_BUILTIN_TOOLS.has(title)) {
+			return choose(false, `built-in tool "${title}" is forbidden by Tower Trust Gate`);
+		}
+		return choose(false, `tool "${title}" is not prefixed with mcp__${serverName}__`);
+	}
+
+	return choose(false, "permission request omitted tool identity");
+}
+
 /**
  * The ACP bridge's answer to a permission request: Tower's own tools
  * (`mcp__tower__*`) gate themselves and are allowed; anything else — a
  * tool the agent should not have — is refused; with no refusal to pick,
  * the request is cancelled.
  */
-export function permissionOutcome(params: Record<string, unknown>): { outcome: string; optionId?: unknown } {
-	const options = (Array.isArray(params.options) ? params.options : []) as Array<Record<string, unknown>>;
-	const call = (params.toolCall ?? {}) as Record<string, unknown>;
-	const meta = ((call._meta ?? {}) as Record<string, unknown>).claudeCode as Record<string, unknown> | undefined;
-	const name = String(meta?.toolName ?? call.title ?? "");
-	const ours = name.startsWith("mcp__tower__");
-	const kinds = ours ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
-	const pick = kinds.map((k) => options.find((o) => o.kind === k)).find(Boolean);
-	return pick ? { outcome: "selected", optionId: pick.optionId } : { outcome: "cancelled" };
+export function permissionOutcome(
+	params: Record<string, unknown>,
+	serverName = "tower",
+): { outcome: string; optionId?: unknown } {
+	return evaluatePermission(params, serverName).outcome;
 }

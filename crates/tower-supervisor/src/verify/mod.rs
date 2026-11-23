@@ -18,6 +18,8 @@ use crate::{Inner, Result, invalid, run};
 
 mod bench;
 mod perturb;
+#[allow(unused_imports)]
+pub(crate) use bench::holdout_synth;
 use bench::{Bench, sentinel_hit};
 
 const SETUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -252,6 +254,14 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     if let Some(h) = tower_core::sentinel::source_loads_test_library(&files, &test_lines, lang) {
         hits.push(h);
     }
+    // AST checks on modified/added source files:
+    // 1. Rust `#[cfg(test)]` branches / test-env probing in production code → HIGH sentinel.
+    // 2. Bypass-around-bug evidence (combined with `perturb::Finding::Confined` in `settle`).
+    let (rust_branch_hit, bypass_evidence) =
+        scan_source_ast(inner, &rec.project_root, &ws, &base, &snap.pin, &files, lang).await?;
+    if let Some(h) = rust_branch_hit {
+        hits.push(h);
+    }
     // Repeated refusals by the sandbox: the agent looked for something
     // outside its workspace (often the held-out tests).
     let denied = inner.store(|s| s.denied_tools(goal))?;
@@ -277,7 +287,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
 
     let machine: Vec<_> = rec.contract.machine_criteria().cloned().collect();
     if machine.is_empty() {
-        settle(inner, goal, &mut hits, special, None)?;
+        settle(inner, goal, &mut hits, special, None, &bypass_evidence)?;
         inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: true, env_error: false })?;
         inner.set_mode(goal, Mode::Idle)?;
         if let Some(high) = high_titles(&hits, lang) {
@@ -299,7 +309,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
         && free < MIN_FREE
     {
         let gb = format!("{:.1}", free as f64 / 1e9);
-        settle(inner, goal, &mut hits, special, None)?;
+        settle(inner, goal, &mut hits, special, None, &bypass_evidence)?;
         inner.append(goal, EventKind::VerifyFinished { pin: snap.pin.clone(), passed: false, env_error: true })?;
         inner.set_mode(goal, Mode::Idle)?;
         let detail = tr!(
@@ -315,7 +325,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     let bench = match Bench::open(inner, goal, &rec, &ws, &base, cancel).await {
         Ok(b) => b,
         Err(e) => {
-            settle(inner, goal, &mut hits, special, None)?;
+            settle(inner, goal, &mut hits, special, None, &bypass_evidence)?;
             return Err(e);
         }
     };
@@ -324,14 +334,15 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     let (outcome, extra, report) = match outcome {
         Ok(o) => o,
         Err(e) => {
-            settle(inner, goal, &mut hits, special, None)?;
+            settle(inner, goal, &mut hits, special, None, &bypass_evidence)?;
             return Err(e);
         }
     };
     hits.extend(extra);
-    settle(inner, goal, &mut hits, special, report.as_ref())?;
+    settle(inner, goal, &mut hits, special, report.as_ref(), &bypass_evidence)?;
     // Program code that reaches into the test machinery, on a criterion
-    // whose assertions could not be checked: nothing vouches for the pass.
+    // whose assertions could not be checked (canary or incomplete guard):
+    // nothing vouches for the pass.
     if hits.iter().any(|h| h.sentinel == "source_touches_tests") {
         let unchecked: Vec<String> = inner
             .store(|s| s.detail(goal))?
@@ -340,12 +351,17 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
             .filter(|c| c.canary == Some(CanaryState::NotChecked))
             .map(|c| c.criterion.id)
             .collect();
-        if !unchecked.is_empty() {
-            let ids = unchecked.join(", ");
+        let identity_gap = hits.iter().any(|h| h.sentinel == "assertion_identity_unchecked");
+        if !unchecked.is_empty() || identity_gap {
+            let ids = if unchecked.is_empty() {
+                tr!(lang, "受守卫的运行器进程", "guarded runner processes")
+            } else {
+                unchecked.join(", ")
+            };
             let detail = tr!(
                 lang,
-                "源码触及断言库或测试框架，而 {ids} 的断言没能用金丝雀检查（测试的语言或写法 Tower 不认识）。请亲自确认这些测试真的在检查。",
-                "Program code reaches into the assertion library or test runner, and the assertions of {ids} could not be checked with the canary (a language or test style Tower does not know). Check yourself that these tests really test."
+                "源码触及断言库或测试框架，而 {ids} 的断言没能完整检查。请亲自确认这些测试真的在检查。",
+                "Program code reaches into the assertion library or test runner, and the assertions of {ids} could not be fully checked. Check yourself that these tests really test."
             );
             let hit = sentinel_hit("assertions_unchecked", detail, lang);
             append_hit(inner, goal, &hit)?;
@@ -448,16 +464,87 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
     Ok(())
 }
 
-/// Records the special-case finding as perturbation weighed it (`report`
-/// is `None` when verification ended before that step).
+/// Runs `tower-ast` static detectors on modified/added source files:
+/// - Rust test-branch cheats (`#[cfg(test)]` inside production code, `RUST_TEST_THREADS`, `current_exe()`)
+/// - Bypass-around-bug evidence (intact base computation behind a prepended guard/lookup table)
+async fn scan_source_ast(
+    inner: &Inner,
+    project_root: &str,
+    ws: &str,
+    base: &str,
+    pin: &str,
+    files: &[tower_core::view::DiffFile],
+    lang: Lang,
+) -> Result<(Option<tower_core::sentinel::SentinelHit>, Vec<(String, tower_ast::BypassEvidence)>)> {
+    let mut rust_cheat_lines = Vec::new();
+    let mut bypasses = Vec::new();
+    for f in files.iter().filter(|f| {
+        f.status != tower_core::view::FileStatus::Deleted
+            && tower_core::roles::role(&f.path) == tower_core::roles::Role::Source
+    }) {
+        let Some(ast_lang) = tower_ast::Language::from_path(&f.path) else { continue };
+        let git = inner.git.clone();
+        let (root, base_rev, p) = (project_root.to_string(), base.to_string(), f.path.clone());
+        let base_src = if f.status == tower_core::view::FileStatus::Added {
+            String::new()
+        } else {
+            tokio::task::spawn_blocking(move || git.file_at(Path::new(&root), &base_rev, &p))
+                .await
+                .map_err(|e| invalid(e.to_string()))?
+                .unwrap_or_default()
+        };
+        let git2 = inner.git.clone();
+        let (ws2, pin_rev, p2) = (ws.to_string(), pin.to_string(), f.path.clone());
+        let Some(pin_src) = tokio::task::spawn_blocking(move || git2.file_at(Path::new(&ws2), &pin_rev, &p2))
+            .await
+            .map_err(|e| invalid(e.to_string()))?
+        else {
+            continue;
+        };
+
+        if ast_lang == tower_ast::Language::Rust {
+            for cheat in tower_ast::detect_rust_test_branch_cheat(&base_src, &pin_src) {
+                rust_cheat_lines
+                    .push(format!("{}:{}: {} — {}", f.path, cheat.span.start_line, cheat.reason, cheat.snippet));
+            }
+        }
+        if f.status == tower_core::view::FileStatus::Modified {
+            for ev in tower_ast::detect_bypass_around_bug(ast_lang, &base_src, &pin_src) {
+                bypasses.push((f.path.clone(), ev));
+            }
+        }
+    }
+
+    let rust_hit = (!rust_cheat_lines.is_empty()).then(|| {
+        let title = tower_core::i18n::sentinel_title("rust_test_branch_cheat", lang)
+            .unwrap_or_else(|| {
+                lang.pick(
+                    "源码在非测试区域新增了仅在测试下生效的分支",
+                    "Program code added a branch that behaves differently under tests",
+                )
+            })
+            .to_string();
+        tower_core::sentinel::SentinelHit {
+            sentinel: "rust_test_branch_cheat".into(),
+            severity: tower_core::sentinel::HIGH,
+            title,
+            detail: rust_cheat_lines.join("\n"),
+        }
+    });
+    Ok((rust_hit, bypasses))
+}
+
+/// Records the special-case finding as perturbation + AST bypass weighed it
+/// (`report` is `None` when verification ended before that step).
 fn settle(
     inner: &Inner,
     goal: &str,
     hits: &mut Vec<tower_core::sentinel::SentinelHit>,
     literal: Option<tower_core::sentinel::SentinelHit>,
     report: Option<&perturb::Report>,
+    bypass: &[(String, tower_ast::BypassEvidence)],
 ) -> Result<()> {
-    if let Some(h) = perturb::weigh(literal, report, inner.lang()) {
+    if let Some(h) = perturb::weigh_with_bypass(literal, report, bypass, inner.lang()) {
         append_hit(inner, goal, &h)?;
         hits.push(h);
     }

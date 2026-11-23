@@ -1,18 +1,9 @@
 /**
- * Review (docs/04 §4.6): full-screen — the sidebar leaves too — risk-ordered
- * review units of at most ~300 lines. A comment on a line is a steering
- * instruction; "request changes" sends them all back to the agent.
- * Accepting writes a local branch, never a push.
- *
- * At ≥1280px the diff can sit side by side (⌥V, remembered per goal). The
- * verification readout (E) shows every criterion's result and output tail
- * without leaving the diff. While the goal is paused or in review the
- * workspace is yours to touch: a hunk can be reverted (U), a file edited in
- * place, a comment's suggestion applied; the snapshot then changes and the
- * review reloads. A file tree on the left and ⌘P jump by path. A review
- * queue (from Needs you) opens the next goal when this one is done. The
- * pieces live in `review/`: `FileDiff` (the table), `panels` (the three
- * sheets), `types`.
+ * Evidence-Driven Review Theater (docs/04 §4.6, docs/18 §18.4): full-screen
+ * risk-ordered review units, Snapshot Timeline scope switcher (`All Changes` ·
+ * `Since Last Review` · `Last Turn` · `Compare Runs…`), AST semantic noise
+ * collapse, dashed "Agent claims why" unit narrative, Split-Geometry
+ * virtualized diff, Steering Dispatch tray, and physical Acceptance Seal.
  */
 import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
 
@@ -33,32 +24,51 @@ import { advanceQueue, queuePosition } from "../lib/reviewQueue";
 import { type Draft, type Layout, type ReviewState, fileHash, loadReviewState, persist } from "../lib/reviewState";
 import { act, onTrace, state, toast } from "../lib/store";
 import { applySuggestion } from "../lib/suggest";
+import type { ExtReviewUnit, ExtReviewView } from "./goal/ext";
 import { FileDiff } from "./review/FileDiff";
-import { type ReviewNote, ReviewNotes } from "./review/notes";
+import { type ReviewScope, TimelineSwitcher, buildSnapshots, lastTurnRev } from "./review/Timeline";
+import { type ReviewNote, ReviewNotes, UnitNarrative } from "./review/notes";
 import { AcceptPanel, ChangesPanel, VerifyPanel } from "./review/panels";
 import { PathPalette, TreeRow, UnitItem } from "./review/sidebar";
+import "./review/theater.css";
 import { type Anchor, type Composing, type Panel, type Reveals } from "./review/types";
 
-/** Trace kinds after which the review or the goal's facts may have changed. */
 const RELOAD_VIEW = new Set(["pinned", "human_edited", "rolled_back"]);
 const RELOAD_DETAIL = new Set(["pinned", "human_edited", "rolled_back", "sentinel_hit", "verify_finished", "criterion_result", "claim_reviewed", "human_check", "original_tests_result"]);
-
-/** The tree is worth its column from this many files. */
 const TREE_FROM = 2;
-
-/** A hunk by its file and its index in that file. */
 type HunkRef = { path: string; index: number };
 
 export function Review(props: { id: string }) {
   const [persisted] = createResource<ReviewState>(() => loadReviewState(props.id));
-  // Scope: the whole change, or only what changed since you last reviewed.
-  const previous = () => persisted()?.reviewed ?? null;
-  const [sinceLast, setSinceLast] = createSignal(false);
-  const [view, { refetch: refetchView }] = createResource(
-    () => (persisted.loading ? null : { id: props.id, since: sinceLast() ? previous() : null }),
-    (k) => (k ? api.review(k.id, k.since) : Promise.reject(new Error("loading"))),
-  );
   const [detail, { refetch: refetchDetail }] = createResource(() => props.id, api.goal);
+
+  const previous = () => persisted()?.reviewed ?? null;
+  const [scope, setScope] = createSignal<ReviewScope>("all");
+  const [cmp, setCmp] = createSignal<[string, string]>(["", ""]);
+  let lastSnaps: ReturnType<typeof buildSnapshots> = [];
+
+  const [view, { refetch: refetchView }] = createResource(
+    () => {
+      if (persisted.loading) return null;
+      const sc = scope(), [f, to] = cmp();
+      if (sc === "since_last") return { id: props.id, sc, since: previous(), to: null as string | null };
+      if (sc === "last_turn") return { id: props.id, sc, since: lastTurnRev(lastSnaps, lastSnaps.at(-1)?.rev), to: null as string | null };
+      if (sc === "compare" && f && to) return { id: props.id, sc, since: f, to };
+      return { id: props.id, sc: "all" as ReviewScope, since: null as string | null, to: null as string | null };
+    },
+    async (k): Promise<ExtReviewView> => {
+      if (!k) throw new Error("loading");
+      const r = k.sc === "compare" && k.since && k.to ? await api.compareSnapshots(k.id, k.since, k.to).catch(() => null) : null;
+      return r ?? ((await api.review(k.id, k.since)) as ExtReviewView);
+    },
+  );
+
+  const snapshots = createMemo(() => {
+    const s = buildSnapshots(view(), detail(), previous());
+    if (s.length > lastSnaps.length) lastSnaps = s;
+    return s;
+  });
+
   const [unitIdx, setUnitIdx] = createSignal(0);
   const [viewedMap, setViewedMap] = createSignal<Record<string, string>>({});
   const [comments, setComments] = createSignal<Draft[]>([]);
@@ -71,14 +81,12 @@ export function Review(props: { id: string }) {
       setLayout(p.layout);
     }),
   );
-  // Facts keep arriving while you read: a sentinel raised after review-ready shows up here too.
   const off = onTrace(props.id, (e) => {
     if (RELOAD_DETAIL.has(e.event.kind)) void refetchDetail();
     if (RELOAD_VIEW.has(e.event.kind)) void refetchView();
   });
   onCleanup(off);
 
-  // Side by side needs room: two 80-column panes plus numbers.
   const wideQuery = matchMedia("(min-width: 1280px)");
   const [wide, setWide] = createSignal(wideQuery.matches);
   const onWide = (e: MediaQueryListEvent) => setWide(e.matches);
@@ -93,9 +101,9 @@ export function Review(props: { id: string }) {
   };
 
   const isViewed = (f: DiffFile) => viewedMap()[f.path] === fileHash(f);
-  const toggleViewed = (f: DiffFile, on = !isViewed(f)) => {
+  const toggleViewed = (f: DiffFile, onVal = !isViewed(f)) => {
     const v = { ...viewedMap() };
-    if (on) v[f.path] = fileHash(f);
+    if (onVal) v[f.path] = fileHash(f);
     else delete v[f.path];
     setViewedMap(v);
     persist.viewed(props.id, v);
@@ -105,7 +113,6 @@ export function Review(props: { id: string }) {
     return !!v && v.files.filter((f) => u.files.includes(f.path)).every(isViewed);
   };
 
-  // Draft comments survive a restart until they are sent.
   const updateComments = (fn: (list: Draft[]) => Draft[]) => {
     const next = fn(comments());
     setComments(next);
@@ -120,10 +127,8 @@ export function Review(props: { id: string }) {
   const [panel, setPanel] = createSignal<Panel>(null);
   const [pathJump, setPathJump] = createSignal(false);
   const g = () => state.goals[props.id];
-  // The workspace is yours to touch only while the agent is not in it.
   const editable = () => g()?.state === "paused" || g()?.state === "in_review";
 
-  // Whole-file text per path (new side; old side for deleted files), fetched on first expand.
   const [texts, setTexts] = createSignal<Record<string, string[] | null>>({});
   const [reveals, setReveals] = createSignal<Record<string, Reveals>>({});
   const [whole, setWhole] = createSignal<Record<string, boolean>>({});
@@ -163,7 +168,6 @@ export function Review(props: { id: string }) {
     }
     setWhole((m) => ({ ...m, [f.path]: !m[f.path] }));
   };
-  /** The snapshot changed under a file: everything cached about it goes, then the review and the facts reload. */
   const changed = async (f: DiffFile) => {
     setTexts((m) => {
       const n = { ...m };
@@ -173,7 +177,6 @@ export function Review(props: { id: string }) {
     setReveals((m) => ({ ...m, [f.path]: {} }));
     await Promise.all([refetchView(), refetchDetail()]);
   };
-  /** Undoes one hunk in the workspace. */
   const undoHunk = async (f: DiffFile, hunk: number) => {
     const ok = await ask(t("review.undoHunkConfirm", { path: f.path }), {
       title: t("review.undoHunkTitle"),
@@ -185,19 +188,16 @@ export function Review(props: { id: string }) {
     const done = await act(() => api.revertHunk(props.id, f.path, hunk), t("review.hunkUndone"));
     if (done !== undefined) await changed(f);
   };
-  /** Opens the in-place editor on a file: the whole text must be here first. */
   const editFile = async (f: DiffFile) => {
     const lines = await ensureText(f);
     if (lines) setEditingPath(f.path);
   };
-  /** Writes your text to the workspace as your edit. */
   const saveFile = async (f: DiffFile, text: string) => {
     const done = await act(() => api.writeFile(props.id, f.path, text), t("review.fileSaved"));
     if (done === undefined) return;
     setEditingPath(null);
     await changed(f);
   };
-  /** Applies a comment's suggestion: the file with that one line replaced. */
   const applyTo = async (f: DiffFile, line: number, suggestion: string) => {
     const lines = await ensureText(f);
     if (!lines) return;
@@ -207,22 +207,18 @@ export function Review(props: { id: string }) {
     await changed(f);
   };
 
-  const units = () => view()?.units ?? [];
-  const unit = () => units()[unitIdx()];
+  const units = (): ExtReviewUnit[] => view()?.units ?? [];
+  const unit = (): ExtReviewUnit | undefined => units()[unitIdx()];
   const files = createMemo(() => {
     const u = unit();
     const v = view();
     if (!u || !v) return [];
-    // In the tree's order: the diff reads, and ] walks, the list the sidebar shows.
     const order = treeOrder(u.files, unitUnder(u));
     return v.files.filter((f) => u.files.includes(f.path)).sort((a, b) => order.indexOf(a.path) - order.indexOf(b.path));
   });
   const allPaths = createMemo(() => view()?.files.map((f) => f.path) ?? []);
   const fileByPath = (path: string) => view()?.files.find((f) => f.path === path);
 
-  // Hunks you accepted: a reading mark of your own, kept per goal for this diff (from..pin) in the review's state, never
-  // a change to the workspace — U is the change. An accepted hunk folds to its header and the review moves on; once every
-  // hunk of a file is accepted the file is viewed. A new snapshot means new hunks: the marks start over with it.
   const range = () => (view() ? `${view()!.from}..${view()!.pin}` : null);
   const [accepted, setAccepted] = createSignal<Record<string, number[]>>({});
   createEffect(
@@ -232,27 +228,22 @@ export function Review(props: { id: string }) {
     }),
   );
   const isAccepted = (f: DiffFile, hunk: number) => (accepted()[f.path] ?? []).includes(hunk);
-  // The unit on screen: how many of its hunks carry your mark, of how many.
   const unitAccepted = createMemo(() => files().reduce((n, f) => n + (accepted()[f.path] ?? []).filter((i) => i < f.hunks.length).length, 0));
   const unitHunks = createMemo(() => files().reduce((n, f) => n + f.hunks.length, 0));
-  const setHunkAccepted = (f: DiffFile, hunk: number, on: boolean) => {
+  const setHunkAccepted = (f: DiffFile, hunk: number, onVal: boolean) => {
     const r = range();
     if (!r) return;
     const have = accepted()[f.path] ?? [];
-    const list = on ? [...new Set([...have, hunk])].sort((a, b) => a - b) : have.filter((i) => i !== hunk);
+    const list = onVal ? [...new Set([...have, hunk])].sort((a, b) => a - b) : have.filter((i) => i !== hunk);
     const next = { ...accepted() };
     if (list.length) next[f.path] = list;
     else delete next[f.path];
     setAccepted(next);
     persist.accepted(props.id, { range: r, files: next });
-    // Every hunk accepted is the file read; one taken back is the file open again.
-    if (on && list.length === f.hunks.length) toggleViewed(f, true);
-    if (!on && isViewed(f)) toggleViewed(f, false);
+    if (onVal && list.length === f.hunks.length) toggleViewed(f, true);
+    if (!onVal && isViewed(f)) toggleViewed(f, false);
   };
 
-  // The current hunk is state: what ] and [ move, what A accepts and U undoes, marked on its header. It is never
-  // read back from the scroll position — a diff that fits the pane does not scroll — except when you scroll it out of
-  // sight yourself; then the hunk at the top of the pane takes over. Unset, it is the unit's first unaccepted hunk.
   const hunks = createMemo<HunkRef[]>(() => files().flatMap((f) => f.hunks.map((_, index) => ({ path: f.path, index }))));
   const [pick, setPick] = createSignal<HunkRef | null>(null);
   const markedRead = (h: HunkRef) => !!fileByPath(h.path) && isAccepted(fileByPath(h.path)!, h.index);
@@ -261,14 +252,10 @@ export function Review(props: { id: string }) {
     return hunks().find((h) => p && h.path === p.path && h.index === p.index) ?? hunks().find((h) => !markedRead(h)) ?? hunks()[0] ?? null;
   });
   const isCurrent = (f: DiffFile, hunk: number) => current()?.path === f.path && current()?.index === hunk;
-  /** The next hunk after `h` without your mark, else none. */
   const nextUnread = (h: HunkRef) => hunks().slice(hunks().findIndex((x) => x.path === h.path && x.index === h.index) + 1).find((x) => !markedRead(x)) ?? null;
 
-  // The accepts of this sitting, oldest first: what ⇧A takes back when the current hunk carries no mark — A has
-  // already moved on, so "that was a mistake" is about the hunk you just left, as ⌘Z is about the last thing done.
   let acceptLog: HunkRef[] = [];
   const same = (a: HunkRef) => (b: HunkRef) => a.path === b.path && a.index === b.index;
-  /** Accepts a hunk (A, or its header's button) and moves to the next one still to read. A only ever accepts. */
   const acceptHunk = (f: DiffFile, hunk: number) => {
     const h = { path: f.path, index: hunk };
     if (!isAccepted(f, hunk)) {
@@ -278,22 +265,16 @@ export function Review(props: { id: string }) {
     const next = nextUnread(h);
     moveTo(next ?? h);
   };
-  /** Takes your mark back (⇧A, or the accepted header's button): the hunk unfolds and becomes current, and a receipt says so. */
   const unacceptHunk = (f: DiffFile, hunk: number) => {
     if (!isAccepted(f, hunk)) return;
     const h = { path: f.path, index: hunk };
     acceptLog = acceptLog.filter((x) => !same(h)(x));
     setHunkAccepted(f, hunk, false);
-    // The last accept may be in another unit (A, then V): its unit comes back on screen with it.
     const u = units().findIndex((x) => x.files.includes(f.path));
     if (u >= 0 && u !== unitIdx()) setUnitIdx(u);
     moveTo(h);
     toast("info", t("review.hunkUnaccepted", { path: f.path }), { action: { label: t("review.acceptAgain"), run: () => acceptHunk(f, hunk) } });
   };
-  /**
-   * ⇧A: the current hunk's mark if it has one; otherwise the most recent accept still standing. With neither, it
-   * says why nothing happened — never a key that does nothing.
-   */
   const takeBack = () => {
     const h = currentFile();
     if (h && isAccepted(h.f, h.index)) return unacceptHunk(h.f, h.index);
@@ -307,7 +288,6 @@ export function Review(props: { id: string }) {
     setPick(null);
     document.querySelector(".review-diff")?.scrollTo({ top: 0 });
   };
-  /** Shows the unit holding `path` and scrolls that file to the top of the pane. */
   const jumpToFile = (path: string) => {
     const i = units().findIndex((u) => u.files.includes(path));
     if (i < 0) return;
@@ -321,37 +301,36 @@ export function Review(props: { id: string }) {
 
   const paneEl = () => document.querySelector<HTMLElement>(".review-diff");
   const headOf = (pane: HTMLElement, h: HunkRef) => pane.querySelector<HTMLElement>(`.hunk-head[data-hunk-path="${CSS.escape(h.path)}"][data-hunk-index="${h.index}"]`);
-  /** A row's top in the pane's scroll space (a table row's offsetTop is relative to its table, not the pane). */
   const topIn = (pane: HTMLElement, el: HTMLElement) => el.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
-  /** How far an element will still rise: the folds closing above it (a hunk you just accepted shrinks to its header). */
   const risingBy = (el: HTMLElement) =>
     [...document.querySelectorAll<HTMLElement>(".hunk-fold-inner")].filter((f) => f.getBoundingClientRect().top < el.getBoundingClientRect().top).reduce((n, f) => n + f.offsetHeight, 0);
-  // Scrolling the pane yourself is the one way the current hunk follows the view: our own scrolls are not that.
   let ownScroll = false;
-  /** Makes a hunk current and brings its header into view where it will settle — only if it is not there already. */
   const moveTo = (h: HunkRef) => {
     setPick(h);
     requestAnimationFrame(() => {
       const pane = paneEl();
-      const head = pane && headOf(pane, h);
-      if (!pane || !head) return;
+      if (!pane) return;
+      const head = headOf(pane, h);
+      if (!head) {
+        // Off-screen virtualized hunk: ask VirtualBody to scroll directly to its prefix-sum offset.
+        ownScroll = true;
+        pane.dispatchEvent(new CustomEvent("tower:scroll-hunk", { detail: h }));
+        requestAnimationFrame(() => requestAnimationFrame(() => (ownScroll = false)));
+        return;
+      }
       const top = topIn(pane, head) - risingBy(head);
-      // Below the file header that sticks to the pane's top, and with a row of the hunk under it.
       if (top >= pane.scrollTop + 40 && top + 64 <= pane.scrollTop + pane.clientHeight) return;
-      // The scroll event our own scroll causes arrives before the next frame; past that, scrolling is yours again.
       ownScroll = true;
       requestAnimationFrame(() => requestAnimationFrame(() => (ownScroll = false)));
       pane.scrollTo({ top: Math.max(0, top - 40) });
     });
   };
-  /** ] and [: the next or previous hunk of the unit, in order, the accepted ones included. */
   const jumpHunk = (dir: 1 | -1) => {
     const c = current();
     const i = c ? hunks().findIndex((x) => x.path === c.path && x.index === c.index) : -1;
     const target = hunks()[i + dir];
     if (target) moveTo(target);
   };
-  /** After you scroll: if no line of the current hunk is in sight, the hunk whose header is at (or last passed) the top takes over. */
   const onPaneScroll = (e: Event) => {
     if (ownScroll) return;
     const pane = e.currentTarget as HTMLElement;
@@ -406,7 +385,6 @@ export function Review(props: { id: string }) {
           if (editable() && h) void undoHunk(h.f, h.index);
         },
         desc: () => t("keys.undoHunk"),
-        // Listed in the sheet exactly when the status bar lists it: while the workspace is yours to touch.
         when: editable,
       },
       { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("keys.pathJump") },
@@ -430,7 +408,6 @@ export function Review(props: { id: string }) {
   };
   const removeComment = (index: number) => updateComments((list) => list.filter((_, i) => i !== index));
 
-  /** Done with this goal: the queue's next review, or back where you came from. */
   const finish = () => {
     const next = advanceQueue(props.id);
     if (next) {
@@ -440,13 +417,13 @@ export function Review(props: { id: string }) {
   };
 
   const notes = createMemo<ReviewNote[]>(() => {
-    // A sentinel's note is its sentence; the band names them once, as a group, instead of "Sentinel ·" on every line.
     const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: h.title, sentinel: true }));
     for (const r of unit()?.risk_reasons ?? []) out.push({ danger: false, text: r });
     if (detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0)
       out.push({ danger: false, text: t("goal.noHeldOut"), action: { label: t("goal.setHeldOut"), run: () => g() && goProjectSetting(g()!.project_id, "holdout") } });
     return out;
   });
+  const highSentinelTitles = createMemo(() => (detail()?.sentinels ?? []).filter((h) => h.severity >= 3).map((h) => h.title));
   const solo = () => units().length === 1;
   const showTree = () => allPaths().length >= TREE_FROM;
   const viewedUnits = () => units().filter(unitViewed).length;
@@ -464,7 +441,6 @@ export function Review(props: { id: string }) {
           </div>
           <Show when={view()}>
             <div class="review-stats meta halt">
-              {/* With nothing changed the counts would contradict the page; only the snapshot pair stays. */}
               <span class="review-stat-group num">
                 <Show when={units().length > 0}>
                   <span>
@@ -480,16 +456,7 @@ export function Review(props: { id: string }) {
                   <Icon name="arrow-right" size={10} class="t3" />@{short(view()!.pin)}
                 </span>
               </span>
-              <Show when={previous() && previous() !== view()!.pin}>
-                <span class="scope-switch" role="tablist" aria-label={t("review.scopeLabel")}>
-                  <button class="tab" role="tab" aria-selected={!sinceLast()} classList={{ active: !sinceLast() }} onClick={() => setSinceLast(false)}>
-                    {t("review.allChanges")}
-                  </button>
-                  <button class="tab" role="tab" aria-selected={sinceLast()} classList={{ active: sinceLast() }} onClick={() => setSinceLast(true)}>
-                    {t("review.sinceLast")}
-                  </button>
-                </span>
-              </Show>
+              <TimelineSwitcher scope={scope()} onScope={setScope} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => setCmp([f, to])} />
               <Show when={g()}>
                 <button class="review-stat-group review-verify link-plain" onClick={() => setPanel("verify")} title={t("review.verifyOpen")} aria-haspopup="dialog">
                   <Seal pin={g()!.verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
@@ -510,7 +477,6 @@ export function Review(props: { id: string }) {
             onClick={toggleLayout}
           />
         </Show>
-        {/* With nothing changed there is nothing to send back: the header keeps only what still applies. */}
         <Show when={units().length > 0}>
           <Button onClick={() => setPanel("changes")} kbd="c">
             {t("review.requestChanges")}
@@ -547,7 +513,6 @@ export function Review(props: { id: string }) {
             when={units().length > 0}
             fallback={
               <div class="page-loading">
-                {/* Nothing to review is a whole-screen empty state like the inbox's: the poster, a third of the way down, with its one way out. */}
                 <Empty
                   title={t("review.noChanges")}
                   poster
@@ -557,14 +522,12 @@ export function Review(props: { id: string }) {
                     </Button>
                   }
                 >
-                  {sinceLast() ? t("review.noChangesSince") : t("review.noChangesBody")}
+                  {scope() !== "all" ? t("review.noChangesSince") : t("review.noChangesBody")}
                 </Empty>
               </div>
             }
           >
             <div class="review-body" classList={{ solo: solo() && !showTree() }}>
-              {/* One list of files. With several units each unit is a group in the tree — its title, line count and risk on the group row,
-                  its files folded by directory under it — so a file is named once, and j/k still walk the units. */}
               <Show when={!solo() || showTree()}>
                 <aside class="review-units" aria-label={t("review.unitsLabel")}>
                   <div class="tree-head halt">
@@ -573,7 +536,6 @@ export function Review(props: { id: string }) {
                     <span class="grow" />
                     <Kbd k="mod+p" />
                   </div>
-                  {/* The tree is a tree: each unit's row is an open tree item and its files are the group under it; with one unit the files stand at the root. */}
                   <div class="tree" role="tree" aria-label={t("review.filesLabel")}>
                     <For each={units()}>
                       {(u, i) => {
@@ -607,8 +569,8 @@ export function Review(props: { id: string }) {
                 </aside>
               </Show>
               <div class="review-diff" onScroll={onPaneScroll}>
-                {/* What to know before reading, as one band over the diff (review/notes.tsx): the sentinels, this unit's risks,
-                    and — said once, as on the goal page — that only the visible tests vouch for this, with the way to add held-out ones. */}
+                {/* Dashed Claim card for this review unit (sits above ReviewNotes so ReviewNotes stays flush over .file). */}
+                <UnitNarrative claim={unit()?.unit_claim_summary} riskReasons={unit()?.risk_reasons} highSentinels={highSentinelTitles()} />
                 <ReviewNotes notes={notes()} />
                 <For each={files()}>
                   {(f) => (
@@ -621,7 +583,7 @@ export function Review(props: { id: string }) {
                       onReveal={(gap, how) => void reveal(f, gap, how)}
                       onWhole={() => void toggleWhole(f)}
                       viewed={isViewed(f)}
-                      onViewed={(on) => toggleViewed(f, on)}
+                      onViewed={(onVal) => toggleViewed(f, onVal)}
                       onOpen={(line) => void act(() => api.openFile(props.id, f.path, line))}
                       accepted={(hunk) => isAccepted(f, hunk)}
                       current={(hunk) => isCurrent(f, hunk)}
@@ -632,6 +594,8 @@ export function Review(props: { id: string }) {
                       onSaveFile={(text) => void saveFile(f, text)}
                       onCancelEdit={() => setEditingPath(null)}
                       onApplySuggestion={editable() ? (line, s) => void applyTo(f, line, s) : undefined}
+                      movedHunks={view()?.moved_hunks?.[f.path]}
+                      formattingHunks={view()?.formatting_hunks?.[f.path]}
                       comments={comments()}
                       composer={composer()}
                       onAnchor={(a: Anchor) => setComposer(a)}
@@ -648,9 +612,7 @@ export function Review(props: { id: string }) {
         </Show>
       </Show>
 
-      {/* The status bar: keys on the left, the two mouse hints apart on the right, quieter. */}
       <div class="review-status halt">
-        {/* With nothing to review, only the keys that still do something: back, and the sheet. */}
         <Show
           when={units().length > 0}
           fallback={
@@ -692,12 +654,17 @@ export function Review(props: { id: string }) {
           <Kbd k="?" /> {t("keys.allKeys")}
         </span>
         <span class="grow" />
+        <Show when={comments().length > 0}>
+          <button class="dispatch-pill" onClick={() => setPanel("changes")}>
+            <Icon name="return" size={10} />
+            {comments().length} queued for steering
+            <Kbd k="c" />
+          </button>
+        </Show>
         <Show when={units().length > 0}>
           <span class="status-mouse t4">{t("review.keyComment")}</span>
           <span class="status-mouse t4">{t("review.keyOpen")}</span>
         </Show>
-        {/* Your reading marks on this unit, counted; the title says what they are not. With the last one, where to go: V for
-            the next unit, or — on the last unit of a goal ready to accept — the accept sheet. */}
         <Show when={unitAccepted() > 0}>
           <span class="num review-accepted" title={t("review.acceptHunkNote")}>
             <Icon name="check" size={10} />

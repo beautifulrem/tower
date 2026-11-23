@@ -1,16 +1,17 @@
 /** Title bar (breadcrumb and gauges) and toasts. The command palette is `Palette.tsx`, loaded on first open. */
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
-import { clock, duration, usd } from "../lib/format";
+import { duration } from "../lib/format";
 import { wedgePath } from "../lib/gauge";
 import { t } from "../lib/i18n";
-import { openActivity, openPalette } from "../lib/layers";
+import { openPalette } from "../lib/layers";
 import { baseMs } from "../lib/motion";
 import { back, canGoBack, go, route } from "../lib/nav";
 import { popupActions } from "../lib/native";
-import { dismissToast, goalList, livenessOf, patchSettings, quietNow, quietUntil, state } from "../lib/store";
-import { hasIssue, heartbeatState } from "../lib/labels";
-import { Icon, NeedsYouMark } from "./Glyph";
+import { dismissToast, goalList, livenessOf, patchSettings, quietNow, state } from "../lib/store";
+import { heartbeatState } from "../lib/labels";
+import { Icon } from "./Glyph";
+import { TelemetryStrip } from "./TelemetryStrip";
 import { IconButton } from "./ui";
 
 const HOUR = 3_600_000;
@@ -113,11 +114,6 @@ export function RunsGauge(props: { n: number; max: number }) {
  * gauge cluster — errors, runs, heartbeat, spend, quiet, engine — in one strip.
  */
 export function TitleBar(props: { title: string }) {
-  const running = () => goalList().filter((g) => g.state === "running").length;
-  const spent = () => goalList().reduce((s, g) => s + g.cost_usd, 0);
-  const max = () => state.settings?.max_concurrent ?? 3;
-  // Claude Code as the engine needs no Pi; its own problem arrives as an environment issue.
-  const engineOk = () => (state.settings?.engine === "claude-code" ? !hasIssue(state.env, "claude_missing") : !!state.env?.pi_version);
   const crumbs = () => {
     const r = route();
     if (r.name !== "goal") return null;
@@ -139,71 +135,7 @@ export function TitleBar(props: { title: string }) {
         )}
       </Show>
       <span class="grow" data-tauri-drag-region />
-      <div class="titlebar-gauges num halt" data-tauri-drag-region>
-        <Show when={state.unseenActivity > 0}>
-          <button class="gauge gauge-errors link-plain" onClick={() => openActivity()} aria-label={t("chrome.unseenErrors", { n: state.unseenActivity })} title={t("chrome.unseenErrors", { n: state.unseenActivity })}>
-            <span class="gauge-dot down" />
-            {t("chrome.errorsShort", { n: state.unseenActivity })}
-          </button>
-        </Show>
-        <Show when={running() > 0}>
-          <span class="gauge gauge-active" title={t("chrome.running", { n: running(), max: max() })}>
-            <RunsGauge n={running()} max={max()} />
-            {t("chrome.runningShort", { n: running(), max: max() })}
-          </span>
-        </Show>
-        <Heartbeat running={running()} />
-        <span class="gauge" title={t("chrome.spent", { usd: usd(spent()) })}>
-          {usd(spent())}
-        </span>
-        {/* One reading whichever rule silences: "quiet until 08:00" from the daily hours reads the same as from the menu. */}
-        <button
-          class="gauge gauge-quiet link-plain"
-          onClick={() => void pickQuiet()}
-          aria-haspopup="menu"
-          aria-label={quietNow() ? t("quiet.until", { time: clock(quietUntil()!) }) : t("quiet.menuTitle")}
-          title={quietNow() ? t("quiet.until", { time: clock(quietUntil()!) }) : t("quiet.hint")}
-        >
-          <Icon name="bell" size={12} />
-          <Show when={quietNow()}>{t("quiet.until", { time: clock(quietUntil()!) })}</Show>
-        </button>
-        {/* The phone page is on but not served: a background failure is said where the other readings are, and opens its way out. */}
-        <Show when={state.remoteProblem}>
-          {(problem) => (
-            <button class="gauge gauge-down gauge-phone link-plain" onClick={() => go({ name: "settings" })} title={problem()}>
-              <NeedsYouMark />
-              {t("chrome.phoneOff")}
-            </button>
-          )}
-        </Show>
-        <Show
-          when={engineOk()}
-          fallback={
-            <button class="gauge gauge-down link-plain" onClick={() => go({ name: "settings" })}>
-              <span class="gauge-dot down" />
-              {state.settings?.engine === "claude-code" ? t("chrome.claudeNotReady") : t("chrome.piNotReady")}
-            </button>
-          }
-        >
-          <span
-            class="gauge gauge-engine"
-            title={
-              state.settings?.engine === "claude-code"
-                ? `Claude Code · ${state.settings.claude_acp_command || "claude-agent-acp"}`
-                : `Pi ${state.env?.pi_version ?? ""} · ${state.env?.pi_path ?? ""}`
-            }
-          >
-            <span class="gauge-dot" />
-            {t("chrome.engine")}
-            {/* Each engine has a readable version slot: Pi's number, Claude Code's adapter. */}
-            <span class="t3 gauge-version">
-              {state.settings?.engine === "claude-code"
-                ? `Claude Code ${(state.settings.claude_acp_command || "claude-agent-acp").split("/").pop()!.split(" ")[0]}`
-                : `Pi ${state.env?.pi_version?.split(" ")[0] ?? ""}`}
-            </span>
-          </span>
-        </Show>
-      </div>
+      <TelemetryStrip />
       <IconButton icon="search" size={26} label={`${t("chrome.search")} ⌘K`} onClick={() => openPalette("mouse")} />
     </header>
   );

@@ -17,6 +17,17 @@ pub struct NewGoalInput {
 
 #[derive(Debug, Clone, Deserialize, TS)]
 #[ts(export)]
+pub struct NewScheduledGoalInput {
+    pub project_id: String,
+    pub title: String,
+    pub cron_expr: String,
+    pub contract_template: Contract,
+    pub enabled: bool,
+    pub unattended_strict: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export)]
 pub struct ReviewComment {
     pub path: String,
     /// A line of the new file.

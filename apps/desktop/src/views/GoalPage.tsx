@@ -1,59 +1,46 @@
 /**
- * Goal page (docs/04 §4.5): state, not stream. What the goal is for, how far
- * it is with evidence, what changed, what the agent claims and whether the
- * facts agree. The stream is one keystroke away (W).
- *
- * The page trims itself to the state: ready to accept, the "next" block is
- * one call to action; paused, the decision card owns the only text box and
- * the "next" block steps aside; running, the steer box sits at the bottom.
+ * Goal Command Deck (docs/04 §4.5): state, not stream. Instrument header +
+ * telemetry strip, Six-Step verification bench readout, physical Claim vs Fact
+ * Honesty Ledger, precision Contract Rail, lazy-loaded Multimodal Steering
+ * Console, and Flight Recorder escape hatch (W).
  */
-import { For, Show, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
+import { For, Show, Suspense, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
 
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
-import { discountedOf } from "../components/Honesty";
+import { CriteriaBar, discountedOf } from "../components/HonestyCore";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
-import { Button, Empty, Section, Loading } from "../components/ui";
-import type { GoalDetail } from "../gen/GoalDetail";
+import { Button, Empty, Loading, Section } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { clock } from "../lib/format";
-import { useKeys } from "../lib/keys";
-import { useMenu } from "../lib/menu";
 import { t, withLater } from "../lib/i18n";
-import { effectiveEngine, engineLabel, pauseLabel, stateLabel } from "../lib/labels";
+import { useKeys } from "../lib/keys";
+import { effectiveEngine, engineLabel, hasIssue, pauseLabel, stateLabel } from "../lib/labels";
 import { linger } from "../lib/linger";
+import { useMenu } from "../lib/menu";
 import { go } from "../lib/nav";
 import { act, onTrace, state, toast } from "../lib/store";
 import { ContractRail } from "./goal/ContractRail";
 import { GoalActions } from "./goal/GoalActions";
 import { GoalBlocks } from "./goal/GoalBlocks";
-import { SteerBox } from "./goal/SteerBox";
+import "./goal/deck.css";
+import { type ExtGoalDetail, type ExtGoalSummary, sandboxTag, trustLabel, trustTierOf } from "./goal/ext";
 
-// The trace (one key away) loads on first use, so start-up stays small.
-const Trace = lazy(withLater(() => import("../components/Trace").then((m) => ({ default: m.Trace }))));
+const Trace = lazy(withLater(() => import("./Learning").then((m) => ({ default: m.Trace }))));
+const SteerBox = lazy(() => import("./Learning").then((m) => ({ default: m.SteerBox })));
 
-/** Trace kinds that change nothing the detail shows; the summary update covers them. */
 const DETAIL_IRRELEVANT = new Set([
-  "tool_started",
-  "tool_ended",
-  "mode_changed",
-  "assistant_message",
-  "cost_updated",
-  "inbox_opened",
-  "inbox_resolved",
-  "steered",
-  "injected",
-  "note",
-  "pr_checked",
+  "tool_started", "tool_ended", "mode_changed", "assistant_message", "cost_updated",
+  "inbox_opened", "inbox_resolved", "steered", "injected", "note", "pr_checked",
 ]);
 
 export function GoalPage(props: { id: string }) {
   const [detail, { refetch, mutate }] = createResource(() => props.id, api.goal);
   const [watch, setWatch] = createSignal(false);
-  const summary = () => state.goals[props.id] ?? detail()?.summary;
+  const extDetail = () => detail() as ExtGoalDetail | undefined;
+  const summary = () => (state.goals[props.id] ?? detail()?.summary) as ExtGoalSummary | undefined;
 
-  // Refetch the detail when facts arrive, at most every 800 ms.
   let timer: number | undefined;
   const soon = () => {
     clearTimeout(timer);
@@ -70,24 +57,28 @@ export function GoalPage(props: { id: string }) {
     mutate(undefined);
   });
 
-  // Review-ready items live in the inbox; on the goal page the header says it.
   const inbox = createMemo(() => state.inbox.filter((i) => i.goal_id === props.id && i.kind !== "review_ready"));
-  // An answered card folds away over 160ms instead of vanishing on the next update.
   const shownInbox = linger(inbox, (i) => i.id);
 
-  // A rollback can be undone until the next run starts; the detail says so, and a fresh event updates it at once.
   const [undone, setUndone] = createSignal(false);
   const undoable = () => !undone() && !!detail()?.can_undo_rollback;
-  const offUndo = onTrace(props.id, (e) => {
-    if (e.event.kind === "rolled_back") setUndone(false);
-  });
-  onCleanup(offUndo);
+  onCleanup(onTrace(props.id, (e) => e.event.kind === "rolled_back" && setUndone(false)));
   const undoRollback = async () => {
-    const ok = await act(() => api.undoRollback(props.id), t("goal.rollbackUndone"));
-    if (ok !== undefined) {
+    if ((await act(() => api.undoRollback(props.id), t("goal.rollbackUndone"))) !== undefined) {
       setUndone(true);
       void refetch();
     }
+  };
+
+  const togglePause = async () => {
+    const s = summary()?.state;
+    if (s === "running" || s === "verifying" || s === "ready" || s === "claimed") {
+      if ((await act(() => api.pause(props.id))) !== undefined)
+        toast("info", t("goal.pausedToast", { id: props.id }), {
+          goalId: props.id,
+          action: { label: t("goal.resume"), run: () => void act(() => api.resume(props.id)) },
+        });
+    } else if (s === "paused") void act(() => api.resume(props.id));
   };
 
   useMenu({
@@ -103,49 +94,46 @@ export function GoalPage(props: { id: string }) {
       { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review") },
       { key: "p", run: () => togglePause(), desc: () => t("keys.pauseResume") },
       { key: "shift+e", run: () => go({ name: "new", amendId: props.id }), desc: () => t("goal.amend") },
-      // The same H as the inbox: the page's card (its first, when there are several) steps aside until later.
       { key: "h", run: () => inbox()[0] && void snoozeMenu(inbox()[0]), desc: () => t("keys.snooze"), when: () => inbox().length > 0 },
     ],
     () => t("keys.goalScope"),
   );
 
-  /** One key pauses; the toast offers the way back, so a slip costs nothing. */
-  const togglePause = async () => {
-    const s = summary()?.state;
-    if (s === "running" || s === "verifying" || s === "ready" || s === "claimed") {
-      const ok = await act(() => api.pause(props.id));
-      if (ok !== undefined)
-        toast("info", t("goal.pausedToast", { id: props.id }), {
-          goalId: props.id,
-          action: { label: t("goal.resume"), run: () => void act(() => api.resume(props.id)) },
-        });
-    } else if (s === "paused") void act(() => api.resume(props.id));
-  };
+  const showStateWord = (g: ExtGoalSummary) => !["running", "verifying", "claimed"].includes(g.state) && !(g.state === "in_review" && g.verified_pin);
+  const overWall = (g: ExtGoalSummary) => !!g.run_started_at && state.now - g.run_started_at > g.budget.wall_minutes * 60_000;
 
-  /** States whose word is not already said by the annunciator or the seal. */
-  const showStateWord = (g: GoalDetail["summary"]) =>
-    !["running", "verifying", "claimed"].includes(g.state) && !(g.state === "in_review" && g.verified_pin);
-  /** The run has passed its wall-clock cap. */
-  const overWall = (g: GoalDetail["summary"]) => !!g.run_started_at && state.now - g.run_started_at > g.budget.wall_minutes * 60_000;
+  const knownFiles = createMemo(() => {
+    const out = new Set<string>();
+    for (const o of summary()?.overlaps ?? []) for (const f of o.files) out.add(f);
+    for (const f of extDetail()?.local_files ?? []) out.add(f);
+    return [...out];
+  });
+
+  const telemetry = createMemo(() => {
+    const g = summary();
+    if (!g) return [];
+    const d = extDetail();
+    const eng = effectiveEngine(d?.contract.engine || g.engine, state.settings?.engine);
+    const tier = d?.contract.sandbox_tier ?? g.sandbox_tier ?? "default";
+    const noSb = hasIssue(state.env, "no_sandbox");
+    const items: [string, string][] = [
+      ["tel-pill", engineLabel(eng)],
+      ["tel-pill", trustLabel(trustTierOf(eng))],
+      [`tel-pill ${noSb ? "tel-pill-attn" : tier === "micro_vm" ? "tel-pill-active" : ""}`, sandboxTag(tier, noSb)],
+    ];
+    if (g.port_base != null) items.push(["tel-pill tel-pill-mono", `Ports ${g.port_base}–${g.port_base + 9}`]);
+    if (d?.escalated_model) items.push(["tel-pill tel-pill-attn tel-pill-mono", `Escalated: ${d.escalated_model}`]);
+    if (d?.merge_queue_position != null) items.push(["tel-pill tel-pill-mono", `MQ #${d.merge_queue_position}`]);
+    return items;
+  });
 
   return (
     <Show
       when={summary()}
       fallback={
         <div class="page-loading">
-          <Show
-            when={detail.error}
-            fallback={<Loading text={t("goal.loading", { id: props.id })} />}
-          >
-            <Empty
-              title={t("goal.notFound", { id: props.id })}
-              kind="error"
-              action={
-                <Button size="s" variant="ghost" onClick={() => go({ name: "overview" })}>
-                  {t("chrome.openOverview")}
-                </Button>
-              }
-            >
+          <Show when={detail.error} fallback={<Loading text={t("goal.loading", { id: props.id })} />}>
+            <Empty title={t("goal.notFound", { id: props.id })} kind="error" action={<Button size="s" variant="ghost" onClick={() => go({ name: "overview" })}>{t("chrome.openOverview")}</Button>}>
               {errorText(detail.error)}
             </Empty>
           </Show>
@@ -164,40 +152,26 @@ export function GoalPage(props: { id: string }) {
                 <div class="goal-identity">
                   <span class="code-val t2">{g().id}</span>
                   <span>{g().project_name}</span>
-                  <Show when={detail()?.contract}>
-                    <span>{t("goal.contractV", { v: detail()!.contract.version })}</span>
-                  </Show>
+                  <Show when={extDetail()?.contract}><span>{t("goal.contractV", { v: extDetail()!.contract.version })}</span></Show>
                   <Show when={g().run_no > 0}>
                     <span>
                       {t("goal.runN", { n: g().run_no })}
-                      <Show when={g().rework_cycles > 0}>
-                        {t("goal.reworkParen", { n: g().rework_cycles, max: g().max_rework })}
-                      </Show>
+                      <Show when={g().rework_cycles > 0}>{t("goal.reworkParen", { n: g().rework_cycles, max: g().max_rework })}</Show>
                     </span>
                   </Show>
                   <Show when={showStateWord(g())}>
                     <span class="t1">{stateLabel(g().state)}</span>
-                    {/* With a decision card on the page the reason is the card's question; the line keeps only the state word. */}
-                    <Show when={g().pause_reason && g().state === "paused" && inbox().length === 0}>
-                      <span>{pauseLabel(g().pause_reason!)}</span>
-                    </Show>
-                    <Show when={g().state === "in_review" && !g().verified_pin}>
-                      <span>{t("live.notMachineVerified")}</span>
-                    </Show>
+                    <Show when={g().pause_reason && g().state === "paused" && inbox().length === 0}><span>{pauseLabel(g().pause_reason!)}</span></Show>
+                    <Show when={g().state === "in_review" && !g().verified_pin}><span>{t("live.notMachineVerified")}</span></Show>
                   </Show>
-                  <Show when={g().state === "running" && overWall(g())}>
-                    <span class="over-wall">{t("goal.overWall")}</span>
-                  </Show>
-                  <Show when={detail()?.contract.engine && detail()!.contract.engine !== effectiveEngine("", state.settings?.engine)}>
-                    <span class="t3">{engineLabel(detail()!.contract.engine)}</span>
-                  </Show>
-                  <Show when={state.settings?.muted_goals.includes(g().id)}>
-                    <span class="t3">{t("quiet.muted")}</span>
-                  </Show>
+                  <Show when={g().state === "running" && overWall(g())}><span class="over-wall">{t("goal.overWall")}</span></Show>
+                  <Show when={state.settings?.muted_goals.includes(g().id)}><span class="t3">{t("quiet.muted")}</span></Show>
                 </div>
               </div>
+              <div class="telemetry-strip halt">
+                <For each={telemetry()}>{([cls, text]) => <span class={cls}>{text}</span>}</For>
+              </div>
               <Show when={g().pr}>{(pr) => <div class="goal-overlaps meta"><PrLine pr={pr()} /></div>}</Show>
-              {/* The conflict radar: other unfinished goals touching the same files. */}
               <Show when={g().overlaps?.length}>
                 <div class="goal-overlaps meta halt">
                   <For each={g().overlaps}>
@@ -207,83 +181,58 @@ export function GoalPage(props: { id: string }) {
                         <span>{t("goal.overlaps", { id: o.goal_id })}</span>
                         <span class="sep" />
                         <span class="code-val t3">{o.files.join("  ")}</span>
-                        <Show when={o.total > o.files.length}>
-                          <span class="t3"> +{o.total - o.files.length}</span>
-                        </Show>
+                        <Show when={o.total > o.files.length}><span class="t3"> +{o.total - o.files.length}</span></Show>
                       </button>
                     )}
                   </For>
                 </div>
               </Show>
             </div>
-            {/* The seal stands under the actions, on the page's right edge — the line the rail and every block end on. */}
             <div class="goal-side">
               <div class="goal-actions">
                 <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
               </div>
-              {/* The seal is withheld while any criterion passed with a tampered canary: the line under it and the header say the same thing.
-                  A goal you accepted wears the stamp the accept sheet pressed: the same frame, at the page head's size, standing still. */}
-              <Show
-                when={["accepted", "integrated"].includes(g().state) && g().verified_pin}
-                fallback={<Seal pin={g().verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />}
-              >
+              <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin} fallback={<Seal pin={g().verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />}>
                 {(pin) => <Stamp pin={pin()} size="m" tampered={discountedOf(detail()?.criteria) > 0} />}
               </Show>
             </div>
           </header>
 
-          {/* Under the header the page is two columns at once: everything about this run — the briefing, the live line, the
-              decision cards, then the blocks — in the main column, and the contract's rail beside it from the same line,
-              sticky, so neither a card above the blocks nor a long page leaves the right third empty. */}
           <div class="goal-body" classList={{ watching: watch() }}>
             <div class="goal-main">
               <Show when={detail()?.briefing.length}>
                 <div class="briefing">
                   <span class="briefing-title">{t("goal.since", { time: clock(g().last_viewed_at ?? 0) })}</span>
                   <For each={detail()!.briefing.slice(-6)}>
-                    {(b) => (
-                      <span class="briefing-item" classList={{ "briefing-claim": b.source === "claim" }}>
-                        {b.text}
-                      </span>
-                    )}
+                    {(b) => <span class="briefing-item" classList={{ "briefing-claim": b.source === "claim" }}>{b.text}</span>}
                   </For>
                 </div>
               </Show>
-
               <Show when={["running", "claimed", "verifying"].includes(g().state)}>
-                <div class="annunciator">
-                  <LiveLine goal={g()} large hideTarget={inbox().length > 0} />
-                </div>
+                <div class="annunciator"><LiveLine goal={g()} large hideTarget={inbox().length > 0} /></div>
               </Show>
-
               <Show when={shownInbox.list().length > 0}>
                 <div class="goal-decisions">
                   <For each={shownInbox.list()}>
-                    {(it) => (
-                      <div class="decision-slot" classList={{ leaving: shownInbox.leaving(it.id) }}>
-                        <DecisionCard item={it} showGoal={false} />
-                      </div>
-                    )}
+                    {(it) => <div class="decision-slot" classList={{ leaving: shownInbox.leaving(it.id) }}><DecisionCard item={it} showGoal={false} /></div>}
                   </For>
                 </div>
               </Show>
-
-              <Show when={!watch()} fallback={<WatchPanel id={props.id} />}>
-                <Show when={detail()} fallback={<GoalSkeleton />}>
+              <Show when={!watch()} fallback={<WatchPanel id={props.id} detail={extDetail()} g={g()} onExit={() => setWatch(false)} />}>
+                <Show when={extDetail()} fallback={<GoalSkeleton />}>
                   {(d) => <GoalBlocks d={d()} hasDecision={inbox().length > 0} undoable={undoable()} onUndoRollback={undoRollback} />}
                 </Show>
               </Show>
             </div>
             <Show when={!watch()}>
               <aside class="goal-rail">
-                <Show when={detail()}>{(d) => <ContractRail d={d()} />}</Show>
+                <Show when={extDetail()}>{(d) => <ContractRail d={d()} />}</Show>
               </aside>
             </Show>
           </div>
 
-          {/* One text box per state: running steers here; paused writes on its decision card. */}
           <Show when={g().state === "running" || (g().state === "paused" && inbox().length === 0)}>
-            <SteerBox id={props.id} running={g().state === "running"} />
+            <Suspense><SteerBox id={props.id} running={g().state === "running"} files={knownFiles()} /></Suspense>
           </Show>
         </div>
       )}
@@ -291,27 +240,26 @@ export function GoalPage(props: { id: string }) {
   );
 }
 
-/** While the detail loads the page keeps its shape: the section titles stand, their bodies are empty. */
 function GoalSkeleton() {
   return (
     <>
-      <Section title={t("goal.criteria")} class="section-skeleton">
-        <Loading text={t("goal.loadingDetail")} />
-      </Section>
-      <Section title={t("goal.changes")} class="section-skeleton">
-        <span />
-      </Section>
-      <Section title={t("goal.next")} class="section-skeleton">
-        <span />
-      </Section>
+      <Section title={t("goal.criteria")} class="section-skeleton"><Loading text={t("goal.loadingDetail")} /></Section>
+      <Section title={t("goal.changes")} class="section-skeleton"><span /></Section>
+      <Section title={t("goal.next")} class="section-skeleton"><span /></Section>
     </>
   );
 }
 
-function WatchPanel(props: { id: string }) {
+function WatchPanel(props: { id: string; detail?: ExtGoalDetail; g: ExtGoalSummary; onExit: () => void }) {
   const stream = () => state.streams[props.id] ?? "";
   return (
     <div class="watch">
+      <div class="watch-head">
+        <span class="t1">{t("goal.watch")}</span>
+        <span class="grow" />
+        <CriteriaBar progress={props.g.progress} criteria={props.detail?.criteria} compact />
+        <Button size="s" variant="ghost" kbd="w" onClick={props.onExit}>{t("goal.backToStatus")}</Button>
+      </div>
       <Show when={stream()}>
         <div class="watch-stream">
           <span class="claim-label">{t("goal.agentWriting")}</span>

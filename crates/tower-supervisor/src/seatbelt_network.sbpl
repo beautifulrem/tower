@@ -18,9 +18,12 @@
 
     ; TLS certificate trust evaluation. Tower leaves out
     ; the keychain server, which Codex allows here.
+    ; Apple's LibreSSL falls back to TrustEvaluationAgent for roots outside
+    ; the static /etc/ssl/cert.pem bundle without touching the user keychain.
     (global-name "com.apple.networkd")
     (global-name "com.apple.ocspd")
     (global-name "com.apple.trustd.agent")
+    (global-name "com.apple.TrustEvaluationAgent")
 
     ; Read network configuration.
     (global-name "com.apple.SystemConfiguration.DNSConfiguration")

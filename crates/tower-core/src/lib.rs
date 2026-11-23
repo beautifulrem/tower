@@ -17,6 +17,7 @@ pub mod honesty;
 pub mod i18n;
 pub mod lifecycle;
 pub mod mode;
+pub mod ops;
 pub mod reasons;
 pub mod review;
 pub mod roles;
@@ -24,12 +25,15 @@ pub mod sentinel;
 pub mod text;
 pub mod view;
 
-pub use contract::{Autonomy, Budget, Contract, ContractIssue, Criterion, CriterionKind, Scope};
+pub use contract::{
+    AttachmentRef, Autonomy, Budget, Contract, ContractIssue, Criterion, CriterionKind, SandboxTier, Scope,
+};
 pub use event::{EventKind, Source};
 pub use honesty::{ClaimKind, Consistency, Provenance};
 pub use i18n::Lang;
 pub use lifecycle::{LifecycleState, PauseReason, Transition, TransitionError};
 pub use mode::Mode;
+pub use ops::{TaintClass, TaintLevel};
 
 /// Milliseconds since the Unix epoch. Every timestamp crossing a boundary uses this.
 pub type Millis = i64;

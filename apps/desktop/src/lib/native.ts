@@ -1,16 +1,31 @@
 /**
- * Native popup menus and dialogs: they look and behave like macOS. Tauri's
- * menu module brings the window module with it (some 20 KB gzipped), so
- * both are loaded on the first click that needs them — a menu or a sheet
- * opens on an action, never at first paint.
+ * Native popup menus and dialogs: they look and behave like macOS.
+ * Popup menus talk directly to Tauri's `plugin:menu` IPC (`new` / `popup`) so
+ * the full `@tauri-apps/api/menu` class hierarchy (`Submenu`, `IconMenuItem`,
+ * `Image`, `DPI`) stays out of the bundle; dialogs load lazily on first click.
  */
+import { Channel, invoke } from "@tauri-apps/api/core";
+
+type MenuKind = "Menu" | "MenuItem" | "Check" | "Predefined";
+
+async function newMenuItem(kind: MenuKind, options: Record<string, unknown>, action?: () => void): Promise<[number, MenuKind]> {
+  const handler = new Channel<string>();
+  if (action) handler.onmessage = () => action();
+  const res = await invoke<[number, string]>("plugin:menu|new", { kind, options, handler });
+  return [res?.[0] ?? 0, kind];
+}
+
+async function popupMenu(items: [number, MenuKind][]) {
+  const [rid] = await newMenuItem("Menu", { items });
+  await invoke("plugin:menu|popup", { rid, kind: "Menu", window: null, at: null });
+}
 
 /**
  * A native confirmation sheet with the app icon. Destructive actions pass
  * `kind: "warning"`; `ok` is the verb ("Push", "Abandon"), never "OK".
  */
 export async function ask(message: string, opts: { title?: string; ok: string; cancel: string; kind?: "info" | "warning" }) {
-  const { ask: askDialog } = await import("@tauri-apps/plugin-dialog");
+  const { askDialog } = await import("../views/Learning");
   return askDialog(message, {
     title: opts.title ?? "Tower",
     kind: opts.kind ?? "info",
@@ -26,27 +41,13 @@ export interface Choice<T extends string> {
 
 /** Pops up a native menu of choices with a check on `current`. */
 export async function popupChoice<T extends string>(choices: Choice<T>[], current: T): Promise<T | null> {
-  const { CheckMenuItem, Menu } = await import("@tauri-apps/api/menu");
-  return new Promise((resolve) => {
-    let picked: T | null = null;
-    void (async () => {
-      const items = await Promise.all(
-        choices.map((c) =>
-          CheckMenuItem.new({
-            text: c.label,
-            checked: c.value === current,
-            action: () => {
-              picked = c.value;
-            },
-          }),
-        ),
-      );
-      const menu = await Menu.new({ items });
-      await menu.popup();
-      // `popup` resolves after the menu closes; actions run before that.
-      setTimeout(() => resolve(picked), 0);
-    })();
-  });
+  let picked: T | null = null;
+  const items = await Promise.all(
+    choices.map((c) => newMenuItem("Check", { text: c.label, checked: c.value === current }, () => (picked = c.value))),
+  );
+  await popupMenu(items);
+  // `popup` resolves after the menu closes; channel actions fire in a tick.
+  return new Promise((resolve) => setTimeout(() => resolve(picked), 0));
 }
 
 export interface Action {
@@ -58,12 +59,10 @@ export interface Action {
 
 /** Pops up a native menu of actions (overflow "…" menus, context menus). */
 export async function popupActions(actions: Action[]) {
-  const { Menu, MenuItem, PredefinedMenuItem } = await import("@tauri-apps/api/menu");
-  const items = [];
+  const items: [number, MenuKind][] = [];
   for (const a of actions) {
-    if (a.separatorBefore) items.push(await PredefinedMenuItem.new({ item: "Separator" }));
-    items.push(await MenuItem.new({ text: a.label, enabled: a.enabled ?? true, action: a.run }));
+    if (a.separatorBefore) items.push(await newMenuItem("Predefined", { item: "Separator" }));
+    items.push(await newMenuItem("MenuItem", { text: a.label, enabled: a.enabled ?? true }, a.run));
   }
-  const menu = await Menu.new({ items });
-  await menu.popup();
+  await popupMenu(items);
 }

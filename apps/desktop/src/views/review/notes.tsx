@@ -31,7 +31,7 @@ export function UnitNarrative(props: { claim?: string | null; riskReasons?: stri
     <Show when={props.claim}>
       <div class="unit-narrative prov-frame prov-claim">
         <span class="unit-claim-tag halt">
-          <span class="claim-rule" aria-hidden="true">┆</span> Agent claims why
+          <span class="claim-rule" aria-hidden="true">┆</span> {t("review.agentWhy")}
           <span class="sr-only"> {t("honesty.srClaim")}</span>
         </span>
         <p class="unit-narrative-text">{props.claim}</p>

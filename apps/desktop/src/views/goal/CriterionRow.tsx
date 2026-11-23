@@ -34,22 +34,22 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
     if (human() || !ver) return [];
     const cur = c(), sents = props.sentinels ?? [], out: [string, string, string?][] = [];
     const okC = cur.canary !== "tampered";
-    if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", "Base→Pin proved"]);
-    if (cur.passes_with_source_only === true && okC) out.push(["fact", "Source-only ✓"]);
-    else if (cur.passes_with_source_only === false) out.push(["attn", "Test-edit dependent"]);
-    if (cur.canary === "intact") out.push(["fact", "Canary intact"]);
-    else if (cur.canary === "tampered") out.push(["attn", "Canary tampered"]);
-    else if (cur.canary === "not_checked") out.push(["obs", "Canary unchecked"]);
+    if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", t("goal.evRedGreen")]);
+    if (cur.passes_with_source_only === true && okC) out.push(["fact", t("goal.evSourceOnly")]);
+    else if (cur.passes_with_source_only === false) out.push(["attn", t("goal.dependsOnEditedTests")]);
+    if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk")]);
+    else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered")]);
+    else if (cur.canary === "not_checked") out.push(["obs", t("goal.canaryNotChecked")]);
     const forCur = (h: SentinelHit) => !h.detail || h.detail.includes(cur.criterion.id) || !/\bC\d+\b/.test(h.detail);
     const gh = sents.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
     if (gh) out.push([gh.severity >= 3 ? "danger" : "attn", /guard|unchecked/.test(gh.sentinel) ? "Guard multi-proc gap" : "Assertion tamper", gh.detail || gh.title]);
-    else if (ver.passed && cur.canary === "intact") out.push(["fact", "Assertion guard ✓"]);
-    if (ver.flaky) out.push(["obs", "Flaky: 1× rerun passed"]);
+    else if (ver.passed && cur.canary === "intact") out.push(["fact", t("goal.evGuardOk")]);
+    if (ver.flaky) out.push(["obs", t("goal.evFlaky")]);
     if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? "Loopback: base evidence" : "Loopback: project"]);
     const bh = sents.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
     if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? "Bypass-around-bug" : bh.sentinel.includes("perturb") ? "Perturbation confined" : "Test expectation", bh.detail || bh.title]);
     const errs = ver.console_errors ?? cur.look?.console_errors ?? [];
-    if (errs.length) out.push(["danger", `Console errors: ${errs.length}`, errs.join("\n")]);
+    if (errs.length) out.push(["danger", t("look.consoleErrors", { n: errs.length }), errs.join("\n")]);
     return out;
   });
 
@@ -112,7 +112,7 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
 
       <Show when={hoItems().length}>
         <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
-          <span class="meta t2">Held-out:</span>
+          <span class="meta t2">{t("goal.heldOut")}</span>
           <For each={hoItems()}>{([cls, text]) => <span class={cls}>{text}</span>}</For>
         </div>
       </Show>

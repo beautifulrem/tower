@@ -30,7 +30,6 @@ import { type ReviewScope, TimelineSwitcher, buildSnapshots, lastTurnRev } from 
 import { type ReviewNote, ReviewNotes, UnitNarrative } from "./review/notes";
 import { AcceptPanel, ChangesPanel, VerifyPanel } from "./review/panels";
 import { PathPalette, TreeRow, UnitItem } from "./review/sidebar";
-import "../styles/workbenches.css";
 import { type Anchor, type Composing, type Panel, type Reveals } from "./review/types";
 
 const RELOAD_VIEW = new Set(["pinned", "human_edited", "rolled_back"]);

@@ -144,8 +144,8 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                   </div>
                   <Show when={c.verified?.flaky || errs().length > 0}>
                     <div class="ev-strip">
-                      <Show when={c.verified?.flaky}><span class="ev-pill ev-pill-obs" data-mark="obs">Flaky · 1× rerun passed</span></Show>
-                      <Show when={errs().length > 0}><span class="ev-pill ev-pill-danger" data-mark="danger" title={errs().join("\n")}>Console errors: {errs().length}</span></Show>
+                      <Show when={c.verified?.flaky}><span class="ev-pill ev-pill-obs">Flaky: 1× rerun passed</span></Show>
+                      <Show when={errs().length > 0}><span class="ev-pill ev-pill-danger" title={errs().join("\n")}>Console errors: {errs().length}</span></Show>
                     </div>
                   </Show>
                   <BaselineLine c={c} base={props.detail?.base_commit} />

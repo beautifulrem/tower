@@ -24,7 +24,7 @@ import { act, goalList, state } from "../lib/store";
 import { engineOptions, thinkingOptions } from "./Settings";
 import { HoldoutDrafts } from "./goal/HoldoutDrafts";
 import { AttachChips, collectImages, extractImages } from "./goal/SteerBox";
-import "./goal/deck.css";
+import "../styles/workbenches.css";
 import { type AttachmentRef, type ExtContract, trustLabel, trustTierOf } from "./goal/ext";
 
 export function blankContract(intent = "", testCommand: string | null = null): ExtContract {
@@ -179,12 +179,15 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             <input value={title()} onInput={(e) => setTitle(e.currentTarget.value)} placeholder={t("contract.titlePlaceholder")} disabled={!!props.amendId} />
           </Field>
           <Show when={!editingId}><BaseTestsNotice projectId={projectId()} /></Show>
-          <Field label={t("contract.intent")} hint={t("contract.intentHint")} error={issueFor("intent")}>
+          <Field label={t("contract.intent")} error={issueFor("intent")} class="field-intent">
             <textarea
               rows={2}
               class="reading"
               value={c.intent}
               onInput={(e) => setC("intent", e.currentTarget.value)}
+              onDragOver={(e) => (e.preventDefault(), setDragOver(true))}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => (e.preventDefault(), setDragOver(false), void addImages(extractImages(e.dataTransfer)))}
               onPaste={(e) => {
                 const imgs = extractImages(e.clipboardData);
                 if (imgs.length) (e.preventDefault(), void addImages(imgs));
@@ -193,21 +196,23 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             />
           </Field>
           <div
-            class="att-drop-zone"
+            class="intent-attach"
             classList={{ "drag-over": dragOver() }}
             onDragOver={(e) => (e.preventDefault(), setDragOver(true))}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => (e.preventDefault(), setDragOver(false), void addImages(extractImages(e.dataTransfer)))}
           >
-            <span>Paste or drop screenshots into intent</span>
             <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => (e.currentTarget.files?.length && void addImages(Array.from(e.currentTarget.files)), (e.currentTarget.value = ""))} />
-            <Button size="s" variant="ghost" onClick={() => fileInput.click()}><Icon name="plus" size={10} />Attach</Button>
+            <button type="button" class="link-quiet text-btn intent-attach-btn" onClick={() => fileInput.click()}>
+              <Icon name="plus" size={10} /> Attach screenshot
+            </button>
+            <span>or paste / drop into purpose</span>
           </div>
           <AttachChips items={c.attachments ?? []} onRemove={removeAtt} />
-          <Field label={t("contract.doneWhen")} hint={t("contract.doneWhenHint")}>
+          <Field label={t("contract.doneWhen")}>
             <textarea rows={2} value={c.done_when} onInput={(e) => setC("done_when", e.currentTarget.value)} />
           </Field>
-          <Field label={t("contract.stopConditions")} hint={t("contract.stopConditionsHint")}>
+          <Field label={t("contract.stopConditions")}>
             <textarea rows={2} value={c.stop_conditions.join("\n")} onInput={(e) => setC("stop_conditions", lines(e.currentTarget.value))} placeholder={t("contract.stopConditionsPlaceholder")} />
           </Field>
           <Field label={t("contract.constraints")}>
@@ -249,7 +254,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             )}
           </For>
           <Show when={issueFor("criteria")}><p class="field-warn">{issueFor("criteria")}</p></Show>
-          <Field label={t("contract.setup")} hint={t("contract.setupHint")}>
+          <Field label={t("contract.setup")}>
             <input class="mono" value={c.setup} onInput={(e) => setC("setup", e.currentTarget.value)} placeholder={t("common.eg", { x: "pnpm install --frozen-lockfile" })} />
           </Field>
           <div class="row" style={{ "margin-top": "4px" }}>
@@ -296,7 +301,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <Field label={t("contract.engine")} hint={trustLabel(trustTierOf(engine()))}>
             <Select value={c.engine} options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]} onChange={(v) => (setC("engine", v), setC("model", ""), setC("escalation_model", ""))} />
           </Field>
-          <Field label={t("contract.model")} hint={engine() === "claude-code" ? t("contract.modelHintClaude") : t("contract.modelHint")}>
+          <Field label={t("contract.model")}>
             <Suspense fallback={<Select value={c.model} options={modelOptions.base()} onChange={(v) => setC("model", v)} />}>
               <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
             </Suspense>
@@ -316,7 +321,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           </Show>
           <div class="field">
             <span class="field-label">Sandbox tier</span>
-            <div class="tier-cards" role="radiogroup" aria-label="Sandbox tier">
+            <div class="sandbox-choices" role="radiogroup" aria-label="Sandbox tier">
               <For
                 each={[
                   ["default", "Default OS Sandbox", "Seatbelt / Landlock", false],
@@ -324,9 +329,10 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                 ] as ["default" | "micro_vm", string, string, boolean][]}
               >
                 {([id, name, desc, dis]) => (
-                  <label class="tier-card" classList={{ selected: (c.sandbox_tier ?? "default") === id, disabled: dis }}>
+                  <label class="radio" classList={{ disabled: dis }}>
                     <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === id} disabled={dis} onChange={() => setC("sandbox_tier", id)} />
-                    <span><b>{name}</b><span class="radio-desc" style={{ display: "block" }}>{desc}</span></span>
+                    <b>{name}</b>
+                    <span class="radio-desc">{desc}</span>
                   </label>
                 )}
               </For>
@@ -334,7 +340,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           </div>
           <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
           <Show when={!c.network}>
-            <Field label={t("contract.ports")} hint={t("contract.portsHint")}>
+            <Field label={t("contract.ports")}>
               <input class="mono" inputmode="numeric" placeholder={t("common.eg", { x: "5432, 6379" })} value={(c.ports ?? []).join(", ")} onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))} />
             </Field>
             <Toggle checked={c.loopback_open ?? false} onChange={(v) => setC("loopback_open", v)} label={t("contract.loopbackOpen")} hint={t("contract.loopbackOpenHint")} />

@@ -65,8 +65,8 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
     expect(screen.getByText("Source-only ✓")).toBeTruthy();
     expect(screen.getByText("Canary intact")).toBeTruthy();
     expect(screen.getByText("Guard multi-proc gap")).toBeTruthy();
-    expect(screen.getByText("Flaky · 1× rerun passed")).toBeTruthy();
-    expect(screen.getByText("Loopback · base evidence")).toBeTruthy();
+    expect(screen.getByText("Flaky: 1× rerun passed")).toBeTruthy();
+    expect(screen.getByText("Loopback: base evidence")).toBeTruthy();
     expect(screen.getByText("Bypass-around-bug")).toBeTruthy();
     expect(screen.getByText(/✓ holdout\/rounding\.test\.js/)).toBeTruthy();
     expect(screen.getByText(/✕ holdout\/tax\.test\.js/)).toBeTruthy();

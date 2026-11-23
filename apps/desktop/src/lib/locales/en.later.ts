@@ -789,6 +789,8 @@ export const enLater: DictLater = {
     schedulesNote: "One-way doors pause",
     schedulePlaceholder: "Nightly audit",
     cronUtc: "Cron (UTC)",
+    deleteConfirm: "Delete the schedule “{title}”? It will start no more goals.",
+    deleteSchedule: "Delete schedule",
     addSchedule: "Add",
     schedulesEmpty: "No schedules",
     colPosture: "Posture",

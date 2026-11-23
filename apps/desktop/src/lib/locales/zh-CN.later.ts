@@ -782,6 +782,8 @@ export const zhLater = {
     schedulesNote: "单向门一律暂停",
     schedulePlaceholder: "每晚依赖巡检",
     cronUtc: "Cron（UTC）",
+    deleteConfirm: "删除定时目标“{title}”吗？它将不再启动新目标。",
+    deleteSchedule: "删除定时",
     addSchedule: "新增",
     schedulesEmpty: "暂无定时",
     colPosture: "策略",

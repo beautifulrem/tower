@@ -13,7 +13,7 @@ import { useKeys } from "../lib/keys";
 import { effectiveEngine, engineLabel, engineTrustTier, stateLabel } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, state } from "../lib/store";
-import { ProvBox } from "../views/Learning";
+import { ProvBox } from "./Console";
 import { DangerMark, Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { ConsistencyBadge } from "./Honesty";
 import { CriteriaBar } from "./HonestyCore";

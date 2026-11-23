@@ -142,6 +142,9 @@ export function Review(props: { id: string }) {
   // Each read in flight, by path. A reset or a save drops its entry, so the read finds it has been outrun and its
   // text, from the snapshot before, never lands where Edit and Apply would write it back over newer code.
   const loading = new Map<string, object>();
+  // The file open in the editor when the snapshot moved on under it: its text is from the snapshot before, so it
+  // serves the editor alone, a save checks the file first, and it goes when the editor closes.
+  const [staleEdit, setStaleEdit] = createSignal<string | null>(null);
   // Texts and expanded context belong to one snapshot: a new pin or another scope drops them. A reload the engine
   // starts keeps the file open in the editor, and its text, so what you typed there is not lost.
   const resetTexts = (keepEditor = false) => {
@@ -150,18 +153,33 @@ export function Review(props: { id: string }) {
     setTexts((m) => (keep && m[keep] ? { [keep]: m[keep] } : {}));
     setReveals({});
     setWhole({});
+    setStaleEdit(keep);
     if (!keep) setEditingPath(null);
+  };
+  const dropText = (path: string) =>
+    setTexts((m) => {
+      const n = { ...m };
+      delete n[path];
+      return n;
+    });
+  const closeEditor = () => {
+    const p = editingPath();
+    setEditingPath(null);
+    if (p && staleEdit() === p) (dropText(p), setStaleEdit(null));
   };
   const ensureText = async (f: DiffFile): Promise<string[] | null> => {
     const have = texts()[f.path];
+    if (staleEdit() === f.path) return null;
     if (have !== undefined) return have;
-    if (loading.has(f.path)) return null;
+    // While the view reloads its pin is the one before: a read now would be of the old snapshot.
+    if (loading.has(f.path) || viewRes.loading) return null;
     const mine = {};
     loading.set(f.path, mine);
     const current = () => loading.get(f.path) === mine;
+    const pin = view()?.pin ?? null;
     try {
-      const raw = await api.fileText(props.id, f.path, f.status === "deleted", view()?.pin ?? null);
-      if (!current()) return null;
+      const raw = await api.fileText(props.id, f.path, f.status === "deleted", pin);
+      if (!current() || (view()?.pin ?? null) !== pin) return null;
       const lines = raw === null ? null : splitLines(raw);
       setTexts((m) => ({ ...m, [f.path]: lines }));
       return lines;
@@ -191,11 +209,7 @@ export function Review(props: { id: string }) {
   };
   const changed = async (f: DiffFile) => {
     loading.delete(f.path);
-    setTexts((m) => {
-      const n = { ...m };
-      delete n[f.path];
-      return n;
-    });
+    dropText(f.path);
     setReveals((m) => ({ ...m, [f.path]: {} }));
     await Promise.all([refetchView(), refetchDetail()]);
   };
@@ -215,9 +229,17 @@ export function Review(props: { id: string }) {
     if (lines) setEditingPath(f.path);
   };
   const saveFile = async (f: DiffFile, text: string) => {
+    if (staleEdit() === f.path) {
+      // The editor was opened on an older snapshot: a save must not quietly undo what came since.
+      const opened = texts()[f.path]?.join("\n");
+      const now = await api.fileText(props.id, f.path, false, view()?.pin ?? null).catch(() => undefined);
+      const moved = now === undefined || (now === null ? null : splitLines(now).join("\n")) !== opened;
+      if (moved && !(await ask(t("review.fileMovedConfirm", { path: f.path }), { ok: t("common.save"), cancel: t("common.cancel"), kind: "warning" }))) return;
+    }
     const done = await act(() => api.writeFile(props.id, f.path, text), t("review.fileSaved"));
     if (done === undefined) return;
     setEditingPath(null);
+    setStaleEdit(null);
     await changed(f);
   };
   const applyTo = async (f: DiffFile, line: number, suggestion: string) => {
@@ -414,7 +436,7 @@ export function Review(props: { id: string }) {
       { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("keys.pathJump") },
       { key: "mod+shift+enter", run: () => setPanel("accept"), inInputs: true, desc: () => t("review.accept") },
       { key: "c", run: () => setPanel("changes"), desc: () => t("review.requestChanges"), when: () => units().length > 0 },
-      { key: "escape", run: () => (composer() ? setComposer(null) : editingPath() ? setEditingPath(null) : back()) },
+      { key: "escape", run: () => (composer() ? setComposer(null) : editingPath() ? closeEditor() : back()) },
     ],
     () => t("app.review", { id: props.id }),
   );
@@ -606,7 +628,7 @@ export function Review(props: { id: string }) {
                       editing={editingPath() === f.path}
                       onEditFile={editable() ? () => void editFile(f) : undefined}
                       onSaveFile={(text) => void saveFile(f, text)}
-                      onCancelEdit={() => setEditingPath(null)}
+                      onCancelEdit={closeEditor}
                       onApplySuggestion={editable() ? (line, s) => void applyTo(f, line, s) : undefined}
                       movedHunks={view()?.moved_hunks?.[f.path]}
                       formattingHunks={view()?.formatting_hunks?.[f.path]}

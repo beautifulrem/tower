@@ -462,6 +462,7 @@ export const zhLater = {
     noInline: "还没有行内批注。点击 diff 的行号可以在具体位置写批注。",
     sendBack: "发回给 Agent",
     fileSaved: "已保存；快照已更新",
+    fileMovedConfirm: "打开之后，{path} 在工作区里又变了。用你的文本覆盖较新的版本吗？",
     suggestionApplied: "已应用建议；快照已更新",
     queueNext: "下一个待验收：{id}",
     queuePosition: "队列 {i} / {n}",

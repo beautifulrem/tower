@@ -470,6 +470,7 @@ export const enLater: DictLater = {
     noInline: "No inline comments yet. Click a line number in the diff to comment on that spot.",
     sendBack: "Send back to the agent",
     fileSaved: "Saved; the snapshot is updated",
+    fileMovedConfirm: "{path} changed in the workspace after you opened it. Save your text over the newer version?",
     suggestionApplied: "Suggestion applied; the snapshot is updated",
     queueNext: "Next to accept: {id}",
     queuePosition: "Queue {i} / {n}",

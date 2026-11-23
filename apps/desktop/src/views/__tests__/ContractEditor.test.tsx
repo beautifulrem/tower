@@ -53,7 +53,7 @@ vi.mock("../../lib/store", async () => {
 });
 
 const validated: unknown[] = [];
-const draft = vi.hoisted(() => ({ fail: false, createGate: null as Promise<void> | null }));
+const draft = vi.hoisted(() => ({ fail: false, goalFails: false, createGate: null as Promise<void> | null }));
 const look = {
   id: "C4",
   title: "The checkout page still looks right",
@@ -88,7 +88,9 @@ vi.mock("../../lib/api", async () => {
         await invoke("save_attachment", { goalId, name });
         return { id: "att_1", name, mime: "image/png", path: "att_1.png", size_bytes: 4, created_at: 1 };
       },
-      goal: async () => ({
+      goal: async () => {
+        if (draft.goalFails) throw "the store is locked";
+        return {
       summary: { title: "Fix the cart total", project_id: "p1" },
       contract: {
         version: 2,
@@ -114,7 +116,8 @@ vi.mock("../../lib/api", async () => {
         sandbox_tier: "default",
         depends_on: [],
       },
-    }),
+    };
+      },
   },
   errorText: (e: unknown) => String(e),
   };
@@ -247,5 +250,17 @@ describe("saving", () => {
     await waitFor(() => expect(invoked.some((x) => x.cmd === "create_goal")).toBe(true));
     const sent = invoked.filter((x) => x.cmd === "create_goal").at(-1)!.args as { contract: { attachments: Array<{ path: string; preview?: string }> } };
     expect(sent.contract.attachments.map((a) => [a.path, a.preview])).toEqual([["att_1.png", undefined]]);
+  });
+
+  it("never saves over a draft it could not read: the blank form is not your draft", async () => {
+    const { invoked } = await import("../../test/setup");
+    draft.goalFails = true;
+    render(() => <ContractEditor draftId="G-0007" />);
+    expect(await screen.findByText("the store is locked")).toBeTruthy();
+    expect(screen.queryByText("Save as draft")).toBeNull();
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoked.filter((x) => x.cmd === "update_draft" && (x.args as { id: string }).id === "G-0007")).toEqual([]);
+    draft.goalFails = false;
   });
 });

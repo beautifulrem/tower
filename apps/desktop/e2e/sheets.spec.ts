@@ -142,3 +142,34 @@ for (const s of sheets.filter((x) => x.name !== "Look")) {
     expect(outside).toEqual([]);
   });
 }
+
+// A sheet opened inside another (Look from Verify) walks its own controls once per Tab, every one of them, and never
+// lets focus out to the sheet underneath.
+test("Tab in the Look sheet opened from Verify walks every Look control and stays in it", async ({ page }) => {
+  await openTower(page, "review/G-0001", { lang: "en", enrich: enrichLook });
+  await settled(page, "review/G-0001");
+  await page.keyboard.press("e");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.locator("[role=dialog] .look-img-btn").first().click();
+  await expect(page.getByRole("dialog")).toHaveCount(2);
+  const look = page.getByRole("dialog").last();
+  const controls = await look.evaluate((d) =>
+    [...d.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select, textarea, [href], [tabindex='0']")]
+      .filter((el) => el.offsetParent !== null).length,
+  );
+  const seen = new Set<string>();
+  const outside: string[] = [];
+  for (const key of [...Array(controls + 2).fill("Tab"), ...Array(controls + 2).fill("Shift+Tab")]) {
+    await page.keyboard.press(key);
+    const at = await page.evaluate(() => {
+      const d = [...document.querySelectorAll("[role=dialog]")].pop()!;
+      const a = document.activeElement as HTMLElement | null;
+      if (!a || !d.contains(a)) return { out: `${a?.tagName}.${a?.className}` };
+      return { id: [...d.querySelectorAll("*")].indexOf(a).toString() };
+    });
+    if ("out" in at) outside.push(`${key}: ${at.out}`);
+    else seen.add(at.id);
+  }
+  expect(outside).toEqual([]);
+  expect(seen.size).toBe(controls);
+});

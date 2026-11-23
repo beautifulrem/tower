@@ -13,7 +13,7 @@ import { GitIdentityForm } from "../components/GitIdentity";
 import { DangerMark, Icon, NeedsYouMark, NoticeMark } from "../components/Glyph";
 import { TrustPill } from "../components/ProvenanceFrame";
 import { TestCheckLine } from "../components/TestCheck";
-import { Button, ClauseHead, Empty, Field, IconButton, Loading, Select, Toggle } from "../components/ui";
+import { Button, ClauseHead, Empty, Failed, Field, IconButton, Loading, Select, Toggle } from "../components/ui";
 import { SETTINGS_CLAUSES, SettingsIndex } from "./SettingsIndex";
 import type { ProjectView } from "../gen/ProjectView";
 import type { PushStatus } from "../gen/PushStatus";
@@ -95,7 +95,9 @@ export function Settings() {
   const [updateInfo, setUpdateInfo] = createSignal<UpdateCheckResult | null>(null);
   const [installing, setInstalling] = createSignal(false);
   const saved = useSavedStamp();
-  onMount(async () => setS((await api.settings()) as SettingsExt));
+  const [loadFailed, setLoadFailed] = createSignal<unknown>(null);
+  const load = () => (setLoadFailed(null), api.settings().then((v) => setS(v as SettingsExt), setLoadFailed));
+  onMount(load);
   const noModels = () => !!state.env?.pi_version && !models.loading && models() !== null && models()!.length === 0;
   const engine = () => s()?.engine || "pi";
   const engineDesc = () => state.engines.find((d) => d.id === engine());
@@ -156,7 +158,7 @@ export function Settings() {
   const [rechecking, setRechecking] = createSignal(false);
   const recheck = async () => {
     setRechecking(true);
-    await refreshEnvironment();
+    await act(refreshEnvironment);
     setRechecking(false);
   };
   const patch = (p: Partial<SettingsExt>) => setS((cur) => (cur ? { ...cur, ...p } : cur));
@@ -278,7 +280,7 @@ export function Settings() {
         </Show>
       </section>
 
-      <Show when={s()} fallback={<Loading text={t("settings.loading")} />}>
+      <Show when={s()} fallback={<Failed error={loadFailed()} onRetry={() => void load()} pending={<Loading text={t("settings.loading")} />} />}>
         <section class="settings-block" id={SETTINGS_CLAUSES[1].id} onFocusOut={() => void commit()}>
           <ClauseHead title={t("settings.engineDefaults")}>
             <saved.Stamp />

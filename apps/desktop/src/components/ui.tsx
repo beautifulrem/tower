@@ -1,6 +1,7 @@
 /** Small building blocks shared by every view. */
-import { type JSX, Show, createUniqueId, onCleanup, onMount, splitProps } from "solid-js";
+import { type JSX, type Resource, Show, createUniqueId, onCleanup, onMount, splitProps } from "solid-js";
 
+import { errorText } from "../lib/api";
 import { t } from "../lib/i18n";
 import { type Binding, keyHint, useKeys } from "../lib/keys";
 import { DangerMark, Icon, type IconName } from "./Glyph";
@@ -191,6 +192,20 @@ export function Toggle(props: {
  * picks the mark: a hollow ring (nothing here), a dot (waiting), a square
  * (an error, in the danger colour).
  */
+/** A resource's value, or undefined once its load has failed: reading the resource itself would throw the error. */
+export const settled = <T,>(r: Resource<T>): T | undefined => (r.error !== undefined && !r.loading ? undefined : r());
+
+/** What a failed load says, with a way to try again; `pending` shows while there is no error. */
+export function Failed(props: { title?: string; error: unknown; onRetry: () => void; inline?: boolean; pending?: JSX.Element }) {
+  return (
+    <Show when={props.error} fallback={props.pending}>
+      <Empty title={props.title ?? t("common.loadFailed")} kind="error" inline={props.inline} action={<Button size="s" onClick={props.onRetry}>{t("common.retry")}</Button>}>
+        {errorText(props.error)}
+      </Empty>
+    </Show>
+  );
+}
+
 export function Empty(props: {
   title: string;
   children?: JSX.Element;

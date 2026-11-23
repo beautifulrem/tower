@@ -121,6 +121,35 @@ for (const [route, roomy] of [["review/G-0003", 1440], ["review/G-0001", 1600]] 
   });
 }
 
+// The pins give way before anything in the verification group does, and leave no hole: the counts group is as wide
+// as what it shows.
+for (const route of ["review/G-0003", "review/G-0001"]) for (const lang of ["en", "zh-CN"] as const) {
+  test(`${route} (${lang}): the pins go before the verification line loses a word, and leave no gap`, async ({ page }) => {
+    await openTower(page, route, { lang, enrich: enrichRich });
+    await settled(page, route);
+    const out: string[] = [];
+    for (const w of [1241, 1283, 1360, 1440, 1500, 1560, 1600, 1800]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const bad = await page.evaluate(() => {
+        const group = document.querySelector<HTMLElement>(".review-stats > .review-stat-group")!;
+        const pins = group.querySelector<HTMLElement>(".review-stat-pins")!;
+        const verify = document.querySelector<HTMLElement>(".review-verify");
+        const shown = [...group.children].filter((c) => (c as HTMLElement).offsetParent !== null && c.getBoundingClientRect().top < group.getBoundingClientRect().bottom - 0.5);
+        const used = shown.length ? shown.at(-1)!.getBoundingClientRect().right - group.getBoundingClientRect().left : 0;
+        const found: string[] = [];
+        if (group.getBoundingClientRect().width - used > 1) found.push(`gap ${Math.round(group.getBoundingClientRect().width - used)}px`);
+        const pinsShown = shown.includes(pins);
+        const dropped = !!verify && verify.scrollHeight > verify.clientHeight + 1;
+        if (pinsShown && dropped) found.push("pins shown while the verification line dropped a part");
+        return found;
+      });
+      if (bad.length) out.push(`${w}: ${bad.join(", ")}`);
+    }
+    expect(out).toEqual([]);
+  });
+}
+
 // The merge queue at the narrow end: a goal id is one token ("G-0003", never "G-" over "0003"), and a branch too long
 // for its place ends in an ellipsis on one line, its whole name in the title.
 test("operations: the merge queue keeps a goal id whole and a long branch on one line", async ({ page }) => {

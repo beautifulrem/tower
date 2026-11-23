@@ -119,6 +119,13 @@ impl Store {
         Ok(n > 0)
     }
 
+    /// Moves a schedule on to its next slot without recording a run (a
+    /// launch that failed, a slot claimed earlier that never ran).
+    pub fn set_schedule_next_run(&mut self, id: &str, next_run_at: Option<Millis>) -> Result<()> {
+        self.conn.execute("UPDATE scheduled_goals SET next_run_at = ?2 WHERE id = ?1", params![id, next_run_at])?;
+        Ok(())
+    }
+
     pub fn record_schedule_run(
         &mut self,
         id: &str,

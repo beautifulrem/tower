@@ -31,7 +31,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use sha2::{Digest, Sha256};
 use tower_core::{Lang, tr};
 
 /// Which part of the Bench a report came from: your own code on the base,
@@ -295,9 +294,7 @@ impl Report {
 }
 
 fn hex_sha256(hex: &str) -> String {
-    let mut h = Sha256::new();
-    h.update(hex.as_bytes());
-    format!("{:x}", h.finalize())
+    crate::sha256_hex(hex.as_bytes())
 }
 
 /// Whether the guard loads into what a criterion's command runs.

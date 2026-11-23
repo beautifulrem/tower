@@ -140,7 +140,9 @@ for (const route of ["review/G-0003", "review/G-0001"]) for (const lang of ["en"
         const found: string[] = [];
         if (group.getBoundingClientRect().width - used > 1) found.push(`gap ${Math.round(group.getBoundingClientRect().width - used)}px`);
         const pinsShown = shown.includes(pins);
-        const dropped = !!verify && verify.scrollHeight > verify.clientHeight + 1;
+        // A part drops when the group wraps onto its hidden line, or when the criteria bar does inside itself.
+        const wraps = (el: HTMLElement | null | undefined) => !!el && el.scrollHeight > el.clientHeight + 1;
+        const dropped = wraps(verify) || wraps(verify?.querySelector<HTMLElement>(".criteria-bar"));
         if (pinsShown && dropped) found.push("pins shown while the verification line dropped a part");
         return found;
       });

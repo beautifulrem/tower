@@ -155,6 +155,7 @@ impl Supervisor {
             runs: Mutex::default(),
             verifications: Mutex::default(),
             verify_again: Mutex::default(),
+            live_verifications: Mutex::default(),
             dirty: Mutex::default(),
             traces: Mutex::default(),
             models: Mutex::default(),
@@ -524,14 +525,16 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Cancels a goal's verification or preflight and waits (up to 10 s)
-    /// until it has let go of the goal's folders.
-    async fn stop_verification(&self, id: &str) {
+    /// Cancels a goal's verification or preflight and waits (≤10 s) until every
+    /// one winding down, cancelled earlier too, has let go of the goal's folders.
+    pub(crate) async fn stop_verification(&self, id: &str) {
         if let Some(c) = self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).get(id) {
             c.cancel();
         }
         for _ in 0..200 {
-            if !self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id) {
+            let running = self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id)
+                || self.inner.live_verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id);
+            if !running {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;

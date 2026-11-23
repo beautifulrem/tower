@@ -29,7 +29,11 @@ export interface SandboxFsOptions {
 	maxFileBytes?: number;
 	/** Disable built-in sandboxed Node persistent helper fallback (mainly for tests). */
 	disableNodeHelper?: boolean;
+	/** How long one operation may take before it fails (defaults to 30 s). */
+	requestTimeoutMs?: number;
 }
+
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface SandboxedOperations {
 	read: ReadOperations;
@@ -84,10 +88,28 @@ function errResp(id, e) {
   return { id, ok: false, code, error: msg };
 }
 
+// Opening a FIFO the agent made would wait for a writer for ever: open
+// without waiting, and refuse anything that is not a regular file.
+function notRegular() {
+  return Object.assign(new Error("not a regular file"), { code: "ENOTREG" });
+}
+
+function openRegular(p) {
+  const fd = fs.openSync(p, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+  if (!fs.fstatSync(fd).isFile()) { fs.closeSync(fd); throw notRegular(); }
+  return fd;
+}
+
 function writeAtomic(target, buf) {
   let isLink = false;
   try { isLink = fs.lstatSync(target).isSymbolicLink(); } catch {}
-  if (isLink) { fs.writeFileSync(target, buf); return; }
+  if (isLink) {
+    let st = null;
+    try { st = fs.statSync(target); } catch {}
+    if (st && !st.isFile()) throw notRegular();
+    fs.writeFileSync(target, buf);
+    return;
+  }
   const dir = path.dirname(target);
   const tmp = path.join(dir, ".tower-fs-tmp-" + process.pid + "-" + (++seq));
   try {
@@ -108,7 +130,7 @@ function handle(req) {
     switch (req.op) {
       case "ping": return { id, ok: true };
       case "read": {
-        const fd = fs.openSync(req.path, "r");
+        const fd = openRegular(req.path);
         try {
           const st = fs.fstatSync(fd);
           if (st.size > MAX) return { id, ok: false, code: "too_large", error: "file exceeds " + MAX + " byte limit" };
@@ -124,7 +146,7 @@ function handle(req) {
         } finally { fs.closeSync(fd); }
       }
       case "access": {
-        const fd = fs.openSync(req.path, "r");
+        const fd = openRegular(req.path);
         try {
           const b = Buffer.allocUnsafe(1);
           fs.readSync(fd, b, 0, 1, 0);
@@ -142,7 +164,7 @@ function handle(req) {
         return { id, ok: true };
       }
       case "mime": {
-        const fd = fs.openSync(req.path, "r");
+        const fd = openRegular(req.path);
         try {
           const b = Buffer.allocUnsafe(16);
           const n = fs.readSync(fd, b, 0, 16, 0);
@@ -181,13 +203,26 @@ function failure(verb: string, path: string, stderr: string): Error {
 	return new Error(`cannot ${verb} ${path}: ${why}`);
 }
 
-function runFallback(sandboxBin: string, profile: string, argv: string[], maxFileBytes: number, input?: string): Promise<Buffer> {
+function runFallback(
+	sandboxBin: string,
+	profile: string,
+	argv: string[],
+	maxFileBytes: number,
+	input?: string,
+	timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
 		if (input !== undefined && Buffer.byteLength(input, "utf8") > maxFileBytes) {
 			reject(new Error(`write payload exceeds ${maxFileBytes} byte limit`));
 			return;
 		}
 		const child = spawn(sandboxBin, ["-f", profile, ...argv], { stdio: ["pipe", "pipe", "pipe"] });
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			child.kill("SIGKILL");
+		}, timeoutMs);
+		timer.unref();
 		const out: Buffer[] = [];
 		const err: Buffer[] = [];
 		let size = 0;
@@ -204,7 +239,9 @@ function runFallback(sandboxBin: string, profile: string, argv: string[], maxFil
 		child.stderr.on("data", (b: Buffer) => err.push(b));
 		child.on("error", reject);
 		child.on("close", (code) => {
-			if (oversized) reject(new Error(`file exceeds ${maxFileBytes} byte limit`));
+			clearTimeout(timer);
+			if (timedOut) reject(new Error(`timed out after ${timeoutMs} ms`));
+			else if (oversized) reject(new Error(`file exceeds ${maxFileBytes} byte limit`));
 			else if (code === 0) resolve(Buffer.concat(out));
 			else reject(Object.assign(new Error(Buffer.concat(err).toString("utf8")), { code }));
 		});
@@ -244,6 +281,7 @@ class PersistentHelper {
 	private readonly maxFileBytes: number;
 	private readonly helperArgv: string[] | null;
 	private readonly disableNodeHelper: boolean;
+	readonly timeoutMs: number;
 	private readonly exitHook: () => void;
 
 	constructor(profile: string, options?: SandboxFsOptions) {
@@ -251,6 +289,7 @@ class PersistentHelper {
 		this.sandboxBin = options?.sandboxBin ?? SANDBOX_EXEC;
 		this.maxFileBytes = options?.maxFileBytes ?? MAX_FILE_BYTES;
 		this.disableNodeHelper = options?.disableNodeHelper ?? false;
+		this.timeoutMs = options?.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
 		const cmd = options?.helperCommand ?? process.env.TOWER_FS_HELPER;
 		if (Array.isArray(cmd) && cmd.length > 0) {
 			this.helperArgv = cmd;
@@ -340,11 +379,13 @@ class PersistentHelper {
 			child.stdin.on("error", () => {});
 
 			const onDown = (reason: string) => {
+				// Pending requests are the current helper's: a helper already
+				// replaced (one that timed out) takes none of its successor's.
 				if (this.child === child) {
 					this.child = null;
 					this.startPromise = null;
+					this.rejectAll(new Error(reason));
 				}
-				this.rejectAll(new Error(reason));
 				finish(false);
 			};
 			child.on("error", (e) => onDown(e.message));
@@ -411,10 +452,34 @@ class PersistentHelper {
 					return;
 				}
 				const id = ++this.nextId;
-				this.pending.set(id, { resolve, reject });
+				// A request the helper never answers (it is stuck, e.g. on
+				// something that blocks) fails, and the helper is replaced.
+				const timer = setTimeout(() => {
+					if (!this.pending.delete(id)) return;
+					if (this.child === c) {
+						this.child = null;
+						this.startPromise = null;
+						// Whatever else it was doing is retried on a new one.
+						this.rejectAll(new Error("sandbox helper restarted"));
+					}
+					c.kill("SIGKILL");
+					reject(Object.assign(new Error(`sandbox helper timed out after ${this.timeoutMs} ms`), { timedOut: true }));
+				}, this.timeoutMs);
+				timer.unref();
+				this.pending.set(id, {
+					resolve: (r) => {
+						clearTimeout(timer);
+						resolve(r);
+					},
+					reject: (e) => {
+						clearTimeout(timer);
+						reject(e);
+					},
+				});
 				try {
 					c.stdin.write(JSON.stringify({ ...payload, id }) + "\n");
 				} catch (e) {
+					clearTimeout(timer);
 					this.pending.delete(id);
 					reject(e instanceof Error ? e : new Error(String(e)));
 				}
@@ -422,8 +487,10 @@ class PersistentHelper {
 		try {
 			return await sendOnce();
 		} catch (e) {
-			// Transparent auto-restart once if the helper died mid-flight.
-			if (!this.closed && !this.disabled && (await this.ensureReady())) {
+			// Transparent auto-restart once if the helper died mid-flight (not
+			// when the request itself timed out: it would only block again).
+			const timedOut = (e as { timedOut?: boolean }).timedOut === true;
+			if (!timedOut && !this.closed && !this.disabled && (await this.ensureReady())) {
 				return await sendOnce();
 			}
 			throw e;
@@ -443,7 +510,7 @@ export function sandboxedOperations(profile: string, options?: SandboxFsOptions)
 				if (!resp.ok) throw new Error(resp.error || resp.code || "read failed");
 				return Buffer.from(resp.data_b64 ?? "", "base64");
 			}
-			return await runFallback(sandboxBin, profile, ["/bin/cat", "--", path], maxFileBytes);
+			return await runFallback(sandboxBin, profile, ["/bin/cat", "--", path], maxFileBytes, undefined, helper.timeoutMs);
 		});
 
 	// Opening the file is what the sandbox checks; reading one byte proves it.
@@ -454,7 +521,7 @@ export function sandboxedOperations(profile: string, options?: SandboxFsOptions)
 				if (!resp.ok) throw new Error(resp.error || resp.code || "access failed");
 				return;
 			}
-			await runFallback(sandboxBin, profile, ["/usr/bin/head", "-c", "1", "--", path], maxFileBytes);
+			await runFallback(sandboxBin, profile, ["/usr/bin/head", "-c", "1", "--", path], maxFileBytes, undefined, helper.timeoutMs);
 		});
 
 	const writeFile = (path: string, content: string) =>
@@ -471,7 +538,7 @@ export function sandboxedOperations(profile: string, options?: SandboxFsOptions)
 				if (!resp.ok) throw new Error(resp.error || resp.code || "write failed");
 				return;
 			}
-			await runFallback(sandboxBin, profile, ["/bin/sh", "-c", 'cat > "$1"', "tower-write", path], maxFileBytes, content);
+			await runFallback(sandboxBin, profile, ["/bin/sh", "-c", 'cat > "$1"', "tower-write", path], maxFileBytes, content, helper.timeoutMs);
 		});
 
 	const mkdir = (dir: string) =>
@@ -481,7 +548,7 @@ export function sandboxedOperations(profile: string, options?: SandboxFsOptions)
 				if (!resp.ok) throw new Error(resp.error || resp.code || "mkdir failed");
 				return;
 			}
-			await runFallback(sandboxBin, profile, ["/bin/mkdir", "-p", "--", dir], maxFileBytes);
+			await runFallback(sandboxBin, profile, ["/bin/mkdir", "-p", "--", dir], maxFileBytes, undefined, helper.timeoutMs);
 		});
 
 	const detectImageMimeType = async (path: string): Promise<string | null> => {
@@ -490,7 +557,7 @@ export function sandboxedOperations(profile: string, options?: SandboxFsOptions)
 			if (resp !== null) {
 				return resp.ok ? (resp.mime ?? null) : null;
 			}
-			return imageMime(await runFallback(sandboxBin, profile, ["/usr/bin/head", "-c", "16", "--", path], maxFileBytes));
+			return imageMime(await runFallback(sandboxBin, profile, ["/usr/bin/head", "-c", "16", "--", path], maxFileBytes, undefined, helper.timeoutMs));
 		} catch {
 			return null;
 		}

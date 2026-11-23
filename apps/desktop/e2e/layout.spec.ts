@@ -38,10 +38,21 @@ for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0003", "setti
 
 // The review header is one line of stats: when they don't fit, a whole stat goes (the least needed first), and no
 // word is cut through its letters ("2 revi") — a clipped word reads as a different word.
-for (const route of ["review/G-0003", "review/G-0001"]) {
-  test(`${route}: the header's stats drop whole, never cut a word, at every desktop width`, async ({ page }) => {
-    await openTower(page, route, { lang: "en", enrich: enrichRich });
+const statModes = [
+  { lang: "en", compare: false },
+  { lang: "en", compare: true },
+  { lang: "zh-CN", compare: false },
+  { lang: "zh-CN", compare: true },
+] as const;
+for (const route of ["review/G-0003", "review/G-0001"]) for (const mode of statModes) {
+  test(`${route} (${mode.lang}${mode.compare ? ", comparing runs" : ""}): the header's stats drop whole, never cut a word, at every desktop width`, async ({ page }) => {
+    await openTower(page, route, { lang: mode.lang, enrich: enrichRich });
     await settled(page, route);
+    if (mode.compare) {
+      // Comparing runs puts the two run pickers on the same line.
+      await page.locator(".review-stats .scope-switch .tab").last().click();
+      await expect(page.locator(".review-stats .timeline-compare")).toBeVisible();
+    }
     const out: string[] = [];
     for (const w of [1024, 1040, 1240, 1241, 1283, 1440, 1560, 1561]) {
       await page.setViewportSize({ width: w, height: 900 });

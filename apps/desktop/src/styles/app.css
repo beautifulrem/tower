@@ -2685,19 +2685,33 @@ input[type="radio"] {
   overflow: hidden;
 }
 /* Short of room, a stat goes whole, never cut through a word. The counts go by width band (below); what is left to
-   give is the criteria line after the seal, a line that wraps onto a second line nobody sees, so the human count
-   leaves first, then the words, and last the bar. The seal and the scope switch stay. */
+   give is the verification group at the end. It is one line that wraps onto a second line nobody sees: its criteria
+   line gives way first (the human count, then the words, and last the bar), and if even the seal has no room, as when
+   two run pickers share the line, the seal goes whole (a zero-width first item holds the visible line). */
 .review-stats > * {
   flex-shrink: 0;
 }
 .review-stats > .review-verify {
-  flex-shrink: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  height: 20px;
+  /* The hidden line starts below the padding too: the clip is the padding box. */
+  row-gap: var(--sp-1);
+  overflow: hidden;
+}
+.review-verify::before {
+  content: "";
+  width: 0;
+  height: 16px;
+  margin-right: calc(-1 * var(--sp-2));
 }
 .review-verify .seal {
   flex: none;
 }
 .review-verify .criteria-bar {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   flex-wrap: wrap;
   align-content: flex-start;
   min-width: 0;
@@ -3273,12 +3287,15 @@ input[type="radio"] {
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* A control reached with Tab scrolls clear of the actions' band, not under it. */
+  scroll-padding-bottom: calc(var(--sp-8) + var(--sp-3) + var(--panel-pad-y));
 }
 .panel > .panel-actions {
   position: sticky;
   bottom: calc(-1 * var(--panel-pad-y));
   z-index: 2;
-  margin: 0 calc(-1 * var(--panel-pad-x)) calc(-1 * var(--panel-pad-y));
+  /* The band above the buttons covers what scrolls under them; in the flow it takes no more room than the gap. */
+  margin: calc(-1 * var(--sp-3)) calc(-1 * var(--panel-pad-x)) calc(-1 * var(--panel-pad-y));
   padding: var(--sp-3) var(--panel-pad-x) var(--panel-pad-y);
   background: var(--bg-overlay);
 }

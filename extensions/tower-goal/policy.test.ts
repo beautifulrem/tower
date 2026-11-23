@@ -119,6 +119,68 @@ test("one-way doors cannot be bypassed by quoting, escapes, env prefixes, wrappe
 	}
 });
 
+test("here-documents, unparsable commands, git aliases, dynamic subcommands and find -exec cannot hide one-way doors", () => {
+	const hidden = [
+		// A quote inside a here-document body is data; it must not swallow the next line.
+		"cat <<EOF\necho '\nEOF\ngit push origin main #'",
+		"cat <<'EOF'\n'\nEOF\ngit push origin main #'",
+		"cat <<-EOF\n\techo '\n\tEOF\ngit push origin main #'",
+		// An unquoted here-document runs its substitutions.
+		"cat <<EOF\n$(git push origin main)\nEOF",
+		"cat <<EOF\n`git push origin main`\nEOF",
+		// A here-document inside a substitution.
+		"echo $(cat <<EOF\n'\nEOF\n); git push origin main; echo $(echo ')",
+		// A shell fed a here-document or here-string runs it.
+		"bash <<EOF\ngit push origin main\nEOF",
+		"cat <<'EOF' | sh\ngit push origin main\nEOF",
+		"bash <<< 'git push origin main'",
+		"cat <<2>out\nx\n2",
+		// What cannot be parsed reliably asks, whatever the mode.
+		"cat <<EOF\nnever closed",
+		"echo 'unterminated; git push origin main",
+		// git aliases and subcommands only known when the command runs.
+		"git -c alias.p=push p origin main",
+		"git -c Alias.P='!git push' P",
+		"git --config-env=alias.p=P p origin main",
+		"GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p origin main",
+		"git -c include.path=/tmp/aliases p origin main",
+		"HOME=/tmp/elsewhere git p origin main",
+		"git $p origin main",
+		'git "$(echo push)" origin main',
+		// Commands find runs, through wrappers too.
+		"find . -maxdepth 0 -exec git push origin main \\;",
+		"find . -execdir git push origin main {} +",
+		"find . -ok sudo id \\;",
+		"find . -exec sh -c 'git push origin main' \\;",
+		"find . -exec env git push origin main \\;",
+	];
+	for (const mode of ["autonomous", "standard", "cautious"] as const) {
+		for (const cmd of hidden) {
+			assert.equal(checkBash(cmd, mode).action, "ask", `expected ask in ${mode}: ${JSON.stringify(cmd)}`);
+		}
+	}
+	// Here-documents and here-strings themselves stay ordinary.
+	const fine = [
+		"cat <<EOF\nhello 'world\nEOF",
+		"cat <<'EOF'\n$(not run)\nEOF",
+		"cat <<'EOF'\ngit push origin main\nEOF",
+		"grep x <<< 'a b'",
+		"git -c color.ui=never log",
+		"find . -name '*.ts' -exec grep -l x {} +",
+		// The usual way to pass a commit message.
+		"git commit -m \"$(cat <<'EOF'\nfix: don't break (really)\nEOF\n)\"",
+	];
+	for (const mode of ["autonomous", "standard"] as const) {
+		for (const cmd of fine) {
+			assert.equal(checkBash(cmd, mode).action, "allow", `expected allow in ${mode}: ${JSON.stringify(cmd)}`);
+		}
+	}
+	const p = parseShell("cat <<EOF > out.txt\nbody 'x\nEOF\nls");
+	assert.equal(p.parseError, undefined);
+	assert.deepEqual(p.commands.map((c) => c.name), ["cat", "ls"]);
+	assert.equal(p.hasFileWriteRedirection, true);
+});
+
 test("cautious mode rejects hidden writes via redirections, substitutions, and inline scripts", () => {
 	const hiddenWrites = [
 		"echo x > foo.txt",
@@ -272,7 +334,7 @@ test("declarative engine profiles enforce explicit trust tiers", () => {
 async function runBridgeSession(
 	mode: string,
 	engineId: string,
-	promptCmd: Record<string, unknown>,
+	promptCmd: Record<string, unknown> | Array<Record<string, unknown>>,
 	extraEnv: Record<string, string> = {},
 ): Promise<Array<Record<string, unknown>>> {
 	const ws = mkdtempSync(join(tmpdir(), "tower-acp-test-"));
@@ -309,7 +371,10 @@ async function runBridgeSession(
 				}
 			});
 		});
-		child.stdin.write(`${JSON.stringify({ id: "1", ...promptCmd })}\n`);
+		// Several commands go in one write, so the bridge sees them while the
+		// first is still starting its session.
+		const cmds = Array.isArray(promptCmd) ? promptCmd : [promptCmd];
+		child.stdin.write(cmds.map((c, i) => `${JSON.stringify({ id: String(i + 1), ...c })}\n`).join(""));
 		await settled;
 		child.stdin.end();
 		await new Promise<void>((res) => child.on("close", () => res()));
@@ -330,6 +395,17 @@ test("ACP bridge penetration test hard-rejects unauthorized built-in tools and e
 		assert.deepEqual(report[k], { outcome: "selected", optionId: "r1" }, `${k} must be hard-rejected`);
 	}
 	assert.deepEqual(report.tower_read, { outcome: "selected", optionId: "a1" }, "mcp__tower__read must be allowed");
+});
+
+test("ACP bridge starts one session when a steer arrives while the prompt starts it", async () => {
+	const events = await runBridgeSession("blocked", "claude-code", [
+		{ type: "prompt", message: "first" },
+		{ type: "steer", message: "second" },
+	]);
+	const responses = events.filter((e) => e.type === "response") as Array<{ command: string; data: { disposition?: string } }>;
+	// The steer is answered first: it does not wait for the session.
+	assert.deepEqual(Object.fromEntries(responses.map((r) => [r.command, r.data.disposition])), { prompt: "started", steer: "queued" });
+	assert.equal(events.filter((e) => e.type === "agent_start").length, 1, "one turn loop");
 });
 
 test("ACP bridge forwards honest submit(outcome='blocked') and multimodal image blocks", async () => {

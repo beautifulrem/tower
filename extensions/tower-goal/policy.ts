@@ -123,6 +123,8 @@ const REASON = {
 	addDep: { zh: "新增依赖", en: "add a dependency" },
 	ciConfig: { zh: "修改 CI 配置", en: "change CI configuration" },
 	rmRecursive: { zh: "递归删除", en: "delete recursively" },
+	gitDynamic: { zh: "git 子命令或别名在运行时才确定", en: "a git subcommand or alias only known when it runs" },
+	unparsed: { zh: "无法可靠解析的命令", en: "a command Tower cannot parse reliably" },
 	cautious: { zh: "谨慎模式：运行非只读命令", en: "cautious mode: a command that is not read-only" },
 	cautiousRedirect: { zh: "谨慎模式：命令包含文件写入重定向", en: "cautious mode: command writes via file redirection" },
 	cautiousSub: { zh: "谨慎模式：命令包含子命令替换或内联脚本", en: "cautious mode: command uses substitution or an inline script" },
@@ -132,19 +134,27 @@ const PUBLISH_TOOLS = new Set(["npm", "pnpm", "yarn", "cargo", "gem", "twine"]);
 const DOWNLOADERS = new Set(["curl", "wget"]);
 const SCRIPT_INTERPRETERS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish", "python", "python3", "node", "perl", "ruby"]);
 const GIT_GLOBAL_VALUE_FLAGS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env"]);
+/** Environment that points git at other configuration (and so other aliases). */
+const GIT_CONFIG_ENV = /^(GIT_CONFIG.*|GIT_DIR|GIT_COMMON_DIR|HOME|XDG_CONFIG_HOME)$/i;
 const CI_PATH_RE = /(?:^|\/)(?:\.github\/workflows(?:\/|$)|\.gitlab-ci(?:\.ya?ml)?$|ci\.ya?ml$)/i;
 
 /** Extracts git's real subcommand & args after skipping global flags (`git -C dir push`). */
-function gitSubcommand(args: string[]): { sub: string; rest: string[]; hasConfigFlag: boolean } {
+function gitSubcommand(args: string[]): { sub: string; rest: string[]; hasConfigFlag: boolean; setsAlias: boolean } {
 	let i = 0;
 	let hasConfigFlag = false;
+	let setsAlias = false;
 	while (i < args.length) {
 		const a = args[i];
 		if (a === "--") {
 			i++;
 			break;
 		}
-		if (a === "-c" || a.startsWith("-c") || a.startsWith("--config-env")) hasConfigFlag = true;
+		if (a === "-c" || a.startsWith("-c") || a.startsWith("--config-env")) {
+			hasConfigFlag = true;
+			// `-c alias.p=push`, `-calias.p=push`, `--config-env=alias.p=VAR`.
+			const setting = a === "-c" || a === "--config-env" ? (args[i + 1] ?? "") : a.replace(/^(-c|--config-env=?)/, "");
+			if (/^(alias|include|includeif)\./i.test(setting)) setsAlias = true;
+		}
 		if (GIT_GLOBAL_VALUE_FLAGS.has(a)) {
 			i += 2;
 			continue;
@@ -153,9 +163,9 @@ function gitSubcommand(args: string[]): { sub: string; rest: string[]; hasConfig
 			i++;
 			continue;
 		}
-		return { sub: a, rest: args.slice(i + 1), hasConfigFlag };
+		return { sub: a, rest: args.slice(i + 1), hasConfigFlag, setsAlias };
 	}
-	return { sub: "", rest: [], hasConfigFlag };
+	return { sub: "", rest: [], hasConfigFlag, setsAlias };
 }
 
 function hasShortOrLongFlag(args: string[], shortChar: string, longFlags: string[]): boolean {
@@ -209,7 +219,11 @@ function checkOneWayCommand(cmd: SimpleCommand): Text | null {
 	for (const { name, args } of candidates) {
 		if (name === "sudo" || name === "doas") return REASON.sudo;
 		if (name === "git") {
-			const { sub, rest } = gitSubcommand(args);
+			const { sub, rest, setsAlias } = gitSubcommand(args);
+			// An alias set for this command, or a subcommand that is only a
+			// variable or substitution here, could be anything (`push`).
+			if (setsAlias || cmd.env.some((e) => GIT_CONFIG_ENV.test(e.name))) return REASON.gitDynamic;
+			if (/[$`]/.test(sub)) return REASON.gitDynamic;
 			if (sub === "push") return REASON.push;
 			if (sub === "reset" && rest.includes("--hard")) return REASON.resetHard;
 			if (sub === "clean" && hasShortOrLongFlag(rest, "f", ["--force"])) return REASON.gitClean;
@@ -350,6 +364,9 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 		const reason = checkOneWayCommand(cmd);
 		if (reason) return { action: "ask", reason };
 	}
+	// What the parser could not follow could hide a one-way door: ask in
+	// every mode.
+	if (parsed.parseError) return { action: "ask", reason: REASON.unparsed };
 	if (autonomy === "autonomous") return { action: "allow" };
 
 	for (const cmd of parsed.commands) {
@@ -358,9 +375,8 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 	}
 	if (autonomy === "standard") return { action: "allow" };
 
-	// Cautious preset: fail closed on parse errors, write redirections,
-	// substitutions, dynamic command names, inline scripts, or non-allowlisted commands.
-	if (parsed.parseError) return { action: "ask", reason: REASON.cautious };
+	// Cautious preset: fail closed on write redirections, substitutions,
+	// dynamic command names, inline scripts, or non-allowlisted commands.
 	if (parsed.hasFileWriteRedirection) return { action: "ask", reason: REASON.cautiousRedirect };
 	if (parsed.hasCommandSubstitution || parsed.hasProcessSubstitution || parsed.hasInlineScript || parsed.hasDynamicCommand) {
 		return { action: "ask", reason: REASON.cautiousSub };

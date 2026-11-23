@@ -28,7 +28,7 @@ impl Git {
     /// ordered chronologically from base to current pin.
     pub fn list_run_snapshots(&self, ws: &Path) -> Result<Vec<SnapshotPoint>> {
         let out =
-            self.run(ws, &["for-each-ref", "--format=%(refname)\t%(objectname)", "refs/tower/"]).unwrap_or_default();
+            self.ws_run(ws, &["for-each-ref", "--format=%(refname)\t%(objectname)", "refs/tower/"]).unwrap_or_default();
         let mut run_points: Vec<(u32, SnapshotPoint)> = Vec::new();
         let mut saved_points: Vec<(i64, SnapshotPoint)> = Vec::new();
         let mut latest_pin: Option<String> = None;

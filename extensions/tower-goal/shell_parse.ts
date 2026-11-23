@@ -17,6 +17,8 @@ export interface Redirection {
 	isWrite: boolean;
 	/** True for pure file-descriptor duplication/close (`2>&1`, `1>&2`, `2>&-`). */
 	isFdDup: boolean;
+	/** The body of a here-document (`<<`, `<<-`). */
+	heredoc?: string;
 }
 
 export interface EnvAssignment {
@@ -73,10 +75,20 @@ interface OpToken {
 
 type Token = WordToken | OpToken;
 
+interface Heredoc {
+	delimiter: string;
+	/** Any quoting in the delimiter makes the body literal. */
+	quoted: boolean;
+	/** `<<-` strips leading tabs from body lines and the delimiter line. */
+	stripTabs: boolean;
+}
+
 interface LexResult {
 	tokens: Token[];
 	substitutions: string[];
 	processSubstitutions: string[];
+	/** Here-document bodies, in the order of their `<<` operators. */
+	heredocBodies: string[];
 	parseError?: string;
 }
 
@@ -153,9 +165,52 @@ function decodeAnsiC(src: string, start: number): { text: string; next: number; 
 function scanParenBody(src: string, start: number): { body: string; next: number; error?: string } {
 	let i = start;
 	let depth = 1;
+	// Here-documents inside: their bodies (from the next line to the
+	// delimiter line) are skipped whole, so a quote or `)` in one is data.
+	const heredocs: Array<{ delimiter: string; stripTabs: boolean }> = [];
+	const fail = (error: string) => ({ body: src.slice(start), next: src.length, error });
 	while (i < src.length) {
 		const c = src[i];
 		if (c === "\\") { i += 2; continue; }
+		if (c === "<" && src[i + 1] === "<" && src[i + 2] !== "<") {
+			i += 2;
+			const stripTabs = src[i] === "-";
+			if (stripTabs) i++;
+			while (src[i] === " " || src[i] === "\t") i++;
+			let delimiter = "";
+			while (i < src.length && !/[\s;|&()<>]/.test(src[i])) {
+				const q = src[i];
+				if (q === "'" || q === '"') {
+					const end = src.indexOf(q, i + 1);
+					if (end === -1) return fail("unclosed quote in here-document delimiter");
+					delimiter += src.slice(i + 1, end);
+					i = end + 1;
+				} else if (q === "\\") {
+					delimiter += src[i + 1] ?? "";
+					i += 2;
+				} else {
+					delimiter += q;
+					i++;
+				}
+			}
+			if (!delimiter) return fail("here-document without a delimiter");
+			heredocs.push({ delimiter, stripTabs });
+			continue;
+		}
+		if (c === "\n" && heredocs.length > 0) {
+			i++;
+			for (const h of heredocs.splice(0)) {
+				for (;;) {
+					if (i >= src.length) return fail("unterminated here-document in substitution");
+					const nl = src.indexOf("\n", i);
+					const end = nl === -1 ? src.length : nl;
+					const line = h.stripTabs ? src.slice(i, end).replace(/^\t+/, "") : src.slice(i, end);
+					i = nl === -1 ? src.length : nl + 1;
+					if (line === h.delimiter) break;
+				}
+			}
+			continue;
+		}
 		if (c === "'") {
 			const end = src.indexOf("'", i + 1);
 			if (end === -1) return { body: src.slice(start), next: src.length, error: "unclosed single quote in substitution" };
@@ -245,6 +300,48 @@ function lex(src: string): LexResult {
 		return res.next;
 	};
 
+	let heredocOp: string | null = null;
+	const pendingHeredocs: Heredoc[] = [];
+	const heredocBodies: string[] = [];
+	/** Reads one here-document body from `pos`; returns where the shell resumes. */
+	const readHeredoc = (h: Heredoc, pos: number): number => {
+		let body = "";
+		while (pos < src.length) {
+			const nl = src.indexOf("\n", pos);
+			const end = nl === -1 ? src.length : nl;
+			const line = h.stripTabs ? src.slice(pos, end).replace(/^\t+/, "") : src.slice(pos, end);
+			pos = nl === -1 ? src.length : nl + 1;
+			if (line === h.delimiter) {
+				// With a quoted delimiter the body is literal; otherwise its
+				// substitutions run.
+				if (!h.quoted) heredocSubstitutions(body);
+				heredocBodies.push(body);
+				return pos;
+			}
+			body += `${line}\n`;
+		}
+		recordErr("unterminated here-document");
+		if (!h.quoted) heredocSubstitutions(body);
+		return pos;
+	};
+	const heredocSubstitutions = (body: string) => {
+		for (let j = 0; j < body.length; j++) {
+			if (body[j] === "\\") j++;
+			else if (body[j] === "$" && body[j + 1] === "(") {
+				const isArith = body[j + 2] === "(";
+				const res = scanParenBody(body, j + 2);
+				if (res.error) recordErr(res.error);
+				if (!isArith) substitutions.push(res.body);
+				j = res.next - 1;
+			} else if (body[j] === "`") {
+				const res = scanBacktickBody(body, j + 1, false);
+				if (res.error) recordErr(res.error);
+				substitutions.push(res.body);
+				j = res.next - 1;
+			}
+		}
+	};
+
 	while (i < src.length) {
 		const c = src[i];
 		if (c === " " || c === "\t" || c === "\r") { i++; continue; }
@@ -262,7 +359,22 @@ function lex(src: string): LexResult {
 			continue;
 		}
 		const op = opAt(src, i);
-		if (op) { tokens.push({ kind: "op", op }); i += op.length; continue; }
+		if (op) {
+			tokens.push({ kind: "op", op });
+			i += op.length;
+			if (heredocOp) {
+				recordErr("here-document without a delimiter");
+				heredocOp = null;
+			}
+			if (op === "<<" || op === "<<-") heredocOp = op;
+			// Here-document bodies start on the line after their operator and
+			// are data, not shell: read them whole so a quote inside one
+			// cannot swallow the commands that follow.
+			if (op === "\n" && pendingHeredocs.length > 0) {
+				for (const h of pendingHeredocs.splice(0)) i = readHeredoc(h, i);
+			}
+			continue;
+		}
 
 		const wordStart = i;
 		let value = "";
@@ -354,8 +466,15 @@ function lex(src: string): LexResult {
 		const raw = src.slice(wordStart, i);
 		const ioNumber = !quoted && /^\d+$/.test(raw) && (src[i] === ">" || src[i] === "<");
 		tokens.push({ kind: "word", value, raw, quoted, hasDynamic, hasEscapedWhitespace, ioNumber });
+		if (heredocOp) {
+			// `<<2>x`: bash's delimiter is `2`; not followed here, so refuse.
+			if (ioNumber) recordErr("here-document delimiter this parser does not follow");
+			pendingHeredocs.push({ delimiter: value, quoted, stripTabs: heredocOp === "<<-" });
+			heredocOp = null;
+		}
 	}
-	return { tokens, substitutions, processSubstitutions, parseError };
+	if (heredocOp || pendingHeredocs.length > 0) recordErr("here-document without a body");
+	return { tokens, substitutions, processSubstitutions, heredocBodies, parseError };
 }
 
 function classifyRedirect(fd: string | null, op: string, target: string): Redirection {
@@ -477,6 +596,20 @@ function unwrapCommand(
 	};
 }
 
+/** The commands `find` runs (`-exec cmd … ;`, `-execdir`, `-ok`, `-okdir`), as scripts. */
+function findActions(args: string[]): string[] {
+	const out: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		if (!["-exec", "-execdir", "-ok", "-okdir"].includes(args[i])) continue;
+		let end = i + 1;
+		while (end < args.length && args[end] !== ";" && args[end] !== "+") end++;
+		const words = args.slice(i + 1, end);
+		if (words.length > 0) out.push(words.map((w) => `'${w.replace(/'/g, "'\\''")}'`).join(" "));
+		i = end;
+	}
+	return out;
+}
+
 /**
  * Parses a POSIX shell command string into structured commands, pipelines,
  * redirections, and safety flags. Recursively parses `$(...)`, backticks,
@@ -509,6 +642,8 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	const flushCommand = () => {
 		if (curRedirects.some((r) => r.isWrite)) result.hasFileWriteRedirection = true;
 		const cmd = unwrapCommand(curWords, curEnv, curRedirects, depth, nestedScripts);
+		// What `find` runs for each file is a command of its own.
+		if (cmd?.name === "find") nestedScripts.push(...findActions(cmd.args));
 		if (cmd) {
 			result.commands.push(cmd);
 			curPipeline.push(cmd);
@@ -521,11 +656,23 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	};
 	const flushPipeline = () => {
 		flushCommand();
+		// A shell in the pipeline runs what it is fed on standard input: a
+		// here-document or here-string is then a script like `bash -c`'s.
+		if (curPipeline.some((c) => SHELL_RUNNERS.has(c.name))) {
+			for (const r of curPipeline.flatMap((c) => c.redirects)) {
+				if (r.op === "<<<") nestedScripts.push(r.target);
+				else if (r.heredoc !== undefined) nestedScripts.push(r.heredoc);
+			}
+		}
 		if (curPipeline.length > 0) {
 			result.pipelines.push({ commands: curPipeline });
 			curPipeline = [];
 		}
 	};
+
+	let bodies = 0;
+	const withBody = (r: Redirection): Redirection =>
+		r.op === "<<" || r.op === "<<-" ? { ...r, heredoc: lexed.heredocBodies[bodies++] } : r;
 
 	const toks = lexed.tokens;
 	for (let i = 0; i < toks.length; i++) {
@@ -537,7 +684,7 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 				const next = toks[i + 1];
 				const target = next?.kind === "word" ? next.value : "";
 				if (next?.kind === "word") i++;
-				curRedirects.push(classifyRedirect(null, tok.op, target));
+				curRedirects.push(withBody(classifyRedirect(null, tok.op, target)));
 				continue;
 			}
 			flushPipeline();
@@ -546,7 +693,7 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		if (tok.ioNumber && toks[i + 1]?.kind === "op" && REDIR_OPS.has((toks[i + 1] as OpToken).op)) {
 			const op = (toks[i + 1] as OpToken).op;
 			const targetTok = toks[i + 2];
-			curRedirects.push(classifyRedirect(tok.value, op, targetTok?.kind === "word" ? targetTok.value : ""));
+			curRedirects.push(withBody(classifyRedirect(tok.value, op, targetTok?.kind === "word" ? targetTok.value : "")));
 			i += targetTok?.kind === "word" ? 2 : 1;
 			continue;
 		}

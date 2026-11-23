@@ -84,3 +84,21 @@ test("acting on a console row reloads its list in place: no page spinner, and th
   await expect.poll(() => page.evaluate(() => document.activeElement === (window as any).__was && document.activeElement?.isConnected)).toBe(true);
   expect(await page.evaluate(() => (window as any).__spun)).toBe(false);
 });
+
+// A Run now can fail after it made a goal (a draft that would not start): the row's last run changed all the same, so
+// the list is read again whether the run started or not.
+test("a Run now that fails reloads the schedules: it may have made a draft", async ({ page }) => {
+  await openTower(page, "operations", {
+    enrich: (F) => {
+      F.scheduledGoals = [
+        { id: "sc-1", project_id: F.projects[0].id, title: "Nightly audit", cron_expr: "0 2 * * 1-5", enabled: true, unattended_strict: true, next_run_at: null, last_goal_id: null },
+      ];
+      F.runNowError = "Created draft G-0042 but could not start it: the intent cannot be empty";
+    },
+  });
+  await expect(page.getByText("Nightly audit")).toBeVisible();
+  await page.evaluate(() => ((window as any).__towerCalls.length = 0));
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(page.getByText("Created draft G-0042", { exact: false })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "scheduled_goals").length)).toBeGreaterThan(0);
+});

@@ -46,6 +46,12 @@ export function Operations() {
     setRowBusy((b) => [...b, id]);
     await fn().finally(() => setRowBusy((b) => b.filter((x) => x !== id)));
   };
+  // A Run now that fails may still have made a draft (one that would not start): the row's last run moved either way.
+  const runNow = async (id: string) => {
+    await act(() => api.runScheduledGoalNow(id), t("ops.runNow"));
+    void rfSched();
+    void refreshConsoleMeta();
+  };
   const remove = (s: ScheduledGoal) =>
     once(s.id, async () => {
       if (await ask(t("ops.deleteConfirm", { title: s.title }), { ok: t("ops.deleteSchedule"), cancel: t("common.cancel"), kind: "warning" })) await run(() => api.deleteScheduledGoal(s.id), rfSched);
@@ -128,7 +134,7 @@ export function Operations() {
                 <td class="col-r">
                   <div class="row row-end">
                     <Toggle checked={s.enabled} onChange={(v) => void run(() => api.toggleScheduledGoal(s.id, v), rfSched)} label={t(s.enabled ? "quiet.on" : "settings.escalationOff")} />
-                    <SmBtn disabled={rowBusy().includes(s.id)} onClick={() => void once(s.id, () => run(() => api.runScheduledGoalNow(s.id), rfSched, t("ops.runNow")))}>{t("ops.runNow")}</SmBtn>
+                    <SmBtn disabled={rowBusy().includes(s.id)} onClick={() => void once(s.id, () => runNow(s.id))}>{t("ops.runNow")}</SmBtn>
                     <SmBtn disabled={rowBusy().includes(s.id)} onClick={() => void remove(s)}>{t("common.delete")}</SmBtn>
                   </div>
                 </td>

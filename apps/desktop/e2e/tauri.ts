@@ -170,6 +170,9 @@ export async function openTower(
               return structuredClone(F.calibrationRows ?? []);
             case "scheduled_goals":
               return structuredClone(F.scheduledGoals ?? []);
+            case "run_scheduled_goal_now":
+              if (F.runNowError) throw F.runNowError;
+              return null;
             case "merge_queue":
               if (F.mergeQueueError) throw F.mergeQueueError;
               return structuredClone(F.mergeQueue ?? []);

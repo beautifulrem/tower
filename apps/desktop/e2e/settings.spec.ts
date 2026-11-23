@@ -79,3 +79,16 @@ for (const lang of ["en", "zh-CN"] as const) {
     for (const r of rows) expect(r).toEqual({ name: r.name, offset: 0, hintBelow: true, hintAligned: true });
   });
 }
+
+test("a field saved on the Settings page keeps the quiet mode the palette turned on meanwhile", async ({ page }) => {
+  await openTower(page, "settings");
+  await expect(page.getByRole("switch").first()).toBeVisible();
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("quiet");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings").length).toBe(1);
+  await page.getByRole("switch", { name: /Enable the phone page/ }).click();
+  await expect.poll(async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings").length).toBe(2);
+  const saves = (await calls(page)).filter(([cmd]) => cmd === "save_settings") as Array<[string, { settings: { quiet_until: number | null } }]>;
+  expect(saves[1][1].settings.quiet_until).not.toBeNull();
+});

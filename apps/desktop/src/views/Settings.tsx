@@ -127,13 +127,17 @@ export function Settings() {
   let last = "";
   /** Writes the form when a field is left; no-op when nothing changed. */
   const commit = async (): Promise<boolean> => {
-    const v = s();
-    if (!v) return false;
+    const form = s();
+    if (!form) return false;
+    // Quiet mode and muted goals are set from the title bar and the palette, not this form: the form's copy of them
+    // is from when the page opened, so the live values go with the save.
+    const v = { ...form, quiet_until: state.settings?.quiet_until ?? form.quiet_until, muted_goals: state.settings?.muted_goals ?? form.muted_goals };
     const now = JSON.stringify(v);
     if (now === last) return false;
-    last = now;
     const ok = await act(() => api.saveSettings(v));
     if (ok === undefined) return false;
+    // Only a save that went through is the baseline: after a failure, leaving the field again retries it.
+    last = now;
     saved.mark();
     await refreshEnvironment();
     // The supervisor may have filled in what we left blank (a generated pairing token).

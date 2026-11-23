@@ -139,6 +139,8 @@ export function Review(props: { id: string }) {
   const [reveals, setReveals] = createSignal<Record<string, Reveals>>({});
   const [whole, setWhole] = createSignal<Record<string, boolean>>({});
   const [editingPath, setEditingPath] = createSignal<string | null>(null);
+  // What is typed in the editor lives here, not in the editor: a refetch rebuilds the file rows, and the editor with them.
+  const [editDraft, setEditDraft] = createSignal<string | null>(null);
   // Each read in flight, by path. A reset or a save drops its entry, so the read finds it has been outrun and its
   // text, from the snapshot before, never lands where Edit and Apply would write it back over newer code.
   const loading = new Map<string, object>();
@@ -154,7 +156,7 @@ export function Review(props: { id: string }) {
     setReveals({});
     setWhole({});
     setStaleEdit(keep);
-    if (!keep) setEditingPath(null);
+    if (!keep) (setEditingPath(null), setEditDraft(null));
   };
   const dropText = (path: string) =>
     setTexts((m) => {
@@ -165,6 +167,7 @@ export function Review(props: { id: string }) {
   const closeEditor = () => {
     const p = editingPath();
     setEditingPath(null);
+    setEditDraft(null);
     if (p && staleEdit() === p) (dropText(p), setStaleEdit(null));
   };
   const ensureText = async (f: DiffFile): Promise<string[] | null> => {
@@ -228,7 +231,7 @@ export function Review(props: { id: string }) {
   };
   const editFile = async (f: DiffFile) => {
     const lines = await ensureText(f);
-    if (lines) setEditingPath(f.path);
+    if (lines) (setEditDraft(null), setEditingPath(f.path));
   };
   const saveFile = async (f: DiffFile, text: string) => {
     if (staleEdit() === f.path) {
@@ -242,6 +245,7 @@ export function Review(props: { id: string }) {
     const done = await act(() => api.writeFile(props.id, f.path, text), t("review.fileSaved"));
     if (done === undefined) return;
     setEditingPath(null);
+    setEditDraft(null);
     setStaleEdit(null);
     await changed(f);
   };
@@ -633,6 +637,8 @@ export function Review(props: { id: string }) {
                       onEditFile={editable() ? () => void editFile(f) : undefined}
                       onSaveFile={(text) => void saveFile(f, text)}
                       onCancelEdit={closeEditor}
+                      editDraft={editDraft()}
+                      onEditDraft={setEditDraft}
                       onApplySuggestion={editable() ? (line, s) => void applyTo(f, line, s) : undefined}
                       movedHunks={view()?.moved_hunks?.[f.path]}
                       formattingHunks={view()?.formatting_hunks?.[f.path]}

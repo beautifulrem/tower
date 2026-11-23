@@ -416,14 +416,23 @@ pub(crate) fn push_url_allowed(url: &str) -> bool {
         return true;
     }
     let Some(rest) = url.strip_prefix("http://") else { return false };
-    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let host = host.rsplit_once(':').map_or(host, |(h, _)| h);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    // Anything before an `@` is a user name, not the host curl connects to;
+    // a push URL has no use for one, so it is refused outright.
+    if authority.contains(['@', '\\']) {
+        return false;
+    }
+    let host = match authority.rsplit_once(':') {
+        Some((h, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => h,
+        Some(_) => return false,
+        None => authority,
+    };
+    let host = host.to_ascii_lowercase();
     host == "localhost"
-        || host.starts_with("127.")
-        || host.ends_with(".ts.net")
+        || (host.ends_with(".ts.net") && host.len() > ".ts.net".len())
         || host.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| {
             let [a, b, ..] = ip.octets();
-            a == 100 && (64..128).contains(&b)
+            a == 127 || (a == 100 && (64..128).contains(&b))
         })
 }
 
@@ -487,5 +496,14 @@ mod push_tests {
         assert!(!push_url_allowed("http://ntfy.sh/topic"));
         assert!(!push_url_allowed("http://100.200.1.2/t"));
         assert!(!push_url_allowed("file:///etc/passwd"));
+        // A local-looking name before `@` is a user name: the host is after it.
+        assert!(!push_url_allowed("http://127.0.0.1@evil.com/"));
+        assert!(!push_url_allowed("http://localhost:1@evil.com/"));
+        assert!(!push_url_allowed("http://box.ts.net@evil.com/t"));
+        // `127.` must be an address, not the start of a name.
+        assert!(!push_url_allowed("http://127.evil.com/"));
+        assert!(push_url_allowed("http://127.0.0.1:8080/t"));
+        assert!(push_url_allowed("http://127.1.2.3/t"));
+        assert!(push_url_allowed("http://box.tail1234.ts.net:80/t"));
     }
 }

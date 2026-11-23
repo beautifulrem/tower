@@ -29,6 +29,12 @@ export const WINDOW = 300;
 const STEP = 200;
 const PAGE = 200;
 
+/** Earlier entries then later ones, each seq once: a page read while live entries arrive can hold some of them. */
+const onceEach = (a: TraceEntry[], b: TraceEntry[]): TraceEntry[] => {
+  const have = new Set(a.map((e) => e.seq));
+  return [...a, ...b.filter((e) => !have.has(e.seq))];
+};
+
 const isAnomaly = (e: TraceEntry): boolean => {
   const ev = e.event as { kind: string; is_error?: boolean; denied?: boolean; passed?: boolean };
   return (
@@ -108,7 +114,7 @@ export function Trace(props: { id: string; live?: boolean }) {
     setFailed(null);
     await api.trace(props.id, entries()[0]?.seq ?? null, PAGE).then((page) => {
       if (page.length < PAGE) setMore(false);
-      setEntries((e) => [...page.reverse(), ...e]);
+      setEntries((e) => onceEach(page.reverse(), e));
     }, (err) => setFailed(err ?? "error"));
     fetching = false;
   };
@@ -129,7 +135,7 @@ export function Trace(props: { id: string; live?: boolean }) {
       const batch = pending;
       pending = [];
       flush = undefined;
-      setEntries((list) => [...list, ...batch]);
+      setEntries((list) => onceEach(list, batch));
       if (atBottom) queueMicrotask(() => (scroller.scrollTop = scroller.scrollHeight));
     }, 100);
   });

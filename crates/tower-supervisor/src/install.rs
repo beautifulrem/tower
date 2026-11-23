@@ -6,8 +6,12 @@ use std::path::Path;
 use crate::paths::Paths;
 
 /// Removes what an interrupted verification or check left behind (Tower
-/// quit or crashed mid-way). Nothing runs yet at this point.
+/// quit or crashed mid-way). Nothing runs yet at this point. Only in a
+/// folder that is clearly Tower's: absolute, and holding Tower's store.
 pub(crate) fn sweep(paths: &Paths) {
+    if !paths.root.is_absolute() || !paths.db().is_file() {
+        return;
+    }
     for dir in ["verify", "verify-cache", "checks"] {
         let _ = std::fs::remove_dir_all(paths.root.join(dir));
     }
@@ -74,4 +78,32 @@ pub(crate) fn install_extension(src: &Path, dst: &Path) -> std::io::Result<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The start-up sweep removes leftovers only from a folder that is
+    /// Tower's (it holds Tower's store), never from wherever a stray
+    /// TOWER_HOME points.
+    #[test]
+    fn the_sweep_clears_only_towers_own_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths::new(tmp.path().join("not-tower"));
+        let dirs = ["verify/x", "verify-cache", "checks", "tmp/G-1-verify"];
+        for d in dirs {
+            std::fs::create_dir_all(paths.root.join(d)).unwrap();
+        }
+        sweep(&paths);
+        for d in dirs {
+            assert!(paths.root.join(d).exists(), "{d} is not Tower's to remove");
+        }
+
+        std::fs::write(paths.db(), "").unwrap();
+        sweep(&paths);
+        for d in dirs {
+            assert!(!paths.root.join(d).exists(), "{d} is a leftover in Tower's folder");
+        }
+    }
 }

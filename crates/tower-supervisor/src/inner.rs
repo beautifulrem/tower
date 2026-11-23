@@ -199,7 +199,7 @@ impl Inner {
     /// (yours) and a fixed sentence for the kind of item, never the agent's
     /// text — and the link opens the phone page without its token (a
     /// paired phone keeps it).
-    fn push(&self, item: &InboxItem) {
+    pub(crate) fn push(&self, item: &InboxItem) {
         let s = self.settings();
         if item.kind == InboxKind::Assumption || (item.kind == InboxKind::ReviewReady && !s.push_ready) {
             return;

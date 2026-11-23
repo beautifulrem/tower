@@ -92,7 +92,8 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   let base: string | null = null;
   let saved = false;
   const now = () => untrack(() => JSON.stringify([title(), projectId(), c]));
-  onCleanup(guardLeave(() => saved || base === null || now() === base || ask(t("contract.leaveConfirm"), { ok: t("contract.discard"), cancel: t("contract.keepEditing"), kind: "warning" })));
+  // While a save is in flight there is nothing to ask: the move is refused, and the save itself leaves (or stays).
+  onCleanup(guardLeave(() => saved || (!busy() && (base === null || now() === base || ask(t("contract.leaveConfirm"), { ok: t("contract.discard"), cancel: t("contract.keepEditing"), kind: "warning" })))));
   const load = async () => {
     setLoadFailed(null);
     const d = await api.goal(editingId!).catch((e) => (setLoadFailed(e ?? "error"), null));

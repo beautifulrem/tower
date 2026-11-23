@@ -224,7 +224,8 @@ describe("Learning console (Memory Ratification + Calibration Scoreboard)", () =
     // Calibration scoreboard renders as a single-layer Fact ledger without KPI stat cards or nested boxes.
     expect(container.querySelector(".console-kpis")).toBeNull();
     expect(container.querySelector(".calibration-sec table.data-table")).not.toBeNull();
-    expect(container.textContent).toContain("Harness calibration (R10)");
+    expect(container.textContent).toContain("Harness calibration");
+    expect(container.textContent).not.toContain("R10");
     expect(container.textContent).toContain("claude-sonnet-4");
     expect(container.textContent).toContain("75%");
     expect(container.textContent).toContain("Low n");

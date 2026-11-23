@@ -36,7 +36,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
   return (
     <div class="holdout-panel" role="region" aria-label="Synthetic holdout drafts">
       <div class="row">
-        <span class="unit-claim-tag">┆ Draft claim · inactive until you ratify</span>
+        <span class="unit-claim-tag mono">┆ Draft claim · inactive until you ratify</span>
         <span class="grow" />
         <Button size="s" variant="ghost" onClick={() => void load()}>Regenerate</Button>
         <button type="button" class="icon-btn" aria-label={t("common.close")} onClick={props.onClose}>×</button>
@@ -48,7 +48,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
             <div class="holdout-draft" classList={{ ratified: ok() }}>
               <div class="row" style={{ gap: "8px" }}>
                 <input class="mono grow" aria-label="Filename" value={d.filename} disabled={ok()} onInput={(e) => patch(d.id, { filename: e.currentTarget.value })} />
-                <Show when={!ok()} fallback={<span class="human-stamp meta"><Icon name="check" size={10} />You ratified · hidden</span>}>
+                <Show when={!ok()} fallback={<span class="human-stamp mono meta"><Icon name="check" size={10} />You ratified · hidden</span>}>
                   <Button size="s" variant="primary" busy={busy() === d.id} onClick={() => void ratify(d)}>Ratify into holdout/</Button>
                   <button type="button" class="icon-btn" aria-label={t("common.remove")} onClick={() => setDrafts((l) => l.filter((x) => x.id !== d.id))}>×</button>
                 </Show>

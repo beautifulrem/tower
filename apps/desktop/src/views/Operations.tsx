@@ -9,7 +9,7 @@ import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
 import type { MergeQueueEntry, StorageInventory } from "../lib/apiTypes";
-import { clock } from "../lib/format";
+import { dayClock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { stateLabel } from "../lib/labels";
 import { ask } from "../lib/native";
@@ -91,12 +91,12 @@ export function Operations() {
             <form class="schedule-form" onSubmit={(e) => void addSchedule(e)}>
               <Select label={t("contract.project")} value={newProj() || state.projects[0]?.id || ""} options={state.projects.map((p) => ({ value: p.id, label: p.name }))} onChange={setNewProj} />
               <input aria-label={t("ops.schedulesTitle")} placeholder={t("ops.schedulePlaceholder")} value={newTitle()} onInput={(e) => setNewTitle(e.currentTarget.value)} />
-              <input class="mono" aria-label="Cron" placeholder="0 2 * * 1-5" value={newCron()} onInput={(e) => setNewCron(e.currentTarget.value)} />
+              <input class="mono" aria-label={t("ops.cronUtc")} placeholder="0 2 * * 1-5" value={newCron()} onInput={(e) => setNewCron(e.currentTarget.value)} />
               <SmBtn type="submit" variant="primary" disabled={busy() || !newTitle().trim() || !newCron().trim()}>{t("ops.addSchedule")}</SmBtn>
             </form>
           </Show>
           <DataTable
-            headers={[[t("ops.schedulesTitle")], ["Cron"], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
+            headers={[[t("ops.schedulesTitle")], [t("ops.cronUtc")], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
             empty={t("ops.schedulesEmpty")}
             items={schedList()}
             error={schedules.error}
@@ -112,7 +112,7 @@ export function Operations() {
                 <td><code class="code-val">{s.cron_expr}</code></td>
                 <td class="meta t2">{t(s.unattended_strict ? "ops.unattendedStrict" : "contract.standard")}</td>
                 <td class="meta t2">
-                  {s.next_run_at ? clock(s.next_run_at) : "—"}
+                  {s.next_run_at ? dayClock(s.next_run_at) : "—"}
                   <button type="button" class="link-quiet code-val ml-8" hidden={!s.last_goal_id} onClick={() => s.last_goal_id && go({ name: "goal", id: s.last_goal_id })}>{s.last_goal_id}</button>
                 </td>
                 <td class="col-r">

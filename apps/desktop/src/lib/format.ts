@@ -45,6 +45,11 @@ export function clock(at: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/** A moment days or weeks off, in this machine's zone: "Nov 24 02:00" / "11月24日 02:00". */
+export function dayClock(at: number): string {
+  return `${new Date(at).toLocaleDateString(locale(), { month: "short", day: "numeric" })} ${clock(at)}`;
+}
+
 /** Two moments the clock would write the same way: a log writes the minute once and leaves the rows under it quiet. */
 export function sameMinute(a: number, b: number): boolean {
   return Math.floor(a / MIN) === Math.floor(b / MIN);

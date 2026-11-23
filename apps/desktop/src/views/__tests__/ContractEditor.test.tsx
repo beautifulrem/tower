@@ -84,6 +84,10 @@ vi.mock("../../lib/api", async () => {
       generateHoldoutDrafts: (projectId: string, intent: string) => invoke("generate_holdout_drafts", { projectId, intent }),
       ratifyHoldoutDraft: (projectId: string, filename: string, code: string) => invoke("ratify_holdout_draft", { projectId, filename, code }),
       deleteAttachment: (goalId: string, attachmentId: string) => invoke("delete_attachment", { goalId, attachmentId }),
+      saveAttachment: async (goalId: string, name: string) => {
+        await invoke("save_attachment", { goalId, name });
+        return { id: "att_1", name, mime: "image/png", path: "att_1.png", size_bytes: 4, created_at: 1 };
+      },
       goal: async () => ({
       summary: { title: "Fix the cart total", project_id: "p1" },
       contract: {
@@ -230,5 +234,18 @@ describe("saving", () => {
     open();
     expect(invoked.filter((x) => x.cmd === "create_goal").length).toBe(before + 1);
     draft.createGate = null;
+  });
+
+  it("uploads an image pasted into a new contract, so the goal it creates has it", async () => {
+    const { invoked } = await import("../../test/setup");
+    const { container } = render(() => <ContractEditor projectId="p1" />);
+    const intent = container.querySelector(".field-intent textarea") as HTMLTextAreaElement;
+    const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "mock.png", { type: "image/png" });
+    fireEvent.paste(intent, { clipboardData: { items: [{ kind: "file", getAsFile: () => png }], files: [png] } });
+    await waitFor(() => expect(invoked.some((x) => x.cmd === "save_attachment" && (x.args as { goalId: string }).goalId === "draft")).toBe(true));
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(invoked.some((x) => x.cmd === "create_goal")).toBe(true));
+    const sent = invoked.filter((x) => x.cmd === "create_goal").at(-1)!.args as { contract: { attachments: Array<{ path: string; preview?: string }> } };
+    expect(sent.contract.attachments.map((a) => [a.path, a.preview])).toEqual([["att_1.png", undefined]]);
   });
 });

@@ -506,9 +506,11 @@ impl Supervisor {
         }
         let mut contract = input.contract;
         contract.version = 1;
+        let pasted = contract.attachments.clone();
         let rec = self.inner.store(|s| {
             s.create_goal(NewGoal { project_id: input.project_id.clone(), title: title.into(), contract })
         })?;
+        self.adopt_draft_attachments(&rec.id, &pasted);
         if input.ratify {
             self.ratify(&rec.id).await?;
         }

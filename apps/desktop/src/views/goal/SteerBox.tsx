@@ -6,7 +6,7 @@ import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
 import { Button } from "../../components/ui";
-import { api } from "../../lib/api";
+import { api, errorText } from "../../lib/api";
 import { matchText } from "../../lib/fuzzy";
 import { t } from "../../lib/i18n";
 import { act, toast } from "../../lib/store";
@@ -28,19 +28,17 @@ export async function attachImageFile(file: File, goalId?: string): Promise<Atta
     r.readAsDataURL(file);
   });
   const name = file.name || `shot-${Date.now()}.${file.type.split("/")[1] || "png"}`;
-  if (goalId) {
-    const saved = await api.saveAttachment(goalId, name, dataUrl.slice(dataUrl.indexOf(",") + 1)).catch(() => null);
-    if (saved) return { ...saved, preview: dataUrl };
-  }
-  return { id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, mime: file.type || "image/png", path: `attachments/${name}`, size_bytes: file.size, created_at: Date.now(), preview: dataUrl };
+  // A contract being written has no goal yet: its images wait in the draft slot, and creating the goal moves them in.
+  const saved = await api.saveAttachment(goalId ?? "draft", name, dataUrl.slice(dataUrl.indexOf(",") + 1));
+  return { ...saved, preview: dataUrl };
 }
 
 export async function collectImages(files: File[], goalId: string | undefined, add: (ref: AttachmentRef) => void) {
   for (const f of files) {
     try {
       add(await attachImageFile(f, goalId));
-    } catch {
-      toast("error", "Attach failed");
+    } catch (e) {
+      toast("error", errorText(e));
     }
   }
 }

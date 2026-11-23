@@ -119,7 +119,8 @@ export async function openTower(
               return F[`trace-${a.id}`] ?? [];
             case "review":
               if (!F[`review-${a.id}`]) throw "no review";
-              return F[`review-${a.id}`];
+              // A fresh copy each read, as over real IPC: rows keyed by object are rebuilt on a refetch.
+              return structuredClone(F[`review-${a.id}`]);
             case "file_text": {
               const text = F.files[`${a.id}:${a.path}:${a.old ? "old" : "new"}`] ?? null;
               // A test can hold reads (`__towerHold`) to see what lands after the snapshot moved on meanwhile.

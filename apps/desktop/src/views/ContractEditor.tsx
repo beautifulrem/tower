@@ -15,12 +15,12 @@ import { BaseTestsNotice } from "../components/TestCheck";
 import { Button, ClauseHead, Field, IconButton, Select, Toggle } from "../components/ui";
 import type { ContractIssue } from "../gen/ContractIssue";
 import type { Criterion } from "../gen/Criterion";
-import { api } from "../lib/api";
+import { api, errorText } from "../lib/api";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { effectiveEngine, engineLabel, modelsFor } from "../lib/labels";
 import { back, go } from "../lib/nav";
-import { act, goalList, state } from "../lib/store";
+import { act, goalList, state, toast } from "../lib/store";
 import { engineOptions, thinkingOptions } from "./Settings";
 import { HoldoutDrafts } from "./goal/HoldoutDrafts";
 import { AttachChips, collectImages, extractImages } from "./goal/SteerBox";
@@ -85,7 +85,8 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   onMount(async () => {
     setTimeout(() => (loaded = true), 300);
     if (editingId) {
-      const d = await api.goal(editingId);
+      const d = await api.goal(editingId).catch((e) => (toast("error", errorText(e)), null));
+      if (!d) return;
       setTitle(d.summary.title);
       setProjectId(d.summary.project_id);
       setC({ ...structuredClone(d.contract), escalation_model: d.contract.escalation_model ?? "", escalation_after_reworks: d.contract.escalation_after_reworks ?? 2, attachments: d.contract.attachments ?? [], sandbox_tier: d.contract.sandbox_tier ?? "default", depends_on: d.contract.depends_on ?? [] });
@@ -130,6 +131,8 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const toggleDep = (id: string) => setC("depends_on", (l) => ((l ?? []).includes(id) ? (l ?? []).filter((x) => x !== id) : [...(l ?? []), id]));
 
   const save = async (ratify: boolean) => {
+    // ⌘↩ is not a button: a second press while the first save is in flight must not create the goal twice.
+    if (busy()) return;
     const contract = structuredClone(unwrap(c));
     if (contract.attachments?.length) contract.attachments = contract.attachments.map((a) => { const { preview: _, ...rest } = a as AttachmentRef; return rest; });
     setBusy(true);
@@ -137,7 +140,8 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       if (props.amendId) {
         if ((await act(() => api.amendContract(props.amendId!, contract), t("contract.amended"))) !== undefined) back();
       } else if (props.draftId) {
-        await act(() => api.updateDraft(props.draftId!, title(), contract));
+        // A draft that failed to save must not be ratified as its old version, nor left behind with your edits.
+        if (!(await act(async () => (await api.updateDraft(props.draftId!, title(), contract), true)))) return;
         if (ratify) await act(() => api.ratify(props.draftId!), t("contract.ratified"));
         go({ name: "goal", id: props.draftId });
       } else {
@@ -149,7 +153,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
     }
   };
 
-  useKeys([{ key: "mod+enter", run: () => !errors().length && void save(true), inInputs: true }]);
+  useKeys([{ key: "mod+enter", run: () => !busy() && !errors().length && void save(true), inInputs: true }]);
 
   const projectName = () => state.projects.find((p) => p.id === projectId())?.name ?? "";
   const mastState = () => (props.amendId ? t("contract.mastAmend", { v: c.version }) : props.draftId ? t("contract.mastDraft") : t("contract.mastNew"));

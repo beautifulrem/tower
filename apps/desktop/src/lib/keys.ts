@@ -1,7 +1,8 @@
 /**
  * Keyboard-first (docs/04 §4.17, docs/16 §16.3). Views register bindings
  * while mounted; the most recently registered scope wins, within its layer: a
- * view mounted while a dialog is open still sits under the dialog. Plain keys
+ * dialog opened last is on top, and a view or a dialog's content mounted
+ * later still sits under the dialogs opened after its layer. Plain keys
  * are ignored while typing; chords with ⌘ always work.
  *
  * The registry is reactive: the `?` sheet lists exactly the bindings that
@@ -33,12 +34,10 @@ export interface Scope {
   /** The app's own chords (⌘K, ⌘1, ⌘,): the only ones that reach under a modal layer. A view's ⌘↩ must not save
    *  the contract under the palette. */
   shell?: boolean;
-  /** How many modal layers it sits inside; a scope never lands above a layer it is not in. */
-  depth: number;
 }
 
-/** The modal layer depth the components below sit in; a dialog provides its own to its content. */
-export const KeyLayer = createContext(0);
+/** The dialog the components below sit in (none: the window); a dialog provides its own scope to its content. */
+export const KeyLayer = createContext<Scope | null>(null);
 
 /** Keys that may auto-repeat while held: moving through a list. Everything else fires once per press, so holding a
  *  digit can't arm and then confirm a destructive option, and holding ⌘↩ can't create a goal twice. */
@@ -113,18 +112,22 @@ if (typeof window !== "undefined") {
 }
 
 /**
- * Registers bindings for the lifetime of the calling component. Returns the layer depth its content sits in, for a
- * modal scope to provide through `KeyLayer`.
+ * Registers bindings for the lifetime of the calling component. A dialog goes on top: the one opened last is the one
+ * you see, however deep the dialog it was opened from (the palette over a comparison inside a sheet). Other scopes
+ * go into their layer, under every dialog opened after it. Returns the scope, for a dialog to provide through
+ * `KeyLayer`.
  */
-export function useKeys(bindings: Binding[], name: () => string = () => "", opts: { modal?: boolean; shell?: boolean } = {}): number {
-  const depth = useContext(KeyLayer) + (opts.modal ? 1 : 0);
-  const scope: Scope = { name, bindings, modal: opts.modal, shell: opts.shell, depth };
+export function useKeys(bindings: Binding[], name: () => string = () => "", opts: { modal?: boolean; shell?: boolean } = {}): Scope {
+  const layer = useContext(KeyLayer);
+  const scope: Scope = { name, bindings, modal: opts.modal, shell: opts.shell };
   setScopes((s) => {
-    const above = s.findIndex((x) => x.depth > depth);
-    return above < 0 ? [...s, scope] : [...s.slice(0, above), scope, ...s.slice(above)];
+    if (opts.modal) return [...s, scope];
+    const from = layer ? s.indexOf(layer) + 1 : 0;
+    const later = s.findIndex((x, i) => i >= from && x.modal);
+    return later < 0 ? [...s, scope] : [...s.slice(0, later), scope, ...s.slice(later)];
   });
   onCleanup(() => setScopes((s) => s.filter((x) => x !== scope)));
-  return depth;
+  return scope;
 }
 
 const GLYPH: Record<string, string> = {

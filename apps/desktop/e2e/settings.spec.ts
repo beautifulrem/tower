@@ -109,6 +109,16 @@ test("what you typed in Settings is saved when you leave by a key straight after
   await expect.poll(async () => (await saved()).some(([c, a]) => c === "save_settings" && a.settings.editor === "zed")).toBe(true);
 });
 
+test("Settings left as it opened writes nothing on the way out", async ({ page }) => {
+  await openTower(page, "settings");
+  await expect(page.getByLabel("Editor command")).toBeVisible();
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  await page.keyboard.press("Meta+,");
+  await expect(page.getByLabel("Editor command")).toBeVisible();
+  expect((await calls(page)).filter(([cmd]) => cmd === "save_settings" || cmd === "update_project")).toEqual([]);
+});
+
 test("a field saved on the Settings page keeps quiet mode off once the palette turned it off", async ({ page }) => {
   const saves = async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings") as Array<[string, { settings: { quiet_until: number | null } }]>;
   await openTower(page, "overview");

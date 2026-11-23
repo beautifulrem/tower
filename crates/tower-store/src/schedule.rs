@@ -120,11 +120,12 @@ impl Store {
     }
 
     /// Gives back a checkpoint whose run never started, so it can be tried
-    /// again; a checkpoint claimed since is left alone.
-    pub fn release_schedule_checkpoint(&mut self, id: &str, checkpoint: &str) -> Result<()> {
+    /// again: the one it replaced (`previous`, say a slot the scheduler
+    /// claimed) is claimed again. A checkpoint claimed since is left alone.
+    pub fn release_schedule_checkpoint(&mut self, id: &str, checkpoint: &str, previous: Option<&str>) -> Result<()> {
         self.conn.execute(
-            "UPDATE scheduled_goals SET last_checkpoint = NULL WHERE id = ?1 AND last_checkpoint = ?2",
-            params![id, checkpoint],
+            "UPDATE scheduled_goals SET last_checkpoint = ?3 WHERE id = ?1 AND last_checkpoint = ?2",
+            params![id, checkpoint, previous],
         )?;
         Ok(())
     }

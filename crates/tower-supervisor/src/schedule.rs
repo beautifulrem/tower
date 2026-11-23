@@ -286,7 +286,10 @@ impl Supervisor {
         let sch = self.inner.store(|s| s.scheduled_goal(id))?;
         let now = tower_store::system_now();
         let checkpoint = format!("manual:{}", now.div_euclid(60_000));
-        if !self.inner.store(|s| s.claim_schedule_checkpoint(id, &checkpoint))? {
+        // The checkpoint this claim replaces, read under the same lock.
+        let (previous, claimed) =
+            self.inner.store(|s| Ok((s.schedule_checkpoint(id)?, s.claim_schedule_checkpoint(id, &checkpoint)?)))?;
+        if !claimed {
             return Err(invalid(tr!(
                 self.inner.lang(),
                 "这个定时目标刚刚已经运行过，请一分钟后再试",
@@ -298,7 +301,9 @@ impl Supervisor {
             Ok(goal) => goal,
             Err(e) => {
                 // Nothing ran: a retry in the same minute may go ahead.
-                if let Err(e) = self.inner.store(|s| s.release_schedule_checkpoint(id, &checkpoint)) {
+                if let Err(e) =
+                    self.inner.store(|s| s.release_schedule_checkpoint(id, &checkpoint, previous.as_deref()))
+                {
                     tracing::warn!(schedule = %id, error = %e, "could not release a manual run's checkpoint");
                 }
                 return Err(e);
@@ -415,5 +420,33 @@ pub(crate) mod tests {
 
         assert_eq!([a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count(), 1, "{a:?} {b:?}");
         assert_eq!(sup.inner.read_store(|s| s.summaries()).unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_run_now_that_fails_gives_back_the_slot_the_scheduler_claimed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        let contract = tower_core::contract::Contract::quick("nightly", Some("true".into()), Lang::En);
+        // A title the goal cannot be created with: the launch fails.
+        let sch = sup
+            .inner
+            .store(|s| {
+                s.create_scheduled_goal(NewScheduledGoal {
+                    project_id: pid.clone(),
+                    title: String::new(),
+                    cron_expr: "* * * * *".into(),
+                    contract_template: contract,
+                    enabled: true,
+                    next_run_at: None,
+                    unattended_strict: true,
+                })
+            })
+            .unwrap();
+        sup.inner.store(|s| s.claim_schedule_checkpoint(&sch.id, "cron:42")).unwrap();
+
+        assert!(sup.run_scheduled_goal_now(&sch.id).await.is_err());
+
+        let checkpoint = sup.inner.store(|s| s.schedule_checkpoint(&sch.id)).unwrap();
+        assert_eq!(checkpoint.as_deref(), Some("cron:42"), "the scheduler's slot stays claimed");
     }
 }

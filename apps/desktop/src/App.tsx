@@ -1,12 +1,12 @@
 /** Application shell: sidebar, title bar and the current view. */
-import { For, Match, Show, Suspense, Switch, lazy, onCleanup, onMount } from "solid-js";
+import { ErrorBoundary, For, Match, Show, Suspense, Switch, createEffect, lazy, on, onCleanup, onMount } from "solid-js";
 
 import { listen } from "@tauri-apps/api/event";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
 import { TitleBar, Toasts } from "./components/Chrome";
 import { Sidebar } from "./components/Sidebar";
-import { Button, Empty, IconButton, Loading } from "./components/ui";
+import { Button, Empty, Failed, IconButton, Loading } from "./components/ui";
 import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
 import { activityOpen, openActivity, openPalette, openShortcuts, paletteOpen, shortcutsOpen, toggleActivity, togglePalette, toggleShortcuts } from "./lib/layers";
@@ -224,40 +224,49 @@ export function App() {
               <TitleBar title={titleOf()} />
             </Show>
             <div class="view" classList={{ "view-full": route().name === "review" }}>
-              <Switch>
-                <Match when={route().name === "overview"}>
-                  <Overview />
-                </Match>
-                <Match when={route().name === "inbox"}>
-                  <Inbox />
-                </Match>
-                <Match when={route().name === "learning"}>
-                  <Suspense fallback={<div class="page-loading"><Loading /></div>}>
-                    <Learning />
-                  </Suspense>
-                </Match>
-                <Match when={route().name === "operations"}>
-                  <Suspense fallback={<div class="page-loading"><Loading /></div>}>
-                    <Operations />
-                  </Suspense>
-                </Match>
-                <Match when={route().name === "settings"}>
-                  <Settings />
-                </Match>
-                <Match when={at("new")} keyed>
-                  {(r) => (
-                    <Suspense fallback={<ContractSkeleton />}>
-                      <ContractEditor projectId={r.projectId} draftId={r.draftId} amendId={r.amendId} />
+              {/* A view that throws (or whose code fails to load) takes only itself down: the sidebar still works, and
+                  moving to another view or Retry renders it again. */}
+              <ErrorBoundary
+                fallback={(err, reset) => {
+                  createEffect(on(route, reset, { defer: true }));
+                  return <div class="page-loading"><Failed error={err} onRetry={reset} /></div>;
+                }}
+              >
+                <Switch>
+                  <Match when={route().name === "overview"}>
+                    <Overview />
+                  </Match>
+                  <Match when={route().name === "inbox"}>
+                    <Inbox />
+                  </Match>
+                  <Match when={route().name === "learning"}>
+                    <Suspense fallback={<div class="page-loading"><Loading /></div>}>
+                      <Learning />
                     </Suspense>
-                  )}
-                </Match>
-                <Match when={at("goal")} keyed>
-                  {(r) => <GoalPage id={r.id} />}
-                </Match>
-                <Match when={at("review")} keyed>
-                  {(r) => <Review id={r.id} />}
-                </Match>
-              </Switch>
+                  </Match>
+                  <Match when={route().name === "operations"}>
+                    <Suspense fallback={<div class="page-loading"><Loading /></div>}>
+                      <Operations />
+                    </Suspense>
+                  </Match>
+                  <Match when={route().name === "settings"}>
+                    <Settings />
+                  </Match>
+                  <Match when={at("new")} keyed>
+                    {(r) => (
+                      <Suspense fallback={<ContractSkeleton />}>
+                        <ContractEditor projectId={r.projectId} draftId={r.draftId} amendId={r.amendId} />
+                      </Suspense>
+                    )}
+                  </Match>
+                  <Match when={at("goal")} keyed>
+                    {(r) => <GoalPage id={r.id} />}
+                  </Match>
+                  <Match when={at("review")} keyed>
+                    {(r) => <Review id={r.id} />}
+                  </Match>
+                </Switch>
+              </ErrorBoundary>
             </div>
           </main>
         </div>

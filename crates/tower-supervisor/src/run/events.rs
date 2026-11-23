@@ -652,6 +652,12 @@ fn remove_run(inner: &Inner, run: &Run) {
             runs.remove(&run.goal_id);
         }
     }
+    // Every end of a run comes through here (stopped, submitted, blocked,
+    // crashed): a profile rewrite already under way finishes before the end
+    // releases the goal's ports and folders, and none starts after it
+    // (jail::follow_agent_listeners checks the run is still current under
+    // the same lock).
+    drop(run.profile.lock().unwrap_or_else(PoisonError::into_inner));
     inner.update_keep_awake();
     // Nothing the agent started outlives its run (submitted, paused,
     // abandoned or crashed): a server or watcher it left in the background
@@ -669,8 +675,6 @@ fn remove_run(inner: &Inner, run: &Run) {
 
 pub(crate) async fn stop_engine(inner: &Arc<Inner>, run: &Arc<Run>, why: Stop) {
     run.flags().stopping = Some(why);
-    // A profile rewrite that began before the mark finishes before the run ends (jail::follow_agent_listeners).
-    drop(run.profile.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
     let _ = tokio::time::timeout(Duration::from_secs(3), run.engine.abort()).await;
     run.engine.shutdown(Duration::from_secs(5)).await;
     remove_run(inner, run);

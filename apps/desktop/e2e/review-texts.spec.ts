@@ -90,3 +90,16 @@ test("closing an editor the snapshot moved under drops its old text: Edit opens 
   await editCart(page);
   await expect(editor).toHaveValue(/^new text\n?$/);
 });
+
+test("undo on the file open in the editor does nothing: the editor and what you typed stay", async ({ page }) => {
+  await openTower(page, "review/G-0003");
+  await expect(page.locator("table").first()).toBeVisible();
+  await editCart(page);
+  const editor = page.getByRole("textbox", { name: "Edit this file" });
+  await editor.fill("my unsaved change");
+  await page.evaluate(() => ((window as any).__towerAsk = true));
+  await page.locator(".review-diff").click({ position: { x: 4, y: 4 } });
+  await page.keyboard.press("u");
+  await expect(editor).toHaveValue("my unsaved change");
+  expect(await cmds(page)).not.toContain("revert_hunk");
+});

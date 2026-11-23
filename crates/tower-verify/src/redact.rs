@@ -98,8 +98,9 @@ fn authority_end(url: &str) -> usize {
     let digits = url[colon + 1..].bytes().take_while(u8::is_ascii_digit).count();
     let port = (1..=5).contains(&digits) && url[colon + 1 + digits..].starts_with('/');
     let query = url[colon + 1..].find(['?', '#']).map(|q| colon + 1 + q);
-    // A `,` in the path ends a cell of an unquoted CSV row: an `@` after it is the next cell's.
-    let cell = url[first..].find(',').map_or(url.len(), |c| first + c);
+    // A `,` or `;` in the path ends a cell of an unquoted CSV row or a `key=value;` list: an `@` after it is the next
+    // cell's.
+    let cell = url[first..].find([',', ';']).map_or(url.len(), |c| first + c);
     for (at, _) in url.match_indices('@').rev().take_while(|&(at, _)| at > first).filter(|&(at, _)| at < cell) {
         // `5173/@vite`, `5173/node_modules/@scope`: a port and a path whose `@` begins a segment; `8080/u?email=a@b`:
         // a port, a path, and a query or fragment the `@` is in. Anything else ends a password.
@@ -207,6 +208,19 @@ fn url_end_from(text: &str, from: usize) -> usize {
         .map_or(text.len(), |(i, _)| from + i)
 }
 
+/// Whether `head`, the start of a URL's authority up to a `,` or `;`, is a whole host: a name, `user@host`, or
+/// `host:port` where the host reads as one (a `.`, `localhost`, `[v6]`). `ada:2024` and `ada:p@ss` may be passwords.
+fn host_or_port(head: &str) -> bool {
+    let port = |p: &str| (1..=5).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit());
+    if let Some(v6) = head.strip_prefix('[') {
+        return v6.split_once(']').is_some_and(|(_, rest)| rest.is_empty() || rest.strip_prefix(':').is_some_and(port));
+    }
+    match head.split_once(':') {
+        None => true,
+        Some((host, p)) => (host.contains('.') || host == "localhost") && port(p),
+    }
+}
+
 /// Where something next occurs in `text` at or after a start that only moves forward: found once and kept until the
 /// start passes it, so finding it for every URL of a long line is still one pass.
 struct Next<F: Fn(&str) -> Option<usize>> {
@@ -242,7 +256,20 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
     let mut paths = Next::new(|s: &str| s.find(['/', '?', '#']));
     let mut commas = Next::new(|s: &str| s.find([',', ';']));
     let mut schemes = Next::new(|s: &str| s.find("://"));
-    while let Some(at) = rest.find("://") {
+    // PHP's JSON writes `://` as `:\/\/`.
+    let mut escaped_schemes = Next::new(|s: &str| s.find(":\\/\\/"));
+    loop {
+        let base = text.len() - rest.len();
+        let plain = schemes.at_or_after(text, base);
+        let php = escaped_schemes.at_or_after(text, base);
+        let Some((at, sep)) = (match (plain, php) {
+            (Some(p), Some(e)) if e < p => Some((e - base, 5)),
+            (Some(p), _) => Some((p - base, 3)),
+            (None, Some(e)) => Some((e - base, 5)),
+            (None, None) => None,
+        }) else {
+            break;
+        };
         let before = rest[..at].trim_end_matches(|c: char| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
         let mut escaped = false;
         for c in before.chars() {
@@ -263,29 +290,30 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
             _ if in_element => Some('>'),
             _ => None,
         };
-        out.push_str(&rest[..at + 3]);
-        let url = &rest[at + 3..];
+        out.push_str(&rest[..at + sep]);
+        let url = &rest[at + sep..];
         let pos = text.len() - url.len();
         let within = |next: Option<usize>| next.map_or(url.len(), |n| n - pos);
+        let inner_scheme = within(schemes.at_or_after(text, pos)).min(within(escaped_schemes.at_or_after(text, pos)));
         let mut end = within(ends.at_or_after(text, pos));
+        // In JSON, `\u0026` (Go's `&`) and `\/` (PHP's `/`) are the URL's own characters, not its end; read up to the
+        // next URL at most, so no stretch is read twice.
+        while end < inner_scheme && (url[end..].starts_with("\\u0026") || url[end..].starts_with("\\/")) {
+            end = within(ends.at_or_after(text, pos + end + 1));
+        }
         // A URL in the path (`/fetch/https://…`) is read on its own: this one ends where its scheme begins. One in the
         // query is a parameter's value, read below.
-        let inner_scheme = within(schemes.at_or_after(text, pos));
         if inner_scheme < within(queries.at_or_after(text, pos)).min(end) {
             end = url[..inner_scheme]
                 .trim_end_matches(|c: char| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
                 .len();
         }
         // A host holds no `,` or `;`: in an unquoted CSV row (`https://example.com,ada@example.com`) or a `key=value;`
-        // list the URL ends at one that follows a host, a port or `user@host`. One after `user:` may be the password's.
+        // list the URL ends at one that follows a host, `host:port` or `user@host`. One after `user:` may be the
+        // password's (`ada:2024;Summer@db`, `ada:p@ss;word@db`): that URL is masked over rather than risked.
         let comma = within(commas.at_or_after(text, pos));
-        if comma < within(paths.at_or_after(text, pos)).min(end) {
-            let head = &url[..comma];
-            let port =
-                head.rsplit_once(':').is_some_and(|(_, p)| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()));
-            if !head.contains(':') || head.contains('@') || port {
-                end = comma;
-            }
+        if comma < within(paths.at_or_after(text, pos)).min(end) && host_or_port(&url[..comma]) {
+            end = comma;
         }
         // A password may hold `'()"{}<>\` or a backtick, which git sends as they are. When such punctuation cuts the URL
         // inside `user:pass`, and an `@` follows within 256 bytes with no whitespace, no other `://` and nothing that
@@ -300,18 +328,24 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
         // one judged; the value then goes whole to the parameter reading below.
         let inner = url[..end].find(['?', '#']).and_then(|q| url[q..end].rfind("://").map(|i| q + i + 3)).unwrap_or(0);
         // Element text is no strong context: a `|` in it is a column's end too.
+        let mut escaped = false;
         let quoted_or_bracketed = matches!(open, Some('"' | '\'' | '`' | '(' | '[' | '{' | '<'));
         if url[end..].chars().next().is_some_and(|c| ends_url(c) && (c != '|' || quoted_or_bracketed))
             && next_at.is_some_and(|a| a - pos < end + 256)
             && cut_in_userinfo(&url[inner..end])
             && let Some(a) = next_userinfo_at(url, end, end + 256)
-            && !url[..a].char_indices().any(|(i, c)| closes(open, c, url[i + c.len_utf8()..].chars().next()))
+            && !url[..a].char_indices().any(|(i, c)| {
+                // In a JSON string a backslash escapes the next character, which then closes nothing.
+                let was = escaped;
+                escaped = open == Some('"') && c == '\\' && !was;
+                !was && closes(open, c, url[i + c.len_utf8()..].chars().next())
+            })
         {
-            // The host holds no `,` either: one after it ends the URL (a CSV cell).
+            // The host holds no `,` or `;` either: one after it ends the URL (a CSV cell).
             let host = url[a + 1..]
-                .find(|c| matches!(c, '/' | '?' | '#' | ',') || ends_url(c))
+                .find(|c| matches!(c, '/' | '?' | '#' | ',' | ';') || ends_url(c))
                 .map_or(url.len(), |h| a + 1 + h);
-            end = if url[host..].starts_with(',') { host } else { url_end_from(url, host) };
+            end = if url[host..].starts_with([',', ';']) { host } else { url_end_from(url, host) };
         }
         let (url, after) = url.split_at(end);
         let host_end = authority_end(url);
@@ -329,16 +363,20 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
                 out.push_str(p);
                 out.push('?');
                 let (query, fragment) = query.split_once('#').map_or((query, None), |(q, f)| (q, Some(f)));
+                // `&` may be written `&amp;` (HTML) or `\u0026` (Go's JSON).
+                let param = |kv: &str| match kv.split_once('=') {
+                    Some((k, v)) if secret_param(k.strip_prefix("amp;").unwrap_or(k)) && !v.is_empty() => {
+                        format!("{k}={MASK}")
+                    }
+                    // A URL inside a value (`next=https://…`) is a URL too.
+                    Some((k, v)) if depth < NESTED_URLS && v.contains("://") => {
+                        format!("{k}={}", redact_urls_within(v, depth + 1))
+                    }
+                    _ => kv.to_string(),
+                };
                 let params: Vec<String> = query
                     .split('&')
-                    .map(|kv| match kv.split_once('=') {
-                        Some((k, v)) if secret_param(k) && !v.is_empty() => format!("{k}={MASK}"),
-                        // A URL inside a value (`next=https://…`) is a URL too.
-                        Some((k, v)) if depth < NESTED_URLS && v.contains("://") => {
-                            format!("{k}={}", redact_urls_within(v, depth + 1))
-                        }
-                        _ => kv.to_string(),
-                    })
+                    .map(|kv| kv.split("\\u0026").map(param).collect::<Vec<_>>().join("\\u0026"))
                     .collect();
                 out.push_str(&params.join("&"));
                 if let Some(f) = fragment {
@@ -521,6 +559,16 @@ mod tests {
             ("fatal: unable to access 'https://deploy:42'ab0022@git.example.com/r/': 403", "ab0022"),
             ("https://deploy:Xy(7q):Zr0023@git.example.com/o/r.git", "Zr0023"),
             ("INFO -> https://deploy:Xy<q>Zr0030@git.example.com/r", "Zr0030"),
+            // A password with digits and then `;`, or with `@` and then `;`, is no port and no `user@host`.
+            ("url=postgres://ada:2024;Summer0031@db/app", "Summer0031"),
+            ("postgres://ada:p@ss;w0rd0032@db/app", "w0rd0032"),
+            // A backslash escaped in JSON is no escape of the next letter.
+            ("{\"msg\":\"remote: https://ada:pa\\\\nss0033@db/app\"}", "ss0033"),
+            // `&` written as `&amp;` (HTML) or `\u0026` (Go's JSON) still separates parameters.
+            ("<a href=\"https://example.com/callback?state=xyz&amp;code=4f9a8b0034\">", "4f9a8b0034"),
+            ("{\"url\":\"https://api.x.com/v1?a=1\\u0026sig=s3cr3t0035\"}", "s3cr3t0035"),
+            // PHP's JSON writes `/` as `\/`.
+            ("{\"url\":\"https:\\/\\/ada:s3cret0036@db.example.com\\/app\"}", "s3cret0036"),
             // The quote a URL is wrapped in ends it only where a separator follows; a password may hold it.
             ("fatal: unable to access 'https://deploy:Xy(7q)Zr'0024@git.example.com/o/r.git/': 403", "0024"),
             // A URL in another's path is read on its own, punctuation and all.
@@ -595,10 +643,9 @@ mod tests {
             // Unquoted CSV: a host holds no `,`, so a URL's authority ends at one after a host or `user@host`.
             ("https://example.com,ada@example.com,x", "https://example.com,ada@example.com,x"),
             ("https://example.com:8443,ada@example.com,x", "https://example.com:8443,ada@example.com,x"),
-            (
-                "https://deploy:pw@git.example.com,ada@example.com,x",
-                "https://[redacted]@git.example.com,ada@example.com,x",
-            ),
+            // After `user:pass@host` a `,` may still be the password's (`p@ss,word@host`): masked over, not risked.
+            ("https://deploy:pw@git.example.com,ada@example.com,x", "https://[redacted]@example.com,x"),
+            ("https://ada@git.example.com,bob@example.com,x", "https://[redacted]@git.example.com,bob@example.com,x"),
             ("https://u:p,w@host/r", "https://[redacted]@host/r"),
             // An escape in a JSON string ends a URL there; a `>` in prose is not an element's text.
             (
@@ -609,10 +656,16 @@ mod tests {
             ("<b>a</b> http://localhost:3000|ada@example.com|", "<b>a</b> http://localhost:3000|ada@example.com|"),
             // A `;` list (`key=value;…`, a connection string) as a CSV row.
             ("url=http://localhost:3000;mail=ada@example.com", "url=http://localhost:3000;mail=ada@example.com"),
+            ("url=https://deploy:pw@git.example.com;mail=ada@example.com", "url=https://[redacted]@example.com"),
             (
-                "url=https://deploy:pw@git.example.com;mail=ada@example.com",
-                "url=https://[redacted]@git.example.com;mail=ada@example.com",
+                "url=http://localhost:8080/api;contact=ops@corp.com",
+                "url=http://localhost:8080/api;contact=ops@corp.com",
             ),
+            (
+                "DSN=postgres://ada:secret@db:5432/app;admin=root@example.com",
+                "DSN=postgres://[redacted]@db:5432/app;admin=root@example.com",
+            ),
+            ("url=https://ada:pa(ss@db;mail=bob@example.com", "url=https://[redacted]@db;mail=bob@example.com"),
             ("http://localhost:3000/api,ada@example.com,x", "http://localhost:3000/api,ada@example.com,x"),
             ("ssh://git@github.com:o/r.git,ada@example.com,x", "ssh://git@github.com:o/r.git,ada@example.com,x"),
             (
@@ -671,6 +724,9 @@ mod tests {
             "https://a.example.com,".repeat(50_000),
             "a://h/".repeat(100_000),
             "a://h,x?".repeat(100_000),
+            // JSON escapes a URL is read across.
+            "a://h\\u0026".repeat(100_000),
+            "a:\\/\\/h\\/".repeat(100_000),
         ] {
             let started = std::time::Instant::now();
             let _ = redact(&text);

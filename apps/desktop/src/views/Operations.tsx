@@ -93,6 +93,7 @@ export function Operations() {
               <>
                 <span class="meta num t2">{schedList().filter((s) => s.enabled).length}</span>
                 <span class="meta t3">{t("ops.schedulesNote")}</span>
+                <span class="meta t3">{t("ops.cronUtc")}</span>
               </>
             }
           />

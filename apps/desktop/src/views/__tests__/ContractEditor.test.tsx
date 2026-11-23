@@ -279,6 +279,31 @@ describe("saving", () => {
     draft.createGate = null;
   });
 
+  it("leaving while the goal is being created asks nothing and lands on the goal, created once", async () => {
+    const { invoked } = await import("../../test/setup");
+    const nav = await import("../../lib/nav");
+    let open!: () => void;
+    draft.createGate = new Promise<void>((r) => (open = r));
+    try {
+      const { container } = render(() => <ContractEditor projectId="p1" />);
+      const intent = container.querySelector(".field-intent textarea") as HTMLTextAreaElement;
+      fireEvent.input(intent, { target: { value: "Fix the cart total for discounts" } });
+      const before = invoked.filter((x) => x.cmd === "create_goal").length;
+      fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+      await new Promise((r) => setTimeout(r, 0));
+      // Esc, ⌘1 or the sidebar while the save is in flight.
+      nav.go({ name: "inbox" });
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(screen.queryByRole("button", { name: /Keep editing/ })).toBeNull();
+      open();
+      await waitFor(() => expect(nav.route()).toEqual({ name: "goal", id: "G-0100" }));
+      expect(invoked.filter((x) => x.cmd === "create_goal").length).toBe(before + 1);
+    } finally {
+      draft.createGate = null;
+    }
+  });
+
   it("uploads an image pasted into a new contract, so the goal it creates has it", async () => {
     const { invoked } = await import("../../test/setup");
     const { container } = render(() => <ContractEditor projectId="p1" />);

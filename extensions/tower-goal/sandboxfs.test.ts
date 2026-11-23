@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -146,5 +147,45 @@ test("falls back cleanly to per-call sandbox-exec when persistent helper is unav
 		await assert.rejects(ops.write.writeFile(join(root, "bad.txt"), "x"), /not permitted/);
 	} finally {
 		ops.close();
+	}
+});
+
+test("a FIFO or a helper that never answers cannot hang file operations", { skip: !HAS_SANDBOX_EXEC }, async () => {
+	const root = realpathSync(mkdtempSync(join(tmpdir(), "tower-fs-fifo-")));
+	const ws = join(root, "ws");
+	mkdirSync(ws);
+	writeFileSync(join(ws, "ok.txt"), "still-ok");
+	const fifo = join(ws, "pipe");
+	execFileSync("/usr/bin/mkfifo", [fifo]);
+	const profile = join(root, "p.sb");
+	writeFileSync(profile, `(version 1)(allow default)\n(deny file-write* (subpath "${root}"))\n(allow file-write* (subpath "${ws}"))`);
+	const within = <T>(p: Promise<T>, ms: number): Promise<T> =>
+		Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`still waiting after ${ms} ms`)), ms).unref())]);
+
+	// What the agent made in its workspace is not a file to read.
+	const ops = sandboxedOperations(profile);
+	try {
+		await assert.rejects(within(ops.read.readFile(fifo), 5000), /not a regular file/);
+		await assert.rejects(within(ops.read.access(fifo), 5000), /not a regular file/);
+		assert.equal(await within(ops.read.detectImageMimeType?.(fifo) ?? Promise.resolve(null), 5000), null);
+		assert.equal((await ops.read.readFile(join(ws, "ok.txt"))).toString(), "still-ok");
+	} finally {
+		ops.close();
+	}
+
+	// A helper that stops answering fails the request and is replaced.
+	const silent = [
+		process.execPath,
+		"-e",
+		`require("node:readline").createInterface({ input: process.stdin }).on("line", (l) => { const r = JSON.parse(l); if (r.op === "ping") process.stdout.write(JSON.stringify({ id: r.id, ok: true }) + "\\n"); });`,
+	];
+	const stuck = sandboxedOperations(profile, { helperCommand: silent, disableNodeHelper: true, requestTimeoutMs: 300 });
+	try {
+		await assert.rejects(within(stuck.read.readFile(join(ws, "ok.txt")), 5000), /timed out/);
+		assert.equal(stuck.helperPid(), null, "a helper that timed out is stopped, not reused");
+		// The next request starts a new helper (which, being the same, times out too).
+		await assert.rejects(within(stuck.read.readFile(join(ws, "ok.txt")), 5000), /timed out/);
+	} finally {
+		stuck.close();
 	}
 });

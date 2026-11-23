@@ -18,7 +18,7 @@ use crate::paths::real;
 use crate::{Inner, Result, invalid, prompts};
 
 pub(crate) use crate::control::{
-    abandon, answer_dialog, pause, pause_after_stop, paused_item, repin, report, resume, steer,
+    abandon, answer_dialog, pause, pause_after_stop, pause_failed_start, paused_item, repin, report, resume, steer,
 };
 pub(crate) use crate::jail::{Dirs, Net, TowerFiles, agent_jail, verifier_jail};
 
@@ -675,7 +675,7 @@ fn report_stall(inner: &Arc<Inner>, run: &Arc<Run>, detector: &str, stall: tower
 
 fn fail_to_start(inner: &Arc<Inner>, goal_id: &str, detail: &str) -> Result<()> {
     inner.append(goal_id, EventKind::EngineError { message: detail.into() })?;
-    pause_after_stop(inner, goal_id, PauseReason::PrepareFailed, detail)
+    pause_failed_start(inner, goal_id, PauseReason::PrepareFailed, detail)
 }
 
 mod events;

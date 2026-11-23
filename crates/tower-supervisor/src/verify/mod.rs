@@ -162,10 +162,9 @@ fn to_paused(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str) 
     if state == LifecycleState::Verifying {
         // The edge out of verifying for a non-rework outcome.
         let note = tower_core::i18n::PauseNote::render(detail, inner.lang());
-        inner.transition(goal, Transition::VerifyFailed { rework: false }, Some(reason), &note)?;
         let rec = inner.store(|s| s.goal(goal))?;
-        inner.open_inbox(run::paused_item(&rec, reason, detail, inner.lang(), false))?;
-        Ok(())
+        let item = run::paused_item(&rec, reason, detail, inner.lang(), false);
+        inner.transition_with_item(goal, Transition::VerifyFailed { rework: false }, Some(reason), &note, Some(item))
     } else {
         run::pause_after_stop(inner, goal, reason, detail)
     }

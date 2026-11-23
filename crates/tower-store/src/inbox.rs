@@ -114,6 +114,10 @@ pub struct Resolved {
 
 impl Store {
     pub fn open_inbox(&mut self, n: NewInboxItem) -> Result<InboxItem> {
+        self.atomically(|s| s.insert_inbox(n))
+    }
+
+    fn insert_inbox(&mut self, n: NewInboxItem) -> Result<InboxItem> {
         let id = new_id("inb");
         let now = self.now();
         self.conn.execute(
@@ -271,6 +275,31 @@ mod tests {
         clock.advance(61_000);
         assert_eq!(s.open_inbox_items().unwrap().len(), 1);
         assert!(s.snoozed_inbox_items().unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_pause_and_its_card_are_written_together_or_not_at_all() {
+        use tower_core::lifecycle::Transition;
+        let (mut s, _, id) = crate::goals::tests::seeded();
+        s.transition(&id, Transition::Ratify, None, "").unwrap();
+        s.transition(&id, Transition::RunStarted, None, "").unwrap();
+        let events = s.trace(&id, None, 100).unwrap().len();
+        let failed: Result<()> = s.atomically(|s| {
+            s.transition(&id, Transition::Pause { reason: PauseReason::EngineCrash }, None, "")?;
+            s.open_inbox(item(&id, InboxKind::Paused, 2))?;
+            Err(StoreError::Conflict("later step failed".into()))
+        });
+        assert!(failed.is_err());
+        assert_eq!(s.goal(&id).unwrap().state, tower_core::LifecycleState::Running);
+        assert!(s.open_inbox_items().unwrap().is_empty());
+        assert_eq!(s.trace(&id, None, 100).unwrap().len(), events);
+        s.atomically(|s| {
+            s.transition(&id, Transition::Pause { reason: PauseReason::EngineCrash }, None, "")?;
+            s.open_inbox(item(&id, InboxKind::Paused, 2))
+        })
+        .unwrap();
+        assert_eq!(s.goal(&id).unwrap().state, tower_core::LifecycleState::Paused);
+        assert_eq!(s.open_inbox_items().unwrap().len(), 1);
     }
 
     #[test]

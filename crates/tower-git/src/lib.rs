@@ -458,6 +458,11 @@ impl Git {
         Ok(out.split('\0').filter(|p| !p.is_empty()).map(String::from).collect())
     }
 
+    /// Whether the workspace has uncommitted or untracked changes.
+    pub fn has_changes(&self, ws: &Path) -> Result<bool> {
+        Ok(!self.ws_run(ws, &["status", "--porcelain"])?.trim().is_empty())
+    }
+
     /// Files the working tree of `workspace` changes relative to `base`,
     /// including new untracked files. Cheap enough to poll.
     pub fn touched(&self, workspace: &Path, base: &str) -> Result<Vec<String>> {

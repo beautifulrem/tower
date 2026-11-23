@@ -160,20 +160,15 @@ pub fn check_reclaim_safety(meta: &GoalStorageMeta, workspace: &Path) -> Result<
 }
 
 /// Checks whether a git workspace has uncommitted or untracked changes.
-/// Returns `false` if `workspace` does not exist or is not a git repo.
+/// Returns `false` if `workspace` does not exist or is not a git repo. The
+/// agent wrote this workspace, so git runs as for any satellite (no hooks,
+/// fsmonitor or system configuration, no `.git` redirect followed).
 pub fn is_workspace_dirty(workspace: &Path) -> bool {
-    if !workspace.join(".git").exists() {
+    if std::fs::symlink_metadata(workspace.join(".git")).is_err() {
         return false;
     }
-    let Ok(out) = std::process::Command::new("git").args(["status", "--porcelain"]).current_dir(workspace).output()
-    else {
-        // Fail safe: if git cannot confirm cleanliness, treat as dirty.
-        return true;
-    };
-    if !out.status.success() {
-        return true;
-    }
-    !String::from_utf8_lossy(&out.stdout).trim().is_empty()
+    // Fail safe: if git cannot confirm cleanliness, treat as dirty.
+    tower_git::Git::default().has_changes(workspace).unwrap_or(true)
 }
 
 /// Computes the full storage inventory off the async runtime (`spawn_blocking`).
@@ -549,5 +544,36 @@ mod tests {
             assert!(paths.sessions(id).join("s.jsonl").exists(), "session history must stay");
             assert!(paths.goal_dir(id).join("contract.json").exists(), "contract metadata must stay");
         }
+    }
+
+    /// The dirty check runs git in the agent's workspace, outside the
+    /// sandbox: nothing the workspace's own configuration names (an
+    /// fsmonitor, here) may run, and a workspace whose `.git` points
+    /// elsewhere counts as dirty rather than being followed.
+    #[test]
+    fn the_dirty_check_runs_nothing_the_workspace_configures() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git").args(args).current_dir(&ws).status().unwrap().success();
+            assert!(ok, "git {args:?}");
+        };
+        git(&["init", "--quiet"]);
+        let marker = tmp.path().join("fsmonitor-ran");
+        let hook = tmp.path().join("fsmonitor.sh");
+        std::fs::write(&hook, format!("#!/bin/sh\ntouch {}\n", marker.display())).unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        git(&["config", "core.fsmonitor", &hook.display().to_string()]);
+        std::fs::write(ws.join("new.txt"), "x").unwrap();
+
+        assert!(is_workspace_dirty(&ws), "an untracked file is a change");
+        assert!(!marker.exists(), "the workspace's fsmonitor did not run");
+
+        let elsewhere = tmp.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join(".git"), format!("gitdir: {}\n", ws.join(".git").display())).unwrap();
+        assert!(is_workspace_dirty(&elsewhere), "a redirected .git is not followed");
     }
 }

@@ -8,7 +8,7 @@ import { DangerMark, Icon, LifecycleGlyph, NoticeMark } from "../components/Glyp
 import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
-import type { MergeQueueEntry, StorageInventory } from "../lib/apiTypes";
+import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
 import { dayClock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { stateLabel } from "../lib/labels";
@@ -41,6 +41,17 @@ export function Operations() {
   const run = async (fn: () => Promise<unknown>, rf: () => unknown, msg?: string) => {
     if ((await act(fn, msg)) !== undefined) (void rf(), void refreshConsoleMeta());
   };
+  // A schedule's Run and Delete: one at a time per row, so a second press can't start a goal twice.
+  const [rowBusy, setRowBusy] = createSignal<string[]>([]);
+  const once = async (id: string, fn: () => Promise<unknown>) => {
+    if (rowBusy().includes(id)) return;
+    setRowBusy((b) => [...b, id]);
+    await fn().finally(() => setRowBusy((b) => b.filter((x) => x !== id)));
+  };
+  const remove = (s: ScheduledGoal) =>
+    once(s.id, async () => {
+      if (await ask(t("ops.deleteConfirm", { title: s.title }), { ok: t("ops.deleteSchedule"), cancel: t("common.cancel"), kind: "warning" })) await run(() => api.deleteScheduledGoal(s.id), rfSched);
+    });
 
   const acceptedNotQueued = createMemo(() => {
     const q = new Set(mqList().map((e) => e.goal_id));
@@ -118,8 +129,8 @@ export function Operations() {
                 <td class="col-r">
                   <div class="row row-end">
                     <Toggle checked={s.enabled} onChange={(v) => void run(() => api.toggleScheduledGoal(s.id, v), rfSched)} label={t(s.enabled ? "quiet.on" : "settings.escalationOff")} />
-                    <SmBtn onClick={() => void run(() => api.runScheduledGoalNow(s.id), rfSched, t("ops.runNow"))}>{t("ops.runNow")}</SmBtn>
-                    <SmBtn onClick={() => void run(() => api.deleteScheduledGoal(s.id), rfSched)}>{t("common.delete")}</SmBtn>
+                    <SmBtn disabled={rowBusy().includes(s.id)} onClick={() => void once(s.id, () => run(() => api.runScheduledGoalNow(s.id), rfSched, t("ops.runNow")))}>{t("ops.runNow")}</SmBtn>
+                    <SmBtn disabled={rowBusy().includes(s.id)} onClick={() => void remove(s)}>{t("common.delete")}</SmBtn>
                   </div>
                 </td>
               </tr>

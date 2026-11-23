@@ -67,6 +67,8 @@ export interface ParsedShell {
 	assignments: string[];
 	/** A shell here runs what its input holds: fed by a pipe, it is only known when it runs. */
 	stdinScript: boolean;
+	/** After a wrapper, each word naming a guarded program read as the command it may be. */
+	candidates: SimpleCommand[];
 	parseError?: string;
 }
 
@@ -321,8 +323,18 @@ function lex(src: string): LexResult {
 		const isArith = src[pos + 2] === "(";
 		const res = scanParenBody(src, pos + 2, isArith);
 		if (res.error) recordErr(res.error);
-		if (!isArith) substitutions.push(res.body);
+		dollarParen(res.body, isArith);
 		return res.next;
+	};
+	/**
+	 * `$((…))` is arithmetic only when its first `(` closes at the end; then
+	 * the substitutions inside it run (`$(( $(cmd) ))`). Otherwise the shell
+	 * reads a command substitution (`$((cmd) | cat)`).
+	 */
+	const dollarParen = (body: string, isArith: boolean) => {
+		const inner = isArith ? scanParenBody(body, 1, true) : undefined;
+		if (inner && !inner.error && inner.next === body.length) heredocSubstitutions(body.slice(1, -1));
+		else substitutions.push(body);
 	};
 
 	let heredocOp: string | null = null;
@@ -354,9 +366,9 @@ function lex(src: string): LexResult {
 			if (body[j] === "\\") j++;
 			else if (body[j] === "$" && body[j + 1] === "(") {
 				const isArith = body[j + 2] === "(";
-				const res = scanParenBody(body, j + 2);
+				const res = scanParenBody(body, j + 2, isArith);
 				if (res.error) recordErr(res.error);
-				if (!isArith) substitutions.push(res.body);
+				dollarParen(res.body, isArith);
 				j = res.next - 1;
 			} else if (body[j] === "`") {
 				const res = scanBacktickBody(body, j + 1, false);
@@ -476,9 +488,11 @@ function lex(src: string): LexResult {
 				if (i >= src.length) recordErr("unclosed double quote");
 				else i++;
 			} else if (ch === "$" && src[i + 1] === "[") {
-				// Old-style arithmetic, one word: `<<` in it is a shift.
+				// Old-style arithmetic, one word: `<<` in it is a shift; what
+				// is substituted in it runs.
 				hasDynamic = true;
 				const next = scanDollarBracket(src, i);
+				heredocSubstitutions(src.slice(i + 2, next - 1));
 				value += src.slice(i, next);
 				i = next;
 			} else if (ch === "$" && src[i + 1] === "(") {
@@ -542,6 +556,7 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		runsText: false,
 		assignments: [],
 		stdinScript: false,
+		candidates: [],
 	};
 	if (!input.trim()) return result;
 
@@ -560,15 +575,17 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 
 	const flushCommand = () => {
 		if (curRedirects.some((r) => r.isWrite)) result.hasFileWriteRedirection = true;
-		const cmd = unwrapCommand(curWords, curEnv, curRedirects, depth, nestedScripts);
+		const { cmd, candidates } = unwrapCommand(curWords, curEnv, curRedirects, depth, nestedScripts);
 		result.assignments.push(...curEnv.map((e) => e.name));
-		if (cmd?.readsStdin) result.stdinScript = true;
-		if (cmd && (SHELL_RUNNERS.has(cmd.name) || TEXT_RUNNERS.has(cmd.name))) result.runsText = true;
-		if (cmd) {
-			result.commands.push(cmd);
-			curPipeline.push(cmd);
-			if (cmd.hasDynamicName) result.hasDynamicCommand = true;
-			if (cmd.inlineScript) result.hasInlineScript = true;
+		if (cmd) result.commands.push(cmd);
+		result.candidates.push(...candidates);
+		for (const c of cmd ? [cmd, ...candidates] : []) {
+			curPipeline.push(c);
+			if (c.readsStdin) result.stdinScript = true;
+			if (SHELL_RUNNERS.has(c.name) || TEXT_RUNNERS.has(c.name)) result.runsText = true;
+			if (c.hasDynamicName) result.hasDynamicCommand = true;
+			// A candidate is only checked for what it may hide, not read as cautious mode's inline script.
+			if (c === cmd && c.inlineScript) result.hasInlineScript = true;
 		}
 		curWords = [];
 		curEnv = [];
@@ -611,6 +628,15 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 			i += targetTok?.kind === "word" ? 2 : 1;
 			continue;
 		}
+		if (curWords.length === 0 && !tok.quoted && (tok.value === "time" || tok.value === "coproc")) {
+			// `time [-p]` and `coproc [NAME]` before `{`, `(` or `!` are keywords: the block runs.
+			const word = (k: number) => (toks[k]?.kind === "word" ? (toks[k] as WordToken) : undefined);
+			const opens = (k: number) => (toks[k]?.kind === "op" && (toks[k] as OpToken).op === "(") || (!word(k)?.quoted && ["{", "!"].includes(word(k)?.value ?? ""));
+			let j = i + 1;
+			if (tok.value === "time" && word(j)?.value === "-p") j++;
+			else if (tok.value === "coproc" && word(j) && !opens(j) && opens(j + 1)) j++;
+			if (opens(j)) { i = j - 1; continue; }
+		}
 		if (curWords.length === 0 && !tok.quoted && CONTROL_KEYWORDS.has(tok.value)) {
 			if (tok.value === "{" || tok.value === "}") flushPipeline();
 			continue;
@@ -643,6 +669,7 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		result.runsText ||= nested.runsText;
 		result.assignments.push(...nested.assignments);
 		result.stdinScript ||= nested.stdinScript;
+		result.candidates.push(...nested.candidates);
 		result.parseError ??= nested.parseError;
 	};
 	if (depth < MAX_DEPTH) {

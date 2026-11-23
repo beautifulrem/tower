@@ -359,12 +359,14 @@ function isReadOnlyOrTestCommand(cmd: SimpleCommand): boolean {
 
 export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 	const parsed = parseShell(command);
+	// A wrapper's words naming a guarded program are checked as commands too.
+	const all = [...parsed.commands, ...parsed.candidates];
 
 	for (const pipe of parsed.pipelines) {
 		const reason = checkOneWayPipeline(pipe);
 		if (reason) return { action: "ask", reason };
 	}
-	for (const cmd of parsed.commands) {
+	for (const cmd of all) {
 		const reason = checkOneWayCommand(cmd);
 		if (reason) return { action: "ask", reason };
 	}
@@ -374,7 +376,7 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 		.filter((c) => EXPORTERS.has(c.name))
 		.flatMap((c) => c.args.map((a) => a.split("=")[0]));
 	if (
-		parsed.commands.some((c) => c.name === "git") &&
+		all.some((c) => c.name === "git") &&
 		[...parsed.assignments, ...exported].some((n) => GIT_CONFIG_ENV.test(n))
 	) {
 		return { action: "ask", reason: REASON.gitDynamic };
@@ -387,7 +389,7 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 	if (parsed.hasDynamicCommand) return { action: "ask", reason: REASON.dynamic };
 	if (autonomy === "autonomous") return { action: "allow" };
 
-	for (const cmd of parsed.commands) {
+	for (const cmd of all) {
 		const reason = checkStandardCommand(cmd);
 		if (reason) return { action: "ask", reason };
 	}

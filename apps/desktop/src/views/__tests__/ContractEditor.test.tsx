@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/store", async () => {
@@ -53,7 +53,7 @@ vi.mock("../../lib/store", async () => {
 });
 
 const validated: unknown[] = [];
-const draft = vi.hoisted(() => ({ fail: false, goalFails: false, holdout: "ok" as "ok" | "none" | "ratifyFails", createGate: null as Promise<void> | null, goalGate: null as Promise<void> | null }));
+const draft = vi.hoisted(() => ({ fail: false, goalFails: false, holdout: "ok" as "ok" | "none" | "ratifyFails", atts: [] as Array<Record<string, unknown>>, createGate: null as Promise<void> | null, goalGate: null as Promise<void> | null }));
 const look = {
   id: "C4",
   title: "The checkout page still looks right",
@@ -121,7 +121,7 @@ vi.mock("../../lib/api", async () => {
         engine: "",
         escalation_model: "",
         escalation_after_reworks: 2,
-        attachments: [],
+        attachments: draft.atts,
         sandbox_tier: "default",
         depends_on: [],
       },
@@ -219,6 +219,57 @@ describe("the contract studio", () => {
     fireEvent.click(ratifyBtns[0]);
     await waitFor(() => expect(screen.getByText(/You ratified · hidden/)).toBeTruthy());
     expect(invoked.filter((x) => x.cmd === "ratify_holdout_draft").length).toBe(before + 1);
+  });
+});
+
+describe("attachments of a draft", () => {
+  const shot = { id: "att_9", name: "checkout.png", mime: "image/png", path: "att_9.png", size_bytes: 4, created_at: 1 };
+  const deletes = async () => (await import("../../test/setup")).invoked.filter((x) => x.cmd === "delete_attachment").length;
+
+  it("removing an image and then discarding the edits leaves the saved draft's image in place", async () => {
+    draft.atts = [shot];
+    try {
+      const before = await deletes();
+      const { container, unmount } = render(() => <ContractEditor draftId="G-0008" />);
+      const remove = await waitFor(() => {
+        const b = container.querySelector<HTMLButtonElement>(".att-chip .icon-btn");
+        expect(b).toBeTruthy();
+        return b!;
+      });
+      fireEvent.click(remove);
+      await waitFor(() => expect(container.querySelector(".att-chip")).toBeNull());
+      unmount();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(await deletes()).toBe(before);
+    } finally {
+      draft.atts = [];
+    }
+  });
+
+  it("removing an image and saving deletes its file once the draft without it is saved", async () => {
+    const { invoked } = await import("../../test/setup");
+    draft.atts = [shot];
+    // This save ratifies G-0008; the later tests look for a ratify or a draft update of their own.
+    const start = invoked.length;
+    try {
+      const { container } = render(() => <ContractEditor draftId="G-0008" />);
+      const remove = await waitFor(() => {
+        const b = container.querySelector<HTMLButtonElement>(".att-chip .icon-btn");
+        expect(b).toBeTruthy();
+        return b!;
+      });
+      fireEvent.click(remove);
+      const before = await deletes();
+      fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+      await waitFor(() => expect(invoked.some((x) => x.cmd === "update_draft")).toBe(true));
+      await waitFor(() => expect(invoked.filter((x) => x.cmd === "delete_attachment").length).toBe(before + 1));
+      const at = invoked.findIndex((x) => x.cmd === "delete_attachment" && (x.args as { attachmentId: string }).attachmentId === "att_9");
+      expect(at).toBeGreaterThan(invoked.map((x) => x.cmd).lastIndexOf("update_draft"));
+    } finally {
+      cleanup();
+      invoked.splice(start);
+      draft.atts = [];
+    }
   });
 });
 

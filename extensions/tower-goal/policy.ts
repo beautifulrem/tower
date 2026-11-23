@@ -219,7 +219,7 @@ function checkOneWayCommand(cmd: SimpleCommand): Text | null {
 		if (split.length > 0) candidates.push({ name: split[0], args: [...split.slice(1), ...cmd.args] });
 	}
 	for (const { name, args } of candidates) {
-		if (name === "sudo" || name === "doas") return REASON.sudo;
+		if (name === "sudo" || name === "doas" || name === "su") return REASON.sudo;
 		if (name === "git") {
 			const { sub, rest, setsAlias } = gitSubcommand(args);
 			// An alias set for this command, or a subcommand that is only a
@@ -312,6 +312,8 @@ const PURE_READ_ONLY = new Set([
 	"realpath",
 ]);
 
+/** Wrappers that leave a read-only command read-only; others write files of their own or change what it reaches. */
+const READ_ONLY_WRAPPERS = new Set(["env", "command", "builtin", "nohup", "time", "nice", "timeout"]);
 const FIND_MUTATING = new Set(["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls"]);
 const GIT_READ_ONLY = new Set(["status", "diff", "log", "show", "blame", "grep", "ls-files", "rev-parse", "describe"]);
 const PKG_MANAGERS = new Set(["npm", "pnpm", "yarn", "bun"]);
@@ -319,7 +321,7 @@ const PKG_SAFE_SCRIPTS = new Set(["test", "lint", "typecheck", "check", "build"]
 
 function isReadOnlyOrTestCommand(cmd: SimpleCommand): boolean {
 	if (cmd.inlineScript || cmd.hasDynamicName) return false;
-	if (cmd.wrappers.includes("exec") || cmd.wrappers.includes("xargs")) return false;
+	if (cmd.wrappers.some((w) => !READ_ONLY_WRAPPERS.has(w))) return false;
 	const { name, args } = cmd;
 	if (PURE_READ_ONLY.has(name)) return true;
 	if (name === "command") {

@@ -538,7 +538,7 @@ async fn start_run_inner(
         workspace: real(&ws).display().to_string(),
         flags: Mutex::new(initial_flags),
     });
-    if !begin(inner, &run, seen, purpose)? {
+    if !begin(inner, &run, seen, purpose, start_pin)? {
         // Nothing reads this engine yet (its events stay in `rx`).
         run.engine.shutdown(Duration::from_secs(5)).await;
         inner.set_mode(goal_id, Mode::Idle)?;
@@ -550,15 +550,35 @@ async fn start_run_inner(
         inner.append(goal_id, EventKind::Note { text })?;
         return Ok(());
     }
-    inner.append(goal_id, EventKind::RunStarted { run_no, purpose: purpose.into(), start_pin })?;
-    inner.set_mode(goal_id, Mode::Starting)?;
-    inner.update_keep_awake();
-    // The criteria on your own code, while the agent starts (once; see
-    // `verify::preflight`).
-    crate::verify::preflight(inner.clone(), goal_id.to_string());
-    tokio::spawn(pump(inner.clone(), run.clone(), rx));
-    tokio::spawn(watchdog(inner.clone(), run.clone()));
-    tokio::spawn(crate::jail::follow_agent_listeners(inner.clone(), goal_id.to_string(), run_no));
+    launch(inner, &goal, &run, rx, message, &images).await
+}
+
+/// A run that has begun: its engine gets its readers and its first message.
+async fn launch(
+    inner: &Arc<Inner>,
+    goal: &tower_store::GoalRecord,
+    run: &Arc<Run>,
+    rx: tokio::sync::mpsc::UnboundedReceiver<tower_pi::EngineOutput>,
+    message: String,
+    images: &[ImageAttachment],
+) -> Result<()> {
+    let (goal_id, lang) = (goal.id.as_str(), inner.lang());
+    // A pause or abandon from here on finds the run and stops it, marking it
+    // stopping first (under this lock): the start then ends where it is.
+    {
+        let flags = run.flags();
+        if flags.stopping.is_some() {
+            return Ok(());
+        }
+        inner.update_keep_awake();
+        // The criteria on your own code, while the agent starts (once; see
+        // `verify::preflight`). A pause after this cancels it.
+        crate::verify::preflight(inner.clone(), goal_id.to_string());
+        tokio::spawn(pump(inner.clone(), run.clone(), rx));
+        tokio::spawn(watchdog(inner.clone(), run.clone()));
+        tokio::spawn(crate::jail::follow_agent_listeners(inner.clone(), goal_id.to_string(), run.run_no));
+        drop(flags);
+    }
 
     if let Ok(state) = run.engine.state().await
         && let Some(file) = state.get("sessionFile").and_then(Value::as_str)
@@ -566,14 +586,25 @@ async fn start_run_inner(
     {
         inner.append(goal_id, EventKind::SessionAttached { session_file: file.into() })?;
     }
+    if run.flags().stopping.is_some() {
+        return Ok(());
+    }
     inner.append(goal_id, EventKind::Injected { channel: "prompt".into(), text: message.clone() })?;
-    if let Err(e) = run.engine.prompt_with_images(&message, &images).await {
-        stop_engine(inner, &run, Stop::Pause(PauseReason::PrepareFailed)).await;
+    if let Err(e) = run.engine.prompt_with_images(&message, images).await {
+        if run.flags().stopping.is_some() {
+            // Stopped while the message was on its way: whoever stopped it
+            // has recorded why.
+            return Ok(());
+        }
+        stop_engine(inner, run, Stop::Pause(PauseReason::PrepareFailed)).await;
         let detail = tr!(lang, "发送开场消息失败：{e}", "Could not send the first message: {e}");
         pause_after_stop(inner, goal_id, PauseReason::PrepareFailed, &detail)?;
         return Err(e.into());
     }
-    inner.set_mode(goal_id, Mode::Thinking)?;
+    let flags = run.flags();
+    if flags.stopping.is_none() {
+        inner.set_mode(goal_id, Mode::Thinking)?;
+    }
     Ok(())
 }
 
@@ -752,6 +783,11 @@ mod tests {
     }
 
     async fn run_fake_engine_scenario(script_body: &str) -> (tempfile::TempDir, crate::Supervisor, String) {
+        fake_engine_goal(script_body, true).await
+    }
+
+    /// Without `ratify`, the goal stays a draft (nothing starts it).
+    async fn fake_engine_goal(script_body: &str, ratify: bool) -> (tempfile::TempDir, crate::Supervisor, String) {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();
         let repo = tmp.path().join("repo");
@@ -789,15 +825,54 @@ mod tests {
         let project = sup.add_project(repo.to_str().unwrap()).await.unwrap();
         let contract = tower_core::Contract::quick("Do task", Some("true".into()), tower_core::Lang::En);
         let goal = sup
-            .create_goal(crate::NewGoalInput {
-                project_id: project.id,
-                title: "Test goal".into(),
-                contract,
-                ratify: true,
-            })
+            .create_goal(crate::NewGoalInput { project_id: project.id, title: "Test goal".into(), contract, ratify })
             .await
             .unwrap();
         (tmp, sup, goal.id)
+    }
+
+    /// A pause that lands right after the run began (it finds the run and
+    /// stops it) ends the start: no preflight on the paused goal, no mode
+    /// over the pause's, and the engine is stopped once.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_pause_right_after_a_run_began_ends_the_start() {
+        let script = r#"
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  type=$(printf '%s' "$line" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')
+  printf '{"id":"%s","type":"response","command":"%s","success":true,"data":{}}\n' "$id" "$type"
+done"#;
+        let (tmp, sup, id) = fake_engine_goal(script, false).await;
+        let inner = &sup.inner;
+        inner.transition(&id, Transition::Ratify, None, "").unwrap();
+        // A workspace with a base, so the start would run the preflight.
+        let repo = tmp.path().join("repo");
+        let head = std::process::Command::new("git").args(["rev-parse", "HEAD"]).current_dir(&repo).output().unwrap();
+        let base = String::from_utf8_lossy(&head.stdout).trim().to_string();
+        let workspace = repo.display().to_string();
+        inner.append(&id, EventKind::WorkspacePrepared { workspace, base_commit: base }).unwrap();
+        let goal = inner.store(|s| s.goal(&id)).unwrap();
+        let (engine, rx) = Engine::spawn(&engine_config(inner, &goal, &repo).unwrap()).unwrap();
+        let run = Arc::new(Run {
+            goal_id: id.clone(),
+            run_no: 1,
+            started: Instant::now(),
+            engine,
+            workspace: repo.display().to_string(),
+            flags: Mutex::new(Flags::default()),
+        });
+        assert!(begin(inner, &run, LifecycleState::Ready, "initial", None).unwrap());
+        pause(inner, &id, PauseReason::Human, "").await.unwrap();
+        launch(inner, &goal, &run, rx, "go".into(), &[]).await.unwrap();
+
+        let rec = inner.store(|s| s.goal(&id)).unwrap();
+        assert_eq!((rec.state, rec.mode), (LifecycleState::Paused, Mode::Idle));
+        assert!(inner.run_of(&id).is_none());
+        assert!(!inner.verifications.lock().unwrap().contains_key(&id), "no preflight on a paused goal");
+        let trace = sup.trace(&id, None, 200).unwrap();
+        let ended = trace.iter().filter(|e| matches!(e.event, EventKind::RunEnded { .. })).count();
+        assert_eq!(ended, 1, "the engine is stopped once");
+        assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::Injected { .. })), "no first message");
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -311,8 +311,16 @@ impl Supervisor {
         if let Err(e) = self.inner.store(|s| s.record_schedule_run(id, now, next, &draft.id)) {
             tracing::warn!(schedule = %id, goal = %draft.id, error = %e, "could not record a manual scheduled run");
         }
-        self.ratify(&draft.id).await?;
+        let ratified = self.ratify(&draft.id).await;
         self.inner.emit_goal_now(&draft.id);
+        if let Err(e) = ratified {
+            let id = &draft.id;
+            return Err(invalid(tr!(
+                self.inner.lang(),
+                "已创建草稿 {id}，但未能开始：{e}",
+                "Created draft {id} but could not start it: {e}"
+            )));
+        }
         self.inner.store(|s| s.summary(&draft.id))
     }
 }
@@ -447,11 +455,13 @@ pub(crate) mod tests {
             })
             .unwrap();
 
-        assert!(sup.run_scheduled_goal_now(&sch.id).await.is_err());
+        let first = sup.run_scheduled_goal_now(&sch.id).await.unwrap_err().to_string();
         assert!(sup.run_scheduled_goal_now(&sch.id).await.is_err());
 
         let goals = sup.inner.read_store(|s| s.summaries()).unwrap();
         assert_eq!(goals.len(), 1, "a retry in the same minute creates no second goal");
+        // The error says a goal was made, and which, so it isn't taken for a run that made nothing.
+        assert!(first.contains(&goals[0].id), "{first}");
         let after = sup.inner.store(|s| s.scheduled_goal(&sch.id)).unwrap();
         assert_eq!(after.last_goal_id.as_deref(), Some(goals[0].id.as_str()), "the run that created it is recorded");
     }

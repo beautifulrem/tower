@@ -1,7 +1,8 @@
 //! Human decisions: answering Needs-You items, reviewing, accepting.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -336,10 +337,37 @@ pub async fn request_changes(
     run::start_run(inner, goal, "request_changes", message).await
 }
 
+/// Goals being accepted, by data directory and id. Sealing takes a while
+/// (snapshot, commit, fetch into your repository) and a second accept
+/// meanwhile would pass every check the first did.
+static ACCEPTING: Mutex<BTreeSet<(PathBuf, String)>> = Mutex::new(BTreeSet::new());
+
+/// One accept at a time per goal, released when the accept ends.
+struct Accepting((PathBuf, String));
+
+impl Accepting {
+    fn claim(inner: &Inner, goal: &str) -> Result<Self> {
+        let key = (inner.paths.root.clone(), goal.to_string());
+        if !ACCEPTING.lock().unwrap_or_else(PoisonError::into_inner).insert(key.clone()) {
+            return Err(invalid(tr!(inner.lang(), "这个目标正在验收", "This goal is already being accepted")));
+        }
+        Ok(Accepting(key))
+    }
+}
+
+impl Drop for Accepting {
+    fn drop(&mut self) {
+        ACCEPTING.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.0);
+    }
+}
+
 /// Accepts a verified goal: the workspace must still be exactly what was
 /// verified, every human criterion must be checked, then the snapshot is
 /// sealed as one commit on a new local branch in the user's repository.
 pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
+    // Claimed before the state is read: a press that read `InReview` while
+    // another accept seals would seal again, as a `-v2` branch.
+    let _accepting = Accepting::claim(inner, goal)?;
     let rec = inner.store(|s| s.goal(goal))?;
     let lang = inner.lang();
     if rec.state != LifecycleState::InReview {

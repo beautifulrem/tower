@@ -258,6 +258,38 @@ async fn a_goal_goes_from_intent_to_a_branch() {
     assert!(h.sink.0.lock().unwrap().iter().any(|u| matches!(u, UiUpdate::Stream { .. })));
 }
 
+/// Accept pressed again while an accept is still sealing (a double click,
+/// the phone and the desktop together) writes one branch: the later press
+/// is refused, never sealed as a `-v2` branch into your repository, and
+/// never fails on the first one's git lock.
+#[tokio::test(flavor = "multi_thread")]
+async fn accepting_again_while_accepting_writes_one_branch() {
+    let h = harness("pass").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+
+    let sup = h.sup.clone();
+    let first = {
+        let id = id.clone();
+        tokio::spawn(async move { sup.accept(&id).await })
+    };
+    // Pressed again and again for as long as the first accept runs, so
+    // presses land in every step of it.
+    let mut again = Vec::new();
+    while !first.is_finished() {
+        again.push(h.sup.accept(&id).await);
+        tokio::task::yield_now().await;
+    }
+    let first = first.await.unwrap();
+    let all: Vec<_> = std::iter::once(&first).chain(&again).collect();
+    assert_eq!(all.iter().filter(|r| r.is_ok()).count(), 1, "{all:?}");
+    assert!(all.iter().all(|r| matches!(r, Ok(_) | Err(tower_supervisor::Error::Invalid(_)))), "{all:?}");
+    assert_eq!(git(&h.repo, &["branch", "--list", "tower/*"]).lines().count(), 1);
+    let trace = h.sup.trace(&id, None, 500).unwrap();
+    assert_eq!(trace.iter().filter(|e| matches!(e.event, EventKind::BranchWritten { .. })).count(), 1);
+    wait_for(&h, &id, |g| g.state == LifecycleState::Accepted).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn failed_verification_is_handed_back_as_rework() {
     let h = harness("fail_then_fix").await;

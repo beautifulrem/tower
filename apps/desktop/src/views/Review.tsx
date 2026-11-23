@@ -214,6 +214,8 @@ export function Review(props: { id: string }) {
     await Promise.all([refetchView(), refetchDetail()]);
   };
   const undoHunk = async (f: DiffFile, hunk: number) => {
+    // The file open in the editor is changed through the editor: undo under it would unmount it with its text.
+    if (editingPath() === f.path) return;
     const ok = await ask(t("review.undoHunkConfirm", { path: f.path }), {
       title: t("review.undoHunkTitle"),
       ok: t("review.undoHunkVerb"),
@@ -232,7 +234,8 @@ export function Review(props: { id: string }) {
     if (staleEdit() === f.path) {
       // The editor was opened on an older snapshot: a save must not quietly undo what came since.
       const opened = texts()[f.path]?.join("\n");
-      const now = await api.fileText(props.id, f.path, false, view()?.pin ?? null).catch(() => undefined);
+      // No pin: the supervisor's latest. The view's may still be the one before while it reloads.
+      const now = await api.fileText(props.id, f.path, false, null).catch(() => undefined);
       const moved = now === undefined || (now === null ? null : splitLines(now).join("\n")) !== opened;
       if (moved && !(await ask(t("review.fileMovedConfirm", { path: f.path }), { ok: t("common.save"), cancel: t("common.cancel"), kind: "warning" }))) return;
     }
@@ -243,6 +246,7 @@ export function Review(props: { id: string }) {
     await changed(f);
   };
   const applyTo = async (f: DiffFile, line: number, suggestion: string) => {
+    if (editingPath() === f.path) return;
     const lines = await ensureText(f);
     if (!lines) return;
     const text = applySuggestion(lines.join("\n") + "\n", line, suggestion);

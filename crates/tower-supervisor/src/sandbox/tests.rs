@@ -392,15 +392,19 @@ fn tls_works_with_network_and_without_keychain() {
     let sb = root.join("p.sb");
     let p = profile(&spec(&root, &root.join("home"), true));
     assert!(!p.contains("com.apple.SecurityServer"));
+    assert!(!p.contains("com.apple.securityd"));
     std::fs::write(&sb, p).unwrap();
-    let ok = std::process::Command::new("/usr/bin/sandbox-exec")
+    let out = std::process::Command::new("/usr/bin/sandbox-exec")
         .arg("-f")
         .arg(&sb)
         .args(["/usr/bin/curl", "-sS", "-m", "10", "-o", "/dev/null", "https://example.com"])
-        .status()
-        .unwrap()
-        .success();
-    assert!(ok, "TLS through trustd only");
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "TLS through trustd/TrustEvaluationAgent only: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 /// The drop box, against the real sandbox-exec: a file can be created

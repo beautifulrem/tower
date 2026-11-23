@@ -6,7 +6,7 @@
  * the contract. Every field saves when you leave it and the clause says so —
  * no Save button.
  */
-import { For, Match, Show, Switch, createResource, createSignal, onMount } from "solid-js";
+import { For, Match, Show, Switch, createResource, createSignal, onCleanup, onMount } from "solid-js";
 
 import { pickQuiet } from "../components/Chrome";
 import { GitIdentityForm } from "../components/GitIdentity";
@@ -98,6 +98,8 @@ export function Settings() {
   const [loadFailed, setLoadFailed] = createSignal<unknown>(null);
   const load = () => (setLoadFailed(null), api.settings().then((v) => setS(v as SettingsExt), setLoadFailed));
   onMount(load);
+  // Leaving by a key straight after typing: WebKit sends no focusout for a field that is removed, so save on the way out.
+  onCleanup(() => void commit());
   const noModels = () => !!state.env?.pi_version && !models.loading && models() !== null && models()!.length === 0;
   const engine = () => s()?.engine || "pi";
   const engineDesc = () => state.engines.find((d) => d.id === engine());
@@ -136,10 +138,11 @@ export function Settings() {
     const v = live ? { ...form, quiet_until: live.quiet_until, muted_goals: live.muted_goals } : form;
     const now = JSON.stringify(v);
     if (now === last) return false;
-    const ok = await act(() => api.saveSettings(v));
-    if (ok === undefined) return false;
-    // Only a save that went through is the baseline: after a failure, leaving the field again retries it.
+    // Taken at once, so a focusout and the page closing don't send it twice; only a save that went through stays the
+    // baseline: after a failure, leaving the field again retries it.
+    const prev = last;
     last = now;
+    if ((await act(() => api.saveSettings(v))) === undefined) return ((last = prev), false);
     saved.mark();
     await refreshEnvironment();
     // The supervisor may have filled in what we left blank (a generated pairing token).
@@ -734,6 +737,7 @@ function ProjectRow(props: { p: ProjectView }) {
       await refreshProjects();
     }
   };
+  onCleanup(() => void save());
   const remove = async () => {
     const ok = await ask(t("settings.removeConfirm", { name: props.p.name }), {
       title: t("settings.removeTitle"),

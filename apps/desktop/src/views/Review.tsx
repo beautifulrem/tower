@@ -9,7 +9,7 @@ import { For, Show, createEffect, createMemo, createResource, createSignal, on, 
 
 import { Icon, Seal } from "../components/Glyph";
 import { CriteriaBar, discountedOf } from "../components/Honesty";
-import { Button, Empty, IconButton, Kbd, Loading } from "../components/ui";
+import { Button, Empty, Failed, IconButton, Kbd, Loading, settled } from "../components/ui";
 import type { DiffFile } from "../gen/DiffFile";
 import type { ReviewUnit } from "../gen/ReviewUnit";
 import { api, errorText } from "../lib/api";
@@ -39,14 +39,15 @@ type HunkRef = { path: string; index: number };
 
 export function Review(props: { id: string }) {
   const [persisted] = createResource<ReviewState>(() => loadReviewState(props.id));
-  const [detail, { refetch: refetchDetail }] = createResource(() => props.id, api.goal);
+  const [detailRes, { refetch: refetchDetail }] = createResource(() => props.id, api.goal);
+  const detail = () => settled(detailRes);
 
   const previous = () => persisted()?.reviewed ?? null;
   const [scope, setScope] = createSignal<ReviewScope>("all");
   const [cmp, setCmp] = createSignal<[string, string]>(["", ""]);
   let lastSnaps: ReturnType<typeof buildSnapshots> = [];
 
-  const [view, { refetch: refetchView }] = createResource(
+  const [viewRes, { refetch: refetchView }] = createResource(
     () => {
       if (persisted.loading) return null;
       const sc = scope(), [f, to] = cmp();
@@ -61,6 +62,10 @@ export function Review(props: { id: string }) {
       return r ?? ((await api.review(k.id, k.since)) as ExtReviewView);
     },
   );
+
+  const view = () => settled(viewRes);
+  // Only the first load replaces the page; a refetch after an undo or a save keeps your place in the diff.
+  const firstLoad = () => viewRes.state === "pending" || viewRes.state === "unresolved";
 
   const snapshots = createMemo(() => {
     const s = buildSnapshots(view(), detail(), previous());
@@ -489,22 +494,12 @@ export function Review(props: { id: string }) {
         </Show>
       </header>
 
-      <Show when={!view.loading && !persisted.loading} fallback={<div class="page-loading"><Loading text={t("review.loading")} /></div>}>
+      <Show when={!firstLoad() && !persisted.loading} fallback={<div class="page-loading"><Loading text={t("review.loading")} /></div>}>
         <Show
-          when={!view.error}
+          when={!viewRes.error}
           fallback={
             <div class="page-loading">
-              <Empty
-                title={t("review.loadFailed")}
-                kind="error"
-                action={
-                  <Button size="s" onClick={() => void refetchView()}>
-                    {t("common.retry")}
-                  </Button>
-                }
-              >
-                {errorText(view.error)}
-              </Empty>
+              <Failed title={t("review.loadFailed")} error={viewRes.error} onRetry={() => void refetchView()} />
             </div>
           }
         >
@@ -689,7 +684,7 @@ export function Review(props: { id: string }) {
         <ChangesPanel id={props.id} comments={comments()} onSent={markReviewed} onClose={() => setPanel(null)} onRemove={removeComment} onFinish={finish} />
       </Show>
       <Show when={panel() === "verify"}>
-        <VerifyPanel id={props.id} detail={detail()} loading={detail.loading} onClose={() => setPanel(null)} />
+        <VerifyPanel id={props.id} detail={detail()} loading={detailRes.loading} onClose={() => setPanel(null)} />
       </Show>
       <Show when={pathJump()}>
         <PathPalette paths={allPaths()} fileOf={fileByPath} onClose={() => setPathJump(false)} onPick={(p) => (setPathJump(false), jumpToFile(p))} />

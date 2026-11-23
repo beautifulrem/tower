@@ -2,42 +2,54 @@
  * Precision Air-Traffic Control Flight Deck x Swiss Instrument Editorial
  * (docs/19-anti-chat-console-design.md).
  *
- * Pure-CSS visual grammar shared across Shell, Overview, Peek Drawer,
- * Flight Recorder, Look, Decision Gate, Learning, Operations, GoalPage,
- * Review, and Contract Studio — keeping JS bundle headroom intact.
+ * Structure felt, not seen:
+ * - Draw each border once; never nest boxes inside boxes.
+ * - Frame exceptions only (ISA-101 / Airbus lights-out).
+ * - Four-Provenance Swiss hanging source gutter, zero boxy wrappers.
+ * - Monospace strictly on machine tokens, never prose labels.
  */
 
 /* ======================================================================
-   Four-Provenance Physical Frames (Fact / Observation / Claim / Human)
+   Four-Provenance Swiss Hanging Gutter (Fact / Observation / Claim / Human)
    ====================================================================== */
 
 .prov-frame {
-  position: relative;
   display: grid;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: var(--radius-s);
+  grid-template-columns: minmax(6.5em, 8.5em) minmax(0, 1fr) auto;
+  column-gap: var(--sp-3);
+  row-gap: 2px;
+  align-items: baseline;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
   min-width: 0;
 }
 .prov-head {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 1px;
   font-size: var(--fs-hint);
-  line-height: var(--lh-hint);
-  color: var(--text-2);
+  line-height: var(--lh-body);
+  color: var(--text-3);
   min-width: 0;
 }
 .prov-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-weight: 500;
-  color: var(--text-2);
-  white-space: nowrap;
-}
-.prov-meta {
+  gap: 5px;
+  font-weight: 400;
   color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prov-badge .icon { color: var(--text-3); }
+.prov-meta {
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  color: var(--text-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .prov-body {
@@ -46,110 +58,64 @@
   line-height: var(--lh-body);
   color: var(--text-1);
 }
-
-/* Fact: solid 1px hairline + 2px solid precision left rule. */
-.prov-fact {
-  background: var(--prov-fact-bg);
-  border: 1px solid var(--border-grid);
-  border-left: 2px solid var(--prov-fact-edge);
+.prov-aside {
+  justify-self: end;
+  white-space: nowrap;
 }
-.prov-fact.prov-verified {
-  border-left-color: var(--st-verified);
-}
+.prov-fact.prov-verified .prov-badge .icon { color: var(--st-verified); }
 .prov-fact.prov-danger {
-  border-left-color: var(--st-danger);
+  padding: 6px 10px;
+  border-radius: var(--radius-s);
   background: var(--danger-bg);
 }
-
-/* Observation: dotted neutral surround; strictly uncolored. */
-.prov-observation {
-  background: transparent;
-  border: 1px dotted var(--prov-obs-edge);
-}
-.prov-observation .prov-body {
-  color: var(--text-2);
-}
-
-/* Claim: 2px dashed left bar + dashed surround + matte tint; NEVER green. */
-.prov-claim {
-  background: var(--prov-claim-bg);
-  border: 1px dashed var(--border);
-  border-left: 2px dashed var(--prov-claim-edge);
-}
-.prov-claim .prov-body {
-  color: var(--text-2);
-}
-.prov-claim .prov-badge {
-  color: var(--text-2);
-}
-
-/* Human: 2px solid ink stamp rule, uncolored authority. */
-.prov-human {
-  background: var(--prov-human-bg);
-  border: 1px solid var(--border);
-  border-left: 2px solid var(--prov-human-edge);
-}
-.prov-human .prov-badge {
+.prov-fact.prov-danger .prov-badge {
   color: var(--text-1);
+  font-weight: 500;
+}
+.prov-observation .prov-body,
+.prov-claim .prov-body { color: var(--text-2); }
+.prov-human .prov-badge {
+  color: var(--text-2);
+  font-weight: 500;
 }
 
 /* ======================================================================
-   Instrument Pills: Trust Tier, Taint Level, Posture & Micro-Meters
+   Trust Tier, Taint Level & Calibrated Micro-Meters (Frame Exceptions Only)
    ====================================================================== */
 
 .trust-pill,
-.taint-pill,
-.posture-pill {
+.taint-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--border);
-  background: var(--bg-well);
-  font-family: var(--font-mono);
-  font-feature-settings: var(--font-features-mono);
-  font-size: 10.5px;
-  line-height: 16px;
-  font-weight: 500;
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-2);
   white-space: nowrap;
 }
-.trust-full {
-  border-color: var(--border-instrument);
-  background: var(--verified-bg);
-  color: var(--text-1);
-}
-.trust-restricted {
-  border-color: var(--border-strong);
-  background: var(--attention-bg);
-  color: var(--text-1);
-}
 .trust-experimental {
-  border-style: dashed;
-  border-color: var(--st-danger);
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-s);
+  border: 1px dashed var(--st-danger);
   background: var(--danger-bg);
+  font-size: var(--fs-hint);
+  font-weight: 500;
   color: var(--text-1);
 }
-
-.taint-none {
-  border-color: var(--border);
-  background: var(--bg-well);
-  color: var(--text-2);
-}
-.taint-standard {
-  border-color: var(--st-attention);
-  background: var(--attention-bg);
-  color: var(--text-1);
-}
+.taint-standard { color: var(--text-2); }
 .taint-high {
-  border-color: var(--st-danger);
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border-strong);
   background: var(--danger-bg);
+  font-size: var(--fs-hint);
+  font-weight: 500;
   color: var(--text-1);
 }
 
-/* Precision inline micro-meter (budget burn / rate / storage share). */
 .meter-micro {
   position: relative;
   display: block;
@@ -165,15 +131,9 @@
   border-radius: 1px;
   background: var(--text-3);
 }
-.meter-micro-fill.verified {
-  background: var(--st-verified);
-}
-.meter-micro-fill.over {
-  background: var(--st-attention);
-}
-.meter-micro-fill.danger {
-  background: var(--st-danger);
-}
+.meter-micro-fill.verified { background: var(--st-verified); }
+.meter-micro-fill.over { background: var(--st-attention); }
+.meter-micro-fill.danger { background: var(--st-danger); }
 .meter-micro-tick {
   position: absolute;
   top: -1.5px;
@@ -182,170 +142,90 @@
   background: var(--text-2);
 }
 
-.instrument-card {
-  border: 1px solid var(--border-instrument);
-  border-radius: var(--radius-m);
-  background: var(--bg-raised);
-  box-shadow: var(--card-lift);
-}
-
 /* ======================================================================
-   Title Bar Telemetry Strip & Operational Sidebar Rail
+   Title Bar Instrument Strip & Native Operational Sidebar
    ====================================================================== */
 
 .titlebar {
   background: var(--bg-app);
-  border-bottom-color: var(--border-grid);
+  border-bottom-color: var(--border-subtle);
 }
-.titlebar-gauges {
-  gap: var(--sp-3);
-}
-.tel-sep {
-  width: 1px;
-  height: 12px;
-  background: var(--border-grid);
-  flex: 0 0 auto;
-}
-.tel-slots {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 7px;
-  border: 1px solid var(--border-grid);
-  border-radius: var(--radius-s);
-  background: var(--bg-well);
-}
-.tel-lamps {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-.tel-lamp {
-  width: 3px;
-  height: 9px;
-  border-radius: 1px;
-  background: var(--meter-track);
-}
-.tel-lamp.lit {
-  background: var(--st-active);
-}
+.titlebar-gauges { gap: var(--sp-4); }
 .tel-blocking {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--border-instrument);
+  min-height: 22px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border: 0;
   border-radius: var(--radius-s);
-  background: var(--attention-bg);
+  background: transparent;
   color: var(--text-1);
   font-size: var(--fs-meta);
   font-weight: 500;
-  transition: border-color var(--dur-hover-out) linear;
+  transition: background-color var(--dur-hover-out) linear;
 }
 .tel-blocking:hover {
-  border-color: var(--st-attention);
+  background: var(--bg-hover);
   transition-duration: 0ms;
 }
 .gauge-sandbox {
-  height: 22px;
-  padding: 0 7px;
-  border: 1px solid var(--border-grid);
+  min-height: 22px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border: 0;
   border-radius: var(--radius-s);
-  background: var(--bg-well);
-  color: var(--text-2);
-  font-family: var(--font-mono);
-  font-feature-settings: var(--font-features-mono);
-  font-size: 11px;
+  background: transparent;
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+  transition: background-color var(--dur-hover-out) linear, color var(--dur-hover-out) linear;
 }
-.gauge-sandbox.warn {
-  background: var(--attention-bg);
-  color: var(--text-1);
-  border-color: var(--border-strong);
-}
-.gauge-phone-ok {
-  color: var(--text-2);
-}
-.gauge-cmd {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 7px;
-  border: 1px solid var(--border-grid);
-  border-radius: var(--radius-s);
-  background: var(--bg-well);
-  color: var(--text-2);
-  font-size: var(--fs-hint);
-  transition: background-color var(--dur-hover-out) linear, border-color var(--dur-hover-out) linear;
-}
-.gauge-cmd:hover {
+.gauge-sandbox:hover {
   background: var(--bg-hover);
-  border-color: var(--border-strong);
   color: var(--text-1);
   transition-duration: 0ms;
 }
-@media (max-width: 1360px) {
-  .gauge-sandbox,
-  .tel-lamps,
-  .tel-sep {
-    display: none;
-  }
-}
-
-/* Sidebar operational header brand strip */
-.sidebar {
-  border-right-color: var(--border-grid);
-}
-.sidebar-drag {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 8px;
-}
-.side-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-2);
-}
-.side-row-alert .side-count {
-  padding: 0 5px;
-  height: 16px;
-  line-height: 16px;
-  border-radius: var(--radius-xs);
+.gauge-sandbox.warn {
+  margin: 0;
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
   background: var(--attention-bg);
   color: var(--text-1);
   font-weight: 500;
 }
-.side-count-pill {
-  padding: 0 5px;
-  height: 16px;
-  line-height: 16px;
-  border-radius: var(--radius-xs);
-  background: var(--bg-selected);
-  color: var(--text-1);
-  font-size: 11px;
+.gauge-phone-ok {
+  min-width: 22px;
+  min-height: 22px;
+  justify-content: center;
+  border-radius: var(--radius-s);
+  color: var(--text-3);
+  transition: background-color var(--dur-hover-out) linear, color var(--dur-hover-out) linear;
 }
+.gauge-phone-ok:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+  transition-duration: 0ms;
+}
+@media (max-width: 1320px) {
+  .gauge-sandbox:not(.warn) { display: none; }
+}
+.sidebar { border-right-color: var(--border-subtle); }
 
 /* ======================================================================
    ATC Flight-Strip Mission Board & Dual-Track Evidence Gauge
    ====================================================================== */
 
 .flight-strip-head {
-  height: 24px;
-  border-bottom: 1px solid var(--border);
+  height: 22px;
+  border-bottom: 1px solid var(--border-subtle);
   background: transparent;
   pointer-events: none;
-  margin-top: var(--sp-1);
 }
+.board-group:has(.flight-strip-head) .board-rows { border-top: 0; }
 .flight-strip-head > span {
-  font-size: 11px;
+  font-size: var(--fs-hint);
   font-weight: 500;
   color: var(--text-3);
   white-space: nowrap;
@@ -359,18 +239,11 @@
   justify-content: flex-end;
   text-align: right;
 }
-
-/* Distinct physical dual-track segments: solid verified, dashed hollow observed. */
 .seg-observed {
   border-style: dashed;
   border-color: var(--text-2);
   background: transparent;
 }
-.seg-verified {
-  box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.08);
-}
-
-/* Flight-strip row spend cell with calibrated burn micro-bar */
 .g-spend-cell {
   display: grid;
   gap: 2px;
@@ -378,72 +251,47 @@
   align-content: center;
   min-width: 0;
 }
-.g-spend-text {
-  line-height: 14px;
-}
-.g-spend-cell .meter-micro {
-  width: 56px;
-}
-
-/* Overlap radar pill on flight strip */
+.g-spend-text { line-height: 14px; }
+.g-spend-cell .meter-micro { width: 56px; }
 @media (min-width: 1241px) and (max-width: 1560px) {
   .g-row {
     grid-template-columns: 14px minmax(12em, 1.2fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em 15.5em;
   }
 }
-.overlap-pill {
+.g-overlap {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--border-strong);
-  background: var(--bg-well);
   color: var(--text-2);
-  font-size: 10.5px;
+  font-size: var(--fs-hint);
 }
-
-/* Subtle quick-peek action button on selected/hovered goal row (Space key) */
 .g-title-cell {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
-.g-title-cell .g-title {
-  flex: 1 1 auto;
-}
+.g-title-cell .g-title { flex: 1 1 auto; }
 .g-peek-btn {
   display: none;
   align-items: center;
-  gap: 3px;
-  height: 18px;
-  padding: 0 5px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  background: var(--bg-raised);
-  color: var(--text-2);
-  font-size: 10.5px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-3);
   flex: 0 0 auto;
+  transition: background-color var(--dur-hover-out) linear, color var(--dur-hover-out) linear;
 }
-.g-row:is(:hover, .selected) .g-peek-btn {
-  display: inline-flex;
-}
+.g-row:is(:hover, .selected) .g-peek-btn { display: inline-flex; }
 .g-peek-btn:hover {
-  border-color: var(--border-strong);
+  background: var(--bg-selected);
   color: var(--text-1);
+  transition-duration: 0ms;
 }
-
-/* Decision Gate Strip polish */
-.board-queue .decision-line {
-  background: var(--bg-strip);
-}
-.board-queue .decision-line:hover {
-  background: var(--bg-hover);
-}
-
-/* Board bottom keyboard rail */
 .board-keys {
   margin-top: var(--sp-5);
   padding-top: var(--sp-3);
@@ -468,26 +316,20 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-drawer);
-  border-left: 1px solid var(--border-strong);
-  box-shadow: -12px 0 36px oklch(0 0 0 / 0.22);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 36px oklch(0 0 0 / 0.20);
   outline: none;
   animation: peek-in var(--dur-base) var(--ease-out);
 }
-.peek-backdrop.instant .peek-drawer {
-  animation: none;
-}
+.peek-backdrop.instant .peek-drawer { animation: none; }
 @keyframes peek-in {
-  from {
-    opacity: 0;
-    transform: translateX(18px);
-  }
+  from { opacity: 0; transform: translateX(18px); }
 }
 .peek-head {
   display: grid;
   gap: 6px;
   padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--border-grid);
-  background: var(--bg-strip);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .peek-head-top {
   display: flex;
@@ -500,6 +342,12 @@
   line-height: 21px;
   font-weight: 500;
   color: var(--text-1);
+}
+.peek-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
 }
 .peek-body {
   flex: 1;
@@ -520,26 +368,22 @@
   padding-bottom: 0;
 }
 .peek-band-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  font-size: 11px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   font-weight: 500;
-  color: var(--text-2);
-}
-.peek-level {
-  font-family: var(--font-mono);
-  font-feature-settings: var(--font-features-mono);
-  font-size: 10.5px;
   color: var(--text-3);
-  padding: 0 4px;
-  border: 1px solid var(--border-grid);
-  border-radius: var(--radius-xs);
+}
+.peek-band .prov-frame {
+  grid-template-columns: 6.5em minmax(0, 1fr) auto;
+  font-size: var(--fs-meta);
+}
+.peek-band .prov-body {
+  font-size: var(--fs-meta);
+  line-height: 18px;
 }
 .peek-crit-list {
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 .peek-crit-item {
   display: grid;
@@ -556,9 +400,7 @@
   margin: 0;
   font-size: var(--fs-meta);
 }
-.peek-kv dt {
-  color: var(--text-3);
-}
+.peek-kv dt { color: var(--text-3); }
 .peek-kv dd {
   margin: 0;
   color: var(--text-1);
@@ -569,12 +411,15 @@
   align-items: center;
   gap: 6px;
   padding: 10px 16px;
-  border-top: 1px solid var(--border-grid);
-  background: var(--bg-strip);
+  border-top: 1px solid var(--border-subtle);
+}
+.peek-close {
+  width: 22px;
+  height: 22px;
 }
 
 /* ======================================================================
-   Flight Recorder (Trace) & Upgraded Look Visual Evidence
+   Flight Recorder (Trace) & Look Visual Evidence
    ====================================================================== */
 
 .trace-filters .tab {
@@ -583,21 +428,16 @@
   gap: 5px;
 }
 .trace-tab-count {
-  padding: 0 4px;
-  height: 15px;
-  line-height: 15px;
-  border-radius: var(--radius-xs);
-  background: var(--bg-well);
-  color: var(--text-2);
-  font-size: 10.5px;
+  color: var(--text-3);
+  font-size: var(--fs-hint);
 }
 .trace-tab-count.alert {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
   background: var(--danger-bg);
   color: var(--text-1);
 }
-.trace-row {
-  position: relative;
-}
+.trace-row { position: relative; }
 .trace-row::before {
   content: "";
   position: absolute;
@@ -607,21 +447,9 @@
   width: 1px;
   background: var(--border-subtle);
 }
-.trace-row.trace-fact::before {
-  background: var(--border-grid);
-}
-.trace-row.trace-human::before {
-  background: var(--text-2);
-}
-.trace-row.trace-anomaly {
-  background: var(--danger-bg);
-}
-.trace-row.trace-injected-row {
-  background: var(--bg-strip);
-}
-.trace-content {
-  padding-left: 8px;
-}
+.trace-row.trace-human::before { background: var(--text-2); }
+.trace-row.trace-anomaly { background: var(--danger-bg); }
+.trace-content { padding-left: 8px; }
 .trace-denied-tag {
   padding: 0 5px;
   height: 16px;
@@ -634,8 +462,6 @@
   font-weight: 500;
   white-space: nowrap;
 }
-
-/* Look: viewport tabs & Browser Console / Page Error Facts */
 .look-wrap {
   display: grid;
   gap: 6px;
@@ -672,11 +498,11 @@
   gap: 5px;
   margin-left: calc(14px + 2.5em + 2 * var(--sp-2));
   font-size: var(--fs-hint);
-  color: var(--text-2);
+  color: var(--text-3);
 }
 
 /* ======================================================================
-   Learning View (Memory Ratification Queue + Calibration Scoreboard)
+   Learning & Operations Single-Layer Editorial Ledgers
    ====================================================================== */
 
 .console-page {
@@ -685,115 +511,135 @@
   display: grid;
   gap: var(--sp-6);
 }
-.console-mast {
+.console-sec {
+  display: grid;
+  gap: var(--sp-3);
+}
+.console-sec-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  padding-bottom: var(--sp-3);
-  border-bottom: 1px solid var(--border-grid);
-}
-.console-mast-copy {
-  display: grid;
-  gap: 2px;
-}
-.console-mast-title {
-  font-size: var(--fs-title);
-  line-height: var(--lh-title);
-  font-weight: 500;
-  font-variation-settings: var(--opsz-display);
-  color: var(--text-1);
-}
-.console-kpis {
-  display: flex;
-  flex-wrap: wrap;
   gap: var(--sp-2);
+  min-height: 28px;
 }
-.kpi-cell {
-  display: grid;
-  gap: 2px;
-  min-width: 112px;
-  padding: 6px 10px;
-  border: 1px solid var(--border-grid);
-  border-radius: var(--radius-s);
-  background: var(--bg-strip);
+.meta-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
 }
-.kpi-label {
-  font-size: 11px;
-  color: var(--text-2);
+.meta-inline > :not([hidden]) ~ :not([hidden])::before {
+  content: "·";
+  padding: 0 0.35em;
+  font-family: var(--font-ui);
+  font-size: var(--fs-meta);
+  font-weight: 400;
+  color: var(--text-3);
 }
-.kpi-val {
-  font-size: 15px;
-  line-height: 20px;
+.console-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.console-tab {
+  position: relative;
+  height: 24px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  font-size: var(--fs-meta);
   font-weight: 500;
+  color: var(--text-3);
+  transition: color var(--dur-hover-out) linear;
+}
+.console-tab:hover {
   color: var(--text-1);
+  transition-duration: 0ms;
+}
+.console-tab.active { color: var(--text-1); }
+.console-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.5px;
+  background: var(--text-1);
 }
 
-.proposal-list {
-  display: grid;
-  gap: var(--sp-3);
-}
-.proposal-card {
+.proposal-ledger,
+.data-table-wrap {
+  border: 1px solid var(--card-edge);
   border-radius: var(--radius-m);
-  border: 1px solid var(--border-instrument);
   background: var(--bg-raised);
   box-shadow: var(--card-lift);
-  overflow: hidden;
 }
-.proposal-card.taint-level-standard {
-  border-left: 3px solid var(--st-attention);
-}
-.proposal-card.taint-level-high {
-  border-color: var(--st-danger);
-  border-left-width: 3px;
-}
-.proposal-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-strip);
-  font-size: var(--fs-meta);
-}
-.proposal-card.taint-level-high .proposal-head {
-  background: var(--danger-bg);
-}
-.proposal-body {
+.proposal-ledger { overflow: hidden; }
+.data-table-wrap { overflow-x: auto; }
+.proposal-card { border-bottom: 1px solid var(--border-subtle); }
+.proposal-card:last-child { border-bottom: 0; }
+.proposal-main {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-4);
+  align-items: start;
+  padding: 12px 16px;
+}
+@media (max-width: 860px) {
+  .proposal-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-2);
+  }
+}
+.proposal-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.proposal-meta { color: var(--text-2); }
+.proposal-taint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .proposal-rule-text {
   font-size: var(--fs-reading);
   line-height: var(--lh-reading);
   color: var(--text-1);
+  max-width: var(--measure);
   user-select: text;
 }
-.proposal-guard {
-  display: grid;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-s);
-  border: 1px solid var(--st-danger);
-  background: var(--danger-bg);
+.proposal-copy .prov-frame {
+  padding: 1px 0 0;
+  font-size: var(--fs-meta);
+}
+.proposal-copy .prov-body {
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-2);
 }
 .proposal-actions {
   display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 1px;
+}
+.proposal-guard {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--danger-bg);
+}
+.proposal-guard-input {
+  width: 240px !important;
+  height: 26px !important;
+  background: var(--bg-app) !important;
 }
 
-/* Calibration & Operations precision tables */
-.data-table-wrap {
-  border: 1px solid var(--border-instrument);
-  border-radius: var(--radius-m);
-  background: var(--bg-raised);
-  overflow-x: auto;
-}
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -801,158 +647,96 @@
 }
 .data-table th {
   text-align: left;
-  padding: 8px 12px;
-  font-size: 11px;
+  padding: 7px 14px;
+  font-size: var(--fs-hint);
   font-weight: 500;
-  color: var(--text-2);
-  background: var(--bg-strip);
-  border-bottom: 1px solid var(--border-grid);
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
 }
 .data-table td {
-  padding: 9px 12px;
+  padding: 9px 14px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-1);
   vertical-align: middle;
 }
-.data-table tr:last-child td {
-  border-bottom: 0;
-}
-.data-table tr:hover td {
+.data-table tr:last-child td { border-bottom: 0; }
+.data-table tbody tr { transition: background-color var(--dur-hover-out) linear; }
+.data-table tbody tr:hover {
   background: var(--bg-hover);
+  transition-duration: 0ms;
 }
-.data-table .col-r {
-  text-align: right;
+.data-table .col-r { text-align: right; }
+.data-table .toggle-row {
+  margin-bottom: 0;
+  align-items: center;
+  gap: 6px;
 }
-.rate-cell {
+.data-table .toggle { margin-top: 0; }
+.rate-cell,
+.storage-bar-cell {
   display: inline-grid;
   gap: 3px;
-  min-width: 72px;
   justify-items: end;
 }
-
-/* ======================================================================
-   Operations View (Schedules, Merge Queue, Storage & Sandbox Posture)
-   ====================================================================== */
+.rate-cell { min-width: 72px; }
+.storage-bar-cell { min-width: 96px; }
 
 .ops-grid {
   display: grid;
-  gap: var(--sp-5);
+  gap: var(--sp-6);
 }
 .schedule-form {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.4fr) 140px auto;
+  grid-template-columns: minmax(132px, 180px) minmax(200px, 1fr) 140px auto;
   gap: var(--sp-2);
   align-items: center;
-  padding: 10px 12px;
-  border: 1px solid var(--border-grid);
-  border-radius: var(--radius-m);
-  background: var(--bg-strip);
 }
-@media (max-width: 1000px) {
-  .schedule-form {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-.mq-list {
-  display: grid;
-  gap: 6px;
-}
-.mq-row {
-  display: grid;
-  grid-template-columns: 2.5em minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: 9px 12px;
-  border: 1px solid var(--border-grid);
-  border-radius: var(--radius-m);
-  background: var(--bg-raised);
-}
-.mq-row.mq-conflict {
-  border-left: 3px solid var(--st-danger);
-}
-.mq-row.mq-ready {
-  border-left: 3px solid var(--st-verified);
+@media (max-width: 960px) {
+  .schedule-form { grid-template-columns: 1fr 1fr; }
 }
 .mq-pos {
+  width: 3em;
   font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-2);
+  font-feature-settings: var(--font-features-num);
+  color: var(--text-3);
+}
+.mq-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
 }
 .mq-conflicts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-.posture-banner {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-3);
-  padding: 10px 12px;
-  border: 1px solid var(--border-instrument);
-  border-radius: var(--radius-m);
-  background: var(--bg-strip);
+  margin-top: 2px;
 }
-.storage-bar-cell {
-  display: inline-grid;
-  gap: 3px;
-  min-width: 96px;
-  justify-items: end;
-}
+.ops-posture-line { color: var(--text-2); }
 
 /* ======================================================================
-   Settings Upgrades: Engine Trust Tier, Sandbox Backend & Updater
+   Settings: Engine Trust Line & Flat Updater Notice
    ====================================================================== */
 
 .engine-trust-row {
   grid-column: 2;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
   margin-top: -2px;
 }
 .updater-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  padding: 8px 10px;
-  border: 1px solid var(--border-grid);
-  border-radius: var(--radius-s);
-  background: var(--bg-strip);
+  gap: var(--sp-2);
+  padding: 6px 0;
+  margin-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border-subtle);
   font-size: var(--fs-meta);
 }
 
-/* Shared compact layout helpers (keep layout out of JS bundles) */
-[hidden] {
-  display: none !important;
-}
-.console-sec {
-  display: grid;
-  gap: 10px;
-}
-.row-end {
-  justify-content: flex-end;
-}
-.row-wrap {
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.row-g4 {
-  gap: 4px;
-}
-.row-g6 {
-  gap: 6px;
-}
-.peek-close {
-  width: 22px;
-  height: 22px;
-}
-.ml-8 {
-  margin-left: 8px;
-}
+[hidden] { display: none !important; }
+.row-end { justify-content: flex-end; }
+.row-wrap { flex-wrap: wrap; gap: 4px; }
+.row-g4 { gap: 4px; }
+.row-g6 { gap: 6px; }
+.ml-8 { margin-left: 8px; }

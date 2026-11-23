@@ -24,8 +24,7 @@ import { act, goalList, state } from "../lib/store";
 import { engineOptions, thinkingOptions } from "./Settings";
 import { HoldoutDrafts } from "./goal/HoldoutDrafts";
 import { AttachChips, collectImages, extractImages } from "./goal/SteerBox";
-import "./goal/deck.css";
-import { type AttachmentRef, type ExtContract, trustLabel, trustTierOf } from "./goal/ext";
+import { type AttachmentRef, type ExtContract, trustTierOf } from "./goal/ext";
 
 export function blankContract(intent = "", testCommand: string | null = null): ExtContract {
   return {
@@ -78,7 +77,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const defaultModel = () => ({ value: "", label: t("common.engineDefault", { engine: engineLabel(engine()) }) });
   const mappedModels = () => modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` }));
   const modelOptions = Object.assign(() => [defaultModel(), ...mappedModels()], { base: () => [defaultModel()] });
-  const escOptions = () => [{ value: "", label: "None" }, ...mappedModels()];
+  const escOptions = () => [{ value: "", label: t("settings.escalationOff") }, ...mappedModels()];
   const projectGoals = createMemo(() => goalList().filter((g) => g.project_id === projectId() && g.id !== editingId && !["archived", "abandoned"].includes(g.state)));
   const microVmReady = () => !!posture()?.microvm_available;
 
@@ -179,12 +178,15 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             <input value={title()} onInput={(e) => setTitle(e.currentTarget.value)} placeholder={t("contract.titlePlaceholder")} disabled={!!props.amendId} />
           </Field>
           <Show when={!editingId}><BaseTestsNotice projectId={projectId()} /></Show>
-          <Field label={t("contract.intent")} hint={t("contract.intentHint")} error={issueFor("intent")}>
+          <Field label={t("contract.intent")} error={issueFor("intent")} class="field-intent">
             <textarea
               rows={2}
               class="reading"
               value={c.intent}
               onInput={(e) => setC("intent", e.currentTarget.value)}
+              onDragOver={(e) => (e.preventDefault(), setDragOver(true))}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => (e.preventDefault(), setDragOver(false), void addImages(extractImages(e.dataTransfer)))}
               onPaste={(e) => {
                 const imgs = extractImages(e.clipboardData);
                 if (imgs.length) (e.preventDefault(), void addImages(imgs));
@@ -193,21 +195,23 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             />
           </Field>
           <div
-            class="att-drop-zone"
+            class="intent-attach"
             classList={{ "drag-over": dragOver() }}
             onDragOver={(e) => (e.preventDefault(), setDragOver(true))}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => (e.preventDefault(), setDragOver(false), void addImages(extractImages(e.dataTransfer)))}
           >
-            <span>Paste or drop screenshots into intent</span>
             <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={(e) => (e.currentTarget.files?.length && void addImages(Array.from(e.currentTarget.files)), (e.currentTarget.value = ""))} />
-            <Button size="s" variant="ghost" onClick={() => fileInput.click()}><Icon name="plus" size={10} />Attach</Button>
+            <button type="button" class="link-quiet text-btn intent-attach-btn" onClick={() => fileInput.click()}>
+              <Icon name="plus" size={10} /> {t("contract.attachShot")}
+            </button>
+            <span>{t("contract.attachHint")}</span>
           </div>
           <AttachChips items={c.attachments ?? []} onRemove={removeAtt} />
-          <Field label={t("contract.doneWhen")} hint={t("contract.doneWhenHint")}>
+          <Field label={t("contract.doneWhen")}>
             <textarea rows={2} value={c.done_when} onInput={(e) => setC("done_when", e.currentTarget.value)} />
           </Field>
-          <Field label={t("contract.stopConditions")} hint={t("contract.stopConditionsHint")}>
+          <Field label={t("contract.stopConditions")}>
             <textarea rows={2} value={c.stop_conditions.join("\n")} onInput={(e) => setC("stop_conditions", lines(e.currentTarget.value))} placeholder={t("contract.stopConditionsPlaceholder")} />
           </Field>
           <Field label={t("contract.constraints")}>
@@ -216,7 +220,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         </div>
 
         <div class="editor-block">
-          <ClauseHead n={2} title="Acceptance & visual criteria">
+          <ClauseHead n={2} title={t("contract.criteriaBlock")}>
             <Button size="s" variant="ghost" onClick={() => addCriterion("exec")}><Icon name="plus" size={10} />{t("contract.addCommand")}</Button>
             <Button size="s" variant="ghost" onClick={() => addCriterion("look")} title={t("contract.lookHint")}><Icon name="plus" size={10} />{t("contract.addLook")}</Button>
             <Button size="s" variant="ghost" onClick={() => addCriterion("human")}><Icon name="plus" size={10} />{t("contract.addHuman")}</Button>
@@ -249,19 +253,19 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             )}
           </For>
           <Show when={issueFor("criteria")}><p class="field-warn">{issueFor("criteria")}</p></Show>
-          <Field label={t("contract.setup")} hint={t("contract.setupHint")}>
+          <Field label={t("contract.setup")}>
             <input class="mono" value={c.setup} onInput={(e) => setC("setup", e.currentTarget.value)} placeholder={t("common.eg", { x: "pnpm install --frozen-lockfile" })} />
           </Field>
           <div class="row" style={{ "margin-top": "4px" }}>
             <Button size="s" variant="ghost" aria-expanded={holdoutOpen()} onClick={() => setHoldoutOpen((o) => !o)}>
-              <Icon name="harness" size={10} /> Generate synthetic holdout drafts
+              <Icon name="harness" size={10} /> {t("contract.synthHoldout")}
             </Button>
           </div>
           <Show when={holdoutOpen()}><HoldoutDrafts projectId={projectId()} intent={c.intent} onClose={() => setHoldoutOpen(false)} /></Show>
         </div>
 
         <div class="editor-block">
-          <ClauseHead n={3} title="Scope fence & ports" />
+          <ClauseHead n={3} title={t("contract.scopeBlock")} />
           <p class="field-hint" style={{ "margin-bottom": "12px" }}>{t("contract.scopeHint")}</p>
           <div class="editor-grid3">
             <Field label={t("contract.include")}><textarea class="mono" rows={2} value={c.scope.include.join("\n")} onInput={(e) => setC("scope", "include", lines(e.currentTarget.value))} placeholder={t("contract.includePlaceholder")} /></Field>
@@ -292,11 +296,11 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
 
       <aside class="editor-side">
         <div class="editor-block">
-          <ClauseHead n={4} title="Engine, escalation & sandbox" />
-          <Field label={t("contract.engine")} hint={trustLabel(trustTierOf(engine()))}>
+          <ClauseHead n={4} title={t("contract.engineBlock")} />
+          <Field label={t("contract.engine")} hint={t(`trust.${trustTierOf(engine())}`)}>
             <Select value={c.engine} options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]} onChange={(v) => (setC("engine", v), setC("model", ""), setC("escalation_model", ""))} />
           </Field>
-          <Field label={t("contract.model")} hint={engine() === "claude-code" ? t("contract.modelHintClaude") : t("contract.modelHint")}>
+          <Field label={t("contract.model")}>
             <Suspense fallback={<Select value={c.model} options={modelOptions.base()} onChange={(v) => setC("model", v)} />}>
               <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
             </Suspense>
@@ -304,29 +308,30 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <Show when={engine() !== "claude-code"}>
             <Field label={t("contract.thinking")}><Select value={c.thinking} options={thinkingOptions()} onChange={(v) => setC("thinking", v)} /></Field>
           </Show>
-          <Field label="Escalation model">
-            <Suspense fallback={<Select value={c.escalation_model ?? ""} options={[{ value: "", label: "None" }]} onChange={(v) => setC("escalation_model", v)} />}>
+          <Field label={t("settings.escalationModel")}>
+            <Suspense fallback={<Select value={c.escalation_model ?? ""} options={[{ value: "", label: t("settings.escalationOff") }]} onChange={(v) => setC("escalation_model", v)} />}>
               <Select value={c.escalation_model ?? ""} options={escOptions()} onChange={(v) => setC("escalation_model", v)} />
             </Suspense>
           </Field>
           <Show when={c.escalation_model}>
-            <Field label="Escalate after" unit={t("contract.times")}>
+            <Field label={t("contract.escalateAfter")} unit={t("contract.times")}>
               <input class="num" type="number" min="1" max="10" value={c.escalation_after_reworks ?? 2} onInput={(e) => setC("escalation_after_reworks", Number(e.currentTarget.value) || 1)} />
             </Field>
           </Show>
           <div class="field">
-            <span class="field-label">Sandbox tier</span>
-            <div class="tier-cards" role="radiogroup" aria-label="Sandbox tier">
+            <span class="field-label">{t("settings.sandboxBackend")}</span>
+            <div class="sandbox-choices" role="radiogroup" aria-label={t("settings.sandboxBackend")}>
               <For
                 each={[
-                  ["default", "Default OS Sandbox", "Seatbelt / Landlock", false],
-                  ["micro_vm", "MicroVM", microVmReady() ? "Apple Containerization" : "macOS 26+ container CLI", !microVmReady()],
+                  ["default", t("contract.sandboxDefault"), "Seatbelt / Landlock", false],
+                  ["micro_vm", "MicroVM", microVmReady() ? "Apple Containerization" : t("contract.microvmReq"), !microVmReady()],
                 ] as ["default" | "micro_vm", string, string, boolean][]}
               >
                 {([id, name, desc, dis]) => (
-                  <label class="tier-card" classList={{ selected: (c.sandbox_tier ?? "default") === id, disabled: dis }}>
+                  <label class="radio" classList={{ disabled: dis }}>
                     <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === id} disabled={dis} onChange={() => setC("sandbox_tier", id)} />
-                    <span><b>{name}</b><span class="radio-desc" style={{ display: "block" }}>{desc}</span></span>
+                    <b>{name}</b>
+                    <span class="radio-desc">{desc}</span>
                   </label>
                 )}
               </For>
@@ -334,7 +339,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           </div>
           <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
           <Show when={!c.network}>
-            <Field label={t("contract.ports")} hint={t("contract.portsHint")}>
+            <Field label={t("contract.ports")}>
               <input class="mono" inputmode="numeric" placeholder={t("common.eg", { x: "5432, 6379" })} value={(c.ports ?? []).join(", ")} onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))} />
             </Field>
             <Toggle checked={c.loopback_open ?? false} onChange={(v) => setC("loopback_open", v)} label={t("contract.loopbackOpen")} hint={t("contract.loopbackOpenHint")} />
@@ -358,7 +363,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         </div>
 
         <div class="editor-block">
-          <ClauseHead n={5} title="Budget & dependencies" />
+          <ClauseHead n={5} title={t("contract.budgetBlock")} />
           <div class="editor-grid2">
             <Field label={t("contract.softCap")} error={issueFor("budget")} unit="$" unitLeft><input class="num" type="number" step="0.5" min="0" value={c.budget.soft_usd} onInput={(e) => setC("budget", "soft_usd", Number(e.currentTarget.value))} /></Field>
             <Field label={t("contract.hardCap")} unit="$" unitLeft><input class="num" type="number" step="0.5" min="0" value={c.budget.hard_usd} onInput={(e) => setC("budget", "hard_usd", Number(e.currentTarget.value))} /></Field>
@@ -366,8 +371,8 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             <Field label={t("contract.maxRework")} unit={t("contract.times")}><input class="num" type="number" min="0" max="10" value={c.max_rework} onInput={(e) => setC("max_rework", Number(e.currentTarget.value) || 0)} /></Field>
           </div>
           <div class="field">
-            <span class="field-label">Depends on goals</span>
-            <Show when={projectGoals().length > 0} fallback={<span class="meta t4">None active</span>}>
+            <span class="field-label">{t("contract.dependsOn")}</span>
+            <Show when={projectGoals().length > 0} fallback={<span class="meta t4">{t("contract.noneActive")}</span>}>
               <div class="dep-pick-list">
                 <For each={projectGoals()}>
                   {(g) => (

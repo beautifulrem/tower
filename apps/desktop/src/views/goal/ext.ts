@@ -3,6 +3,7 @@
  * attachment helpers, and compact bilingual labels for the Command Deck,
  * Review Theater, and Contract Studio.
  */
+import { t } from "../../lib/i18n";
 import { engineTrustTier } from "../../lib/labels";
 import type { Contract } from "../../gen/Contract";
 import type { CriterionResultView } from "../../gen/CriterionResultView";
@@ -116,5 +117,6 @@ export type ExtReviewView = ReviewView & {
 };
 
 export const trustTierOf = engineTrustTier;
-export const trustLabel = (t: EngineTrustTier) => (t === "full_s2" ? "Full S2" : t === "restricted_s2" ? "Restricted S2" : "Experimental");
-export const sandboxTag = (t: SandboxTier, noSb: boolean) => (t === "micro_vm" ? "MicroVM" : noSb ? "No sandbox S0" : "Sandbox S2");
+export const trustLabel = (tier: EngineTrustTier) => t(`trust.${tier}`);
+export const sandboxTag = (tier: SandboxTier, noSb: boolean) =>
+  tier === "micro_vm" ? "MicroVM" : t(noSb ? "chrome.sandboxOff" : "chrome.sandboxOn");

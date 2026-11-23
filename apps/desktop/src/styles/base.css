@@ -49,6 +49,12 @@ select {
 /* A desktop app, not a web page: no hand cursor on controls. */
 button,
 [role="button"],
+[role="tab"],
+[role="radio"],
+[role="switch"],
+[role="option"],
+label,
+summary,
 a {
   cursor: default;
 }

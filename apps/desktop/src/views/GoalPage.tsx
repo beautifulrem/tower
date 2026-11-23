@@ -8,7 +8,7 @@ import { For, Show, Suspense, createEffect, createMemo, createResource, createSi
 
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
-import { CriteriaBar, discountedOf } from "../components/HonestyCore";
+import { Claim, CriteriaBar, discountedOf } from "../components/HonestyCore";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
 import { Button, Empty, Loading, Section } from "../components/ui";
@@ -24,8 +24,7 @@ import { act, onTrace, state, toast } from "../lib/store";
 import { ContractRail } from "./goal/ContractRail";
 import { GoalActions } from "./goal/GoalActions";
 import { GoalBlocks } from "./goal/GoalBlocks";
-import "./goal/deck.css";
-import { type ExtGoalDetail, type ExtGoalSummary, sandboxTag, trustLabel, trustTierOf } from "./goal/ext";
+import { type ExtGoalDetail, type ExtGoalSummary, trustTierOf } from "./goal/ext";
 
 const Trace = lazy(withLater(() => import("./Learning").then((m) => ({ default: m.Trace }))));
 const SteerBox = lazy(() => import("./Learning").then((m) => ({ default: m.SteerBox })));
@@ -109,23 +108,7 @@ export function GoalPage(props: { id: string }) {
     return [...out];
   });
 
-  const telemetry = createMemo(() => {
-    const g = summary();
-    if (!g) return [];
-    const d = extDetail();
-    const eng = effectiveEngine(d?.contract.engine || g.engine, state.settings?.engine);
-    const tier = d?.contract.sandbox_tier ?? g.sandbox_tier ?? "default";
-    const noSb = hasIssue(state.env, "no_sandbox");
-    const items: [string, string][] = [
-      ["tel-pill", engineLabel(eng)],
-      ["tel-pill", trustLabel(trustTierOf(eng))],
-      [`tel-pill ${noSb ? "tel-pill-attn" : tier === "micro_vm" ? "tel-pill-active" : ""}`, sandboxTag(tier, noSb)],
-    ];
-    if (g.port_base != null) items.push(["tel-pill tel-pill-mono", `Ports ${g.port_base}–${g.port_base + 9}`]);
-    if (d?.escalated_model) items.push(["tel-pill tel-pill-attn tel-pill-mono", `Escalated: ${d.escalated_model}`]);
-    if (d?.merge_queue_position != null) items.push(["tel-pill tel-pill-mono", `MQ #${d.merge_queue_position}`]);
-    return items;
-  });
+  const eng = () => effectiveEngine(extDetail()?.contract.engine || summary()?.engine, state.settings?.engine);
 
   return (
     <Show
@@ -159,17 +142,18 @@ export function GoalPage(props: { id: string }) {
                       <Show when={g().rework_cycles > 0}>{t("goal.reworkParen", { n: g().rework_cycles, max: g().max_rework })}</Show>
                     </span>
                   </Show>
+                  <span>{engineLabel(eng())}</span>
                   <Show when={showStateWord(g())}>
                     <span class="t1">{stateLabel(g().state)}</span>
                     <Show when={g().pause_reason && g().state === "paused" && inbox().length === 0}><span>{pauseLabel(g().pause_reason!)}</span></Show>
                     <Show when={g().state === "in_review" && !g().verified_pin}><span>{t("live.notMachineVerified")}</span></Show>
                   </Show>
-                  <Show when={g().state === "running" && overWall(g())}><span class="over-wall">{t("goal.overWall")}</span></Show>
                   <Show when={state.settings?.muted_goals.includes(g().id)}><span class="t3">{t("quiet.muted")}</span></Show>
+                  <Show when={trustTierOf(eng()) === "experimental"}><span class="wb-exception wb-exception-danger">Experimental</span></Show>
+                  <Show when={hasIssue(state.env, "no_sandbox")}><span class="wb-exception wb-exception-warn">No sandbox S0</span></Show>
+                  <Show when={extDetail()?.escalated_model}>{(m) => <span class="wb-exception wb-exception-warn code-val">Escalated: {m()}</span>}</Show>
+                  <Show when={g().state === "running" && overWall(g())}><span class="over-wall">{t("goal.overWall")}</span></Show>
                 </div>
-              </div>
-              <div class="telemetry-strip halt">
-                <For each={telemetry()}>{([cls, text]) => <span class={cls}>{text}</span>}</For>
               </div>
               <Show when={g().pr}>{(pr) => <div class="goal-overlaps meta"><PrLine pr={pr()} /></div>}</Show>
               <Show when={g().overlaps?.length}>
@@ -262,8 +246,7 @@ function WatchPanel(props: { id: string; detail?: ExtGoalDetail; g: ExtGoalSumma
       </div>
       <Show when={stream()}>
         <div class="watch-stream">
-          <span class="claim-label">{t("goal.agentWriting")}</span>
-          <p class="watch-stream-text">{stream()}</p>
+          <Claim kind={t("goal.agentWriting")}><span class="pre">{stream()}</span></Claim>
         </div>
       </Show>
       <Trace id={props.id} live />

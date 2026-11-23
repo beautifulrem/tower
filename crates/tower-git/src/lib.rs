@@ -9,6 +9,7 @@
 //! local branch (`ADR-133`: Tower never pushes in M1).
 
 pub mod diff;
+mod push;
 pub mod timeline;
 
 pub use timeline::MergeQueueCheckItem;
@@ -630,16 +631,6 @@ impl Git {
     /// The URL of `origin` in the user's repository, if any.
     pub fn origin_url(&self, project_root: &Path) -> Option<String> {
         self.run_trim(project_root, &["remote", "get-url", "origin"]).ok().filter(|u| !u.is_empty())
-    }
-
-    /// Pushes a local branch of the user's repository to `origin`. A
-    /// one-way door: only ever called on an explicit human action.
-    pub fn push_branch(&self, project_root: &Path, branch: &str) -> Result<()> {
-        self.run(
-            project_root,
-            &["push", "--set-upstream", "origin", &format!("refs/heads/{branch}:refs/heads/{branch}")],
-        )?;
-        Ok(())
     }
 
     /// Detects the project's test command from conventional manifests.

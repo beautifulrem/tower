@@ -73,6 +73,11 @@ fn without_credentials(config: &str) -> String {
     let entries = |table: &str, keys: &[&str]| -> Table {
         let mut out = Table::new();
         for (name, entry) in doc.get(table).and_then(Value::as_table).into_iter().flatten() {
+            // A name can be a URL too (`cargo vendor` names a registry's source after its index): one carrying
+            // credentials goes whole, and any replacement naming it with it (below).
+            if without_userinfo(name) != *name {
+                continue;
+            }
             let kept: Table = entry
                 .as_table()
                 .into_iter()
@@ -431,6 +436,15 @@ keygen = "run --bin keygen"
             ),
             ("not toml at all = = \"broken0014\"\n", "0014"),
             ("[source.m]\nregistry = \"HTTPS://tok0017@m.example.com/i/\"\n", "0017"),
+            // `cargo vendor` names an alternate registry's source after its index URL, credentials and all.
+            (
+                "[source.\"sparse+https://u:name0019@corp.example.com/index/\"]\nregistry = \"sparse+https://corp.example.com/index/\"\nreplace-with = \"vendored\"\n[source.vendored]\ndirectory = \"vendor\"\n",
+                "0019",
+            ),
+            (
+                "[registries.\"https://u:name0020@host.example.com/x\"]\nindex = \"https://host.example.com/x\"\n",
+                "0020",
+            ),
         ] {
             let out = without_credentials(config);
             assert!(!out.contains(secret), "{secret} left in:\n{out}");

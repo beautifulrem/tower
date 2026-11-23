@@ -136,6 +136,7 @@ const SCRIPT_INTERPRETERS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", 
 const GIT_GLOBAL_VALUE_FLAGS = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env"]);
 /** Environment that points git at other configuration (and so other aliases). */
 const GIT_CONFIG_ENV = /^(GIT_CONFIG.*|GIT_DIR|GIT_COMMON_DIR|HOME|XDG_CONFIG_HOME)$/i;
+const EXPORTERS = new Set(["export", "declare", "typeset", "readonly", "local"]);
 const CI_PATH_RE = /(?:^|\/)(?:\.github\/workflows(?:\/|$)|\.gitlab-ci(?:\.ya?ml)?$|ci\.ya?ml$)/i;
 
 /** Extracts git's real subcommand & args after skipping global flags (`git -C dir push`). */
@@ -363,6 +364,17 @@ export function checkBash(command: string, autonomy: Autonomy): BashVerdict {
 	for (const cmd of parsed.commands) {
 		const reason = checkOneWayCommand(cmd);
 		if (reason) return { action: "ask", reason };
+	}
+	// Configuration git reads (and so its aliases) set for later commands:
+	// `HOME=/x; git p`, `export GIT_CONFIG_GLOBAL=…`.
+	const exported = parsed.commands
+		.filter((c) => EXPORTERS.has(c.name))
+		.flatMap((c) => c.args.map((a) => a.split("=")[0]));
+	if (
+		parsed.commands.some((c) => c.name === "git") &&
+		[...parsed.assignments, ...exported].some((n) => GIT_CONFIG_ENV.test(n))
+	) {
+		return { action: "ask", reason: REASON.gitDynamic };
 	}
 	// What the parser could not follow could hide a one-way door: ask in
 	// every mode.

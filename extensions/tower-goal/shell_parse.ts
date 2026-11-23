@@ -615,6 +615,13 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 			if (tok.value === "{" || tok.value === "}") flushPipeline();
 			continue;
 		}
+		// `function name [()] { … }`: the keyword and the name run nothing; the body is read like any other block.
+		if (curWords.length === 0 && !tok.quoted && tok.value === "function" && toks[i + 1]?.kind === "word") {
+			i++;
+			const open = toks[i + 1], close = toks[i + 2];
+			if (open?.kind === "op" && (open as OpToken).op === "(" && close?.kind === "op" && (close as OpToken).op === ")") i += 2;
+			continue;
+		}
 		if (curWords.length === 0) {
 			const assign = isEnvAssignmentWord(tok);
 			if (assign) { curEnv.push(assign); continue; }

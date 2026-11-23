@@ -94,6 +94,8 @@ test("one-way doors cannot be bypassed by quoting, escapes, env prefixes, wrappe
 		"git\\ push origin main",
 		"$'git' $'pu\\x73h' origin main",
 		"/usr/bin/git push origin main",
+		"function f { git push origin main; }; f",
+		"function f() { rm -rf ~; }; f",
 		"git -C /tmp/repo push origin main",
 		"GIT_SSH=x git push origin main",
 		"FOO=1 BAR='a b' git reset --hard",

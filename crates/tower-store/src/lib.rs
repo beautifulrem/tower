@@ -92,6 +92,19 @@ impl Store {
     pub(crate) fn now(&self) -> Millis {
         (self.clock)()
     }
+
+    /// Runs `f` as one transaction: what it writes is committed together or
+    /// not at all, and no reader sees half of it. Only writes that nest
+    /// (appends, transitions, inbox items) may be used inside.
+    pub fn atomically<T>(&mut self, f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
+        self.conn.execute_batch("SAVEPOINT atomically")?;
+        let result = f(self).and_then(|v| Ok(self.conn.execute_batch("RELEASE atomically").map(|_| v)?));
+        if result.is_err() {
+            // Never left open: later writes would never be committed.
+            let _ = self.conn.execute_batch("ROLLBACK TO atomically; RELEASE atomically");
+        }
+        result
+    }
 }
 
 pub(crate) fn new_id(prefix: &str) -> String {

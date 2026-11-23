@@ -1312,3 +1312,51 @@ async fn held_out_tests_no_criterion_runs_are_reported() {
     let d = h.sup.goal(&id).unwrap();
     assert!(d.sentinels.iter().any(|s| s.sentinel == "held_out_not_run"), "{:?}", d.sentinels);
 }
+
+/// A retry that fails the same way leaves the goal paused with a card that
+/// says so: answering the first card must not leave it with none.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_retry_that_fails_again_raises_a_new_card() {
+    let h = harness("pass").await;
+    h.sup.save_settings(Settings { pi_path: "/nonexistent/pi".into(), ..h.sup.settings() }).unwrap();
+    let id = create(&h).await;
+    let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
+    assert_eq!(g.pause_reason, Some(PauseReason::PrepareFailed));
+    let first = wait_inbox(&h, &id, InboxKind::Paused).await;
+    assert!(h.sup.answer(&first.id, "Retry").await.is_err(), "the retry fails the same way");
+    let second = wait_inbox(&h, &id, InboxKind::Paused).await;
+    assert_ne!(second.id, first.id, "a new card for the new failure");
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::PrepareFailed)));
+}
+
+/// A goal Tower paused on quitting continues at the next launch; when it
+/// cannot start, the pause says why and has a card.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_goal_that_cannot_continue_after_a_restart_raises_a_card() {
+    let h = harness("hold").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::Running && g.needs_you > 0).await;
+    h.sup.shutdown().await;
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!(g.pause_reason, Some(PauseReason::AppQuit));
+    h.sup.save_settings(Settings { pi_path: "/nonexistent/pi".into(), ..h.sup.settings() }).unwrap();
+    let Harness { _tmp, repo, sup, sink } = h;
+    drop(sup);
+    let root = std::fs::canonicalize(_tmp.path()).unwrap();
+    let ext = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal");
+    let env = ShellEnv::from_pairs([
+        ("PATH".to_string(), std::env::var("PATH").unwrap()),
+        ("HOME".to_string(), root.join("home").display().to_string()),
+    ]);
+    let sup = Supervisor::start(
+        Config { paths: Paths::new(root.join("tower")), extension_source: ext, env: Some(env), demo_engine: None },
+        sink.clone(),
+    )
+    .await
+    .unwrap();
+    let h = Harness { _tmp, repo, sup, sink };
+    wait_inbox(&h, &id, InboxKind::Paused).await;
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::PrepareFailed)));
+}

@@ -312,7 +312,7 @@ impl Supervisor {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -336,7 +336,7 @@ mod tests {
         assert!(CronSchedule::parse("*/0 * * * *").is_err());
     }
 
-    async fn supervisor(tmp: &tempfile::TempDir) -> (Supervisor, String) {
+    pub(crate) async fn supervisor(tmp: &tempfile::TempDir) -> (Supervisor, String) {
         let repo = tmp.path().join("repo");
         std::fs::create_dir_all(&repo).unwrap();
         std::fs::write(repo.join("README.md"), "hello\n").unwrap();

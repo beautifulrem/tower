@@ -378,3 +378,26 @@ fn diffs_read_the_same_whatever_your_prefix_settings() {
     git.revert_hunk(&ws, &base, &pin, "a.txt", 0).unwrap();
     assert_eq!(fs::read_to_string(ws.join("a.txt")).unwrap(), "one\ntwo\n");
 }
+
+/// Reverting a hunk writes nothing through a link the agent planted in its
+/// `.git` (where the patch used to be written): the patch text is the
+/// agent's, and Tower writes as you.
+#[test]
+fn reverting_a_hunk_writes_through_no_planted_link() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+    user_repo(&repo);
+    let git = Git::default();
+    let ws = tmp.path().join("ws");
+    let base = git.prepare_workspace(&repo, "main", &ws, "G-0001").unwrap();
+    fs::write(ws.join("a.txt"), "one\nTWO\n").unwrap();
+    let pin = git.snapshot(&ws, &base).unwrap().pin;
+
+    let victim = tmp.path().join("dot-zshrc");
+    fs::write(&victim, "mine\n").unwrap();
+    std::os::unix::fs::symlink(&victim, ws.join(".git/tower-revert.patch")).unwrap();
+    git.revert_hunk(&ws, &base, &pin, "a.txt", 0).unwrap();
+    assert_eq!(fs::read_to_string(ws.join("a.txt")).unwrap(), "one\ntwo\n");
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "mine\n", "the link's target is untouched");
+}

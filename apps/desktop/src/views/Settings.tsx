@@ -134,8 +134,10 @@ export function Settings() {
     // Quiet mode and muted goals are set from the title bar and the palette, not this form: the form's copy of them
     // is from when the page opened, so the live values go with the save.
     // `null` is a value here (quiet mode turned off), so it is taken as is, not replaced by the form's stale copy.
+    // So is the pairing token, which the form never edits: New pairing link replaces it, and the form's copy would
+    // put back the token you just revoked.
     const live = state.settings;
-    const v = live ? { ...form, quiet_until: live.quiet_until, muted_goals: live.muted_goals } : form;
+    const v = live ? { ...form, quiet_until: live.quiet_until, muted_goals: live.muted_goals, remote_token: live.remote_token } : form;
     // Only the form's own edits count: the page left as it opened writes nothing.
     const now = JSON.stringify(form);
     if (now === last) return false;

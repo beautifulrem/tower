@@ -137,6 +137,10 @@ export async function openTower(
               return F.lookImages?.[a.file] ?? null;
             case "remote_info":
               return F.remoteInfo ?? null;
+            case "reset_remote_token":
+              // A new pairing token: the old one stops working, as with the supervisor.
+              F.settings = { ...F.settings, remote_token: `fresh-${Date.now()}` };
+              return null;
             case "push_status":
               return F.pushStatus ?? null;
             case "test_push":

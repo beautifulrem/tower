@@ -219,11 +219,11 @@
 .burn-fill.over { background: var(--st-attention); }
 .dep-links { display: flex; flex-wrap: wrap; gap: 2px 10px; }
 .esc-active {
-  padding: 0 5px;
+  padding: 0 6px;
   border-radius: var(--radius-xs);
   background: var(--attention-bg);
   color: var(--text-1);
-  font-size: 10.5px;
+  font-size: var(--fs-hint);
   font-weight: 500;
 }
 
@@ -404,7 +404,7 @@
 .review-keys { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; }
 .review-keys > span { display: inline-flex; align-items: center; gap: 4px; }
 .review-keys > span + span::before { content: "·"; font-family: var(--font-ui); color: var(--text-3); margin: 0 0.55em; }
-.review-status .kbd { height: auto; padding: 0; background: transparent; color: var(--text-2); font-size: 10.5px; }
+.review-status .kbd { height: auto; padding: 0; background: transparent; color: var(--text-2); font-size: 10px; }
 .review-status .unit-counter { color: var(--text-2); }
 
 /* ---------- 3. ContractEditor — "Living Specification" Document ---------- */

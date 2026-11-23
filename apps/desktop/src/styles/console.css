@@ -338,8 +338,8 @@
   min-width: 0;
 }
 .peek-title {
-  font-size: 15px;
-  line-height: 21px;
+  font-size: var(--fs-question);
+  line-height: var(--lh-question);
   font-weight: 500;
   color: var(--text-1);
 }
@@ -451,14 +451,14 @@
 .trace-row.trace-anomaly { background: var(--danger-bg); }
 .trace-content { padding-left: 8px; }
 .trace-denied-tag {
-  padding: 0 5px;
+  padding: 0 6px;
   height: 16px;
   line-height: 16px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--st-danger);
   background: var(--danger-bg);
   color: var(--text-1);
-  font-size: 10.5px;
+  font-size: var(--fs-hint);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -487,8 +487,8 @@
   display: flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 11.5px;
-  line-height: 17px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-1);
   word-break: break-word;
 }

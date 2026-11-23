@@ -103,7 +103,15 @@ async fn main() {
         let busy = goals
             .iter()
             .filter(|g| {
-                matches!(g.state, LifecycleState::Running | LifecycleState::Claimed | LifecycleState::Verifying)
+                // Ready too: creating a goal returns while its workspace is still being set up, and every demo
+                // goal is ratified, so none rests there.
+                matches!(
+                    g.state,
+                    LifecycleState::Ready
+                        | LifecycleState::Running
+                        | LifecycleState::Claimed
+                        | LifecycleState::Verifying
+                )
             })
             .filter(|g| !blocked(&g.id))
             .count();

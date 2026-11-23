@@ -1,6 +1,6 @@
 //! The append path: event + projections in one transaction.
 
-use rusqlite::{Transaction, params};
+use rusqlite::{Connection, params};
 use tower_core::lifecycle::{self, Transition};
 use tower_core::view::{DiffStat, LiveLine, PrStatus, PrView, TraceEntry};
 use tower_core::{EventKind, LifecycleState, Millis, Mode, PauseReason, Source};
@@ -8,7 +8,7 @@ use tower_core::{EventKind, LifecycleState, Millis, Mode, PauseReason, Source};
 use crate::goals::{enum_str, parse_state};
 use crate::{Result, Store, StoreError};
 
-pub(crate) fn insert_event(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Result<i64> {
+pub(crate) fn insert_event(tx: &Connection, goal_id: &str, at: Millis, e: &EventKind) -> Result<i64> {
     tx.execute(
         "INSERT INTO events (goal_id, at, kind, source, payload) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![goal_id, at, e.name(), e.source().as_str(), serde_json::to_string(e)?],
@@ -18,7 +18,7 @@ pub(crate) fn insert_event(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &
 
 /// Updates the projections an event affects. Kept next to the insert so the
 /// two can never disagree.
-fn project(tx: &Transaction<'_>, goal_id: &str, at: Millis, e: &EventKind) -> Result<()> {
+fn project(tx: &Connection, goal_id: &str, at: Millis, e: &EventKind) -> Result<()> {
     match e {
         EventKind::ContractRatified { contract } => {
             tx.execute(
@@ -269,7 +269,9 @@ impl Store {
     /// Appends an event and updates projections atomically.
     pub fn append(&mut self, goal_id: &str, event: EventKind) -> Result<TraceEntry> {
         let at = self.now();
-        let tx = self.conn.transaction()?;
+        // A savepoint, so an append can be part of a larger transaction
+        // (`Store::atomically`); on its own it is one.
+        let tx = self.conn.savepoint()?;
         let seq = insert_event(&tx, goal_id, at, &event)?;
         project(&tx, goal_id, at, &event)?;
         tx.commit()?;

@@ -5,10 +5,10 @@
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark } from "../components/Glyph";
-import { Select, Toggle } from "../components/ui";
+import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
-import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
+import type { MergeQueueEntry, StorageInventory } from "../lib/apiTypes";
 import { clock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { stateLabel } from "../lib/labels";
@@ -23,19 +23,20 @@ const fmtB = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB`
 const ZERO_P = { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 };
 
 export function Operations() {
-  const [schedules, { refetch: rfSched }] = createResource(() => api.scheduledGoals().catch(() => [] as ScheduledGoal[]));
+  const [schedules, { refetch: rfSched }] = createResource(() => api.scheduledGoals());
   const [mqProj, setMqProj] = createSignal(ALL);
-  const [queue, { refetch: rfQueue }] = createResource(mqProj, (p) => api.mergeQueue(p === ALL ? null : p).catch(() => [] as MergeQueueEntry[]));
-  const [storage, { refetch: rfStore }] = createResource(() => api.storageInventory().catch(() => ({ total_bytes: 0, reclaimable_bytes: 0, goals: [] }) as StorageInventory));
+  const [queue, { refetch: rfQueue }] = createResource(mqProj, (p) => api.mergeQueue(p === ALL ? null : p));
+  const [storage, { refetch: rfStore }] = createResource(() => api.storageInventory());
 
   const [newProj, setNewProj] = createSignal(state.projects[0]?.id ?? "");
   const [newTitle, setNewTitle] = createSignal("");
   const [newCron, setNewCron] = createSignal("0 2 * * 1-5");
   const [busy, setBusy] = createSignal(false);
 
-  const schedList = () => (Array.isArray(schedules()) ? schedules()! : []);
-  const mqList = () => (Array.isArray(queue()) ? queue()! : []);
-  const inv = (): StorageInventory => storage() ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] };
+  // A failed read shows as a failure with Retry in its section, not as an empty list.
+  const schedList = () => settled(schedules) ?? [];
+  const mqList = () => settled(queue) ?? [];
+  const inv = (): StorageInventory => settled(storage) ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] };
   const projName = (id: string) => state.projects.find((p) => p.id === id)?.name ?? id;
   const run = async (fn: () => Promise<unknown>, rf: () => unknown, msg?: string) => {
     if ((await act(fn, msg)) !== undefined) (void rf(), void refreshConsoleMeta());
@@ -98,6 +99,8 @@ export function Operations() {
             headers={[[t("ops.schedulesTitle")], ["Cron"], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
             empty={t("ops.schedulesEmpty")}
             items={schedList()}
+            error={schedules.error}
+            onRetry={rfSched}
             row={(s) => (
               <tr>
                 <td>
@@ -139,6 +142,8 @@ export function Operations() {
             headers={[["#"], [t("overview.colGoal")], [t("ops.colPosture")], ["", true]]}
             empty={t("ops.mergeQueueEmpty")}
             items={mqList()}
+            error={queue.error}
+            onRetry={rfQueue}
             row={(entry) => (
               <tr class="mq-row" classList={{ "mq-conflict": entry.status === "conflict", "mq-ready": entry.status === "ready" }}>
                 <td class="mq-pos">#{entry.position + 1}</td>
@@ -162,8 +167,8 @@ export function Operations() {
                 </td>
                 <td class="col-r">
                   <div class="row row-end">
-                    <SmBtn label="Up" onClick={() => moveQueue(entry, -1)}><Icon name="arrow-up" size={10} /></SmBtn>
-                    <SmBtn label="Down" onClick={() => moveQueue(entry, 1)}><Icon name="arrow-down" size={10} /></SmBtn>
+                    <SmBtn label={t("ops.moveUp")} onClick={() => moveQueue(entry, -1)}><Icon name="arrow-up" size={10} /></SmBtn>
+                    <SmBtn label={t("ops.moveDown")} onClick={() => moveQueue(entry, 1)}><Icon name="arrow-down" size={10} /></SmBtn>
                     <SmBtn variant="default" onClick={() => void run(() => api.reverifyMergeQueueEntry(entry.goal_id), rfQueue, t("goal.reverify"))}>{t("goal.reverify")}</SmBtn>
                     <SmBtn onClick={() => void run(() => api.removeFromMergeQueue(entry.goal_id), rfQueue)}>{t("common.remove")}</SmBtn>
                   </div>
@@ -196,6 +201,8 @@ export function Operations() {
             headers={[[t("overview.colGoal")], [t("ops.colWorkspace"), true], [t("ops.colVerify"), true], [t("ops.colCache"), true], [t("ops.colTotal"), true], ["", true]]}
             empty={t("ops.storageEmpty")}
             items={inv().goals}
+            error={storage.error}
+            onRetry={rfStore}
             row={(g) => (
               <tr>
                 <td>

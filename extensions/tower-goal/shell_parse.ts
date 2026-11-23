@@ -9,6 +9,8 @@
  * nested shell runners (`bash -c`, `sh -c`, `eval`) are analyzed accurately.
  */
 
+import { SHELL_RUNNERS, isEnvAssignmentWord, unwrapCommand } from "./shell_unwrap.ts";
+
 export interface Redirection {
 	fd: string | null;
 	op: string;
@@ -17,6 +19,8 @@ export interface Redirection {
 	isWrite: boolean;
 	/** True for pure file-descriptor duplication/close (`2>&1`, `1>&2`, `2>&-`). */
 	isFdDup: boolean;
+	/** The body of a here-document (`<<`, `<<-`). */
+	heredoc?: string;
 }
 
 export interface EnvAssignment {
@@ -37,6 +41,8 @@ export interface SimpleCommand {
 	hasDynamicArgs: boolean;
 	hasEscapedWhitespaceInName: boolean;
 	inlineScript: boolean;
+	/** A shell (or `source /dev/stdin`) that runs what its input holds. */
+	readsStdin: boolean;
 	nestedDepth: number;
 }
 
@@ -53,10 +59,20 @@ export interface ParsedShell {
 	hasFileWriteRedirection: boolean;
 	hasDynamicCommand: boolean;
 	hasInlineScript: boolean;
+	/** Here-document bodies and here-strings, at any depth. */
+	feeds: string[];
+	/** Something here can run text it is fed or computes (a shell, `source`, `.`, `eval`). */
+	runsText: boolean;
+	/** Variables assigned or set for a command (`X=1`, `X=1 cmd`, `env X=1 cmd`). */
+	assignments: string[];
+	/** A shell here runs what its input holds: fed by a pipe, it is only known when it runs. */
+	stdinScript: boolean;
+	/** After a wrapper, each word naming a guarded program read as the command it may be. */
+	candidates: SimpleCommand[];
 	parseError?: string;
 }
 
-interface WordToken {
+export interface WordToken {
 	kind: "word";
 	value: string;
 	raw: string;
@@ -73,28 +89,28 @@ interface OpToken {
 
 type Token = WordToken | OpToken;
 
+interface Heredoc {
+	delimiter: string;
+	/** Any quoting in the delimiter makes the body literal. */
+	quoted: boolean;
+	/** `<<-` strips leading tabs from body lines and the delimiter line. */
+	stripTabs: boolean;
+}
+
 interface LexResult {
 	tokens: Token[];
 	substitutions: string[];
 	processSubstitutions: string[];
+	/** Here-document bodies, in the order of their `<<` operators. */
+	heredocBodies: string[];
 	parseError?: string;
 }
 
 const MAX_DEPTH = 6;
-const SHELL_RUNNERS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
-const INLINE_SCRIPT_FLAGS: Record<string, Set<string>> = {
-	python: new Set(["-c"]),
-	python2: new Set(["-c"]),
-	python3: new Set(["-c"]),
-	node: new Set(["-e", "--eval", "-p", "--print"]),
-	nodejs: new Set(["-e", "--eval", "-p", "--print"]),
-	bun: new Set(["-e", "--eval", "-p", "--print"]),
-	ruby: new Set(["-e"]),
-	perl: new Set(["-e", "-E"]),
-	php: new Set(["-r"]),
-	lua: new Set(["-e"]),
-	osascript: new Set(["-e"]),
-};
+/** Words that open a compound command, or negate one. */
+const COMPOUND = new Set(["{", "!", "if", "while", "until", "for", "case", "select", "[["]);
+/** Builtins that run text as shell: their input or arguments. */
+const TEXT_RUNNERS = new Set(["source", ".", "eval"]);
 const CONTROL_KEYWORDS = new Set([
 	"{", "}", "!", "if", "then", "elif", "else", "fi",
 	"for", "select", "while", "until", "do", "done", "case", "esac", "coproc",
@@ -108,10 +124,6 @@ const OPS_2 = new Set(["&&", "||", "|&", ";;", ">>", ">|", "<>", ">&", "<&", "&>
 const OPS_1 = new Set(["|", "&", ";", "(", ")", ">", "<", "\n"]);
 const REDIR_OPS = new Set([">", ">>", ">|", "&>", "&>>", "<>", ">&", "<&", "<", "<<", "<<-", "<<<"]);
 
-const basenameOf = (cmd: string) => {
-	const idx = cmd.lastIndexOf("/");
-	return idx >= 0 ? cmd.slice(idx + 1) : cmd;
-};
 
 function decodeAnsiC(src: string, start: number): { text: string; next: number; error?: string } {
 	let out = "";
@@ -149,13 +161,85 @@ function decodeAnsiC(src: string, start: number): { text: string; next: number; 
 	return { text: out, next: i, error: "unclosed ANSI-C quote" };
 }
 
-/** Scans from the character AFTER `$(`, `<(`, or `>(` until the matching `)`. */
-function scanParenBody(src: string, start: number): { body: string; next: number; error?: string } {
+/** The end of `$[ … ]` (old arithmetic) starting at `start` (the `$`). */
+function scanDollarBracket(src: string, start: number): number {
+	let depth = 0;
+	for (let j = start + 1; j < src.length; j++) {
+		if (src[j] === "[") depth++;
+		else if (src[j] === "]" && --depth === 0) return j + 1;
+	}
+	return src.length;
+}
+
+/**
+ * Scans from the character AFTER `$(`, `<(`, or `>(` until the matching `)`.
+ * In arithmetic (`arith`) `<<` is a shift; with `refuseShift` (a bare `((`,
+ * which bash may also read as two subshells) one is refused instead.
+ */
+function scanParenBody(src: string, start: number, arith = false, refuseShift = false): { body: string; next: number; error?: string } {
 	let i = start;
 	let depth = 1;
+	// Here-documents inside: their bodies (from the next line to the
+	// delimiter line) are skipped whole, so a quote or `)` in one is data.
+	const heredocs: Array<{ delimiter: string; stripTabs: boolean }> = [];
+	const fail = (error: string) => ({ body: src.slice(start), next: src.length, error });
 	while (i < src.length) {
 		const c = src[i];
 		if (c === "\\") { i += 2; continue; }
+		if (src.startsWith("<<<", i)) { i += 3; continue; }
+		if (arith && src.startsWith("<<", i)) {
+			if (refuseShift) return fail("`<<` inside `((`");
+			i += 2;
+			continue;
+		}
+		// Arithmetic inside: `<<` there is a shift, never a here-document.
+		if (src.startsWith("$((", i) || (c === "(" && src[i + 1] === "(" && src[i - 1] !== "$")) {
+			const bare = c === "(";
+			const inner = scanParenBody(src, bare ? i + 1 : i + 2, true, bare);
+			if (inner.error) return fail(inner.error);
+			i = inner.next;
+			continue;
+		}
+		if (src.startsWith("$[", i)) { i = scanDollarBracket(src, i); continue; }
+		if (c === "<" && src[i + 1] === "<") {
+			i += 2;
+			const stripTabs = src[i] === "-";
+			if (stripTabs) i++;
+			while (src[i] === " " || src[i] === "\t") i++;
+			let delimiter = "";
+			while (i < src.length && !/[\s;|&()<>]/.test(src[i])) {
+				const q = src[i];
+				if (q === "'" || q === '"') {
+					const end = src.indexOf(q, i + 1);
+					if (end === -1) return fail("unclosed quote in here-document delimiter");
+					delimiter += src.slice(i + 1, end);
+					i = end + 1;
+				} else if (q === "\\") {
+					delimiter += src[i + 1] ?? "";
+					i += 2;
+				} else {
+					delimiter += q;
+					i++;
+				}
+			}
+			if (!delimiter) return fail("here-document without a delimiter");
+			heredocs.push({ delimiter, stripTabs });
+			continue;
+		}
+		if (c === "\n" && heredocs.length > 0) {
+			i++;
+			for (const h of heredocs.splice(0)) {
+				for (;;) {
+					if (i >= src.length) return fail("unterminated here-document in substitution");
+					const nl = src.indexOf("\n", i);
+					const end = nl === -1 ? src.length : nl;
+					const line = h.stripTabs ? src.slice(i, end).replace(/^\t+/, "") : src.slice(i, end);
+					i = nl === -1 ? src.length : nl + 1;
+					if (line === h.delimiter) break;
+				}
+			}
+			continue;
+		}
 		if (c === "'") {
 			const end = src.indexOf("'", i + 1);
 			if (end === -1) return { body: src.slice(start), next: src.length, error: "unclosed single quote in substitution" };
@@ -167,7 +251,7 @@ function scanParenBody(src: string, start: number): { body: string; next: number
 			while (i < src.length && src[i] !== '"') {
 				if (src[i] === "\\") i += 2;
 				else if (src[i] === "$" && src[i + 1] === "(") {
-					const inner = scanParenBody(src, i + 2);
+					const inner = scanParenBody(src, i + 2, src[i + 2] === "(");
 					if (inner.error) return { body: src.slice(start), next: src.length, error: inner.error };
 					i = inner.next;
 				} else if (src[i] === "`") {
@@ -239,10 +323,62 @@ function lex(src: string): LexResult {
 
 	const scanDollarParen = (pos: number): number => {
 		const isArith = src[pos + 2] === "(";
-		const res = scanParenBody(src, pos + 2);
+		const res = scanParenBody(src, pos + 2, isArith);
 		if (res.error) recordErr(res.error);
-		if (!isArith) substitutions.push(res.body);
+		dollarParen(res.body, isArith);
 		return res.next;
+	};
+	/**
+	 * `$((…))` is arithmetic only when its first `(` closes at the end; then
+	 * the substitutions inside it run (`$(( $(cmd) ))`). Otherwise the shell
+	 * reads a command substitution (`$((cmd) | cat)`).
+	 */
+	const dollarParen = (body: string, isArith: boolean) => {
+		const inner = isArith ? scanParenBody(body, 1, true) : undefined;
+		if (inner && !inner.error && inner.next === body.length) heredocSubstitutions(body.slice(1, -1));
+		else substitutions.push(body);
+	};
+
+	let heredocOp: string | null = null;
+	const pendingHeredocs: Heredoc[] = [];
+	const heredocBodies: string[] = [];
+	/** Reads one here-document body from `pos`; returns where the shell resumes. */
+	const readHeredoc = (h: Heredoc, pos: number): number => {
+		let body = "";
+		while (pos < src.length) {
+			const nl = src.indexOf("\n", pos);
+			const end = nl === -1 ? src.length : nl;
+			const line = h.stripTabs ? src.slice(pos, end).replace(/^\t+/, "") : src.slice(pos, end);
+			pos = nl === -1 ? src.length : nl + 1;
+			if (line === h.delimiter) {
+				// With a quoted delimiter the body is literal; otherwise its
+				// substitutions run.
+				if (!h.quoted) heredocSubstitutions(body);
+				heredocBodies.push(body);
+				return pos;
+			}
+			body += `${line}\n`;
+		}
+		recordErr("unterminated here-document");
+		if (!h.quoted) heredocSubstitutions(body);
+		return pos;
+	};
+	const heredocSubstitutions = (body: string) => {
+		for (let j = 0; j < body.length; j++) {
+			if (body[j] === "\\") j++;
+			else if (body[j] === "$" && body[j + 1] === "(") {
+				const isArith = body[j + 2] === "(";
+				const res = scanParenBody(body, j + 2, isArith);
+				if (res.error) recordErr(res.error);
+				dollarParen(res.body, isArith);
+				j = res.next - 1;
+			} else if (body[j] === "`") {
+				const res = scanBacktickBody(body, j + 1, false);
+				if (res.error) recordErr(res.error);
+				substitutions.push(res.body);
+				j = res.next - 1;
+			}
+		}
 	};
 
 	while (i < src.length) {
@@ -262,7 +398,28 @@ function lex(src: string): LexResult {
 			continue;
 		}
 		const op = opAt(src, i);
-		if (op) { tokens.push({ kind: "op", op }); i += op.length; continue; }
+		// `((` is arithmetic, where `<<` is a shift; read on as before, but a
+		// shift there would be taken for a here-document: refuse it.
+		if (op === "(" && src[i + 1] === "(") {
+			const arith = scanParenBody(src, i + 1, true, true);
+			if (arith.error) recordErr(arith.error);
+		}
+		if (op) {
+			tokens.push({ kind: "op", op });
+			i += op.length;
+			if (heredocOp) {
+				recordErr("here-document without a delimiter");
+				heredocOp = null;
+			}
+			if (op === "<<" || op === "<<-") heredocOp = op;
+			// Here-document bodies start on the line after their operator and
+			// are data, not shell: read them whole so a quote inside one
+			// cannot swallow the commands that follow.
+			if (op === "\n" && pendingHeredocs.length > 0) {
+				for (const h of pendingHeredocs.splice(0)) i = readHeredoc(h, i);
+			}
+			continue;
+		}
 
 		const wordStart = i;
 		let value = "";
@@ -332,6 +489,14 @@ function lex(src: string): LexResult {
 				}
 				if (i >= src.length) recordErr("unclosed double quote");
 				else i++;
+			} else if (ch === "$" && src[i + 1] === "[") {
+				// Old-style arithmetic, one word: `<<` in it is a shift; what
+				// is substituted in it runs.
+				hasDynamic = true;
+				const next = scanDollarBracket(src, i);
+				heredocSubstitutions(src.slice(i + 2, next - 1));
+				value += src.slice(i, next);
+				i = next;
 			} else if (ch === "$" && src[i + 1] === "(") {
 				hasDynamic = true;
 				const next = scanDollarParen(i);
@@ -354,8 +519,15 @@ function lex(src: string): LexResult {
 		const raw = src.slice(wordStart, i);
 		const ioNumber = !quoted && /^\d+$/.test(raw) && (src[i] === ">" || src[i] === "<");
 		tokens.push({ kind: "word", value, raw, quoted, hasDynamic, hasEscapedWhitespace, ioNumber });
+		if (heredocOp) {
+			// `<<2>x`: bash's delimiter is `2`; not followed here, so refuse.
+			if (ioNumber) recordErr("here-document delimiter this parser does not follow");
+			pendingHeredocs.push({ delimiter: value, quoted, stripTabs: heredocOp === "<<-" });
+			heredocOp = null;
+		}
 	}
-	return { tokens, substitutions, processSubstitutions, parseError };
+	if (heredocOp || pendingHeredocs.length > 0) recordErr("here-document without a body");
+	return { tokens, substitutions, processSubstitutions, heredocBodies, parseError };
 }
 
 function classifyRedirect(fd: string | null, op: string, target: string): Redirection {
@@ -365,116 +537,6 @@ function classifyRedirect(fd: string | null, op: string, target: string): Redire
 	}
 	const isWrite = (op === ">" || op === ">>" || op === ">|" || op === "&>" || op === "&>>" || op === "<>") && target !== "/dev/null";
 	return { fd, op, target, isWrite, isFdDup: false };
-}
-
-function isEnvAssignmentWord(t: WordToken): EnvAssignment | null {
-	const eq = t.raw.indexOf("=");
-	if (eq <= 0 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(t.raw.slice(0, eq))) return null;
-	const valEq = t.value.indexOf("=");
-	return { name: t.raw.slice(0, eq), value: valEq >= 0 ? t.value.slice(valEq + 1) : "", hasDynamic: t.hasDynamic };
-}
-
-const WRAPPER_VALUE_FLAGS: Record<string, Set<string>> = {
-	exec: new Set(["-a"]),
-	nice: new Set(["-n"]),
-	timeout: new Set(["-k", "-s"]),
-	xargs: new Set(["-n", "-I", "-L", "-P", "-d", "-E", "-s"]),
-};
-
-function unwrapCommand(
-	words: WordToken[],
-	env: EnvAssignment[],
-	redirects: Redirection[],
-	depth: number,
-	nestedScripts: string[],
-): SimpleCommand | null {
-	let idx = 0;
-	const wrappers: string[] = [];
-	let inlineScript = false;
-
-	while (idx < words.length) {
-		const base = basenameOf(words[idx].value);
-		if (base === "env") {
-			wrappers.push("env");
-			idx++;
-			while (idx < words.length) {
-				const w = words[idx];
-				if (w.value === "--") { idx++; break; }
-				if (w.value === "-u" || w.value === "-C" || w.value === "--unset" || w.value === "--chdir") { idx += 2; continue; }
-				if (w.value === "-S" && idx + 1 < words.length) { nestedScripts.push(words[idx + 1].value); idx += 2; continue; }
-				if (w.value.startsWith("-")) { idx++; continue; }
-				const assign = isEnvAssignmentWord(w);
-				if (assign) { env.push(assign); idx++; continue; }
-				break;
-			}
-			continue;
-		}
-		if (base === "command") {
-			let j = idx + 1;
-			let lookupOnly = false;
-			while (j < words.length && words[j].value.startsWith("-") && words[j].value !== "--") {
-				if (/[vV]/.test(words[j].value)) lookupOnly = true;
-				j++;
-			}
-			if (lookupOnly) break;
-			wrappers.push("command");
-			idx = j + (words[j]?.value === "--" ? 1 : 0);
-			continue;
-		}
-		if (base === "builtin" || base === "nohup" || base === "time" || base in WRAPPER_VALUE_FLAGS) {
-			wrappers.push(base);
-			if (base === "exec") inlineScript = true;
-			const valFlags = WRAPPER_VALUE_FLAGS[base];
-			idx++;
-			while (idx < words.length && words[idx].value.startsWith("-")) {
-				idx += valFlags?.has(words[idx].value) ? 2 : 1;
-			}
-			if (base === "timeout" && idx < words.length) idx++;
-			continue;
-		}
-		break;
-	}
-
-	if (idx >= words.length) return null;
-	const head = words[idx];
-	const tail = words.slice(idx + 1);
-	const name = basenameOf(head.value);
-	const args = tail.map((w) => w.value);
-	const hasDynamicArgs = tail.some((w) => w.hasDynamic);
-
-	if (name === "eval") {
-		inlineScript = true;
-		if (args.length > 0) nestedScripts.push(args.join(" "));
-	} else if (SHELL_RUNNERS.has(name)) {
-		inlineScript = true;
-		for (let i = 0; i < args.length; i++) {
-			const a = args[i];
-			if (a === "--") break;
-			if (a === "-c" || (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(a) && !a.startsWith("--"))) {
-				if (i + 1 < args.length) nestedScripts.push(args[i + 1]);
-				break;
-			}
-		}
-	} else if (INLINE_SCRIPT_FLAGS[name]?.size && args.some((a) => INLINE_SCRIPT_FLAGS[name].has(a))) {
-		inlineScript = true;
-	} else if (name === "deno" && args[0] === "eval") {
-		inlineScript = true;
-	}
-
-	return {
-		rawName: head.value,
-		name,
-		args,
-		argv: [head.value, ...args],
-		env,
-		redirects,
-		wrappers,
-		hasDynamicName: head.hasDynamic || (name === "eval" && hasDynamicArgs),
-		hasDynamicArgs,
-		hasEscapedWhitespaceInName: head.hasEscapedWhitespace,
-		inlineScript,
-		nestedDepth: depth,
-	};
 }
 
 /**
@@ -492,6 +554,11 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		hasFileWriteRedirection: false,
 		hasDynamicCommand: false,
 		hasInlineScript: false,
+		feeds: [],
+		runsText: false,
+		assignments: [],
+		stdinScript: false,
+		candidates: [],
 	};
 	if (!input.trim()) return result;
 
@@ -500,20 +567,28 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	if (lexed.substitutions.length > 0) result.hasCommandSubstitution = true;
 	if (lexed.processSubstitutions.length > 0) result.hasProcessSubstitution = true;
 	const nestedScripts = [...lexed.substitutions, ...lexed.processSubstitutions];
+	result.feeds.push(...lexed.heredocBodies);
 
 	let curWords: WordToken[] = [];
 	let curEnv: EnvAssignment[] = [];
 	let curRedirects: Redirection[] = [];
 	let curPipeline: SimpleCommand[] = [];
+	let piped = false;
 
 	const flushCommand = () => {
 		if (curRedirects.some((r) => r.isWrite)) result.hasFileWriteRedirection = true;
-		const cmd = unwrapCommand(curWords, curEnv, curRedirects, depth, nestedScripts);
-		if (cmd) {
-			result.commands.push(cmd);
-			curPipeline.push(cmd);
-			if (cmd.hasDynamicName) result.hasDynamicCommand = true;
-			if (cmd.inlineScript) result.hasInlineScript = true;
+		const { cmd, candidates } = unwrapCommand(curWords, curEnv, curRedirects, depth, nestedScripts);
+		result.assignments.push(...curEnv.map((e) => e.name));
+		if (cmd) result.commands.push(cmd);
+		result.candidates.push(...candidates);
+		for (const c of cmd ? [cmd, ...candidates] : []) {
+			curPipeline.push(c);
+			// Only the command itself reads its input as a script, not a candidate.
+			if (c === cmd && c.readsStdin) result.stdinScript = true;
+			if (SHELL_RUNNERS.has(c.name) || TEXT_RUNNERS.has(c.name)) result.runsText = true;
+			if (c.hasDynamicName) result.hasDynamicCommand = true;
+			// A candidate is only checked for what it may hide, not read as cautious mode's inline script.
+			if (c === cmd && c.inlineScript) result.hasInlineScript = true;
 		}
 		curWords = [];
 		curEnv = [];
@@ -527,17 +602,23 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		}
 	};
 
+	let bodies = 0;
+	const withBody = (r: Redirection): Redirection => {
+		if (r.op === "<<<") result.feeds.push(r.target);
+		return r.op === "<<" || r.op === "<<-" ? { ...r, heredoc: lexed.heredocBodies[bodies++] } : r;
+	};
+
 	const toks = lexed.tokens;
 	for (let i = 0; i < toks.length; i++) {
 		const tok = toks[i];
 		if (tok.kind === "op") {
 			if (tok.op === "(" || tok.op === ")") { result.hasSubshell = true; flushPipeline(); continue; }
-			if (tok.op === "|" || tok.op === "|&") { flushCommand(); continue; }
+			if (tok.op === "|" || tok.op === "|&") { flushCommand(); piped = true; continue; }
 			if (REDIR_OPS.has(tok.op)) {
 				const next = toks[i + 1];
 				const target = next?.kind === "word" ? next.value : "";
 				if (next?.kind === "word") i++;
-				curRedirects.push(classifyRedirect(null, tok.op, target));
+				curRedirects.push(withBody(classifyRedirect(null, tok.op, target)));
 				continue;
 			}
 			flushPipeline();
@@ -546,12 +627,31 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		if (tok.ioNumber && toks[i + 1]?.kind === "op" && REDIR_OPS.has((toks[i + 1] as OpToken).op)) {
 			const op = (toks[i + 1] as OpToken).op;
 			const targetTok = toks[i + 2];
-			curRedirects.push(classifyRedirect(tok.value, op, targetTok?.kind === "word" ? targetTok.value : ""));
+			curRedirects.push(withBody(classifyRedirect(tok.value, op, targetTok?.kind === "word" ? targetTok.value : "")));
 			i += targetTok?.kind === "word" ? 2 : 1;
 			continue;
 		}
+		if (curWords.length === 0 && !tok.quoted && (tok.value === "time" || tok.value === "coproc")) {
+			// `time [-p]` and `coproc [NAME]` before a compound command (`{`, `(`, `((`, `!`, `if`,
+			// `while`, `until`, `for`, `case`, `select`, `[[`) are keywords: the command runs.
+			const word = (k: number) => (toks[k]?.kind === "word" ? (toks[k] as WordToken) : undefined);
+			const opens = (k: number) =>
+				(toks[k]?.kind === "op" && (toks[k] as OpToken).op === "(") ||
+				(!word(k)?.quoted && COMPOUND.has(word(k)?.value ?? ""));
+			let j = i + 1;
+			if (tok.value === "time" && word(j)?.value === "-p") j++;
+			else if (tok.value === "coproc" && word(j) && !opens(j) && opens(j + 1)) j++;
+			if (opens(j)) { i = j - 1; continue; }
+		}
 		if (curWords.length === 0 && !tok.quoted && CONTROL_KEYWORDS.has(tok.value)) {
 			if (tok.value === "{" || tok.value === "}") flushPipeline();
+			continue;
+		}
+		// `function name [()] { … }`: the keyword and the name run nothing; the body is read like any other block.
+		if (curWords.length === 0 && !tok.quoted && tok.value === "function" && toks[i + 1]?.kind === "word") {
+			i++;
+			const open = toks[i + 1], close = toks[i + 2];
+			if (open?.kind === "op" && (open as OpToken).op === "(" && close?.kind === "op" && (close as OpToken).op === ")") i += 2;
 			continue;
 		}
 		if (curWords.length === 0) {
@@ -562,19 +662,34 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	}
 	flushPipeline();
 
+	const merge = (nested: ParsedShell) => {
+		result.commands.push(...nested.commands);
+		result.pipelines.push(...nested.pipelines);
+		result.hasCommandSubstitution ||= nested.hasCommandSubstitution;
+		result.hasProcessSubstitution ||= nested.hasProcessSubstitution;
+		result.hasSubshell ||= nested.hasSubshell;
+		result.hasFileWriteRedirection ||= nested.hasFileWriteRedirection;
+		result.hasDynamicCommand ||= nested.hasDynamicCommand;
+		result.hasInlineScript ||= nested.hasInlineScript;
+		result.feeds.push(...nested.feeds);
+		result.runsText ||= nested.runsText;
+		result.assignments.push(...nested.assignments);
+		result.stdinScript ||= nested.stdinScript;
+		result.candidates.push(...nested.candidates);
+		result.parseError ??= nested.parseError;
+	};
 	if (depth < MAX_DEPTH) {
-		for (const script of nestedScripts) {
-			const nested = parseShell(script, depth + 1);
-			result.commands.push(...nested.commands);
-			result.pipelines.push(...nested.pipelines);
-			result.hasCommandSubstitution ||= nested.hasCommandSubstitution;
-			result.hasProcessSubstitution ||= nested.hasProcessSubstitution;
-			result.hasSubshell ||= nested.hasSubshell;
-			result.hasFileWriteRedirection ||= nested.hasFileWriteRedirection;
-			result.hasDynamicCommand ||= nested.hasDynamicCommand;
-			result.hasInlineScript ||= nested.hasInlineScript;
-			result.parseError ??= nested.parseError;
+		for (const script of nestedScripts) merge(parseShell(script, depth + 1));
+		// Here-documents and here-strings are data, unless something here can
+		// run what it is fed (`bash <<EOF`, `{ bash; } <<EOF`, `source
+		// /dev/stdin`, `eval "$(cat <<EOF …)"`, a script written then run):
+		// then they are read as scripts too.
+		while (result.runsText && result.feeds.length > 0) {
+			for (const feed of result.feeds.splice(0)) merge(parseShell(feed, depth + 1));
 		}
 	}
+	// A pipe here can feed a shell here (`echo 'git push' | bash`, `| sh -c
+	// bash`), and so can the command a process substitution reads (`> >(bash)`).
+	if ((piped || lexed.processSubstitutions.length > 0) && result.stdinScript) result.hasDynamicCommand = true;
 	return result;
 }

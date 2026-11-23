@@ -17,7 +17,7 @@ import { pauseLabel, runOutcomeLabel, runPurposeLabel, stateLabel } from "../lib
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark, ResultMark } from "./Glyph";
 import { Claim } from "./HonestyCore";
 import { PrLine } from "./Pr";
-import { Empty } from "./ui";
+import { Empty, Failed } from "./ui";
 import { act, onTrace, refreshProjects, state } from "../lib/store";
 
 type Filter = "all" | "anomalies" | "injections" | "decisions" | "tools" | "facts";
@@ -97,13 +97,20 @@ export function Trace(props: { id: string; live?: boolean }) {
   const [more, setMore] = createSignal(true);
   const [loaded, setLoaded] = createSignal(false);
   const [window_, setWindow] = createSignal(WINDOW);
+  const [failed, setFailed] = createSignal<unknown>(null);
   let scroller!: HTMLDivElement;
 
+  // One page at a time: every scroll event near the top asks for more, and each would fetch the same page.
+  let fetching = false;
   const load = async () => {
-    const before = entries()[0]?.seq ?? null;
-    const page = await api.trace(props.id, before, PAGE);
-    if (page.length < PAGE) setMore(false);
-    setEntries((e) => [...page.reverse(), ...e]);
+    if (fetching) return;
+    fetching = true;
+    setFailed(null);
+    await api.trace(props.id, entries()[0]?.seq ?? null, PAGE).then((page) => {
+      if (page.length < PAGE) setMore(false);
+      setEntries((e) => [...page.reverse(), ...e]);
+    }, (err) => setFailed(err ?? "error"));
+    fetching = false;
   };
 
   onMount(async () => {
@@ -180,13 +187,18 @@ export function Trace(props: { id: string; live?: boolean }) {
           <span class="meta">{t("trace.live")}</span>
         </Show>
       </div>
-      <div class="trace-scroll" ref={scroller} role="log" aria-live="off" onScroll={() => scroller.scrollTop < 40 && (hidden() > 0 || more()) && void reveal()}>
-        <Show when={hidden() > 0 || more()}>
+      <div class="trace-scroll" ref={scroller} role="log" aria-live="off" onScroll={() => scroller.scrollTop < 40 && !failed() && (hidden() > 0 || more()) && void reveal()}>
+        <Show when={failed()}>
+          <div class="trace-empty">
+            <Failed error={failed()} onRetry={() => void load()} />
+          </div>
+        </Show>
+        <Show when={!failed() && (hidden() > 0 || more())}>
           <button class="trace-more link" onClick={() => void reveal()}>
             {hidden() > 0 ? t("trace.showEarlier", { n: Math.min(STEP, hidden()) }) : t("trace.loadEarlier")}
           </button>
         </Show>
-        <Show when={loaded() && filtered().length === 0}>
+        <Show when={loaded() && !failed() && filtered().length === 0}>
           <div class="trace-empty">
             <Empty title={entries().length === 0 ? t("trace.emptyTitle") : t(filter() === "tools" ? "trace.emptyFilter_tools" : filter() === "facts" ? "trace.emptyFilter_facts" : "trace.emptyFilter_all")} inline>
               {entries().length === 0 ? t("trace.emptyBody") : ""}

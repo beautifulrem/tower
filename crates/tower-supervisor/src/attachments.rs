@@ -170,6 +170,22 @@ impl Supervisor {
         Ok(att)
     }
 
+    /// Moves the images pasted into a new contract, saved under the `draft` slot before the goal had an id, into the
+    /// goal's own folder. Best effort: the goal exists by now, and failing its creation would invite a duplicate.
+    pub(crate) fn adopt_draft_attachments(&self, goal_id: &str, attachments: &[AttachmentRef]) {
+        let from = self.inner.paths.attachments_dir("draft");
+        let to = self.inner.paths.attachments_dir(goal_id);
+        for name in attachments.iter().filter_map(|a| safe_rel_filename(&a.path)) {
+            let src = from.join(name);
+            if !src.is_file() {
+                continue;
+            }
+            if let Err(e) = std::fs::create_dir_all(&to).and_then(|_| std::fs::rename(&src, to.join(name))) {
+                tracing::warn!(goal = %goal_id, error = %e, "could not move a pasted image into the goal");
+            }
+        }
+    }
+
     /// Reads an attachment from `<goal_dir>/attachments/<path>` as a data URL.
     pub fn attachment_data_url(&self, goal_id: &str, path: &str) -> Option<String> {
         let rel = safe_rel_filename(path)?;

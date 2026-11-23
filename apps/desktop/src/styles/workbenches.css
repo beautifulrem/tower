@@ -287,10 +287,9 @@
   z-index: 25;
   max-height: 200px;
   overflow: auto;
-  padding: 4px;
+  padding: var(--float-inset);
   border-radius: var(--radius-l);
-  background: var(--bg-overlay);
-  box-shadow: var(--shadow-overlay);
+  box-shadow: var(--material-edge), var(--shadow-overlay);
 }
 .steer-at-item {
   display: flex;
@@ -299,7 +298,7 @@
   width: 100%;
   padding: 4px 8px;
   border: 0;
-  border-radius: var(--radius-s);
+  border-radius: calc(var(--radius-l) - var(--float-inset));
   background: transparent;
   color: var(--text-2);
   font-family: var(--font-mono);

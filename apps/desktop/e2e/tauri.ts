@@ -75,6 +75,12 @@ export async function openTower(
       let seq = 0;
       const calls: Array<[string, unknown]> = [];
       (window as any).__towerCalls = calls;
+      (window as any).__towerFixtures = F;
+      // Delivers an event to what the app listens for, as Tauri does: the handler is a registered callback id.
+      (window as any).__towerEmit = (event: string, payload: unknown) => {
+        const id = (window as any).__towerListeners?.[event];
+        (window as any)[`_${id}`]?.({ event, id: 0, payload });
+      };
       (window as any).__TAURI_INTERNALS__ = {
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main", windowLabel: "main" } },
         transformCallback(cb: unknown) {
@@ -97,6 +103,10 @@ export async function openTower(
               return F.projects;
             case "settings":
               return F.settings;
+            case "save_settings":
+              // Saved settings are what the next read returns, as with the supervisor.
+              F.settings = a.settings;
+              return null;
             case "goals":
               return F.goals;
             case "inbox":
@@ -109,9 +119,14 @@ export async function openTower(
               return F[`trace-${a.id}`] ?? [];
             case "review":
               if (!F[`review-${a.id}`]) throw "no review";
-              return F[`review-${a.id}`];
-            case "file_text":
-              return F.files[`${a.id}:${a.path}:${a.old ? "old" : "new"}`] ?? null;
+              // A fresh copy each read, as over real IPC: rows keyed by object are rebuilt on a refetch.
+              return structuredClone(F[`review-${a.id}`]);
+            case "file_text": {
+              const text = F.files[`${a.id}:${a.path}:${a.old ? "old" : "new"}`] ?? null;
+              // A test can hold reads (`__towerHold`) to see what lands after the snapshot moved on meanwhile.
+              await (window as any).__towerHold;
+              return text;
+            }
             case "ui_state":
               return {};
             case "accept":
@@ -149,6 +164,7 @@ export async function openTower(
             case "scheduled_goals":
               return F.scheduledGoals ?? [];
             case "merge_queue":
+              if (F.mergeQueueError) throw F.mergeQueueError;
               return F.mergeQueue ?? [];
             case "storage_inventory":
               return F.storageInventory ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] };
@@ -165,11 +181,20 @@ export async function openTower(
             case "check_for_updates":
               return F.updateCheck ?? { configured: false, available: false, current_version: "0.1.0", latest_version: null, notes: null, error: null };
             case "plugin:event|listen":
+              // Kept so a test can push a live update the way the supervisor does (`__towerEmit`).
+              ((window as any).__towerListeners ??= {})[a.event] = a.handler;
               return ++seq;
             case "plugin:dialog|ask":
               return true;
+            case "plugin:dialog|message":
+              // `ask` and `confirm` come here: unanswered (no) unless a test says yes (`__towerAsk = true`).
+              return (window as any).__towerAsk ? (a.buttons?.OkCancelCustom?.[0] ?? "Yes") : null;
             default:
-              if (cmd.startsWith("plugin:menu|")) return [1, "m"];
+              if (cmd.startsWith("plugin:menu|")) {
+                // Kept by label so a test can pick a native menu item (`__towerMenu["Edit this file"].onmessage()`).
+                if (cmd === "plugin:menu|new" && a.options?.text) ((window as any).__towerMenu ??= {})[a.options.text] = a.handler;
+                return [1, "m"];
+              }
               return null;
           }
         },

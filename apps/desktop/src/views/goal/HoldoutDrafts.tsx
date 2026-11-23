@@ -29,7 +29,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
     setBusy(d.id);
     const out = await api.ratifyHoldoutDraft?.(props.projectId, d.filename, d.code).catch(() => null);
     setRatified((m) => ({ ...m, [d.id]: true }));
-    toast("success", `Ratified ${out || d.filename}`);
+    toast("success", t("contract.holdoutRatified", { file: out || d.filename }));
     setBusy(null);
   };
 
@@ -47,7 +47,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
           return (
             <div class="holdout-draft" classList={{ ratified: ok() }}>
               <div class="row" style={{ gap: "8px" }}>
-                <input class="mono grow" aria-label="Filename" value={d.filename} disabled={ok()} onInput={(e) => patch(d.id, { filename: e.currentTarget.value })} />
+                <input class="mono grow" aria-label={t("contract.holdoutFilename")} value={d.filename} disabled={ok()} onInput={(e) => patch(d.id, { filename: e.currentTarget.value })} />
                 <Show when={!ok()} fallback={<span class="human-stamp meta"><Icon name="check" size={10} />You ratified · hidden</span>}>
                   <Button size="s" variant="primary" busy={busy() === d.id} onClick={() => void ratify(d)}>Ratify into holdout/</Button>
                   <button type="button" class="icon-btn" aria-label={t("common.remove")} onClick={() => setDrafts((l) => l.filter((x) => x.id !== d.id))}>×</button>

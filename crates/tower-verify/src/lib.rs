@@ -22,6 +22,9 @@ pub use redact::redact;
 /// runaway log cannot grow the database.
 pub const TAIL_BYTES: usize = 64 * 1024;
 
+/// How long the output may keep coming once the command has ended.
+const DRAIN: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone)]
 pub struct RunSpec {
     pub command: String,
@@ -109,6 +112,11 @@ impl Cancel {
         *self.tx.borrow()
     }
 
+    /// Whether `other` is a clone of this signal (the same verification).
+    pub fn same(&self, other: &Cancel) -> bool {
+        self.tx.same_channel(&other.tx)
+    }
+
     fn subscribe(&self) -> watch::Receiver<bool> {
         self.tx.subscribe()
     }
@@ -153,15 +161,16 @@ pub async fn run(spec: &RunSpec, cancel: &Cancel) -> RunResult {
     let pid = child.id();
 
     let (tail_tx, mut tail_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    let mut pumps = Vec::new();
     if let Some(out) = child.stdout.take() {
-        tokio::spawn(pump(out, tail_tx.clone()));
+        pumps.push(tokio::spawn(pump(out, tail_tx.clone())));
     }
     if let Some(err) = child.stderr.take() {
-        tokio::spawn(pump(err, tail_tx.clone()));
+        pumps.push(tokio::spawn(pump(err, tail_tx.clone())));
     }
     drop(tail_tx);
 
-    let collector = tokio::spawn(async move {
+    let mut collector = tokio::spawn(async move {
         let mut tail: Vec<u8> = Vec::new();
         let mut truncated = false;
         while let Some(chunk) = tail_rx.recv().await {
@@ -193,7 +202,21 @@ pub async fn run(spec: &RunSpec, cancel: &Cancel) -> RunResult {
     kill_group(pid);
     let _ = child.kill().await;
 
-    let (tail, truncated) = collector.await.unwrap_or_default();
+    // The output ends when the last process holding the pipes does. One
+    // that left the group (`setsid`) survives the kill and may hold them
+    // open for ever: give the rest of the output a moment, then stop
+    // reading and keep what came.
+    let (tail, truncated) = match tokio::time::timeout(DRAIN, &mut collector).await {
+        Ok(done) => done.unwrap_or_default(),
+        Err(_) => {
+            // The pumps' ends of the channel go with them, so the collector
+            // finishes with what it has.
+            for p in &pumps {
+                p.abort();
+            }
+            collector.await.unwrap_or_default()
+        }
+    };
     let mut text = String::from_utf8_lossy(&tail).into_owned();
     if truncated {
         // Drop a partial first line so the tail starts cleanly.
@@ -284,6 +307,33 @@ mod tests {
         let r = run(&spec("sleep 30", 60_000), &cancel).await;
         assert_eq!(r.termination, Termination::Cancelled);
         assert!(r.duration_ms < 5_000);
+    }
+
+    /// A process that left the group (`setsid`) and keeps the output pipe
+    /// open must not hold the run: it returns soon after the command ends,
+    /// with what was written until then.
+    #[tokio::test]
+    async fn an_escaped_process_holding_the_output_does_not_hold_the_run() {
+        let started = Instant::now();
+        // The pause lets the process leave the group before the shell exits.
+        let cmd = "echo before; perl -MPOSIX -e 'setsid(); sleep 8' & sleep 0.3; exit 0";
+        let r = tokio::time::timeout(Duration::from_secs(7), run(&spec(cmd, 500), &Cancel::default()))
+            .await
+            .expect("run() returned");
+        assert!(started.elapsed() < Duration::from_secs(4), "took {:?}", started.elapsed());
+        assert_eq!(r.termination, Termination::Exited(0));
+        assert_eq!(r.output_tail.trim(), "before");
+        let c = Cancel::default();
+        let c2 = c.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            c2.cancel();
+        });
+        let started = Instant::now();
+        let cmd = "perl -MPOSIX -e 'setsid(); sleep 8' & sleep 30";
+        let r = tokio::time::timeout(Duration::from_secs(7), run(&spec(cmd, 60_000), &c)).await.expect("cancel works");
+        assert_eq!(r.termination, Termination::Cancelled);
+        assert!(started.elapsed() < Duration::from_secs(4));
     }
 
     #[tokio::test]

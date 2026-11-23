@@ -120,7 +120,7 @@ export function PathPalette(props: { paths: string[]; fileOf: (path: string) => 
     if (h) props.onPick(h.path);
   };
   return (
-    <Overlay onClose={props.onClose} label={t("review.pathPalette")} instant class="palette" top>
+    <Overlay onClose={props.onClose} closeKey="mod+p" label={t("review.pathPalette")} instant class="palette" top>
       <div class="palette-field">
         <span class="palette-prompt" aria-hidden="true">
           ›

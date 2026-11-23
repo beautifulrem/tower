@@ -49,6 +49,8 @@ export interface FileDiffProps {
   onEditFile?: () => void;
   onSaveFile?: (text: string) => void;
   onCancelEdit?: () => void;
+  editDraft?: string | null;
+  onEditDraft?: (text: string) => void;
   onApplySuggestion?: (line: number, suggestion: string) => void;
   /** Hunk indices marked by AST analysis as moved unchanged or formatting only. */
   movedHunks?: number[];
@@ -322,7 +324,7 @@ export function FileDiff(props: FileDiffProps) {
         {(x) => <CommentRow draft={x.c} onEdit={() => props.onEdit(x.index)} onRemove={() => props.onRemove(x.index)} />}
       </For>
       <Show when={props.editing && props.lines}>
-        <FileEditor lines={props.lines!} onSave={(text) => props.onSaveFile?.(text)} onCancel={() => props.onCancelEdit?.()} />
+        <FileEditor lines={props.lines!} draft={props.editDraft} onDraft={props.onEditDraft} onSave={(text) => props.onSaveFile?.(text)} onCancel={() => props.onCancelEdit?.()} />
       </Show>
       <Show when={!props.file.binary && !props.editing} fallback={<Show when={!props.editing}><div class="meta file-binary">{t("review.binary")}</div></Show>}>
         <span id={helpId} class="sr-only">
@@ -453,9 +455,10 @@ function AcceptButton(props: { accepted: boolean; current: boolean; lines: numbe
   );
 }
 
-export function FileEditor(props: { lines: string[]; onSave: (text: string) => void; onCancel: () => void }) {
+/** `draft` is what was typed before the row was rebuilt (a refetch brings new file objects); `onDraft` keeps it. */
+export function FileEditor(props: { lines: string[]; draft?: string | null; onDraft?: (text: string) => void; onSave: (text: string) => void; onCancel: () => void }) {
   const initial = props.lines.join("\n") + "\n";
-  const [text, setText] = createSignal(initial);
+  const [text, setText] = createSignal(props.draft ?? initial);
   const dirty = () => text() !== initial;
   return (
     <div class="file-editor">
@@ -466,7 +469,7 @@ export function FileEditor(props: { lines: string[]; onSave: (text: string) => v
         spellcheck={false}
         aria-label={t("review.editFile")}
         value={text()}
-        onInput={(e) => setText(e.currentTarget.value)}
+        onInput={(e) => (setText(e.currentTarget.value), props.onDraft?.(e.currentTarget.value))}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && dirty()) (e.preventDefault(), props.onSave(text()));
           if (e.key === "Escape") (e.stopPropagation(), props.onCancel());

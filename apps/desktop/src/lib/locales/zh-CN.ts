@@ -25,6 +25,7 @@ export const zh = {
     files: (p: { n: number }) => `${p.n} 个文件`,
     open: "打开",
     retry: "重试",
+    loadFailed: "没能加载",
     notice: "提示",
     problem: "问题",
     copied: "已复制",

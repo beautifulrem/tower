@@ -3057,7 +3057,7 @@ input[type="radio"] {
   justify-content: center;
   align-items: flex-start;
   padding-top: 14vh;
-  background: oklch(0 0 0 / 0.16);
+  background: var(--scrim);
   animation: fade var(--dur-fast) var(--ease-out);
   overflow: hidden;
 }
@@ -3066,6 +3066,35 @@ input[type="radio"] {
     opacity: 0;
   }
 }
+/* Floating material (tokens.css): the layers over content, never the sheets you read in. Without backdrop blur, or
+   when the system asks for less transparency, they are the opaque overlay surface. */
+.palette,
+.toast,
+.steer-at-pop,
+.peek-drawer {
+  background: var(--material-float);
+  -webkit-backdrop-filter: var(--material-filter);
+  backdrop-filter: var(--material-filter);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .palette,
+  .toast,
+  .steer-at-pop,
+  .peek-drawer {
+    background: var(--bg-overlay);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .palette,
+  .toast,
+  .steer-at-pop,
+  .peek-drawer {
+    background: var(--bg-overlay);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 /* Keyboard-opened layers appear at once (§12.7). */
 .overlay.instant,
 .overlay.instant .palette,
@@ -3077,11 +3106,14 @@ input[type="radio"] {
 .panel {
   width: min(600px, 92vw);
   border-radius: var(--radius-l);
-  background: var(--bg-overlay);
   box-shadow: var(--shadow-overlay);
   overflow: hidden;
   outline: none;
   animation: lift var(--dur-base) var(--ease-out);
+}
+/* The palette floats on the material: its top edge catches the light (a sheet you read in has no such edge). */
+.palette {
+  box-shadow: var(--material-edge), var(--shadow-overlay);
 }
 @keyframes lift {
   from {
@@ -3121,7 +3153,7 @@ input[type="radio"] {
 .palette-list {
   max-height: 50vh;
   overflow: auto;
-  padding: 4px 6px 6px;
+  padding: var(--float-inset);
 }
 .palette-group {
   padding: 8px 10px 2px;
@@ -3187,6 +3219,7 @@ input[type="radio"] {
 }
 
 .panel {
+  background: var(--bg-overlay);
   padding: 16px 18px;
   display: grid;
   gap: var(--sp-4);
@@ -3354,8 +3387,7 @@ input[type="radio"] {
   max-width: 380px;
   padding: 8px 10px 8px 16px;
   border-radius: var(--radius-l);
-  background: var(--bg-overlay);
-  box-shadow: var(--shadow-overlay);
+  box-shadow: var(--material-edge), var(--shadow-overlay);
   color: var(--text-1);
   animation: rise var(--dur-base) var(--ease-out);
   transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);

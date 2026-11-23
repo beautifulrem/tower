@@ -173,11 +173,27 @@ pub fn handle_request(req: &FsRequest) -> FsResponse {
     }
 }
 
+/// Opens `path` for reading if it is a regular file. Opening a FIFO the
+/// agent made would wait for a writer for ever, and with it every later
+/// request: anything else is refused, checked before opening and again on
+/// what was opened.
+fn open_regular(path: &Path) -> io::Result<File> {
+    let not_regular = || io::Error::other("not a regular file");
+    if !std::fs::metadata(path)?.is_file() {
+        return Err(not_regular());
+    }
+    let file = File::open(path)?;
+    if !file.metadata()?.is_file() {
+        return Err(not_regular());
+    }
+    Ok(file)
+}
+
 fn op_read(id: u64, path: &Path) -> FsResponse {
     if path.as_os_str().is_empty() {
         return FsResponse::err(id, FsErrorCode::InvalidRequest, "path is required");
     }
-    let file = match File::open(path) {
+    let file = match open_regular(path) {
         Ok(f) => f,
         Err(e) => return FsResponse::from_io(id, &e),
     };
@@ -207,7 +223,7 @@ fn op_access(id: u64, path: &Path) -> FsResponse {
     if path.as_os_str().is_empty() {
         return FsResponse::err(id, FsErrorCode::InvalidRequest, "path is required");
     }
-    let file = match File::open(path) {
+    let file = match open_regular(path) {
         Ok(f) => f,
         Err(e) => return FsResponse::from_io(id, &e),
     };
@@ -250,6 +266,10 @@ fn write_atomic_safe(path: &Path, bytes: &[u8]) -> io::Result<()> {
     // If the target is an existing symlink, write directly so the kernel checks
     // write permission on the symlink's resolved target (matching `cat > path`).
     if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        // Not through a link to a FIFO, which would block like a read.
+        if std::fs::metadata(path).is_ok_and(|m| !m.is_file()) {
+            return Err(io::Error::other("not a regular file"));
+        }
         return std::fs::write(path, bytes);
     }
     let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) else {
@@ -287,7 +307,7 @@ fn op_mime(id: u64, path: &Path) -> FsResponse {
     if path.as_os_str().is_empty() {
         return FsResponse::err(id, FsErrorCode::InvalidRequest, "path is required");
     }
-    let mut file = match File::open(path) {
+    let mut file = match open_regular(path) {
         Ok(f) => f,
         Err(e) => return FsResponse::from_io(id, &e),
     };
@@ -482,6 +502,26 @@ mod tests {
             data_b64: None,
         });
         assert!(!rd.ok && rd.code == Some(FsErrorCode::TooLarge));
+    }
+
+    /// A FIFO in the workspace (the agent can make one) is refused at once,
+    /// never waited on: opening it would block the helper for every later
+    /// request.
+    #[test]
+    fn a_fifo_is_refused_without_blocking() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fifo = tmp.path().join("pipe");
+        assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+        for op in [FsOp::Read, FsOp::Access, FsOp::Mime] {
+            let req = FsRequest { id: 1, op, path: fifo.display().to_string(), content: None, data_b64: None };
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(handle_request(&req));
+            });
+            let resp = rx.recv_timeout(std::time::Duration::from_secs(5)).expect("answered without blocking");
+            assert!(!resp.ok, "{op:?} on a FIFO must fail");
+            assert!(resp.error.as_deref().unwrap_or_default().contains("not a regular file"), "{resp:?}");
+        }
     }
 
     #[test]

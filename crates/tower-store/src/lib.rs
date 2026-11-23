@@ -92,6 +92,30 @@ impl Store {
     pub(crate) fn now(&self) -> Millis {
         (self.clock)()
     }
+
+    /// Runs `f` as one transaction: what it writes is committed together or
+    /// not at all, and no reader sees half of it. Only writes that nest
+    /// (appends, transitions, inbox items) may be used inside.
+    pub fn atomically<T>(&mut self, f: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
+        self.conn.execute_batch("SAVEPOINT atomically")?;
+        // Never left open, not even by a panic: the store stays in use after
+        // one, and nothing written later would ever be committed.
+        let rollback = |s: &mut Store| {
+            let _ = s.conn.execute_batch("ROLLBACK TO atomically; RELEASE atomically");
+        };
+        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self))) {
+            Ok(r) => r,
+            Err(panic) => {
+                rollback(self);
+                std::panic::resume_unwind(panic);
+            }
+        };
+        let result = result.and_then(|v| Ok(self.conn.execute_batch("RELEASE atomically").map(|_| v)?));
+        if result.is_err() {
+            rollback(self);
+        }
+        result
+    }
 }
 
 pub(crate) fn new_id(prefix: &str) -> String {

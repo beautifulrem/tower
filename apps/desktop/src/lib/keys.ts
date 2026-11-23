@@ -1,13 +1,15 @@
 /**
  * Keyboard-first (docs/04 §4.17, docs/16 §16.3). Views register bindings
- * while mounted; the most recently registered scope wins. Plain keys are
- * ignored while typing; chords with ⌘ always work.
+ * while mounted; the most recently registered scope wins, within its layer: a
+ * dialog opened last is on top, and a view or a dialog's content mounted
+ * later still sits under the dialogs opened after its layer. Plain keys
+ * are ignored while typing; chords with ⌘ always work.
  *
  * The registry is reactive: the `?` sheet lists exactly the bindings that
  * are live at that moment, grouped by the scope that owns them. A binding
  * without a description is an alias (↓ for j) and stays out of the sheet.
  */
-import { createSignal, onCleanup } from "solid-js";
+import { createContext, createSignal, onCleanup, useContext } from "solid-js";
 
 export interface Binding {
   /** e.g. "j", "shift+t", "mod+k", "mod+shift+enter", "escape", "?" */
@@ -27,7 +29,19 @@ export interface Scope {
   /** Where the bindings apply (reactive), e.g. "Review". */
   name: () => string;
   bindings: Binding[];
+  /** A modal layer (a dialog, the peek drawer): the keys under it stay quiet, but for the app's own ⌘ chords. */
+  modal?: boolean;
+  /** The app's own chords (⌘K, ⌘1, ⌘,): the only ones that reach under a modal layer. A view's ⌘↩ must not save
+   *  the contract under the palette. */
+  shell?: boolean;
 }
+
+/** The dialog the components below sit in (none: the window); a dialog provides its own scope to its content. */
+export const KeyLayer = createContext<Scope | null>(null);
+
+/** Keys that may auto-repeat while held: moving through a list. Everything else fires once per press, so holding a
+ *  digit can't arm and then confirm a destructive option, and holding ⌘↩ can't create a goal twice. */
+const REPEATS = new Set(["j", "k", "arrowup", "arrowdown", "arrowleft", "arrowright", "[", "]", "pageup", "pagedown"]);
 
 const [scopes, setScopes] = createSignal<Scope[]>([]);
 
@@ -79,23 +93,41 @@ if (typeof window !== "undefined") {
     if (activatesTarget(combo, e.target)) return;
     const inInput = typing(e);
     const list = scopes();
+    let underModal = false;
     for (let i = list.length - 1; i >= 0; i--) {
-      const hit = list[i].bindings.find((b) => b.key === combo && (!b.when || b.when()));
+      const hit = (!underModal || list[i].shell) && list[i].bindings.find((b) => b.key === combo && (!b.when || b.when()));
       if (hit) {
         if (inInput && !hit.inInputs && !combo.startsWith("mod+")) return;
         e.preventDefault();
+        if (e.repeat && !REPEATS.has(combo)) return;
         hit.run(e);
         return;
+      }
+      if (list[i].modal) {
+        if (!combo.startsWith("mod+")) return;
+        underModal = true;
       }
     }
   });
 }
 
-/** Registers bindings for the lifetime of the calling component. */
-export function useKeys(bindings: Binding[], name: () => string = () => "") {
-  const scope: Scope = { name, bindings };
-  setScopes((s) => [...s, scope]);
+/**
+ * Registers bindings for the lifetime of the calling component. A dialog goes on top: the one opened last is the one
+ * you see, however deep the dialog it was opened from (the palette over a comparison inside a sheet). Other scopes
+ * go into their layer, under every dialog opened after it. Returns the scope, for a dialog to provide through
+ * `KeyLayer`.
+ */
+export function useKeys(bindings: Binding[], name: () => string = () => "", opts: { modal?: boolean; shell?: boolean } = {}): Scope {
+  const layer = useContext(KeyLayer);
+  const scope: Scope = { name, bindings, modal: opts.modal, shell: opts.shell };
+  setScopes((s) => {
+    if (opts.modal) return [...s, scope];
+    const from = layer ? s.indexOf(layer) + 1 : 0;
+    const later = s.findIndex((x, i) => i >= from && x.modal);
+    return later < 0 ? [...s, scope] : [...s.slice(0, later), scope, ...s.slice(later)];
+  });
   onCleanup(() => setScopes((s) => s.filter((x) => x !== scope)));
+  return scope;
 }
 
 const GLYPH: Record<string, string> = {

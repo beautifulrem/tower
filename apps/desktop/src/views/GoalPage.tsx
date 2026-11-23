@@ -11,7 +11,7 @@ import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
 import { Claim, CriteriaBar, discountedOf } from "../components/HonestyCore";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
-import { Button, Empty, Loading, Section } from "../components/ui";
+import { Button, Empty, Failed, Loading, Section, settled } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { clock } from "../lib/format";
 import { t, withLater } from "../lib/i18n";
@@ -37,8 +37,9 @@ const DETAIL_IRRELEVANT = new Set([
 export function GoalPage(props: { id: string }) {
   const [detail, { refetch, mutate }] = createResource(() => props.id, api.goal);
   const [watch, setWatch] = createSignal(false);
-  const extDetail = () => detail() as ExtGoalDetail | undefined;
-  const summary = () => (state.goals[props.id] ?? detail()?.summary) as ExtGoalSummary | undefined;
+  const detailOk = () => settled(detail);
+  const extDetail = () => detailOk() as ExtGoalDetail | undefined;
+  const summary = () => (state.goals[props.id] ?? detailOk()?.summary) as ExtGoalSummary | undefined;
 
   let timer: number | undefined;
   const soon = () => {
@@ -60,7 +61,7 @@ export function GoalPage(props: { id: string }) {
   const shownInbox = linger(inbox, (i) => i.id);
 
   const [undone, setUndone] = createSignal(false);
-  const undoable = () => !undone() && !!detail()?.can_undo_rollback;
+  const undoable = () => !undone() && !!detailOk()?.can_undo_rollback;
   onCleanup(onTrace(props.id, (e) => e.event.kind === "rolled_back" && setUndone(false)));
   const undoRollback = async () => {
     if ((await act(() => api.undoRollback(props.id), t("goal.rollbackUndone"))) !== undefined) {
@@ -90,7 +91,7 @@ export function GoalPage(props: { id: string }) {
   useKeys(
     [
       { key: "w", run: () => setWatch((w) => !w), desc: () => t("keys.watch") },
-      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review") },
+      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review"), when: () => !!summary()?.diffstat },
       { key: "p", run: () => togglePause(), desc: () => t("keys.pauseResume") },
       { key: "shift+e", run: () => go({ name: "new", amendId: props.id }), desc: () => t("goal.amend") },
       { key: "h", run: () => inbox()[0] && void snoozeMenu(inbox()[0]), desc: () => t("keys.snooze"), when: () => inbox().length > 0 },
@@ -176,18 +177,18 @@ export function GoalPage(props: { id: string }) {
               <div class="goal-actions">
                 <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
               </div>
-              <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin} fallback={<Seal pin={g().verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />}>
-                {(pin) => <Stamp pin={pin()} size="m" tampered={discountedOf(detail()?.criteria) > 0} />}
+              <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin} fallback={<Seal pin={g().verified_pin} large tampered={discountedOf(detailOk()?.criteria) > 0} />}>
+                {(pin) => <Stamp pin={pin()} size="m" tampered={discountedOf(detailOk()?.criteria) > 0} />}
               </Show>
             </div>
           </header>
 
           <div class="goal-body" classList={{ watching: watch() }}>
             <div class="goal-main">
-              <Show when={detail()?.briefing.length}>
+              <Show when={detailOk()?.briefing.length}>
                 <div class="briefing">
                   <span class="briefing-title">{t("goal.since", { time: clock(g().last_viewed_at ?? 0) })}</span>
-                  <For each={detail()!.briefing.slice(-6)}>
+                  <For each={detailOk()!.briefing.slice(-6)}>
                     {(b) => <span class="briefing-item" classList={{ "briefing-claim": b.source === "claim" }}>{b.text}</span>}
                   </For>
                 </div>
@@ -203,7 +204,7 @@ export function GoalPage(props: { id: string }) {
                 </div>
               </Show>
               <Show when={!watch()} fallback={<WatchPanel id={props.id} detail={extDetail()} g={g()} onExit={() => setWatch(false)} />}>
-                <Show when={extDetail()} fallback={<GoalSkeleton />}>
+                <Show when={extDetail()} fallback={<Failed error={!detail.loading && detail.error} onRetry={() => void refetch()} pending={<GoalSkeleton />} />}>
                   {(d) => <GoalBlocks d={d()} hasDecision={inbox().length > 0} undoable={undoable()} onUndoRollback={undoRollback} />}
                 </Show>
               </Show>

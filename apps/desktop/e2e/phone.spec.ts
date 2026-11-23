@@ -156,7 +156,8 @@ test("the header is the desk's title bar: runs of slots, the silence once it is 
   await expect(gauges.nth(1).locator(".dot.hollow")).toHaveCount(1);
   await expect(gauges.nth(2)).toHaveText("Spent $0.09");
   // "Spent" is for the screen reader; the eye reads the sum alone, as on the desk.
-  expect((await gauges.nth(2).locator(".sr").boundingBox())!.width).toBeLessThanOrEqual(1);
+  // Polled: the box is read once the page's styles are in, not in the frame the text first lands.
+  await expect.poll(async () => (await gauges.nth(2).locator(".sr").boundingBox())?.width ?? Infinity).toBeLessThanOrEqual(1);
   // No dot joins the readings; the refresh is said once, at the foot, while it is fresh.
   expect(await page.locator("header").innerText()).not.toMatch(/·|every 5 s/);
   await expect(page.locator("#fresh")).toContainText("again every 5 s");

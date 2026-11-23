@@ -39,6 +39,7 @@
       "../../../extensions/tower-goal/index.ts": "tower-goal/index.ts",
       "../../../extensions/tower-goal/policy.ts": "tower-goal/policy.ts",
       "../../../extensions/tower-goal/shell_parse.ts": "tower-goal/shell_parse.ts",
+      "../../../extensions/tower-goal/shell_unwrap.ts": "tower-goal/shell_unwrap.ts",
       "../../../extensions/tower-goal/engines.ts": "tower-goal/engines.ts",
       "../../../extensions/tower-goal/acp_tools.ts": "tower-goal/acp_tools.ts",
       "../../../extensions/tower-goal/sandboxfs.ts": "tower-goal/sandboxfs.ts",

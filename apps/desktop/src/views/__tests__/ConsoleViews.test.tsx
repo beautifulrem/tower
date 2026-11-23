@@ -304,4 +304,11 @@ describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () =>
     const cell = screen.getByText("Nightly dependency audit").closest("tr")!.children[3];
     expect(cell.textContent).toContain(new Date(next).toLocaleDateString("en", { month: "short", day: "numeric" }));
   });
+
+  it("says the zone on screen before the first schedule, while you write its cron", async () => {
+    apiMock.scheduledGoals.mockResolvedValueOnce([]);
+    const { container } = render(() => <Operations />);
+    await screen.findByText("No schedules");
+    expect(container.querySelector(".console-sec")!.querySelector(".console-sec-head")!.textContent).toContain("Cron (UTC)");
+  });
 });

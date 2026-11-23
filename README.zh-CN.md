@@ -56,7 +56,7 @@ Agent 调用 `submit` 后，Tower 对工作区拍下内容寻址快照（pin）�
 
 ### 2. 纵深沙箱与跨平台隔离底座
 
-每条安全承诺都对应 [SECURITY.md](SECURITY.md) 中 **103 个 CI 强制执行的自动化安全测试**，每次推送由 `tools/security-tests.mjs` 核对并在真实 `sandbox-exec` 与真实 git 下运行。
+每条安全承诺都对应 [SECURITY.md](SECURITY.md) 中 **104 个 CI 强制执行的自动化安全测试**，每次推送由 `tools/security-tests.mjs` 核对并在真实 `sandbox-exec` 与真实 git 下运行。
 
 - **常驻沙箱文件辅助进程（`--fs-helper`）**：随 Goal 启动并一次性落入同一 Seatbelt 配置，经长连接 stdio JSONL 管道（`extensions/tower-goal/sandboxfs.ts`）承接 `read`/`edit`/`write` 及 16 MiB 上限校验，兼顾内核级隔离与亚毫秒读写延迟。
 - **macOS Seatbelt（每 Goal 独立、默认拒绝）**：
@@ -222,7 +222,7 @@ Supervisor 通过单写者 SQLite WAL（配并发只读连接池）持有全部�
 - [`docs/19-anti-chat-console-design.md`](docs/19-anti-chat-console-design.md) — 反“Chat UI 惯性”飞行甲板控制台规范
 - [`docs/17-implementation.md`](docs/17-implementation.md) — 原型实现地图、验证机制与设计差异
 - [`docs/18-evolution-roadmap.md`](docs/18-evolution-roadmap.md) 与 [`ROADMAP.md`](ROADMAP.md) — P0–P2 演进蓝图与已落地里程碑
-- [`SECURITY.md`](SECURITY.md) — 威胁模型、沙箱保障与全部 103 项 CI 核验安全性质
+- [`SECURITY.md`](SECURITY.md) — 威胁模型、沙箱保障与全部 104 项 CI 核验安全性质
 
 ## 贡献与许可
 

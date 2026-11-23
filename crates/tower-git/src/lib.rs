@@ -14,7 +14,7 @@ pub mod timeline;
 pub use timeline::MergeQueueCheckItem;
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 use thiserror::Error;
 use tower_core::view::{DiffFile, DiffStat};
@@ -103,13 +103,30 @@ impl Git {
         refuse_redirect(dir)?;
         let mut c = self.command(dir);
         c.args(["-c", "core.hooksPath=/dev/null"]).env("GIT_CONFIG_NOSYSTEM", "1");
+        // This repository and no other: were `.git` broken (its HEAD
+        // deleted), git would otherwise search the directories above.
+        c.env("GIT_DIR", ".git").env("GIT_WORK_TREE", ".");
         Ok(c)
     }
 
-    fn exec(mut c: Command, args: &[&str], f: impl FnOnce(&mut Command)) -> Result<String> {
+    fn exec(c: Command, args: &[&str], f: impl FnOnce(&mut Command)) -> Result<String> {
+        Self::exec_input(c, args, f, None)
+    }
+
+    /// [`Git::exec`], with `input` (when given) on git's standard input.
+    fn exec_input(mut c: Command, args: &[&str], f: impl FnOnce(&mut Command), input: Option<&[u8]>) -> Result<String> {
         c.args(args);
         f(&mut c);
-        let out: Output = c.output()?;
+        let out: Output = match input {
+            None => c.output()?,
+            Some(bytes) => {
+                let mut child = c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+                if let Some(mut stdin) = child.stdin.take() {
+                    std::io::Write::write_all(&mut stdin, bytes)?;
+                }
+                child.wait_with_output()?
+            }
+        };
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
         } else {
@@ -586,11 +603,11 @@ impl Git {
         let Some(chosen) = hunks.get(hunk) else {
             return Err(GitError::Invalid(format!("{path} has no hunk {hunk}")));
         };
-        let file = ws.join(".git").join("tower-revert.patch");
-        std::fs::write(&file, format!("{header}{chosen}"))?;
-        let r = self.ws_run(ws, &["apply", "-R", "--whitespace=nowarn", &file.to_string_lossy()]);
-        let _ = std::fs::remove_file(&file);
-        r.map(|_| ())
+        // On standard input, never through a file: anything Tower writes in
+        // the agent's `.git` could be a link it planted, and the patch is its text.
+        let patch = format!("{header}{chosen}");
+        let apply = ["apply", "-R", "--whitespace=nowarn", "-"];
+        Self::exec_input(self.satellite(ws)?, &apply, |_| {}, Some(patch.as_bytes())).map(|_| ())
     }
 
     /// The content of `path` at `rev`, as text (lossy), or `None` when the

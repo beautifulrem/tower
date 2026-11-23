@@ -57,17 +57,17 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
 /// §16.8 (ADR-176/177), built from a parse of the file, never a line filter.
 /// Mirrors (`[source.*]` `registry`/`replace-with`/`directory`), registry
 /// indexes (`[registries.*]` `index`) and `[net]` `retry`/`git-fetch-with-cli`/
-/// `offline`; a value whose URL carries credentials does not come. Everything else stays
+/// `offline`; a value that could carry URL credentials does not come. Everything else stays
 /// behind (tokens, credential providers, `[env]`, `[build]`, aliases…), and a
 /// file that does not parse gives an empty copy.
 fn without_credentials(config: &str) -> String {
     use toml::{Table, Value};
     let Ok(doc) = config.parse::<Table>() else { return String::new() };
-    // A string whose URL carries credentials goes whole (stricter than §16.8's stripping: a mirror cannot be read
+    // A string that could carry URL credentials goes whole (stricter than §16.8's stripping: a mirror cannot be read
     // without them, and a stripped copy can collide with another source cargo then refuses); numbers and switches
     // stay; nothing else.
     let keep = |value: &Value| match value {
-        Value::String(s) => (without_userinfo(s) == *s).then(|| value.clone()),
+        Value::String(s) => carries_no_userinfo(s).then(|| value.clone()),
         Value::Integer(_) | Value::Boolean(_) => Some(value.clone()),
         _ => None,
     };
@@ -77,7 +77,7 @@ fn without_credentials(config: &str) -> String {
         for (name, entry) in doc.get(table).and_then(Value::as_table).into_iter().flatten() {
             // A name can be a URL too (`cargo vendor` names a registry's source after its index): one carrying
             // credentials goes whole, and any replacement naming it with it (below).
-            if without_userinfo(name) != *name {
+            if !carries_no_userinfo(name) {
                 continue;
             }
             let kept: Table = entry
@@ -143,28 +143,12 @@ fn without_credentials(config: &str) -> String {
     toml::to_string(&out).unwrap_or_default()
 }
 
-/// `value` with the credentials taken out of its URLs: `user:password@`, or
-/// any user name on an http(s) URL (where a lone name is usually a token). A
-/// lone ssh user (`ssh://git@host`) is no secret and stays.
-fn without_userinfo(value: &str) -> String {
-    let mut out = String::new();
-    let mut rest = value;
-    while let Some(at) = rest.find("://") {
-        let scheme = rest[..at].rsplit(|c: char| !c.is_ascii_alphanumeric() && c != '+').next().unwrap_or("");
-        let scheme = scheme.to_ascii_lowercase();
-        out.push_str(&rest[..at + 3]);
-        let authority = &rest[at + 3..];
-        // Only `/?#` (and `\`, which URL parsers read as `/`) end an authority: a password may hold a space or a quote.
-        let end = authority.find(['/', '?', '#', '\\']).unwrap_or(authority.len());
-        rest = match authority[..end].rsplit_once('@') {
-            Some((user, _)) if user.contains(':') || scheme.ends_with("http") || scheme.ends_with("https") => {
-                &authority[user.len() + 1..]
-            }
-            _ => authority,
-        };
-    }
-    out.push_str(rest);
-    out
+/// Text that can carry no URL credentials: userinfo needs a literal `@`,
+/// however a URL parser splits the rest (`sparse+http://u:p\w@`, `http:tok@`,
+/// a tab it removes), so none may hold one. The one exception is a lone ssh
+/// user (`ssh://git@host/index`, no secret), with no other `@` after it.
+fn carries_no_userinfo(text: &str) -> bool {
+    !text.contains('@') || text.strip_prefix("ssh://git@").is_some_and(|rest| !rest.contains('@'))
 }
 
 /// Creates the goal's cache directory and seeds it once from the user's
@@ -452,6 +436,13 @@ keygen = "run --bin keygen"
             // A password with a space or a quote in it is still userinfo: only `/?#` end an authority.
             ("[source.m]\nregistry = \"sparse+https://bob:hunter 0021@m.example.com/\"\n", "0021"),
             ("[registries.r]\nindex = \"sparse+https://bob:se\\\"cr'0022@r.example.com/\"\n", "0022"),
+            // However a URL parser splits it (a backslash a sparse URL keeps, no `//`, a tab it removes): no `@`,
+            // no userinfo, so a value with one does not come.
+            ("[source.m]\nregistry = 'sparse+http://user:pa\\ss0023@m.example.com/bs/'\n", "0023"),
+            ("[source.m]\nregistry = \"http:///u:p0024@m.example.com/\"\n", "0024"),
+            ("[source.m]\nregistry = \"http:tok0025@m.example.com/\"\n", "0025"),
+            ("[registries.r]\nindex = \"sparse+ht\\ttp://tok0026@r.example.com/\"\n", "0026"),
+            ("[registries.\"ssh://git@h.example.com/x?u=tok0027@y\"]\nindex = \"https://h.example.com/x\"\n", "0027"),
         ] {
             let out = without_credentials(config);
             assert!(!out.contains(secret), "{secret} left in:\n{out}");

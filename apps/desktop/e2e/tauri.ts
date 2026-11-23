@@ -153,6 +153,7 @@ export async function openTower(
             case "scheduled_goals":
               return F.scheduledGoals ?? [];
             case "merge_queue":
+              if (F.mergeQueueError) throw F.mergeQueueError;
               return F.mergeQueue ?? [];
             case "storage_inventory":
               return F.storageInventory ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] };

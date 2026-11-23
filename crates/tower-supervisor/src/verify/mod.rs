@@ -65,7 +65,9 @@ fn start(inner: Arc<Inner>, goal: String, asked: bool) {
         }
         v.insert(goal.clone(), cancel.clone());
     }
+    let winding = live(&inner, &goal);
     tokio::spawn(async move {
+        let _winding = winding;
         let result = verify(&inner, &goal, &cancel).await;
         forget(&inner.verifications, &goal, &cancel);
         if !cancel.is_cancelled() {
@@ -83,6 +85,35 @@ fn start(inner: Arc<Inner>, goal: String, asked: bool) {
             run::report(&inner, &goal, r).await;
         }
     });
+}
+
+/// Counts a verification or preflight task of `goal` as running until it is
+/// dropped (the task's end, however it ends).
+pub(crate) struct Live {
+    inner: Arc<Inner>,
+    goal: String,
+}
+
+pub(crate) fn live(inner: &Arc<Inner>, goal: &str) -> Live {
+    *inner
+        .live_verifications
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .entry(goal.to_string())
+        .or_default() += 1;
+    Live { inner: inner.clone(), goal: goal.to_string() }
+}
+
+impl Drop for Live {
+    fn drop(&mut self) {
+        let mut live = self.inner.live_verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(n) = live.get_mut(&self.goal) {
+            *n -= 1;
+            if *n == 0 {
+                live.remove(&self.goal);
+            }
+        }
+    }
 }
 
 /// Forgets a verification of `goal` once it is over, unless another took
@@ -137,7 +168,9 @@ pub fn preflight(inner: Arc<Inner>, goal: String) {
         }
         v.insert(goal.clone(), cancel.clone());
     }
+    let winding = live(&inner, &goal);
     tokio::spawn(async move {
+        let _winding = winding;
         let found = async {
             let bench = Bench::open(&inner, &goal, &rec, &ws, &base, &cancel).await?;
             let r = bench.preflight().await;
@@ -697,5 +730,22 @@ mod tests {
         assert!(!paths_gone(tmp.path(), "node --test test/a.test.js"));
         assert!(paths_gone(tmp.path(), "node --test ./test/new.test.js"));
         assert!(!paths_gone(tmp.path(), "npm test -- --reporter=dot"));
+    }
+
+    /// A verification that a pause or an abandon cancelled (and so took out
+    /// of the verifications at once) is still waited for: it may be writing
+    /// into the goal's folders while it winds down.
+    #[tokio::test]
+    async fn stopping_a_goals_verification_waits_for_one_already_cancelled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, _) = crate::schedule::tests::supervisor(&tmp).await;
+        let winding = live(&sup.inner, "G-0042");
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            drop(winding);
+        });
+        let started = std::time::Instant::now();
+        sup.stop_verification("G-0042").await;
+        assert!(started.elapsed() >= std::time::Duration::from_millis(350), "returned after {:?}", started.elapsed());
     }
 }

@@ -30,6 +30,10 @@ pub(crate) struct Inner {
     pub sink: Arc<dyn UiSink>,
     pub runs: Mutex<HashMap<String, Arc<Run>>>,
     pub verifications: Mutex<HashMap<String, Cancel>>,
+    /// Verification and preflight tasks still running per goal, cancelled or
+    /// not (a pause takes a cancelled one out of `verifications` at once, but
+    /// it may still be writing into the goal's folders as it winds down).
+    pub(crate) live_verifications: Mutex<HashMap<String, usize>>,
     /// Goals that asked for verification while one was still winding down
     /// (a quick rework can submit before the last one has cleaned up), and
     /// whether you asked (an answer, a resume, "verify again"): yours is run

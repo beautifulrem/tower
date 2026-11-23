@@ -33,7 +33,7 @@ pub(in crate::verify) async fn confirmed_refusal(output: &str, profile: Option<&
         let probe = if is_dir {
             format!("/bin/ls {}", shell_quote(&path))
         } else {
-            format!("/usr/bin/head -c 0 {}", shell_quote(&path))
+            format!("/usr/bin/head -c 1 {}", shell_quote(&path))
         };
         let out = tokio::process::Command::new("/usr/bin/sandbox-exec")
             .arg("-f")

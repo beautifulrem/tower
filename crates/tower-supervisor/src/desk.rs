@@ -3,7 +3,8 @@
 
 use std::path::PathBuf;
 
-use tower_core::tr;
+use tower_core::view::{EngineDescriptor, EngineTrustTier, GoalDiskUsage, SandboxPosture, StorageInventory};
+use tower_core::{LifecycleState, tr};
 
 use crate::api::OpenTarget;
 use crate::{Result, Supervisor, invalid, look, paths, sandbox};
@@ -134,5 +135,100 @@ impl Supervisor {
             .stderr(std::process::Stdio::null())
             .spawn()?;
         Ok(())
+    }
+
+    /// Computes per-goal disk usage across satellite clones, verification
+    /// checkouts, temporary folders, and private caches without blocking the reactor.
+    pub async fn storage_inventory(&self) -> Result<StorageInventory> {
+        let summaries = self.inner.read_store(|s| s.summaries())?;
+        let metas: Vec<crate::storage::GoalStorageMeta> = summaries
+            .into_iter()
+            .map(|g| crate::storage::GoalStorageMeta {
+                goal_id: g.id,
+                project_id: g.project_id,
+                project_name: g.project_name,
+                title: g.title,
+                state: g.state,
+                open_inbox_count: g.needs_you,
+                unmerged: matches!(g.state, LifecycleState::Accepted),
+                dirty: None,
+            })
+            .collect();
+        let inv = crate::storage::inventory(self.inner.paths.clone(), metas).await?;
+        let goals = inv
+            .goals
+            .into_iter()
+            .map(|g| GoalDiskUsage {
+                goal_id: g.goal_id,
+                project_id: g.project_id,
+                title: g.title,
+                state: g.state,
+                workspace_bytes: g.workspace_bytes,
+                verify_bytes: g.verify_bytes,
+                tmp_bytes: g.tmp_bytes,
+                cache_bytes: g.cache_bytes,
+                total_bytes: g.total_bytes,
+                reclaimable: g.reclaimable && g.reclaimable_bytes > 0,
+            })
+            .collect();
+        Ok(StorageInventory { total_bytes: inv.total_bytes, reclaimable_bytes: inv.reclaimable_bytes, goals })
+    }
+
+    /// Safely reclaims disk space for archived or abandoned goals, strictly
+    /// refusing any active, paused, in-review, or accepted goal. Returns reclaimed bytes.
+    pub async fn reclaim_storage(&self, goal_ids: Vec<String>) -> Result<u64> {
+        let mut reclaimed = 0u64;
+        for id in goal_ids {
+            let summary = self.inner.read_store(|s| s.summary(&id))?;
+            let meta = crate::storage::GoalStorageMeta {
+                goal_id: summary.id.clone(),
+                project_id: summary.project_id,
+                project_name: summary.project_name,
+                title: summary.title,
+                state: summary.state,
+                open_inbox_count: summary.needs_you,
+                unmerged: matches!(summary.state, LifecycleState::Accepted),
+                dirty: None,
+            };
+            if let Err(reason) = crate::storage::check_reclaim_safety(&meta, &self.inner.paths.workspace(&id)) {
+                let lang = self.inner.lang();
+                return Err(invalid(tr!(lang, "拒绝清理 {id}：{reason}", "Refused to reclaim {id}: {reason}")));
+            }
+            let res = crate::storage::reclaim_goal(self.inner.paths.clone(), meta)
+                .await
+                .map_err(|e| invalid(e.to_string()))?;
+            let _ = crate::ports_pool::release_for_root(&self.inner.paths.root, &id);
+            if self.inner.read_store(|s| s.goal(&id)).is_ok_and(|g| g.workspace.is_some()) {
+                let _ = self.inner.append(&id, tower_core::EventKind::WorkspaceRemoved);
+                self.inner.emit_goal_now(&id);
+            }
+            reclaimed = reclaimed.saturating_add(res.freed_bytes);
+        }
+        Ok(reclaimed)
+    }
+
+    /// Lists supported engines with explicit Onboarding Trust Gate tiers (`docs/18` P1.1).
+    pub fn engines(&self) -> Vec<EngineDescriptor> {
+        crate::acp_adapter::inspect_engines(&self.inner, self.inner.lang())
+            .into_iter()
+            .map(|e| EngineDescriptor {
+                id: e.id,
+                label: e.label,
+                trust_tier: match e.trust_tier {
+                    crate::acp_adapter::EngineTrustLevel::FullS2 => EngineTrustTier::FullS2,
+                    crate::acp_adapter::EngineTrustLevel::RestrictedS2 => EngineTrustTier::RestrictedS2,
+                    crate::acp_adapter::EngineTrustLevel::Experimental => EngineTrustTier::Experimental,
+                },
+                installed: e.installed,
+                available: e.available,
+                note: e.note,
+            })
+            .collect()
+    }
+
+    /// Reports the active OS sandbox posture and optional MicroVM availability.
+    pub fn sandbox_posture(&self) -> SandboxPosture {
+        let s = sandbox::posture_summary(&self.inner.env.pairs());
+        SandboxPosture { backend_name: s.backend_name, microvm_available: s.microvm_available, warnings: s.warnings }
     }
 }

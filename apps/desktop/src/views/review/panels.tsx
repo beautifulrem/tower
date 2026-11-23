@@ -1,14 +1,19 @@
 /**
- * The review's three sheets: the verification readout (E), accepting, and
- * requesting changes. Each is an `Overlay` opened from the keyboard, so none
- * animates in.
+ * The review's three sheets:
+ * 1. `VerifyPanel` (E): every criterion with verifier reading, flaky/console
+ *    badges, screenshots, and folded output tails.
+ * 2. `AcceptPanel` (⌘⇧↩): physical Acceptance Seal + 4-point pre-flight seal
+ *    checklist (fresh snapshot, high sentinels, human criteria, merge overlap),
+ *    two-press arming when red items stand open, and local branch seal.
+ * 3. `ChangesPanel` (C): structured Steering Dispatch tray with ⌘↩ dispatch.
  */
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
 import { DangerMark, Icon, NeedsYouMark, NotEvidenceMark, NoticeMark, ResultMark, Seal, Stamp } from "../../components/Glyph";
-import { BaselineLine, CanaryLine, CriteriaBar, HeldOutLine, LoopbackLine, ObsChip, discountedOf } from "../../components/Honesty";
+import { BaselineLine, CanaryLine, HeldOutLine, LoopbackLine, ObsChip } from "../../components/Honesty";
+import { CriteriaBar, discountedOf } from "../../components/HonestyCore";
 import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay, Prose } from "../../components/ui";
 import type { CriterionView } from "../../gen/CriterionView";
@@ -16,17 +21,17 @@ import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
 import { t } from "../../lib/i18n";
+import { useKeys } from "../../lib/keys";
 import { hasIssue } from "../../lib/labels";
 import { back } from "../../lib/nav";
 import type { Draft } from "../../lib/reviewState";
 import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
 import { act, state, toast } from "../../lib/store";
+import { type ExtCriterionView } from "../goal/ext";
 import { toComment } from "./types";
 
-/** Lines of an output tail shown before it folds: the exit code and the runner's last three, so four criteria and their pictures fit one screen. */
 const TAIL_LINES = 4;
 
-/** An output tail that folds after four lines, with a line saying how much more there is. */
 function OutputTail(props: { text: string }) {
   const [all, setAll] = createSignal(false);
   const lines = () => props.text.split("\n");
@@ -46,7 +51,6 @@ function OutputTail(props: { text: string }) {
   );
 }
 
-/** Whether a scrolling sheet has more below the fold; re-read on scroll and whenever its content changes. */
 function useMoreBelow(): [() => boolean, (el: HTMLDivElement) => void, () => void] {
   const [more, setMore] = createSignal(false);
   let el: HTMLDivElement | undefined;
@@ -60,7 +64,6 @@ function useMoreBelow(): [() => boolean, (el: HTMLDivElement) => void, () => voi
   return [more, bind, () => requestAnimationFrame(measure)];
 }
 
-/** The verification readout's order: look criteria, then not-evidence, failed, stale, pending (human ones awaiting you among them), passed. */
 export function readoutOrder(all: CriterionView[], mark: (c: CriterionView) => "pending" | "stale" | "pass" | "fail"): CriterionView[] {
   const rank = (c: CriterionView) => {
     if (c.criterion.kind.type === "look") return 0;
@@ -72,15 +75,10 @@ export function readoutOrder(all: CriterionView[], mark: (c: CriterionView) => "
   return all.map((c, i) => ({ c, i, r: rank(c) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.c);
 }
 
-/** Every criterion with its last verifier reading and output tail, in one sheet. */
 export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined; loading: boolean; onClose: () => void }) {
   const g = () => state.goals[props.id];
   const mark = (c: CriterionView) => (!c.verified ? "pending" : c.verified.stale ? "stale" : c.verified.passed ? "pass" : "fail");
-  // What most needs your eye, first. The pictures lead: a look criterion's reading is its two screenshots, the one thing
-  // here you judge by eye. Then a pass that is not evidence and a failure, then what is stale or not yet run, and the
-  // passes last. Every row keeps its id, and the order inside a rank is the contract's, so nothing is lost in the order.
   const criteria = () => readoutOrder(props.detail?.criteria ?? [], mark);
-  // The sheet is taller than the window on a goal with several criteria: a fade at its foot says there is more, and leaves once you are there.
   const [more, bindPanel, remeasure] = useMoreBelow();
   createEffect(on(() => [props.loading, criteria().length], remeasure, { defer: true }));
   return (
@@ -100,68 +98,78 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
       <Show when={!props.loading} fallback={<Loading />}>
         <div class="verify-list">
           <For each={criteria()} fallback={<Empty title={t("goal.noCriteria")} inline />}>
-            {(c) => (
-              <div class="verify-item">
-                <div class="criterion-row">
-                  <Show when={c.criterion.kind.type === "exec"} fallback={<ResultMark kind={c.human_checked ? "obs-pass" : "pending"} title={c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")} />}>
-                    <Show when={c.canary === "tampered" && mark(c) === "pass"} fallback={<ResultMark kind={mark(c)} />}>
-                      <NotEvidenceMark />
+            {(raw) => {
+              const c = raw as ExtCriterionView;
+              const errs = () => c.verified?.console_errors ?? c.look?.console_errors ?? [];
+              return (
+                <div class="verify-item">
+                  <div class="criterion-row">
+                    <Show when={c.criterion.kind.type === "exec"} fallback={<ResultMark kind={c.human_checked ? "obs-pass" : "pending"} title={c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")} />}>
+                      <Show when={c.canary === "tampered" && mark(c) === "pass"} fallback={<ResultMark kind={mark(c)} />}>
+                        <NotEvidenceMark />
+                      </Show>
                     </Show>
+                    <span class="num t3">{c.criterion.id}</span>
+                    <span class="criterion-main">
+                      <span class="criterion-title">{c.criterion.title}</span>
+                      <Show when={c.criterion.kind.type === "exec"}>
+                        <code class="criterion-cmd code-val">{(c.criterion.kind as { command: string }).command}</code>
+                      </Show>
+                      <Show when={c.criterion.kind.type === "look"}>
+                        <code class="criterion-cmd code-val">{(c.criterion.kind as { url: string }).url}</code>
+                      </Show>
+                    </span>
+                    <Show
+                      when={c.verified}
+                      fallback={
+                        <span class="col-span t3">
+                          {c.criterion.kind.type !== "exec" ? (c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")) : t("goal.awaitingVerify")}
+                        </span>
+                      }
+                    >
+                      {(v) => (
+                        <>
+                          <span class="col-result">
+                            <span class="sr-only">{t("honesty.srVerified")} </span>
+                            {v().passed ? t("common.passed") : t("common.failed")}
+                          </span>
+                          <span class="col-dur">{duration(v().duration_ms)}</span>
+                          <span class="col-pin">
+                            <Icon name="harness" size={10} />@{short(v().pin)}
+                          </span>
+                          <span class="col-age">{ago(v().at, state.now)}</span>
+                        </>
+                      )}
+                    </Show>
+                  </div>
+                  <Show when={c.verified?.flaky || errs().length > 0}>
+                    <div class="ev-strip">
+                      <Show when={c.verified?.flaky}><span class="ev-pill ev-pill-obs" data-mark="obs">Flaky · 1× rerun passed</span></Show>
+                      <Show when={errs().length > 0}><span class="ev-pill ev-pill-danger" data-mark="danger" title={errs().join("\n")}>Console errors: {errs().length}</span></Show>
+                    </div>
                   </Show>
-                  <span class="num t3">{c.criterion.id}</span>
-                  <span class="criterion-main">
-                    <span class="criterion-title">{c.criterion.title}</span>
-                    <Show when={c.criterion.kind.type === "exec"}>
-                      <code class="criterion-cmd code-val">{(c.criterion.kind as { command: string }).command}</code>
-                    </Show>
-                    <Show when={c.criterion.kind.type === "look"}>
-                      <code class="criterion-cmd code-val">{(c.criterion.kind as { url: string }).url}</code>
-                    </Show>
-                  </span>
-                  <Show
-                    when={c.verified}
-                    fallback={
-                      <span class="col-span t3">
-                        {c.criterion.kind.type !== "exec" ? (c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")) : t("goal.awaitingVerify")}
+                  <BaselineLine c={c} base={props.detail?.base_commit} />
+                  <CanaryLine c={c} />
+                  <HeldOutLine c={c} />
+                  <LoopbackLine c={c} />
+                  <Show when={c.look}>{(l) => <LookStrip look={l()} title={`${c.criterion.id} ${c.criterion.title}`} />}</Show>
+                  <Show when={c.observed}>
+                    <div class="criterion-row criterion-obs">
+                      <ResultMark kind={c.observed!.passed ? "obs-pass" : "obs-fail"} />
+                      <span />
+                      <span class="col-span">
+                        <ObsChip title={t("goal.observedTitle")} />
+                        <span>{c.observed!.passed ? t("common.passed") : t("common.failed")}</span>
+                        <span class="col-age">{ago(c.observed!.at, state.now)}</span>
                       </span>
-                    }
-                  >
-                    {(v) => (
-                      <>
-                        <span class="col-result">
-                          <span class="sr-only">{t("honesty.srVerified")} </span>
-                          {v().passed ? t("common.passed") : t("common.failed")}
-                        </span>
-                        <span class="col-dur">{duration(v().duration_ms)}</span>
-                        <span class="col-pin">
-                          <Icon name="harness" size={10} />@{short(v().pin)}
-                        </span>
-                        <span class="col-age">{ago(v().at, state.now)}</span>
-                      </>
-                    )}
+                    </div>
+                  </Show>
+                  <Show when={c.verified}>
+                    {(v) => <OutputTail text={`${t("common.exitCode", { code: v().exit_code ?? "—" })}\n${v().output_tail || t("common.noOutput")}`} />}
                   </Show>
                 </div>
-                <BaselineLine c={c} base={props.detail?.base_commit} />
-                <CanaryLine c={c} />
-                <HeldOutLine c={c} />
-                <LoopbackLine c={c} />
-                <Show when={c.look}>{(l) => <LookStrip look={l()} title={`${c.criterion.id} ${c.criterion.title}`} />}</Show>
-                <Show when={c.observed}>
-                  <div class="criterion-row criterion-obs">
-                    <ResultMark kind={c.observed!.passed ? "obs-pass" : "obs-fail"} />
-                    <span />
-                    <span class="col-span">
-                      <ObsChip title={t("goal.observedTitle")} />
-                      <span>{c.observed!.passed ? t("common.passed") : t("common.failed")}</span>
-                      <span class="col-age">{ago(c.observed!.at, state.now)}</span>
-                    </span>
-                  </div>
-                </Show>
-                <Show when={c.verified}>
-                  {(v) => <OutputTail text={`${t("common.exitCode", { code: v().exit_code ?? "—" })}\n${v().output_tail || t("common.noOutput")}`} />}
-                </Show>
-              </div>
-            )}
+              );
+            }}
           </For>
         </div>
       </Show>
@@ -175,10 +183,8 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
   );
 }
 
-/** A thing still open at accepting: red ones need your judgement; a sentinel's line is its sentence, under the group's name. */
 interface OpenItem {
   danger?: boolean;
-  /** A pass that is not evidence: the ◆ it wears on the goal page, the readout and the board, never the sentinel's red ■. */
   notEvidence?: boolean;
   text: string;
   sentinel?: boolean;
@@ -186,29 +192,20 @@ interface OpenItem {
 
 export interface AcceptPanelProps {
   id: string;
-  /** Review units marked viewed, of the total. */
   viewed: number;
   total: number;
   detail: GoalDetail | undefined;
   onHumanCheck: (criterion: string, v: boolean) => void;
   onClose: () => void;
   onDone: () => void;
-  /** Where to go once accepted: the queue's next review, or back. Defaults to back. */
   onFinish?: () => void;
 }
 
-/**
- * Accepting: what the verifier measured, what you still have to check off,
- * what is still open (sentinels, assumptions, unviewed units), and the branch.
- */
 export function AcceptPanel(props: AcceptPanelProps) {
   const [busy, setBusy] = createSignal(false);
   const g = () => state.goals[props.id];
-  // Human and "look" criteria are both yours to check off; a look one brings its before/after pictures along.
   const humans = () => props.detail?.criteria.filter((c) => c.criterion.kind.type !== "exec") ?? [];
-  // An unchecked human criterion blocks too, but says so on its own row; only the goal's state needs a sentence.
   const unchecked = () => humans().filter((h) => !h.human_checked).length;
-  // Without a git identity the accepted commit would have no author: set it here, for this repository by default.
   const identityMissing = () => hasIssue(state.env, "git_identity_missing");
   const blockers = () => {
     const b: string[] = [];
@@ -217,16 +214,18 @@ export function AcceptPanel(props: AcceptPanelProps) {
     return b;
   };
   const blocked = () => blockers().length > 0 || unchecked() > 0;
-  // A pass with a tampered canary is not evidence: it leaves the verified count, withholds the seal, and is the first thing still open.
   const tampered = () => props.detail?.criteria.filter((c) => c.canary === "tampered") ?? [];
   const counted = () => Math.max(0, (g()?.progress.machine ?? 0) - tampered().length);
-  /** Still open, not blocking: you may accept, but you see them first. */
+  const highSentinels = () => (props.detail?.sentinels ?? []).filter((h) => h.severity >= 3);
+  const staleCount = () => (props.detail?.criteria ?? []).filter((c) => c.verified?.stale).length;
+  const overlaps = () => g()?.overlaps ?? [];
+  const snapshotFresh = () => !!g()?.verified_pin && staleCount() === 0 && tampered().length === 0;
+
   const open = () => {
     const items: OpenItem[] = [];
     for (const c of tampered()) items.push({ danger: true, notEvidence: true, text: t("review.openTampered", { id: c.criterion.id }) });
     for (const c of props.detail?.claims ?? []) if (c.kind === "assumption" && c.approved === null) items.push({ text: t("review.openAssumption", { text: c.text }) });
     if (props.total - props.viewed > 0) items.push({ text: t("review.openUnviewed", { n: props.total - props.viewed }) });
-    // The sentinels last in their group, under their name said once.
     for (const h of props.detail?.sentinels ?? []) items.push({ danger: h.severity >= 3, text: h.title, sentinel: true });
     return items;
   };
@@ -251,8 +250,6 @@ export function AcceptPanel(props: AcceptPanelProps) {
       )}
     </For>
   );
-  // Red items above — a pass that is not evidence, a high-severity sentinel — do not block, but they are not one press away
-  // either: the primary reads "Accept anyway" and arms on the first press, as Abandon does, saying how many it is over.
   const judgement = () => open().filter((o) => o.danger);
   const notice = () => open().filter((o) => !o.danger);
   const [armedUntil, setArmedUntil] = createSignal(0);
@@ -262,7 +259,6 @@ export function AcceptPanel(props: AcceptPanelProps) {
   const armedLeft = () => (armedUntil() > now() ? Math.ceil((armedUntil() - now()) / 1000) : 0);
   const press = () => {
     if (judgement().length && !armedLeft()) {
-      // One reading of the clock: two could straddle a millisecond and count a second too many.
       const at = Date.now();
       setNow(at);
       setArmedUntil(at + ARM_MS);
@@ -271,9 +267,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
     setArmedUntil(0);
     void accept();
   };
-  // A pushed branch already exists: accepting adds a commit on it rather than writing a new one.
   const updating = () => !!g()?.pr || (!!g()?.branch && g()?.state === "in_review" && !!props.detail?.runs.some((r) => r.purpose === "ci_fix"));
-  // The branch acceptance writes (or, when one exists, updates): the supervisor names it ahead of time.
   const branchName = () => g()?.branch || props.detail?.branch_preview || null;
   const accept = async () => {
     setBusy(true);
@@ -288,8 +282,6 @@ export function AcceptPanel(props: AcceptPanelProps) {
   return (
     <Overlay onClose={props.onClose} label={t("review.acceptTitle", { id: props.id })} title={t("review.acceptTitle", { id: props.id })} instant initialFocus="panel">
       <div class="panel-section">
-        {/* The verdict is the sheet's masthead: the stamp on a line of its own — Tower's signature, the largest type in the
-            interface, pressed in once as the sheet opens — and what it stands on, in one quiet line under it. */}
         <div class="accept-verdict">
           <Show
             when={g()?.progress.machine}
@@ -311,12 +303,24 @@ export function AcceptPanel(props: AcceptPanelProps) {
             </Show>
             <span class="meta accept-basis">
               {tampered().length > 0 ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length }) : t("review.allPassed", { n: g()!.progress.machine })}
-              {/* Every unit viewed is said once, here; anything unviewed is listed below as still open. */}
               <Show when={props.total > 0 && props.viewed === props.total}>
                 <span class="num accept-viewed">{t("review.viewedAll", { n: props.total })}</span>
               </Show>
             </span>
           </Show>
+
+          <div class="seal-checks" aria-label="Acceptance seal checks">
+            <For
+              each={[
+                [snapshotFresh() ? "ok" : "warn", snapshotFresh() ? "Snapshot fresh" : tampered().length ? "Seal withheld" : "Snapshot stale/unverified"],
+                [highSentinels().length ? "danger" : "ok", highSentinels().length ? `${highSentinels().length} high sentinel(s)` : "0 high sentinels"],
+                [unchecked() ? "warn" : "ok", unchecked() ? `${unchecked()} human check(s) left` : "Human checks clear"],
+                [overlaps().length ? "warn" : "ok", overlaps().length ? `Overlap: ${overlaps().map((o) => o.goal_id).join(", ")}` : "Merge prediction clear"],
+              ] as [string, string][]}
+            >
+              {([cls, text]) => <div class={`seal-check seal-check-${cls}`}>{text}</div>}
+            </For>
+          </div>
         </div>
         <For each={humans()}>
           {(h) => (
@@ -334,7 +338,6 @@ export function AcceptPanel(props: AcceptPanelProps) {
           )}
         </For>
       </div>
-      {/* What is still open, by weight: what is not evidence or needs your judgement first, what to look at after. */}
       <Show when={judgement().length}>
         <div class="panel-section open-judgement">
           <div class="meta t3">{t("review.openJudgementTitle")}</div>
@@ -373,8 +376,6 @@ export function AcceptPanel(props: AcceptPanelProps) {
       </div>
       <Show when={blockers().length}>
         <div class="panel-blockers" role="alert">
-          {/* What keeps the button off is a "not yet", nobody's failure: the ◇ the missing identity wears in Settings and on
-              the welcome page, never the red ■ of a verifier's or a sentinel's finding. */}
           <For each={blockers()}>
             {(b) => (
               <div class="panel-blocker">
@@ -410,10 +411,13 @@ export function AcceptPanel(props: AcceptPanelProps) {
   );
 }
 
+/** Structured Steering Dispatch Tray: sends all anchored inline comments back as steering (`⌘↩`). */
 export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: () => void; onSent: () => void; onRemove: (i: number) => void; onFinish?: () => void }) {
   const [summary, setSummary] = createSignal("");
   const [busy, setBusy] = createSignal(false);
+  const canSend = () => !busy() && (!!summary().trim() || props.comments.length > 0);
   const send = async () => {
+    if (!canSend()) return;
     setBusy(true);
     const ok = await act(() => api.requestChanges(props.id, summary(), props.comments.map(toComment)), t("review.sentBack"));
     setBusy(false);
@@ -423,14 +427,34 @@ export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: ()
       (props.onFinish ?? back)();
     }
   };
+  useKeys([{ key: "mod+enter", run: () => void send(), inInputs: true }]);
+
   return (
     <Overlay onClose={props.onClose} label={t("review.requestChanges")} title={t("review.requestChanges")} instant>
-      <textarea class="panel-text" rows={3} aria-label={t("review.summaryPlaceholder")} placeholder={t("review.summaryPlaceholder")} value={summary()} onInput={(e) => setSummary(e.currentTarget.value)} />
+      <div class="dispatch-head">
+        <Icon name="return" size={12} />
+        <span class="t1">Steering dispatch tray</span>
+        <span class="num t3">{props.comments.length ? `${props.comments.length} anchored` : "0"}</span>
+      </div>
+      <textarea
+        class="panel-text"
+        rows={3}
+        aria-label={t("review.summaryPlaceholder")}
+        placeholder={t("review.summaryPlaceholder")}
+        value={summary()}
+        onInput={(e) => setSummary(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && canSend()) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+      />
       <div class="panel-section">
         <For each={props.comments} fallback={<p class="meta">{t("review.noInline")}</p>}>
           {(c, i) => (
-            <div class="fact-row">
-              <span class="mono t2">
+            <div class="dispatch-row">
+              <span class="mono t2" style={{ "white-space": "nowrap" }}>
                 {c.path}
                 {c.old ? ` ${t("review.oldLine", { n: c.old })}` : c.line ? `:${c.line}` : ""}
               </span>
@@ -449,7 +473,7 @@ export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: ()
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.cancel")}
         </Button>
-        <Button variant="primary" busy={busy()} disabled={!summary().trim() && !props.comments.length} onClick={send}>
+        <Button variant="primary" busy={busy()} disabled={!canSend()} onClick={() => void send()} kbd="mod+enter">
           {t("review.sendBack")}
         </Button>
       </div>

@@ -157,4 +157,68 @@ describe("FileDiff comment flow", () => {
     mount();
     expect(screen.getAllByText("Revert hunk")).toHaveLength(1);
   });
+
+  it("collapses AST-marked moved_unchanged and formatting_only hunks into expandable pills", () => {
+    const { container } = mount({ movedHunks: [0] });
+    expect(container.querySelectorAll(".dl")).toHaveLength(0);
+    expect(screen.getByText("Moved unchanged")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Expand hunk" }));
+    expect(container.querySelectorAll(".dl")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Fold" })).toBeTruthy();
+
+    const { container: fmt } = mount({ formattingHunks: [0] });
+    expect(fmt.querySelectorAll(".dl")).toHaveLength(0);
+    expect(screen.getByText("Formatting only")).toBeTruthy();
+  });
+
+  it("activates Split-Geometry virtualization for diffs exceeding 400 rows while preserving commenting", () => {
+    const bigFile: DiffFile = {
+      path: "src/huge.ts",
+      old_path: null,
+      status: "modified",
+      additions: 520,
+      deletions: 0,
+      binary: false,
+      hunks: [
+        {
+          header: "@@ -1,0 +1,520 @@",
+          lines: Array.from({ length: 520 }, (_, i) => ({
+            kind: "add" as const,
+            old_no: null,
+            new_no: i + 1,
+            text: `export const row_${i + 1} = ${i + 1};`,
+          })),
+        },
+      ],
+    };
+    const { container, anchors } = mount({ file: bigFile });
+    const tbody = container.querySelector("tbody")!;
+    expect(tbody.getAttribute("data-virtualized")).toBe("true");
+    expect(Number(tbody.getAttribute("data-total-rows"))).toBeGreaterThan(500);
+    // Windowed slice renders far fewer DOM rows than the full 520 lines.
+    const rendered = container.querySelectorAll("tr.dl").length;
+    expect(rendered).toBeGreaterThan(0);
+    expect(rendered).toBeLessThan(120);
+    expect(screen.getByText(/virtual/)).toBeTruthy();
+
+    // Clicking a rendered line number still anchors a comment accurately.
+    fireEvent.click(screen.getByLabelText("Line 1: comment"));
+    expect(anchors).toEqual([{ path: "src/huge.ts", line: 1, old: null }]);
+
+    // Keyboard arrow navigation walks virtualized line buttons cleanly.
+    const table = screen.getByLabelText(/Changes in src\/huge\.ts/);
+    table.focus();
+    fireEvent.focus(table);
+    const first = document.activeElement as HTMLElement;
+    expect(first.className).toContain("ln-btn");
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(document.activeElement).not.toBe(first);
+    expect((document.activeElement as HTMLElement).className).toContain("ln-btn");
+
+    // Split view virtualization also windows rows cleanly.
+    const { container: splitC } = mount({ file: bigFile, split: true });
+    expect(splitC.querySelector("tbody")!.getAttribute("data-virtualized")).toBe("true");
+    expect(splitC.querySelectorAll("tr.dl-split").length).toBeGreaterThan(0);
+    expect(splitC.querySelectorAll("tr.dl-split").length).toBeLessThan(120);
+  });
 });

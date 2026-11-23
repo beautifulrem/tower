@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 tower-core.workspace = true
+tower-ast.workspace = true
 tower-store.workspace = true
 tower-pi.workspace = true
 tower-git.workspace = true

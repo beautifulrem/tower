@@ -15,15 +15,28 @@
 //!   Tower itself runs git there outside the sandbox.
 //!
 //! The keychain service is never reachable. With the network allowed, TLS
-//! trust evaluation goes through `trustd` and `ocspd` only.
+//! trust evaluation goes through `trustd`, `ocspd` and `TrustEvaluationAgent` only.
 
 use std::path::{Path, PathBuf};
 
+pub mod backend;
 mod browser;
+pub mod container;
+pub mod linux;
 mod ports;
 mod toolchains;
 
+pub use backend::{
+    CleanupTarget, MacSeatbeltBackend, PreparedProfile, SandboxBackend, SandboxCapabilities, SandboxDiagnostic,
+    SandboxKind, SandboxPostureSummary, WrappedCommand, all_capabilities, default_backend, posture_summary,
+    select_backend,
+};
 pub use browser::{BrowserSpec, browser_profile};
+pub use container::{AppleContainerBackend, AppleContainerConfig, AppleContainerProbe};
+pub use linux::{
+    BwrapSpec, CgroupSpec, LandlockAccessFs, LandlockRule, LandlockRuleset, LinuxEnvProbe, LinuxSandboxBackend,
+    PortBridgeSpec, detect_ubuntu_apparmor_restriction, parse_apparmor_userns_sysctl,
+};
 pub use ports::{COMMON_PROXY_PORTS, Listener, listeners, listening_ports, port_free, proxy_ports};
 pub use toolchains::{developer_dir, path_toolchains, toolchain_env, toolchain_reads};
 pub use tower_core::env_cause::loopback_refusal;
@@ -228,6 +241,48 @@ fn q(p: &Path) -> String {
     format!("\"{}\"", p.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// Escapes regex metacharacters for a POSIX ERE literal path prefix in SBPL `#"..."`.
+pub(crate) fn regex_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 8);
+    for ch in s.chars() {
+        match ch {
+            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '^' | '$' | '|' | '"' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Instruction and harness-config files inside any workspace that the agent
+/// may read (so project rules apply) but must never overwrite or poison for
+/// future sessions (`docs/00` §0.5.1, `docs/18` P0.2).
+pub const PROTECTED_INSTRUCTION_DESC: &[&str] = &["AGENTS*.md", "CLAUDE.md", ".pi/", ".agents/"];
+
+/// Emits Seatbelt rules denying writes to prompt-instruction files and harness
+/// metadata directories at any depth inside `workspace` (case-insensitive to
+/// match macOS default case-insensitive APFS) and denying all hard-link
+/// creation (`file-link`) so path-based read denials cannot be bypassed.
+fn write_hardening_rules(s: &mut String, workspace: &Path) {
+    let ws_str = workspace.to_string_lossy();
+    let ws_trimmed = ws_str.trim_end_matches('/');
+    let ws_re = regex_escape(ws_trimmed);
+    // Case-insensitive character classes (SBPL uses POSIX ERE without `(?i)`).
+    s.push_str(&format!(
+        "(deny file-write*\n  \
+         (regex #\"^{ws_re}(/.*)?/[Aa][Gg][Ee][Nn][Tt][Ss][^/]*\\.[Mm][Dd]$\")\n  \
+         (regex #\"^{ws_re}(/.*)?/[Cc][Ll][Aa][Uu][Dd][Ee](\\.[^/]+)?\\.[Mm][Dd]$\")\n  \
+         (regex #\"^{ws_re}(/.*)?/\\.[Pp][Ii](/|$)\")\n  \
+         (regex #\"^{ws_re}(/.*)?/\\.[Aa][Gg][Ee][Nn][Tt][Ss](/|$)\")\n)\n"
+    ));
+    // Deny hard-link creation (`link(2)` -> Seatbelt `file-link`, distinct from
+    // `ln -s` symbolic links) so path-based denials cannot be sidestepped by
+    // linking a denied file to an allowed path.
+    s.push_str("(deny file-link)\n");
+}
+
 pub fn profile(spec: &Spec) -> String {
     let home = &spec.home;
     let rw = [&spec.workspace, &spec.tmp, &spec.cache];
@@ -350,6 +405,7 @@ pub fn profile(spec: &Spec) -> String {
     if let Some(d) = &spec.drop {
         s.push_str(&format!("(allow file-write* (subpath {0}))\n(deny file-read* (subpath {0}))\n", q(d)));
     }
+    write_hardening_rules(&mut s, &spec.workspace);
     network_rules(&mut s, spec, &rw);
     s
 }

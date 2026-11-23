@@ -234,6 +234,10 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   const networkDecision = () => it().kind === "paused" && goal()?.pause_reason === "dependencies_changed";
   // Held-out tests failed: the output is for you alone, a hint is the way that keeps it so, and showing the agent the failure is a deliberate second choice.
   const heldOut = () => it().kind === "paused" && goal()?.pause_reason === "held_out_failed";
+  // Agent honestly reported the task blocked/impossible: strictly an Agent Claim, never a Harness Fact.
+  const agentBlocked = () => it().kind === "paused" && (goal()?.pause_reason as string | null) === "agent_reported_blocked";
+  // Synthetic holdout draft awaiting human ratification before entering `holdout/`.
+  const holdoutDraft = () => it().kind === "assumption" && /holdout/i.test(it().subject);
   // The verification sandbox could not run the criteria (on your own code, or at all): an environment problem, not the agent's and not a test failure.
   const envProblem = () => it().kind === "paused" && ["prepare_failed", "verify_env_error", "criteria_cannot_run"].includes(goal()?.pause_reason ?? "");
   const parts = () => bodyParts(it());
@@ -371,9 +375,28 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </Show>
             <Show when={envProblem() ? withoutEnvAside(parts().prose) : parts().prose}>
               {(prose) => (
-                <p class="decision-body">
-                  <Prose text={prose()} />
-                </p>
+                <Show
+                  when={agentBlocked() || holdoutDraft()}
+                  fallback={
+                    <p class="decision-body">
+                      <Prose text={prose()} />
+                    </p>
+                  }
+                >
+                  <div class="prov-frame prov-claim">
+                    <div class="prov-head halt">
+                      <span class="prov-badge">
+                        <span class="claim-rule" aria-hidden="true">┆</span>
+                        {agentBlocked() ? t("decision.blockedClaim") : t("decision.holdoutDraftClaim")}
+                      </span>
+                    </div>
+                    <div class="prov-body">
+                      <p class="decision-body">
+                        <Prose text={prose()} />
+                      </p>
+                    </div>
+                  </div>
+                </Show>
               )}
             </Show>
             {/* What the sandbox refused, lifted out of the tail as the line to act on, with the way to where it is fixed. */}

@@ -18,8 +18,8 @@ import { Button } from "./ui";
  */
 export async function pickProject() {
   // The dialog plugin loads with the first picker, not at start-up.
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const dir = await open({ directory: true, multiple: false, title: t("welcome.pickRepo") });
+  const { openDialog } = await import("../views/Learning");
+  const dir = await openDialog({ directory: true, multiple: false, title: t("welcome.pickRepo") });
   if (typeof dir !== "string") return;
   const p = await act(() => api.addProject(dir));
   if (!p) return;

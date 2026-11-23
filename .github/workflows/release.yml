@@ -9,8 +9,16 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      dmg_sha256: ${{ steps.checksum.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v7
+      - name: Release metadata
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Rust toolchain and both macOS targets
         run: |
           rustup show active-toolchain
@@ -33,8 +41,32 @@ jobs:
           { echo "body<<NOTES"; cat notes.md; echo "NOTES"; } >> "$GITHUB_OUTPUT"
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      # Signing and notarization happen when the secrets exist (see
-      # RELEASING.md); without them the build is unsigned and says so.
+      - name: Prepare updater bundle args
+        id: updater
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && [ -n "$TOWER_UPDATER_PUBKEY" ]; then
+            cat > apps/desktop/src-tauri/tauri.updater.json <<EOF
+          {
+            "bundle": { "createUpdaterArtifacts": true },
+            "plugins": {
+              "updater": {
+                "pubkey": "$TOWER_UPDATER_PUBKEY",
+                "endpoints": ["https://github.com/beautifulrem/tower/releases/latest/download/latest.json"]
+              }
+            }
+          }
+          EOF
+            echo 'args=--target universal-apple-darwin --config src-tauri/tauri.updater.json' >> "$GITHUB_OUTPUT"
+            echo 'include_json=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'args=--target universal-apple-darwin' >> "$GITHUB_OUTPUT"
+            echo 'include_json=false' >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TOWER_UPDATER_PUBKEY: ${{ secrets.TOWER_UPDATER_PUBKEY }}
+      # Signing, Apple notarization, and Tauri Ed25519 updater manifests
+      # (`latest.json` + `.sig`) run automatically when secrets exist (RELEASING.md).
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,10 +77,67 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TOWER_UPDATER_PUBKEY: ${{ secrets.TOWER_UPDATER_PUBKEY }}
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: Tower ${{ github.ref_name }}
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
-          args: --target universal-apple-darwin
+          includeUpdaterJson: ${{ steps.updater.outputs.include_json == 'true' }}
+          args: ${{ steps.updater.outputs.args }}
+      - name: Compute universal DMG SHA256
+        id: checksum
+        run: |
+          dmg=$(find target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -name '*.dmg' | head -n 1)
+          if [ -n "$dmg" ]; then
+            sha=$(shasum -a 256 "$dmg" | awk '{print $1}')
+            echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+            echo "Universal DMG SHA256: $sha"
+          fi
+
+  homebrew-cask:
+    needs: macos
+    runs-on: ubuntu-latest
+    if: ${{ needs.macos.outputs.dmg_sha256 != '' }}
+    steps:
+      - name: Check Homebrew tap token
+        id: tap-auth
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -n "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Homebrew tap bump: HOMEBREW_TAP_TOKEN secret is not configured."
+          fi
+      - uses: actions/checkout@v7
+        if: steps.tap-auth.outputs.enabled == 'true'
+      - name: Checkout Homebrew Tap
+        if: steps.tap-auth.outputs.enabled == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: beautifulrem/homebrew-tower
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Bump Casks/tower.rb
+        if: steps.tap-auth.outputs.enabled == 'true'
+        run: |
+          version="${{ needs.macos.outputs.version }}"
+          sha="${{ needs.macos.outputs.dmg_sha256 }}"
+          mkdir -p tap/Casks
+          sed \
+            -e "s/^  version \".*\"/  version \"$version\"/" \
+            -e "s/^  sha256 \".*\"/  sha256 \"$sha\"/" \
+            packaging/homebrew/tower.rb > tap/Casks/tower.rb
+          cd tap
+          git config user.name "tower-release-bot"
+          git config user.email "release-bot@tower.dev"
+          if ! git diff --quiet Casks/tower.rb; then
+            git add Casks/tower.rb
+            git commit -m "tower $version"
+            git push origin HEAD
+          fi

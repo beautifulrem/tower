@@ -62,6 +62,11 @@ impl Paths {
         self.root.join("goals").join(goal)
     }
 
+    /// Private directory storing pasted multimodal image attachments for `goal`.
+    pub fn attachments_dir(&self, goal: &str) -> PathBuf {
+        self.goal_dir(goal).join("attachments")
+    }
+
     pub fn extension_dir(&self) -> PathBuf {
         self.root.join("extensions").join("tower-goal")
     }

@@ -245,6 +245,95 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE criterion_results ADD COLUMN held_out_proof TEXT;
     "#,
+    // 20: flaky criterion tag + look console errors & mobile screenshot
+    r#"
+    ALTER TABLE criterion_results ADD COLUMN flaky INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE looks ADD COLUMN console_errors TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE looks ADD COLUMN mobile_file TEXT;
+    "#,
+    // 21: learning loop memory ratification queue + calibration scoreboard facts
+    r#"
+    CREATE TABLE memory_proposals (
+        id            TEXT PRIMARY KEY,
+        scope         TEXT NOT NULL,
+        project_id    TEXT,
+        goal_id       TEXT,
+        text          TEXT NOT NULL,
+        detail        TEXT NOT NULL DEFAULT '',
+        origin        TEXT NOT NULL,
+        evidence      TEXT NOT NULL DEFAULT '[]',
+        taint_level   TEXT NOT NULL,
+        taint_classes TEXT NOT NULL DEFAULT '[]',
+        status        TEXT NOT NULL DEFAULT 'pending',
+        created_at    INTEGER NOT NULL,
+        resolved_at   INTEGER
+    );
+    CREATE INDEX memory_proposals_status ON memory_proposals(status, created_at DESC);
+
+    CREATE TABLE calibration_facts (
+        goal_id           TEXT PRIMARY KEY,
+        project_id        TEXT NOT NULL,
+        engine            TEXT NOT NULL,
+        model             TEXT NOT NULL,
+        first_pass        INTEGER,
+        rework_cycles     INTEGER NOT NULL DEFAULT 0,
+        had_high_sentinel INTEGER NOT NULL DEFAULT 0,
+        reported_blocked  INTEGER NOT NULL DEFAULT 0,
+        cost_usd          REAL NOT NULL DEFAULT 0,
+        recorded_at       INTEGER NOT NULL
+    );
+    CREATE INDEX calibration_facts_group ON calibration_facts(engine, model, project_id);
+    "#,
+    // 22: scheduled goals, merge queue, multimodal attachments & cross-goal dependencies
+    r#"
+    CREATE TABLE scheduled_goals (
+        id                TEXT PRIMARY KEY,
+        project_id        TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        title             TEXT NOT NULL,
+        cron_expr         TEXT NOT NULL,
+        contract_template TEXT NOT NULL,
+        enabled           INTEGER NOT NULL DEFAULT 1,
+        last_run_at       INTEGER,
+        next_run_at       INTEGER,
+        last_goal_id      TEXT,
+        unattended_strict INTEGER NOT NULL DEFAULT 1,
+        last_checkpoint   TEXT,
+        created_at        INTEGER NOT NULL
+    );
+
+    CREATE TABLE merge_queue (
+        goal_id        TEXT PRIMARY KEY,
+        project_id     TEXT NOT NULL,
+        position       INTEGER NOT NULL,
+        status         TEXT NOT NULL DEFAULT 'queued',
+        conflict_files TEXT NOT NULL DEFAULT '[]',
+        updated_at     INTEGER NOT NULL
+    );
+    CREATE INDEX merge_queue_project ON merge_queue(project_id, position);
+
+    CREATE TABLE goal_attachments (
+        id         TEXT PRIMARY KEY,
+        goal_id    TEXT NOT NULL,
+        name       TEXT NOT NULL,
+        mime       TEXT NOT NULL,
+        path       TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+    );
+    CREATE INDEX goal_attachments_goal ON goal_attachments(goal_id, created_at);
+
+    CREATE TABLE goal_dependencies (
+        goal_id            TEXT NOT NULL,
+        depends_on_goal_id TEXT NOT NULL,
+        PRIMARY KEY (goal_id, depends_on_goal_id)
+    );
+    CREATE INDEX goal_dependencies_dep ON goal_dependencies(depends_on_goal_id);
+    "#,
+    // 23: fast projections for dynamic port block & escalated model
+    r#"
+    ALTER TABLE goals ADD COLUMN port_base INTEGER;
+    ALTER TABLE goals ADD COLUMN escalated_model TEXT;
+    "#,
 ];
 
 pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {

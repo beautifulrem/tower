@@ -8,30 +8,30 @@
 <title>Tower</title>
 <style>
   /*
-   * Tower on a phone: the same quiet cockpit, one column. Three greys and no
-   * more; colour only where a human is needed (the amber strip on a card) or
-   * the verifier has spoken (the green seal). Same tokens as the desktop's
-   * tokens.css, in oklch; the system font so nothing is fetched. Every
-   * target is at least 44pt, as iOS asks.
+   * Tower on a phone: Flight-Deck console in one calm column. Precision
+   * surfaces in oklch, solid vs dashed provenance registers, live SSE event
+   * stream with fallback polling, and 44pt iOS touch targets. Zero external
+   * requests; every API & SSE request carries the 256-bit fragment token in
+   * Authorization: Bearer only.
    */
   :root {
     --bg: oklch(0.992 0.002 80); --bg-raised: oklch(1 0 0); --bg-inset: oklch(0.975 0.003 80);
-    --bg-hover: oklch(0.955 0.004 80); --bg-selected: oklch(0.940 0.006 80);
-    --border-subtle: oklch(0.20 0.01 70 / 0.08); --border: oklch(0.20 0.01 70 / 0.14); --border-strong: oklch(0.20 0.01 70 / 0.22);
-    --text-1: oklch(0.230 0.006 70); --text-2: oklch(0.430 0.006 70); --text-3: oklch(0.530 0.006 70); --text-4: oklch(0.555 0.005 70);
+    --bg-strip: oklch(0.982 0.003 80); --bg-hover: oklch(0.955 0.004 80); --bg-selected: oklch(0.940 0.006 80);
+    --border-subtle: oklch(0.20 0.01 70 / 0.08); --border: oklch(0.20 0.01 70 / 0.14); --border-strong: oklch(0.20 0.01 70 / 0.24);
+    --text-1: oklch(0.220 0.006 70); --text-2: oklch(0.425 0.006 70); --text-3: oklch(0.530 0.006 70); --text-4: oklch(0.555 0.005 70);
     --st-attention: oklch(0.600 0.150 65); --attention-bg: oklch(0.962 0.034 85);
     --st-danger: oklch(0.540 0.190 25); --st-verified: oklch(0.550 0.130 155); --st-active: oklch(0.500 0.130 240);
-    --focus: oklch(0.230 0.006 70 / 0.65);
+    --verified-bg: oklch(0.960 0.025 155); --focus: oklch(0.220 0.006 70 / 0.65);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: oklch(0.180 0.004 70); --bg-raised: oklch(0.215 0.005 70); --bg-inset: oklch(0.160 0.004 70);
-      --bg-hover: oklch(0.235 0.005 70); --bg-selected: oklch(0.265 0.006 70);
-      --border-subtle: oklch(1 0 0 / 0.06); --border: oklch(1 0 0 / 0.12); --border-strong: oklch(1 0 0 / 0.18);
-      --text-1: oklch(0.945 0.003 70); --text-2: oklch(0.860 0.005 70); --text-3: oklch(0.720 0.006 70); --text-4: oklch(0.620 0.006 70);
-      --st-attention: oklch(0.800 0.150 75); --attention-bg: oklch(0.225 0.030 75);
+      --bg: oklch(0.168 0.005 70); --bg-raised: oklch(0.205 0.006 70); --bg-inset: oklch(0.148 0.004 70);
+      --bg-strip: oklch(0.186 0.005 70); --bg-hover: oklch(0.232 0.006 70); --bg-selected: oklch(0.262 0.007 70);
+      --border-subtle: oklch(1 0 0 / 0.07); --border: oklch(1 0 0 / 0.13); --border-strong: oklch(1 0 0 / 0.20);
+      --text-1: oklch(0.945 0.003 70); --text-2: oklch(0.840 0.005 70); --text-3: oklch(0.700 0.006 70); --text-4: oklch(0.590 0.006 70);
+      --st-attention: oklch(0.800 0.150 75); --attention-bg: oklch(0.228 0.032 75);
       --st-danger: oklch(0.750 0.150 25); --st-verified: oklch(0.770 0.130 155); --st-active: oklch(0.780 0.120 235);
-      --focus: oklch(0.945 0.003 70 / 0.70);
+      --verified-bg: oklch(0.215 0.028 155); --focus: oklch(0.945 0.003 70 / 0.70);
     }
   }
   * { box-sizing: border-box; }
@@ -44,42 +44,40 @@
     padding: max(14px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
   }
   .num { font-variant-numeric: tabular-nums; }
-  .mono { font-family: ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace; font-size: 13px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace; font-size: 12.5px; }
   button { font: inherit; color: inherit; cursor: default; -webkit-tap-highlight-color: transparent; }
   button:focus-visible, textarea:focus-visible { outline: 1.5px solid var(--focus); outline-offset: 2px; }
 
-  /* The wordmark: Tower's own mark (the cab on its mast — never the verified ring) and the name set as a name, the desktop's. */
-  /* The header is the desk's title bar on a phone: the wordmark left, the gauge strip right, on one hairline. */
-  header { display: flex; align-items: center; gap: 12px; min-height: 32px; padding-bottom: 8px; margin-bottom: 6px; border-bottom: 1px solid var(--border-subtle); }
-  .wordmark { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 14px; letter-spacing: -0.01em; font-weight: 600; color: var(--text-2); flex: 0 0 auto; }
+  /* Flight-Deck top telemetry strip. */
+  header {
+    display: flex; align-items: center; gap: 10px; min-height: 36px;
+    padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .wordmark { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; line-height: 14px; letter-spacing: -0.01em; font-weight: 600; color: var(--text-1); flex: 0 0 auto; }
   .wordmark svg { display: block; }
-  /* The gauges, as on the desk: runs, silence (only once it is worth a look), spend, and the connection when it is not
-     fine. Spacing groups them, never a dot. With the power off every reading is a dash in the quietest grey. */
-  #status { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 12px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); white-space: nowrap; }
+  #status { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 10px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); white-space: nowrap; }
   #gauges { display: contents; }
   #conn:empty { display: none; }
   .gauge { display: inline-flex; align-items: center; gap: 5px; }
   .gauge svg { display: block; flex: 0 0 auto; }
   .gauge.active, .gauge.stale, .gauge.off { color: var(--text-1); }
+  .gauge.live { color: var(--text-2); font-size: 11px; padding: 1px 6px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--bg-strip); }
   .gauge.dead { color: var(--text-4); }
   .gauge .dot { width: 6px; height: 6px; border-radius: 1px; flex: 0 0 auto; background: var(--st-danger); }
-  /* Silence is worth a look, not a failure: a hollow square, so the strip never shows two ■. */
+  .gauge .dot.ok { border-radius: 50%; background: var(--st-verified); }
   .gauge .dot.hollow { background: transparent; border: 1px solid var(--st-danger); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-  /* Scale titles, as on the board: the word in sentence case, a hairline, the count. */
   h2 { display: flex; align-items: center; gap: 10px; margin: 24px 0 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-2); }
   h2::after { content: ""; flex: 1; height: 1px; background: var(--border-subtle); }
   h2 .num { color: var(--text-3); order: 3; font-size: 12px; }
   .empty { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; color: var(--text-2); font-size: 14px; }
   .empty svg { flex: 0 0 auto; margin-top: 6px; color: var(--text-3); }
-  /* The empty list is the list's own shape, waiting: two hollow rows — the draft ring and a bar where each reading will land — never pretend data. */
   .ghost { margin-top: 4px; pointer-events: none; }
-  .ghost .row { min-height: 44px; }
+  .ghost .row { min-height: 44px; background: transparent; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; padding: 6px 0; }
   .ghost svg { color: var(--text-4); }
   .ghost .bar { display: block; height: 6px; border-radius: 3px; background: var(--bg-selected); }
   .ghost .bar + .bar { margin-top: 8px; }
-  /* Offline: the desk's start-up failure in a column — the sentence, where to look, when the page last got through, one way back. */
   .offline { display: grid; gap: 4px; padding: 18px 0 0; }
   .error { display: flex; align-items: baseline; gap: 10px; color: var(--text-1); font-size: 16px; line-height: 24px; font-weight: 500; }
   .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); flex: 0 0 auto; transform: translateY(-1px); }
@@ -87,43 +85,38 @@
   .offline .when { padding-left: 18px; color: var(--text-3); font-size: 12px; }
   .offline .btn { margin-top: 14px; width: 100%; }
 
-  /* A decision card: amber lives only in its 32px strip — the tint, and a 2px rule on its left edge, the desk's focused card in miniature. */
-  .card { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-raised); margin-bottom: 12px; overflow: hidden; }
+  /* Decision Gate Card: amber attention bar + structured provenance registers. */
+  .card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); margin-bottom: 12px; overflow: hidden; }
   .strip { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 10px; border-left: 2px solid var(--st-attention); background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
   .strip .mark { width: 9px; height: 9px; flex: 0 0 auto; }
-  .strip .kind { color: var(--text-1); font-weight: 500; }
+  .strip .kind { color: var(--text-1); font-weight: 600; }
   .strip .goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .strip .age { margin-left: auto; color: var(--text-3); flex: 0 0 auto; }
-  /* The bell: 44pt of target around a 12px glyph, quiet until pressed. */
-  .strip .bell { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 0 -14px 0 -4px; padding: 0; border: 0; background: transparent; color: var(--text-3); opacity: .7; flex: 0 0 auto; }
+  .strip .bell { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 0 -14px 0 -4px; padding: 0; border: 0; background: transparent; color: var(--text-3); opacity: .75; flex: 0 0 auto; }
   .strip .bell[aria-expanded="true"], .strip .bell:active { opacity: 1; color: var(--text-1); }
-  /* "Later": the label on its own line, the two times side by side under it; no sheet to dismiss. */
   .later { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; align-items: center; font-size: 12px; color: var(--text-3); }
   .later > span { grid-column: 1 / -1; }
   .later .btn { min-height: 40px; padding: 0 10px; font-size: 14px; }
-  .main { padding: 10px 12px 12px; display: grid; gap: 8px; }
-  .question { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: -0.008em; user-select: text; }
+  .main { padding: 11px 12px 12px; display: grid; gap: 9px; }
+  .question { font-size: 16px; line-height: 23px; font-weight: 500; letter-spacing: -0.008em; user-select: text; }
   .question.code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-  .question.code { font-size: 15px; font-weight: 500; word-break: break-word; }
+  .question.code { font-size: 14.5px; font-weight: 500; word-break: break-word; }
   .body { color: var(--text-2); font-size: 14px; white-space: pre-wrap; word-break: break-word; user-select: text; }
+  /* Agent-reported blocker claim uses dashed left border (Claim register, never Fact green). */
+  .claim-box { border-left: 2px dashed var(--border-strong); background: var(--bg-inset); padding: 8px 10px; border-radius: 0 6px 6px 0; display: grid; gap: 4px; }
+  .claim-box .tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
   .tail { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-inset); border: 1px solid var(--border-subtle); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-variant-ligatures: none; }
-  /* One output line per block, its wrap hanging two characters in: a continuation never reads as the next line. */
   .tail .tl { display: block; padding-left: 2ch; text-indent: -2ch; }
   .caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-1); }
   .caution svg { flex: 0 0 auto; margin-top: 3px; }
   .caution.note { color: var(--text-3); }
-  /* Held-out output: your register — a solid 2px rule in text-1, like a human stamp, with "for you only" where a source would
-     hang; the one block on a card the agent has never seen. The failing tests' names are machine values above the runner's lines. */
   .heldout { display: grid; gap: 8px; padding: 2px 0 2px 10px; border-left: 2px solid var(--text-1); }
   .heldout .label { font-size: 12px; line-height: 16px; color: var(--text-2); font-weight: 500; }
   .heldout .head { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
   .heldout .head .id { color: var(--text-3); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
-  /* Each name in its own hairline chip, as on the desk: two names never read as one sentence, and a full line wraps a whole name. */
   .heldout .names { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: 12px; color: var(--text-3); }
   .heldout .names code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 20px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-1); user-select: text; }
   .heldout .tail { margin: 0; }
-  /* A card's choices have one width rule: the primary takes the whole line, the others share the next in equal columns;
-     when one of them would not fit its column, every one takes a whole line (fitOpts). Never ragged widths. */
   .opts { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: 8px; }
   .opts .btn { padding: 0 12px; }
   .opts .btn.primary { grid-column: 1 / -1; }
@@ -132,50 +125,47 @@
   .btn { min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--text-1); font-size: 15px; font-weight: 500; white-space: nowrap; }
   .btn:active { background: var(--bg-selected); }
   .btn.primary { background: var(--text-1); border-color: var(--text-1); color: var(--bg); }
-  /* One black button a screen, as on the desk's queue: only the first card — the most urgent — fills its primary; the
-     others keep the plain frame until you are working in them. */
   .card.quiet:not(:focus-within) .btn.primary { background: var(--bg-raised); border-color: var(--border); color: var(--text-1); }
   .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
-  .btn.armed { border-color: var(--text-1); background: var(--bg-selected); }
+  .btn.armed { border-color: var(--st-danger); color: var(--st-danger); background: var(--bg-selected); }
   .btn:disabled { color: var(--text-3); border-color: var(--border-subtle); }
-  /* Decisions that widen what the agent may do stay at the desk: named, not offered. */
   .desk { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-3); }
   .desk svg { flex: 0 0 auto; margin-top: 3px; }
   .desk b { font-weight: 500; color: var(--text-2); }
   textarea { width: 100%; font: inherit; font-size: 15px; line-height: 20px; padding: 11px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text-1); resize: none; min-height: 44px; outline: none; }
   textarea::placeholder { color: var(--text-3); }
-  /* A field's focus is its edge, and the edge changes for real: text-3, a line the eye finds. */
   textarea:focus { border-color: var(--text-3); }
   textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--text-3); }
   .reply { display: flex; gap: 8px; align-items: flex-end; }
   .reply textarea { flex: 1; }
-  /* The hint on a held-out card is the primary path: the field takes the whole line, the button the next. */
   .reply.hint { flex-wrap: wrap; }
   .reply.hint textarea { flex: 1 1 100%; }
   .reply.hint .btn { flex: 1 1 auto; }
-  .claim { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); column-gap: 10px; font-size: 14px; }
-  .claim .who { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 3px; }
-  .claim .who::before { content: "┆ "; color: var(--text-4); }
-  .claim .what { color: var(--text-2); }
 
-  /* A goal row: glyph, title, badge word · detail; the right column is an action or nothing. */
-  .row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; min-height: 52px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
-  .row:first-of-type { border-top: 0; }
+  /* ATC Flight-Strip Goal Row: solid verified pips vs dashed observed pips + live telemetry. */
+  .row {
+    display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 10px; align-items: center;
+    min-height: 58px; padding: 9px 10px; margin-bottom: 6px;
+    border: 1px solid var(--border-subtle); border-radius: 7px; background: var(--bg-strip);
+  }
   .row .glyph { display: block; }
-  .row .head { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+  .row .head { display: flex; gap: 7px; align-items: baseline; min-width: 0; }
   .row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .row .live { display: flex; gap: 8px; align-items: baseline; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
-  .row .live .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
-  .row .live .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .live .detail.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
-  .row .live .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--text-3); flex: 0 0 auto; }
+  .row .meta { display: flex; gap: 6px; align-items: center; margin-top: 2px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
+  .row .meta .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
+  .row .meta .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta .detail.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+  .row .meta .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--text-3); flex: 0 0 auto; }
+  .row .meta .pill { font-size: 10.5px; padding: 0 5px; border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-3); flex: 0 0 auto; }
+  .pips { display: inline-flex; gap: 2px; align-items: center; flex: 0 0 auto; }
+  .pip { width: 10px; height: 4px; border-radius: 1px; background: var(--border); }
+  .pip.v { background: var(--st-verified); }
+  .pip.o { background: transparent; border: 1px dashed var(--text-3); }
   .row .seal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .seal .pin { color: var(--text-2); font-weight: 400; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
-  .row .btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
-  /* How long the run has been going: the desk's age column, at the title line's end, one register down. */
-  .row .head .elapsed { margin-left: auto; font-size: 12px; color: var(--text-3); flex: 0 0 auto; }
-  .foot { margin-top: 28px; font-size: 11px; line-height: 16px; color: var(--text-4); text-align: center; text-wrap: balance; }
-  /* When the page last got through: a footnote while it is fresh; past a minute the header says it instead. */
+  .row .btn { min-height: 40px; padding: 0 12px; font-size: 13.5px; }
+  .row .head .elapsed { margin-left: auto; font-size: 11.5px; color: var(--text-3); flex: 0 0 auto; }
+  .foot { margin-top: 26px; font-size: 11px; line-height: 16px; color: var(--text-4); text-align: center; text-wrap: balance; }
   .foot + .foot { margin-top: 4px; }
 </style>
 </head>
@@ -195,16 +185,16 @@ const T = {
   en: { needs: "Needs you", toAccept: "Ready to accept", running: "Running", none: "Nothing needs you.", noneBody: "Questions, approvals and pauses show up here.",
         noRuns: "No goal is running.", send: "Send", pause: "Pause", confirm: "Press again", unpaired: "Open the pairing link from Tower's Settings on this phone.",
         offline: "Can't reach Tower on your Mac", offlineWhere: "Is the Mac awake, and is this phone on its Tailscale or Wi-Fi?",
-        retry: "Retry", you: "you", atDesk: "At your Mac: ", listSep: ", ", offGauge: "Offline",
-        lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, stale: (a) => `updated ${a}`,
+        retry: "Retry", you: "you", atDesk: "At your Mac: ", listSep: ", ", offGauge: "Offline", liveStream: "Live",
+        lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, freshLive: (c) => `Live stream · updated ${c}`, stale: (a) => `updated ${a}`,
         runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, spent: (u) => `Spent ${u}`,
-        later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00", putAside: "Put aside until",
+        later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
         runningFor: (d) => `running ${d}`,
         answerPlaceholder: "Write your answer…", notePlaceholder: "A note for the agent (optional)…",
         forYou: "For you only", failing: "failing", hintPlaceholder: "A hint for the agent, in your words…", sendHint: "Send the hint and resume",
         heldOutNote: "A hint, or only the names of what failed, keeps the tests hidden; showing the failure does not.",
-        acceptOnDesk: "Review and accept on your Mac", claim: "Agent says", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
+        acceptOnDesk: "Review and accept on your Mac", claim: "Agent claim", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
         foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
         states: { draft: "Draft", ready: "Ready", running: "Running", paused: "Paused", claimed: "Claimed done", verifying: "Verifying", in_review: "Ready to accept", accepted: "Accepted", integrated: "Merged", archived: "Archived", abandoned: "Abandoned" },
         modes: { idle: "Idle", starting: "Starting", thinking: "Thinking", reading: "Working", editing: "Working", executing: "Working", waiting_on_you: "Needs you", retrying: "Retrying", compacting: "Compacting", verifying: "Verifying", settled: "Stopped" },
@@ -212,32 +202,29 @@ const T = {
   zh: { needs: "需要你", toAccept: "待验收", running: "运行中", none: "没有需要你决定的事。", noneBody: "问题、审批、假设与暂停会出现在这里。",
         noRuns: "没有正在运行的目标。", send: "发送", pause: "暂停", confirm: "再按一次", unpaired: "在这台手机上打开 Tower 设置里的配对链接。",
         offline: "连不上你 Mac 上的 Tower", offlineWhere: "Mac 是否醒着？这台手机是否连着同一个 Tailscale 或 Wi-Fi？",
-        retry: "重试", you: "你", atDesk: "在电脑上：", listSep: "、", offGauge: "离线",
-        lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, stale: (a) => `更新于 ${a}`,
+        retry: "重试", you: "你", atDesk: "在电脑上：", listSep: "、", offGauge: "离线", liveStream: "实时",
+        lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, freshLive: (c) => `实时流 · ${c} 更新`, stale: (a) => `更新于 ${a}`,
         runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `无响应 ${d}`, spent: (u) => `累计 ${u}`,
-        later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00", putAside: "已收起，再提醒于",
+        later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
         runningFor: (d) => `已运行 ${d}`,
         answerPlaceholder: "写下你的回答…", notePlaceholder: "写给 Agent 的话（可选）…",
         forYou: "只给你看", failing: "失败", hintPlaceholder: "用你的话给 Agent 一句提示…", sendHint: "发送提示并继续",
         heldOutNote: "给提示，或只告诉它哪些测试失败，这些测试仍对它隐藏；把失败给它看则不再隐藏。",
-        acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 称", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
+        acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 声明", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
         foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
         states: { draft: "草稿", ready: "就绪", running: "运行中", paused: "已暂停", claimed: "自称完成", verifying: "验证中", in_review: "待验收", accepted: "已验收", integrated: "已合入", archived: "已归档", abandoned: "已放弃" },
         modes: { idle: "空闲", starting: "准备中", thinking: "思考", reading: "执行", editing: "执行", executing: "执行", waiting_on_you: "等你", retrying: "重试", compacting: "压缩中", verifying: "验证", settled: "已停" },
         kinds: { question: "问题", approval: "审批", assumption: "假设", paused: "已暂停", review_ready: "待验收", stalled: "可能卡住", ci_failed: "CI 失败" } },
 };
-// The page speaks the supervisor's language. Until it has heard from it (or when it cannot), the language it last
-// rendered in, else the phone's own: an offline page in Chinese for a Chinese desk.
 const LANG_KEY = "tower-lang";
 let lang = (localStorage.getItem(LANG_KEY) || navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
 document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
 const t = (k) => T[lang][k];
-// The token comes in the link's fragment, which browsers never send.
+// The 256-bit token travels ONLY in the URL fragment, never in query params.
 if (location.hash.length > 1) { localStorage.setItem("tower-token", location.hash.slice(1)); history.replaceState(null, "", "/"); }
 const token = localStorage.getItem("tower-token");
 const app = document.getElementById("app");
-const status = document.getElementById("status");
 const gauges = document.getElementById("gauges");
 const conn = document.getElementById("conn");
 const fresh = document.getElementById("fresh");
@@ -248,13 +235,11 @@ const api = async (path, body) => {
   if (!r.ok) throw new Error(data.error || r.status);
   return data;
 };
-// Glyphs: the desktop's one-pen set, 10px grid, 1.25px butt-capped lines.
 const G = {
   bell: `<svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true"><path d="M2 7.5 L2 5 A3 3 0 0 1 8 5 L8 7.5 Z"/><path d="M4 8.8 A1 1 0 0 0 6 8.8"/></svg>`,
   diamond: `<svg class="mark" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)"/></svg>`,
   notice: `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>`,
   ring: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>`,
-  // The runs gauge: the running glyph's ring, filled by how many of the slots are in use — the desk's, drawn the same way.
   runs(f) {
     const a = 2 * Math.PI * Math.max(0, Math.min(1, f));
     const wedge = f <= 0 ? "" : f >= 1 ? `<circle cx="5" cy="5" r="4" fill="var(--st-active)"/>`
@@ -273,9 +258,7 @@ const G = {
   },
 };
 const machine = (s) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
-// Where rows will be: the row grid itself, each with a hollow ring and two bars (title, live line) of the given widths.
 const ghost = (rows) => `<div class="ghost" aria-hidden="true">${rows.map(([a, b]) => `<div class="row">${G.ring}<div><i class="bar" style="width:${a}%"></i><i class="bar" style="width:${b}%"></i></div><span></span></div>`).join("")}</div>`;
-// Prose first, machine lines (an installer's tail, a command, a path) after, as on the desk.
 const MACHINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
 function parts(i) {
   const body = (i.body || "").trim();
@@ -286,9 +269,6 @@ function parts(i) {
   if (first < 0) return { prose: body, tail: "" };
   return { prose: lines.slice(0, first).join("\n").trim(), tail: lines.slice(first).join("\n").trim() };
 }
-// A held-out card's body, as the desk reads it: the supervisor's sentence; a line per criterion naming its failing tests
-// ("Failing in C2: a, b" / "C2 失败的测试：a、b"); then one block per failed criterion, `C2 · title` over the runner's lines.
-// The output is for you alone, so it never goes through the prose/tail split above.
 const HELD_HEAD = /^(\S{1,12}) · (.+)$/;
 const HELD_NAMES = /^(?:Failing in (\S{1,12}): (.+)|(\S{1,12}) 失败的测试：(.+))$/;
 function heldOut(body) {
@@ -308,22 +288,16 @@ function heldOut(body) {
   for (const [id, list] of names) if (!failures.some((f) => f.id === id)) failures.push({ id, title: "", tail: "", names: list });
   return { prose: prose.join("\n").trim(), failures };
 }
-// A machine tail, a line to a block: a line too long for the phone wraps under itself with a two-character hang, so a
-// wrapped `expected 10.01 to equal 10.02` never reads as two lines of output.
 const tailHtml = (text) => `<pre class="tail">${text.split("\n").map((l) => `<span class="tl">${esc(l) || " "}</span>`).join("")}</pre>`;
 const heldHtml = (h) => `<div class="heldout"><span class="label">${t("forYou")}</span>${h.failures.map((f) => `
   <div class="head"><span class="id">${esc(f.id)}</span><span>${esc(f.title)}</span></div>
   ${f.names.length ? `<div class="names"><span>${t("failing")}</span>${f.names.map((n) => `<code>${esc(n)}</code>`).join("")}</div>` : ""}
   ${f.tail ? tailHtml(f.tail) : ""}`).join("")}</div>`;
-// What the reply box asks for: a question wants an answer, a held-out card a hint, anything else a note.
 const replyHtml = (i, held) => {
   const ph = held ? t("hintPlaceholder") : i.kind === "question" ? t("answerPlaceholder") : t("notePlaceholder");
-  // The hint is a sentence or two, so its field opens two rows deep; a note or an answer starts at one.
   return `<div class="reply ${held ? "hint" : ""}"><textarea id="t-${esc(i.id)}" rows="${held ? 2 : 1}" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></textarea><button class="btn ${held ? "primary" : ""}" data-send="${esc(i.id)}">${held ? t("sendHint") : t("send")}</button></div>`;
 };
-// Mirrors the supervisor's `answerable_away`: allowing a gated action, overriding a sentinel and
-// installing changed dependencies with the network widen what the agent may do, so they are
-// decided where the diff is — the page names them instead of offering them.
+// Mirrors the supervisor's `answerable_away`: privilege-widening choices stay at the desk.
 const DESK_ONLY = {
   approval: ["Allow", "Approve", "允许", "批准"],
   any: ["I've checked, go to review", "我已确认，进入评审", "I've checked, install with the network", "我看过改动，这次联网安装",
@@ -331,7 +305,6 @@ const DESK_ONLY = {
 };
 const atDeskOnly = (i, o) => (i.kind === "approval" ? DESK_ONLY.approval : DESK_ONLY.any).includes(o);
 let armed = null;
-// The card whose "later" choices are open (one at a time, like the arming).
 let later = null;
 async function snooze(id, until) {
   later = null;
@@ -352,16 +325,21 @@ async function pause(goal) {
   load();
 }
 let last = null;
+let pendingState = null;
 let lastOk = 0;
+let sseLive = false;
+let offline = false;
 const ago = (at) => t("ago")(Math.round((Date.now() - at) / 60000));
-// 24-hour "HH:MM" in both languages, as on the desk.
 const clock = (at) => { const d = new Date(at); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
-// Elapsed time in the desk's units ("42s", "3m", "1h 20m"), the same letters in both languages.
 const dur = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 const usd = (v) => v === 0 ? "$0" : v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`;
-// The header's gauges, the desk's title bar in its words: runs of slots, the engine's silence once it is worth a look
-// (past 30 s; a hollow square past two minutes — a page read every 5 s has no business counting seconds below that),
-// and what has been spent.
+function pipsHtml(p) {
+  if (!p || !p.machine) return "";
+  const n = Math.min(p.machine, 6);
+  let out = `<span class="pips" title="${p.verified}/${p.machine} verified · ${p.observed}/${p.machine} observed">`;
+  for (let i = 0; i < n; i++) out += `<i class="pip ${i < p.verified ? "v" : i < p.observed ? "o" : ""}"></i>`;
+  return out + "</span>";
+}
 function gaugesHtml(s) {
   const running = s.goals.filter((g) => g.state === "running");
   const max = s.max_running || 0;
@@ -373,17 +351,25 @@ function gaugesHtml(s) {
   const spent = usd(s.goals.reduce((a, g) => a + (g.cost_usd || 0), 0));
   return h + `<span class="gauge num" title="${esc(t("spent")(spent))}"><span class="sr">${esc(t("spent")(""))}</span>${spent}</span>`;
 }
-let offline = false;
-// When the page last got through: a footnote while fresh; past a minute without a fresh read, a reading in the header.
 function showStatus() {
   if (offline || !lastOk) return;
   const stale = Date.now() - lastOk > 60_000;
-  conn.className = stale ? "gauge stale" : "gauge";
-  conn.textContent = stale ? t("stale")(ago(lastOk)) : "";
-  fresh.textContent = t("fresh")(clock(lastOk));
-  if (last) gauges.innerHTML = gaugesHtml(last);
+  if (stale) {
+    conn.className = "gauge stale";
+    conn.textContent = t("stale")(ago(lastOk));
+  } else if (sseLive) {
+    conn.className = "gauge live";
+    conn.innerHTML = `<span class="dot ok"></span>${esc(t("liveStream"))}`;
+  } else {
+    conn.className = "gauge";
+    conn.textContent = "";
+  }
+  fresh.textContent = sseLive ? t("freshLive")(clock(lastOk)) : t("fresh")(clock(lastOk));
+  if (last) {
+    const gh = gaugesHtml(last);
+    if (gauges.innerHTML !== gh) gauges.innerHTML = gh;
+  }
 }
-// A card's other choices share a line in equal columns, unless one would not fit its column: then each takes a line.
 function fitOpts() {
   for (const o of app.querySelectorAll(".opts")) {
     o.classList.remove("stack");
@@ -391,6 +377,20 @@ function fitOpts() {
   }
 }
 addEventListener("resize", fitOpts);
+function applyState(s) {
+  last = s;
+  lastOk = Date.now();
+  if (document.activeElement && document.activeElement.matches("textarea")) {
+    pendingState = s;
+    showStatus();
+    return;
+  }
+  pendingState = null;
+  render(s);
+}
+document.addEventListener("focusout", () => {
+  if (pendingState) { const s = pendingState; pendingState = null; render(s); }
+});
 function render(s) {
   if (!s) return;
   lang = s.lang.startsWith("zh") ? "zh" : "en";
@@ -404,11 +404,10 @@ function render(s) {
   if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>${ghost([[62, 40], [44, 58]])}`;
   for (const [at, i] of items.entries()) {
     const g = goals.get(i.goal_id);
-    // Held-out tests failed: the output is for you alone, the hint is the way that keeps it so, and the agent-facing choices come after.
     const held = i.kind === "paused" && g && g.pause_reason === "held_out_failed" ? heldOut(i.body) : null;
+    const isBlockedClaim = i.kind === "paused" && g && (g.pause_reason === "agent_reported_blocked" || (i.body || "").includes("reported blocked (claim)") || (i.body || "").includes("主动上报阻塞"));
     const p = held ? { prose: held.prose, tail: "" } : parts(i);
     const desk = [];
-    // The primary leads, on a line of its own; the rest keep the supervisor's order on the next.
     const shown = i.options.map((o, n) => ({ o, tone: i.tones[n] || (n === 0 ? "primary" : "neutral") })).filter(({ o }) => !(atDeskOnly(i, o) && desk.push(o)));
     shown.sort((a, b) => (b.tone === "primary") - (a.tone === "primary"));
     const others = shown.filter((x) => x.tone !== "primary").length;
@@ -424,7 +423,7 @@ function render(s) {
       <div class="main">
         ${laterOpen ? `<div class="later"><span>${t("later")}</span><button class="btn" data-snooze="${esc(i.id)}" data-until="${Date.now() + 3_600_000}">${t("inHour")}</button><button class="btn" data-snooze="${esc(i.id)}" data-until="${tomorrowAt9()}">${t("tomorrow")}</button></div>` : ""}
         <p class="question ${i.kind === "ci_failed" ? "code" : ""}">${esc(i.subject)}</p>
-        ${p.prose ? `<p class="body">${esc(p.prose)}</p>` : ""}
+        ${p.prose ? (isBlockedClaim ? `<div class="claim-box"><span class="tag">${esc(t("claim"))}</span><p class="body">${esc(p.prose)}</p></div>` : `<p class="body">${esc(p.prose)}</p>`) : ""}
         ${p.tail ? tailHtml(p.tail) : ""}
         ${held && held.failures.length ? heldHtml(held) : ""}
         ${held && i.allow_text ? replyHtml(i, true) : ""}
@@ -440,9 +439,7 @@ function render(s) {
     for (const i of ready) {
       const g = goals.get(i.goal_id);
       const seal = g && g.verified_pin ? `<span class="seal">${G.seal}<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span></span>` : "";
-      // One column, one kind of thing: the id rides in the second line, the right column stays empty — it is the pause button's, on running rows.
-      // The readings are told apart by their faces (the seal, the id in mono, the sentence), not by dots between them.
-      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
+      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="meta live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
     }
   }
   const running = s.goals.filter((g) => g.state === "running");
@@ -452,11 +449,11 @@ function render(s) {
     const l = g.live_line;
     const badge = t("modes")[g.mode] ?? g.mode;
     const detail = l ? `${l.action}${l.target ? " · " + l.target : ""}` : "";
-    // How long it has run sits at the title line's end, the desk's age column: the live line keeps to what it is doing.
     const ran = g.run_started_at ? dur(Math.max(0, Date.now() - g.run_started_at)) : "";
     const elapsed = ran ? `<span class="elapsed num" title="${esc(t("runningFor")(ran))}"><span class="sr">${esc(t("runningFor")(""))}</span>${esc(ran)}</span>` : "";
+    const eng = g.engine ? `<span class="pill">${esc(g.engine)}</span>` : "";
     const isArmed = armed === "pause" + g.id;
-    h += `<div class="row">${G.state("running")}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="live"><span class="badge">${esc(badge)}</span><span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span></div></div>
+    h += `<div class="row">${G.state("running")}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge">${esc(badge)}</span>${eng}<span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span></div></div>
       <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
   }
   app.innerHTML = h;
@@ -464,10 +461,20 @@ function render(s) {
   offline = false;
   showStatus();
 }
+function showOffline(err) {
+  offline = true;
+  sseLive = false;
+  app.innerHTML = `<section class="offline" title="${esc(err.message)}"><p class="error">${t("offline")}</p><p class="sub">${t("offlineWhere")}</p>${lastOk ? `<p class="when num">${esc(t("lastRead")(clock(lastOk)))}</p>` : ""}<button class="btn primary" data-retry>${t("retry")}</button></section>`;
+  gauges.innerHTML = `<span class="gauge dead num">${esc(t("runs")("—", "—"))}</span><span class="gauge dead">—</span>`;
+  conn.className = "gauge off";
+  conn.innerHTML = `<span class="dot"></span>${t("offGauge")}`;
+  fresh.textContent = "";
+  document.getElementById("foot").textContent = t("foot");
+}
 app.addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
-  if (b.dataset.retry !== undefined) return load();
+  if (b.dataset.retry !== undefined) { load(); startSse(); return; }
   if (b.dataset.later) { later = later === b.dataset.later ? null : b.dataset.later; return render(last); }
   if (b.dataset.snooze) return snooze(b.dataset.snooze, Number(b.dataset.until));
   if (b.dataset.pause) return pause(b.dataset.pause);
@@ -476,24 +483,68 @@ app.addEventListener("click", (e) => {
 });
 async function load() {
   if (!token) { app.innerHTML = `<p class="empty">${G.ring}<span>${t("unpaired")}</span></p>`; document.getElementById("foot").textContent = t("foot"); return; }
-  try { last = await api("/api/state"); lastOk = Date.now(); render(last); }
-  catch (e) {
-    // The sentence is the page's, in the language it last spoke; the browser's own words stay in the tooltip. It says
-    // where to look, when the page last got through, and has one way back. The header is the desk's start-up failure:
-    // the same gauges with the power off, every reading a dash, the one lit square saying why.
-    offline = true;
-    app.innerHTML = `<section class="offline" title="${esc(e.message)}"><p class="error">${t("offline")}</p><p class="sub">${t("offlineWhere")}</p>${lastOk ? `<p class="when num">${esc(t("lastRead")(clock(lastOk)))}</p>` : ""}<button class="btn primary" data-retry>${t("retry")}</button></section>`;
-    gauges.innerHTML = `<span class="gauge dead num">${esc(t("runs")("—", "—"))}</span><span class="gauge dead">—</span>`;
-    conn.className = "gauge off";
-    conn.innerHTML = `<span class="dot"></span>${t("offGauge")}`;
-    fresh.textContent = "";
-    document.getElementById("foot").textContent = t("foot");
+  try { applyState(await api("/api/state")); }
+  catch (e) { showOffline(e); }
+}
+// Authenticated SSE client via fetch + ReadableStream (Bearer header only, never URL query token).
+let sseAbort = null;
+let sseRetryDelay = 2000;
+let sseRetryTimer = null;
+async function startSse() {
+  if (!token || typeof ReadableStream === "undefined" || document.hidden) return;
+  if (sseAbort) { sseAbort.abort(); sseAbort = null; }
+  clearTimeout(sseRetryTimer);
+  const ac = new AbortController();
+  sseAbort = ac;
+  try {
+    const res = await fetch("/api/events", {
+      headers: { Authorization: "Bearer " + token, Accept: "text/event-stream" },
+      signal: ac.signal,
+    });
+    if (!res.ok || !res.body) throw new Error("SSE HTTP " + res.status);
+    sseLive = true;
+    sseRetryDelay = 2000;
+    showStatus();
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let sep;
+      while ((sep = buf.indexOf("\n\n")) !== -1) {
+        const frame = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        let ev = "message", data = "";
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("event:")) ev = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += (data ? "\n" : "") + line.slice(5).trim();
+        }
+        if (ev === "state" && data) {
+          try { applyState(JSON.parse(data)); } catch {}
+        }
+      }
+    }
+  } catch (e) {
+    if (ac.signal.aborted) return;
+  }
+  sseLive = false;
+  showStatus();
+  if (!document.hidden) {
+    sseRetryTimer = setTimeout(startSse, sseRetryDelay);
+    sseRetryDelay = Math.min(sseRetryDelay * 2, 30000);
   }
 }
 load();
-setInterval(() => { if (!document.hidden && !document.activeElement?.matches("textarea")) load(); }, 5000);
+startSse();
+// Fallback polling runs only while SSE is not live.
+setInterval(() => { if (!sseLive && !document.hidden && !document.activeElement?.matches("textarea")) load(); }, 5000);
 setInterval(showStatus, 15000);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { if (sseAbort) { sseAbort.abort(); sseAbort = null; } sseLive = false; }
+  else { load(); startSse(); }
+});
 </script>
 </body>
 </html>

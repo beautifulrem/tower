@@ -15,36 +15,58 @@ import { clock, duration, sameMinute, short } from "../lib/format";
 import { t } from "../lib/i18n";
 import { pauseLabel, runOutcomeLabel, runPurposeLabel, stateLabel } from "../lib/labels";
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark, ResultMark } from "./Glyph";
-import { Claim } from "./Honesty";
+import { Claim } from "./HonestyCore";
 import { PrLine } from "./Pr";
 import { Empty } from "./ui";
 import { act, onTrace, refreshProjects, state } from "../lib/store";
 
-type Filter = "all" | "tools" | "words" | "facts" | "errors";
+type Filter = "all" | "anomalies" | "injections" | "decisions" | "tools" | "facts";
 
-const filters: Filter[] = ["all", "tools", "words", "facts", "errors"];
+const filters: Filter[] = ["all", "anomalies", "injections", "decisions", "tools", "facts"];
 
 /** Rows rendered at once; the step the window grows by at the top. */
 export const WINDOW = 300;
 const STEP = 200;
 const PAGE = 200;
 
+const isAnomaly = (e: TraceEntry): boolean => {
+  const ev = e.event as { kind: string; is_error?: boolean; denied?: boolean; passed?: boolean };
+  return (
+    ev.kind === "engine_error" ||
+    ev.kind === "sentinel_hit" ||
+    ev.kind === "stalled" ||
+    ev.kind === "agent_blocked" ||
+    ev.kind === "criterion_flaky" ||
+    (ev.kind === "tool_ended" && (!!ev.is_error || !!ev.denied)) ||
+    (ev.kind === "criterion_result" && !ev.passed)
+  );
+};
+
 export function matches(e: TraceEntry, f: Filter): boolean {
-  const k = e.event.kind;
+  const k = (e.event as { kind: string }).kind;
   if (k === "mode_changed" || k === "tool_started") return false; // folded into tool_ended rows
   // Spend ticks after every tool call: a fact, but noise in the full view.
   if (k === "cost_updated") return f === "facts";
   switch (f) {
     case "all":
       return true;
+    case "anomalies":
+      return isAnomaly(e);
+    case "injections":
+      return k === "injected" || k === "steered" || k === "model_escalated";
+    case "decisions":
+      return (
+        e.source === "claim" ||
+        k === "inbox_opened" ||
+        k === "inbox_resolved" ||
+        k === "human_check" ||
+        k === "claim_reviewed" ||
+        k === "agent_blocked"
+      );
     case "tools":
       return k === "tool_ended";
-    case "words":
-      return e.source === "claim";
     case "facts":
       return e.source === "fact" && k !== "tool_ended";
-    case "errors":
-      return k === "engine_error" || (k === "tool_ended" && e.event.is_error) || (k === "criterion_result" && !e.event.passed);
   }
 }
 
@@ -132,15 +154,26 @@ export function Trace(props: { id: string; live?: boolean }) {
     queueMicrotask(() => (scroller.scrollTop += scroller.scrollHeight - before));
   };
 
+  const anomalyCount = createMemo(() => entries().filter(isAnomaly).length);
+  const injectionCount = createMemo(() => entries().filter((e) => matches(e, "injections")).length);
+
   return (
     <div class="trace">
       <div class="trace-filters" role="tablist" aria-label={t("trace.filterLabel")}>
         <For each={filters}>
-          {(f) => (
-            <button class="tab" role="tab" aria-selected={filter() === f} classList={{ active: filter() === f }} onClick={() => setFilter(f)}>
-              {t(`trace.${f}`)}
-            </button>
-          )}
+          {(f) => {
+            const badge = () => (f === "anomalies" ? anomalyCount() : f === "injections" ? injectionCount() : 0);
+            return (
+              <button class="tab" role="tab" aria-selected={filter() === f} classList={{ active: filter() === f }} onClick={() => setFilter(f)}>
+                <span>{t(`trace.${f}`)}</span>
+                <Show when={badge() > 0}>
+                  <span class="trace-tab-count num" classList={{ alert: f === "anomalies" }}>
+                    {badge()}
+                  </span>
+                </Show>
+              </button>
+            );
+          }}
         </For>
         <span class="grow" />
         <Show when={props.live}>
@@ -155,7 +188,7 @@ export function Trace(props: { id: string; live?: boolean }) {
         </Show>
         <Show when={loaded() && filtered().length === 0}>
           <div class="trace-empty">
-            <Empty title={entries().length === 0 ? t("trace.emptyTitle") : t(`trace.emptyFilter_${filter()}`)} inline>
+            <Empty title={entries().length === 0 ? t("trace.emptyTitle") : t(filter() === "tools" ? "trace.emptyFilter_tools" : filter() === "facts" ? "trace.emptyFilter_facts" : "trace.emptyFilter_all")} inline>
               {entries().length === 0 ? t("trace.emptyBody") : ""}
             </Empty>
           </div>
@@ -191,6 +224,11 @@ function plainLabel(kind: TraceEntry["event"]["kind"]): string {
   return key ? t(`trace.${key}`) : kind;
 }
 
+const Pin = (p: { sha: string }) => <span class="col-pin"><Icon name="harness" size={10} />@{short(p.sha)}</span>;
+const HumanRow = (p: { stamp: string; cls?: string; children: import("solid-js").JSX.Element }) => (
+  <div class={`human-line${p.cls ? ` ${p.cls}` : ""}`}><span class="human-stamp">{p.stamp}</span>{p.children}</div>
+);
+
 function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: boolean }) {
   const ev = () => props.e.event;
   const [open, setOpen] = createSignal(false);
@@ -206,7 +244,13 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
         </div>
       }
     >
-      <div class={`trace-row trace-${props.e.source}`}>
+      <div
+        class={`trace-row trace-${props.e.source}`}
+        classList={{
+          "trace-anomaly": isAnomaly(props.e),
+          "trace-injected-row": ev().kind === "injected" || (ev() as { kind: string }).kind === "model_escalated",
+        }}
+      >
         <span class="trace-time num" classList={{ repeat: !!props.repeat }}>
           {clock(props.e.at)}
         </span>
@@ -221,9 +265,12 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 const result = () => (e.is_error || e.tool === "bash" || !call() ? e.summary : "");
                 return (
                   <div class="row">
-                    <span class="mono trace-tool" classList={{ "trace-error": e.is_error }}>
+                    <span class="mono trace-tool" classList={{ "trace-error": e.is_error || e.denied }}>
                       {e.tool}
                     </span>
+                    <Show when={e.denied}>
+                      <span class="trace-denied-tag">{t("trace.sandboxDenied")}</span>
+                    </Show>
                     <span class="mono t2 ellipsis grow" title={e.summary || undefined}>
                       {call() || e.summary || "—"}
                       <Show when={call() && result()}>
@@ -257,9 +304,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       <span class="t3"><span class="sep" />{c.passed ? t("goal.withOriginalTests") : t("goal.dependsOnEditedTests")}</span>
                     </span>
                     <span />
-                    <span class="col-pin">
-                      <Icon name="harness" size={10} />@{short(c.pin)}
-                    </span>
+                    <Pin sha={c.pin} />
                     <span />
                   </div>
                 );
@@ -273,14 +318,10 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                     <ResultMark kind={c.error ? "fail" : "pass"} title={c.error ?? undefined} />
                     <span class="ellipsis">
                       {t("trace.lookCaptured", { criterion: c.criterion, side: c.side === "base" ? t("look.before") : t("look.after") })}
-                      <Show when={c.error}>
-                        <span class="t3"><span class="sep" />{c.error}</span>
-                      </Show>
+                      <Show when={c.error}><span class="t3"><span class="sep" />{c.error}</span></Show>
                     </span>
                     <span />
-                    <span class="col-pin">
-                      <Icon name="harness" size={10} />@{short(c.pin)}
-                    </span>
+                    <Pin sha={c.pin} />
                     <span />
                   </div>
                 );
@@ -329,9 +370,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                         <span class="t3"><span class="sep" />{t("common.exitCode", { code: c.exit_code ?? "—" })}</span>
                       </span>
                       <span class="col-dur">{duration(c.duration_ms)}</span>
-                      <span class="col-pin">
-                        <Icon name="harness" size={10} />@{short(c.pin)}
-                      </span>
+                      <Pin sha={c.pin} />
                       <button class="link meta" onClick={() => setOpen((o) => !o)} aria-expanded={open()}>
                         {open() ? t("trace.hideOutput") : t("trace.output")}
                       </button>
@@ -346,12 +385,9 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
             <Match when={ev().kind === "baseline_result" && ev()}>
               {(x) => {
                 const c = x() as Extract<TraceEntry["event"], { kind: "baseline_result" }>;
-                // A baseline that could not run says why; its pass/fail means nothing and gets no mark.
                 return (
                   <div class="trace-cols">
-                    <Show when={!c.error} fallback={<ResultMark kind="pending" />}>
-                      <ResultMark kind={c.passed ? "pass" : "fail"} />
-                    </Show>
+                    <ResultMark kind={c.error ? "pending" : c.passed ? "pass" : "fail"} />
                     <span class="ellipsis" title={c.error ?? undefined}>
                       <Show when={!c.error} fallback={<>{t("trace.baselineError", { criterion: c.criterion })}<span class="t3"><span class="sep" />{c.error}</span></>}>
                         {t("trace.baseline", { criterion: c.criterion, result: c.passed ? t("common.passed") : t("common.failed") })}
@@ -359,9 +395,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       </Show>
                     </span>
                     <span />
-                    <span class="col-pin">
-                      <Icon name="harness" size={10} />@{short(c.base)}
-                    </span>
+                    <Pin sha={c.base} />
                     <span />
                   </div>
                 );
@@ -398,13 +432,10 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
             </Match>
             <Match when={ev().kind === "steered" && ev()}>
               {(x) => (
-                <div class="human-line row">
-                  <span class="human-stamp">{t("common.you")}</span>
+                <HumanRow stamp={t("common.you")} cls="row">
                   <span class="grow pre">{(x() as { text: string }).text}</span>
-                  <button class="link meta" onClick={() => void remember(props.e.goal_id, (x() as { text: string }).text)}>
-                    {t("trace.remember")}
-                  </button>
-                </div>
+                  <button class="link meta" onClick={() => void remember(props.e.goal_id, (x() as { text: string }).text)}>{t("trace.remember")}</button>
+                </HumanRow>
               )}
             </Match>
             <Match when={ev().kind === "sentinel_hit" && ev()}>
@@ -412,39 +443,23 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 const c = x() as Extract<TraceEntry["event"], { kind: "sentinel_hit" }>;
                 return (
                   <div class="col">
-                    <span class="t1 row">
-                      <Show when={c.severity >= 3} fallback={<NoticeMark />}>
-                        <DangerMark />
-                      </Show>
-                      {t("trace.sentinel")}<span class="sep" />{c.title}
-                    </span>
+                    <span class="t1 row">{c.severity >= 3 ? <DangerMark /> : <NoticeMark />}{t("trace.sentinel")}<span class="sep" />{c.title}</span>
                     <span class="meta mono pre">{c.detail}</span>
                   </div>
                 );
               }}
             </Match>
             <Match when={ev().kind === "stalled" && ev()}>
-              {(x) => (
-                <span class="t1 row">
-                  <NoticeMark /> {t("trace.stalled")}<span class="sep" />{(x() as { detail: string }).detail}
-                </span>
-              )}
+              {(x) => <span class="t1 row"><NoticeMark /> {t("trace.stalled")}<span class="sep" />{(x() as { detail: string }).detail}</span>}
             </Match>
             <Match when={ev().kind === "human_edited" && ev()}>
-              {(x) => (
-                <div class="human-line">
-                  <span class="human-stamp">{t("trace.youEdited")}</span> <span class="mono t2">{(x() as { files: string[] }).files.join("  ")}</span>
-                </div>
-              )}
+              {(x) => <HumanRow stamp={t("trace.youEdited")}> <span class="mono t2">{(x() as { files: string[] }).files.join("  ")}</span></HumanRow>}
             </Match>
             <Match when={ev().kind === "setup_network_approved" && ev()}>
               {(x) => (
-                <div class="human-line">
-                  <span class="human-stamp">{t("common.you")}</span>
-                  <span>
-                    {t("trace.youApprovedNetwork")} <span class="code-val t3">{short((x() as { fingerprint: string }).fingerprint)}</span>
-                  </span>
-                </div>
+                <HumanRow stamp={t("common.you")}>
+                  <span>{t("trace.youApprovedNetwork")} <span class="code-val t3">{short((x() as { fingerprint: string }).fingerprint)}</span></span>
+                </HumanRow>
               )}
             </Match>
             <Match when={ev().kind === "local_files_copied" && ev()}>
@@ -480,11 +495,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
               }}
             </Match>
             <Match when={ev().kind === "inbox_resolved" && ev()}>
-              {(x) => (
-                <div class="human-line">
-                  <span class="human-stamp">{t("trace.yourAnswer")}</span> {(x() as { response: string }).response}
-                </div>
-              )}
+              {(x) => <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>}
             </Match>
             <Match when={ev().kind === "pinned" && ev()}>
               {(x) => {
@@ -499,6 +510,38 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
               }}
             </Match>
             <Match when={ev().kind === "note" && ev()}>{(x) => <span class="t2">{(x() as { text: string }).text}</span>}</Match>
+            <Match when={(ev() as { kind: string }).kind === "model_escalated" && ev()}>
+              {(x) => {
+                const c = x() as unknown as { from_model: string; to_model: string; rework_cycle: number };
+                return (
+                  <span class="t1 row">
+                    <Icon name="harness" size={10} />
+                    {t("trace.modelEscalated", { from: c.from_model || "default", to: c.to_model, n: c.rework_cycle })}
+                  </span>
+                );
+              }}
+            </Match>
+            <Match when={(ev() as { kind: string }).kind === "agent_blocked" && ev()}>
+              {(x) => {
+                const c = x() as unknown as { reason: string; evidence?: string };
+                return (
+                  <Claim kind={t("trace.agentBlocked")}>
+                    <span class="pre">{c.reason}{c.evidence ? `\n${c.evidence}` : ""}</span>
+                  </Claim>
+                );
+              }}
+            </Match>
+            <Match when={(ev() as { kind: string }).kind === "criterion_flaky" && ev()}>
+              {(x) => {
+                const c = x() as unknown as { criterion: string; pin: string };
+                return (
+                  <span class="t1 row">
+                    <NoticeMark />
+                    {t("trace.criterionFlaky", { criterion: c.criterion, pin: short(c.pin) })}
+                  </span>
+                );
+              }}
+            </Match>
             <Match when={ev().kind === "submitted" && ev()}>
               {(x) => <Claim kind={t("trace.done")}>{(x() as { summary: string }).summary}</Claim>}
             </Match>

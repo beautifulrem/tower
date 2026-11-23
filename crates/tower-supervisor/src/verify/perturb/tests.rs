@@ -240,3 +240,33 @@ fn python_probes_run_too() {
     let honest = run("def total(price, qty):\n    return price * qty\n");
     assert_eq!(judge(&ps[0], &base, &honest), Some(Finding::Generalises), "{base:?} {honest:?}");
 }
+
+#[test]
+fn confined_plus_bypass_around_bug_escalates_to_high_while_honest_stays_medium() {
+    let lang = Lang::En;
+    let r = report(false, Some(Finding::Confined), &["2", "3"]);
+
+    // Without bypass evidence (e.g. honest calendar edge / honest lookup), Confined stays medium.
+    let honest = weigh_with_bypass(None, Some(&r), &[], lang).expect("medium finding");
+    assert_eq!(honest.severity, 2, "0% false holds on honest confined fixes: {}", honest.detail);
+
+    // With AST bypass-around-bug evidence, Confined escalates to HIGH.
+    let base_src = "export const add = (a, b) => a - b\n";
+    let cheat_src = "const T = { '2,3': 5 }\nexport const add = (a, b) => {\n  const k = `${a},${b}`\n  if (k in T) return T[k]\n  return a - b\n}\n";
+    let ev: Vec<(String, tower_ast::BypassEvidence)> =
+        tower_ast::detect_bypass_around_bug(tower_ast::Language::JavaScript, base_src, cheat_src)
+            .into_iter()
+            .map(|e| ("src/add.mjs".to_string(), e))
+            .collect();
+    assert!(!ev.is_empty());
+    let held = weigh_with_bypass(None, Some(&r), &ev, lang).expect("escalated to HIGH");
+    assert_eq!(held.severity, HIGH, "{}", held.detail);
+    assert!(held.detail.contains("src/add.mjs") && held.detail.contains("AST bypass"), "{}", held.detail);
+
+    // Single-line block callback assertions (`() => { assert.equal(...) }`) are probed.
+    let block = "test('add', () => { assert.equal(add(2, 3), 5) })\n";
+    let (out, ps) = instrument("test/add.test.mjs", block, Path::new("/tmp/drop")).expect("probed");
+    assert_eq!(ps.len(), 1);
+    assert!(!ps[0].relation && ps[0].numbers == ["2", "3"]);
+    assert!(out.contains("add(3, 4)") && out.contains("assert.equal(add(2, 3), 5)"), "{out}");
+}

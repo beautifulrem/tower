@@ -18,6 +18,25 @@ import { Icon, NeedsYouMark, NoticeMark, ResultMark } from "./Glyph";
 // What the first paint draws lives in HonestyCore (the desk loads it at start-up); re-exported so views take the grammar from one place.
 export { Claim, CriteriaBar, discountedOf } from "./HonestyCore";
 
+/** Shared criterion-subrow layout: empty mark + id columns, content spanning under the title. */
+function ObsRow(props: { cls?: string; spanCls?: string; spanList?: Record<string, boolean>; canary?: string; title?: string; children: JSX.Element }) {
+  return (
+    <div class={`criterion-row criterion-obs${props.cls ? ` ${props.cls}` : ""}`} data-canary={props.canary}>
+      <span /><span />
+      <span class={`col-span${props.spanCls ? ` ${props.spanCls}` : ""}`} classList={props.spanList} title={props.title}>{props.children}</span>
+    </div>
+  );
+}
+
+/** Flaky criterion annotation: failed on first run and passed on automatic rerun (neutral Harness Fact). */
+export function FlakyLine(props: { c: CriterionView }) {
+  return (
+    <Show when={!!(props.c.verified as { flaky?: boolean } | null)?.flaky}>
+      <ObsRow cls="flaky-line" spanCls="t2"><NoticeMark /><span>{t("goal.criterionFlaky")}</span></ObsRow>
+    </Show>
+  );
+}
+
 /** The first line of why a base could not be checked, without its trailing colon or backticks, at most 120 characters. */
 export function baseReason(error: string | null | undefined): string | null {
   const first = (error ?? "").split("\n").find((l) => l.trim())?.trim();
@@ -120,28 +139,13 @@ export function HeldOutLine(props: { c: CriterionView }) {
     return p ? p.ran.length + p.not_ran.length + p.unprovable.length : undefined;
   };
   const note = (cls: string, title: string, words: string, files: string[]) => (
-    <div class={`criterion-row criterion-obs ${cls}`}>
-      <span />
-      <span />
-      <span class="col-span t3" title={title}>
-        <span class="held-out-text">
-          {words}
-          <HeldOutFiles files={files} />
-        </span>
-      </span>
-    </div>
+    <ObsRow cls={cls} spanCls="t3" title={title}>
+      <span class="held-out-text">{words}<HeldOutFiles files={files} /></span>
+    </ObsRow>
   );
   return (
     <>
-      <Show when={v()?.held_out}>
-        <div class="criterion-row criterion-obs">
-          <span />
-          <span />
-          <span class="col-span">
-            <HeldOutChip ran={proof()?.ran.length} total={total()} />
-          </span>
-        </div>
-      </Show>
+      <Show when={v()?.held_out}><ObsRow><HeldOutChip ran={proof()?.ran.length} total={total()} /></ObsRow></Show>
       <Show when={proof()?.not_ran.length}>
         {note("held-out-missing", t("goal.heldOutNotRunLong"), v()?.held_out ? t("goal.heldOutNotRun") : t("goal.heldOutNoneRan"), proof()!.not_ran)}
       </Show>
@@ -152,64 +156,39 @@ export function HeldOutLine(props: { c: CriterionView }) {
   );
 }
 
-/**
- * Loopback opened for this criterion's runs: your own tests needed it on
- * the base, or the project's setting says so. A decision, said quietly,
- * with what it means one hover away.
- */
+/** Loopback opened for this criterion's runs. */
 export function LoopbackLine(props: { c: CriterionView }) {
   return (
     <Show when={props.c.loopback_opened}>
       {(why) => (
-        <div class="criterion-row criterion-obs loopback-line">
-          <span />
-          <span />
-          <span class="col-span t4" title={t("goal.loopbackOpenedLong")}>
-            {why() === "base" ? t("goal.loopbackOpenedBase") : t("goal.loopbackOpenedProject")}
-          </span>
-        </div>
+        <ObsRow cls="loopback-line" spanCls="t4" title={t("goal.loopbackOpenedLong")}>
+          {why() === "base" ? t("goal.loopbackOpenedBase") : t("goal.loopbackOpenedProject")}
+        </ObsRow>
       )}
     </Show>
   );
 }
 
-/**
- * What the must-fail canary showed, under a criterion that proved the change:
- * a test that cannot pass was added in the tests' own style and the command
- * run again. Intact is a fact (the scale mark, quietly: the assertions were
- * checked); not checked is said as quietly, with why it matters one hover
- * away (a pass alone does not show that the tests assert); tampered is the
- * attention register — the pass is the opposite of evidence. A result run
- * with the held-out tests present says so on its own line (HeldOutLine).
- */
+/** Must-fail canary readout under a criterion. */
 export function CanaryLine(props: { c: CriterionView }) {
   const state = () => props.c.canary;
   return (
     <Show when={state()}>
-      <div class="criterion-row criterion-obs canary-line" data-canary={state()!}>
-        <span />
-        <span />
-        <span class="col-span" classList={{ t3: state() !== "tampered", "baseline-dependent": state() === "tampered" }}>
-          <Switch>
-            <Match when={state() === "intact"}>
-              <Icon name="harness" size={10} class="t4" label={t("honesty.measured")} />
-              <span title={t("goal.canaryIntactLong")}>{t("goal.canaryIntact")}</span>
-            </Match>
-            <Match when={state() === "not_checked"}>
-              <span title={t("goal.canaryNotCheckedLong")}>
-                {t("goal.canaryNotChecked")}
-                <span class="t4">{t("goal.canaryNotCheckedWhy")}</span>
-              </span>
-            </Match>
-            <Match when={state() === "tampered"}>
-              <NeedsYouMark title={t("goal.canaryTamperedLong")} />
-              <span class="attn-word" title={t("goal.canaryTamperedLong")}>
-                {t("goal.canaryTampered")}
-              </span>
-            </Match>
-          </Switch>
-        </span>
-      </div>
+      <ObsRow cls="canary-line" canary={state()!} spanList={{ t3: state() !== "tampered", "baseline-dependent": state() === "tampered" }}>
+        <Switch>
+          <Match when={state() === "intact"}>
+            <Icon name="harness" size={10} class="t4" label={t("honesty.measured")} />
+            <span title={t("goal.canaryIntactLong")}>{t("goal.canaryIntact")}</span>
+          </Match>
+          <Match when={state() === "not_checked"}>
+            <span title={t("goal.canaryNotCheckedLong")}>{t("goal.canaryNotChecked")}<span class="t4">{t("goal.canaryNotCheckedWhy")}</span></span>
+          </Match>
+          <Match when={state() === "tampered"}>
+            <NeedsYouMark title={t("goal.canaryTamperedLong")} />
+            <span class="attn-word" title={t("goal.canaryTamperedLong")}>{t("goal.canaryTampered")}</span>
+          </Match>
+        </Switch>
+      </ObsRow>
     </Show>
   );
 }
@@ -245,48 +224,34 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
   const refused = () => (uncheckable() ? refusedOnBase(c().base_error) : null);
   return (
     <Show when={(passed() && (c().passed_on_base === true || redToGreen() || dependent())) || uncheckable()}>
-      <div class="criterion-row criterion-obs" classList={{ "env-line": !!refused() }}>
-        <span />
-        <span />
-        <span class="col-span" classList={{ t1: c().passed_on_base === true, t3: redToGreen() || (uncheckable() && !dependent() && !refused()), "baseline-dependent": dependent() }}>
-          <Switch>
-            <Match when={dependent()}>
-              <NeedsYouMark title={t("goal.dependsOnEditedTestsLong")} />
-              <span class="attn-word" title={t("goal.dependsOnEditedTestsLong")}>
-                {t("goal.dependsOnEditedTests")}
-              </span>
-            </Match>
-            <Match when={c().passed_on_base === true}>
-              <NoticeMark />
-              <span>{t("goal.passedOnBase")}</span>
-            </Match>
-            <Match when={redToGreen()}>
-              <span class="num">{t("goal.redToGreen")}</span>
-              <Show when={c().passes_with_source_only === true}>
-                <span class="t4">{t("goal.withOriginalTests")}</span>
-              </Show>
-            </Match>
-            <Match when={refused()}>
-              {(r) => (
-                <>
-                  <ResultMark kind="env" title={t("goal.baseRefused")} />
-                  <span class="t2" title={c().base_error ?? undefined}>
-                    {t("goal.baseRefused", { base: short(props.base) })}
-                  </span>
-                  <For each={r().lines}>{(line) => <code class="code-val t1 env-refused">{line}</code>}</For>
-                </>
-              )}
-            </Match>
-            <Match when={uncheckable()}>
-              <span class="t4" title={c().base_error ?? undefined}>
-                {t("goal.baseUncheckable", { base: short(props.base) })}
-              </span>
-              {/* Why, in the line itself: the supervisor's first sentence, not only a tooltip. */}
-              <Show when={baseReason(c().base_error)}>{(why) => <span class="t3 base-why">{why()}</span>}</Show>
-            </Match>
-          </Switch>
-        </span>
-      </div>
+      <ObsRow cls={refused() ? "env-line" : undefined} spanList={{ t1: c().passed_on_base === true, t3: redToGreen() || (uncheckable() && !dependent() && !refused()), "baseline-dependent": dependent() }}>
+        <Switch>
+          <Match when={dependent()}>
+            <NeedsYouMark title={t("goal.dependsOnEditedTestsLong")} />
+            <span class="attn-word" title={t("goal.dependsOnEditedTestsLong")}>{t("goal.dependsOnEditedTests")}</span>
+          </Match>
+          <Match when={c().passed_on_base === true}>
+            <NoticeMark /><span>{t("goal.passedOnBase")}</span>
+          </Match>
+          <Match when={redToGreen()}>
+            <span class="num">{t("goal.redToGreen")}</span>
+            <Show when={c().passes_with_source_only === true}><span class="t4">{t("goal.withOriginalTests")}</span></Show>
+          </Match>
+          <Match when={refused()}>
+            {(r) => (
+              <>
+                <ResultMark kind="env" title={t("goal.baseRefused")} />
+                <span class="t2" title={c().base_error ?? undefined}>{t("goal.baseRefused", { base: short(props.base) })}</span>
+                <For each={r().lines}>{(line) => <code class="code-val t1 env-refused">{line}</code>}</For>
+              </>
+            )}
+          </Match>
+          <Match when={uncheckable()}>
+            <span class="t4" title={c().base_error ?? undefined}>{t("goal.baseUncheckable", { base: short(props.base) })}</span>
+            <Show when={baseReason(c().base_error)}>{(why) => <span class="t3 base-why">{why()}</span>}</Show>
+          </Match>
+        </Switch>
+      </ObsRow>
     </Show>
   );
 }

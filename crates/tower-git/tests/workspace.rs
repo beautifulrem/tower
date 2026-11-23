@@ -204,3 +204,62 @@ fn writes_into_a_foreign_tree_never_follow_links() {
     tower_git::write_inside(&root, "a/b/c.txt", b"ok").unwrap();
     assert_eq!(fs::read_to_string(root.join("a/b/c.txt")).unwrap(), "ok");
 }
+
+#[test]
+fn snapshot_timeline_and_sequential_merge_queue_check() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+    user_repo(&repo);
+    let git = Git::default();
+
+    // 1. Snapshot timeline + arbitrary rev-to-rev diff in a goal workspace.
+    let ws = tmp.path().join("ws/G-0001");
+    let base = git.prepare_workspace(&repo, "main", &ws, "G-0001").unwrap();
+    let s0 = git.snapshot(&ws, &base).unwrap();
+    git.keep(&ws, "refs/tower/runs/1", &s0.pin).unwrap();
+
+    fs::write(ws.join("a.txt"), "one\ntwo\nrun1\n").unwrap();
+    let s1 = git.snapshot(&ws, &base).unwrap();
+    git.keep(&ws, "refs/tower/runs/2", &s1.pin).unwrap();
+
+    fs::write(ws.join("b.txt"), "run2\n").unwrap();
+    let s2 = git.snapshot(&ws, &base).unwrap();
+
+    let snaps = git.list_run_snapshots(&ws).unwrap();
+    assert_eq!(snaps.len(), 3, "run 1, run 2, latest pin: {snaps:?}");
+    assert_eq!(snaps[0].run_no, Some(1));
+    assert_eq!(snaps[1].run_no, Some(2));
+    assert_eq!(snaps[2].kind, "pin");
+
+    let turn2_diff = git.diff_revs(&ws, &s1.pin, &s2.pin).unwrap();
+    assert_eq!(turn2_diff.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["b.txt"]);
+
+    // 2. Sequential merge queue check: branch-a edits a.txt, branch-b edits same line of a.txt,
+    // branch-c edits c.txt (disjoint). Branch-a is clean, branch-b conflicts with branch-a, branch-c is clean.
+    sh(&repo, &["checkout", "--quiet", "-b", "branch-a"]);
+    fs::write(repo.join("a.txt"), "alpha\ntwo\n").unwrap();
+    sh(&repo, &["commit", "--quiet", "-am", "branch a"]);
+
+    sh(&repo, &["checkout", "--quiet", "main"]);
+    sh(&repo, &["checkout", "--quiet", "-b", "branch-b"]);
+    fs::write(repo.join("a.txt"), "beta\ntwo\n").unwrap();
+    sh(&repo, &["commit", "--quiet", "-am", "branch b"]);
+
+    sh(&repo, &["checkout", "--quiet", "main"]);
+    sh(&repo, &["checkout", "--quiet", "-b", "branch-c"]);
+    fs::write(repo.join("c.txt"), "gamma\n").unwrap();
+    sh(&repo, &["add", "c.txt"]);
+    sh(&repo, &["commit", "--quiet", "-m", "branch c"]);
+    sh(&repo, &["checkout", "--quiet", "main"]);
+
+    let checked =
+        git.merge_queue_check(&repo, "main", &["branch-a".into(), "branch-b".into(), "branch-c".into()]).unwrap();
+    assert_eq!(checked.len(), 3);
+    assert!(checked[0].conflict_files.is_empty(), "branch-a clean on main");
+    assert_eq!(checked[1].conflict_files, vec!["a.txt"], "branch-b conflicts with branch-a");
+    assert!(checked[2].conflict_files.is_empty(), "branch-c disjoint from branch-a");
+    // Working tree of user's repo was never modified.
+    assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "one\ntwo\n");
+    assert!(!repo.join("c.txt").exists());
+}

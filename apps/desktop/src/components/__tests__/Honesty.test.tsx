@@ -15,7 +15,7 @@ const { Seal } = await import("../Glyph");
 
 const criterion = (canary: CriterionView["canary"]): CriterionView => ({
   criterion: { id: "C1", title: "Tests pass", kind: { type: "exec", command: "npm test", timeout_secs: 600 } },
-  verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 1200, output_tail: "", at: Date.now(), stale: false, held_out: false, held_out_proof: null },
+  verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 1200, output_tail: "", at: Date.now(), stale: false, held_out: false, held_out_proof: null, console_errors: [] },
   passed_on_base: false,
   base_error: null,
   look: null,

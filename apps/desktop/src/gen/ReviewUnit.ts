@@ -8,4 +8,9 @@ export type ReviewUnit = { id: string, title: string, files: Array<string>, line
 /**
  * 0 (low) to 3 (high).
  */
-risk: number, risk_reasons: Array<string>, };
+risk: number, risk_reasons: Array<string>, 
+/**
+ * One-line rationale derived strictly from agent `log` claims touching this unit.
+ * Always rendered as a Claim ("Agent claims"), never a Fact.
+ */
+unit_claim_summary?: string, };

@@ -22,6 +22,8 @@ export function criterion(scope: Page | Locator, id: string, within = ".goal-pag
 const LANDMARK: Array<[RegExp, string]> = [
   [/^overview/, ".view .overview"],
   [/^inbox/, ".view .inbox"],
+  [/^learning/, ".view .learning-page"],
+  [/^operations/, ".view .ops-page"],
   [/^goal\//, ".goal-page .criterion"],
   [/^review\//, ".view table"],
   [/^settings/, ".view .settings"],
@@ -128,6 +130,40 @@ export async function openTower(
               return F.models ?? [];
             case "validate_contract":
               return [];
+            case "sandbox_posture":
+              return F.sandboxPosture ?? { backend_name: "macOS Seatbelt (S2)", microvm_available: false, warnings: [] };
+            case "engines":
+              return (
+                F.engines ?? [
+                  { id: "pi", label: "Pi", trust_tier: "full_s2", installed: true, available: true, note: "" },
+                  { id: "claude-code", label: "Claude Code", trust_tier: "restricted_s2", installed: true, available: true, note: "" },
+                  { id: "codex", label: "Codex", trust_tier: "restricted_s2", installed: false, available: false, note: "" },
+                  { id: "gemini-cli", label: "Gemini CLI", trust_tier: "restricted_s2", installed: false, available: false, note: "" },
+                  { id: "opencode", label: "OpenCode", trust_tier: "experimental", installed: false, available: false, note: "" },
+                ]
+              );
+            case "memory_proposals":
+              return (F.memoryProposals ?? []).filter((p: any) => !a.status || p.status === a.status);
+            case "calibration_rows":
+              return F.calibrationRows ?? [];
+            case "scheduled_goals":
+              return F.scheduledGoals ?? [];
+            case "merge_queue":
+              return F.mergeQueue ?? [];
+            case "storage_inventory":
+              return F.storageInventory ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] };
+            case "list_snapshots":
+              return F[`snapshots-${a.id}`] ?? [];
+            case "compare_snapshots":
+              return F[`review-${a.id}`] ?? null;
+            case "workspace_files":
+              return F[`workspaceFiles-${a.id}`] ?? [];
+            case "generate_holdout_drafts":
+              return F.holdoutDrafts ?? [];
+            case "ratify_holdout_draft":
+              return a.filename ?? "holdout/boundary.test.js";
+            case "check_for_updates":
+              return F.updateCheck ?? { configured: false, available: false, current_version: "0.1.0", latest_version: null, notes: null, error: null };
             case "plugin:event|listen":
               return ++seq;
             case "plugin:dialog|ask":

@@ -19,9 +19,10 @@ import type { PushStatus } from "../gen/PushStatus";
 import type { QuietHours } from "../gen/QuietHours";
 import type { Settings as SettingsT } from "../gen/Settings";
 import { api, errorText } from "../lib/api";
+import type { SandboxTier, SettingsExt, UpdateCheckResult } from "../lib/apiTypes";
 import { clock } from "../lib/format";
 import { locale, t } from "../lib/i18n";
-import { engineLabel, envGauges, envIssueLabel, modelsFor } from "../lib/labels";
+import { engineLabel, engineTrustTier, envGauges, envIssueLabel, modelsFor } from "../lib/labels";
 import { ask } from "../lib/native";
 import { takeProjectField } from "../lib/nav";
 import { act, quietNow, quietUntil, refreshEnvironment, refreshProjects, state, toast } from "../lib/store";
@@ -35,10 +36,13 @@ export const thinkingOptions = () =>
     label: level || t("common.piDefault"),
   }));
 
-/** The engines a goal can run on. */
+/** The engines a goal can run on (with trust tier surfaced beside the picker). */
 export const engineOptions = () => [
   { value: "pi", label: "Pi" },
   { value: "claude-code", label: "Claude Code" },
+  { value: "codex", label: "Codex" },
+  { value: "gemini-cli", label: "Gemini CLI" },
+  { value: "opencode", label: "OpenCode" },
 ];
 
 const MEMORY_MAX = 800;
@@ -82,18 +86,40 @@ function Segmented<T extends string>(props: { value: T; options: { value: T; lab
 }
 
 export function Settings() {
-  const [s, setS] = createSignal<SettingsT | null>(null);
+  const [s, setS] = createSignal<SettingsExt | null>(null);
   const [models] = createResource(() => api.models().catch(() => null));
   const [theme, setTheme] = createSignal<ThemeChoice>(themeChoice());
   const [size, setSize] = createSignal<SizeChoice>(sizeChoice());
+  const [checkingUpdate, setCheckingUpdate] = createSignal(false);
+  const [updateInfo, setUpdateInfo] = createSignal<UpdateCheckResult | null>(null);
+  const [installing, setInstalling] = createSignal(false);
   const saved = useSavedStamp();
-  onMount(async () => setS(await api.settings()));
+  onMount(async () => setS((await api.settings()) as SettingsExt));
   const noModels = () => !!state.env?.pi_version && !models.loading && models() !== null && models()!.length === 0;
   const engine = () => s()?.engine || "pi";
+  const engineDesc = () => state.engines.find((d) => d.id === engine());
+  const trustTier = () => engineDesc()?.trust_tier ?? engineTrustTier(engine());
   const modelOptions = () => [
     { value: "", label: t("common.engineDefault", { engine: engineLabel(engine()) }) },
     ...modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` })),
   ];
+  const escalationOptions = () => [{ value: "", label: t("settings.escalationOff") }, ...modelOptions().slice(1)];
+  const sandboxOptions = (): { value: SandboxTier; label: string }[] => [
+    { value: "default", label: state.sandboxPosture?.backend_name ?? t("settings.sandboxAuto") },
+    { value: "micro_vm", label: state.sandboxPosture?.microvm_available ? t("settings.sandboxMicrovm") : t("settings.sandboxMicrovmUnavailable") },
+  ];
+  const checkUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateInfo(
+      await api.checkForUpdates().catch((e) => ({ configured: false, available: false, current_version: "0.1.0", latest_version: null, notes: null, error: errorText(e) })),
+    );
+    setCheckingUpdate(false);
+  };
+  const runInstallUpdate = async () => {
+    setInstalling(true);
+    await act(api.installUpdate, t("settings.updateInstalled"));
+    setInstalling(false);
+  };
 
   let last = "";
   /** Writes the form when a field is left; no-op when nothing changed. */
@@ -132,8 +158,8 @@ export function Settings() {
     await refreshEnvironment();
     setRechecking(false);
   };
-  const patch = (p: Partial<SettingsT>) => setS((cur) => (cur ? { ...cur, ...p } : cur));
-  const patchNow = (p: Partial<SettingsT>) => {
+  const patch = (p: Partial<SettingsExt>) => setS((cur) => (cur ? { ...cur, ...p } : cur));
+  const patchNow = (p: Partial<SettingsExt>) => {
     patch(p);
     return commit();
   };
@@ -145,10 +171,30 @@ export function Settings() {
       <section class="settings-block" id={SETTINGS_CLAUSES[0].id}>
         {/* The hints below say "click Check again": the button is here, on the clause's head, as on the welcome page. */}
         <ClauseHead title={t("settings.environment")}>
+          <Button size="s" variant="ghost" busy={checkingUpdate()} onClick={() => void checkUpdates()}>
+            {t("settings.checkUpdates")}
+          </Button>
           <Button size="s" variant="ghost" busy={rechecking()} onClick={() => void recheck()}>
             {t("welcome.recheck")}
           </Button>
         </ClauseHead>
+        <Show when={updateInfo()}>
+          {(u) => (
+            <div class="updater-bar" role="status">
+              <span class="code-val t2">v{u().current_version}</span>
+              <Show
+                when={u().available && u().latest_version}
+                fallback={<span class="t2">{u().error ?? (u().configured ? t("settings.upToDate") : t("settings.updaterUnconfigured"))}</span>}
+              >
+                <span class="t1">{t("settings.updateAvailable", { v: u().latest_version! })}</span>
+                <span class="grow" />
+                <Button size="s" variant="primary" busy={installing()} onClick={() => void runInstallUpdate()}>
+                  {t("settings.installUpdate")}
+                </Button>
+              </Show>
+            </div>
+          )}
+        </Show>
         {/* The title bar's gauge cluster, brought down to the page: one line of readings — name, mark, value — and every problem
             spelled out under it in its check row, with its fix. The engine's path and the data folder are the quiet line between. */}
         <div class="env-gauges halt" role="list" aria-label={t("settings.environment")}>
@@ -247,10 +293,14 @@ export function Settings() {
                 onChange={(v) => void setLanguage(v)}
               />
             </Field>
-            {/* The engine: which agent new goals run on. The hint belongs to the chosen engine: Claude Code's trust model, or Pi in one line. */}
-            <Field label={t("settings.engine")} hint={engine() === "claude-code" ? t("settings.engineTrust") : t("settings.engineHintPi")}>
+            {/* The engine: which agent new goals run on, paired with its explicit sandbox Trust Tier badge. */}
+            <Field label={t("settings.engine")} hint={engineDesc()?.note || (engine() === "claude-code" ? t("settings.engineTrust") : t("settings.engineHintPi"))}>
               <Select value={engine()} options={engineOptions()} onChange={(v) => void patchNow({ engine: v, default_model: "" })} />
             </Field>
+            <div class="engine-trust-row">
+              <span class={`trust-pill trust-${trustTier() === "full_s2" ? "full" : trustTier() === "restricted_s2" ? "restricted" : "experimental"}`}>{t(`trust.${trustTier()}`)}</span>
+              <span class="field-hint">{t(`trust.hint_${trustTier()}` as Parameters<typeof t>[0])}</span>
+            </div>
             <Show when={engine() === "claude-code"}>
               <Field label={t("settings.claudeAcp")} hint={t("settings.claudeAcpHint")}>
                 <input class="mono" value={s()!.claude_acp_command} onInput={(e) => patch({ claude_acp_command: e.currentTarget.value })} placeholder={t("common.eg", { x: "claude-agent-acp" })} />
@@ -259,11 +309,31 @@ export function Settings() {
             <Field label={t("settings.defaultModel")}>
               <Select value={s()!.default_model} options={modelOptions()} onChange={(v) => void patchNow({ default_model: v })} />
             </Field>
+            <Field label={t("settings.escalationModel")} hint={t("settings.escalationModelHint")}>
+              <Select
+                value={s()!.default_escalation_model ?? ""}
+                options={escalationOptions()}
+                onChange={(v) => void patchNow({ default_escalation_model: v })}
+              />
+            </Field>
+            <Field label={t("settings.sandboxBackend")} hint={t("settings.sandboxBackendHint")}>
+              <Select
+                value={s()!.default_sandbox_tier ?? "default"}
+                options={sandboxOptions()}
+                onChange={(v) => void patchNow({ default_sandbox_tier: v })}
+              />
+            </Field>
             <Show when={engine() !== "claude-code"}>
               <Field label={t("settings.defaultThinking")}>
                 <Select value={s()!.default_thinking} options={thinkingOptions()} onChange={(v) => void patchNow({ default_thinking: v })} />
               </Field>
             </Show>
+            <Toggle
+              checked={s()!.flaky_rerun ?? true}
+              onChange={(v) => void patchNow({ flaky_rerun: v })}
+              label={t("settings.flakyRerun")}
+              hint={t("settings.flakyRerunHint")}
+            />
             {/* A count takes a measure word in Chinese and nothing in English. */}
             <Field label={t("settings.maxConcurrent")} hint={t("settings.maxConcurrentHint")} unit={locale() === "zh-CN" ? "个" : undefined} class="field-narrow">
               <input class="num narrow" type="number" min="1" max="10" value={s()!.max_concurrent} onInput={(e) => patch({ max_concurrent: Number(e.currentTarget.value) || 1 })} />

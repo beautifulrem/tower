@@ -56,12 +56,29 @@ pub(crate) fn agent_jail(
     std::fs::create_dir_all(&goal_dir)?;
     let cache = crate::caches::prepare(&goal_dir.join("cache"), &home_of(inner), dir)?;
     let mut net = Net::new(&goal.contract, network);
+    // Reserve a non-overlapping 10-port block for this goal and open those
+    // ports in its loopback allowlist so parallel dev servers never collide.
+    let port_alloc = crate::ports_pool::allocate_for_root(&inner.paths.root, &goal.id).ok();
+    if let Some(alloc) = &port_alloc {
+        net.ports.extend(alloc.ports());
+    }
     net.ports.extend(own_ports(inner, &goal.id));
+    net.ports.sort_unstable();
+    net.ports.dedup();
     // Your own tests need loopback (found on your unchanged code, or the
     // project's setting): the agent runs the same tests.
     net.open |= loopback_opened_for(inner, goal);
     let dirs = Dirs { work: dir, tmp, cache: &cache };
-    jail(inner, &goal_dir, &dirs, purpose, &net, &TowerFiles::default())
+    let attachments_dir = goal_dir.join("attachments");
+    let mut tower_files = TowerFiles::default();
+    if attachments_dir.is_dir() {
+        tower_files.read.push(attachments_dir);
+    }
+    let mut built = jail(inner, &goal_dir, &dirs, purpose, &net, &tower_files)?;
+    if let Some(alloc) = &port_alloc {
+        built.env.extend(alloc.env_vars());
+    }
+    Ok(built)
 }
 
 /// The directories one sandboxed process works in.

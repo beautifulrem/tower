@@ -11,8 +11,8 @@ import { type Group, groupLabel, groupOf, isBlocking } from "../lib/labels";
 import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
-import { Icon, LifecycleGlyph, NeedsYouMark } from "./Glyph";
-import { Kbd } from "./ui";
+import { DangerMark, Icon, LifecycleGlyph, NeedsYouMark } from "./Glyph";
+import { BrandMark, Kbd } from "./ui";
 
 const ORDER: Group[] = ["needs_you", "running", "verifying", "review", "ready", "paused", "done"];
 
@@ -63,7 +63,12 @@ export function Sidebar() {
 
   return (
     <nav class="sidebar" aria-label={t("sidebar.label")}>
-      <div class="sidebar-drag" data-tauri-drag-region />
+      <div class="sidebar-drag" data-tauri-drag-region>
+        <span class="side-brand" aria-hidden="true" data-tauri-drag-region>
+          <BrandMark size={12} />
+          Tower
+        </span>
+      </div>
       <div class="side-top">
         <button class="side-row" classList={{ active: route().name === "new" }} aria-current={route().name === "new" ? "page" : undefined} onClick={() => go({ name: "new" })}>
           <span class="side-icon">
@@ -72,7 +77,19 @@ export function Sidebar() {
           <span class="grow">{t("app.newGoal")}</span>
           <Kbd k="mod+n" />
         </button>
-        <button class="side-row" classList={{ active: route().name === "inbox" }} aria-current={route().name === "inbox" ? "page" : undefined} onClick={() => go({ name: "inbox" })}>
+        <button class="side-row" classList={{ active: route().name === "overview" }} aria-current={route().name === "overview" ? "page" : undefined} onClick={() => go({ name: "overview" })}>
+          <span class="side-icon">
+            <Icon name="grid" />
+          </span>
+          <span class="grow">{t("app.overview")}</span>
+          <Kbd k="mod+1" />
+        </button>
+        <button
+          class="side-row"
+          classList={{ active: route().name === "inbox", "side-row-alert": blocking() > 0 }}
+          aria-current={route().name === "inbox" ? "page" : undefined}
+          onClick={() => go({ name: "inbox" })}
+        >
           <span class="side-icon">
             <Show when={blocking() > 0} fallback={<Icon name="inbox" />}>
               <NeedsYouMark />
@@ -92,12 +109,25 @@ export function Sidebar() {
             <span class="num side-count t1">{toReview()}</span>
           </button>
         </Show>
-        <button class="side-row" classList={{ active: route().name === "overview" }} aria-current={route().name === "overview" ? "page" : undefined} onClick={() => go({ name: "overview" })}>
+        <button class="side-row" classList={{ active: route().name === "learning" }} aria-current={route().name === "learning" ? "page" : undefined} onClick={() => go({ name: "learning" })}>
           <span class="side-icon">
-            <Icon name="grid" />
+            <Icon name="learning" />
           </span>
-          <span class="grow">{t("app.overview")}</span>
-          <Kbd k="mod+1" />
+          <span class="grow">{t("app.learning")}</span>
+          <Show when={state.pendingProposals > 0} fallback={<Kbd k="mod+3" />}>
+            <span class="num side-count-pill">{state.pendingProposals}</span>
+          </Show>
+        </button>
+        <button class="side-row" classList={{ active: route().name === "operations" }} aria-current={route().name === "operations" ? "page" : undefined} onClick={() => go({ name: "operations" })}>
+          <span class="side-icon">
+            <Show when={state.mergeConflicts > 0} fallback={<Icon name="operations" />}>
+              <DangerMark />
+            </Show>
+          </span>
+          <span class="grow">{t("app.operations")}</span>
+          <Show when={state.mergeConflicts > 0 || state.activeSchedules > 0} fallback={<Kbd k="mod+4" />}>
+            <span class="num side-count t1">{state.mergeConflicts > 0 ? state.mergeConflicts : state.activeSchedules}</span>
+          </Show>
         </button>
       </div>
 

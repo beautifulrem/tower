@@ -24,6 +24,21 @@ import type { ReviewView } from "../gen/ReviewView";
 import type { Settings } from "../gen/Settings";
 import type { TraceEntry } from "../gen/TraceEntry";
 import type { UiUpdate } from "../gen/UiUpdate";
+import type {
+  AttachmentRef,
+  CalibrationRow,
+  EngineDescriptor,
+  HoldoutDraft,
+  MemoryProposal,
+  MergeQueueEntry,
+  NewScheduledGoalInput,
+  ProposalStatus,
+  SandboxPosture,
+  ScheduledGoal,
+  SnapshotPoint,
+  StorageInventory,
+  UpdateCheckResult,
+} from "./apiTypes";
 
 export const api = {
   startupRoute: () => invoke<string | null>("startup_route"),
@@ -72,7 +87,8 @@ export const api = {
   pause: (id: string) => invoke<void>("pause", { id }),
   resume: (id: string) => invoke<void>("resume", { id }),
   abandon: (id: string) => invoke<void>("abandon", { id }),
-  steer: (id: string, text: string) => invoke<string>("steer", { id, text }),
+  steer: (id: string, text: string, queue?: boolean) =>
+    invoke<string>("steer", queue ? { id, text, queue } : { id, text }),
   answer: (inboxId: string, response: string) => invoke<void>("answer", { inboxId, response }),
   /** Approves or rejects an assumption, with a note to the agent either way. */
   answerAssumption: (inboxId: string, approved: boolean, note: string) =>
@@ -113,6 +129,56 @@ export const api = {
   /** Per-goal interface state (viewed files, draft comments, last reviewed pin), kept in SQLite. */
   uiState: (id: string) => invoke<Record<string, string>>("ui_state", { id }),
   setUiState: (id: string, key: string, value: string | null) => invoke<void>("set_ui_state", { id, key, value }),
+
+  // ---- Review timeline & multimodal attachments ----
+  compareSnapshots: (id: string, fromRev: string, toRev: string) =>
+    invoke<ReviewView>("compare_snapshots", { id, fromRev, toRev }),
+  listSnapshots: (id: string) => invoke<SnapshotPoint[]>("list_snapshots", { id }),
+  saveAttachment: (goalId: string, name: string, dataBase64: string) =>
+    invoke<AttachmentRef>("save_attachment", { goalId, name, dataBase64 }),
+  attachmentDataUrl: (goalId: string, path: string) =>
+    invoke<string | null>("attachment_data_url", { goalId, path }),
+  deleteAttachment: (goalId: string, attachmentId: string) =>
+    invoke<void>("delete_attachment", { goalId, attachmentId }),
+  workspaceFiles: (id: string) => invoke<string[]>("workspace_files", { id }),
+
+  // ---- Learning: Memory ratification queue & Calibration scoreboard ----
+  memoryProposals: (status: ProposalStatus | null = null) =>
+    invoke<MemoryProposal[]>("memory_proposals", { status }),
+  approveProposal: (id: string, editedText: string | null = null, confirmedPhrase: string | null = null) =>
+    invoke<MemoryProposal>("approve_proposal", { id, editedText, confirmedPhrase }),
+  rejectProposal: (id: string, reason = "") => invoke<void>("reject_proposal", { id, reason }),
+  calibrationRows: (projectId: string | null = null) =>
+    invoke<CalibrationRow[]>("calibration_rows", { projectId }),
+
+  // ---- Operations: Scheduled goals, Merge queue & Storage ----
+  scheduledGoals: () => invoke<ScheduledGoal[]>("scheduled_goals"),
+  createScheduledGoal: (input: NewScheduledGoalInput) => invoke<ScheduledGoal>("create_scheduled_goal", { input }),
+  toggleScheduledGoal: (id: string, enabled: boolean) =>
+    invoke<ScheduledGoal>("toggle_scheduled_goal", { id, enabled }),
+  deleteScheduledGoal: (id: string) => invoke<void>("delete_scheduled_goal", { id }),
+  runScheduledGoalNow: (id: string) => invoke<GoalSummary>("run_scheduled_goal_now", { id }),
+
+  mergeQueue: (projectId: string | null = null) => invoke<MergeQueueEntry[]>("merge_queue", { projectId }),
+  enqueueMerge: (goalId: string) => invoke<MergeQueueEntry>("enqueue_merge", { goalId }),
+  reorderMergeQueue: (projectId: string, goalIds: string[]) =>
+    invoke<MergeQueueEntry[]>("reorder_merge_queue", { projectId, goalIds }),
+  removeFromMergeQueue: (goalId: string) => invoke<void>("remove_from_merge_queue", { goalId }),
+  checkMergeQueue: (projectId: string) => invoke<MergeQueueEntry[]>("check_merge_queue", { projectId }),
+  reverifyMergeQueueEntry: (goalId: string) => invoke<void>("reverify_merge_queue_entry", { goalId }),
+
+  storageInventory: () => invoke<StorageInventory>("storage_inventory"),
+  reclaimStorage: (goalIds: string[]) => invoke<number>("reclaim_storage", { goalIds }),
+
+  // ---- Engine descriptors, Sandbox posture, Updater & Holdout drafts ----
+  engines: () => invoke<EngineDescriptor[]>("engines"),
+  sandboxPosture: () => invoke<SandboxPosture>("sandbox_posture"),
+  checkForUpdates: () => invoke<UpdateCheckResult>("check_for_updates"),
+  installUpdate: () => invoke<void>("install_update"),
+  generateHoldoutDrafts: (projectId: string, intent: string) =>
+    invoke<HoldoutDraft[]>("generate_holdout_drafts", { projectId, intent }),
+  ratifyHoldoutDraft: (projectId: string, filename: string, code: string) =>
+    invoke<string>("ratify_holdout_draft", { projectId, filename, code }),
 };
 
 export function onUpdate(handler: (u: UiUpdate) => void): Promise<UnlistenFn> {

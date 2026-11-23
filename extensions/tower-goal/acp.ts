@@ -503,7 +503,17 @@ async function bridgeMain() {
 	];
 	const meta = engine.buildSessionMeta({ model, appendPrompt, serverName: TOWER_MCP_SERVER_NAME });
 
-	async function ensureSession() {
+	// One session, however many commands arrive while it starts.
+	let starting: Promise<void> | null = null;
+	function ensureSession(): Promise<void> {
+		starting ??= startSession().catch((e) => {
+			starting = null;
+			throw e;
+		});
+		return starting;
+	}
+
+	async function startSession() {
 		if (sessionId) return;
 		if (resumeFile && existsSync(resumeFile) && canLoad) {
 			try {
@@ -561,6 +571,20 @@ async function bridgeMain() {
 		busy = false;
 	}
 
+	// Busy from the moment a turn is asked for: a steer that arrives while
+	// the session is still starting is queued, not a second turn loop.
+	async function startTurn(id: unknown, t: string, payload: QueuedTurn) {
+		busy = true;
+		try {
+			await ensureSession();
+		} catch (e) {
+			busy = false;
+			throw e;
+		}
+		respond(id, t, { disposition: "started" });
+		void turn(payload);
+	}
+
 	lines(process.stdin, async (l) => {
 		const cmd = parse(l);
 		if (!cmd) return;
@@ -585,9 +609,7 @@ async function bridgeMain() {
 					respond(id, t, { models: [] });
 					break;
 				case "prompt":
-					await ensureSession();
-					respond(id, t, { disposition: "started" });
-					void turn({ message: String(cmd.message ?? ""), images: parseImages(cmd.images) });
+					await startTurn(id, t, { message: String(cmd.message ?? ""), images: parseImages(cmd.images) });
 					break;
 				case "steer":
 				case "follow_up": {
@@ -596,9 +618,7 @@ async function bridgeMain() {
 						queue.push(payload);
 						respond(id, t, { disposition: "queued" });
 					} else {
-						await ensureSession();
-						respond(id, t, { disposition: "started" });
-						void turn(payload);
+						await startTurn(id, t, payload);
 					}
 					break;
 				}

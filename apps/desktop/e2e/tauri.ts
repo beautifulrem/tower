@@ -75,6 +75,7 @@ export async function openTower(
       let seq = 0;
       const calls: Array<[string, unknown]> = [];
       (window as any).__towerCalls = calls;
+      (window as any).__towerFixtures = F;
       // Delivers an event to what the app listens for, as Tauri does: the handler is a registered callback id.
       (window as any).__towerEmit = (event: string, payload: unknown) => {
         const id = (window as any).__towerListeners?.[event];
@@ -119,8 +120,12 @@ export async function openTower(
             case "review":
               if (!F[`review-${a.id}`]) throw "no review";
               return F[`review-${a.id}`];
-            case "file_text":
-              return F.files[`${a.id}:${a.path}:${a.old ? "old" : "new"}`] ?? null;
+            case "file_text": {
+              const text = F.files[`${a.id}:${a.path}:${a.old ? "old" : "new"}`] ?? null;
+              // A test can hold reads (`__towerHold`) to see what lands after the snapshot moved on meanwhile.
+              await (window as any).__towerHold;
+              return text;
+            }
             case "ui_state":
               return {};
             case "accept":
@@ -181,7 +186,11 @@ export async function openTower(
             case "plugin:dialog|ask":
               return true;
             default:
-              if (cmd.startsWith("plugin:menu|")) return [1, "m"];
+              if (cmd.startsWith("plugin:menu|")) {
+                // Kept by label so a test can pick a native menu item (`__towerMenu["Edit this file"].onmessage()`).
+                if (cmd === "plugin:menu|new" && a.options?.text) ((window as any).__towerMenu ??= {})[a.options.text] = a.handler;
+                return [1, "m"];
+              }
               return null;
           }
         },

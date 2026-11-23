@@ -87,7 +87,7 @@ export function Review(props: { id: string }) {
   );
   const off = onTrace(props.id, (e) => {
     if (RELOAD_DETAIL.has(e.event.kind)) void refetchDetail();
-    if (RELOAD_VIEW.has(e.event.kind)) (resetTexts(), void refetchView());
+    if (RELOAD_VIEW.has(e.event.kind)) (resetTexts(true), void refetchView());
   });
   onCleanup(off);
 
@@ -139,24 +139,37 @@ export function Review(props: { id: string }) {
   const [reveals, setReveals] = createSignal<Record<string, Reveals>>({});
   const [whole, setWhole] = createSignal<Record<string, boolean>>({});
   const [editingPath, setEditingPath] = createSignal<string | null>(null);
-  // Texts and expanded context belong to one snapshot: a new pin or another scope drops them.
-  const resetTexts = () => (setTexts({}), setReveals({}), setWhole({}), setEditingPath(null));
-  const loading = new Set<string>();
+  // Each read in flight, by path. A reset or a save drops its entry, so the read finds it has been outrun and its
+  // text, from the snapshot before, never lands where Edit and Apply would write it back over newer code.
+  const loading = new Map<string, object>();
+  // Texts and expanded context belong to one snapshot: a new pin or another scope drops them. A reload the engine
+  // starts keeps the file open in the editor, and its text, so what you typed there is not lost.
+  const resetTexts = (keepEditor = false) => {
+    const keep = keepEditor ? editingPath() : null;
+    loading.clear();
+    setTexts((m) => (keep && m[keep] ? { [keep]: m[keep] } : {}));
+    setReveals({});
+    setWhole({});
+    if (!keep) setEditingPath(null);
+  };
   const ensureText = async (f: DiffFile): Promise<string[] | null> => {
     const have = texts()[f.path];
     if (have !== undefined) return have;
     if (loading.has(f.path)) return null;
-    loading.add(f.path);
+    const mine = {};
+    loading.set(f.path, mine);
+    const current = () => loading.get(f.path) === mine;
     try {
       const raw = await api.fileText(props.id, f.path, f.status === "deleted", view()?.pin ?? null);
+      if (!current()) return null;
       const lines = raw === null ? null : splitLines(raw);
       setTexts((m) => ({ ...m, [f.path]: lines }));
       return lines;
     } catch (e) {
-      toast("error", errorText(e), { goalId: props.id });
+      if (current()) toast("error", errorText(e), { goalId: props.id });
       return null;
     } finally {
-      loading.delete(f.path);
+      if (current()) loading.delete(f.path);
     }
   };
   const reveal = async (f: DiffFile, gap: Gap, how: "top" | "bottom" | "all") => {
@@ -177,6 +190,7 @@ export function Review(props: { id: string }) {
     setWhole((m) => ({ ...m, [f.path]: !m[f.path] }));
   };
   const changed = async (f: DiffFile) => {
+    loading.delete(f.path);
     setTexts((m) => {
       const n = { ...m };
       delete n[f.path];

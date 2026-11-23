@@ -50,9 +50,34 @@ function place(r: Route) {
   else setStack((s) => [...s, r].slice(-12));
 }
 
+/** Whether the view may be left now: true or false at once, or a question (unsaved work) answered later. */
+type LeaveGuard = () => boolean | Promise<boolean>;
+let guard: LeaveGuard | null = null;
+let asking = false;
+
+/** A view holding work that leaving would lose registers this; every way out (keys, sidebar, menu) asks it first. */
+export function guardLeave(g: LeaveGuard): () => void {
+  guard = g;
+  return () => void (guard === g && (guard = null));
+}
+
+/** True when the move is held: refused, or waiting on the question, after which a yes makes it (once). */
+function held(move: () => void): boolean {
+  if (!guard) return false;
+  if (asking) return true;
+  const ok = guard();
+  if (typeof ok === "boolean") return !ok;
+  asking = true;
+  void ok.catch(() => false).then((yes) => {
+    asking = false;
+    if (yes) (guard = null, move());
+  });
+  return true;
+}
+
 export function go(r: Route, opts: { animate?: boolean } = {}) {
   const cur = route();
-  if (JSON.stringify(cur) === JSON.stringify(r)) return;
+  if (JSON.stringify(cur) === JSON.stringify(r) || held(() => go(r, opts))) return;
   if (opts.animate === false) place(r);
   else transition(cur, r, () => place(r));
 }
@@ -77,7 +102,7 @@ export function takeProjectField(project: string): ProjectField | null {
 
 export function back() {
   const s = stack();
-  if (s.length <= 1) return;
+  if (s.length <= 1 || held(back)) return;
   transition(s[s.length - 1], s[s.length - 2], () => setStack((st) => st.slice(0, -1)));
 }
 

@@ -57,16 +57,17 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
 /// §16.8 (ADR-176/177), built from a parse of the file, never a line filter.
 /// Mirrors (`[source.*]` `registry`/`replace-with`/`directory`), registry
 /// indexes (`[registries.*]` `index`) and `[net]` `retry`/`git-fetch-with-cli`/
-/// `offline`; a URL carrying credentials is left out. Everything else stays
+/// `offline`; URLs lose their credentials. Everything else stays
 /// behind (tokens, credential providers, `[env]`, `[build]`, aliases…), and a
 /// file that does not parse gives an empty copy.
 fn without_credentials(config: &str) -> String {
     use toml::{Table, Value};
     let Ok(doc) = config.parse::<Table>() else { return String::new() };
+    // Strings lose the credentials in their URLs (§16.8 strips userinfo); numbers and switches stay; nothing else.
     let keep = |value: &Value| match value {
-        Value::String(s) => !url_has_password(s),
-        Value::Integer(_) | Value::Boolean(_) => true,
-        _ => false,
+        Value::String(s) => Some(Value::String(without_userinfo(s))),
+        Value::Integer(_) | Value::Boolean(_) => Some(value.clone()),
+        _ => None,
     };
     // `[source.NAME]` and `[registries.NAME]`: only the named keys of each entry.
     let entries = |table: &str, keys: &[&str]| -> Table {
@@ -76,8 +77,8 @@ fn without_credentials(config: &str) -> String {
                 .as_table()
                 .into_iter()
                 .flatten()
-                .filter(|(k, v)| keys.contains(&k.as_str()) && keep(v))
-                .map(|(k, v)| (k.clone(), v.clone()))
+                .filter(|(k, _)| keys.contains(&k.as_str()))
+                .filter_map(|(k, v)| Some((k.clone(), keep(v)?)))
                 .collect();
             if !kept.is_empty() {
                 out.insert(name.clone(), Value::Table(kept));
@@ -85,11 +86,19 @@ fn without_credentials(config: &str) -> String {
         }
         out
     };
+    // A `replace-with` naming a source that did not come through (a `local-registry`, a `git` source) is dropped
+    // with it: cargo refuses a replacement it cannot find, and builds from crates.io without one.
+    let mut sources = entries("source", &["registry", "replace-with", "directory"]);
+    let names: Vec<String> = sources.keys().cloned().collect();
+    for (_, entry) in sources.iter_mut() {
+        let Some(entry) = entry.as_table_mut() else { continue };
+        if entry.get("replace-with").and_then(Value::as_str).is_some_and(|to| !names.iter().any(|n| n == to)) {
+            entry.remove("replace-with");
+        }
+    }
+    sources.retain(|_, entry| entry.as_table().is_some_and(|t| !t.is_empty()));
     let mut out = Table::new();
-    for (table, kept) in [
-        ("source", entries("source", &["registry", "replace-with", "directory"])),
-        ("registries", entries("registries", &["index"])),
-    ] {
+    for (table, kept) in [("source", sources), ("registries", entries("registries", &["index"]))] {
         if !kept.is_empty() {
             out.insert(table.into(), Value::Table(kept));
         }
@@ -99,8 +108,8 @@ fn without_credentials(config: &str) -> String {
         .and_then(Value::as_table)
         .into_iter()
         .flatten()
-        .filter(|(k, v)| ["retry", "git-fetch-with-cli", "offline"].contains(&k.as_str()) && keep(v))
-        .map(|(k, v)| (k.clone(), v.clone()))
+        .filter(|(k, _)| ["retry", "git-fetch-with-cli", "offline"].contains(&k.as_str()))
+        .filter_map(|(k, v)| Some((k.clone(), keep(v)?)))
         .collect();
     if !net.is_empty() {
         out.insert("net".into(), Value::Table(net));
@@ -108,22 +117,27 @@ fn without_credentials(config: &str) -> String {
     toml::to_string(&out).unwrap_or_default()
 }
 
-/// A URL with credentials in it: `user:password@`, or any user name on an
-/// http(s) URL (where a lone name is usually a token).
-fn url_has_password(value: &str) -> bool {
+/// `value` with the credentials taken out of its URLs: `user:password@`, or
+/// any user name on an http(s) URL (where a lone name is usually a token). A
+/// lone ssh user (`ssh://git@host`) is no secret and stays.
+fn without_userinfo(value: &str) -> String {
+    let mut out = String::new();
     let mut rest = value;
     while let Some(at) = rest.find("://") {
         let scheme = rest[..at].rsplit(|c: char| !c.is_ascii_alphanumeric() && c != '+').next().unwrap_or("");
+        let scheme = scheme.to_ascii_lowercase();
+        out.push_str(&rest[..at + 3]);
         let authority = &rest[at + 3..];
         let end = authority.find(['/', '"', '\'', ' ', '?', '#']).unwrap_or(authority.len());
-        if let Some(userinfo) = authority[..end].rsplit_once('@').map(|(u, _)| u)
-            && (userinfo.contains(':') || scheme.ends_with("http") || scheme.ends_with("https"))
-        {
-            return true;
-        }
-        rest = &authority[end..];
+        rest = match authority[..end].rsplit_once('@') {
+            Some((user, _)) if user.contains(':') || scheme.ends_with("http") || scheme.ends_with("https") => {
+                &authority[user.len() + 1..]
+            }
+            _ => authority,
+        };
     }
-    false
+    out.push_str(rest);
+    out
 }
 
 /// Creates the goal's cache directory and seeds it once from the user's
@@ -383,6 +397,8 @@ keygen = "run --bin keygen"
         assert_eq!(kept["registries"]["corp"]["index"].as_str(), Some("sparse+https://corp.example.com/index/"));
         assert_eq!(kept["net"]["retry"].as_integer(), Some(3));
         assert_eq!(kept["net"]["git-fetch-with-cli"].as_bool(), Some(true));
+        // A mirror whose URL carries credentials stays, without them (§16.8: userinfo is stripped).
+        assert_eq!(kept["source"]["private"]["registry"].as_str(), Some("sparse+https://private.example.com/index/"));
 
         // The spellings a line filter missed: whatever the form, nothing outside the allowlist comes through.
         for (config, secret) in [
@@ -395,10 +411,22 @@ keygen = "run --bin keygen"
                 "0013",
             ),
             ("not toml at all = = \"broken0014\"\n", "0014"),
+            ("[source.m]\nregistry = \"HTTPS://tok0017@m.example.com/i/\"\n", "0017"),
         ] {
             let out = without_credentials(config);
             assert!(!out.contains(secret), "{secret} left in:\n{out}");
+            // What is left is a configuration cargo reads: valid, with no `[env]` header left behind.
+            let parsed: toml::Table = out.parse().unwrap_or_else(|e| panic!("{e}:\n{out}"));
+            assert!(!parsed.contains_key("env"), "{out}");
         }
+        // A replacement whose source did not come through is left out too: cargo refuses a `replace-with` that
+        // names no source.
+        let local = without_credentials(
+            "[source.crates-io]\nreplace-with = \"local\"\n[source.local]\nlocal-registry = \"/x\"\n",
+        );
+        assert!(!local.contains("replace-with"), "{local}");
+        let ssh = without_credentials("[registries.corp]\nindex = \"ssh://git@git.example.com/index\"\n");
+        assert!(ssh.contains("ssh://git@git.example.com/index"), "a lone ssh user is not a credential: {ssh}");
 
         // A cache seeded before the filter loses its copy's token too.
         std::fs::write(cache.join("cargo/config.toml"), "[registry]\ntoken = \"cio_oldseed0016\"\n").unwrap();

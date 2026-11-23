@@ -57,15 +57,17 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
 /// §16.8 (ADR-176/177), built from a parse of the file, never a line filter.
 /// Mirrors (`[source.*]` `registry`/`replace-with`/`directory`), registry
 /// indexes (`[registries.*]` `index`) and `[net]` `retry`/`git-fetch-with-cli`/
-/// `offline`; URLs lose their credentials. Everything else stays
+/// `offline`; a value whose URL carries credentials does not come. Everything else stays
 /// behind (tokens, credential providers, `[env]`, `[build]`, aliases…), and a
 /// file that does not parse gives an empty copy.
 fn without_credentials(config: &str) -> String {
     use toml::{Table, Value};
     let Ok(doc) = config.parse::<Table>() else { return String::new() };
-    // Strings lose the credentials in their URLs (§16.8 strips userinfo); numbers and switches stay; nothing else.
+    // A string whose URL carries credentials goes whole (stricter than §16.8's stripping: a mirror cannot be read
+    // without them, and a stripped copy can collide with another source cargo then refuses); numbers and switches
+    // stay; nothing else.
     let keep = |value: &Value| match value {
-        Value::String(s) => Some(Value::String(without_userinfo(s))),
+        Value::String(s) => (without_userinfo(s) == *s).then(|| value.clone()),
         Value::Integer(_) | Value::Boolean(_) => Some(value.clone()),
         _ => None,
     };
@@ -152,7 +154,8 @@ fn without_userinfo(value: &str) -> String {
         let scheme = scheme.to_ascii_lowercase();
         out.push_str(&rest[..at + 3]);
         let authority = &rest[at + 3..];
-        let end = authority.find(['/', '"', '\'', ' ', '?', '#']).unwrap_or(authority.len());
+        // Only `/?#` (and `\`, which URL parsers read as `/`) end an authority: a password may hold a space or a quote.
+        let end = authority.find(['/', '?', '#', '\\']).unwrap_or(authority.len());
         rest = match authority[..end].rsplit_once('@') {
             Some((user, _)) if user.contains(':') || scheme.ends_with("http") || scheme.ends_with("https") => {
                 &authority[user.len() + 1..]
@@ -421,8 +424,9 @@ keygen = "run --bin keygen"
         assert_eq!(kept["registries"]["corp"]["index"].as_str(), Some("sparse+https://corp.example.com/index/"));
         assert_eq!(kept["net"]["retry"].as_integer(), Some(3));
         assert_eq!(kept["net"]["git-fetch-with-cli"].as_bool(), Some(true));
-        // A mirror whose URL carries credentials stays, without them (§16.8: userinfo is stripped).
-        assert_eq!(kept["source"]["private"]["registry"].as_str(), Some("sparse+https://private.example.com/index/"));
+        // A mirror whose URL carries credentials does not come through at all: without them it cannot be read, and
+        // a stripped copy can collide with another source cargo then refuses.
+        assert!(kept["source"].get("private").is_none(), "{copied}");
 
         // The spellings a line filter missed: whatever the form, nothing outside the allowlist comes through.
         for (config, secret) in [
@@ -445,6 +449,9 @@ keygen = "run --bin keygen"
                 "[registries.\"https://u:name0020@host.example.com/x\"]\nindex = \"https://host.example.com/x\"\n",
                 "0020",
             ),
+            // A password with a space or a quote in it is still userinfo: only `/?#` end an authority.
+            ("[source.m]\nregistry = \"sparse+https://bob:hunter 0021@m.example.com/\"\n", "0021"),
+            ("[registries.r]\nindex = \"sparse+https://bob:se\\\"cr'0022@r.example.com/\"\n", "0022"),
         ] {
             let out = without_credentials(config);
             assert!(!out.contains(secret), "{secret} left in:\n{out}");
@@ -458,13 +465,22 @@ keygen = "run --bin keygen"
             "[source.crates-io]\nreplace-with = \"local\"\n[source.local]\nlocal-registry = \"/x\"\n",
         );
         assert!(!local.contains("replace-with"), "{local}");
-        // A mirror under `[registries]` is a replacement cargo takes too (the usual Artifactory setup).
+        // A mirror under `[registries]` is a replacement cargo takes too (the usual Artifactory setup)…
         let corp = without_credentials(
-            "[source.crates-io]\nreplace-with = \"corp\"\n[registries.corp]\nindex = \"sparse+https://u:pw0018@corp.example.com/index/\"\n",
+            "[source.crates-io]\nreplace-with = \"corp\"\n[registries.corp]\nindex = \"sparse+https://corp.example.com/index/\"\n",
         );
         let corp_t: toml::Table = corp.parse().unwrap();
         assert_eq!(corp_t["source"]["crates-io"]["replace-with"].as_str(), Some("corp"), "{corp}");
-        assert!(!corp.contains("0018"), "{corp}");
+        // …and one with credentials in its URL goes, with the replacement naming it.
+        let corp = without_credentials(
+            "[source.crates-io]\nreplace-with = \"corp\"\n[registries.corp]\nindex = \"sparse+https://u:pw0018@corp.example.com/index/\"\n",
+        );
+        assert!(!corp.contains("0018") && !corp.contains("replace-with"), "{corp}");
+        // Two sources that differ only by credentials are not made one (cargo refuses two sources with one URL).
+        let twins = without_credentials(
+            "[source.a]\nregistry = \"sparse+https://tok@m.example.com/idx/\"\n[source.b]\nregistry = \"sparse+https://m.example.com/idx/\"\n",
+        );
+        assert_eq!(twins.matches("m.example.com/idx/").count(), 1, "{twins}");
         // A chain whose end did not come through, and the block `cargo vendor` writes (a git source replaced by a
         // vendor directory): what is left names only sources that are there, each with a location of its own.
         for config in [

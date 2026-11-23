@@ -348,6 +348,22 @@ export function Overlay(props: {
   // The key that opened it closes it again (`?`, `e`, ⌘P): under the modal layer the opener's own binding is quiet.
   const toggle: Binding[] = props.closeKey ? [{ key: props.closeKey, run: close, inInputs: props.closeKey.startsWith("mod+") }] : [];
   const layer = useKeys([{ key: "escape", run: close, inInputs: true }, ...toggle, ...(props.keys?.bindings ?? [])], props.keys?.name, { modal: true });
+  // A sheet whose body runs on below its actions says so (`data-more`: a fade over the action band), since overlay
+  // scrollbars show nothing until you scroll. Measured on scroll, on resize and when the content changes.
+  let frame = 0;
+  const measure = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => panel.toggleAttribute("data-more", panel.scrollHeight - panel.scrollTop - panel.clientHeight > 8));
+  };
+  onMount(() => {
+    panel.addEventListener("scroll", measure, { passive: true });
+    const resized = new ResizeObserver(measure);
+    resized.observe(panel);
+    const changed = new MutationObserver(measure);
+    changed.observe(panel, { childList: true, subtree: true, characterData: true });
+    measure();
+    onCleanup(() => (resized.disconnect(), changed.disconnect(), cancelAnimationFrame(frame)));
+  });
   onMount(() => {
     props.panelRef?.(panel);
     const first = props.initialFocus === "panel" ? null : panel.querySelector<HTMLElement>(FOCUSABLE);

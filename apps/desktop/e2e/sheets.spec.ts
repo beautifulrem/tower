@@ -67,7 +67,7 @@ for (const size of ["standard", "large"] as const) {
       expect(await actionsReachable(page)).toEqual([]);
       const covered = await dialog.evaluate((el) => {
         const actions = el.querySelector(":scope > .panel-actions");
-        const body = [...el.children].filter((c) => c !== actions && !c.classList.contains("panel-more")).pop();
+        const body = [...el.children].filter((c) => c !== actions).pop();
         if (!actions || !body) return 0;
         return body.getBoundingClientRect().bottom - actions.getBoundingClientRect().top;
       });
@@ -90,5 +90,32 @@ for (const theme of ["light", "dark"] as const) {
       return cv.getImageData(0, 0, 1, 1).data[3];
     });
     expect(alpha).toBe(255);
+  });
+}
+
+// A sheet with more below says so: a fade above its actions while the body runs on under them, gone at the end. With
+// overlay scrollbars nothing else shows there is more, and Accept sits right there.
+for (const s of sheets.filter((x) => x.name !== "Look")) {
+  test(`at 1040×640 (large) the ${s.name} sheet shows when there is more below its actions`, async ({ page }) => {
+    await page.setViewportSize({ width: 1040, height: 640 });
+    await page.addInitScript(() => localStorage.setItem("tower.size", "large"));
+    await openTower(page, s.route, { lang: "en", enrich: s.enrich });
+    await settled(page, s.route);
+    await s.open(page);
+    const dialog = page.getByRole("dialog").last();
+    await expect(dialog).toBeVisible();
+    await settled(page);
+    const fade = () =>
+      dialog.evaluate((el) => {
+        const actions = el.querySelector(":scope > .panel-actions");
+        const more = el.scrollHeight - el.scrollTop - el.clientHeight > 8;
+        const shown = !!actions && getComputedStyle(actions, "::before").opacity === "1";
+        return { more, shown };
+      });
+    const top = await fade();
+    expect(top.shown).toBe(top.more);
+    if (!top.more) return;
+    await dialog.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect.poll(fade).toEqual({ more: false, shown: false });
   });
 }

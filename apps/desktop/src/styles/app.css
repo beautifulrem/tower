@@ -4485,26 +4485,20 @@ input[type="radio"] {
   max-height: min(80vh, 100%);
 }
 /* "There is more below": a functional fade at the sheet's foot, above the actions, gone once the end is in view. */
-.panel-more {
-  position: sticky;
-  bottom: calc(26px + var(--sp-3));
-  height: 0;
-  margin-top: calc(-1 * var(--sp-4));
-  pointer-events: none;
-  z-index: 1;
-}
-.panel-more::before {
+/* More below: a fade over the top of the action band while the body runs on under it (set by Overlay). */
+.panel > .panel-actions::before {
   content: "";
   position: absolute;
-  left: calc(-1 * var(--panel-pad-x));
-  right: calc(-1 * var(--panel-pad-x));
-  bottom: 0;
+  left: 0;
+  right: 0;
+  bottom: 100%;
   height: 32px;
   background: linear-gradient(to bottom, transparent, var(--bg-overlay));
+  pointer-events: none;
   opacity: 0;
   transition: opacity var(--dur-fast) linear;
 }
-.panel-more.on::before {
+.panel[data-more] > .panel-actions::before {
   opacity: 1;
 }
 .overlay-top {

@@ -1895,13 +1895,15 @@ input[type="radio"] {
   white-space: nowrap;
 }
 
+/* An output block is a container inside a card or a sheet: it takes the chip radius, never the card's own (the lock's
+   concentric rule), so it reads as a well in the card rather than a second card. */
 .output-tail {
   font-feature-settings: var(--font-features-mono);
   margin: 6px 0 10px;
   padding: 10px 12px;
   max-height: 320px;
   overflow: auto;
-  border-radius: var(--radius-m);
+  border-radius: var(--radius-s);
   background: var(--bg-inset);
   border: 1px solid var(--border-subtle);
   font-family: var(--font-mono);

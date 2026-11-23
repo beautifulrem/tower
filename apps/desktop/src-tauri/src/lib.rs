@@ -666,6 +666,25 @@ mod tests {
         assert!(registered.len() >= 40, "the list was read: {}", registered.len());
     }
 
+    /// The window may open Tower's data folder itself and nothing under it:
+    /// the goals' workspaces there are written by agents, and opening an
+    /// agent-written `.command` or `.app` would run it outside the sandbox.
+    #[test]
+    fn the_window_opens_only_the_data_folder_itself() {
+        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let perms = caps["permissions"].as_array().unwrap();
+        let scoped = |id: &str| perms.iter().find(|p| p["identifier"] == id);
+        let paths: Vec<&str> = scoped("opener:allow-open-path").expect("open-path")["allow"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|a| a["path"].as_str())
+            .collect();
+        assert_eq!(paths, ["$HOME/.tower"]);
+        assert!(scoped("opener:allow-reveal-item-in-dir").is_none(), "nothing is revealed");
+        assert!(!perms.iter().any(|p| p == "opener:default"), "no unscoped opener");
+    }
+
     /// In a packaged app the extension is installed from the bundle's
     /// resources, so every file `install_extension` copies must be bundled:
     /// a missing one (the Claude Code adapter's lockfile, say) works in

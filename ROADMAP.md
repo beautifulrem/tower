@@ -1,6 +1,6 @@
 # Roadmap
 
-Tower's direction comes from `docs/00` (vision), `docs/16` (roadmap in the design), and `docs/18-evolution-roadmap.md` (the 2026-11 competitive evolution roadmap). This page tracks what has shipped and what is next in practice.
+Tower's direction comes from `docs/00` (vision), `docs/14` (roadmap and validation in the design), and `docs/18-evolution-roadmap.md` (the 2026-11 competitive evolution roadmap). This page tracks what has shipped and what is next in practice.
 
 ## Shipped (2026-11 Evolution)
 
@@ -13,7 +13,7 @@ Tower's direction comes from `docs/00` (vision), `docs/16` (roadmap in the desig
 ## Next
 
 - **Signed production release distribution**: enable Apple Developer notarization & Tauri updater signing keys in CI secrets (`RELEASING.md`).
-- **Live adversarial corpus in CI**: run `tools/adversarial.sh` on scheduled releases with real models to continuously benchmark new bypass classes.
+- **Live adversarial corpus in CI**: `.github/workflows/adversarial.yml` runs `tools/adversarial.sh` nightly with real models, but only once the repository variable `TOWER_ADVERSARIAL` is `on` and the `CLINE_API_KEY` secret is set; until then each run reads "skipped".
 - **Remote & multi-machine execution**: optional `serve` daemon mode and remote workspace runners while keeping the same contract/verification invariants.
 
 Have a use case that does not fit? Open an issue describing the problem.

@@ -669,6 +669,8 @@ fn remove_run(inner: &Inner, run: &Run) {
 
 pub(crate) async fn stop_engine(inner: &Arc<Inner>, run: &Arc<Run>, why: Stop) {
     run.flags().stopping = Some(why);
+    // A profile rewrite that began before the mark finishes before the run ends (jail::follow_agent_listeners).
+    drop(run.profile.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
     let _ = tokio::time::timeout(Duration::from_secs(3), run.engine.abort()).await;
     run.engine.shutdown(Duration::from_secs(5)).await;
     remove_run(inner, run);

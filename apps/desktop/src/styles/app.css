@@ -288,10 +288,14 @@
   color: var(--text-1);
   transition-duration: 0ms;
 }
+/* The 2px pen runs straight down the row's edge: that side of the ground is square, so the rule never bends into a
+   bracket round the corner (the board's row and the current hunk are square too). */
 .side-row.active {
   background: var(--bg-selected);
   color: var(--text-1);
   box-shadow: inset 2px 0 0 var(--text-3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 .side-icon {
   width: 16px;
@@ -2034,6 +2038,8 @@ input[type="radio"] {
   outline: none;
   background: var(--bg-selected);
   box-shadow: inset 2px 0 0 var(--text-3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 .run-row-back:focus-visible .run-rollback {
   color: var(--text-1);
@@ -3737,6 +3743,8 @@ input[type="radio"] {
   color: var(--text-1);
   background: var(--bg-selected);
   box-shadow: inset 2px 0 0 var(--text-3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 @media (max-width: 1280px) {
   .settings-page {
@@ -4924,7 +4932,7 @@ input[type="radio"] {
 .suggestion {
   margin: 0;
   padding: 6px 10px;
-  border-radius: var(--radius-s);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
   background: var(--bg-inset);
   border-left: 2px solid var(--st-verified);
   font-size: var(--fs-code);

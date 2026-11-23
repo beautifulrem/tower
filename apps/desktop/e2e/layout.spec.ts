@@ -130,3 +130,24 @@ test("operations: the merge queue keeps a goal id whole and a long branch on one
   // The long one does not fit at this width: it is the one cut.
   expect(rows[1].branchCut).toBe(true);
 });
+
+// The 2px pen on a row's left edge ("you are here", a register's rule) is a straight line: the corners on its side are
+// square, or an inset rule on a rounded ground bends round the corner into a bracket.
+for (const route of ["overview", "settings", "goal/G-0001", "review/G-0001"]) {
+  test(`${route}: every 2px left rule runs straight down its edge`, async ({ page }) => {
+    await openTower(page, route, { lang: "en", enrich: enrichRich });
+    await settled(page, route);
+    const bent = await page.evaluate(() => {
+      const found: string[] = [];
+      for (const el of document.querySelectorAll<HTMLElement>("body *")) {
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) continue;
+        const ruled = (parseFloat(cs.borderLeftWidth) >= 2 && parseFloat(cs.borderLeftWidth) > parseFloat(cs.borderTopWidth)) || /inset 2px 0px 0px/.test(cs.boxShadow) || / 2px 0px 0px( 0px)? inset/.test(cs.boxShadow);
+        if (ruled && (parseFloat(cs.borderTopLeftRadius) > 0 || parseFloat(cs.borderBottomLeftRadius) > 0)) found.push(`${el.tagName.toLowerCase()}.${[...el.classList].join(".")} r${cs.borderTopLeftRadius}`);
+      }
+      return [...new Set(found)];
+    });
+    expect(bent).toEqual([]);
+  });
+}

@@ -222,7 +222,12 @@ test("the phone card is drawn with the desk's pen: a 32px strip with an amber ed
   const strip = page.locator(".strip").first();
   const box = await strip.boundingBox();
   expect(Math.round(box!.height)).toBe(32);
-  expect(await strip.evaluate((el) => getComputedStyle(el).borderLeftWidth)).toBe("2px");
+  // The amber edge is a straight 2px rule, clear of the card's rounded corner (a border there bends round it).
+  const edge = await strip.evaluate((el) => {
+    const pen = getComputedStyle(el, "::before");
+    return { width: pen.width, clear: parseFloat(pen.top) >= parseFloat(getComputedStyle(el.closest(".card")!).borderTopLeftRadius), border: getComputedStyle(el).borderLeftWidth };
+  });
+  expect(edge).toEqual({ width: "2px", clear: true, border: "0px" });
   const cards = page.locator(".card");
   const a = await cards.nth(0).boundingBox();
   const b = await cards.nth(1).boundingBox();

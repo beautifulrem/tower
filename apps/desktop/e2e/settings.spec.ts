@@ -92,3 +92,23 @@ test("a field saved on the Settings page keeps the quiet mode the palette turned
   const saves = (await calls(page)).filter(([cmd]) => cmd === "save_settings") as Array<[string, { settings: { quiet_until: number | null } }]>;
   expect(saves[1][1].settings.quiet_until).not.toBeNull();
 });
+
+test("a field saved on the Settings page keeps quiet mode off once the palette turned it off", async ({ page }) => {
+  const saves = async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings") as Array<[string, { settings: { quiet_until: number | null } }]>;
+  await openTower(page, "overview");
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("quiet");
+  await page.getByRole("option", { name: /Quiet for 1 hour/ }).click();
+  await expect.poll(async () => (await saves()).length).toBe(1);
+  // The page opens while quiet mode is on, so its form's copy of it is on.
+  await page.keyboard.press("Meta+,");
+  await expect(page.getByRole("switch").first()).toBeVisible();
+  await page.keyboard.press("Meta+k");
+  await page.keyboard.type("notif");
+  await page.getByRole("option", { name: /Notifications on/ }).click();
+  await expect.poll(async () => (await saves()).length).toBe(2);
+  expect((await saves())[1][1].settings.quiet_until).toBeNull();
+  await page.getByRole("switch", { name: /Enable the phone page/ }).click();
+  await expect.poll(async () => (await saves()).length).toBe(3);
+  expect((await saves())[2][1].settings.quiet_until).toBeNull();
+});

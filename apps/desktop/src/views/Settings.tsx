@@ -131,7 +131,9 @@ export function Settings() {
     if (!form) return false;
     // Quiet mode and muted goals are set from the title bar and the palette, not this form: the form's copy of them
     // is from when the page opened, so the live values go with the save.
-    const v = { ...form, quiet_until: state.settings?.quiet_until ?? form.quiet_until, muted_goals: state.settings?.muted_goals ?? form.muted_goals };
+    // `null` is a value here (quiet mode turned off), so it is taken as is, not replaced by the form's stale copy.
+    const live = state.settings;
+    const v = live ? { ...form, quiet_until: live.quiet_until, muted_goals: live.muted_goals } : form;
     const now = JSON.stringify(v);
     if (now === last) return false;
     const ok = await act(() => api.saveSettings(v));

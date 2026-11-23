@@ -262,6 +262,10 @@ test("commands only known when they run ask in every mode", () => {
 
 test("shell options, piped scripts, find -exec words and other wrappers cannot hide one-way doors", () => {
 	const hidden = [
+		// An option the wrapper table does not know may take a value; a known value option may be a flag elsewhere.
+		"script -F f git push",
+		"timeout -Z 5 git push",
+		"flock -Z 5 /tmp/l git push",
 		// Options that take a value, in a cluster or long, before or after `-c`.
 		"bash -euo pipefail -c 'git push'",
 		"sh -euxo pipefail -c 'git push --force'",
@@ -381,6 +385,9 @@ test("shell options, piped scripts, find -exec words and other wrappers cannot h
 		}
 	}
 	const fine = [
+		"xargs -0 grep -l git",
+		"timeout -v 5 grep -rn git src",
+		"flock -n /tmp/l npm test",
 		"bash -euo pipefail -c 'npm test'",
 		"bash --norc -c 'echo hi'",
 		"bash -lc 'npm test'",

@@ -143,11 +143,24 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   };
   const setKind = (i: number, fn: (k: Criterion["kind"]) => void) => setC("criteria", i, "kind", produce(fn));
 
-  const addImages = (files: File[]) => void collectImages(files, editingId, (ref) => setC("attachments", (l) => [...(l ?? []), ref]));
+  // A saved draft's or contract's images change with the save, not before: one removed here is deleted once the
+  // contract without it is saved, and one added here is deleted if you leave without saving.
+  const removed: AttachmentRef[] = [];
+  const added: AttachmentRef[] = [];
+  const addImages = (files: File[]) => void collectImages(files, editingId, (ref) => (added.push(ref), setC("attachments", (l) => [...(l ?? []), ref])));
   const removeAtt = (att: AttachmentRef) => {
     setC("attachments", (l) => (l ?? []).filter((x) => x.id !== att.id));
-    if (editingId) void api.deleteAttachment?.(editingId, att.id).catch(() => {});
+    if (editingId) removed.push(att);
   };
+  const drop = (atts: AttachmentRef[]) => {
+    if (editingId) for (const a of atts.splice(0)) void api.deleteAttachment?.(editingId, a.id).catch(() => {});
+  };
+  const markSaved = () => {
+    saved = true;
+    added.length = 0;
+    drop(removed);
+  };
+  onCleanup(() => saved || drop(added.filter((a) => !removed.some((r) => r.id === a.id))));
   const toggleDep = (id: string) => setC("depends_on", (l) => ((l ?? []).includes(id) ? (l ?? []).filter((x) => x !== id) : [...(l ?? []), id]));
 
   const save = async (ratify: boolean) => {
@@ -158,16 +171,16 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
     setBusy(true);
     try {
       if (props.amendId) {
-        if ((await act(() => api.amendContract(props.amendId!, contract), t("contract.amended"))) !== undefined) (saved = true), back();
+        if ((await act(() => api.amendContract(props.amendId!, contract), t("contract.amended"))) !== undefined) markSaved(), back();
       } else if (props.draftId) {
         // A draft that failed to save must not be ratified as its old version, nor left behind with your edits.
         if (!(await act(async () => (await api.updateDraft(props.draftId!, title(), contract), true)))) return;
-        saved = true;
+        markSaved();
         if (ratify) await act(() => api.ratify(props.draftId!), t("contract.ratified"));
         go({ name: "goal", id: props.draftId });
       } else {
         const g = await act(() => api.createGoal({ project_id: projectId(), title: title().trim() || contract.intent.slice(0, 48), contract, ratify }));
-        if (g) (saved = true), go({ name: "goal", id: g.id });
+        if (g) markSaved(), go({ name: "goal", id: g.id });
       }
     } finally {
       setBusy(false);

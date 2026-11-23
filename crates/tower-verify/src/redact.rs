@@ -73,9 +73,27 @@ fn redact_pem(text: &str) -> String {
     out
 }
 
-/// Ends a URL (or its authority, with `/?#`) in running text.
+/// Ends a URL (or its authority, with `/?#`) in running text. Not brackets:
+/// an IPv6 host is `[::1]`, and a query may say `filter[a]=1`.
 fn ends_url(c: char) -> bool {
-    c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '<' | '>' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\')
+    c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '<' | '>' | '(' | ')' | '{' | '}' | '|' | '\\')
+}
+
+/// Where a URL's authority ends: at the first `/?#`, or past `user:pass@`
+/// when the password itself holds an unescaped `/` (never a path's `@`, as
+/// in `/@types/node`: a user name holds no `/`).
+fn authority_end(url: &str) -> usize {
+    let first = url.find(['/', '?', '#']).unwrap_or(url.len());
+    let before_query = url.find(['?', '#']).unwrap_or(url.len());
+    if let Some(at) = url[..before_query].find('@')
+        && at > first
+        && let Some((user, _)) = url[..at].split_once(':')
+        && !user.is_empty()
+        && !user.contains('/')
+    {
+        return at + 1 + url[at + 1..].find(['/', '?', '#']).unwrap_or(url.len() - at - 1);
+    }
+    first
 }
 
 /// Query parameters that carry a credential.
@@ -95,7 +113,7 @@ fn redact_urls(text: &str) -> String {
         let url = &rest[at + 3..];
         let end = url.find(ends_url).unwrap_or(url.len());
         let (url, after) = url.split_at(end);
-        let host_end = url.find(['/', '?', '#']).unwrap_or(url.len());
+        let host_end = authority_end(url);
         let (authority, path) = url.split_at(host_end);
         match authority.rsplit_once('@') {
             Some((user, host)) if !user.is_empty() && user != "git" => {
@@ -114,6 +132,8 @@ fn redact_urls(text: &str) -> String {
                     .split('&')
                     .map(|kv| match kv.split_once('=') {
                         Some((k, v)) if secret_param(k) && !v.is_empty() => format!("{k}={MASK}"),
+                        // A URL inside a value (`next=https://…`) is a URL too.
+                        Some((k, v)) if v.contains("://") => format!("{k}={}", redact_urls(v)),
                         _ => kv.to_string(),
                     })
                     .collect();
@@ -162,7 +182,10 @@ fn redact_authorization(text: &str) -> String {
             j = word + 1;
         }
         let cred = text[j..].find(|c: char| !is_token_char(c)).map_or(text.len(), |k| j + k);
-        if cred - j >= if header { 8 } else { 12 } {
+        // A free-standing `bearer` is masked only before something token-shaped (a digit or a dot): prose such as
+        // "the bearer authentication scheme" stays.
+        let shaped = header || text[j..cred].contains(|c: char| c.is_ascii_digit() || c == '.');
+        if shaped && cred - j >= if header { 8 } else { 12 } {
             out.push_str(&text[from..j]);
             out.push_str(MASK);
             from = cred;
@@ -252,5 +275,27 @@ mod tests {
         ] {
             assert_eq!(redact(s), s);
         }
+    }
+
+    /// URLs the first pass missed: brackets in a query or an IPv6 host, a
+    /// URL inside a query value, and a password with an unescaped `/`.
+    #[test]
+    fn masks_credentials_in_less_plain_urls() {
+        let cases = [
+            ("GET https://api.example.com/x?filter[a]=1&access_token=tok12345678 200", "tok12345678"),
+            ("callback http://[::1]:8080/cb?token=ipv6tok0001 ok", "ipv6tok0001"),
+            ("redirect https://a.example.com/login?next=https://ada:nestedpw0002@b.example.com/x", "nestedpw0002"),
+            ("fatal: https://ada:pa/ss0003@host.example.com/o/r.git", "ss0003"),
+        ];
+        for (text, secret) in cases {
+            let r = redact(text);
+            assert!(!r.contains(secret), "{secret} left in {r}");
+        }
+        // A scoped package path is not user info.
+        let npm = "GET https://registry.npmjs.org/@types/node 200";
+        assert_eq!(redact(npm), npm);
+        // Prose about the scheme is not a token.
+        let prose = "the bearer authentication scheme";
+        assert_eq!(redact(prose), prose);
     }
 }

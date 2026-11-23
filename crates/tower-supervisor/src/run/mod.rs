@@ -157,8 +157,8 @@ pub struct Run {
     pub workspace: String,
     pub flags: Mutex<Flags>,
     /// Held while the agent's profile is rewritten for the run (new loopback
-    /// ports): stopping the run marks it stopping, then waits on this, so no
-    /// rewrite lands after the run's end released its ports and folders.
+    /// ports): every end of the run waits on this after taking the run out of
+    /// the runs, so no rewrite lands after the end released its ports and folders.
     pub profile: Mutex<()>,
 }
 

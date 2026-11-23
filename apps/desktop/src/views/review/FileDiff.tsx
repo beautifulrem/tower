@@ -249,7 +249,7 @@ export function FileDiff(props: FileDiffProps) {
     <tr class="semantic-fold" data-semantic-noise={noise} data-hunk={index}>
       <td colspan={cols}>
         <div class="semantic-fold-bar">
-          <span class="semantic-label"><Icon name="expand" size={10} />{noise === "moved" ? "Moved unchanged" : "Formatting only"}</span>
+          <span class="semantic-label"><Icon name="expand" size={10} />{noise === "moved" ? t("review.semanticMoved") : t("review.semanticFormatting")}</span>
           <span class="meta t3 num">{t("review.lines", { n: lineCount })}</span>
           <span class="grow" />
           <Button size="s" variant="ghost" onClick={() => toggleNoise(index)}>{t("review.expandHunk")}</Button>

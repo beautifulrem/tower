@@ -12,7 +12,7 @@ import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
 import { DangerMark, Icon, LifecycleGlyph, NeedsYouMark } from "./Glyph";
-import { BrandMark, Kbd } from "./ui";
+import { Kbd } from "./ui";
 
 const ORDER: Group[] = ["needs_you", "running", "verifying", "review", "ready", "paused", "done"];
 
@@ -63,12 +63,7 @@ export function Sidebar() {
 
   return (
     <nav class="sidebar" aria-label={t("sidebar.label")}>
-      <div class="sidebar-drag" data-tauri-drag-region>
-        <span class="side-brand" aria-hidden="true" data-tauri-drag-region>
-          <BrandMark size={12} />
-          Tower
-        </span>
-      </div>
+      <div class="sidebar-drag" data-tauri-drag-region />
       <div class="side-top">
         <button class="side-row" classList={{ active: route().name === "new" }} aria-current={route().name === "new" ? "page" : undefined} onClick={() => go({ name: "new" })}>
           <span class="side-icon">
@@ -86,7 +81,7 @@ export function Sidebar() {
         </button>
         <button
           class="side-row"
-          classList={{ active: route().name === "inbox", "side-row-alert": blocking() > 0 }}
+          classList={{ active: route().name === "inbox" }}
           aria-current={route().name === "inbox" ? "page" : undefined}
           onClick={() => go({ name: "inbox" })}
         >
@@ -106,7 +101,7 @@ export function Sidebar() {
               <Icon name="ring-check" />
             </span>
             <span class="grow">{t("sidebar.toReview")}</span>
-            <span class="num side-count t1">{toReview()}</span>
+            <span class="num side-count">{toReview()}</span>
           </button>
         </Show>
         <button class="side-row" classList={{ active: route().name === "learning" }} aria-current={route().name === "learning" ? "page" : undefined} onClick={() => go({ name: "learning" })}>
@@ -115,7 +110,7 @@ export function Sidebar() {
           </span>
           <span class="grow">{t("app.learning")}</span>
           <Show when={state.pendingProposals > 0} fallback={<Kbd k="mod+3" />}>
-            <span class="num side-count-pill">{state.pendingProposals}</span>
+            <span class="num side-count">{state.pendingProposals}</span>
           </Show>
         </button>
         <button class="side-row" classList={{ active: route().name === "operations" }} aria-current={route().name === "operations" ? "page" : undefined} onClick={() => go({ name: "operations" })}>
@@ -126,7 +121,7 @@ export function Sidebar() {
           </span>
           <span class="grow">{t("app.operations")}</span>
           <Show when={state.mergeConflicts > 0 || state.activeSchedules > 0} fallback={<Kbd k="mod+4" />}>
-            <span class="num side-count t1">{state.mergeConflicts > 0 ? state.mergeConflicts : state.activeSchedules}</span>
+            <span class="num side-count" classList={{ t1: state.mergeConflicts > 0 }}>{state.mergeConflicts > 0 ? state.mergeConflicts : state.activeSchedules}</span>
           </Show>
         </button>
       </div>

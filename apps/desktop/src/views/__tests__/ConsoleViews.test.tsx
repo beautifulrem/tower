@@ -221,8 +221,10 @@ describe("Learning console (Memory Ratification + Calibration Scoreboard)", () =
     await new Promise((r) => setTimeout(r, 5));
     expect(apiMock.approveProposal).toHaveBeenCalledWith("mp-high", null, "CONFIRM");
 
-    // Calibration scoreboard sits inside a Fact frame and marks insufficient sample.
-    expect(container.querySelector(".prov-frame.prov-fact table.data-table")).not.toBeNull();
+    // Calibration scoreboard renders as a single-layer Fact ledger without KPI stat cards or nested boxes.
+    expect(container.querySelector(".console-kpis")).toBeNull();
+    expect(container.querySelector(".calibration-sec table.data-table")).not.toBeNull();
+    expect(container.textContent).toContain("Harness calibration (R10)");
     expect(container.textContent).toContain("claude-sonnet-4");
     expect(container.textContent).toContain("75%");
     expect(container.textContent).toContain("Low n");
@@ -232,21 +234,23 @@ describe("Learning console (Memory Ratification + Calibration Scoreboard)", () =
 describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("renders unattended strict schedules, conflict files in merge queue, sandbox posture and safe storage cleanup", async () => {
+  it("renders unattended strict schedules, conflict files in tabular merge queue, inline sandbox posture and safe storage cleanup", async () => {
     const { container } = render(() => <Operations />);
     await new Promise((r) => setTimeout(r, 15));
 
+    expect(container.querySelector(".console-kpis")).toBeNull();
     expect(container.textContent).toContain("Nightly dependency audit");
     expect(container.textContent).toContain("0 2 * * 1-5");
     expect(container.textContent).toContain("Unattended strict");
 
-    // Merge queue conflict card + conflict file pill
-    expect(container.querySelector(".mq-row.mq-conflict")).not.toBeNull();
+    // Merge queue conflict row + inline conflict file path (no pill soup)
+    expect(container.querySelector("tr.mq-row.mq-conflict")).not.toBeNull();
     expect(container.textContent).toContain("src/checkout.ts");
 
-    // Sandbox posture banner + warnings
-    expect(container.querySelector(".posture-banner")?.textContent).toContain("S2 Seatbelt");
-    expect(container.querySelector(".posture-banner")?.textContent).toContain("Ubuntu userns note");
+    // Inline sandbox posture + warnings (no giant posture-banner box)
+    expect(container.querySelector(".posture-banner")).toBeNull();
+    expect(container.querySelector(".ops-posture-line")?.textContent).toContain("S2 Seatbelt");
+    expect(container.querySelector(".ops-posture-line")?.textContent).toContain("Ubuntu userns note");
 
     // Storage safety: running goal is Protected, archived goal has Clean button
     expect(container.textContent).toContain("Protected");

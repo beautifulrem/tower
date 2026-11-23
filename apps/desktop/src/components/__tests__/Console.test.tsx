@@ -216,12 +216,13 @@ describe("Four-Provenance physical frames & pills", () => {
 });
 
 describe("TelemetryStrip", () => {
-  it("renders active slot lamps, blocking Needs-You chip and sandbox posture pill", () => {
+  it("renders swept RunsGauge, borderless blocking Needs-You count and sandbox posture", () => {
     const { container } = render(() => <TelemetryStrip />);
-    expect(container.querySelectorAll(".tel-lamp")).toHaveLength(4);
-    expect(container.querySelectorAll(".tel-lamp.lit")).toHaveLength(1);
+    expect(container.querySelector(".gauge-runs")).not.toBeNull();
+    expect(container.querySelector(".gauge-active")?.textContent).toContain("1/4 running");
     expect(container.querySelector(".tel-blocking")?.textContent).toContain("1");
     expect(container.querySelector(".gauge-sandbox")?.textContent).toContain("S2 Seatbelt");
+    expect(container.querySelector(".gauge-sandbox.warn")).toBeNull();
     expect(container.querySelector(".gauge-phone-ok")).not.toBeNull();
   });
 });
@@ -293,11 +294,12 @@ describe("DecisionCard provenance framing", () => {
 });
 
 describe("PeekDrawer quick telemetry", () => {
-  it("renders L1 live telemetry, L2 flaky criterion + claim, L3 budget & closes on button click", async () => {
+  it("renders live telemetry, flaky criterion + hanging claim without L1/L2/L3 spec tags, and closes on button click", async () => {
     const onClose = vi.fn();
     const { container } = render(() => <PeekDrawer goalId="G-0001" onClose={onClose} />);
     await new Promise((r) => setTimeout(r, 10));
     expect(container.querySelector(".peek-title")?.textContent).toBe("Fix retry idempotency");
+    expect(container.querySelector(".peek-level")).toBeNull();
     expect(container.textContent).toContain("MicroVM");
     expect(container.textContent).toContain(":20010");
     expect(container.textContent).toContain("claude-opus-4");

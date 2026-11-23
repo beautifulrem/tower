@@ -1,11 +1,11 @@
 /**
- * Operations console (docs/18 P1.3, P2.2, P2.3):
- * Scheduled Goals, per-project Merge Queue, and Storage & Sandbox Posture.
+ * Operations console (docs/18 P1.3, P2.2, P2.3, docs/19 §19.5):
+ * Single-layer Scheduled Goals, tabular Merge Queue, and Storage & Sandbox ledger.
  */
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark } from "../components/Glyph";
-import { Empty, Select, Toggle } from "../components/ui";
+import { Select, Toggle } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
 import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
@@ -15,7 +15,7 @@ import { stateLabel } from "../lib/labels";
 import { ask } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, goalList, refreshConsoleMeta, state } from "../lib/store";
-import { ConsoleMast, DataTable, MeterCell, ProjectFilter, ProvBox, SmBtn } from "./Learning";
+import { DataTable, MeterCell, ProjectFilter, SecHead, SmBtn } from "./Learning";
 import { blankContract } from "./ContractEditor";
 
 const ALL = "__all__";
@@ -75,20 +75,17 @@ export function Operations() {
 
   return (
     <div class="console-page ops-page">
-      <ConsoleMast
-        title={t("app.operations")}
-        subtitle={t("ops.subtitle")}
-        kpis={[
-          [t("ops.schedulesTitle"), String(schedList().filter((s) => s.enabled).length)],
-          [t("ops.mergeQueueTitle"), String(mqList().length)],
-          [t("ops.colTotal"), fmtB(inv().total_bytes)],
-          [t("ops.kpiReclaimable"), fmtB(inv().reclaimable_bytes)],
-        ]}
-      />
-
       <div class="ops-grid">
         <section class="console-sec">
-          <div class="row"><h3 class="section-title">{t("ops.schedulesTitle")}</h3><span class="meta t3">{t("ops.schedulesNote")}</span></div>
+          <SecHead
+            title={t("ops.schedulesTitle")}
+            meta={
+              <>
+                <span class="meta num t2">{schedList().filter((s) => s.enabled).length}</span>
+                <span class="meta t3">{t("ops.schedulesNote")}</span>
+              </>
+            }
+          />
           <Show when={state.projects.length > 0}>
             <form class="schedule-form" onSubmit={(e) => void addSchedule(e)}>
               <Select label={t("contract.project")} value={newProj() || state.projects[0]?.id || ""} options={state.projects.map((p) => ({ value: p.id, label: p.name }))} onChange={setNewProj} />
@@ -103,9 +100,14 @@ export function Operations() {
             items={schedList()}
             row={(s) => (
               <tr>
-                <td><div class="col"><span class="t1">{s.title}</span><span class="meta t3">{projName(s.project_id)}</span></div></td>
+                <td>
+                  <div class="row row-g6">
+                    <span class="t1">{s.title}</span>
+                    <span class="meta t3" hidden={state.projects.length <= 1}>{projName(s.project_id)}</span>
+                  </div>
+                </td>
                 <td><code class="code-val">{s.cron_expr}</code></td>
-                <td><span class="posture-pill"><Icon name="shield" size={10} />{t(s.unattended_strict ? "ops.unattendedStrict" : "contract.standard")}</span></td>
+                <td class="meta t2">{t(s.unattended_strict ? "ops.unattendedStrict" : "contract.standard")}</td>
                 <td class="meta t2">
                   {s.next_run_at ? clock(s.next_run_at) : "—"}
                   <button type="button" class="link-quiet code-val ml-8" hidden={!s.last_goal_id} onClick={() => s.last_goal_id && go({ name: "goal", id: s.last_goal_id })}>{s.last_goal_id}</button>
@@ -123,84 +125,95 @@ export function Operations() {
         </section>
 
         <section class="console-sec">
-          <div class="row">
-            <h3 class="section-title">{t("ops.mergeQueueTitle")}</h3>
-            <span class="grow" />
+          <SecHead title={t("ops.mergeQueueTitle")} meta={<span class="meta num t2">{mqList().length}</span>}>
             <ProjectFilter value={mqProj()} onChange={setMqProj} min={1} />
             <SmBtn onClick={() => { const pid = mqProj() === ALL ? state.projects[0]?.id : mqProj(); if (pid) void run(() => api.checkMergeQueue(pid), rfQueue, t("chrome.checked")); }}>
               {t("ops.checkConflicts")}
             </SmBtn>
-          </div>
+          </SecHead>
           <div class="row meta row-wrap" hidden={!acceptedNotQueued().length}>
             <span class="t3">{t("ops.enqueueReady")}</span>
             <For each={acceptedNotQueued()}>{(g) => <SmBtn onClick={() => void run(() => api.enqueueMerge(g.id), rfQueue)}>+ {g.id}</SmBtn>}</For>
           </div>
-          <Show when={mqList().length > 0} fallback={<Empty title={t("ops.mergeQueueEmpty")} inline />}>
-            <div class="mq-list">
-              <For each={mqList()}>
-                {(entry) => (
-                  <div class="mq-row" classList={{ "mq-conflict": entry.status === "conflict", "mq-ready": entry.status === "ready" }}>
-                    <span class="mq-pos num">#{entry.position + 1}</span>
-                    <div class="col">
-                      <div class="row">
-                        <button type="button" class="link-quiet code-val t2" onClick={() => go({ name: "goal", id: entry.goal_id })}>{entry.goal_id}</button>
-                        <span class="t1 ellipsis">{entry.goal_title}</span>
-                        <code class="code-val meta t3" hidden={!entry.branch}>{entry.branch}</code>
-                      </div>
-                      <div class="mq-conflicts" hidden={!entry.conflict_files.length}>
-                        <For each={entry.conflict_files}>{(f) => <code class="code-val posture-pill">{f}</code>}</For>
-                      </div>
-                    </div>
-                    <span class="posture-pill">{entry.status === "conflict" && <DangerMark />}{t(`ops.mq_${entry.status}` as Parameters<typeof t>[0])}</span>
+          <DataTable
+            headers={[["#"], [t("overview.colGoal")], [t("ops.colPosture")], ["", true]]}
+            empty={t("ops.mergeQueueEmpty")}
+            items={mqList()}
+            row={(entry) => (
+              <tr class="mq-row" classList={{ "mq-conflict": entry.status === "conflict", "mq-ready": entry.status === "ready" }}>
+                <td class="mq-pos">#{entry.position + 1}</td>
+                <td>
+                  <div class="col">
                     <div class="row">
-                      <SmBtn label="Up" onClick={() => moveQueue(entry, -1)}><Icon name="arrow-up" size={10} /></SmBtn>
-                      <SmBtn label="Down" onClick={() => moveQueue(entry, 1)}><Icon name="arrow-down" size={10} /></SmBtn>
-                      <SmBtn variant="default" onClick={() => void run(() => api.reverifyMergeQueueEntry(entry.goal_id), rfQueue, t("goal.reverify"))}>{t("goal.reverify")}</SmBtn>
-                      <SmBtn onClick={() => void run(() => api.removeFromMergeQueue(entry.goal_id), rfQueue)}>{t("common.remove")}</SmBtn>
+                      <button type="button" class="link-quiet code-val t2" onClick={() => go({ name: "goal", id: entry.goal_id })}>{entry.goal_id}</button>
+                      <span class="t1 ellipsis">{entry.goal_title}</span>
+                      <code class="code-val meta t3" hidden={!entry.branch}>{entry.branch}</code>
+                    </div>
+                    <div class="mq-conflicts meta t3" hidden={!entry.conflict_files.length}>
+                      <code class="code-val t2">{entry.conflict_files.join(" · ")}</code>
                     </div>
                   </div>
-                )}
-              </For>
-            </div>
-          </Show>
+                </td>
+                <td>
+                  <span class="mq-status meta halt" classList={{ t1: entry.status === "conflict", t2: entry.status !== "conflict" }}>
+                    {entry.status === "conflict" && <DangerMark />}
+                    <span>{t(`ops.mq_${entry.status}` as Parameters<typeof t>[0])}</span>
+                  </span>
+                </td>
+                <td class="col-r">
+                  <div class="row row-end">
+                    <SmBtn label="Up" onClick={() => moveQueue(entry, -1)}><Icon name="arrow-up" size={10} /></SmBtn>
+                    <SmBtn label="Down" onClick={() => moveQueue(entry, 1)}><Icon name="arrow-down" size={10} /></SmBtn>
+                    <SmBtn variant="default" onClick={() => void run(() => api.reverifyMergeQueueEntry(entry.goal_id), rfQueue, t("goal.reverify"))}>{t("goal.reverify")}</SmBtn>
+                    <SmBtn onClick={() => void run(() => api.removeFromMergeQueue(entry.goal_id), rfQueue)}>{t("common.remove")}</SmBtn>
+                  </div>
+                </td>
+              </tr>
+            )}
+          />
         </section>
 
         <section class="console-sec">
-          <div class="row">
-            <h3 class="section-title">{t("ops.storageTitle")}</h3>
-            <span class="grow" />
+          <SecHead
+            title={t("ops.storageTitle")}
+            meta={
+              <>
+                <span class="meta num t2">{fmtB(inv().total_bytes)}</span>
+                <span class="meta num t2" hidden={!inv().reclaimable_bytes}>{fmtB(inv().reclaimable_bytes)} {t("ops.kpiReclaimable").toLowerCase()}</span>
+                <span class="ops-posture-line meta-inline meta">
+                  <span>{state.sandboxPosture?.backend_name ?? t("chrome.sandboxOn")}</span>
+                  <span hidden={!state.sandboxPosture?.microvm_available}>{t("ops.microvmReady")}</span>
+                  <For each={state.sandboxPosture?.warnings ?? []}>
+                    {(w) => <span class="row row-g4 t1"><NoticeMark /><span>{w}</span></span>}
+                  </For>
+                </span>
+              </>
+            }
+          >
             <SmBtn variant="default" hidden={!reclaimIds().length} onClick={() => void cleanGoals(reclaimIds())}>{t("ops.cleanAll", { size: fmtB(inv().reclaimable_bytes) })}</SmBtn>
-          </div>
-          <div class="posture-banner">
-            <Icon name="shield" size={12} />
-            <span class="t1">{state.sandboxPosture?.backend_name ?? t("chrome.sandboxOn")}</span>
-            <span class="posture-pill">{t(state.sandboxPosture?.microvm_available ? "ops.microvmReady" : "ops.microvmUnavailable")}</span>
-            <For each={state.sandboxPosture?.warnings ?? []}>{(w) => <span class="meta t1 row"><NoticeMark />{w}</span>}</For>
-          </div>
-          <ProvBox kind="fact" badge={t("ops.diskFactBadge")}>
-            <DataTable
-              headers={[[t("overview.colGoal")], [t("ops.colWorkspace"), true], [t("ops.colVerify"), true], [t("ops.colCache"), true], [t("ops.colTotal"), true], ["", true]]}
-              empty={t("ops.storageEmpty")}
-              items={inv().goals}
-              row={(g) => (
-                <tr>
-                  <td>
-                    <div class="row">
-                      <LifecycleGlyph goal={{ state: g.state, progress: ZERO_P, verified_pin: null }} />
-                      <code class="code-val t2">{g.goal_id}</code>
-                      <span class="ellipsis t1">{g.title}</span>
-                      <span class="meta t3">{stateLabel(g.state)}</span>
-                    </div>
-                  </td>
-                  <td class="col-r meta">{fmtB(g.workspace_bytes)}</td>
-                  <td class="col-r meta">{fmtB(g.verify_bytes)}</td>
-                  <td class="col-r meta">{fmtB(g.cache_bytes)}</td>
-                  <td class="col-r"><MeterCell wrapCls="storage-bar-cell" label={fmtB(g.total_bytes)} width={`${Math.round((g.total_bytes / maxBytes()) * 100)}%`} /></td>
-                  <td class="col-r">{g.reclaimable ? <SmBtn onClick={() => void cleanGoals([g.goal_id])}>{t("ops.clean")}</SmBtn> : <span class="meta t3">{t("ops.protected")}</span>}</td>
-                </tr>
-              )}
-            />
-          </ProvBox>
+          </SecHead>
+          <DataTable
+            headers={[[t("overview.colGoal")], [t("ops.colWorkspace"), true], [t("ops.colVerify"), true], [t("ops.colCache"), true], [t("ops.colTotal"), true], ["", true]]}
+            empty={t("ops.storageEmpty")}
+            items={inv().goals}
+            row={(g) => (
+              <tr>
+                <td>
+                  <div class="row">
+                    <LifecycleGlyph goal={{ state: g.state, progress: ZERO_P, verified_pin: null }} />
+                    <code class="code-val t2">{g.goal_id}</code>
+                    <span class="ellipsis t1">{g.title}</span>
+                    <span class="meta t3">{stateLabel(g.state)}</span>
+                  </div>
+                </td>
+                <td class="col-r meta">{fmtB(g.workspace_bytes)}</td>
+                <td class="col-r meta">{fmtB(g.verify_bytes)}</td>
+                <td class="col-r meta">{fmtB(g.cache_bytes)}</td>
+                <td class="col-r"><MeterCell wrapCls="storage-bar-cell" label={fmtB(g.total_bytes)} width={`${Math.round((g.total_bytes / maxBytes()) * 100)}%`} /></td>
+                <td class="col-r">{g.reclaimable ? <SmBtn onClick={() => void cleanGoals([g.goal_id])}>{t("ops.clean")}</SmBtn> : <span class="meta t3">{t("ops.protected")}</span>}</td>
+              </tr>
+            )}
+          />
         </section>
       </div>
     </div>

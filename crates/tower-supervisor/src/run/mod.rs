@@ -486,11 +486,6 @@ async fn start_run_inner(
                     goal_id,
                     EventKind::WorkspacePrepared { workspace: ws.display().to_string(), base_commit: base },
                 )?;
-                let copied = copy_local_files(inner, &goal, &ws).await?;
-                if !copied.is_empty() {
-                    inner.append(goal_id, EventKind::LocalFilesCopied { files: copied })?;
-                }
-                setup_workspace(inner, &goal, &ws).await?;
                 goal = inner.store(|s| s.goal(goal_id))?;
             }
             Err(e) => {
@@ -504,6 +499,17 @@ async fn start_run_inner(
         }
     }
     let ws = PathBuf::from(goal.workspace.clone().expect("workspace prepared"));
+    // Until a run has begun and setup has finished (it records its outcome,
+    // pass or fail), the workspace is not ready yet: a start that failed
+    // halfway through preparing it does the rest again. Once the agent has
+    // run, local files are never copied over its workspace again.
+    if goal.run_no == 0 && inner.store(|s| s.last_event(goal_id, "setup_finished"))?.is_none() {
+        if let Err(e) = finish_workspace(inner, &goal, &ws).await {
+            fail_to_start(inner, goal_id, &tr!(lang, "准备工作区失败：{e}", "Could not prepare the workspace: {e}"))?;
+            return Err(e);
+        }
+        goal = inner.store(|s| s.goal(goal_id))?;
+    }
 
     // Lockfile-verified ACP adapter installation for any bundled ACP engine.
     let engine_id = inner.engine_of(&goal);
@@ -625,6 +631,16 @@ fn begin(inner: &Arc<Inner>, run: &Arc<Run>, seen: LifecycleState, purpose: &str
         inner.emit_goal_now(goal);
     }
     Ok(true)
+}
+
+/// What a new workspace gets before its first run: the project's local
+/// files, then its setup command.
+async fn finish_workspace(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, ws: &Path) -> Result<()> {
+    let copied = copy_local_files(inner, goal, ws).await?;
+    if !copied.is_empty() {
+        inner.append(&goal.id, EventKind::LocalFilesCopied { files: copied })?;
+    }
+    setup_workspace(inner, goal, ws).await
 }
 
 /// Copies the project's git-ignored local files (e.g. `.env`) into `dest`.

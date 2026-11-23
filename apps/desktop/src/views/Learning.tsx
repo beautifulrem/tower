@@ -3,12 +3,11 @@
  * Single-layer Memory Ratification Ledger (with taint provenance & high-taint
  * CONFIRM gate) paired with the Model Calibration Scoreboard. Lazy-loaded via `withLater`.
  */
-import { For, type JSX, Show, type Signal, createMemo, createResource, createSignal } from "solid-js";
-import { createStore, reconcile } from "solid-js/store";
+import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark } from "../components/Glyph";
-import { ProvenanceFrame } from "../components/ProvenanceFrame";
-import { Empty, Failed, Prose, Select, settled } from "../components/ui";
+import { ALL, DataTable, MeterCell, ProjectFilter, ProvBox, SecHead, SmBtn, inPlace } from "../components/Console";
+import { Empty, Failed, Prose, settled } from "../components/ui";
 import { api } from "../lib/api";
 import type { MemoryProposal, ProposalStatus } from "../lib/apiTypes";
 import { ago, usd } from "../lib/format";
@@ -33,85 +32,8 @@ export { SteerBox } from "./goal/SteerBox";
 export { prewarm as prewarmHighlight } from "../lib/highlight";
 export { ask as askDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 
-const ALL = "__all__";
 const PHRASE = "CONFIRM";
 const pct = (v: number) => `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`;
-
-/**
- * A console list's resource storage: each load is merged into the last one by `key`, so a refetch after an action
- * updates the rows in place instead of drawing them anew, and the control you used keeps its focus.
- */
-export const inPlace = (key = "id") => <T,>(init: T | undefined): Signal<T | undefined> => {
-  const [s, set] = createStore({ v: init });
-  return [() => s.v, (v: unknown) => (set("v", reconcile(typeof v === "function" ? v(s.v) : v, { key })), s.v)] as Signal<T | undefined>;
-};
-
-/** Shared section header with calm inline tabular metadata and right-aligned controls. */
-export function SecHead(props: { title: string; meta?: JSX.Element; children?: JSX.Element }) {
-  return (
-    <div class="console-sec-head halt">
-      <div class="meta-inline">
-        <h2 class="section-title">{props.title}</h2>
-        {props.meta}
-      </div>
-      <span class="grow" />
-      {props.children}
-    </div>
-  );
-}
-
-/** Shared compact action button for console tables and ledgers. */
-export function SmBtn(props: { variant?: "primary" | "default" | "ghost"; disabled?: boolean; type?: "button" | "submit"; label?: string; hidden?: boolean; onClick?: () => void; children: JSX.Element }) {
-  return (
-    <button type={props.type ?? "button"} class={`btn btn-${props.variant ?? "ghost"} btn-s`} disabled={props.disabled} hidden={props.hidden} aria-label={props.label} onClick={props.onClick}>
-      <span class="btn-label">{props.children}</span>
-    </button>
-  );
-}
-
-/** Shared micro meter cell used in Calibration and Storage tables. */
-export function MeterCell(props: { label: string; width: string; cls?: string; wrapCls?: string }) {
-  return (
-    <span class={props.wrapCls ?? "rate-cell"}>
-      <span>{props.label}</span>
-      <span class="meter-micro"><i class={`meter-micro-fill${props.cls ? ` ${props.cls}` : ""}`} style={{ width: props.width }} /></span>
-    </span>
-  );
-}
-
-/** Shared all-projects filter dropdown for console tables. */
-export function ProjectFilter(props: { value: string; onChange: (v: string) => void; min?: number }) {
-  return (
-    <Show when={state.projects.length > (props.min ?? 0)}>
-      <Select class="overview-filter" label={t("overview.filterLabel")} value={props.value} options={[{ value: ALL, label: t("overview.allProjects") }, ...state.projects.map((p) => ({ value: p.id, label: p.name }))]} onChange={props.onChange} />
-    </Show>
-  );
-}
-
-/** Shared Swiss hanging-label provenance row used by lazy console views (Fact / Claim / Human). */
-export function ProvBox(props: { kind: "fact" | "claim" | "human"; badge: string; meta?: string; aside?: JSX.Element; danger?: boolean; children: JSX.Element }) {
-  return <ProvenanceFrame kind={props.kind} label={props.badge} meta={props.meta} aside={props.aside} danger={props.danger}>{props.children}</ProvenanceFrame>;
-}
-
-/** Shared single-border numeric instrument table with empty state. */
-export function DataTable<T>(props: { headers: [string, boolean?][]; empty: string; items: T[]; row: (item: T) => JSX.Element; error?: unknown; onRetry?: () => void }) {
-  return (
-    <Show when={props.items.length > 0} fallback={<Failed inline error={props.error} onRetry={() => props.onRetry?.()} pending={<Empty title={props.empty} inline />} />}>
-      <div class="data-table-wrap">
-        <table class="data-table num">
-          <thead>
-            <tr>
-              <For each={props.headers}>{([h, r]) => <th classList={{ "col-r": !!r }}>{h}</th>}</For>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={props.items}>{(it) => props.row(it)}</For>
-          </tbody>
-        </table>
-      </div>
-    </Show>
-  );
-}
 
 function ProposalRow(props: { p: MemoryProposal; onChanged: () => void }) {
   const [editing, setEditing] = createSignal(false);

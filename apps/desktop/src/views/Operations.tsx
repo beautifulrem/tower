@@ -4,6 +4,7 @@
  */
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 
+import { ALL, DataTable, MeterCell, ProjectFilter, SecHead, SmBtn, inPlace } from "../components/Console";
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark } from "../components/Glyph";
 import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
@@ -15,10 +16,8 @@ import { stateLabel } from "../lib/labels";
 import { ask } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, goalList, refreshConsoleMeta, state } from "../lib/store";
-import { DataTable, MeterCell, ProjectFilter, SecHead, SmBtn, inPlace } from "./Learning";
 import { blankContract } from "./ContractEditor";
 
-const ALL = "__all__";
 const ZERO_P = { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 };
 
 export function Operations() {

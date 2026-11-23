@@ -87,7 +87,9 @@
 
   /* Decision Gate Card: amber attention bar + structured provenance registers. */
   .card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-raised); margin-bottom: 12px; overflow: hidden; }
-  .strip { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 10px; border-left: 2px solid var(--st-attention); background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+  /* The amber rule stands clear of the card's 8px corner, so it stays a straight 2px line instead of following the curve. */
+  .strip { position: relative; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
+  .strip::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; background: var(--st-attention); }
   .strip .mark { width: 9px; height: 9px; flex: 0 0 auto; }
   .strip .kind { color: var(--text-1); font-weight: 600; }
   .strip .goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

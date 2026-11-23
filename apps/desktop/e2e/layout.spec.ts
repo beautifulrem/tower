@@ -85,3 +85,48 @@ for (const route of ["review/G-0003", "review/G-0001"]) {
     expect(out).toEqual([]);
   });
 }
+
+// The merge queue at the narrow end: a goal id is one token ("G-0003", never "G-" over "0003"), and a branch too long
+// for its place ends in an ellipsis on one line, its whole name in the title.
+test("operations: the merge queue keeps a goal id whole and a long branch on one line", async ({ page }) => {
+  await page.setViewportSize({ width: 1040, height: 640 });
+  await openTower(page, "operations", {
+    lang: "en",
+    enrich: (F) => {
+      enrichRich(F);
+      const pid = F.projects?.[0]?.id ?? "p1";
+      F.mergeQueue = [
+        { goal_id: "G-0001", project_id: pid, goal_title: "Fix the cart total", branch: "tower/G-0001-fix-cart-total", position: 0, status: "ready", conflict_files: [] },
+        { goal_id: "G-0003", project_id: pid, goal_title: "Clean up cart edge cases", branch: "tower/G-0003-cart-edge-cases-and-rounding-at-tax-boundaries", position: 1, status: "conflict", conflict_files: ["src/cart.js", "test/cart.test.js"] },
+      ];
+    },
+  });
+  await settled(page, "operations");
+  await expect(page.locator(".mq-row")).toHaveCount(2);
+  const rows = await page.locator(".mq-row").evaluateAll((trs) =>
+    trs.map((tr) => {
+      const id = tr.querySelector<HTMLElement>("button.code-val")!;
+      const branch = [...tr.querySelectorAll<HTMLElement>("code.code-val")].find((c) => !c.closest(".mq-conflicts"))!;
+      const lines = (el: HTMLElement) => Math.round(el.getBoundingClientRect().height / (parseFloat(getComputedStyle(el).lineHeight) || 16));
+      return {
+        id: id.textContent,
+        idLines: lines(id),
+        branchLines: lines(branch),
+        branchCut: branch.scrollWidth > branch.clientWidth + 1,
+        ellipsis: getComputedStyle(branch).textOverflow,
+        title: branch.title,
+        text: branch.textContent,
+        past: tr.getBoundingClientRect().right > tr.closest(".data-table-wrap")!.getBoundingClientRect().right + 1,
+      };
+    }),
+  );
+  for (const r of rows) {
+    expect(r.idLines, `${r.id} on one line`).toBe(1);
+    expect(r.branchLines, `${r.text} on one line`).toBe(1);
+    expect(r.past, `${r.id}'s row inside the table`).toBe(false);
+    expect(r.title).toBe(r.text);
+    if (r.branchCut) expect(r.ellipsis).toBe("ellipsis");
+  }
+  // The long one does not fit at this width: it is the one cut.
+  expect(rows[1].branchCut).toBe(true);
+});

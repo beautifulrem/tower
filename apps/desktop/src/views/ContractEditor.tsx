@@ -110,9 +110,11 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       const project = state.projects.find((p) => p.id === projectId());
       const intent = sessionStorage.getItem("tower.draftIntent") ?? "";
       sessionStorage.removeItem("tower.draftIntent");
-      setC(blankContract(intent, project?.test_command ?? null));
-      setTitle(intent.slice(0, 48));
+      setC(blankContract("", project?.test_command ?? null));
+      setTitle("");
+      // Words carried in from the board are yours too: the blank form is the baseline, so leaving with them asks.
       base = now();
+      if (intent) (setC("intent", intent), setTitle(intent.slice(0, 48)));
     }
   });
 

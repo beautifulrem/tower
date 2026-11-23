@@ -103,6 +103,15 @@ test("an unsaved contract is not lost to a key or a click away: Tower asks first
   await expect(page.locator(".view .overview")).toBeVisible();
 });
 
+test("words carried in from the board count as unsaved: leaving asks", async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem("tower.draftIntent", "Make the cart survive a double click"));
+  await openTower(page, "new");
+  await expect(page.locator(".field-intent textarea")).toHaveValue("Make the cart survive a double click");
+  await page.keyboard.press("Meta+1");
+  await expect.poll(() => page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "plugin:dialog|message").length)).toBe(1);
+  await expect(page.locator(".field-intent textarea")).toBeVisible();
+});
+
 test("a contract left as it opened leaves without a question", async ({ page }) => {
   await openTower(page, "new");
   await expect(page.locator(".field-intent textarea")).toBeVisible();

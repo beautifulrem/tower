@@ -250,6 +250,16 @@ const screens: Screen[] = [
       await page.locator(".peek-drawer").waitFor();
     },
   }),
+  // The floating material: the palette over the board, the board blurred through it.
+  ...bothThemes({
+    name: "palette",
+    route: "overview",
+    enrich: enrichConsole,
+    after: async (page) => {
+      await page.keyboard.press("Meta+k");
+      await page.locator(".palette-item").first().waitFor();
+    },
+  }),
   ...bothThemes({ name: "goal-deck", route: "goal/G-0001", enrich: enrichConsole }),
   ...bothThemes({
     name: "review-theater",

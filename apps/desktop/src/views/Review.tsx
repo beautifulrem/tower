@@ -549,7 +549,12 @@ export function Review(props: { id: string }) {
           when={!viewRes.error}
           fallback={
             <div class="page-loading">
-              <Failed title={t("review.loadFailed")} error={viewRes.error} onRetry={() => void refetchView()} />
+              {/* A goal that is gone: Retry can never bring it back, the overview is the way on (as on its goal page). */}
+              <Show when={!g() && detailRes.error} fallback={<Failed title={t("review.loadFailed")} error={viewRes.error} onRetry={() => void refetchView()} />}>
+                <Empty title={t("goal.notFound", { id: props.id })} kind="error" action={<Button size="s" variant="ghost" onClick={() => go({ name: "overview" })}>{t("chrome.openOverview")}</Button>}>
+                  {errorText(detailRes.error)}
+                </Empty>
+              </Show>
             </div>
           }
         >

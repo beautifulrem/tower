@@ -97,6 +97,10 @@ export async function openTower(
               return F.projects;
             case "settings":
               return F.settings;
+            case "save_settings":
+              // Saved settings are what the next read returns, as with the supervisor.
+              F.settings = a.settings;
+              return null;
             case "goals":
               return F.goals;
             case "inbox":

@@ -7,6 +7,7 @@ use tower_core::lifecycle::Transition;
 use tower_core::{EventKind, LifecycleState, Mode, tr};
 
 use super::{Run, schedule};
+use crate::inner::Unclaimed;
 use crate::{Inner, Result, invalid};
 
 /// Marks a goal as being started; released when dropped.
@@ -16,19 +17,25 @@ pub(crate) struct Starting {
 }
 
 impl Starting {
-    /// `None` when the goal is already being started, or with `max` when
-    /// that many goals already run or start.
-    pub(super) fn claim(inner: &Arc<Inner>, goal: &str, max: Option<usize>) -> Option<Self> {
-        inner.claim_start(goal, max).then(|| Starting { inner: inner.clone(), goal: goal.to_string() })
+    /// Refused when the goal is already being started, or with `max` when
+    /// that many goals already run or start: the check and the claim are one
+    /// step, so two starts racing for the last slot cannot both get it.
+    pub(crate) fn claim(inner: &Arc<Inner>, goal: &str, max: Option<usize>) -> std::result::Result<Self, Unclaimed> {
+        inner.claim_start(goal, max).map(|()| Starting { inner: inner.clone(), goal: goal.to_string() })
     }
 
     pub(super) fn claim_one(inner: &Arc<Inner>, goal: &str) -> Result<Self> {
-        // One start at a time per goal: preparing a workspace takes a while,
-        // and two callers (the scheduler and a human resume) must not both get through.
-        Self::claim(inner, goal, None)
-            .ok_or_else(|| invalid(tr!(inner.lang(), "这个目标正在启动", "This goal is already starting")))
+        Self::claim(inner, goal, None).map_err(|_| already_starting(inner))
     }
 }
+
+/// One start at a time per goal: preparing a workspace takes a while, and
+/// two callers (the scheduler and a human resume) must not both get through.
+pub(crate) fn already_starting(inner: &Inner) -> crate::Error {
+    invalid(tr!(inner.lang(), "这个目标正在启动", "This goal is already starting"))
+}
+
+impl Starting {}
 
 impl Drop for Starting {
     fn drop(&mut self) {

@@ -101,16 +101,30 @@ jobs:
   homebrew-cask:
     needs: macos
     runs-on: ubuntu-latest
-    if: ${{ needs.macos.outputs.dmg_sha256 != '' && secrets.HOMEBREW_TAP_TOKEN != '' }}
+    if: ${{ needs.macos.outputs.dmg_sha256 != '' }}
     steps:
+      - name: Check Homebrew tap token
+        id: tap-auth
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -n "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Homebrew tap bump: HOMEBREW_TAP_TOKEN secret is not configured."
+          fi
       - uses: actions/checkout@v7
+        if: steps.tap-auth.outputs.enabled == 'true'
       - name: Checkout Homebrew Tap
+        if: steps.tap-auth.outputs.enabled == 'true'
         uses: actions/checkout@v7
         with:
           repository: beautifulrem/homebrew-tower
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
       - name: Bump Casks/tower.rb
+        if: steps.tap-auth.outputs.enabled == 'true'
         run: |
           version="${{ needs.macos.outputs.version }}"
           sha="${{ needs.macos.outputs.dmg_sha256 }}"

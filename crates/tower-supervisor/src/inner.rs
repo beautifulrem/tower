@@ -151,6 +151,32 @@ impl Inner {
         Ok(())
     }
 
+    /// A transition and the card it raises, in one store transaction: no one
+    /// (the interface, the phone page) ever sees the goal paused without its card.
+    pub fn transition_with_item(
+        &self,
+        goal: &str,
+        t: Transition,
+        reason: Option<PauseReason>,
+        note: &str,
+        item: Option<NewInboxItem>,
+    ) -> Result<()> {
+        let (entry, opened) = self.store(|s| {
+            s.atomically(|s| {
+                let entry = s.transition(goal, t, reason, note)?;
+                Ok((entry, item.map(|i| s.open_inbox(i)).transpose()?))
+            })
+        })?;
+        self.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
+        self.flush_traces();
+        self.emit_goal_now(goal);
+        if let Some(opened) = opened {
+            self.emit_inbox();
+            self.push(&opened);
+        }
+        Ok(())
+    }
+
     pub fn set_mode(&self, goal: &str, mode: Mode) -> Result<()> {
         let current = self.store(|s| s.goal(goal))?.mode;
         if current != mode {

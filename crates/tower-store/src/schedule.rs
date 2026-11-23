@@ -119,6 +119,16 @@ impl Store {
         Ok(n > 0)
     }
 
+    /// Gives back a checkpoint whose run never started, so it can be tried
+    /// again; a checkpoint claimed since is left alone.
+    pub fn release_schedule_checkpoint(&mut self, id: &str, checkpoint: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE scheduled_goals SET last_checkpoint = NULL WHERE id = ?1 AND last_checkpoint = ?2",
+            params![id, checkpoint],
+        )?;
+        Ok(())
+    }
+
     /// Moves a schedule on to its next slot without recording a run (a
     /// launch that failed, a slot claimed earlier that never ran).
     pub fn set_schedule_next_run(&mut self, id: &str, next_run_at: Option<Millis>) -> Result<()> {

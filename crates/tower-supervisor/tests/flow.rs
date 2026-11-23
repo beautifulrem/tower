@@ -322,6 +322,40 @@ async fn an_agent_that_stops_without_submitting_is_nudged_then_paused() {
     assert!(carded, "no Paused card in the inbox");
 }
 
+/// A provider error the run got past (Pi retried it, or a later turn
+/// succeeded) is not why the agent stopped: it gets the one reminder, and
+/// the pause that follows is for settling without `submit`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_provider_error_the_run_recovered_from_does_not_skip_the_nudge() {
+    for scenario in ["retry_then_idle", "error_then_turn"] {
+        let h = harness(scenario).await;
+        let id = create(&h).await;
+        let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
+        let trace = h.sup.trace(&id, None, 200).unwrap();
+        assert_eq!(
+            g.pause_reason,
+            Some(PauseReason::IdleWithoutSubmit),
+            "{scenario}: {:#?}",
+            trace.iter().rev().take(8).collect::<Vec<_>>()
+        );
+        let nudges = trace
+            .iter()
+            .filter(
+                |e| matches!(&e.event, EventKind::Injected { text, .. } if text.contains("without calling `submit`")),
+            )
+            .count();
+        assert_eq!(nudges, 1, "{scenario}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn settling_right_after_a_provider_error_pauses_for_it() {
+    let h = harness("provider_error").await;
+    let id = create(&h).await;
+    let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
+    assert_eq!(g.pause_reason, Some(PauseReason::ProviderError));
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn pausing_stops_the_engine_and_resume_continues() {
     let h = harness("ask").await;

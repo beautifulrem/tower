@@ -121,6 +121,18 @@ fn secret_param(name: &str) -> bool {
 
 /// `scheme://user:password@host` and `?token=…`-style query parameters.
 /// The user name alone on `git@` (ssh) carries nothing and stays.
+///
+/// The contract, found by heuristics rather than a parser:
+/// - A URL's credentials and secret query values are masked in the shapes tools print: git, curl and package
+///   manager lines, JSON (escaped or not), YAML, TOML, CSV, `psql -A`, HTML and XML, Markdown, shell quoting.
+/// - Text around a URL stays: neighbouring fields, emails, tags. Where a separator could be a password's or a field's
+///   end, the URL is masked over rather than the password risked (`user:pw@host,ada@…`, `host:4873/react@18`).
+/// - Known leaks, by design: a password holding its own wrapper's closer (a `)` inside `(…)`), a `|` outside quotes
+///   or brackets, or whitespace; a password of 1–5 digits and then `/?#`; a user name holding punctuation; a password
+///   more than 256 bytes past its first punctuation; URLs nested more than two deep in query values.
+///   JDBC-style `;password=…` path parameters are left to the `password=` assignment rule, so a value under 8
+///   characters stays.
+/// - One pass over the text, whatever it holds.
 fn redact_urls(text: &str) -> String {
     redact_urls_within(text, 0)
 }
@@ -147,14 +159,18 @@ fn cut_in_userinfo(cut: &str) -> bool {
     !pass.contains('@') || first == cut.len()
 }
 
-/// Whether `c`, followed by `next`, closes a URL that `open` (the character before its scheme) wraps. A bracket's or a
+/// Whether `c`, followed by `after`, closes a URL that `open` (the character before its scheme) wraps. A bracket's or a
 /// separator's match always does (`(…)`, `<…>`, `>…<` in XML text, `|…|` in `psql -A`, `,…,` in CSV). A quote's match
 /// does only where whitespace, a separator or the end follows (`"…","author"`, `href="…">`): a password may hold the
 /// quote, and git prints `'https://deploy:Xy'Zr@host/'` as it is.
-fn closes(open: Option<char>, c: char, next: Option<char>) -> bool {
+fn closes(open: Option<char>, c: char, after: &str) -> bool {
+    let next = after.chars().next();
     match open {
-        // In a JSON string an escape other than `\"` or `\\` (`\n`, `\t`, `\u…`) is no password's: it ends the URL.
-        Some('"') if c == '\\' => matches!(next, Some('n' | 'r' | 't' | 'u' | 'b' | 'f')),
+        // In a JSON string an escape other than `\"` or `\\` (`\n`, `\t`, `\u…`) is no password's: it ends the URL. `\u0026` (Go's
+        // `&`) and `\/` (PHP's `/`) are the URL's own.
+        Some('"') if c == '\\' => {
+            matches!(next, Some('n' | 'r' | 't' | 'b' | 'f')) || (next == Some('u') && !after.starts_with("u0026"))
+        }
         Some(q @ ('"' | '\'' | '`')) => {
             c == q
                 && next.is_none_or(|n| {
@@ -200,11 +216,17 @@ fn next_userinfo_at(text: &str, from: usize, to: usize) -> Option<usize> {
     None
 }
 
-/// Where the URL text from `from` on ends: at punctuation that ends a URL, or where the next URL's `://` begins.
+/// Where the URL text from `from` on ends: at punctuation that ends a URL, or where the next URL's `://` (PHP's
+/// `:\/\/`) begins. JSON's `\u0026` and `\/` are the URL's own characters, as where `redact_urls_within` first ends a URL.
 fn url_end_from(text: &str, from: usize) -> usize {
     text[from..]
         .char_indices()
-        .find(|&(i, c)| ends_url(c) || (c == ':' && text[from + i..].starts_with("://")))
+        .find(|&(i, c)| {
+            let at = &text[from + i..];
+            at.starts_with("://")
+                || at.starts_with(":\\/\\/")
+                || (ends_url(c) && !at.starts_with("\\u0026") && !at.starts_with("\\/"))
+        })
         .map_or(text.len(), |(i, _)| from + i)
 }
 
@@ -338,14 +360,13 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
                 // In a JSON string a backslash escapes the next character, which then closes nothing.
                 let was = escaped;
                 escaped = open == Some('"') && c == '\\' && !was;
-                !was && closes(open, c, url[i + c.len_utf8()..].chars().next())
+                !was && closes(open, c, &url[i + c.len_utf8()..])
             })
         {
-            // The host holds no `,` or `;` either: one after it ends the URL (a CSV cell).
-            let host = url[a + 1..]
-                .find(|c| matches!(c, '/' | '?' | '#' | ',' | ';') || ends_url(c))
-                .map_or(url.len(), |h| a + 1 + h);
-            end = if url[host..].starts_with([',', ';']) { host } else { url_end_from(url, host) };
+            // A `,` or `;` after the host may still be the password's: as everywhere, the URL is then masked over.
+            let host =
+                url[a + 1..].find(|c| matches!(c, '/' | '?' | '#') || ends_url(c)).map_or(url.len(), |h| a + 1 + h);
+            end = url_end_from(url, host);
         }
         let (url, after) = url.split_at(end);
         let host_end = authority_end(url);
@@ -533,6 +554,8 @@ mod tests {
         let far = format!("https://u:p(w@host/{}?sig=SIG0020&code=CODE0021", "x".repeat(300));
         let cases = [
             ("GET https://api.example.com/x?filter[a]=1&access_token=tok12345678 200", "tok12345678"),
+            // JDBC and matrix parameters: `;password=…` in the path.
+            ("jdbc:postgresql://db:5432/app;user=ada;password=s3cret0040", "s3cret0040"),
             ("callback http://[::1]:8080/cb?token=ipv6tok0001 ok", "ipv6tok0001"),
             ("redirect https://a.example.com/login?next=https://ada:nestedpw0002@b.example.com/x", "nestedpw0002"),
             ("fatal: https://ada:pa/ss0003@host.example.com/o/r.git", "ss0003"),
@@ -567,6 +590,10 @@ mod tests {
             // `&` written as `&amp;` (HTML) or `\u0026` (Go's JSON) still separates parameters.
             ("<a href=\"https://example.com/callback?state=xyz&amp;code=4f9a8b0034\">", "4f9a8b0034"),
             ("{\"url\":\"https://api.x.com/v1?a=1\\u0026sig=s3cr3t0035\"}", "s3cr3t0035"),
+            // After a look past punctuation the rest of the URL is read the same way, escapes and all.
+            ("{\"url\":\"https://deploy:pa(ss@h/v1?a=1\\u0026sig=S0037\"}", "S0037"),
+            ("{\"url\":\"https:\\/\\/deploy:pa(ss@h\\/v1?a=1&sig=S0038\"}", "S0038"),
+            ("{\"u\":\"https://x.example.com/?a=1\\u0026next=https://v:pa(ss0039@h.example.com/r\"}", "ss0039"),
             // PHP's JSON writes `/` as `\/`.
             ("{\"url\":\"https:\\/\\/ada:s3cret0036@db.example.com\\/app\"}", "s3cret0036"),
             // The quote a URL is wrapped in ends it only where a separator follows; a password may hold it.
@@ -665,7 +692,8 @@ mod tests {
                 "DSN=postgres://ada:secret@db:5432/app;admin=root@example.com",
                 "DSN=postgres://[redacted]@db:5432/app;admin=root@example.com",
             ),
-            ("url=https://ada:pa(ss@db;mail=bob@example.com", "url=https://[redacted]@db;mail=bob@example.com"),
+            // One tie-break everywhere: after `user:pass@host` a `;` may be the password's, so the URL is masked over.
+            ("url=https://ada:pa(ss@db;mail=bob@example.com", "url=https://[redacted]@example.com"),
             ("http://localhost:3000/api,ada@example.com,x", "http://localhost:3000/api,ada@example.com,x"),
             ("ssh://git@github.com:o/r.git,ada@example.com,x", "ssh://git@github.com:o/r.git,ada@example.com,x"),
             (

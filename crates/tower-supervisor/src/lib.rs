@@ -53,7 +53,7 @@ use tower_core::view::{
     EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
     SnapshotPoint, TraceEntry,
 };
-use tower_core::{EventKind, LifecycleState, Mode, PauseReason, tr};
+use tower_core::{EventKind, LifecycleState, PauseReason, tr};
 use tower_git::{Git, GitError};
 use tower_pi::EngineError;
 use tower_store::{NewGoal, NewProject, ProjectPatch, ReadPool, Store, StoreError};
@@ -246,14 +246,15 @@ impl Supervisor {
         for g in running {
             // The process that ran it is gone (crash or forced quit): close the run.
             let _ = inner.append(&g.id, EventKind::RunEnded { run_no: g.run_no, outcome: "interrupted".into() });
-            inner.withdraw(
-                &g.id,
-                &[InboxKind::Question, InboxKind::Approval],
-                &tr!(lang, "Tower 重新启动", "Tower restarted"),
-            );
-            let _ = inner.set_mode(&g.id, Mode::Idle);
+            // Cards, mode and the pause in one write: a refused transition
+            // leaves the goal as it was, for the next start to recover.
+            let cards: &[InboxKind] = &[InboxKind::Question, InboxKind::Approval];
+            let why = tr!(lang, "Tower 重新启动", "Tower restarted");
             let note = tr!(lang, "上次退出时仍在运行", "Still running when Tower last quit");
-            let _ = inner.transition(&g.id, Transition::Pause { reason: PauseReason::AppQuit }, None, &note);
+            let pause = Transition::Pause { reason: PauseReason::AppQuit };
+            if let Err(e) = control::settle(inner, &g.id, &[(cards, why)], pause, &note, None) {
+                tracing::warn!(goal = %g.id, "could not pause a goal left running: {e}");
+            }
         }
         // What verifications cut short by the last quit left: their guard
         // transcripts stay undeletable until their flag is cleared.
@@ -487,7 +488,21 @@ impl Supervisor {
     }
 
     pub fn remove_project(&self, id: &str) -> Result<()> {
-        self.inner.store(|s| s.remove_project(id))?;
+        let goals = self.inner.store(|s| s.remove_project(id))?;
+        // Their records are gone, so nothing could reach or reclaim these later.
+        let p = &self.inner.paths;
+        for g in &goals {
+            let tmp = p.root.join("tmp");
+            for dir in
+                [p.workspace(g), p.tmp(g), p.verify(g), p.sessions(g), p.goal_dir(g), tmp.join(format!("{g}-verify"))]
+            {
+                if let Err(e) = std::fs::remove_dir_all(&dir)
+                    && e.kind() != std::io::ErrorKind::NotFound
+                {
+                    tracing::warn!(dir = %dir.display(), "removing a removed project's goal folder: {e}");
+                }
+            }
+        }
         self.emit_projects();
         Ok(())
     }

@@ -388,6 +388,27 @@ async fn settling_right_after_a_provider_error_pauses_for_it() {
     assert_eq!(g.pause_reason, Some(PauseReason::ProviderError));
 }
 
+/// Removing a project takes its ended goals' folders with their records:
+/// nothing is left in Tower's data folder that no view can reach or reclaim.
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_a_project_removes_its_goals_folders() {
+    let h = harness("ask").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.needs_you > 0).await;
+    h.sup.abandon(&id).await.unwrap();
+    wait_for(&h, &id, |g| g.state == LifecycleState::Abandoned).await;
+    let g = h.sup.goal(&id).unwrap();
+    let ws = std::path::PathBuf::from(g.workspace.unwrap());
+    let root = ws.parent().and_then(Path::parent).unwrap().to_path_buf();
+    std::fs::create_dir_all(root.join("goals").join(&id).join("attachments")).unwrap();
+    std::fs::create_dir_all(root.join("sessions").join(&id)).unwrap();
+    assert!(ws.exists());
+    h.sup.remove_project(&g.summary.project_id).unwrap();
+    for left in [ws, root.join("goals").join(&id), root.join("sessions").join(&id), root.join("tmp").join(&id)] {
+        assert!(!left.exists(), "{} is removed", left.display());
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn pausing_stops_the_engine_and_resume_continues() {
     let h = harness("ask").await;

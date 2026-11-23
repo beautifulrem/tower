@@ -55,7 +55,7 @@ When an agent claims completion, Tower pins a content-addressed snapshot and run
 
 ### 2. Defense-in-Depth Sandbox & Cross-Platform Isolation
 
-Every safety claim is backed by **100 automated security tests** in [SECURITY.md](SECURITY.md), verified on every push by `tools/security-tests.mjs` against real `sandbox-exec` and real git.
+Every safety claim is backed by **102 automated security tests** in [SECURITY.md](SECURITY.md), verified on every push by `tools/security-tests.mjs` against real `sandbox-exec` and real git.
 
 - **Persistent Sandboxed FS Helper (`--fs-helper`)**: A long-lived helper runs inside the goal's Seatbelt profile over a stdio JSONL pipe (`extensions/tower-goal/sandboxfs.ts`), enforcing the 16 MiB file cap and exact kernel file policy on every `read`, `edit`, and `write` at sub-millisecond latency.
 - **macOS Seatbelt (Deny-by-Default Per Goal)**:
@@ -221,7 +221,7 @@ Start here for the current codebase:
 - [`docs/19-anti-chat-console-design.md`](docs/19-anti-chat-console-design.md) — Anti-"Chat UI Inertia" Flight-Deck console specification
 - [`docs/17-implementation.md`](docs/17-implementation.md) — Implementation map, verification details, and design deltas
 - [`docs/18-evolution-roadmap.md`](docs/18-evolution-roadmap.md) & [`ROADMAP.md`](ROADMAP.md) — P0–P2 evolution architecture and shipped milestones
-- [`SECURITY.md`](SECURITY.md) — Threat model, sandbox guarantees, and all 100 CI-verified security properties
+- [`SECURITY.md`](SECURITY.md) — Threat model, sandbox guarantees, and all 102 CI-verified security properties
 
 ## Contributing & License
 

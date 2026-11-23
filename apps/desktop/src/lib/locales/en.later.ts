@@ -307,6 +307,7 @@ export const enLater: DictLater = {
     holdoutDraftTag: "┆ Draft claim · inactive until you ratify",
     holdoutRatifiedStamp: "You ratified · hidden",
     holdoutRatify: "Ratify into holdout/",
+    holdoutNone: "No drafts came back. Try Regenerate.",
     scopeBlock: "Scope fence & ports",
     scopeHint: "One path pattern per line (such as src/**). Writing outside the fence needs your approval; in review, changes outside it come first.",
     include: "May change",

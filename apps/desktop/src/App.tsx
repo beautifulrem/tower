@@ -212,6 +212,7 @@ export function App() {
       { key: "mod+shift+l", run: toggleActivity, inInputs: true, desc: () => t("keys.activity") },
     ],
     () => t("keys.everywhere"),
+    { shell: true },
   );
 
   return (

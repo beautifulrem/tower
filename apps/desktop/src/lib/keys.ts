@@ -1,13 +1,14 @@
 /**
  * Keyboard-first (docs/04 §4.17, docs/16 §16.3). Views register bindings
- * while mounted; the most recently registered scope wins. Plain keys are
- * ignored while typing; chords with ⌘ always work.
+ * while mounted; the most recently registered scope wins, within its layer: a
+ * view mounted while a dialog is open still sits under the dialog. Plain keys
+ * are ignored while typing; chords with ⌘ always work.
  *
  * The registry is reactive: the `?` sheet lists exactly the bindings that
  * are live at that moment, grouped by the scope that owns them. A binding
  * without a description is an alias (↓ for j) and stays out of the sheet.
  */
-import { createSignal, onCleanup } from "solid-js";
+import { createContext, createSignal, onCleanup, useContext } from "solid-js";
 
 export interface Binding {
   /** e.g. "j", "shift+t", "mod+k", "mod+shift+enter", "escape", "?" */
@@ -27,9 +28,17 @@ export interface Scope {
   /** Where the bindings apply (reactive), e.g. "Review". */
   name: () => string;
   bindings: Binding[];
-  /** A modal layer (a dialog, the peek drawer): the view's keys under it stay quiet; only ⌘ chords pass. */
+  /** A modal layer (a dialog, the peek drawer): the keys under it stay quiet, but for the app's own ⌘ chords. */
   modal?: boolean;
+  /** The app's own chords (⌘K, ⌘1, ⌘,): the only ones that reach under a modal layer. A view's ⌘↩ must not save
+   *  the contract under the palette. */
+  shell?: boolean;
+  /** How many modal layers it sits inside; a scope never lands above a layer it is not in. */
+  depth: number;
 }
+
+/** The modal layer depth the components below sit in; a dialog provides its own to its content. */
+export const KeyLayer = createContext(0);
 
 /** Keys that may auto-repeat while held: moving through a list. Everything else fires once per press, so holding a
  *  digit can't arm and then confirm a destructive option, and holding ⌘↩ can't create a goal twice. */
@@ -85,8 +94,9 @@ if (typeof window !== "undefined") {
     if (activatesTarget(combo, e.target)) return;
     const inInput = typing(e);
     const list = scopes();
+    let underModal = false;
     for (let i = list.length - 1; i >= 0; i--) {
-      const hit = list[i].bindings.find((b) => b.key === combo && (!b.when || b.when()));
+      const hit = (!underModal || list[i].shell) && list[i].bindings.find((b) => b.key === combo && (!b.when || b.when()));
       if (hit) {
         if (inInput && !hit.inInputs && !combo.startsWith("mod+")) return;
         e.preventDefault();
@@ -94,16 +104,27 @@ if (typeof window !== "undefined") {
         hit.run(e);
         return;
       }
-      if (list[i].modal && !combo.startsWith("mod+")) return;
+      if (list[i].modal) {
+        if (!combo.startsWith("mod+")) return;
+        underModal = true;
+      }
     }
   });
 }
 
-/** Registers bindings for the lifetime of the calling component. */
-export function useKeys(bindings: Binding[], name: () => string = () => "", opts: { modal?: boolean } = {}) {
-  const scope: Scope = { name, bindings, modal: opts.modal };
-  setScopes((s) => [...s, scope]);
+/**
+ * Registers bindings for the lifetime of the calling component. Returns the layer depth its content sits in, for a
+ * modal scope to provide through `KeyLayer`.
+ */
+export function useKeys(bindings: Binding[], name: () => string = () => "", opts: { modal?: boolean; shell?: boolean } = {}): number {
+  const depth = useContext(KeyLayer) + (opts.modal ? 1 : 0);
+  const scope: Scope = { name, bindings, modal: opts.modal, shell: opts.shell, depth };
+  setScopes((s) => {
+    const above = s.findIndex((x) => x.depth > depth);
+    return above < 0 ? [...s, scope] : [...s.slice(0, above), scope, ...s.slice(above)];
+  });
   onCleanup(() => setScopes((s) => s.filter((x) => x !== scope)));
+  return depth;
 }
 
 const GLYPH: Record<string, string> = {

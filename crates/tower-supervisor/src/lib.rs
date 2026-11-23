@@ -141,6 +141,7 @@ impl Supervisor {
         let db_path = config.paths.db();
         let store = Store::open(&db_path)?;
         let read_pool = ReadPool::open(&db_path, 4).ok();
+        config.paths.restrict_store()?;
         let inner = Arc::new(Inner {
             paths: config.paths,
             env,

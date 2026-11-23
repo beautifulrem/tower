@@ -91,7 +91,7 @@ export function GoalPage(props: { id: string }) {
   useKeys(
     [
       { key: "w", run: () => setWatch((w) => !w), desc: () => t("keys.watch") },
-      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review") },
+      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review"), when: () => !!summary()?.diffstat },
       { key: "p", run: () => togglePause(), desc: () => t("keys.pauseResume") },
       { key: "shift+e", run: () => go({ name: "new", amendId: props.id }), desc: () => t("goal.amend") },
       { key: "h", run: () => inbox()[0] && void snoozeMenu(inbox()[0]), desc: () => t("keys.snooze"), when: () => inbox().length > 0 },

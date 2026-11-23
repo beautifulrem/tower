@@ -129,8 +129,8 @@ const NESTED_URLS: u8 = 2;
 /// Whether a URL that punctuation (`cut_at`) cut short (`cut`, after the `://`) stops inside `user:pass`. A `:` comes
 /// before any `/?#`, and what follows it is not a port: 1–5 digits, then a path, or then the cut where a closing
 /// bracket or a `|` cut them. A quote after digits reads as a password (`deploy:42'ab@`): after a port it is JSON, CSV
-/// or HTML, whose field boundary `crosses_field` sees. If an `@` already follows the
-/// `:`, the authority may be whole (`user:tok@host`): only when no path has begun and a `|` (`psql -A`) did not cut it.
+/// or HTML, whose wrapper ends the URL (`closes`). If an `@` already follows the `:`, the authority may be whole
+/// (`user:tok@host`): only when no path has begun.
 fn cut_in_userinfo(cut: &str, cut_at: char) -> bool {
     let first = cut.find(['/', '?', '#']).unwrap_or(cut.len());
     let Some(colon) = cut[..first].find(':').filter(|_| !cut.starts_with('[')) else {
@@ -144,17 +144,35 @@ fn cut_in_userinfo(cut: &str, cut_at: char) -> bool {
     if port {
         return false;
     }
-    !pass.contains('@') || (first == cut.len() && cut_at != '|')
+    !pass.contains('@') || first == cut.len()
 }
 
-/// Whether text between a URL's cut and the next `@` crosses into another field: a closing quote or bracket and then
-/// `,` `:` or `;`, as in JSON (`"…","author":"ada@…"`), where a password cannot hold an unescaped quote anyway; or a
-/// quote and then `>`, the end of an HTML tag (`href="…">ada@…`).
-fn crosses_field(between: &str) -> bool {
-    between
-        .as_bytes()
-        .windows(2)
-        .any(|w| matches!(w, [b'"' | b'\'', b'>'] | [b'"' | b'\'' | b')' | b']' | b'}' | b'>', b',' | b':' | b';']))
+/// Whether `c`, followed by `next`, closes a URL that `open` (the character before its scheme) wraps. A bracket's or a
+/// separator's match always does (`(…)`, `<…>`, `>…<` in XML text, `|…|` in `psql -A`, `,…,` in CSV). A quote's match
+/// does only where whitespace, a separator or the end follows (`"…","author"`, `href="…">`): a password may hold the
+/// quote, and git prints `'https://deploy:Xy'Zr@host/'` as it is.
+fn closes(open: Option<char>, c: char, next: Option<char>) -> bool {
+    match open {
+        Some(q @ ('"' | '\'' | '`')) => {
+            c == q
+                && next.is_none_or(|n| {
+                    n.is_whitespace() || matches!(n, ',' | ';' | ':' | ')' | ']' | '}' | '>' | '<' | '/')
+                })
+        }
+        Some(o) => {
+            let close = match o {
+                '(' => ')',
+                '[' => ']',
+                '{' => '}',
+                '<' => '>',
+                '>' => '<',
+                '|' | ',' | ';' => o,
+                _ => return false,
+            };
+            c == close
+        }
+        None => false,
+    }
 }
 
 /// The largest char boundary of `text` at or below `at`.
@@ -193,12 +211,20 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
     let mut rest = text;
     let mut next_at = text.find('@');
     while let Some(at) = rest.find("://") {
+        // What the URL is wrapped in: the character before its scheme.
+        let scheme = rest[..at].trim_end_matches(|c: char| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+        let open = if scheme.is_empty() {
+            text[..text.len() - rest.len()].chars().next_back()
+        } else {
+            scheme.chars().next_back()
+        };
         out.push_str(&rest[..at + 3]);
         let url = &rest[at + 3..];
         let mut end = url.find(ends_url).unwrap_or(url.len());
         // A password may hold `'()"|{}<>\` or a backtick, which git sends as they are. When punctuation cuts the URL
-        // inside `user:pass`, and an `@` follows within 256 bytes with no whitespace, no other `://` and no field
-        // boundary before it, the URL runs on past the host after that `@` to where its path ends. Each look stops
+        // inside `user:pass`, and an `@` follows within 256 bytes with no whitespace, no other `://` and nothing that
+        // closes what the URL is wrapped in before it, the URL runs on past the host after that `@` to where its path
+        // ends. Each look stops
         // at the next `://`, so no stretch of text is read twice; the next `@` is found once for the whole text, so a
         // URL with none after it costs nothing.
         let pos = text.len() - url.len();
@@ -209,7 +235,7 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
             && next_at.is_some_and(|a| a - pos < end + 256)
             && cut_in_userinfo(&url[..end], cut_at)
             && let Some(a) = next_userinfo_at(url, end, end + 256)
-            && !crosses_field(&url[end..a])
+            && !url[..a].char_indices().any(|(i, c)| closes(open, c, url[i + c.len_utf8()..].chars().next()))
         {
             let host = url[a + 1..].find(|c| matches!(c, '/' | '?' | '#') || ends_url(c));
             end = url_end_from(url, host.map_or(url.len(), |h| a + 1 + h));
@@ -424,6 +450,9 @@ mod tests {
             // Digits before the punctuation are not a port when an opening bracket follows them.
             ("origin\thttps://deploy:7(q)Zr0018@git.example.com/o/r.git (fetch)", "Zr0018"),
             ("fatal: unable to access 'https://deploy:42'ab0022@git.example.com/r/': 403", "ab0022"),
+            ("https://deploy:Xy(7q):Zr0023@git.example.com/o/r.git", "Zr0023"),
+            // The quote a URL is wrapped in ends it only where a separator follows; a password may hold it.
+            ("fatal: unable to access 'https://deploy:Xy(7q)Zr'0024@git.example.com/o/r.git/': 403", "0024"),
             // A URL inside another's path is a URL too.
             ("GET https://proxy.example.com/fetch/https://v:inner0019@h2.example.com/r 200", "inner0019"),
             // The rest of a URL whose password held punctuation is still read for secrets, however long its path.
@@ -468,6 +497,7 @@ mod tests {
             "{\"image\":\"docker://nginx:latest\",\"m\":\"ops@example.com\"}",
             "<a href=\"http://localhost:8080\">ada@example.com</a>",
             "<a href=\"https://u:p\">ada@example.com</a>",
+            "<url>http://localhost:3000</url><email>ada@example.com</email>",
         ] {
             assert_eq!(redact(kept), kept);
         }
@@ -478,6 +508,10 @@ mod tests {
                 "{\"url\":\"https://[redacted]@github.com/o/r\",\"author\":\"ada@example.com\",\"id\":3}",
             ),
             ("1|https://u:tok@h.com|ada@example.com|x", "1|https://[redacted]@h.com|ada@example.com|x"),
+            (
+                "<url>https://user:pw@host</url><email>ada@example.com</email>",
+                "<url>https://[redacted]@host</url><email>ada@example.com</email>",
+            ),
             (
                 "{\"url\":\"https://u:p(q@host/r.git\",\"email\":\"ada@example.com\"}",
                 "{\"url\":\"https://[redacted]@host/r.git\",\"email\":\"ada@example.com\"}",

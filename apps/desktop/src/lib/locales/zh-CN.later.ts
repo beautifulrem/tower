@@ -301,6 +301,7 @@ export const zhLater = {
     holdoutDraftTag: "┆ 草案声明 · 批准前不生效",
     holdoutRatifiedStamp: "你已批准 · 已隐藏",
     holdoutRatify: "批准进 holdout/",
+    holdoutNone: "没有生成草案。试试重新生成。",
     scopeBlock: "范围围栏与端口",
     scopeHint: "每行一个路径模式（如 src/**）。Agent 写围栏之外的文件需要你批准；评审时围栏外的改动排在最前。",
     include: "可以改",

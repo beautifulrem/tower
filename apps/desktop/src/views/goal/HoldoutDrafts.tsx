@@ -3,7 +3,7 @@ import { For, Show, createSignal, onMount } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
 import { Button } from "../../components/ui";
-import { api } from "../../lib/api";
+import { api, errorText } from "../../lib/api";
 import { t } from "../../lib/i18n";
 import { toast } from "../../lib/store";
 import type { HoldoutDraft } from "./ext";
@@ -13,24 +13,27 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
   const [ratified, setRatified] = createSignal<Record<string, boolean>>({});
   const [busy, setBusy] = createSignal<string | null>(null);
 
+  // Only what the supervisor proposed: on failure, no stand-in draft a click could ratify into the held-out tests.
+  const [none, setNone] = createSignal(false);
   const load = async () => {
-    const res = await api.generateHoldoutDrafts?.(props.projectId, props.intent).catch(() => null);
-    setDrafts(res?.length ? res : [{
-      id: "d1",
-      filename: "holdout/boundary.test.js",
-      rationale: `Boundary check for "${props.intent.slice(0, 40) || "intent"}"`,
-      code: `import test from "node:test";\nimport assert from "node:assert/strict";\ntest("boundary case", () => { assert.ok(true); });`,
-    }]);
+    const res = await api.generateHoldoutDrafts(props.projectId, props.intent).catch(() => null);
+    setDrafts(res ?? []);
+    setNone(!res?.length);
   };
   onMount(() => void load());
 
   const patch = (id: string, p: Partial<HoldoutDraft>) => setDrafts((l) => l.map((d) => (d.id === id ? { ...d, ...p } : d)));
   const ratify = async (d: HoldoutDraft) => {
     setBusy(d.id);
-    const out = await api.ratifyHoldoutDraft?.(props.projectId, d.filename, d.code).catch(() => null);
-    setRatified((m) => ({ ...m, [d.id]: true }));
-    toast("success", t("contract.holdoutRatified", { file: out || d.filename }));
-    setBusy(null);
+    try {
+      const out = await api.ratifyHoldoutDraft(props.projectId, d.filename, d.code);
+      setRatified((m) => ({ ...m, [d.id]: true }));
+      toast("success", t("contract.holdoutRatified", { file: out || d.filename }));
+    } catch (e) {
+      toast("error", errorText(e));
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -41,6 +44,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
         <Button size="s" variant="ghost" onClick={() => void load()}>{t("contract.regenerate")}</Button>
         <button type="button" class="icon-btn" aria-label={t("common.close")} onClick={props.onClose}>×</button>
       </div>
+      <Show when={none()}><span class="meta t3">{t("contract.holdoutNone")}</span></Show>
       <For each={drafts()}>
         {(d) => {
           const ok = () => !!ratified()[d.id];

@@ -20,7 +20,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Security
 - With the contract's network switch on, the agent's sandbox (and the screenshot browser's) reached every Unix socket on the Mac — including ssh-agent, and with it your SSH keys. It now reaches the internet by address and the system resolver only.
-- The agent's git reads no system git configuration and never prompts; its copy of your Cargo configuration carries no registry tokens or proxy passwords.
+- The agent's git reads no system git configuration and never prompts. Its copy of your Cargo configuration keeps only mirrors, registry indexes and `[net]` retry settings (the allowlist the design specifies), read from a parse of the file: no tokens, credential providers, proxy passwords or `[env]` variables, and no `[build]`, `[target]`, `[patch]` or `[alias]` either.
 - Diagnostics and stored events mask URL passwords, credential query parameters and `Authorization` headers; the push topic stays out of the export.
 - `~/.tower` and its database are yours alone (0700/0600); an empty `TOWER_HOME` means the default and a relative one is refused.
 - The window may open Tower's data folder itself, not the agent-written workspaces under it.

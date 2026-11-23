@@ -2,7 +2,7 @@
 import { type JSX, Show, createUniqueId, onCleanup, onMount, splitProps } from "solid-js";
 
 import { t } from "../lib/i18n";
-import { keyHint, useKeys } from "../lib/keys";
+import { type Binding, keyHint, useKeys } from "../lib/keys";
 import { DangerMark, Icon, type IconName } from "./Glyph";
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -306,6 +306,9 @@ export function Overlay(props: {
   class?: string;
   /** Floats at the top like the palette; otherwise a little lower, like a sheet. */
   top?: boolean;
+  /** The dialog's own keys. They live in the overlay's modal scope: one registered beside it would sit under the
+   *  boundary with the view's keys. */
+  keys?: { name: () => string; bindings: Binding[] };
   /**
    * Where focus lands on open: the first control (a palette's field), or
    * the panel itself for sheets you read first — then Tab reaches the first
@@ -319,7 +322,7 @@ export function Overlay(props: {
   const previous = document.activeElement as HTMLElement | null;
   const titleId = createUniqueId();
   let panel!: HTMLDivElement;
-  useKeys([{ key: "escape", run: () => props.onClose(), inInputs: true }]);
+  useKeys([{ key: "escape", run: () => props.onClose(), inInputs: true }, ...(props.keys?.bindings ?? [])], props.keys?.name, { modal: true });
   onMount(() => {
     props.panelRef?.(panel);
     const first = props.initialFocus === "panel" ? null : panel.querySelector<HTMLElement>(FOCUSABLE);

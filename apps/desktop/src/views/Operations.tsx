@@ -162,7 +162,7 @@ export function Operations() {
                     <div class="row">
                       <button type="button" class="link-quiet code-val t2" onClick={() => go({ name: "goal", id: entry.goal_id })}>{entry.goal_id}</button>
                       <span class="t1 ellipsis">{entry.goal_title}</span>
-                      <code class="code-val meta t3" hidden={!entry.branch}>{entry.branch}</code>
+                      <code class="code-val meta t3" hidden={!entry.branch} title={entry.branch ?? undefined}>{entry.branch}</code>
                     </div>
                     <div class="mq-conflicts meta t3" hidden={!entry.conflict_files.length}>
                       <code class="code-val t2">{entry.conflict_files.join(" · ")}</code>

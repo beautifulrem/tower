@@ -86,19 +86,38 @@ fn without_credentials(config: &str) -> String {
         }
         out
     };
-    // A `replace-with` naming a source that did not come through (a `local-registry`, a `git` source) is dropped
-    // with it: cargo refuses a replacement it cannot find, and builds from crates.io without one.
+    // What is left must be sources cargo accepts: each (but crates-io, which is built in) with a location of its own,
+    // and each `replace-with` naming a source or a registry that is there. A source whose location was not kept (a
+    // `local-registry`, a `git` source, the block `cargo vendor` writes) goes, then any replacement naming it, until
+    // nothing changes; without a replacement cargo builds from crates.io.
     let mut sources = entries("source", &["registry", "replace-with", "directory"]);
-    let names: Vec<String> = sources.keys().cloned().collect();
-    for (_, entry) in sources.iter_mut() {
-        let Some(entry) = entry.as_table_mut() else { continue };
-        if entry.get("replace-with").and_then(Value::as_str).is_some_and(|to| !names.iter().any(|n| n == to)) {
-            entry.remove("replace-with");
+    let registries = entries("registries", &["index"]);
+    loop {
+        let before = sources.len();
+        sources.retain(|name, entry| {
+            entry.as_table().is_some_and(|t| {
+                if name == "crates-io" {
+                    !t.is_empty()
+                } else {
+                    t.contains_key("registry") || t.contains_key("directory")
+                }
+            })
+        });
+        let names: Vec<String> = sources.keys().chain(registries.keys()).cloned().collect();
+        let mut dropped = false;
+        for (_, entry) in sources.iter_mut() {
+            let Some(entry) = entry.as_table_mut() else { continue };
+            if entry.get("replace-with").and_then(Value::as_str).is_some_and(|to| !names.iter().any(|n| n == to)) {
+                entry.remove("replace-with");
+                dropped = true;
+            }
+        }
+        if !dropped && sources.len() == before {
+            break;
         }
     }
-    sources.retain(|_, entry| entry.as_table().is_some_and(|t| !t.is_empty()));
     let mut out = Table::new();
-    for (table, kept) in [("source", sources), ("registries", entries("registries", &["index"]))] {
+    for (table, kept) in [("source", sources), ("registries", registries)] {
         if !kept.is_empty() {
             out.insert(table.into(), Value::Table(kept));
         }
@@ -425,6 +444,36 @@ keygen = "run --bin keygen"
             "[source.crates-io]\nreplace-with = \"local\"\n[source.local]\nlocal-registry = \"/x\"\n",
         );
         assert!(!local.contains("replace-with"), "{local}");
+        // A mirror under `[registries]` is a replacement cargo takes too (the usual Artifactory setup).
+        let corp = without_credentials(
+            "[source.crates-io]\nreplace-with = \"corp\"\n[registries.corp]\nindex = \"sparse+https://u:pw0018@corp.example.com/index/\"\n",
+        );
+        let corp_t: toml::Table = corp.parse().unwrap();
+        assert_eq!(corp_t["source"]["crates-io"]["replace-with"].as_str(), Some("corp"), "{corp}");
+        assert!(!corp.contains("0018"), "{corp}");
+        // A chain whose end did not come through, and the block `cargo vendor` writes (a git source replaced by a
+        // vendor directory): what is left names only sources that are there, each with a location of its own.
+        for config in [
+            "[source.crates-io]\nreplace-with = \"b\"\n[source.b]\ngit = \"https://x.example.com/b\"\nreplace-with = \"c\"\n[source.c]\nlocal-registry = \"/c\"\n",
+            "[source.crates-io]\nreplace-with = \"vendored-sources\"\n[source.\"git+https://github.com/x/y?rev=abc\"]\ngit = \"https://github.com/x/y\"\nrev = \"abc\"\nreplace-with = \"vendored-sources\"\n[source.vendored-sources]\ndirectory = \"vendor\"\n",
+            "[source.a]\nreplace-with = \"b\"\nregistry = \"https://a.example.com/i\"\n[source.b]\nreplace-with = \"a\"\ngit = \"https://b.example.com\"\n",
+        ] {
+            let out = without_credentials(config);
+            let t: toml::Table = out.parse().unwrap();
+            let empty = toml::Table::new();
+            let sources = t.get("source").and_then(toml::Value::as_table).unwrap_or(&empty);
+            let registries = t.get("registries").and_then(toml::Value::as_table).unwrap_or(&empty);
+            for (name, entry) in sources {
+                let entry = entry.as_table().unwrap();
+                assert!(
+                    name == "crates-io" || entry.contains_key("registry") || entry.contains_key("directory"),
+                    "{name} has no location:\n{out}"
+                );
+                if let Some(to) = entry.get("replace-with").and_then(toml::Value::as_str) {
+                    assert!(sources.contains_key(to) || registries.contains_key(to), "{name} → {to} dangles:\n{out}");
+                }
+            }
+        }
         let ssh = without_credentials("[registries.corp]\nindex = \"ssh://git@git.example.com/index\"\n");
         assert!(ssh.contains("ssh://git@git.example.com/index"), "a lone ssh user is not a credential: {ssh}");
 

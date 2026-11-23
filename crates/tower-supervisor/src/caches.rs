@@ -110,11 +110,11 @@ fn without_credentials(config: &str) -> String {
                 }
             })
         });
-        let names: Vec<String> = sources.keys().chain(registries.keys()).cloned().collect();
+        let names: std::collections::HashSet<String> = sources.keys().chain(registries.keys()).cloned().collect();
         let mut dropped = false;
         for (_, entry) in sources.iter_mut() {
             let Some(entry) = entry.as_table_mut() else { continue };
-            if entry.get("replace-with").and_then(Value::as_str).is_some_and(|to| !names.iter().any(|n| n == to)) {
+            if entry.get("replace-with").and_then(Value::as_str).is_some_and(|to| !names.contains(to)) {
                 entry.remove("replace-with");
                 dropped = true;
             }
@@ -497,6 +497,15 @@ keygen = "run --bin keygen"
         }
         let ssh = without_credentials("[registries.corp]\nindex = \"ssh://git@git.example.com/index\"\n");
         assert!(ssh.contains("ssh://git@git.example.com/index"), "a lone ssh user is not a credential: {ssh}");
+
+        // Many sources are one pass, not one per pair: the agent can write this file, and it is read again at every run.
+        let many: String = (0..30_000)
+            .map(|i| format!("[source.s{i}]\nregistry = \"https://m.example.com/{i}\"\nreplace-with = \"zz\"\n"))
+            .chain(["[registries.zz]\nindex = \"https://zz.example.com/i\"\n".to_string()])
+            .collect();
+        let started = std::time::Instant::now();
+        let _ = without_credentials(&many);
+        assert!(started.elapsed() < std::time::Duration::from_secs(4), "took {:?}", started.elapsed());
 
         // A cache seeded before the filter loses its copy's token too.
         std::fs::write(cache.join("cargo/config.toml"), "[registry]\ntoken = \"cio_oldseed0016\"\n").unwrap();

@@ -5,7 +5,7 @@ const settings = vi.hoisted(() => ({ language: "en" }));
 vi.mock("../i18n", async (actual) => ({ ...(await actual<typeof import("../i18n")>()), locale: () => (settings.language === "zh-CN" ? "zh-CN" : "en") }));
 vi.mock("../store", () => ({ state: { settings } }));
 
-const { ago, duration, usd, usdLimit, short, sameMinute } = await import("../format");
+const { ago, dayClock, duration, usd, usdLimit, short, sameMinute } = await import("../format");
 
 describe("formats", () => {
   it("rounds time quietly", () => {
@@ -23,6 +23,14 @@ describe("formats", () => {
     expect(ago(now - 100 * 60_000, now)).toBe("1h 40m ago");
     expect(ago(now - 4 * 3600_000, now)).toBe("4h ago");
     expect(ago(now - 3 * 24 * 3600_000, now)).toBe("3 days ago");
+  });
+
+  it("says a moment days off with its day, in this machine's zone and the interface language", () => {
+    const t = new Date(2026, 10, 24, 2, 5).getTime();
+    expect(dayClock(t)).toBe("Nov 24 02:05");
+    settings.language = "zh-CN";
+    expect(dayClock(t)).toBe("11月24日 02:05");
+    settings.language = "en";
   });
 
   it("knows when two moments share a clock minute", () => {

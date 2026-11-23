@@ -39,6 +39,7 @@ mod settings_api;
 pub mod shell_env;
 pub mod storage;
 mod summarize;
+mod tree;
 mod verify;
 
 use std::path::{Path, PathBuf};
@@ -489,24 +490,52 @@ impl Supervisor {
         Ok(p)
     }
 
-    pub fn remove_project(&self, id: &str) -> Result<()> {
+    /// Removes a project whose goals have all ended, with their records and
+    /// folders. The folders go off the main thread (they can be gigabytes of
+    /// packages), after any verification still winding down has stopped, so
+    /// nothing recreates them behind the removal.
+    pub async fn remove_project(&self, id: &str) -> Result<()> {
         let goals = self.inner.store(|s| s.remove_project(id))?;
+        self.emit_projects();
         // Their records are gone, so nothing could reach or reclaim these later.
-        let p = &self.inner.paths;
         for g in &goals {
-            let tmp = p.root.join("tmp");
-            for dir in
-                [p.workspace(g), p.tmp(g), p.verify(g), p.sessions(g), p.goal_dir(g), tmp.join(format!("{g}-verify"))]
-            {
-                if let Err(e) = std::fs::remove_dir_all(&dir)
-                    && e.kind() != std::io::ErrorKind::NotFound
-                {
-                    tracing::warn!(dir = %dir.display(), "removing a removed project's goal folder: {e}");
+            self.stop_verification(g).await;
+            let _ = crate::ports_pool::release_for_root(&self.inner.paths.root, g);
+        }
+        let paths = self.inner.paths.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let tmp = paths.root.join("tmp");
+            for g in &goals {
+                for dir in [
+                    paths.workspace(g),
+                    paths.tmp(g),
+                    paths.verify(g),
+                    paths.sessions(g),
+                    paths.goal_dir(g),
+                    tmp.join(format!("{g}-verify")),
+                ] {
+                    if let Err(e) = tree::remove_tree(&dir) {
+                        tracing::warn!(dir = %dir.display(), "removing a removed project's goal folder: {e}");
+                    }
                 }
             }
-        }
-        self.emit_projects();
+        })
+        .await;
         Ok(())
+    }
+
+    /// Cancels a goal's verification or preflight and waits (up to 10 s)
+    /// until it has let go of the goal's folders.
+    async fn stop_verification(&self, id: &str) {
+        if let Some(c) = self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).get(id) {
+            c.cancel();
+        }
+        for _ in 0..200 {
+            if !self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
 
     fn emit_projects(&self) {
@@ -717,15 +746,7 @@ impl Supervisor {
         }
         // A verification or preflight still winding down writes into these
         // folders: stop it and let it finish first.
-        if let Some(c) = self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).get(id) {
-            c.cancel();
-        }
-        for _ in 0..200 {
-            if !self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        self.stop_verification(id).await;
         let paths = self.inner.paths.clone();
         let goal = id.to_string();
         tokio::task::spawn_blocking(move || -> std::io::Result<()> {
@@ -734,15 +755,7 @@ impl Supervisor {
             {
                 // A process that was still writing may leave a file behind
                 // once: try again before giving up.
-                let mut result = Ok(());
-                for _ in 0..3 {
-                    result = if dir.exists() { std::fs::remove_dir_all(&dir) } else { Ok(()) };
-                    if result.is_ok() {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-                result?;
+                tree::remove_tree(&dir)?;
             }
             Ok(())
         })

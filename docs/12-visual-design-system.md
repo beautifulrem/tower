@@ -101,6 +101,8 @@
 
 中性色色相 h≈70（暖灰），极低彩度（Linear 2026，G§6.2）。表面层级靠明度，不靠阴影。
 
+> 实际取值以 [`apps/desktop/src/styles/tokens.css`](../apps/desktop/src/styles/tokens.css) 为准。下面是设计时的初稿，实现中已调整的有：去掉强调色色相（选中与焦点只靠明度）、text-3/text-4 的明度（浅色 text-3 为 0.470）、浮层改为不透明、边框透明度，以及动效令牌的命名（`--dur-fast`/`--dur-base`/`--dur-view`/`--dur-space` 等）。
+
 ```css
 :root[data-theme="dark"] {
   --bg-sidebar:   oklch(0.155 0.004 70);
@@ -466,7 +468,7 @@ R1 的视觉落地。**看一眼就知道这句话是验证器测出来的、Age
 
 ## 12.7 动效契约
 
-令牌：
+令牌（实现中的名称与取值见 `tokens.css`，见 §12.4 的说明）：
 
 ```css
 :root {

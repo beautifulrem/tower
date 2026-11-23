@@ -62,7 +62,7 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
               </>
             )}
           </For>
-          <Show when={g().port_base != null}><dt>Ports</dt><dd class="code-val t2">{g().port_base}–{g().port_base! + 9}</dd></Show>
+          <Show when={g().port_base != null}><dt>{t("contract.ports")}</dt><dd class="code-val t2">{g().port_base}–{g().port_base! + 9}</dd></Show>
         </dl>
       </div>
 
@@ -101,18 +101,18 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
           <Show when={c().engine && c().engine !== effectiveEngine("", state.settings?.engine)}><dt>{t("goal.engineName")}</dt><dd>{engineLabel(c().engine)}</dd></Show>
           <dt>{t("goal.model")}</dt><dd classList={{ mono: /^[\w.-]+\/[\w.:-]+$/.test(model()) }}>{model() || t("common.engineDefault", { engine: engineLabel(eng()) })}</dd>
           <Show when={escModel()}>
-            <dt>Escalation</dt>
-            <dd class="row" style={{ gap: "4px", "flex-wrap": "wrap" }}><span class="mono">{escModel()}</span><span class={escOn() ? "esc-active" : "meta t3"}>{escOn() ? "active" : `${escAfter()}×`}</span></dd>
+            <dt>{t("settings.escalationModel")}</dt>
+            <dd class="row" style={{ gap: "4px", "flex-wrap": "wrap" }}><span class="mono">{escModel()}</span><span class={escOn() ? "esc-active" : "meta t3"}>{escOn() ? t("quiet.on") : `${escAfter()}×`}</span></dd>
           </Show>
           <Show when={deps().length > 0}>
-            <dt>Depends on</dt>
+            <dt>{t("contract.dependsOn")}</dt>
             <dd class="dep-links">
               <For each={deps()}>
                 {(id) => <button class="link-quiet text-btn" onClick={() => go({ name: "goal", id })}><Show when={state.goals[id]}>{(x) => <LifecycleGlyph goal={x()} size={9} />}</Show><span class="code-val t2">{id}</span></button>}
               </For>
             </dd>
           </Show>
-          <Show when={mqPos() !== null}><dt>Queue</dt><dd class="num">#{mqPos()}</dd></Show>
+          <Show when={mqPos() !== null}><dt>{t("ops.mergeQueueTitle")}</dt><dd class="num">#{mqPos()}</dd></Show>
           <Show when={props.d.local_files.length}><dt>{t("goal.localFiles")}</dt><dd class="rail-paths code-val">{props.d.local_files.join(", ")}</dd></Show>
           <Show when={g().branch}>
             <dt>{t("goal.branch")}</dt>

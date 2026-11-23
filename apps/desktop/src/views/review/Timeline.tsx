@@ -42,8 +42,8 @@ export function TimelineSwitcher(props: {
   const tabs = createMemo<[ReviewScope, string][]>(() => [
     ["all", t("review.allChanges")],
     ...(hasSince() ? [["since_last", t("review.sinceLast")] as [ReviewScope, string]] : []),
-    ...(turn() ? [["last_turn", "Last turn"] as [ReviewScope, string]] : []),
-    ...(props.snapshots.length >= 2 ? [["compare", "Compare runs…"] as [ReviewScope, string]] : []),
+    ...(turn() ? [["last_turn", t("review.lastTurn")] as [ReviewScope, string]] : []),
+    ...(props.snapshots.length >= 2 ? [["compare", t("review.compareRuns")] as [ReviewScope, string]] : []),
   ]);
 
   return (

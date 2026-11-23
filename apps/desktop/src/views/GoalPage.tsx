@@ -24,7 +24,6 @@ import { act, onTrace, state, toast } from "../lib/store";
 import { ContractRail } from "./goal/ContractRail";
 import { GoalActions } from "./goal/GoalActions";
 import { GoalBlocks } from "./goal/GoalBlocks";
-import "../styles/workbenches.css";
 import { type ExtGoalDetail, type ExtGoalSummary, trustTierOf } from "./goal/ext";
 
 const Trace = lazy(withLater(() => import("./Learning").then((m) => ({ default: m.Trace }))));

@@ -1,13 +1,13 @@
 /**
  * Learning console (docs/18 P2.3, docs/19 §19.3):
- * Memory Ratification Queue (with TaintLevel visual physics & high-taint edit/phrase gate)
- * paired with the pure-Fact Model Calibration Scoreboard. Lazy-loaded via `withLater`.
+ * Single-layer Memory Ratification Ledger (with taint provenance & high-taint
+ * CONFIRM gate) paired with the Model Calibration Scoreboard. Lazy-loaded via `withLater`.
  */
 import { For, type JSX, Show, createMemo, createResource, createSignal } from "solid-js";
 
-import { DangerMark, NoticeMark } from "../components/Glyph";
-import { ProvenanceFrame, TaintPill } from "../components/ProvenanceFrame";
-import { Empty, Select } from "../components/ui";
+import { DangerMark, Icon, NoticeMark } from "../components/Glyph";
+import { ProvenanceFrame } from "../components/ProvenanceFrame";
+import { Empty, Prose, Select } from "../components/ui";
 import { api } from "../lib/api";
 import type { CalibrationRow, MemoryProposal, ProposalStatus } from "../lib/apiTypes";
 import { ago, usd } from "../lib/format";
@@ -36,22 +36,21 @@ const ALL = "__all__";
 const PHRASE = "CONFIRM";
 const pct = (v: number) => `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`;
 
-/** Shared console masthead with tabular KPI strip. */
-export function ConsoleMast(props: { title: string; subtitle: string; kpis: [string, string][] }) {
+/** Shared section header with calm inline tabular metadata and right-aligned controls. */
+export function SecHead(props: { title: string; meta?: JSX.Element; children?: JSX.Element }) {
   return (
-    <header class="console-mast">
-      <div class="console-mast-copy">
-        <h2 class="console-mast-title">{props.title}</h2>
-        <span class="meta">{props.subtitle}</span>
+    <div class="console-sec-head halt">
+      <div class="meta-inline">
+        <h2 class="section-title">{props.title}</h2>
+        {props.meta}
       </div>
-      <div class="console-kpis num halt">
-        <For each={props.kpis}>{([k, v]) => <div class="kpi-cell"><span class="kpi-label">{k}</span><span class="kpi-val">{v}</span></div>}</For>
-      </div>
-    </header>
+      <span class="grow" />
+      {props.children}
+    </div>
   );
 }
 
-/** Shared compact action button for console tables and cards. */
+/** Shared compact action button for console tables and ledgers. */
 export function SmBtn(props: { variant?: "primary" | "default" | "ghost"; disabled?: boolean; type?: "button" | "submit"; label?: string; hidden?: boolean; onClick?: () => void; children: JSX.Element }) {
   return (
     <button type={props.type ?? "button"} class={`btn btn-${props.variant ?? "ghost"} btn-s`} disabled={props.disabled} hidden={props.hidden} aria-label={props.label} onClick={props.onClick}>
@@ -79,12 +78,12 @@ export function ProjectFilter(props: { value: string; onChange: (v: string) => v
   );
 }
 
-/** Shared provenance container used by lazy console views (Fact / Claim / Human). */
+/** Shared Swiss hanging-label provenance row used by lazy console views (Fact / Claim / Human). */
 export function ProvBox(props: { kind: "fact" | "claim" | "human"; badge: string; meta?: string; aside?: JSX.Element; danger?: boolean; children: JSX.Element }) {
   return <ProvenanceFrame kind={props.kind} label={props.badge} meta={props.meta} aside={props.aside} danger={props.danger}>{props.children}</ProvenanceFrame>;
 }
 
-/** Shared numeric instrument table with empty state. */
+/** Shared single-border numeric instrument table with empty state. */
 export function DataTable<T>(props: { headers: [string, boolean?][]; empty: string; items: T[]; row: (item: T) => JSX.Element }) {
   return (
     <Show when={props.items.length > 0} fallback={<Empty title={props.empty} inline />}>
@@ -104,7 +103,7 @@ export function DataTable<T>(props: { headers: [string, boolean?][]; empty: stri
   );
 }
 
-function ProposalCard(props: { p: MemoryProposal; onChanged: () => void }) {
+function ProposalRow(props: { p: MemoryProposal; onChanged: () => void }) {
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal(props.p.text);
   const [phrase, setPhrase] = createSignal("");
@@ -113,6 +112,7 @@ function ProposalCard(props: { p: MemoryProposal; onChanged: () => void }) {
   const high = () => props.p.taint_level === "high";
   const edited = () => draft().trim() !== props.p.text.trim() && draft().trim().length > 0;
   const unlocked = () => !high() || edited() || phrase().trim().toUpperCase() === PHRASE;
+  const provLabel = () => (props.p.origin.includes(" ") ? props.p.origin.split(" · ")[0] : t(props.p.taint_level === "none" ? "learning.cleanSource" : "learning.taintedSource"));
 
   const run = async (fn: () => Promise<unknown>, msg: string) => {
     setBusy(true);
@@ -123,38 +123,32 @@ function ProposalCard(props: { p: MemoryProposal; onChanged: () => void }) {
 
   return (
     <article class={`proposal-card taint-level-${props.p.taint_level}`}>
-      <header class="proposal-head halt">
-        {props.p.taint_level === "high" ? <DangerMark /> : props.p.taint_level === "standard" ? <NoticeMark /> : null}
-        <span class="posture-pill">{t(`learning.scope_${props.p.scope}` as Parameters<typeof t>[0])}</span>
-        <TaintPill level={props.p.taint_level} label={t(`learning.taint_${props.p.taint_level}` as Parameters<typeof t>[0])} />
-        <For each={props.p.taint_classes}>{(cls) => <span class="code-val meta t3">{cls}</span>}</For>
-        <span class="grow" />
-        <button type="button" class="link-quiet code-val meta" hidden={!props.p.goal_id} onClick={() => props.p.goal_id && go({ name: "goal", id: props.p.goal_id })}>{props.p.goal_id}</button>
-        <span class="meta num t3">{ago(props.p.created_at, state.now)}</span>
-      </header>
-
-      <div class="proposal-body">
-        <Show when={editing()} fallback={<p class="proposal-rule-text">{draft()}</p>}>
-          <textarea rows={2} aria-label={t("common.edit")} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} />
-        </Show>
-
-        <ProvBox
-          kind={props.p.taint_level === "none" ? "human" : "claim"}
-          badge={t(props.p.taint_level === "none" ? "learning.cleanSource" : "learning.taintedSource")}
-          meta={props.p.origin}
-        >
-          <p class="meta pre" hidden={!props.p.detail}>{props.p.detail}</p>
-          <div class="row row-wrap" hidden={!props.p.evidence.length}>
-            <For each={props.p.evidence}>{(ev) => <code class="code-val meta">{ev}</code>}</For>
+      <div class="proposal-main">
+        <div class="proposal-copy">
+          <div class="proposal-meta meta-inline meta halt">
+            <span>{t(`learning.scope_${props.p.scope}` as Parameters<typeof t>[0])}</span>
+            <span hidden={!props.p.goal_id}>
+              <button type="button" class="link-quiet code-val" onClick={() => props.p.goal_id && go({ name: "goal", id: props.p.goal_id })}>{props.p.goal_id}</button>
+            </span>
+            <span class="num t3">{ago(props.p.created_at, state.now)}</span>
+            <span class="proposal-taint" classList={{ t1: high() }} hidden={props.p.taint_level === "none"}>
+              {high() ? <DangerMark /> : <NoticeMark />}
+              <span>{t(`learning.taint_${props.p.taint_level}` as Parameters<typeof t>[0])}</span>
+            </span>
+            <span class="code-val t3" hidden={!props.p.taint_classes.length}>{props.p.taint_classes.join(", ")}</span>
           </div>
-        </ProvBox>
 
-        <Show when={props.p.status === "pending" && high()}>
-          <div class="proposal-guard">
-            <span class="meta t1 row"><DangerMark />{t("learning.highTaintGuard")}</span>
-            <input class="mono" aria-label={PHRASE} placeholder={t("learning.confirmPlaceholder", { phrase: PHRASE })} value={phrase()} onInput={(e) => setPhrase(e.currentTarget.value)} />
-          </div>
-        </Show>
+          <Show when={editing()} fallback={<p class="proposal-rule-text"><Prose text={draft()} /></p>}>
+            <textarea rows={2} aria-label={t("common.edit")} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} />
+          </Show>
+
+          <ProvBox kind={props.p.taint_level === "none" ? "human" : "claim"} badge={provLabel()}>
+            <span class="meta-inline">
+              <span class="pre" hidden={!props.p.detail}>{props.p.detail}</span>
+              <code class="code-val t3" hidden={!props.p.evidence.length}>{props.p.evidence.join(" · ")}</code>
+            </span>
+          </ProvBox>
+        </div>
 
         <Show when={props.p.status === "pending"}>
           <div class="proposal-actions">
@@ -170,6 +164,13 @@ function ProposalCard(props: { p: MemoryProposal; onChanged: () => void }) {
           </div>
         </Show>
       </div>
+
+      <Show when={props.p.status === "pending" && high()}>
+        <div class="proposal-guard">
+          <span class="meta t1 row"><DangerMark /><span>{t("learning.highTaintGuard")}</span></span>
+          <input class="mono proposal-guard-input" aria-label={PHRASE} placeholder={t("learning.confirmPlaceholder", { phrase: PHRASE })} value={phrase()} onInput={(e) => setPhrase(e.currentTarget.value)} />
+        </div>
+      </Show>
     </article>
   );
 }
@@ -183,6 +184,7 @@ export function Learning() {
   const onMutate = () => (void rfProp(), void refreshConsoleMeta());
   const list = () => (Array.isArray(proposals()) ? proposals()! : []);
   const cal = () => (Array.isArray(rows()) ? rows()! : []);
+  const pendingCount = () => (status() === "pending" ? list().length : state.pendingProposals);
   const avgPass = createMemo(() => {
     const r = cal(), tot = r.reduce((s, x) => s + x.goals_total, 0);
     return tot ? pct(r.reduce((s, x) => s + x.first_pass_rate * x.goals_total, 0) / tot) : "—";
@@ -190,73 +192,68 @@ export function Learning() {
 
   return (
     <div class="console-page learning-page">
-      <ConsoleMast
-        title={t("app.learning")}
-        subtitle={t("learning.subtitle")}
-        kpis={[
-          [t("learning.status_pending"), String(status() === "pending" ? list().length : state.pendingProposals)],
-          [t("learning.kpiModels"), String(cal().length)],
-          [t("learning.colFirstPass"), avgPass()],
-        ]}
-      />
-
       <section class="console-sec">
-        <div class="row">
-          <h3 class="section-title">{t("learning.queueTitle")}</h3>
-          <span class="grow" />
-          <span class="scope-switch" role="tablist" aria-label={t("learning.queueTitle")}>
+        <SecHead title={t("learning.queueTitle")} meta={<span class="meta num t2">{pendingCount()} {t("learning.status_pending").toLowerCase()}</span>}>
+          <div class="console-tabs" role="tablist" aria-label={t("learning.queueTitle")}>
             {(["pending", "approved", "rejected"] as ProposalStatus[]).map((st) => (
-              <button type="button" class="tab" role="tab" aria-selected={status() === st} classList={{ active: status() === st }} onClick={() => setStatus(st)}>
+              <button type="button" class="console-tab" role="tab" aria-selected={status() === st} classList={{ active: status() === st }} onClick={() => setStatus(st)}>
                 {t(`learning.status_${st}` as Parameters<typeof t>[0])}
               </button>
             ))}
-          </span>
-        </div>
+          </div>
+        </SecHead>
         <Show when={list().length > 0} fallback={<Empty title={t("learning.queueEmpty")} inline />}>
-          <div class="proposal-list"><For each={list()}>{(p) => <ProposalCard p={p} onChanged={onMutate} />}</For></div>
+          <div class="proposal-ledger"><For each={list()}>{(p) => <ProposalRow p={p} onChanged={onMutate} />}</For></div>
         </Show>
       </section>
 
-      <section class="console-sec">
-        <div class="row">
-          <h3 class="section-title">{t("learning.calibrationTitle")}</h3>
-          <span class="grow" />
+      <section class="console-sec calibration-sec">
+        <SecHead
+          title={t("learning.calibrationTitle")}
+          meta={
+            <>
+              <span class="meta num t2" hidden={!cal().length}>{cal().length} {t("learning.kpiModels").toLowerCase()}</span>
+              <span class="meta num t2" hidden={!cal().length}>{t("learning.colFirstPass")} {avgPass()}</span>
+              <span class="fact"><Icon name="harness" size={10} class="fact-icon" />{t("learning.calibrationBadge")}</span>
+            </>
+          }
+        >
           <ProjectFilter value={project()} onChange={setProject} />
           <SmBtn onClick={() => void rfCal()}>{t("common.retry")}</SmBtn>
-        </div>
+        </SecHead>
 
-        <ProvBox kind="fact" badge={t("learning.calibrationBadge")}>
-          <DataTable
-            headers={[
-              [t("learning.colEngineModel")],
-              [t("learning.colGoals"), true],
-              [t("learning.colFirstPass"), true],
-              [t("learning.colSentinel"), true],
-              [t("learning.colReworks"), true],
-              [t("learning.colBlocked"), true],
-              [t("overview.colSpend"), true],
-            ]}
-            empty={t("learning.calEmpty")}
-            items={cal()}
-            row={(r) => (
-              <tr>
-                <td>
-                  <div class="row row-g6">
+        <DataTable
+          headers={[
+            [t("learning.colEngineModel")],
+            [t("learning.colGoals"), true],
+            [t("learning.colFirstPass"), true],
+            [t("learning.colSentinel"), true],
+            [t("learning.colReworks"), true],
+            [t("learning.colBlocked"), true],
+            [t("overview.colSpend"), true],
+          ]}
+          empty={t("learning.calEmpty")}
+          items={cal()}
+          row={(r) => (
+            <tr>
+              <td>
+                <div class="meta-inline">
+                  <span class="row row-g6">
                     <span class="t2">{engineLabel(r.engine)}</span>
                     <code class="code-val t1">{r.model || "default"}</code>
-                    <span class="posture-pill" hidden={r.sample_sufficient} title={t("learning.lowSampleTitle")}>{t("learning.lowSample")}</span>
-                  </div>
-                </td>
-                <td class="col-r">{r.goals_total}</td>
-                <td class="col-r"><MeterCell label={pct(r.first_pass_rate)} width={pct(r.first_pass_rate)} cls="verified" /></td>
-                <td class="col-r"><MeterCell label={pct(r.high_sentinel_rate)} width={pct(r.high_sentinel_rate)} cls="danger" /></td>
-                <td class="col-r">{r.avg_reworks.toFixed(1)}</td>
-                <td class="col-r">{pct(r.blocked_rate)}</td>
-                <td class="col-r">{usd(r.avg_cost_usd)}</td>
-              </tr>
-            )}
-          />
-        </ProvBox>
+                  </span>
+                  <span class="meta t3" hidden={r.sample_sufficient} title={t("learning.lowSampleTitle")}>{t("learning.lowSample")}</span>
+                </div>
+              </td>
+              <td class="col-r">{r.goals_total}</td>
+              <td class="col-r"><MeterCell label={pct(r.first_pass_rate)} width={pct(r.first_pass_rate)} cls="verified" /></td>
+              <td class="col-r"><MeterCell label={pct(r.high_sentinel_rate)} width={pct(r.high_sentinel_rate)} cls="danger" /></td>
+              <td class="col-r">{r.avg_reworks.toFixed(1)}</td>
+              <td class="col-r">{pct(r.blocked_rate)}</td>
+              <td class="col-r">{usd(r.avg_cost_usd)}</td>
+            </tr>
+          )}
+        />
       </section>
     </div>
   );

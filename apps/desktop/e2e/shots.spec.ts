@@ -262,6 +262,9 @@ const screens: Screen[] = [
   }),
   ...bothThemes({ name: "learning", route: "learning", enrich: enrichConsole }),
   ...bothThemes({ name: "operations", route: "operations", enrich: enrichConsole }),
+  ...bothThemes({ name: "contract", route: "new", enrich: enrichConsole }),
+  { name: "learning-zh-dark", route: "learning", lang: "zh-CN", theme: "dark", enrich: enrichConsole },
+  { name: "operations-zh-dark", route: "operations", lang: "zh-CN", theme: "dark", enrich: enrichConsole },
 ];
 
 for (const s of screens) {

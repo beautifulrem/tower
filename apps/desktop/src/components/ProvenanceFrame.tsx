@@ -1,16 +1,17 @@
 /**
- * Shared physical provenance containers (docs/19 §19.3) and instrument pills.
- * Distinguishable by border geometry in greyscale:
- *   - fact:        solid hairline + 2px solid precision rule
- *   - observation: dotted neutral surround, never colored
- *   - claim:       2px dashed left rule + dashed surround, never green
- *   - human:       2px solid ink rule, uncolored authority
+ * Shared Four-Provenance Swiss hanging-gutter layout (docs/19 §19.3) and
+ * exception-only trust/taint indicators.
+ *
+ *   - fact:        scale mark + hanging label (`--text-3`), `--text-1` body
+ *   - observation: hollow ring + hanging label, `--text-2` body, never colored
+ *   - claim:       `┆` rule + hanging label, `--text-2` body, NEVER green
+ *   - human:       uncolored authority label, `--text-1` primary ink body
  */
 import type { JSX } from "solid-js";
 
 import type { EngineTrustTier, TaintLevel } from "../lib/apiTypes";
 import { t } from "../lib/i18n";
-import { Icon } from "./Glyph";
+import { DangerMark, Icon, NoticeMark } from "./Glyph";
 
 export type ProvenanceKind = "fact" | "observation" | "claim" | "human";
 
@@ -33,7 +34,7 @@ export function ProvenanceFrame(props: {
 }) {
   return (
     <div
-      class={`prov-frame prov-${props.kind} ${props.class ?? ""}`}
+      class={`prov-frame prov-${props.kind}${props.class ? ` ${props.class}` : ""}`}
       classList={{ "prov-verified": props.kind === "fact" && !!props.verified, "prov-danger": props.kind === "fact" && !!props.danger }}
     >
       <div class="prov-head halt">
@@ -45,13 +46,12 @@ export function ProvenanceFrame(props: {
           ) : props.kind === "claim" ? (
             <span class="claim-rule" aria-hidden="true">┆</span>
           ) : null}
-          {props.label ?? t(PROV_LABELS[props.kind])}
+          <span>{props.label ?? t(PROV_LABELS[props.kind])}</span>
         </span>
         {props.meta && <span class="prov-meta">{props.meta}</span>}
-        <span class="grow" />
-        {props.aside}
       </div>
       <div class="prov-body">{props.children}</div>
+      {props.aside && <div class="prov-aside">{props.aside}</div>}
     </div>
   );
 }
@@ -62,12 +62,17 @@ const TRUST_CLS: Record<EngineTrustTier, string> = {
   experimental: "trust-experimental",
 };
 
-/** Engine sandbox trust-tier instrument pill (`Full S2` / `Restricted S2` / `Experimental`). */
+/** Engine sandbox trust-tier indicator (`Full S2` / `Restricted S2` plain text; `Experimental` framed). */
 export function TrustPill(props: { tier: EngineTrustTier; label: string; title?: string }) {
   return <span class={`trust-pill ${TRUST_CLS[props.tier]}`} title={props.title}>{props.label}</span>;
 }
 
-/** Memory proposal taint-level pill (`None` / `Standard` / `High`). */
+/** Memory proposal taint-level indicator (`None` quiet; `Standard` glyph + text; `High` danger chip). */
 export function TaintPill(props: { level: TaintLevel; label: string; title?: string }) {
-  return <span class={`taint-pill taint-${props.level}`} title={props.title}>{props.label}</span>;
+  return (
+    <span class={`taint-pill taint-${props.level}`} title={props.title}>
+      {props.level === "high" ? <DangerMark /> : props.level === "standard" ? <NoticeMark /> : null}
+      <span>{props.label}</span>
+    </span>
+  );
 }

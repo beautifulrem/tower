@@ -151,8 +151,13 @@ pub fn browser_profile(spec: &BrowserSpec<'_>) -> String {
     }
     s.push_str(")\n");
     if spec.network {
+        // By IP and the system resolver only: a bare rule would open every Unix
+        // socket on the Mac (ssh-agent, Docker) to the page's process.
         s.push_str(NETWORK);
-        s.push_str("\n(allow network-outbound)\n");
+        s.push_str(
+            "\n(allow network-outbound (remote ip))\n\
+             (allow network-outbound (remote unix-socket (path-literal \"/private/var/run/mDNSResponder\")))\n",
+        );
         return s;
     }
     if !spec.ports.is_empty() {

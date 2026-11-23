@@ -53,12 +53,13 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
     ]
 }
 
-/// `~/.cargo/config.toml` without what authenticates: registry tokens,
+/// `~/.cargo/config.toml` without what authenticates: registry tokens, keys,
 /// credential providers and aliases, and passwords in URLs (a proxy's).
 /// Mirrors and build settings stay. A line filter, conservative: a line it
 /// cannot place is dropped rather than copied, when it names a credential.
 fn without_credentials(config: &str) -> String {
-    const NAMES: &[&str] = &["token", "secret", "password", "credential"];
+    // Names in lower case; `key` and `auth` catch `[env]` entries such as `OPENAI_API_KEY` or `DEPLOY_AUTH`.
+    const NAMES: &[&str] = &["token", "secret", "password", "credential", "key", "auth", "private"];
     let mut out = String::new();
     let mut table = String::new();
     let mut skip_until: Option<&str> = None;
@@ -324,18 +325,27 @@ proxy = "http://ada:proxypass0005@proxy.example.com:8080"
 [build]
 jobs = 4
 registries.other.token = "dottedtoken0006"
+
+[env]
+OPENAI_API_KEY = "sk-envkey0007"
+DEPLOY_AUTH = "envauth0008"
+RUST_LOG = "info"
 "#,
         )
         .unwrap();
 
         let cache = prepare(&tmp.path().join("cache"), &home, &repo).unwrap();
         let copied = std::fs::read_to_string(cache.join("cargo/config.toml")).unwrap();
-        for secret in ["0001", "0002", "0003", "0004", "0005", "0006", "cargo:macos-keychain"] {
+        for secret in ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "cargo:macos-keychain"] {
             assert!(!copied.contains(secret), "{secret} left in:\n{copied}");
         }
-        for kept in
-            ["replace-with = \"mirror\"", "sparse+https://mirror.example.com/index/", "jobs = 4", "[registries.corp]"]
-        {
+        for kept in [
+            "replace-with = \"mirror\"",
+            "sparse+https://mirror.example.com/index/",
+            "jobs = 4",
+            "[registries.corp]",
+            "RUST_LOG = \"info\"",
+        ] {
             assert!(copied.contains(kept), "{kept} missing from:\n{copied}");
         }
         // A cache seeded before the filter loses its copy's token too.

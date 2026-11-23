@@ -232,12 +232,7 @@ async fn schedule_inner(inner: &Arc<Inner>) {
             if let Err(e) = start_scheduled(&inner, &id, purpose, message, images, starting).await {
                 tracing::warn!(goal = %id, error = %e, "could not start run");
             }
-            // A start that ended without a run (it failed and paused the goal,
-            // or you paused it meanwhile) frees its slot for the next goal.
-            let ready = inner.store(|s| s.goal(&id)).is_ok_and(|g| g.state == LifecycleState::Ready);
-            if inner.run_of(&id).is_none() && !ready {
-                schedule(&inner).await;
-            }
+            reschedule_unless_running(&inner, &id).await;
         });
     }
 }
@@ -419,7 +414,9 @@ pub fn start_run<'a>(
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
     Box::pin(async move {
         let starting = Starting::claim_one(inner, goal_id)?;
-        start_run_inner(inner, goal_id, purpose, message, Vec::new(), false, starting).await
+        let r = start_run_inner(inner, goal_id, purpose, message, Vec::new(), false, starting).await;
+        reschedule_unless_running(inner, goal_id).await;
+        r
     })
 }
 
@@ -434,8 +431,21 @@ pub fn start_run_with_images<'a>(
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
     Box::pin(async move {
         let starting = Starting::claim_one(inner, goal_id)?;
-        start_run_inner(inner, goal_id, purpose, message, images, false, starting).await
+        let r = start_run_inner(inner, goal_id, purpose, message, images, false, starting).await;
+        reschedule_unless_running(inner, goal_id).await;
+        r
     })
+}
+
+/// A start holds a slot while it runs; one that ended without a run (it
+/// failed and paused the goal, or you paused or abandoned it meanwhile)
+/// hands the slot to the next ready goal. Not when the goal is still ready:
+/// the scheduler would only try it again at once.
+async fn reschedule_unless_running(inner: &Arc<Inner>, goal: &str) {
+    let ready = inner.store(|s| s.goal(goal)).is_ok_and(|g| g.state == LifecycleState::Ready);
+    if inner.run_of(goal).is_none() && !ready {
+        schedule(inner).await;
+    }
 }
 
 fn start_scheduled<'a>(

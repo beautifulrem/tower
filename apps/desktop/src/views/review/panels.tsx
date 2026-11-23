@@ -21,7 +21,6 @@ import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
 import { t } from "../../lib/i18n";
-import { useKeys } from "../../lib/keys";
 import { hasIssue } from "../../lib/labels";
 import { back } from "../../lib/nav";
 import type { Draft } from "../../lib/reviewState";
@@ -82,7 +81,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
   const [more, bindPanel, remeasure] = useMoreBelow();
   createEffect(on(() => [props.loading, criteria().length], remeasure, { defer: true }));
   return (
-    <Overlay onClose={props.onClose} label={t("review.verifyTitle", { id: props.id })} title={t("review.verifyTitle", { id: props.id })} instant initialFocus="panel" class="panel panel-wide" panelRef={bindPanel}>
+    <Overlay onClose={props.onClose} closeKey="e" label={t("review.verifyTitle", { id: props.id })} title={t("review.verifyTitle", { id: props.id })} instant initialFocus="panel" class="panel panel-wide" panelRef={bindPanel}>
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
@@ -427,10 +426,10 @@ export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: ()
       (props.onFinish ?? back)();
     }
   };
-  useKeys([{ key: "mod+enter", run: () => void send(), inInputs: true }]);
+  const keys = { name: () => t("review.requestChanges"), bindings: [{ key: "mod+enter", run: () => void send(), inInputs: true }] };
 
   return (
-    <Overlay onClose={props.onClose} label={t("review.requestChanges")} title={t("review.requestChanges")} instant>
+    <Overlay onClose={props.onClose} keys={keys} label={t("review.requestChanges")} title={t("review.requestChanges")} instant>
       <div class="dispatch-head">
         <Icon name="return" size={12} />
         <span class="t2">{t("review.dispatchHead", { n: props.comments.length })}</span>

@@ -37,6 +37,10 @@ pub type Result<T> = std::result::Result<T, GitError>;
 const SNAPSHOT_DATE: &str = "@0 +0000";
 const AGENT_NAME: &str = "Tower Agent";
 const AGENT_EMAIL: &str = "agent@tower.invalid";
+/// The `a/` `b/` path prefixes diffs are parsed and applied with, whatever
+/// the user's `diff.noprefix` or `diff.mnemonicPrefix` say.
+const PLAIN_A: &str = "--src-prefix=a/";
+const PLAIN_B: &str = "--dst-prefix=b/";
 
 #[derive(Debug, Clone)]
 pub struct Git {
@@ -259,7 +263,8 @@ impl Git {
     }
 
     fn numstat(&self, ws: &Path, from: &str, to: &str) -> Result<(DiffStat, Vec<String>)> {
-        let out = self.ws_run(ws, &["diff", "--numstat", "-M", "--no-color", "--no-ext-diff", from, to])?;
+        let out =
+            self.ws_run(ws, &["diff", "--numstat", "-M", "--no-color", "--no-ext-diff", "--no-textconv", from, to])?;
         let mut stat = DiffStat::default();
         let mut changed = Vec::new();
         for line in out.lines() {
@@ -277,7 +282,10 @@ impl Git {
     }
 
     pub fn diff(&self, ws: &Path, from: &str, to: &str) -> Result<Vec<DiffFile>> {
-        let out = self.ws_run(ws, &["diff", "-M", "-U3", "--no-color", "--no-ext-diff", from, to])?;
+        let out = self.ws_run(
+            ws,
+            &["diff", "-M", "-U3", "--no-color", "--no-ext-diff", "--no-textconv", PLAIN_A, PLAIN_B, from, to],
+        )?;
         Ok(diff::parse(&out))
     }
 
@@ -560,7 +568,10 @@ impl Git {
     /// Undoes hunk number `hunk` (0-based) of `path` in the diff `from → to`
     /// in the working tree of `ws`, which must still hold `to` for that file.
     pub fn revert_hunk(&self, ws: &Path, from: &str, to: &str, path: &str, hunk: usize) -> Result<()> {
-        let patch = self.ws_run(ws, &["diff", "-U3", "--no-color", "--no-ext-diff", from, to, "--", path])?;
+        let patch = self.ws_run(
+            ws,
+            &["diff", "-U3", "--no-color", "--no-ext-diff", "--no-textconv", PLAIN_A, PLAIN_B, from, to, "--", path],
+        )?;
         let mut header = String::new();
         let mut hunks: Vec<String> = Vec::new();
         for line in patch.split_inclusive('\n') {

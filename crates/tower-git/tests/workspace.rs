@@ -342,3 +342,39 @@ fn a_redirected_workspace_config_runs_nothing_for_tower() {
     git.restore(&ws, &base_pin).unwrap();
     assert_eq!(ran(), [""; 0], "the workspace's own config ran commands for Tower");
 }
+
+/// Diffs are read with the `a/` `b/` prefixes and of the files' own
+/// content whatever your own git configuration says (`diff.noprefix`,
+/// `diff.mnemonicPrefix`, a textconv driver).
+#[test]
+fn diffs_read_the_same_whatever_your_prefix_settings() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+    user_repo(&repo);
+    let global = tmp.path().join("gitconfig");
+    // And a text conversion the workspace's attributes may name: diffs are
+    // of the files themselves.
+    fs::write(
+        &global,
+        "[diff]\n\tnoprefix = true\n\tmnemonicPrefix = true\n[diff \"upper\"]\n\ttextconv = tr a-z A-Z <\n",
+    )
+    .unwrap();
+    let env = vec![
+        ("PATH".to_string(), std::env::var("PATH").unwrap_or_default()),
+        ("HOME".to_string(), tmp.path().display().to_string()),
+        ("GIT_CONFIG_GLOBAL".to_string(), global.display().to_string()),
+    ];
+    let git = Git::new("git", env);
+    let ws = tmp.path().join("ws");
+    let base = git.prepare_workspace(&repo, "main", &ws, "G-0001").unwrap();
+    fs::write(ws.join(".git/info/attributes"), "*.txt diff=upper\n").unwrap();
+    fs::write(ws.join("a.txt"), "one\nTWO\n").unwrap();
+    let pin = git.snapshot(&ws, &base).unwrap().pin;
+
+    let files = git.diff(&ws, &base, &pin).unwrap();
+    assert_eq!(files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(), ["a.txt"]);
+    assert_eq!(files[0].old_path, None);
+    git.revert_hunk(&ws, &base, &pin, "a.txt", 0).unwrap();
+    assert_eq!(fs::read_to_string(ws.join("a.txt")).unwrap(), "one\ntwo\n");
+}

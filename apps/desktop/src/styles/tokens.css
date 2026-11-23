@@ -228,13 +228,15 @@
   --prov-human-edge: var(--text-1);
   --prov-human-bg: oklch(0.974 0.006 82);
 
-  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.6:1,
-     text-4 ≈ 5.0:1 (AA), so a line number or an empty segment drawn in it
+  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 6.7:1,
+     text-4 ≈ 5.3:1 (AA), so a line number or an empty segment drawn in it
      is still legible; it is never used for a run of text. Both hold 4.5:1 on the
-     darkest light surface they meet, the selected row (0.940): 4.8:1 and 4.5:1. */
+     darkest light surface they meet, the selected row (0.940): 5.7:1 and 4.5:1.
+     text-4 cannot get lighter, so text-3 sits between it and text-2 (1.19:1 and
+     1.27:1 apart): the two quiet inks stay two steps, not one. */
   --text-1: oklch(0.230 0.006 70);
   --text-2: oklch(0.430 0.006 70);
-  --text-3: oklch(0.510 0.006 70);
+  --text-3: oklch(0.470 0.006 70);
   --text-4: oklch(0.525 0.005 70);
 
   --focus: oklch(0.230 0.006 70 / 0.65);

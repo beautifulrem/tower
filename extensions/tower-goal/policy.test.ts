@@ -253,7 +253,7 @@ test("commands only known when they run ask in every mode", () => {
 			assert.equal(checkBash(cmd, mode).action, "ask", `expected ask in ${mode}: ${JSON.stringify(cmd)}`);
 		}
 	}
-	const literal = ["sh -c 'echo $HOME'", 'bash -c "echo hi"', "eval 'echo hi'", 'echo "$HOME"', "ls $DIR", "env FOO=$BAR node --test",
+	const literal = ["sh -c 'echo $HOME'", 'bash -c "echo hi"', "eval 'echo hi'", 'echo "$HOME"', "ls $DIR", 'env FOO="$BAR" node --test',
 		'bash script.sh "$ARG"', "sh -o pipefail script.sh $X", "~/.cargo/bin/cargo test", "[ -f x ] && ls *.ts {a,b}"];
 	for (const cmd of literal) {
 		assert.equal(checkBash(cmd, "autonomous").action, "allow", `expected allow: ${JSON.stringify(cmd)}`);
@@ -348,6 +348,32 @@ test("shell options, piped scripts, find -exec words and other wrappers cannot h
 		"eval -- 'git push'",
 		"printf 'a\\n' | mapfile -C 'git push' -c 1 x",
 		"readarray -t -C'git push' x < f",
+		// An unquoted expansion, glob or brace among a wrapper's words splits into words of its own.
+		"X=\"5 sh -c\"; timeout $X 'git push --force'",
+		"nice -n $X 'git push'",
+		"xargs -n $X 'git push'",
+		"timeout $(echo 5 sh -c) 'git push --force'",
+		"set -- 5 sh -c; timeout \"$@\" 'git push --force'",
+		"X=\"5 git push\"; timeout $X",
+		"B=\"x git push\"; env A=$B",
+		"timeout {5,sh,-c} 'git push --force'",
+		"nice -n {5,sh,-c} 'git push'",
+		// Abbreviated or unknown long options, which may take a value.
+		"timeout --sig KILL 5 env -S 'git push --force'",
+		"timeout --sig KILL 5 watch 'git push'",
+		"nice --adj 5 git push",
+		"timeout --frob KILL 5 git push",
+		// xargs running a wrapper or a script carrier.
+		"echo git push | xargs env",
+		"echo git push | xargs timeout 5",
+		"echo 'git push' | xargs -I{} env -S '{}'",
+		"echo 'git push' | xargs -I{} watch {}",
+		"echo 'git push' | xargs -I{} flock /tmp/l -c '{}'",
+		// time and coproc before any compound command.
+		"time if eval 'git push'; then :; fi",
+		"time -p if eval 'git push'; then :; fi",
+		"time while eval 'git push'; do break; done",
+		"coproc NAME if env -S 'git push'; then :; fi",
 	];
 	for (const mode of ["autonomous", "standard", "cautious"] as const) {
 		for (const cmd of hidden) {
@@ -383,6 +409,17 @@ test("shell options, piped scripts, find -exec words and other wrappers cannot h
 		'bash run.sh -c "$CFG"',
 		"find . -exec sh -c 'jq . \"$1\"' sh {} \\; | head",
 		"timeout 60 python3 - . <<'EOF'\nimport sys; print(sys.argv)\nEOF",
+		// A shell or an admin tool named as an argument, not where a command could be.
+		"ps aux | timeout 5 grep zsh",
+		"find . -name '*.sh' | xargs grep -l bash",
+		"cat f | timeout 5 grep -c bash",
+		"timeout 5 grep -rn sudo .",
+		"git ls-files | xargs grep -l sudo",
+		"env LC_ALL=C grep -r doas .",
+		// One double-quoted expansion stays one word.
+		'timeout "$(cat t)" npm test',
+		'env -u "$V" FOO="$BAR" npm test',
+		"time if true; then npm test; fi",
 	];
 	for (const cmd of fine) {
 		assert.equal(checkBash(cmd, "autonomous").action, "allow", `expected allow: ${JSON.stringify(cmd)}`);

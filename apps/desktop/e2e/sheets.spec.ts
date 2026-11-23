@@ -119,3 +119,26 @@ for (const s of sheets.filter((x) => x.name !== "Look")) {
     await expect.poll(fade).toEqual({ more: false, shown: false });
   });
 }
+
+// Tab stays in the sheet: however WebKit walks the controls (plain Tab skips buttons unless macOS Full Keyboard Access
+// is on), focus never lands on the board behind a modal sheet.
+for (const s of sheets.filter((x) => x.name !== "Look")) {
+  test(`Tab and Shift-Tab never leave the ${s.name} sheet`, async ({ page }) => {
+    await openTower(page, s.route, { lang: "en", enrich: s.enrich });
+    await settled(page, s.route);
+    await s.open(page);
+    const dialog = page.getByRole("dialog").last();
+    await expect(dialog).toBeVisible();
+    const outside: string[] = [];
+    for (const key of [...Array(12).fill("Tab"), ...Array(12).fill("Shift+Tab")]) {
+      await page.keyboard.press(key);
+      const where = await page.evaluate(() => {
+        const d = [...document.querySelectorAll("[role=dialog]")].pop()!;
+        const a = document.activeElement;
+        return a && d.contains(a) ? null : `${a?.tagName.toLowerCase()}.${a?.className}`;
+      });
+      if (where) outside.push(`${key}: ${where}`);
+    }
+    expect(outside).toEqual([]);
+  });
+}

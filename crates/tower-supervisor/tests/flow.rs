@@ -1360,3 +1360,77 @@ async fn a_goal_that_cannot_continue_after_a_restart_raises_a_card() {
     let g = h.sup.goal(&id).unwrap().summary;
     assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::PrepareFailed)));
 }
+
+/// A project whose setup command takes a while, so a start can be caught
+/// halfway.
+async fn slow_setup(h: &Harness, seconds: u32) {
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![],
+                memory: String::new(),
+                setup_command: format!("sleep {seconds}"),
+                holdout_files: vec![],
+            },
+        )
+        .unwrap();
+}
+
+/// The first goal whose workspace exists and is not `except` (its start is
+/// in setup).
+async fn wait_preparing(h: &Harness, except: &[&str]) -> String {
+    for _ in 0..1200 {
+        let ids: Vec<String> = h.sup.goals().unwrap().into_iter().map(|g| g.id).collect();
+        if let Some(id) = ids
+            .into_iter()
+            .filter(|id| !except.contains(&id.as_str()))
+            .find(|id| h.sup.goal(id).is_ok_and(|d| d.workspace.is_some()))
+        {
+            return id;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("no goal got a workspace");
+}
+
+/// Whether a start ended: a run began, or the start gave up.
+fn start_ended(h: &Harness, id: &str) -> bool {
+    h.sup.trace(id, None, 500).unwrap().iter().any(|e| match &e.event {
+        EventKind::RunStarted { .. } => true,
+        EventKind::Note { text } => text.contains("did not start"),
+        _ => false,
+    })
+}
+
+async fn wait_start_ended(h: &Harness, id: &str) {
+    for _ in 0..1200 {
+        if start_ended(h, id) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("the start of {id} never ended");
+}
+
+/// Pausing a goal while its workspace is being set up stops the start: the
+/// agent never runs and the goal stays paused.
+#[tokio::test(flavor = "multi_thread")]
+async fn pausing_a_goal_while_it_starts_keeps_it_paused() {
+    let h = harness("hold").await;
+    slow_setup(&h, 2).await;
+    let pause = async {
+        let id = wait_preparing(&h, &[]).await;
+        h.sup.pause(&id).await.unwrap();
+        id
+    };
+    let (created, id) = tokio::join!(create(&h), pause);
+    assert_eq!(created, id);
+    wait_start_ended(&h, &id).await;
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::Human)));
+    assert_eq!(g.run_no, 0, "no run began");
+}

@@ -102,6 +102,10 @@ pub async fn pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: 
         c.cancel();
     }
     pause_after_stop(inner, goal, reason, detail)?;
+    // A start that began its run just before this pause was recorded.
+    if let Some(run) = inner.run_of(goal) {
+        stop_engine(inner, &run, Stop::Pause(reason)).await;
+    }
     schedule(inner).await;
     Ok(())
 }
@@ -200,6 +204,10 @@ pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     );
     inner.set_mode(goal, Mode::Idle)?;
     inner.transition(goal, Transition::Abandon, None, "")?;
+    // A start that began its run just before the goal was abandoned.
+    if let Some(run) = inner.run_of(goal) {
+        stop_engine(inner, &run, Stop::Abandon).await;
+    }
     let _ = crate::ports_pool::release_for_root(&inner.paths.root, goal);
     let _ = crate::learning::record_calibration(inner, goal);
     schedule(inner).await;

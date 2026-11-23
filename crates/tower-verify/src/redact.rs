@@ -27,7 +27,7 @@ fn is_token_char(c: char) -> bool {
 }
 
 pub fn redact(text: &str) -> String {
-    let text = redact_pem(text);
+    let text = redact_authorization(&redact_urls(&redact_pem(text)));
     let mut out = String::with_capacity(text.len());
     let mut rest = text.as_str();
     'outer: while !rest.is_empty() {
@@ -70,6 +70,106 @@ fn redact_pem(text: &str) -> String {
         rest = &from[header_end..];
     }
     out.push_str(rest);
+    out
+}
+
+/// Ends a URL (or its authority, with `/?#`) in running text.
+fn ends_url(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '"' | '\'' | '`' | '<' | '>' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\')
+}
+
+/// Query parameters that carry a credential.
+fn secret_param(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    matches!(n.as_str(), "auth" | "key" | "apikey" | "api_key" | "sig" | "code" | "pass")
+        || ["token", "secret", "password", "passwd", "signature", "credential"].iter().any(|k| n.contains(k))
+}
+
+/// `scheme://user:password@host` and `?token=…`-style query parameters.
+/// The user name alone on `git@` (ssh) carries nothing and stays.
+fn redact_urls(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("://") {
+        out.push_str(&rest[..at + 3]);
+        let url = &rest[at + 3..];
+        let end = url.find(ends_url).unwrap_or(url.len());
+        let (url, after) = url.split_at(end);
+        let host_end = url.find(['/', '?', '#']).unwrap_or(url.len());
+        let (authority, path) = url.split_at(host_end);
+        match authority.rsplit_once('@') {
+            Some((user, host)) if !user.is_empty() && user != "git" => {
+                out.push_str(MASK);
+                out.push('@');
+                out.push_str(host);
+            }
+            _ => out.push_str(authority),
+        }
+        match path.split_once('?') {
+            Some((p, query)) => {
+                out.push_str(p);
+                out.push('?');
+                let (query, fragment) = query.split_once('#').map_or((query, None), |(q, f)| (q, Some(f)));
+                let params: Vec<String> = query
+                    .split('&')
+                    .map(|kv| match kv.split_once('=') {
+                        Some((k, v)) if secret_param(k) && !v.is_empty() => format!("{k}={MASK}"),
+                        _ => kv.to_string(),
+                    })
+                    .collect();
+                out.push_str(&params.join("&"));
+                if let Some(f) = fragment {
+                    out.push('#');
+                    out.push_str(f);
+                }
+            }
+            None => out.push_str(path),
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `Authorization: Bearer …` / `Basic …` (as a header, in JSON or in a
+/// curl argument) and a free-standing `Bearer <token>`.
+fn redact_authorization(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let mut out = String::with_capacity(text.len());
+    let mut from = 0;
+    let mut i = 0;
+    while i < text.len() {
+        let header = lower[i..].starts_with("authorization");
+        let bearer = lower[i..].starts_with("bearer ") && !text[..i].chars().last().is_some_and(char::is_alphanumeric);
+        if !header && !bearer {
+            i += text[i..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        // Past the header's name and separator to its value.
+        let mut j = i + if header { "authorization".len() } else { 0 };
+        if header {
+            let sep =
+                text[j..].find(|c: char| !matches!(c, '"' | '\'' | ' ' | ':' | '=')).map_or(text.len(), |k| j + k);
+            if !text[j..sep].contains([':', '=']) {
+                i = j;
+                continue;
+            }
+            j = sep;
+        }
+        // An optional scheme word (`Bearer`, `Basic`, `token`).
+        let word = text[j..].find(|c: char| !c.is_ascii_alphabetic()).map_or(text.len(), |k| j + k);
+        if word > j && word - j <= 10 && text[word..].starts_with(' ') {
+            j = word + 1;
+        }
+        let cred = text[j..].find(|c: char| !is_token_char(c)).map_or(text.len(), |k| j + k);
+        if cred - j >= if header { 8 } else { 12 } {
+            out.push_str(&text[from..j]);
+            out.push_str(MASK);
+            from = cred;
+        }
+        i = cred.max(i + 1);
+    }
+    out.push_str(&text[from..]);
     out
 }
 
@@ -120,5 +220,37 @@ mod tests {
         let r = redact(pem);
         assert!(!r.contains("MIIabc"));
         assert!(r.ends_with("\nb"));
+    }
+
+    #[test]
+    fn masks_url_credentials_and_authorization_headers() {
+        let cases = [
+            ("fatal: https://ada:hunter2pass@github.com/o/r.git not found", "hunter2pass"),
+            ("remote https://ghp-like-user-token-0001@example.com/x then more", "ghp-like-user-token-0001"),
+            ("GET https://api.example.com/v1?auth=abc12345xyz&page=2 200", "abc12345xyz"),
+            ("see https://h.example.com/p?x=1&access_token=tok98765zz for details", "tok98765zz"),
+            ("> Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.e30.sig0002", "eyJhbGciOiJIUzI1NiJ9"),
+            ("curl -H 'authorization: Basic YWRhOmh1bnRlcjI=' https://x", "YWRhOmh1bnRlcjI"),
+            (
+                "{\"push_url\": \"https://ntfy.example.com/x\", \"Authorization\": \"Bearer abcdef0123456789\"}",
+                "abcdef0123456789",
+            ),
+        ];
+        for (text, secret) in cases {
+            let r = redact(text);
+            assert!(!r.contains(secret), "{secret} left in {r}");
+            assert!(r.contains(MASK), "{r}");
+        }
+        assert_eq!(redact("https://ada:pw123456@github.com/o/r"), "https://[redacted]@github.com/o/r");
+        assert_eq!(redact("Authorization: Bearer abcdef0123456789 x"), "Authorization: Bearer [redacted] x");
+        // What carries no credential stays as it is.
+        for s in [
+            "git@github.com:o/r.git",
+            "ssh://git@github.com/o/r",
+            "https://github.com/o/r?page=2&sort=asc",
+            "basic usage of the bearer",
+        ] {
+            assert_eq!(redact(s), s);
+        }
     }
 }

@@ -375,33 +375,6 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
     })
 }
 
-/// Marks a goal as being started; released when dropped.
-pub(crate) struct Starting {
-    inner: Arc<Inner>,
-    goal: String,
-}
-
-impl Starting {
-    /// `None` when the goal is already being started, or with `max` when
-    /// that many goals already run or start.
-    fn claim(inner: &Arc<Inner>, goal: &str, max: Option<usize>) -> Option<Self> {
-        inner.claim_start(goal, max).then(|| Starting { inner: inner.clone(), goal: goal.to_string() })
-    }
-
-    fn claim_one(inner: &Arc<Inner>, goal: &str) -> Result<Self> {
-        // One start at a time per goal: preparing a workspace takes a while,
-        // and two callers (the scheduler and a human resume) must not both get through.
-        Self::claim(inner, goal, None)
-            .ok_or_else(|| invalid(tr!(inner.lang(), "这个目标正在启动", "This goal is already starting")))
-    }
-}
-
-impl Drop for Starting {
-    fn drop(&mut self) {
-        self.inner.starting.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.goal);
-    }
-}
-
 /// Prepares the workspace if needed, starts the engine and sends the first message.
 ///
 /// Boxed because runs start other runs (a settled run schedules the next
@@ -435,17 +408,6 @@ pub fn start_run_with_images<'a>(
         reschedule_unless_running(inner, goal_id).await;
         r
     })
-}
-
-/// A start holds a slot while it runs; one that ended without a run (it
-/// failed and paused the goal, or you paused or abandoned it meanwhile)
-/// hands the slot to the next ready goal. Not when the goal is still ready:
-/// the scheduler would only try it again at once.
-async fn reschedule_unless_running(inner: &Arc<Inner>, goal: &str) {
-    let ready = inner.store(|s| s.goal(goal)).is_ok_and(|g| g.state == LifecycleState::Ready);
-    if inner.run_of(goal).is_none() && !ready {
-        schedule(inner).await;
-    }
 }
 
 fn start_scheduled<'a>(
@@ -615,34 +577,6 @@ async fn start_run_inner(
     Ok(())
 }
 
-/// Makes `run` the goal's live run, if the goal is still in the state its
-/// start began from. Preparing and setting up a workspace can take minutes;
-/// a goal you paused or abandoned meanwhile must not start. The check, the
-/// transition and the insert happen under the store's lock, so a pause or
-/// abandon lands either before (the start gives up) or after (it finds the
-/// run and stops it).
-fn begin(inner: &Arc<Inner>, run: &Arc<Run>, seen: LifecycleState, purpose: &str) -> Result<bool> {
-    let goal = run.goal_id.as_str();
-    let began = inner.store(|s| {
-        if s.goal(goal)?.state != seen {
-            return Ok(None);
-        }
-        let entry = match seen {
-            LifecycleState::Running => None,
-            _ => Some(s.transition(goal, Transition::RunStarted, None, purpose)?),
-        };
-        inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.into(), run.clone());
-        Ok(Some(entry))
-    })?;
-    let Some(entry) = began else { return Ok(false) };
-    if let Some(entry) = entry {
-        inner.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
-        inner.flush_traces();
-        inner.emit_goal_now(goal);
-    }
-    Ok(true)
-}
-
 /// What a new workspace gets before its first run: the project's local
 /// files, then its setup command.
 async fn finish_workspace(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, ws: &Path) -> Result<()> {
@@ -772,8 +706,10 @@ fn fail_to_start(inner: &Arc<Inner>, goal_id: &str, detail: &str) -> Result<()> 
 }
 
 mod events;
+mod slots;
 use events::pump;
 pub(crate) use events::{sandbox_denied, stop_engine};
+use slots::{Starting, begin, reschedule_unless_running};
 
 #[cfg(test)]
 mod tests {

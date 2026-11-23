@@ -3021,7 +3021,7 @@ input[type="radio"] {
 }
 /* Colours later than the wait arrive as a 120ms tint from the plain foreground, never a snap (reduced motion: at once). */
 .code-late .code > span:not(.sign) {
-  animation: tint-in 120ms var(--ease-out);
+  animation: tint-in var(--dur-view) var(--ease-out);
 }
 @keyframes tint-in {
   from {
@@ -3350,14 +3350,14 @@ input[type="radio"] {
   border-left-style: dashed;
 }
 /* The impression, once, as the sheet opens: the frame lands a half pixel heavy and settles to its 1px while the ink
-   comes up from nothing — 280ms, no bounce, no rotation, no scale beyond a breath. It answers your action (opening
-   the sheet to accept); with reduced motion the stamp simply stands, already pressed. */
+   comes up from nothing, 60ms behind — each over --dur-space, no bounce, no rotation, no scale beyond a breath. It
+   answers your action (opening the sheet to accept); with reduced motion the stamp simply stands, already pressed. */
 @media (prefers-reduced-motion: no-preference) {
   .stamp-press {
-    animation: stamp-frame 280ms var(--ease-out) both;
+    animation: stamp-frame var(--dur-space) var(--ease-out) both;
   }
   .stamp-press > :not(.sr-only) {
-    animation: stamp-ink 220ms var(--ease-out) 60ms both;
+    animation: stamp-ink var(--dur-space) var(--ease-out) 60ms both;
   }
 }
 @keyframes stamp-frame {

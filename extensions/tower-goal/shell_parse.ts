@@ -559,6 +559,7 @@ function unwrapCommand(
 	let idx = 0;
 	const wrappers: string[] = [];
 	let inlineScript = false;
+	let dynamicScript = false; // a shell script only known when it runs
 
 	while (idx < words.length) {
 		const base = basenameOf(words[idx].value);
@@ -569,7 +570,12 @@ function unwrapCommand(
 				const w = words[idx];
 				if (w.value === "--") { idx++; break; }
 				if (w.value === "-u" || w.value === "-C" || w.value === "--unset" || w.value === "--chdir") { idx += 2; continue; }
-				if (w.value === "-S" && idx + 1 < words.length) { nestedScripts.push(words[idx + 1].value); idx += 2; continue; }
+				if (w.value === "-S" && idx + 1 < words.length) {
+					if (words[idx + 1].hasDynamic) dynamicScript = true;
+					nestedScripts.push(words[idx + 1].value);
+					idx += 2;
+					continue;
+				}
 				if (w.value.startsWith("-")) { idx++; continue; }
 				const assign = isEnvAssignmentWord(w);
 				if (assign) { env.push(assign); idx++; continue; }
@@ -609,6 +615,8 @@ function unwrapCommand(
 	const name = basenameOf(head.value);
 	const args = tail.map((w) => w.value);
 	const hasDynamicArgs = tail.some((w) => w.hasDynamic);
+	// An unquoted glob or brace expansion makes the name no literal word either.
+	const globName = /[*?]|\[.*\]|\{.*(,|\.\.).*\}/.test(head.raw.replace(/\\.|'[^']*'|"[^"]*"/g, ""));
 
 	if (name === "eval") {
 		inlineScript = true;
@@ -617,11 +625,16 @@ function unwrapCommand(
 		inlineScript = true;
 		for (let i = 0; i < args.length; i++) {
 			const a = args[i];
+			// Among the options, a word only known when it runs may be `-c`.
+			if (tail[i].hasDynamic) { dynamicScript = true; break; }
 			if (a === "--") break;
 			if (a === "-c" || (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(a) && !a.startsWith("--"))) {
 				if (i + 1 < args.length) nestedScripts.push(args[i + 1]);
+				if (tail[i + 1]?.hasDynamic) dynamicScript = true;
 				break;
 			}
+			// The script file ends the options (`-o pipefail` takes a value).
+			if (!/^[-+]/.test(a) && !/^[-+][oO]$/.test(args[i - 1] ?? "")) break;
 		}
 	} else if (INLINE_SCRIPT_FLAGS[name]?.size && args.some((a) => INLINE_SCRIPT_FLAGS[name].has(a))) {
 		inlineScript = true;
@@ -637,7 +650,7 @@ function unwrapCommand(
 		env,
 		redirects,
 		wrappers,
-		hasDynamicName: head.hasDynamic || (name === "eval" && hasDynamicArgs),
+		hasDynamicName: head.hasDynamic || globName || (name === "eval" && hasDynamicArgs) || dynamicScript,
 		hasDynamicArgs,
 		hasEscapedWhitespaceInName: head.hasEscapedWhitespace,
 		inlineScript,

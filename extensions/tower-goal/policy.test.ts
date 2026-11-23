@@ -218,6 +218,38 @@ test("arithmetic shifts, here-documents something runs, and exported git config 
 	}
 });
 
+test("commands only known when they run ask in every mode", () => {
+	const unknown = [
+		"sh -c \"$(printf 'git push')\"",
+		'bash -c "$X"',
+		'eval "$X"',
+		"eval $X",
+		"$CMD push",
+		'"$(which git)" push origin main',
+		'env sh -c "$X"',
+		'nice -n 5 bash -c "$X"',
+		'timeout 5 sh -c "$X"',
+		'echo x | xargs sh -c "$X"',
+		'env -S "$X"',
+		'find . -exec sh -c "$X" \\;',
+		"sh $F 'git push'",
+		'bash "$@"',
+		"/usr/bin/gi? push",
+		"g*t push",
+		"{git,push} origin",
+	];
+	for (const mode of ["autonomous", "standard", "cautious"] as const) {
+		for (const cmd of unknown) {
+			assert.equal(checkBash(cmd, mode).action, "ask", `expected ask in ${mode}: ${JSON.stringify(cmd)}`);
+		}
+	}
+	const literal = ["sh -c 'echo $HOME'", 'bash -c "echo hi"', "eval 'echo hi'", 'echo "$HOME"', "ls $DIR", "env FOO=$BAR node --test",
+		'bash script.sh "$ARG"', "sh -o pipefail script.sh $X", "~/.cargo/bin/cargo test", "[ -f x ] && ls *.ts {a,b}"];
+	for (const cmd of literal) {
+		assert.equal(checkBash(cmd, "autonomous").action, "allow", `expected allow: ${JSON.stringify(cmd)}`);
+	}
+});
+
 test("cautious mode rejects hidden writes via redirections, substitutions, and inline scripts", () => {
 	const hiddenWrites = [
 		"echo x > foo.txt",

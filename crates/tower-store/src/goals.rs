@@ -2,11 +2,11 @@ use rusqlite::{OptionalExtension, Row, params};
 use tower_core::briefing;
 use tower_core::contract::{Contract, CriterionKind};
 use tower_core::honesty::{
-    ClaimKind, Consistency, CriterionFact, Progress, admits_changing_test_machinery, judge_criterion_claim,
+    ClaimKind, Consistency, CriterionFact, admits_changing_test_machinery, judge_criterion_claim,
 };
 use tower_core::view::{
-    BriefingItem, ClaimView, CriterionResultView, CriterionView, DiffStat, GoalDetail, GoalSummary, HeldOutProof,
-    LiveLine, LookView, ObservationView, Overlap, RunView,
+    BriefingItem, ClaimView, CriterionResultView, CriterionView, GoalDetail, HeldOutProof, LookView, ObservationView,
+    RunView,
 };
 use tower_core::{EventKind, Lang, LifecycleState, Millis, Mode, PauseReason, tr};
 
@@ -88,10 +88,11 @@ pub(crate) fn enum_str<T: serde::Serialize>(v: &T) -> String {
     }
 }
 
-const RECORD_SQL: &str = "SELECT g.*, p.root AS project_root, p.base_branch AS base_branch, p.name AS project_name
+pub(crate) const RECORD_SQL: &str =
+    "SELECT g.*, p.root AS project_root, p.base_branch AS base_branch, p.name AS project_name
      FROM goals g JOIN projects p ON p.id = g.project_id";
 
-fn row_to_record(r: &Row<'_>) -> rusqlite::Result<GoalRecord> {
+pub(crate) fn row_to_record(r: &Row<'_>) -> rusqlite::Result<GoalRecord> {
     Ok(GoalRecord {
         id: r.get("id")?,
         project_id: r.get("project_id")?,
@@ -205,110 +206,6 @@ impl Store {
         Ok(())
     }
 
-    pub fn summaries(&self) -> Result<Vec<GoalSummary>> {
-        let mut stmt = self.conn.prepare(&format!("{RECORD_SQL} ORDER BY g.seq DESC"))?;
-        let rows = stmt.query_map([], |r| {
-            Ok((
-                row_to_record(r)?,
-                r.get::<_, String>("project_name")?,
-                opt_json_col::<LiveLine>(r, "live_line")?,
-                opt_json_col::<DiffStat>(r, "diffstat")?,
-                r.get::<_, Millis>("created_at")?,
-                r.get::<_, Millis>("updated_at")?,
-                r.get::<_, Option<Millis>>("last_viewed_at")?,
-            ))
-        })?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (rec, project_name, live_line, diffstat, created_at, updated_at, last_viewed_at) = row?;
-            out.push(self.build_summary(
-                rec,
-                project_name,
-                live_line,
-                diffstat,
-                created_at,
-                updated_at,
-                last_viewed_at,
-            )?);
-        }
-        Ok(out)
-    }
-
-    pub fn summary(&self, id: &str) -> Result<GoalSummary> {
-        let row = self
-            .conn
-            .query_row(&format!("{RECORD_SQL} WHERE g.id = ?1"), [id], |r| {
-                Ok((
-                    row_to_record(r)?,
-                    r.get::<_, String>("project_name")?,
-                    opt_json_col::<LiveLine>(r, "live_line")?,
-                    opt_json_col::<DiffStat>(r, "diffstat")?,
-                    r.get::<_, Millis>("created_at")?,
-                    r.get::<_, Millis>("updated_at")?,
-                    r.get::<_, Option<Millis>>("last_viewed_at")?,
-                ))
-            })
-            .optional()?
-            .ok_or_else(|| StoreError::NotFound(format!("goal {id}")))?;
-        let (rec, project_name, live_line, diffstat, created_at, updated_at, last_viewed_at) = row;
-        self.build_summary(rec, project_name, live_line, diffstat, created_at, updated_at, last_viewed_at)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn build_summary(
-        &self,
-        rec: GoalRecord,
-        project_name: String,
-        live_line: Option<LiveLine>,
-        diffstat: Option<DiffStat>,
-        created_at: Millis,
-        updated_at: Millis,
-        last_viewed_at: Option<Millis>,
-    ) -> Result<GoalSummary> {
-        let progress = self.progress(&rec)?;
-        let needs_you: u32 = self.conn.query_row(
-            "SELECT COUNT(*) FROM inbox WHERE goal_id = ?1 AND resolved_at IS NULL",
-            [&rec.id],
-            |r| r.get(0),
-        )?;
-        let overlaps = self.overlaps(&rec)?;
-        let (pr, port_base): (Option<String>, Option<i64>) =
-            self.conn.query_row("SELECT pr, port_base FROM goals WHERE id = ?1", [&rec.id], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })?;
-        let depends_on = self.goal_dependencies(&rec.id).unwrap_or_else(|_| rec.contract.depends_on.clone());
-        Ok(GoalSummary {
-            engine: rec.contract.engine.clone(),
-            sandbox_tier: rec.contract.sandbox_tier,
-            port_base: port_base.and_then(|p| u16::try_from(p).ok()),
-            depends_on,
-            overlaps,
-            pr: pr.map(|p| serde_json::from_str(&p)).transpose()?,
-            id: rec.id,
-            project_id: rec.project_id,
-            project_name,
-            title: rec.title,
-            state: rec.state,
-            pause_reason: rec.pause_reason,
-            mode: rec.mode,
-            live_line,
-            progress,
-            diffstat,
-            cost_usd: rec.cost_usd,
-            budget: rec.contract.budget,
-            run_no: rec.run_no,
-            rework_cycles: rec.rework_cycles,
-            max_rework: rec.contract.max_rework,
-            needs_you,
-            verified_pin: rec.verified_pin,
-            branch: rec.branch,
-            created_at,
-            updated_at,
-            run_started_at: rec.run_started_at,
-            last_viewed_at,
-        })
-    }
-
     /// Records the files a goal's workspace changes relative to its base.
     /// Returns whether the list changed.
     pub fn set_touched(&mut self, goal: &str, files: &[String]) -> Result<bool> {
@@ -317,92 +214,6 @@ impl Store {
             .conn
             .execute("UPDATE goals SET touched = ?2 WHERE id = ?1 AND touched != ?2", rusqlite::params![goal, json])?;
         Ok(n > 0)
-    }
-
-    fn overlaps(&self, rec: &GoalRecord) -> Result<Vec<Overlap>> {
-        if !rec.state.is_unmerged_work() {
-            return Ok(Vec::new());
-        }
-        let mine: std::collections::HashSet<String> = serde_json::from_str(&self.conn.query_row(
-            "SELECT touched FROM goals WHERE id = ?1",
-            [&rec.id],
-            |r| r.get::<_, String>(0),
-        )?)?;
-        if mine.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, title, state, touched FROM goals WHERE project_id = ?1 AND id != ?2 ORDER BY id")?;
-        let rows = stmt.query_map(rusqlite::params![rec.project_id, rec.id], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?))
-        })?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (id, title, state, touched) = row?;
-            if !LifecycleState::parse(&state).is_some_and(LifecycleState::is_unmerged_work) {
-                continue;
-            }
-            let theirs: Vec<String> = serde_json::from_str(&touched)?;
-            let mut common: Vec<String> = theirs.into_iter().filter(|f| mine.contains(f)).collect();
-            if common.is_empty() {
-                continue;
-            }
-            common.sort();
-            let total = common.len() as u32;
-            common.truncate(5);
-            out.push(Overlap { goal_id: id, title, files: common, total });
-        }
-        Ok(out)
-    }
-
-    fn progress(&self, rec: &GoalRecord) -> Result<Progress> {
-        let machine: Vec<&str> = rec.contract.machine_criteria().map(|c| c.id.as_str()).collect();
-        let human: Vec<&str> = rec.contract.human_criteria().map(|c| c.id.as_str()).collect();
-        let mut p = Progress { machine: machine.len() as u32, human: human.len() as u32, ..Default::default() };
-        // A pass under a high-severity finding of the latest verification
-        // is not evidence until you have looked (the seal says so too).
-        let held = self.sentinel_hits(&rec.id)?.iter().any(|h| h.severity >= tower_core::sentinel::HIGH);
-        // A pass whose must-fail canary passed too is not evidence.
-        let mut stmt = self.conn.prepare(
-            "SELECT r.criterion, r.passed, r.pin, c.state, c.pin FROM criterion_results r
-             LEFT JOIN canary_results c ON c.goal_id = r.goal_id AND c.criterion = r.criterion
-             WHERE r.goal_id = ?1",
-        )?;
-        for row in stmt.query_map([&rec.id], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, bool>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, Option<String>>(3)?,
-                r.get::<_, Option<String>>(4)?,
-            ))
-        })? {
-            let (c, passed, pin, canary, canary_pin) = row?;
-            let tampered = canary.as_deref() == Some("tampered") && canary_pin.as_deref() == Some(pin.as_str());
-            if passed && (tampered || held) && rec.pin.as_deref() == Some(pin.as_str()) {
-                p.not_evidence = Some(true);
-            }
-            if passed && !tampered && !held && machine.contains(&c.as_str()) && rec.pin.as_deref() == Some(pin.as_str())
-            {
-                p.verified += 1;
-            }
-        }
-        let mut stmt = self.conn.prepare("SELECT criterion, passed FROM observations WHERE goal_id = ?1")?;
-        for row in stmt.query_map([&rec.id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)))? {
-            let (c, passed) = row?;
-            if passed && machine.contains(&c.as_str()) {
-                p.observed += 1;
-            }
-        }
-        let mut stmt = self.conn.prepare("SELECT criterion, checked FROM human_checks WHERE goal_id = ?1")?;
-        for row in stmt.query_map([&rec.id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)))? {
-            let (c, checked) = row?;
-            if checked && human.contains(&c.as_str()) {
-                p.human_done += 1;
-            }
-        }
-        Ok(p)
     }
 
     /// Each criterion's baseline as stored: the command it ran, whether it

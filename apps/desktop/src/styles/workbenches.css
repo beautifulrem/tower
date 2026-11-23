@@ -1,0 +1,454 @@
+/*
+ * Workbench layer: GoalPage (Supervision Sheet), Review (Editorial Diff Theater),
+ * and ContractEditor (Living Specification).
+ *
+ * Principles (docs/12):
+ * - Structure felt, not seen: draw each hairline once, zero box-in-box nesting, zero 2px/3px colored left stripes.
+ * - Frame exceptions only (ISA-101 / Airbus lights-out): normal metadata sits as quiet inline text;
+ *   amber belongs strictly to actionable human decisions (28px ECAM header strip) and true anomalies;
+ *   green belongs strictly to fresh verifier passes.
+ */
+
+/* ---------- Shared Workbench Primitives ---------- */
+
+.wb-exception {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  margin-left: var(--sp-2);
+  border-radius: var(--radius-s);
+  font-size: var(--fs-hint);
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--text-1);
+  white-space: nowrap;
+}
+.wb-exception-warn { background: var(--attention-bg); }
+.wb-exception-danger { border: 1px dashed var(--st-danger); background: var(--danger-bg); }
+
+.att-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.att-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-s);
+  background: var(--bg-raised);
+  font-size: var(--fs-hint);
+  color: var(--text-2);
+  max-width: 240px;
+}
+.att-thumb { width: 22px; height: 22px; object-fit: cover; border-radius: 2px; flex: 0 0 auto; }
+.att-chip .icon-btn,
+.holdout-panel .icon-btn { width: 20px; height: 20px; font-size: 13px; line-height: 1; }
+
+:is(.goal-page, .review, .verify-item) .prov-frame {
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* ---------- 1. GoalPage — Quiet Precision Supervision Sheet ---------- */
+
+.goal-page .goal-identity { gap: 2px 0; }
+.goal-page .goal-identity > :not(.wb-exception):not(.over-wall) + :not(.wb-exception):not(.over-wall)::before {
+  content: "·";
+  font-family: var(--font-ui);
+  color: var(--text-3);
+  margin: 0 0.42em;
+  font-weight: 400;
+}
+.goal-page .goal-identity .over-wall { margin-left: var(--sp-2); }
+
+/* Airbus ECAM Decision Card restraint: crisp 28px amber header strip over calm --bg-raised body */
+.goal-page .decision {
+  border: 1px solid var(--card-edge);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  box-shadow: var(--card-lift);
+}
+.goal-page .decision-head {
+  height: 28px;
+  padding: 0 12px;
+  background: var(--attention-bg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.goal-page .decision .prov-frame.prov-claim {
+  display: grid;
+  grid-template-columns: 7em minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  align-items: baseline;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+}
+
+.goal-page .claim {
+  grid-template-columns: 7em minmax(0, 1fr) auto;
+  column-gap: var(--sp-3);
+}
+
+/* Verification bench notes under a criterion: quiet inline text, frame exceptions only */
+.ev-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 0;
+  margin: 1px 0 3px calc(14px + 2.5em + var(--sp-2) * 2);
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  color: var(--text-3);
+}
+.ev-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.ev-strip > .ev-pill + .ev-pill::before {
+  content: "·";
+  font-family: var(--font-ui);
+  color: var(--text-3);
+  margin: 0 0.45em;
+}
+.ev-pill-attn,
+.ev-pill-danger {
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-1);
+}
+.ev-strip > :is(.ev-pill-attn, .ev-pill-danger)::before { content: none; margin: 0; }
+.ev-pill-attn { background: var(--attention-bg); }
+.ev-pill-danger { background: var(--danger-bg); }
+
+.ev-holdout-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 1px 0 3px calc(14px + 2.5em + var(--sp-2) * 2);
+  font-size: var(--fs-hint);
+  line-height: var(--lh-hint);
+  color: var(--text-3);
+}
+.ev-hf {
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+.ev-hf-miss {
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  background: var(--attention-bg);
+  color: var(--text-1);
+}
+
+/* Look console errors: crisp flat list inside criterion detail */
+.goal-page .look-console,
+.verify-item .look-console {
+  display: grid;
+  gap: 3px;
+  padding: 4px 0 2px var(--sp-3);
+  border: 0;
+  border-left: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+}
+.goal-page .look-console .prov-head,
+.verify-item .look-console .prov-head { color: var(--text-2); }
+
+/* Two-Column Claim vs Fact Honesty Ledger: flat hairline rows */
+.honesty-ledger { display: grid; gap: 0; }
+.ledger-cols-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--fs-hint);
+  font-weight: 500;
+  color: var(--text-3);
+}
+.ledger-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ledger-pair:last-child { border-bottom: 0; }
+@media (max-width: 960px) {
+  .ledger-cols-head, .ledger-link { display: none; }
+  .ledger-pair { grid-template-columns: 1fr; gap: 2px; }
+}
+.ledger-claim-cell { font-size: var(--fs-meta); line-height: 18px; color: var(--text-2); min-width: 0; }
+.ledger-claim-cell.dim { color: var(--text-3); }
+.ledger-link { text-align: center; color: var(--text-4); font-family: var(--font-mono); font-size: 11px; }
+.ledger-fact-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  font-size: var(--fs-meta);
+  line-height: 18px;
+  color: var(--text-1);
+  min-width: 0;
+}
+.ledger-fact-ev { color: var(--text-2); word-break: break-word; }
+
+/* Contract summary rail: aligned 2-column grid + unboxed inline mono paths */
+.goal-page .rail-dl {
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  gap: 5px var(--sp-3);
+  align-items: baseline;
+}
+.rail-paths { color: var(--text-2); font-size: 0.923em; line-height: 18px; word-break: break-word; }
+.rail-paths-exclude { color: var(--text-1); }
+.burn-sub { display: grid; gap: 4px; margin-top: 6px; }
+.burn-bar { position: relative; height: 3px; border-radius: 1.5px; background: var(--bg-selected); overflow: hidden; }
+.burn-fill { position: absolute; inset: 0 auto 0 0; background: var(--text-3); }
+.burn-fill.over { background: var(--st-attention); }
+.dep-links { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.esc-active {
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  background: var(--attention-bg);
+  color: var(--text-1);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+/* Flight Recorder (Watch / Trace): clean chronological ledger */
+.watch-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 0 var(--sp-1);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+.goal-page .trace-filters { gap: 12px; padding: 6px 12px; }
+.goal-page .trace-filters .tab {
+  height: 22px;
+  padding: 0 2px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-3);
+}
+.goal-page .trace-filters .tab:hover { color: var(--text-1); }
+.goal-page .trace-filters .tab.active {
+  background: transparent;
+  color: var(--text-1);
+  font-weight: 500;
+  box-shadow: inset 0 -1.5px 0 var(--text-1);
+}
+.goal-page .trace-tab-count { padding: 0; height: auto; background: transparent; color: var(--text-3); font-size: 11px; }
+.goal-page .trace-tab-count.alert { padding: 0 4px; border-radius: var(--radius-xs); background: var(--danger-bg); color: var(--text-1); }
+.goal-page .trace-row.trace-anomaly,
+.goal-page .trace-row.trace-injected-row { background: transparent; }
+.goal-page .trace-denied-tag { border: 0; padding: 0 5px; }
+
+/* Multimodal Steering Console */
+.steer-console {
+  position: sticky;
+  bottom: calc(-1 * var(--sp-10));
+  display: grid;
+  gap: 6px;
+  margin-top: var(--sp-6);
+  padding: 10px 12px 12px;
+  border: 1px solid var(--card-edge);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  box-shadow: var(--card-lift);
+}
+.steer-console.drag-over { border-color: var(--border-strong); background: var(--bg-hover); }
+.steer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: var(--fs-meta); color: var(--text-3); }
+.steer-title { font-size: var(--fs-meta); font-weight: 500; color: var(--text-2); }
+.steer-mode { display: inline-flex; align-items: center; gap: 10px; }
+.steer-mode .tab { height: 20px; padding: 0 1px; border-radius: 0; background: transparent; color: var(--text-3); font-size: var(--fs-hint); }
+.steer-mode .tab:hover:not(:disabled) { color: var(--text-1); }
+.steer-mode .tab.active { background: transparent; color: var(--text-1); font-weight: 500; box-shadow: inset 0 -1.5px 0 var(--text-1); }
+.steer-input-wrap { position: relative; display: flex; align-items: flex-end; gap: var(--sp-2); }
+.steer-console textarea { background: var(--bg-app); }
+.steer-at-pop {
+  position: absolute;
+  left: 0;
+  right: 96px;
+  bottom: calc(100% + 6px);
+  z-index: 25;
+  max-height: 200px;
+  overflow: auto;
+  padding: 4px;
+  border-radius: var(--radius-l);
+  background: var(--bg-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+.steer-at-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+}
+.steer-at-item.selected,
+.steer-at-item:hover { background: var(--bg-selected); color: var(--text-1); }
+
+/* ---------- 2. Review — Kaleidoscope / Sublime Merge Editorial Diff Craft ---------- */
+
+.review-head .scope-switch { display: inline-flex; align-items: center; gap: 12px; }
+.review-head .scope-switch .tab {
+  height: 20px;
+  padding: 0 1px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+  font-weight: 400;
+}
+.review-head .scope-switch .tab:hover { color: var(--text-1); }
+.review-head .scope-switch .tab.active {
+  background: transparent;
+  color: var(--text-1);
+  font-weight: 500;
+  box-shadow: inset 0 -1.5px 0 var(--text-1);
+}
+.timeline-compare { display: inline-flex; align-items: center; gap: 5px; }
+.timeline-select {
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-raised);
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  max-width: 150px;
+}
+
+.file {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+  border: 1px solid var(--card-edge);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  box-shadow: var(--card-lift);
+}
+.file-head { background: var(--bg-raised); border-bottom: 1px solid var(--border-subtle); }
+.file-head .file-status { color: var(--text-3); }
+.file-head > .mono { color: var(--text-1); }
+
+.diff tbody > tr.hunk-head:not(:first-child) td { border-top: 1px solid var(--border-subtle); }
+.vdiff-spacer td { padding: 0 !important; border: 0 !important; background: transparent !important; pointer-events: none; }
+.vdiff-badge { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+
+.semantic-fold td { padding: 3px 8px 3px 12px !important; background: var(--bg-app); border-top: 1px solid var(--border-subtle); }
+.semantic-fold-bar { display: flex; align-items: center; gap: 8px; min-height: 22px; font-family: var(--font-ui); font-size: var(--fs-meta); color: var(--text-2); }
+.semantic-label { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); }
+.semantic-label .icon { color: var(--text-3); }
+
+/* Unit Narrative: Swiss hanging provenance row (`┆ Agent claims why`) */
+.review-diff .unit-narrative {
+  display: grid;
+  grid-template-columns: 8.5em minmax(0, 1fr) auto;
+  column-gap: var(--sp-3);
+  align-items: baseline;
+  margin-bottom: var(--sp-3);
+  padding: 0 0 var(--sp-2);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--fs-meta);
+}
+.unit-claim-tag { font-size: var(--fs-hint); color: var(--text-3); white-space: nowrap; }
+.unit-narrative-text { margin: 0; color: var(--text-2); line-height: 18px; max-width: var(--measure); }
+.unit-risk-badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.risk-badge { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-hint); color: var(--text-2); }
+.risk-badge::before { content: "◆"; color: var(--st-attention); }
+.risk-badge-danger { color: var(--text-1); }
+.risk-badge-danger::before { content: "■"; color: var(--st-danger); }
+
+/* Acceptance Seal 4-point pre-flight checklist: unboxed 2x2 glyph readout */
+.seal-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px var(--sp-4); margin-top: var(--sp-1); }
+@media (max-width: 540px) { .seal-checks { grid-template-columns: 1fr; } }
+.seal-check { display: flex; align-items: center; gap: 6px; min-height: 20px; font-size: var(--fs-meta); color: var(--text-2); }
+.seal-check-ok::before { content: "✓"; color: var(--st-verified); font-weight: 600; }
+.seal-check-warn { color: var(--text-1); }
+.seal-check-warn::before { content: "◆"; color: var(--st-attention); }
+.seal-check-danger { color: var(--text-1); }
+.seal-check-danger::before { content: "■"; color: var(--st-danger); }
+
+/* Steering Dispatch Tray */
+.dispatch-head { display: flex; align-items: center; gap: 8px; padding-bottom: var(--sp-2); border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-meta); color: var(--text-2); }
+.dispatch-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-meta); }
+.dispatch-row:last-child { border-bottom: 0; }
+.dispatch-pill { display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; height: 18px; border-radius: var(--radius-xs); background: var(--attention-bg); color: var(--text-1); font-size: 11px; border: 0; }
+
+/* Concise bottom status rail */
+.review-status { gap: var(--sp-3); }
+.review-keys { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; }
+.review-keys > span { display: inline-flex; align-items: center; gap: 4px; }
+.review-keys > span + span::before { content: "·"; font-family: var(--font-ui); color: var(--text-3); margin: 0 0.55em; }
+.review-status .kbd { height: auto; padding: 0; background: transparent; color: var(--text-2); font-size: 10.5px; }
+.review-status .unit-counter { color: var(--text-2); }
+
+/* ---------- 3. ContractEditor — "Living Specification" Document ---------- */
+
+.editor .field-intent { margin-bottom: var(--sp-2); }
+.intent-attach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 24px;
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+.intent-attach.drag-over { padding: 0 var(--sp-2); border-radius: var(--radius-s); background: var(--bg-hover); color: var(--text-1); }
+.intent-attach-btn { color: var(--text-2); font-weight: 500; }
+.editor .att-list { margin: calc(-1 * var(--sp-2)) 0 var(--sp-4); }
+
+.editor-side .radio b { color: var(--text-1); font-weight: 500; }
+.editor-side .radio.disabled { opacity: 0.5; }
+@media (max-width: 1280px) {
+  .sandbox-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+}
+
+.holdout-panel { margin-top: var(--sp-3); padding: var(--sp-3) 0 var(--sp-1); border-top: 1px solid var(--border-subtle); display: grid; gap: var(--sp-3); }
+.holdout-draft { display: grid; gap: 6px; padding-top: var(--sp-2); border-top: 1px dashed var(--border-subtle); }
+.holdout-draft:first-of-type { padding-top: 0; border-top: 0; }
+.holdout-draft.ratified { border-top-style: solid; }
+.holdout-code { font-family: var(--font-mono); font-feature-settings: var(--font-features-mono); font-size: 11.5px; line-height: 17px; }
+
+.dep-pick-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.dep-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg-field);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+.dep-pick-btn:hover { border-color: var(--border-strong); color: var(--text-1); }
+.dep-pick-btn.active { border-color: var(--text-2); background: var(--bg-selected); color: var(--text-1); }

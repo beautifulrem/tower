@@ -36,18 +36,21 @@ export function isEnvAssignmentWord(t: WordToken): EnvAssignment | null {
 
 /**
  * Commands that run another command after their own options: the options
- * that take a value (`-n 5`, `-n5`, `-vs KILL`, `--signal KILL`,
- * `--signal=KILL`), the operands before the command (`timeout 5`, `chroot
- * DIR`, `flock FILE`), and options whose value is a shell script (`flock
- * FILE -c 'cmd'`). A table can miss an option, so the words after a wrapper
- * that name a guarded program are read as commands too (`unwrapCommand`).
+ * that take a value (`-n 5`, `-n5`, `-vs KILL`, `--signal KILL`, `--sig
+ * KILL`, `--signal=KILL`), the operands before the command (`timeout 5`,
+ * `chroot DIR`, `flock FILE`), options whose value is a shell script (`flock
+ * FILE -c 'cmd'`, `env -S 'cmd'`), and for `env`, `NAME=value` words. A table
+ * can miss an option, so every position where some reading of the options
+ * puts a command is read as the command it may be too (`commandPositions`).
  */
 interface Wrapper {
 	values?: string[];
 	operands?: number;
 	scripts?: string[];
+	assigns?: boolean;
 }
 const WRAPPERS: Record<string, Wrapper> = {
+	env: { values: ["-u", "-C", "-P", "-a", "--unset", "--chdir", "--argv0"], scripts: ["-S", "--split-string"], assigns: true },
 	builtin: {},
 	nohup: {},
 	setsid: {},
@@ -80,12 +83,30 @@ const WRAPPERS: Record<string, Wrapper> = {
 		scripts: ["-c", "--command"],
 	},
 };
-const ENV_VALUES = ["-u", "-C", "-P", "-S", "-a", "--unset", "--chdir", "--split-string", "--argv0"];
 /**
  * Programs the gate reads the arguments of: one-way doors, and shells. (A
  * wrapper cannot run the `eval`, `source` or `.` builtins.)
  */
 const GUARDED = new Set(["git", "rm", "gh", "sudo", "doas", "su", "npm", "pnpm", "yarn", "cargo", "gem", "twine", ...SHELL_RUNNERS]);
+/** What runs another command or a script it is given: the wrappers, `command`, `find` and `watch`. */
+const CARRIERS = new Set([...Object.keys(WRAPPERS), "command", "find", "watch"]);
+
+/** An unquoted glob or brace expansion, in a word's unquoted parts. */
+const GLOB = /[*?]|\[.*\]|\{[^}]*(,|\.\.)[^}]*\}/;
+const unquoted = (raw: string) => raw.replace(/\\.|'[^']*'|"[^"]*"/g, "");
+
+/**
+ * A word that stays one word when it runs: literal with no glob or brace,
+ * or a literal prefix and one double-quoted expansion that cannot split
+ * (`"$T"`, `"${T:-60}"`, `"$(nproc)"`, `FOO="$BAR"`; not `"$@"`,
+ * `"${a[@]}"` or `"${!p@}"`, and nothing unquoted).
+ */
+function oneWord(w: WordToken | undefined): boolean {
+	if (!w) return true;
+	if (GLOB.test(unquoted(w.raw))) return false;
+	if (!w.hasDynamic) return true;
+	return /^[\w=.:/+-]*"[^"]*"$/.test(w.raw) && !/\$@|\$\{@|\[@\]|\$\{!/.test(w.raw);
+}
 
 interface Option {
 	next: number;
@@ -95,14 +116,21 @@ interface Option {
 	dynamic: boolean;
 }
 
-/** Reads the option word at `k`, getopt-style: in a cluster (`-fo log`), the first flag that takes a value takes the rest or the next word. */
+/**
+ * Reads the option word at `k`, getopt-style: in a cluster (`-fo log`), the
+ * first flag that takes a value takes the rest or the next word; a long
+ * option may be an unambiguous prefix (`--sig` for `--signal`).
+ */
 function readOption(words: WordToken[], k: number, takes: string[]): Option {
 	const v = words[k].value;
 	const separate = (flag: string): Option => ({ next: k + 2, flag, text: words[k + 1]?.value, dynamic: !!words[k + 1]?.hasDynamic });
 	if (takes.includes(v)) return separate(v);
 	if (v.startsWith("--")) {
 		const eq = v.indexOf("=");
-		return eq < 0 ? { next: k + 1, dynamic: false } : { next: k + 1, flag: v.slice(0, eq), text: v.slice(eq + 1), dynamic: words[k].hasDynamic };
+		const name = eq < 0 ? v : v.slice(0, eq);
+		const flag = takes.find((t) => t.startsWith("--") && t.startsWith(name));
+		if (eq >= 0) return { next: k + 1, flag: flag ?? name, text: v.slice(eq + 1), dynamic: words[k].hasDynamic };
+		return flag ? separate(flag) : { next: k + 1, dynamic: false };
 	}
 	for (let c = 1; c < v.length; c++) {
 		const flag = `-${v[c]}`;
@@ -110,6 +138,50 @@ function readOption(words: WordToken[], k: number, takes: string[]): Option {
 		return c + 1 < v.length ? { next: k + 1, flag, text: v.slice(c + 1), dynamic: words[k].hasDynamic } : separate(flag);
 	}
 	return { next: k + 1, dynamic: false };
+}
+
+/**
+ * Where the options and operands of the wrapper `base` may end, from `k`:
+ * as read, and again for each unknown long option taking the next word as
+ * its value.
+ */
+function wrapperEnds(words: WordToken[], k: number, base: string, operands: number, out: Set<number>): void {
+	const w = WRAPPERS[base];
+	const takes = [...(w.values ?? []), ...(w.scripts ?? [])];
+	while (k < words.length && out.size < 32) {
+		const v = words[k].value;
+		if (v === "--") { k++; if (operands === 0) break; continue; }
+		if (w.assigns && (v === "-" || isEnvAssignmentWord(words[k]))) { k++; continue; }
+		if (!v.startsWith("-") || v.length === 1) {
+			if (operands === 0) break;
+			operands--;
+			k++;
+			continue;
+		}
+		const opt = readOption(words, k, takes);
+		if (!opt.flag && v.startsWith("--") && !v.includes("=")) wrapperEnds(words, k + 2, base, operands, out);
+		k = opt.next;
+	}
+	out.add(k);
+}
+
+/** Every position where some reading of the wrappers' options puts a command or a further wrapper. */
+function commandPositions(words: WordToken[], p: number, out: Set<number>): void {
+	if (p >= words.length || out.has(p) || out.size >= 32) return;
+	out.add(p);
+	const base = basenameOf(words[p].value);
+	if (base === "command") {
+		let j = p + 1;
+		for (; j < words.length && words[j].value.startsWith("-") && words[j].value !== "--"; j++) {
+			if (/[vV]/.test(words[j].value)) return;
+		}
+		commandPositions(words, j + (words[j]?.value === "--" ? 1 : 0), out);
+		return;
+	}
+	if (!Object.hasOwn(WRAPPERS, base)) return;
+	const ends = new Set<number>();
+	wrapperEnds(words, p + 1, base, WRAPPERS[base].operands ?? 0, ends);
+	for (const e of ends) commandPositions(words, e, out);
 }
 
 /** Long shell options that take the next word as their value; some of them a script. */
@@ -202,8 +274,10 @@ function findActions(tail: WordToken[]): string[] {
 
 /**
  * The command these words run, after its wrappers; and, when there are
- * wrappers, `candidates`: every later word naming a guarded program, read as
- * the command it may be, so an option the table misreads cannot hide one.
+ * wrappers, `candidates`: each other position where some reading of their
+ * options puts a guarded program or a carrier, read as the command it may
+ * be, so an option the table misreads cannot hide one. A word that is only
+ * an argument of the command (`timeout 5 grep -rn sudo .`) is none.
  */
 export function unwrapCommand(
 	words: WordToken[],
@@ -213,19 +287,26 @@ export function unwrapCommand(
 	nestedScripts: string[],
 ): { cmd: SimpleCommand | null; candidates: SimpleCommand[] } {
 	const main = unwrapOne(words, env, redirects, depth, nestedScripts);
-	if (!main || main.cmd.wrappers.length === 0) return { cmd: main?.cmd ?? null, candidates: [] };
+	if (!main || main.path.length < 2) return { cmd: main?.cmd ?? null, candidates: [] };
 	const { cmd } = main;
+	const positions = new Set<number>();
+	commandPositions(words, 0, positions);
 	const candidates: SimpleCommand[] = [];
-	for (let j = 1; j < words.length; j++) {
-		if (j === main.head || words[j].hasDynamic || !GUARDED.has(basenameOf(words[j].value))) continue;
-		const candidate = unwrapOne(words.slice(j), [...cmd.env], redirects, depth, nestedScripts)?.cmd;
+	for (const p of positions) {
+		const name = basenameOf(words[p].value);
+		if (main.path.includes(p) || words[p].hasDynamic || !(GUARDED.has(name) || CARRIERS.has(name))) continue;
+		const candidate = unwrapOne(words.slice(p), [...cmd.env], redirects, depth, nestedScripts)?.cmd;
 		if (candidate) candidates.push(candidate);
 	}
-	// What `xargs` reads becomes arguments of a guarded program (`xargs git`),
-	// or the command itself through its placeholder (`xargs -I{} {}`). Only
-	// the command read through the table counts: a guarded word among its
-	// arguments (`xargs grep -l git`) is not one.
-	if (cmd.wrappers.includes("xargs") && (GUARDED.has(cmd.name) || (main.replace && cmd.rawName.includes(main.replace)))) {
+	// What `xargs` reads becomes arguments of what it runs: a guarded program
+	// (`xargs git`), a wrapper or carrier (`xargs env`, `xargs -I{} watch {}`),
+	// or the command itself through its placeholder (`xargs -I{} {}`).
+	const x = cmd.wrappers.indexOf("xargs");
+	if (
+		x >= 0 &&
+		(x < cmd.wrappers.length - 1 || GUARDED.has(cmd.name) || CARRIERS.has(cmd.name) || candidates.length > 0 ||
+			(main.replace && cmd.rawName.includes(main.replace)))
+	) {
 		cmd.hasDynamicName = true;
 	}
 	return { cmd, candidates };
@@ -237,12 +318,13 @@ function unwrapOne(
 	redirects: Redirection[],
 	depth: number,
 	nestedScripts: string[],
-): { cmd: SimpleCommand; head: number; replace?: string } | null {
+): { cmd: SimpleCommand; path: number[]; replace?: string } | null {
 	let idx = 0;
 	let last = -1;
 	const wrappers: string[] = [];
+	const path: number[] = []; // where each wrapper, then the command, starts
 	let inlineScript = false;
-	let dynamicScript = false; // a script only known when it runs
+	let dynamicScript = false; // a script, or a word that may move the command, only known when it runs
 	let replace: string | undefined; // xargs' placeholder
 	const script = (opt: Option) => {
 		inlineScript = true;
@@ -252,25 +334,6 @@ function unwrapOne(
 
 	while (idx < words.length) {
 		const base = basenameOf(words[idx].value);
-		if (base === "env") {
-			wrappers.push("env");
-			last = idx++;
-			while (idx < words.length) {
-				const w = words[idx];
-				if (w.value === "--") { idx++; break; }
-				if (w.value === "-") { idx++; continue; }
-				if (w.value.startsWith("-")) {
-					const opt = readOption(words, idx, ENV_VALUES);
-					if (opt.flag === "-S" || opt.flag === "--split-string") script(opt);
-					idx = opt.next;
-					continue;
-				}
-				const assign = isEnvAssignmentWord(w);
-				if (assign) { env.push(assign); idx++; continue; }
-				break;
-			}
-			continue;
-		}
 		if (base === "command") {
 			let j = idx + 1;
 			let lookupOnly = false;
@@ -280,6 +343,7 @@ function unwrapOne(
 			}
 			if (lookupOnly) break;
 			wrappers.push("command");
+			path.push(idx);
 			last = idx;
 			idx = j + (words[j]?.value === "--" ? 1 : 0);
 			continue;
@@ -287,22 +351,30 @@ function unwrapOne(
 		const wrapper = Object.hasOwn(WRAPPERS, base) ? WRAPPERS[base] : undefined;
 		if (!wrapper) break;
 		wrappers.push(base);
+		path.push(idx);
 		if (base === "exec") inlineScript = true;
 		last = idx++;
 		let operands = wrapper.operands ?? 0;
 		const takes = [...(wrapper.values ?? []), ...(wrapper.scripts ?? [])];
-		// A value or an operand only known when it runs (`-P "$(nproc)"`,
-		// `timeout "$T"`) is not the command: it does not ask.
+		// A value or operand only known when it runs is not the command when
+		// it stays one word (`-P "$(nproc)"`, `timeout "$T"`); one that can
+		// split into words (`timeout $X`, `"$@"`, `{5,sh,-c}`) can move it.
 		while (idx < words.length) {
-			const v = words[idx].value;
+			const w = words[idx];
+			const v = w.value;
 			if (v === "--") { idx++; if (operands === 0) break; continue; }
+			if (wrapper.assigns && v === "-") { idx++; continue; }
+			const assign = wrapper.assigns ? isEnvAssignmentWord(w) : null;
 			if (!v.startsWith("-") || v.length === 1) {
-				if (operands === 0) break;
-				operands--;
+				if (!assign && operands === 0) break;
+				if (!oneWord(w)) dynamicScript = true;
+				if (assign) env.push(assign);
+				else operands--;
 				idx++;
 				continue;
 			}
 			const opt = readOption(words, idx, takes);
+			if (!oneWord(w) || (opt.next === idx + 2 && !oneWord(words[idx + 1]))) dynamicScript = true;
 			if (opt.flag && wrapper.scripts?.includes(opt.flag)) script(opt);
 			if (base === "xargs" && (opt.flag === "-I" || opt.flag === "-J")) replace = opt.text;
 			if (base === "xargs" && /^(-i|--replace)/.test(v)) replace = v.replace(/^(-i|--replace=?)/, "") || "{}";
@@ -316,13 +388,14 @@ function unwrapOne(
 		idx = last;
 		wrappers.pop();
 	}
+	if (!path.includes(idx)) path.push(idx);
 	const head = words[idx];
 	const tail = words.slice(idx + 1);
 	const name = basenameOf(head.value);
 	const args = tail.map((w) => w.value);
 	const hasDynamicArgs = tail.some((w) => w.hasDynamic);
 	// An unquoted glob or brace expansion makes the name no literal word either.
-	const globName = /[*?]|\[.*\]|\{.*(,|\.\.).*\}/.test(head.raw.replace(/\\.|'[^']*'|"[^"]*"/g, ""));
+	const globName = GLOB.test(unquoted(head.raw));
 	let readsStdin = false;
 
 	if (name === "eval") {
@@ -387,5 +460,5 @@ function unwrapOne(
 		readsStdin,
 		nestedDepth: depth,
 	};
-	return { cmd, head: idx, replace };
+	return { cmd, path, replace };
 }

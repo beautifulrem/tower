@@ -984,12 +984,33 @@ fn tower_supervisor_test_support_browser() -> Option<&'static str> {
 async fn diagnostics_leave_secrets_out() {
     let h = harness("pass").await;
     h.sup.save_settings(Settings { remote_enabled: true, remote_port: 0, ..h.sup.settings() }).ok();
+    // The ntfy topic is the push channel's only secret.
+    let topic = "http://127.0.0.1:9/tower-secret-topic-0001";
+    h.sup.save_settings(Settings { push_url: topic.into(), ..h.sup.settings() }).unwrap();
+    // An origin URL with a password in it, pushed to (locally, through
+    // pushInsteadOf) while the goal is still in the archive.
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+    h.sup.accept(&id).await.unwrap();
+    wait_for(&h, &id, |g| g.state == LifecycleState::Accepted).await;
+    let bare = h.repo.parent().unwrap().join("origin.git");
+    git(&h.repo, &["init", "--quiet", "--bare", bare.to_str().unwrap()]);
+    let origin = "https://ada:origin-pass-0002@git.example.com/o/r.git";
+    git(&h.repo, &["remote", "add", "origin", origin]);
+    git(&h.repo, &["config", &format!("url.{}.pushInsteadOf", bare.display()), origin]);
+    h.sup.push(&id, false).await.unwrap();
+    let trace = format!("{:?}", h.sup.trace(&id, None, 300).unwrap());
+    assert!(trace.contains("git.example.com/o/r.git") && !trace.contains("origin-pass-0002"), "{trace}");
+
     let token = h.sup.settings().remote_token;
     let zip = h.sup.export_diagnostics().unwrap();
     let out = Command::new("/usr/bin/unzip").arg("-p").arg(&zip).output().unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("\"tower\""), "the archive has content");
+    assert!(text.contains("branch_pushed"), "the pushed goal's trace is in the archive");
     assert!(token.is_empty() || !text.contains(&token), "no pairing token");
+    assert!(!text.contains("tower-secret-topic-0001"), "no push topic");
+    assert!(!text.contains("origin-pass-0002"), "no password from the origin URL");
 }
 
 /// Pushes (ntfy): an item that blocks a goal sends its goal's and its own

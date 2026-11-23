@@ -32,7 +32,7 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
             .origin_url(&root2)
             .ok_or_else(|| invalid(tr!(lang, "你的仓库没有 origin 远端", "Your repository has no origin remote")))?;
         git.push_branch(&root2, &branch2)?;
-        Ok(url)
+        Ok(without_userinfo(&url))
     })
     .await
     .map_err(|e| invalid(e.to_string()))??;
@@ -115,6 +115,18 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
         },
     );
     Ok(pr_url)
+}
+
+/// `url` without `user:password@` (an https remote may carry a token
+/// there); what the event log keeps, and diagnostics export, is the rest.
+fn without_userinfo(url: &str) -> String {
+    let Some(at) = url.find("://") else { return url.to_string() };
+    let authority = &url[at + 3..];
+    let end = authority.find('/').unwrap_or(authority.len());
+    match authority[..end].rfind('@') {
+        Some(user_end) => format!("{}{}", &url[..at + 3], &authority[user_end + 1..]),
+        None => url.to_string(),
+    }
 }
 
 /// Moves accepted goals to integrated once their commit is in the local

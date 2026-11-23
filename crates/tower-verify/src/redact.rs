@@ -87,9 +87,12 @@ fn authority_end(url: &str) -> usize {
     let before_query = url.find(['?', '#']).unwrap_or(url.len());
     if let Some(at) = url[..before_query].find('@')
         && at > first
-        && let Some((user, _)) = url[..at].split_once(':')
+        && !url.starts_with('[')
+        && let Some((user, pass)) = url[..at].split_once(':')
         && !user.is_empty()
         && !user.contains('/')
+        // `host:5173/@vite`: digits up to the first `/` are a port, not a password.
+        && !pass[..pass.find('/').unwrap_or(pass.len())].bytes().all(|b| b.is_ascii_digit())
     {
         return at + 1 + url[at + 1..].find(['/', '?', '#']).unwrap_or(url.len() - at - 1);
     }
@@ -106,6 +109,14 @@ fn secret_param(name: &str) -> bool {
 /// `scheme://user:password@host` and `?token=…`-style query parameters.
 /// The user name alone on `git@` (ssh) carries nothing and stays.
 fn redact_urls(text: &str) -> String {
+    redact_urls_within(text, 0)
+}
+
+/// How deep a URL inside a query value is looked into: output built to
+/// nest them without end must cost neither the stack nor quadratic time.
+const NESTED_URLS: u8 = 2;
+
+fn redact_urls_within(text: &str, depth: u8) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(at) = rest.find("://") {
@@ -133,7 +144,9 @@ fn redact_urls(text: &str) -> String {
                     .map(|kv| match kv.split_once('=') {
                         Some((k, v)) if secret_param(k) && !v.is_empty() => format!("{k}={MASK}"),
                         // A URL inside a value (`next=https://…`) is a URL too.
-                        Some((k, v)) if v.contains("://") => format!("{k}={}", redact_urls(v)),
+                        Some((k, v)) if depth < NESTED_URLS && v.contains("://") => {
+                            format!("{k}={}", redact_urls_within(v, depth + 1))
+                        }
                         _ => kv.to_string(),
                     })
                     .collect();
@@ -182,9 +195,13 @@ fn redact_authorization(text: &str) -> String {
             j = word + 1;
         }
         let cred = text[j..].find(|c: char| !is_token_char(c)).map_or(text.len(), |k| j + k);
-        // A free-standing `bearer` is masked only before something token-shaped (a digit or a dot): prose such as
-        // "the bearer authentication scheme" stays.
-        let shaped = header || text[j..cred].contains(|c: char| c.is_ascii_digit() || c == '.');
+        // A free-standing `bearer` is masked only before something token-shaped (a digit, a dot, or mixed case past
+        // its first letter): prose such as "the bearer authentication scheme" stays.
+        let value = &text[j..cred];
+        let shaped = header
+            || value.contains(|c: char| c.is_ascii_digit() || c == '.')
+            || value.chars().skip(1).any(|c| c.is_ascii_uppercase())
+                && value.contains(|c: char| c.is_ascii_lowercase());
         if shaped && cred - j >= if header { 8 } else { 12 } {
             out.push_str(&text[from..j]);
             out.push_str(MASK);
@@ -291,11 +308,39 @@ mod tests {
             let r = redact(text);
             assert!(!r.contains(secret), "{secret} left in {r}");
         }
+        // A dev server's or a registry's port is not a password.
+        for kept in [
+            "GET http://localhost:5173/@vite/client 200",
+            "GET http://localhost:4873/@types/node",
+            "https://registry.npmjs.org:443/@types/node",
+            "http://[::1]:8080/@id/x",
+        ] {
+            assert_eq!(redact(kept), kept);
+        }
+        // A token of letters only, mixed case as random ones are, is still a token.
+        assert!(!redact("token: Bearer AbcdefGhijklmnopQr").contains("AbcdefGhijklmnopQr"));
         // A scoped package path is not user info.
         let npm = "GET https://registry.npmjs.org/@types/node 200";
         assert_eq!(redact(npm), npm);
         // Prose about the scheme is not a token.
         let prose = "the bearer authentication scheme";
         assert_eq!(redact(prose), prose);
+    }
+
+    /// Output built to nest URLs in query values without end stays
+    /// output: it is masked in bounded time and depth, never a crash.
+    #[test]
+    fn deeply_nested_urls_neither_overflow_nor_crawl() {
+        let text = format!("https://a.example.com/{}", "://?=".repeat(20_000));
+        let handle = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(move || {
+                let started = std::time::Instant::now();
+                let _ = redact(&text);
+                started.elapsed()
+            })
+            .unwrap();
+        let took = handle.join().expect("no stack overflow");
+        assert!(took < std::time::Duration::from_secs(2), "took {took:?}");
     }
 }

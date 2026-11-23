@@ -279,13 +279,34 @@ impl Supervisor {
         self.inner.store(|s| s.delete_scheduled_goal(id))
     }
 
-    /// Manually triggers a scheduled goal immediately (records a manual checkpoint).
+    /// Manually triggers a scheduled goal immediately. A `manual:<minute>`
+    /// checkpoint makes a second press in the same minute (a double click,
+    /// the phone and the desktop together) create no second goal.
     pub async fn run_scheduled_goal_now(&self, id: &str) -> Result<GoalSummary> {
         let sch = self.inner.store(|s| s.scheduled_goal(id))?;
         let now = tower_store::system_now();
+        let checkpoint = format!("manual:{}", now.div_euclid(60_000));
+        if !self.inner.store(|s| s.claim_schedule_checkpoint(id, &checkpoint))? {
+            return Err(invalid(tr!(
+                self.inner.lang(),
+                "这个定时目标刚刚已经运行过，请一分钟后再试",
+                "This scheduled goal was just run; try again in a minute"
+            )));
+        }
         let next = CronSchedule::parse(&sch.cron_expr).ok().and_then(|c| c.next_after(now));
-        let goal = instantiate_scheduled_goal(self, &sch).await?;
-        let _ = self.inner.store(|s| s.record_schedule_run(id, now, next, &goal.id));
+        let goal = match instantiate_scheduled_goal(self, &sch).await {
+            Ok(goal) => goal,
+            Err(e) => {
+                // Nothing ran: a retry in the same minute may go ahead.
+                if let Err(e) = self.inner.store(|s| s.release_schedule_checkpoint(id, &checkpoint)) {
+                    tracing::warn!(schedule = %id, error = %e, "could not release a manual run's checkpoint");
+                }
+                return Err(e);
+            }
+        };
+        if let Err(e) = self.inner.store(|s| s.record_schedule_run(id, now, next, &goal.id)) {
+            tracing::warn!(schedule = %id, goal = %goal.id, error = %e, "could not record a manual scheduled run");
+        }
         Ok(goal)
     }
 }
@@ -371,5 +392,17 @@ mod tests {
         assert!(after.next_run_at.is_some_and(|n| n > now), "the schedule moves on: {:?}", after.next_run_at);
         assert_eq!(after.last_goal_id, None, "the claimed slot is not run a second time");
         assert!(sup.inner.read_store(|s| s.summaries()).unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn run_now_pressed_twice_in_a_minute_creates_one_goal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        let sch = every_minute(&sup, &pid, None);
+
+        let (a, b) = tokio::join!(sup.run_scheduled_goal_now(&sch.id), sup.run_scheduled_goal_now(&sch.id));
+
+        assert_eq!([a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count(), 1, "{a:?} {b:?}");
+        assert_eq!(sup.inner.read_store(|s| s.summaries()).unwrap().len(), 1);
     }
 }

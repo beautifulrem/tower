@@ -121,19 +121,30 @@ fn secret_param(name: &str) -> bool {
 ///
 /// The contract, found by heuristics rather than a parser:
 /// - A URL's credentials and secret query values are masked in the shapes tools print: git, curl and package
-///   manager lines, JSON (escaped or not), YAML, TOML, CSV, `psql -A`, HTML and XML, Markdown, shell quoting.
+///   manager lines, JSON (with `\"`, `\\`, `\/`, `\uXXXX` and `&` as `\u0026` read as the URL's own), YAML, TOML, CSV,
+///   `psql -A`, HTML and XML (`&amp;` included), Markdown, shell quoting.
 /// - Text around a URL stays: neighbouring fields, emails, tags. Where a separator could be a password's or a field's
-///   end, the URL is masked over rather than the password risked: a `,` or `;` and then an `@` after
-///   `user:pass@host` or in a path runs the URL to that `@` (`user:pw@host,ada@…`, `host/path;contact=ops@…`,
-///   `ssh://git@host:o/r.git,ada@…`), and so does an `@` in a path after a port (`host:4873/react@18`).
-/// - Known leaks, by design: a password holding its own wrapper's closer (a `)` inside `(…)`), a `|` outside quotes
-///   or brackets, or whitespace; a password of 1–5 digits and then `/?#`; a user name holding punctuation; a password
-///   more than 256 bytes past its first punctuation; URLs nested more than two deep in query values.
-///   JDBC-style `;password=…` path parameters are left to the `password=` assignment rule, so a value under 8
-///   characters stays.
-///   A URL nested in the query value of a `:\/\/`-escaped URL is not read; a password holding an `@` and then
-///   more URL-ending punctuation (`deploy:Xy(7@q)Zr@host`) shows what follows the first such `@`; a password holding
-///   `://` is read as the start of another URL.
+///   end, the URL is masked over rather than the password risked. It then runs to the last `@` before whitespace, so
+///   several CSV cells can go. The shapes masked over, credentials or not:
+///   - a `,` or `;` and then an `@`, after `user:pass@host` or in a path (`user:pw@host,ada@…`,
+///     `host/path;contact=ops@…`, `ssh://git@host:o/r.git,ada@…`);
+///   - after `user@` plus `localhost:port` or `[v6]` (`git@localhost:3000;mail=ada@…`, `ada@[::1],bob@…`), and after
+///     `host:port` whose host has no `.` and is not `localhost` (`db:5432,ada@…`);
+///   - an `@` in a path after a port (`host:4873/react@18`), and in a `\/`-escaped URL an `@` anywhere after a port
+///     (`api.example.com:8443\/u?email=a@b.com`), since the port is not read as one there.
+/// - Known leaks, by design:
+///   - a password holding its own wrapper's closer (a `)` inside `(…)`), a `|` outside quotes or brackets, or
+///     whitespace;
+///   - a password holding `\n`, `\r`, `\t`, `\b` or `\f` inside a double-quoted string, JSON or not: the escape ends the URL;
+///   - a password of 1–5 digits and then `/?#`;
+///   - a user name holding punctuation, `.` included: `first.last:2024;Summer@db` reads as `host:port`;
+///   - a password holding `://`, or starting with `//` (`u://pw@host`): it reads as the start of another URL;
+///   - a password holding an `@` and then more URL-ending punctuation (`deploy:Xy(7@q)Zr@host`): what follows the first
+///     such `@` shows;
+///   - a password more than 256 bytes past its first punctuation;
+///   - URLs nested more than two deep in query values, or at all in a `:\/\/`-escaped URL's query value;
+///   - JDBC-style `;password=…` path parameters, left to the `password=` assignment rule, so a value under 8
+///     characters stays.
 /// - One pass over the text, whatever it holds.
 fn redact_urls(text: &str) -> String {
     redact_urls_within(text, 0)
@@ -168,11 +179,9 @@ fn cut_in_userinfo(cut: &str) -> bool {
 fn closes(open: Option<char>, c: char, after: &str) -> bool {
     let next = after.chars().next();
     match open {
-        // In a JSON string an escape other than `\"` or `\\` (`\n`, `\t`, `\u…`) is no password's: it ends the URL. `\u0026` (Go's
-        // `&`) and `\/` (PHP's `/`) are the URL's own.
-        Some('"') if c == '\\' => {
-            matches!(next, Some('n' | 'r' | 't' | 'b' | 'f')) || (next == Some('u') && !after.starts_with("u0026"))
-        }
+        // In a JSON string a control escape (`\n`, `\t`, …) is no password's: it ends the URL. `\uXXXX` may stand for
+        // a password's own character (Go's `<`, Python's `ensure_ascii`), and `\/` is PHP's `/`.
+        Some('"') if c == '\\' => matches!(next, Some('n' | 'r' | 't' | 'b' | 'f')),
         Some(q @ ('"' | '\'' | '`')) => {
             c == q
                 && next.is_none_or(|n| {
@@ -232,8 +241,10 @@ fn url_end_from(text: &str, from: usize) -> usize {
         .map_or(text.len(), |(i, _)| from + i)
 }
 
-/// Whether `head`, the start of a URL's authority up to a `,` or `;`, is a whole host: a name, `user@host`, or
-/// `host:port` where the host reads as one (a `.`, `localhost`, `[v6]`). `ada:2024` and `ada:p@ss` may be passwords.
+/// Whether `head`, the start of a URL's authority up to a `,` or `;`, is a whole host: no `:` at all (a name or
+/// `user@host`), `[v6]` or `[v6]:port` with nothing before it, or `host:port` whose host has a `.` or is `localhost`. The
+/// whole of `head` is tested, so `git@localhost:3000` and `ada@[::1]` are not hosts and the URL is masked over:
+/// `ada:2024` and `ada:p@ss` may be passwords.
 fn host_or_port(head: &str) -> bool {
     let port = |p: &str| (1..=5).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit());
     if let Some(v6) = head.strip_prefix('[') {
@@ -564,6 +575,9 @@ mod tests {
             ("https://ada:p#ss;w0043@host.example.com/r", "w0043"),
             (r#"{"url":"https://ada:p\/w;x0044@db.example.com/app"}"#, "x0044"),
             ("https://ada:p@ss/w;x0045@db.example.com/app", "x0045"),
+            // A JSON `\uXXXX` escape (Go's `<` `>`, Python's `ensure_ascii`) inside a password.
+            (r#"{"url":"https://deploy:Xy\u003cZr0046@git.example.com/o/r.git"}"#, "Zr0046"),
+            (r#"{"url": "https://ada:p\u00e4ssw0047@db.example.com/app"}"#, "ssw0047"),
             ("callback http://[::1]:8080/cb?token=ipv6tok0001 ok", "ipv6tok0001"),
             ("redirect https://a.example.com/login?next=https://ada:nestedpw0002@b.example.com/x", "nestedpw0002"),
             ("fatal: https://ada:pa/ss0003@host.example.com/o/r.git", "ss0003"),

@@ -701,10 +701,28 @@
   font-feature-settings: var(--font-features-num);
   color: var(--text-3);
 }
+/* The goal column takes what the others leave (max-width 0 lets the cell give way instead of the table growing): the
+   id is one token, the title and then the branch end in an ellipsis on their one line (the branch whole in its title). */
+.mq-row > td:nth-child(2) {
+  width: 100%;
+  max-width: 0;
+}
+.mq-row > td:nth-child(2) .row > * {
+  white-space: nowrap;
+}
+.mq-row > td:nth-child(2) .row > button {
+  flex: none;
+}
+.mq-row > td:nth-child(2) .row > code {
+  flex: 0 3 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .mq-status {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   white-space: nowrap;
 }
 .mq-conflicts {

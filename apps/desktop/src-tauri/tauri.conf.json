@@ -45,7 +45,9 @@
       "../../../extensions/tower-goal/sandboxfs.ts": "tower-goal/sandboxfs.ts",
       "../../../extensions/tower-goal/acp.ts": "tower-goal/acp.ts",
       "../../../tools/demo-engine/demo_pi.py": "demo-engine/demo_pi.py",
-      "../../../extensions/tower-goal/package.json": "tower-goal/package.json"
+      "../../../extensions/tower-goal/package.json": "tower-goal/package.json",
+      "../../../extensions/tower-goal/acp-adapter/package.json": "tower-goal/acp-adapter/package.json",
+      "../../../extensions/tower-goal/acp-adapter/package-lock.json": "tower-goal/acp-adapter/package-lock.json"
     },
     "macOS": { "minimumSystemVersion": "13.0" }
   }

@@ -53,7 +53,7 @@ vi.mock("../../lib/store", async () => {
 });
 
 const validated: unknown[] = [];
-const draft = vi.hoisted(() => ({ fail: false, goalFails: false, createGate: null as Promise<void> | null, goalGate: null as Promise<void> | null }));
+const draft = vi.hoisted(() => ({ fail: false, goalFails: false, holdout: "ok" as "ok" | "none" | "ratifyFails", createGate: null as Promise<void> | null, goalGate: null as Promise<void> | null }));
 const look = {
   id: "C4",
   title: "The checkout page still looks right",
@@ -81,8 +81,16 @@ vi.mock("../../lib/api", async () => {
         return { id: "G-0100" };
       },
       sandboxPosture: () => invoke("sandbox_posture"),
-      generateHoldoutDrafts: (projectId: string, intent: string) => invoke("generate_holdout_drafts", { projectId, intent }),
-      ratifyHoldoutDraft: (projectId: string, filename: string, code: string) => invoke("ratify_holdout_draft", { projectId, filename, code }),
+      generateHoldoutDrafts: async (projectId: string, intent: string) => {
+        await invoke("generate_holdout_drafts", { projectId, intent });
+        if (draft.holdout === "none") throw "the project is gone";
+        return [{ id: "d1", filename: "holdout/total.test.js", rationale: "The total with a discount", code: "test('total', () => {});" }];
+      },
+      ratifyHoldoutDraft: async (projectId: string, filename: string, code: string) => {
+        await invoke("ratify_holdout_draft", { projectId, filename, code });
+        if (draft.holdout === "ratifyFails") throw "holdout/ is read-only";
+        return filename;
+      },
       deleteAttachment: (goalId: string, attachmentId: string) => invoke("delete_attachment", { goalId, attachmentId }),
       saveAttachment: async (goalId: string, name: string) => {
         await invoke("save_attachment", { goalId, name });
@@ -211,6 +219,37 @@ describe("the contract studio", () => {
     fireEvent.click(ratifyBtns[0]);
     await waitFor(() => expect(screen.getByText(/You ratified · hidden/)).toBeTruthy());
     expect(invoked.filter((x) => x.cmd === "ratify_holdout_draft").length).toBe(before + 1);
+  });
+});
+
+describe("synthetic holdout drafts", () => {
+  it("shows no draft when none came back, never a stand-in to ratify", async () => {
+    draft.holdout = "none";
+    try {
+      render(() => <ContractEditor projectId="p1" />);
+      fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
+      await waitFor(() => expect(screen.getByText(/No drafts came back/)).toBeTruthy());
+      expect(screen.queryByRole("button", { name: /Ratify into holdout\// })).toBeNull();
+    } finally {
+      draft.holdout = "ok";
+    }
+  });
+
+  it("does not stamp a draft ratified when writing it failed", async () => {
+    const { toast } = await import("../../lib/store");
+    draft.holdout = "ratifyFails";
+    try {
+      render(() => <ContractEditor projectId="p1" />);
+      fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
+      const btn = await waitFor(() => screen.getByRole("button", { name: /Ratify into holdout\// }));
+      fireEvent.click(btn);
+      await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith("error", expect.stringContaining("read-only")));
+      expect(screen.queryByText(/You ratified · hidden/)).toBeNull();
+      expect(vi.mocked(toast)).not.toHaveBeenCalledWith("success", expect.anything());
+      expect(screen.getByRole("button", { name: /Ratify into holdout\// })).toBeTruthy();
+    } finally {
+      draft.holdout = "ok";
+    }
   });
 });
 

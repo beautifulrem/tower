@@ -185,6 +185,9 @@ export async function openTower(
               return ++seq;
             case "plugin:dialog|ask":
               return true;
+            case "plugin:dialog|message":
+              // `ask` and `confirm` come here: unanswered (no) unless a test says yes (`__towerAsk = true`).
+              return (window as any).__towerAsk ? (a.buttons?.OkCancelCustom?.[0] ?? "Yes") : null;
             default:
               if (cmd.startsWith("plugin:menu|")) {
                 // Kept by label so a test can pick a native menu item (`__towerMenu["Edit this file"].onmessage()`).

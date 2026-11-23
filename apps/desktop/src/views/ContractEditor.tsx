@@ -6,7 +6,7 @@
  *   04 Engine, escalation & sandbox (trust tier, escalation_model, sandbox_tier, autonomy)
  *   05 Budget & dependencies (caps, wall clock, rework limit, depends_on picker)
  */
-import { For, Show, Suspense, createEffect, createMemo, createResource, createSignal, on, onMount } from "solid-js";
+import { For, Show, Suspense, createEffect, createMemo, createResource, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
 import { createStore, produce, unwrap } from "solid-js/store";
 
 import { Icon, LifecycleGlyph } from "../components/Glyph";
@@ -20,7 +20,8 @@ import { api } from "../lib/api";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { effectiveEngine, engineLabel, modelsFor } from "../lib/labels";
-import { back, go } from "../lib/nav";
+import { ask } from "../lib/native";
+import { back, go, guardLeave } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 import { engineOptions, thinkingOptions } from "./Settings";
 import { HoldoutDrafts } from "./goal/HoldoutDrafts";
@@ -87,6 +88,11 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const [loadFailed, setLoadFailed] = createSignal<unknown>(null);
   // Nor is it while it is still being read: until then the skeleton stands in, and nothing saves.
   const [ready, setReady] = createSignal(!editingId);
+  // The contract as it was read (or first drawn): leaving with anything else asks first. A save leaves without asking.
+  let base: string | null = null;
+  let saved = false;
+  const now = () => untrack(() => JSON.stringify([title(), projectId(), c]));
+  onCleanup(guardLeave(() => saved || base === null || now() === base || ask(t("contract.leaveConfirm"), { ok: t("contract.discard"), cancel: t("contract.keepEditing"), kind: "warning" })));
   const load = async () => {
     setLoadFailed(null);
     const d = await api.goal(editingId!).catch((e) => (setLoadFailed(e ?? "error"), null));
@@ -95,6 +101,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
     setProjectId(d.summary.project_id);
     setC({ ...structuredClone(d.contract), escalation_model: d.contract.escalation_model ?? "", escalation_after_reworks: d.contract.escalation_after_reworks ?? 2, attachments: d.contract.attachments ?? [], sandbox_tier: d.contract.sandbox_tier ?? "default", depends_on: d.contract.depends_on ?? [] });
     setReady(true);
+    base = now();
   };
   onMount(async () => {
     setTimeout(() => (loaded = true), 300);
@@ -105,6 +112,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       sessionStorage.removeItem("tower.draftIntent");
       setC(blankContract(intent, project?.test_command ?? null));
       setTitle(intent.slice(0, 48));
+      base = now();
     }
   });
 
@@ -147,15 +155,16 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
     setBusy(true);
     try {
       if (props.amendId) {
-        if ((await act(() => api.amendContract(props.amendId!, contract), t("contract.amended"))) !== undefined) back();
+        if ((await act(() => api.amendContract(props.amendId!, contract), t("contract.amended"))) !== undefined) (saved = true), back();
       } else if (props.draftId) {
         // A draft that failed to save must not be ratified as its old version, nor left behind with your edits.
         if (!(await act(async () => (await api.updateDraft(props.draftId!, title(), contract), true)))) return;
+        saved = true;
         if (ratify) await act(() => api.ratify(props.draftId!), t("contract.ratified"));
         go({ name: "goal", id: props.draftId });
       } else {
         const g = await act(() => api.createGoal({ project_id: projectId(), title: title().trim() || contract.intent.slice(0, 48), contract, ratify }));
-        if (g) go({ name: "goal", id: g.id });
+        if (g) (saved = true), go({ name: "goal", id: g.id });
       }
     } finally {
       setBusy(false);

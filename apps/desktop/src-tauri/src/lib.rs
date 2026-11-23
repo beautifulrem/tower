@@ -171,8 +171,8 @@ fn open_workspace(sup: Sup<'_>, id: String, target: OpenTarget) -> Res<()> {
 }
 
 #[tauri::command]
-fn remove_project(sup: Sup<'_>, id: String) -> Res<()> {
-    sup.remove_project(&id)
+async fn remove_project(sup: Sup<'_>, id: String) -> Res<()> {
+    sup.remove_project(&id).await
 }
 
 #[tauri::command]

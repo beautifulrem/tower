@@ -402,8 +402,13 @@ async fn removing_a_project_removes_its_goals_folders() {
     let root = ws.parent().and_then(Path::parent).unwrap().to_path_buf();
     std::fs::create_dir_all(root.join("goals").join(&id).join("attachments")).unwrap();
     std::fs::create_dir_all(root.join("sessions").join(&id)).unwrap();
+    // Go's module cache leaves its folders read-only: they go too.
+    let go_mod = root.join("goals").join(&id).join("cache/go/pkg/mod/example.com/m@v1");
+    std::fs::create_dir_all(&go_mod).unwrap();
+    std::fs::write(go_mod.join("go.mod"), "module m\n").unwrap();
+    std::fs::set_permissions(&go_mod, std::os::unix::fs::PermissionsExt::from_mode(0o555)).unwrap();
     assert!(ws.exists());
-    h.sup.remove_project(&g.summary.project_id).unwrap();
+    h.sup.remove_project(&g.summary.project_id).await.unwrap();
     for left in [ws, root.join("goals").join(&id), root.join("sessions").join(&id), root.join("tmp").join(&id)] {
         assert!(!left.exists(), "{} is removed", left.display());
     }

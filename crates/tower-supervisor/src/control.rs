@@ -61,7 +61,7 @@ fn record_pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &st
 /// the card it raises, in one store transaction: a transition the
 /// lifecycle refuses leaves the cards and the mode as they were, and no one
 /// (the interface, the phone page) sees half of it.
-fn settle(
+pub(crate) fn settle(
     inner: &Inner,
     goal: &str,
     withdraw: &[(&[InboxKind], String)],

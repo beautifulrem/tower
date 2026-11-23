@@ -232,6 +232,18 @@ describe("Learning console (Memory Ratification + Calibration Scoreboard)", () =
   });
 });
 
+describe("Learning console counts", () => {
+  it("say one model as one, and the pending count as a phrase", async () => {
+    apiMock.calibrationRows.mockResolvedValueOnce([mockCalibration[0]]);
+    const { container } = render(() => <Learning />);
+    await screen.findByText("claude-sonnet-4");
+    const head = container.querySelector(".calibration-sec .console-sec-head")!;
+    expect(head.textContent).toContain("1 model");
+    expect(head.textContent).not.toContain("1 models");
+    expect(container.querySelector(".console-sec-head")!.textContent).toContain("2 pending");
+  });
+});
+
 describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () => {
   beforeEach(() => vi.clearAllMocks());
 

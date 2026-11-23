@@ -38,7 +38,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
       <div class="row">
         <span class="unit-claim-tag">┆ Draft claim · inactive until you ratify</span>
         <span class="grow" />
-        <Button size="s" variant="ghost" onClick={() => void load()}>Regenerate</Button>
+        <Button size="s" variant="ghost" onClick={() => void load()}>{t("contract.regenerate")}</Button>
         <button type="button" class="icon-btn" aria-label={t("common.close")} onClick={props.onClose}>×</button>
       </div>
       <For each={drafts()}>

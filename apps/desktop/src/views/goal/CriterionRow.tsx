@@ -105,7 +105,7 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
       </div>
 
       <Show when={pills().length}>
-        <div class="ev-strip" aria-label="Verification bench evidence">
+        <div class="ev-strip" aria-label={t("goal.evidence")}>
           <For each={pills()}>{([tone, label, title]) => <span class={`ev-pill ev-pill-${tone}`} data-mark={tone} title={title}>{label}</span>}</For>
         </div>
       </Show>

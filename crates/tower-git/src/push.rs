@@ -77,6 +77,11 @@ impl Git {
         if status.success() {
             return Ok(());
         }
+        // What it left running (a lingering ssh) may still hold the error
+        // output open: stop it, so reading the error ends with git.
+        if let Ok(pid) = i32::try_from(child.id()) {
+            let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
+        }
         Err(GitError::Failed { args: args.join(" "), stderr: stderr.join().unwrap_or_default().trim().to_string() })
     }
 }
@@ -100,6 +105,12 @@ case "$*" in
   *core.sshCommand*) [ -n "$SSH_CONFIG" ] && { echo "$SSH_CONFIG"; exit 0; }; exit 1 ;;
   *push*)
     printf '%s' "$GIT_SSH_COMMAND" > "$OUT/ssh"
+    if [ -n "$LINGER" ]; then
+      sleep 20 &
+      echo $! > "$OUT/pid"
+      echo "rejected: non-fast-forward" >&2
+      exit 1
+    fi
     [ -n "$HANG" ] || exit 0
     sleep 20 &
     echo $! > "$OUT/pid"
@@ -135,6 +146,27 @@ esac
         assert!(!alive(pid), "what the push started is stopped too");
         let ssh = std::fs::read_to_string(tmp.path().join("ssh")).unwrap();
         assert!(ssh.contains("BatchMode=yes") && ssh.contains("ConnectTimeout="), "{ssh}");
+    }
+
+    /// A push that fails while something it started still holds its error
+    /// output (a lingering ssh) reports the error at once and stops it.
+    #[test]
+    fn a_failed_push_reports_its_error_though_a_child_keeps_the_pipe_open() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().display().to_string();
+        let env = vec![("PATH".into(), "/usr/bin:/bin".into()), ("OUT".into(), out), ("LINGER".into(), "1".into())];
+        let git = Git::new(fake_git(tmp.path()), env);
+
+        let started = Instant::now();
+        let err = git.push_branch_within(tmp.path(), "tower/x", Duration::from_secs(60)).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+        assert!(err.to_string().contains("non-fast-forward"), "{err}");
+        let pid: i32 = std::fs::read_to_string(tmp.path().join("pid")).unwrap().trim().parse().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while alive(pid) && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        assert!(!alive(pid), "what the push left running is stopped");
     }
 
     #[test]

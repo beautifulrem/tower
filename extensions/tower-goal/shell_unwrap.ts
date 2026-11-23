@@ -45,31 +45,40 @@ export function isEnvAssignmentWord(t: WordToken): EnvAssignment | null {
  */
 interface Wrapper {
 	values?: string[];
+	/** Options known to take nothing: only an option the table does not know is also read as taking a value. */
+	flags?: string[];
 	operands?: number;
 	scripts?: string[];
 	assigns?: boolean;
 }
 const WRAPPERS: Record<string, Wrapper> = {
-	env: { values: ["-u", "-C", "-P", "-a", "--unset", "--chdir", "--argv0"], scripts: ["-S", "--split-string"], assigns: true },
+	env: {
+		values: ["-u", "-C", "-P", "-a", "--unset", "--chdir", "--argv0"], scripts: ["-S", "--split-string"], assigns: true,
+		flags: ["-i", "-0", "-v", "--ignore-environment", "--null", "--debug"],
+	},
 	builtin: {},
 	nohup: {},
 	setsid: {},
 	busybox: {},
 	unbuffer: {},
-	time: { values: ["-f", "-o", "--format", "--output"] },
+	time: { values: ["-f", "-o", "--format", "--output"], flags: ["-p", "-v", "-a", "-q", "-l", "--portability", "--verbose", "--append", "--quiet"] },
 	exec: { values: ["-a"] },
 	nice: { values: ["-n", "--adjustment"] },
-	timeout: { values: ["-k", "-s", "--kill-after", "--signal"], operands: 1 },
+	timeout: { values: ["-k", "-s", "--kill-after", "--signal"], operands: 1, flags: ["-v", "-f", "-p", "--verbose", "--foreground", "--preserve-status"] },
 	xargs: {
 		values: ["-n", "-I", "-J", "-L", "-P", "-R", "-S", "-d", "-E", "-s", "-a", "--max-args", "--max-lines", "--max-procs",
 			"--delimiter", "--max-chars", "--arg-file", "--process-slot-var"],
+		flags: ["-0", "-r", "-t", "-p", "-x", "-o", "--null", "--no-run-if-empty", "--verbose", "--interactive", "--exit", "--open-tty"],
 	},
 	stdbuf: { values: ["-i", "-o", "-e", "--input", "--output", "--error"] },
 	ionice: { values: ["-c", "-n", "-p", "-P", "-u", "--class", "--classdata", "--pid", "--pgid", "--uid"] },
 	chrt: { values: ["-T", "-P", "-D", "--sched-runtime", "--sched-period", "--sched-deadline"], operands: 1 },
 	taskset: { operands: 1 },
-	caffeinate: { values: ["-t", "-w"] },
-	flock: { values: ["-w", "-E", "--timeout", "--wait", "--conflict-exit-code"], operands: 1, scripts: ["-c", "--command"] },
+	caffeinate: { values: ["-t", "-w"], flags: ["-d", "-i", "-m", "-s", "-u"] },
+	flock: {
+		values: ["-w", "-E", "--timeout", "--wait", "--conflict-exit-code"], operands: 1, scripts: ["-c", "--command"],
+		flags: ["-s", "-x", "-e", "-u", "-n", "-o", "-F", "--shared", "--exclusive", "--unlock", "--nonblock", "--close", "--no-fork"],
+	},
 	chroot: { values: ["--userspec", "--groups"], operands: 1 },
 	unshare: { values: ["-S", "-G", "-R", "-w", "--setuid", "--setgid", "--root", "--wd"] },
 	arch: { values: ["-e", "-arch"] },
@@ -142,8 +151,8 @@ function readOption(words: WordToken[], k: number, takes: string[]): Option {
 
 /**
  * Where the options and operands of the wrapper `base` may end, from `k`:
- * as read, and again for each unknown long option taking the next word as
- * its value.
+ * as read, and again for each unknown option taking the next word as its
+ * value, and each known short value option taken as a plain flag.
  */
 function wrapperEnds(words: WordToken[], k: number, base: string, operands: number, out: Set<number>): void {
 	const w = WRAPPERS[base];
@@ -159,7 +168,11 @@ function wrapperEnds(words: WordToken[], k: number, base: string, operands: numb
 			continue;
 		}
 		const opt = readOption(words, k, takes);
-		if (!opt.flag && v.startsWith("--") && !v.includes("=")) wrapperEnds(words, k + 2, base, operands, out);
+		// The table cannot know every build's options: an unknown one may take the next word, and a known value
+		// option may be a plain flag elsewhere (BSD `script -F` against util-linux `script -F FILE`).
+		const known = v.startsWith("--") ? w.flags?.includes(v) : [...v.slice(1)].every((c) => w.flags?.includes(`-${c}`));
+		if (!opt.flag && !v.includes("=") && !known) wrapperEnds(words, k + 2, base, operands, out);
+		else if (opt.flag && opt.next === k + 2 && !v.startsWith("--")) wrapperEnds(words, k + 1, base, operands, out);
 		k = opt.next;
 	}
 	out.add(k);

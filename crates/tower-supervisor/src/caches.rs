@@ -55,13 +55,11 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
 
 /// `~/.cargo/config.toml` without what authenticates: registry tokens, keys,
 /// credential providers and aliases, and passwords in URLs (a proxy's).
-/// Mirrors and build settings stay. A line filter, conservative: a line it
-/// cannot place is dropped rather than copied, when it names a credential.
+/// Mirrors and build settings stay; `[env]` does not, in any spelling. A line
+/// filter, conservative: a line it cannot place is dropped rather than copied,
+/// when it names a credential.
 fn without_credentials(config: &str) -> String {
     const NAMES: &[&str] = &["token", "secret", "password", "credential"];
-    // In `[env]` the names are variables (`OPENAI_API_KEY`, `DEPLOY_AUTH`): wider there, and only there, where a
-    // `[patch]` entry named `keyring` or an alias named `keygen` is not a secret.
-    const ENV_NAMES: &[&str] = &["key", "auth", "private"];
     let mut out = String::new();
     let mut table = String::new();
     let mut skip_until: Option<&str> = None;
@@ -73,22 +71,25 @@ fn without_credentials(config: &str) -> String {
             continue;
         }
         let trimmed = line.trim_start();
-        if trimmed.starts_with('[') && !trimmed.contains('=') {
-            // `[env] # build vars`, `[[bin]]`: the name, without brackets or a comment after them.
-            table = trimmed.trim_start_matches('[').split(']').next().unwrap_or("").trim().to_ascii_lowercase();
+        // A header: `[` first, and its `]` before any `=` (`[env] # RUST_LOG=debug` is still one).
+        let header =
+            trimmed.starts_with('[') && trimmed.find(']').is_some_and(|c| trimmed.find('=').is_none_or(|e| c < e));
+        if header {
+            // `[env]`, `[ "env" ]`, `[[bin]]`: the dotted name, unquoted and unspaced, without what follows `]`.
+            table = dotted(trimmed.trim_start_matches('[').split(']').next().unwrap_or(""));
         } else if let Some((key, value)) = trimmed.split_once('=') {
-            let key = key.trim().to_ascii_lowercase();
+            let key = dotted(key);
             let value = value.trim();
             let names_secret = |s: &str| NAMES.iter().any(|n| s.contains(n));
             let inline_secret = value.starts_with('{') && names_secret(&value.to_ascii_lowercase());
-            // `[env]`, a top-level `env.NAME = …`, or `env = { NAME = … }`.
-            let in_env = table == "env" || (table.is_empty() && (key == "env" || key.starts_with("env.")));
-            let env_names = |s: &str| ENV_NAMES.iter().any(|n| s.contains(n));
-            let env_secret =
-                in_env && (env_names(&key) || (value.starts_with('{') && env_names(&value.to_ascii_lowercase())));
+            // `[env]` holds variables a build may read (`OPENAI_API_KEY`, `DEPLOY_AUTH`, any name at all): none of it
+            // reaches the agent, in any of its spellings (`[env.NAME]`, a top-level `env.NAME` or `env = {…}`).
+            let in_env = table == "env"
+                || table.starts_with("env.")
+                || (table.is_empty() && (key == "env" || key.starts_with("env.")));
             if table.starts_with("credential-alias")
                 || names_secret(&key)
-                || env_secret
+                || in_env
                 || inline_secret
                 || url_has_password(value)
             {
@@ -108,6 +109,11 @@ fn without_credentials(config: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+/// A TOML key or table name as one lowercase dotted path: `"env" . X` is `env.x`.
+fn dotted(name: &str) -> String {
+    name.split('.').map(|part| part.trim().trim_matches(['"', '\'']).to_ascii_lowercase()).collect::<Vec<_>>().join(".")
 }
 
 /// A URL with credentials in it: `user:password@`, or any user name on an
@@ -315,6 +321,8 @@ mod tests {
             // `[env]` variables too (not one valid file with `[env]` below; the filter never parses the whole).
             r#"env.TOP_API_KEY = "envkey0009"
 env = { DEPLOY_AUTH = "envauth0010" }
+"env".QUOTED_API_KEY = "envkey0011"
+env . SPACED_API_KEY = "envkey0012"
 
 [source.crates-io]
 replace-with = "mirror"
@@ -344,11 +352,17 @@ proxy = "http://ada:proxypass0005@proxy.example.com:8080"
 jobs = 4
 registries.other.token = "dottedtoken0006"
 
-[env] # build vars
+[env] # e.g. RUST_LOG=debug
 OPENAI_API_KEY = "sk-envkey0007"
 DEPLOY_AUTH = "envauth0008"
 RUST_LOG = "info"
 AUTHOR = "Ada"
+
+[env.GITHUB_TOKEN]
+value = "ghp_envtable0013"
+
+["env"]
+SOME_SETTING = "envquoted0014"
 
 [patch.crates-io]
 oauth2 = { path = "../oauth2" }
@@ -363,17 +377,32 @@ keygen = "run --bin keygen"
 
         let cache = prepare(&tmp.path().join("cache"), &home, &repo).unwrap();
         let copied = std::fs::read_to_string(cache.join("cargo/config.toml")).unwrap();
-        for secret in
-            ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "cargo:macos-keychain"]
-        {
+        for secret in [
+            "0001",
+            "0002",
+            "0003",
+            "0004",
+            "0005",
+            "0006",
+            "0007",
+            "0008",
+            "0009",
+            "0010",
+            "0011",
+            "0012",
+            "0013",
+            "0014",
+            "cargo:macos-keychain",
+        ] {
             assert!(!copied.contains(secret), "{secret} left in:\n{copied}");
         }
+        // Nothing of `[env]` goes, secret or not: a filter that guesses at names has missed spellings before.
+        assert!(!copied.contains("RUST_LOG = "), "{copied}");
         for kept in [
             "replace-with = \"mirror\"",
             "sparse+https://mirror.example.com/index/",
             "jobs = 4",
             "[registries.corp]",
-            "RUST_LOG = \"info\"",
             "oauth2 = { path",
             "keyring = { path",
             "authorname/serde",

@@ -59,3 +59,15 @@ test("opened on a goal (a notification), the first frame is the goal: the board 
   await page.keyboard.press("w");
   await expect(page.getByRole("button", { name: /Trace/, pressed: true })).toBeVisible();
 });
+
+test.describe("before the app's code runs", () => {
+  test.use({ colorScheme: "dark" });
+  test("the window already wears the saved theme and size: a light-theme user never sees a dark first frame", async ({ page }) => {
+    await page.addInitScript(() => (localStorage.setItem("tower.theme", "light"), localStorage.setItem("tower.size", "large")));
+    // Only the page itself: the bundle that would apply the theme never arrives.
+    await page.route(/\/src\/main\.tsx/, (r) => r.abort());
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("html")).toHaveAttribute("data-size", "large");
+  });
+});

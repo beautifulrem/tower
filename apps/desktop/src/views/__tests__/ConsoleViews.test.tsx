@@ -279,20 +279,20 @@ describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () =>
     await screen.findByText("Nightly dependency audit");
     let open!: () => void;
     apiMock.runScheduledGoalNow.mockImplementationOnce(() => new Promise((r) => (open = () => r({}))));
-    const run = screen.getByRole("button", { name: "Run" });
+    const run = screen.getByRole("button", { name: "Run" }) as HTMLButtonElement;
     fireEvent.click(run);
     fireEvent.click(run);
     open();
-    await new Promise((r) => setTimeout(r, 5));
+    await vi.waitFor(() => expect(run.disabled).toBe(false));
     expect(apiMock.runScheduledGoalNow).toHaveBeenCalledTimes(1);
     vi.mocked(ask).mockResolvedValueOnce(false);
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    await new Promise((r) => setTimeout(r, 5));
-    expect(ask).toHaveBeenCalledTimes(1);
+    const del = screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement;
+    fireEvent.click(del);
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(del.disabled).toBe(false));
     expect(apiMock.deleteScheduledGoal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    await new Promise((r) => setTimeout(r, 5));
-    expect(apiMock.deleteScheduledGoal).toHaveBeenCalledWith("sc-1");
+    fireEvent.click(del);
+    await vi.waitFor(() => expect(apiMock.deleteScheduledGoal).toHaveBeenCalledWith("sc-1"));
   });
 
   it("says a schedule's cron is in UTC, as the supervisor reads it, and when it next runs with the day", async () => {

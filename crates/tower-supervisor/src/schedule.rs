@@ -341,18 +341,29 @@ pub(crate) mod tests {
         std::fs::create_dir_all(&repo).unwrap();
         std::fs::write(repo.join("README.md"), "hello\n").unwrap();
         tower_git::Git::default().init_with_commit(&repo, "init").unwrap();
-        let ext = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal");
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // A ratified goal starts a run: on the scripted engine, never a real one.
+        let env = crate::shell_env::ShellEnv::from_pairs([
+            ("PATH".to_string(), std::env::var("PATH").unwrap()),
+            ("HOME".to_string(), home.display().to_string()),
+            ("PI_FAKE_SCENARIO".to_string(), "pass".to_string()),
+        ]);
         let sup = Supervisor::start(
             crate::Config {
                 paths: crate::Paths::new(tmp.path().join("tower-home")),
-                extension_source: ext,
-                env: Some(crate::shell_env::ShellEnv::from_pairs(std::env::vars())),
+                extension_source: manifest.join("../../extensions/tower-goal"),
+                env: Some(env),
                 demo_engine: None,
             },
             Arc::new(crate::NullSink),
         )
         .await
         .unwrap();
+        let fake = manifest.join("tests/fixtures/fake_pi.py").display().to_string();
+        sup.save_settings(tower_core::view::Settings { pi_path: fake, language: "en".into(), ..Default::default() })
+            .unwrap();
         let p = sup.add_project(repo.to_str().unwrap()).await.unwrap();
         (sup, p.id)
     }

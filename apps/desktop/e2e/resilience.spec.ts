@@ -53,6 +53,14 @@ test("a live update keeps your place on the board: the row you are on stays focu
   await expect.poll(() => page.evaluate(() => document.activeElement === (window as any).__was && document.activeElement?.isConnected)).toBe(true);
 });
 
+test("the review of a goal that no longer exists says so and offers the overview, not a Retry that cannot work", async ({ page }) => {
+  await openTower(page, "review/G-9999");
+  await expect(page.getByText("G-9999 was not found")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open overview" }).click();
+  await expect(page.locator(".view .overview")).toBeVisible();
+});
+
 test("acting on a console row reloads its list in place: no page spinner, and the control you used keeps its focus", async ({ page }) => {
   await openTower(page, "operations", {
     enrich: (F) => {

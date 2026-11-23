@@ -114,6 +114,8 @@ export async function openTower(
             case "snoozed_inbox":
               return F.snoozed ?? [];
             case "goal":
+              // As the store answers for an id it has no row for.
+              if (!F[`goal-${a.id}`]) throw `not found: goal ${a.id}`;
               return F[`goal-${a.id}`];
             case "trace":
               return F[`trace-${a.id}`] ?? [];

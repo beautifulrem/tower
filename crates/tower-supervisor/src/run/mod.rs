@@ -438,6 +438,8 @@ async fn start_run_inner(
     if only_if_ready && goal.state != LifecycleState::Ready {
         return Ok(());
     }
+    // The state this start began from; see `begin`.
+    let seen = goal.state;
 
     if goal.workspace.is_none() {
         inner.set_mode(goal_id, Mode::Starting)?;
@@ -517,14 +519,8 @@ async fn start_run_inner(
         }
         None => None,
     };
-    if goal.state != LifecycleState::Running {
-        inner.transition(goal_id, Transition::RunStarted, None, purpose)?;
-    }
-    inner.append(goal_id, EventKind::RunStarted { run_no, purpose: purpose.into(), start_pin: start_pin.clone() })?;
-    inner.set_mode(goal_id, Mode::Starting)?;
-
     let mut initial_flags = Flags::default();
-    initial_flags.probe.last_progress_pin = start_pin.or_else(|| goal.pin.clone());
+    initial_flags.probe.last_progress_pin = start_pin.clone().or_else(|| goal.pin.clone());
 
     let run = Arc::new(Run {
         goal_id: goal_id.into(),
@@ -534,7 +530,20 @@ async fn start_run_inner(
         workspace: real(&ws).display().to_string(),
         flags: Mutex::new(initial_flags),
     });
-    inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal_id.into(), run.clone());
+    if !begin(inner, &run, seen, purpose)? {
+        // Nothing reads this engine yet (its events stay in `rx`).
+        run.engine.shutdown(Duration::from_secs(5)).await;
+        inner.set_mode(goal_id, Mode::Idle)?;
+        let text = tr!(
+            lang,
+            "启动期间目标被暂停或放弃，这次运行没有开始",
+            "The goal was paused or abandoned while it was starting, so the run did not start"
+        );
+        inner.append(goal_id, EventKind::Note { text })?;
+        return Ok(());
+    }
+    inner.append(goal_id, EventKind::RunStarted { run_no, purpose: purpose.into(), start_pin })?;
+    inner.set_mode(goal_id, Mode::Starting)?;
     inner.update_keep_awake();
     // The criteria on your own code, while the agent starts (once; see
     // `verify::preflight`).
@@ -558,6 +567,34 @@ async fn start_run_inner(
     }
     inner.set_mode(goal_id, Mode::Thinking)?;
     Ok(())
+}
+
+/// Makes `run` the goal's live run, if the goal is still in the state its
+/// start began from. Preparing and setting up a workspace can take minutes;
+/// a goal you paused or abandoned meanwhile must not start. The check, the
+/// transition and the insert happen under the store's lock, so a pause or
+/// abandon lands either before (the start gives up) or after (it finds the
+/// run and stops it).
+fn begin(inner: &Arc<Inner>, run: &Arc<Run>, seen: LifecycleState, purpose: &str) -> Result<bool> {
+    let goal = run.goal_id.as_str();
+    let began = inner.store(|s| {
+        if s.goal(goal)?.state != seen {
+            return Ok(None);
+        }
+        let entry = match seen {
+            LifecycleState::Running => None,
+            _ => Some(s.transition(goal, Transition::RunStarted, None, purpose)?),
+        };
+        inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.into(), run.clone());
+        Ok(Some(entry))
+    })?;
+    let Some(entry) = began else { return Ok(false) };
+    if let Some(entry) = entry {
+        inner.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
+        inner.flush_traces();
+        inner.emit_goal_now(goal);
+    }
+    Ok(true)
 }
 
 /// Copies the project's git-ignored local files (e.g. `.env`) into `dest`.

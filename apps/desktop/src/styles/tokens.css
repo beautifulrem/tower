@@ -42,6 +42,9 @@
   --radius-s: 4px; /* badges, chips */
   --radius-m: 6px; /* buttons, inputs, cards, decision cards, diff frames */
   --radius-l: 10px; /* floating layers only: palette, menus, toasts */
+  /* Concentric corners: what sits inside a rounded layer is rounded by the layer's radius minus its inset, so the two
+     curves share a centre. A floating layer (10) holds its rows (6) at this inset. */
+  --float-inset: 4px;
 
   /* Component constants */
   --sidebar-w: 232px;
@@ -112,7 +115,6 @@
   /* Precision flight-deck instrument surfaces (Warm Carbon): micro-stepped lightness without glass blur. */
   --bg-strip: oklch(0.194 0.005 70);
   --bg-well: oklch(0.148 0.004 70);
-  --bg-drawer: oklch(0.198 0.005 70);
   /* Page-level text fields; fields inside raised cards use --bg-app instead,
      so an input never reads as a hole in the card. */
   --bg-field: oklch(0.170 0.004 70);
@@ -135,11 +137,12 @@
   --prov-human-edge: var(--text-1);
   --prov-human-bg: oklch(0.210 0.005 70);
 
-  /* Contrast on --bg-app (0.180): text-1 ≈ 16:1, text-2 ≈ 12:1, text-3 ≈ 7.6:1, text-4 ≈ 5.2:1. */
+  /* Contrast on --bg-app (0.180): text-1 ≈ 16:1, text-2 ≈ 12:1, text-3 ≈ 7.6:1, text-4 ≈ 5.5:1. Each holds 4.5:1 on
+     every surface it can sit on, the selected row (0.265) included: text-4 there is 4.6:1. */
   --text-1: oklch(0.945 0.003 70);
   --text-2: oklch(0.860 0.005 70);
   --text-3: oklch(0.720 0.006 70);
-  --text-4: oklch(0.620 0.006 70);
+  --text-4: oklch(0.645 0.006 70);
 
   /* No accent hue: selection and focus are carried by lightness. */
   --focus: oklch(0.945 0.003 70 / 0.70);
@@ -168,6 +171,17 @@
   --diff-del-word: oklch(0.750 0.150 25 / 0.26);
 
   --shadow-overlay: 0 16px 48px oklch(0 0 0 / 0.45), 0 0 0 1px var(--border);
+  /* Floating material: the layers that float over content (the palette, the peek drawer, popovers, toasts) let what
+     is under them show through, blurred, so you keep your place. Tuned per theme: on Warm Carbon the surface stays
+     dark enough for text-2 and the top edge catches a faint light; sheets you read in stay opaque. The veil is thick
+     (HIG's thick material): blur does the softening, and where a renderer has none the layer still reads. */
+  --material-float: oklch(0.225 0.005 70 / 0.86);
+  --material-filter: blur(24px) saturate(1.5);
+  --material-edge: inset 0 0.5px 0 oklch(1 0 0 / 0.07);
+  /* Scrims dim what a layer covers: a sheet asks for the room, the peek drawer only leans over the board. */
+  --scrim: oklch(0.08 0.004 70 / 0.40);
+  --scrim-soft: oklch(0.08 0.004 70 / 0.22);
+  --shadow-drawer: -12px 0 36px oklch(0 0 0 / 0.40);
 
   /* Syntax: low chroma, hues kept away from the five status colours. */
   --code-foreground: var(--text-1);
@@ -195,7 +209,6 @@
   /* Precision flight-deck instrument surfaces (Warm Parchment). */
   --bg-strip: oklch(0.985 0.004 82);
   --bg-well: oklch(0.954 0.005 80);
-  --bg-drawer: oklch(0.996 0.002 82);
   --bg-field: oklch(1 0 0);
   --border-subtle: oklch(0.20 0.01 70 / 0.08);
   --border: oklch(0.20 0.01 70 / 0.14);
@@ -215,13 +228,14 @@
   --prov-human-edge: var(--text-1);
   --prov-human-bg: oklch(0.974 0.006 82);
 
-  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.2:1,
-     text-4 ≈ 4.6:1 (AA), so a line number or an empty segment drawn in it
-     is still legible; it is never used for a run of text. */
+  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.6:1,
+     text-4 ≈ 5.0:1 (AA), so a line number or an empty segment drawn in it
+     is still legible; it is never used for a run of text. Both hold 4.5:1 on the
+     darkest light surface they meet, the selected row (0.940): 4.8:1 and 4.5:1. */
   --text-1: oklch(0.230 0.006 70);
   --text-2: oklch(0.430 0.006 70);
-  --text-3: oklch(0.530 0.006 70);
-  --text-4: oklch(0.555 0.005 70);
+  --text-3: oklch(0.510 0.006 70);
+  --text-4: oklch(0.525 0.005 70);
 
   --focus: oklch(0.230 0.006 70 / 0.65);
   --select-edge: oklch(0.20 0.01 70 / 0.30);
@@ -249,6 +263,13 @@
   --diff-del-word: oklch(0.540 0.190 25 / 0.20);
 
   --shadow-overlay: 0 16px 48px oklch(0.2 0.01 70 / 0.18), 0 0 0 1px var(--border);
+  /* Warm Parchment: a lighter veil (paper over paper reads through less), a white top edge, warm-tinted shade. */
+  --material-float: oklch(0.995 0.002 82 / 0.84);
+  --material-filter: blur(24px) saturate(1.8);
+  --material-edge: inset 0 0.5px 0 oklch(1 0 0 / 0.9);
+  --scrim: oklch(0.25 0.01 70 / 0.18);
+  --scrim-soft: oklch(0.25 0.01 70 / 0.10);
+  --shadow-drawer: -12px 0 36px oklch(0.2 0.01 70 / 0.12);
 
   --code-foreground: var(--text-1);
   --code-background: transparent;

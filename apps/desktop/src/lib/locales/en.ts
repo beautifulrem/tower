@@ -18,6 +18,7 @@ export const en: DictNow = {
     files: (p) => `${p.n} ${plural(p.n, "file", "files")}`,
     open: "Open",
     retry: "Retry",
+    loadFailed: "Couldn't load this",
     notice: "Notice",
     problem: "Problem",
     copied: "Copied",

@@ -70,6 +70,10 @@ export function Overview() {
     }
     return ORDER.filter((k) => by.has(k)).map((k) => ({ key: k, goals: by.get(k)! }));
   });
+  // The groups are rendered by key: a regroup builds new group objects, and rendering those would rebuild every row,
+  // dropping the focus of the row you are on whenever any goal changes group.
+  const groupKeys = createMemo(() => groups().map((g) => g.key));
+  const goalsIn = (k: Group) => groups().find((g) => g.key === k)?.goals ?? [];
   const flat = createMemo<Item[]>(() => [
     ...decisions().map<Item>((item) => ({ kind: "decision", id: item.id, item })),
     ...groups().flatMap((g) => g.goals.map<Item>((goal) => ({ kind: "goal", id: goal.id, goal }))),
@@ -223,18 +227,18 @@ export function Overview() {
               </div>
             </section>
           </Show>
-          <For each={groups()}>
-            {(grp, i) => (
+          <For each={groupKeys()}>
+            {(key, i) => (
               <section class="board-group">
                 <h2 class="scale-title halt">
-                  {groupLabel(grp.key)}
-                  <span class="num">{grp.goals.length}</span>
+                  {groupLabel(key)}
+                  <span class="num">{goalsIn(key).length}</span>
                 </h2>
                 <Show when={i() === 0}>
                   <BoardCols class="flight-strip-head" />
                 </Show>
                 <div class="board-rows" role="list">
-                  <For each={grp.goals}>
+                  <For each={goalsIn(key)}>
                     {(g) => (
                       <div role="listitem">
                         <GoalRow goal={g} selected={selected() === g.id} onSelect={() => setSelected(g.id)} onPeek={() => peekGoal(g.id)} />

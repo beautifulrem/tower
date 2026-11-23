@@ -289,18 +289,24 @@ export async function refreshProjects() {
 
 let subscribed: Promise<unknown> | null = null;
 
+/** What live updates set while the first snapshot was still loading: newer than the snapshot, so it must not overwrite them. */
+const fresh = { goals: new Set<string>(), inbox: false, projects: false };
+
 function subscribe() {
   if (subscribed) return subscribed;
   subscribed = onUpdate((u) => {
     switch (u.type) {
       case "goal":
+        fresh.goals.add(u.goal.id);
         setState("goals", u.goal.id, reconcile(u.goal));
         break;
       case "inbox":
+        fresh.inbox = true;
         setState("inbox", reconcile(dedupeInbox(u.items), { key: "id" }));
         setState("snoozed", reconcile(u.snoozed ?? [], { key: "id" }));
         break;
       case "projects":
+        fresh.projects = true;
         setState("projects", reconcile(u.projects, { key: "id" }));
         break;
       case "stream":
@@ -353,7 +359,10 @@ export function livenessOf(g: GoalSummary): { at: number; tool: Pulse["tool"] } 
 
 /** Loads the replica. Safe to call again after a failure (the Retry button). */
 export async function init() {
-  setState({ loadError: null });
+  // A retry starts from the boot screen, not from a shell with nothing in it (which would read as a first run).
+  setState({ loadError: null, loaded: false });
+  fresh.goals.clear();
+  fresh.inbox = fresh.projects = false;
   try {
     const sub = subscribe();
     const [goals, inbox, projects, snoozed, startup] = await Promise.all([
@@ -370,10 +379,14 @@ export async function init() {
     openStartupRoute(startup, false);
     setState(
       produce((s) => {
-        s.goals = Object.fromEntries(goals.map((g) => [g.id, g]));
-        s.inbox = dedupeInbox(inbox);
-        s.snoozed = snoozed;
-        s.projects = projects;
+        const live = s.goals;
+        s.goals = Object.fromEntries(goals.map((g) => [g.id, fresh.goals.has(g.id) ? live[g.id] : g]));
+        for (const id of fresh.goals) if (!s.goals[id] && live[id]) s.goals[id] = live[id];
+        if (!fresh.inbox) {
+          s.inbox = dedupeInbox(inbox);
+          s.snoozed = snoozed;
+        }
+        if (!fresh.projects) s.projects = projects;
         s.loaded = true;
       }),
     );

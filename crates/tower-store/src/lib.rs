@@ -40,6 +40,10 @@ pub enum StoreError {
     NotFound(String),
     #[error("{0}")]
     Conflict(String),
+    #[error(
+        "this database was written by a newer Tower (schema {found}; this Tower knows {known}): update Tower to open it"
+    )]
+    NewerDatabase { found: usize, known: usize },
 }
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;

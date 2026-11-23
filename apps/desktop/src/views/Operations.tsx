@@ -162,8 +162,8 @@ export function Operations() {
                 </td>
                 <td class="col-r">
                   <div class="row row-end">
-                    <SmBtn label="Up" onClick={() => moveQueue(entry, -1)}><Icon name="arrow-up" size={10} /></SmBtn>
-                    <SmBtn label="Down" onClick={() => moveQueue(entry, 1)}><Icon name="arrow-down" size={10} /></SmBtn>
+                    <SmBtn label={t("ops.moveUp")} onClick={() => moveQueue(entry, -1)}><Icon name="arrow-up" size={10} /></SmBtn>
+                    <SmBtn label={t("ops.moveDown")} onClick={() => moveQueue(entry, 1)}><Icon name="arrow-down" size={10} /></SmBtn>
                     <SmBtn variant="default" onClick={() => void run(() => api.reverifyMergeQueueEntry(entry.goal_id), rfQueue, t("goal.reverify"))}>{t("goal.reverify")}</SmBtn>
                     <SmBtn onClick={() => void run(() => api.removeFromMergeQueue(entry.goal_id), rfQueue)}>{t("common.remove")}</SmBtn>
                   </div>

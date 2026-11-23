@@ -396,9 +396,9 @@ test("a look thumbnail is as tall as its frame and no wider than its page; the v
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   // Four criteria with their output tails run past 80vh: the fade is on, and goes once the sheet is scrolled to its end.
-  await expect(dialog.locator(".panel-more")).toHaveClass(/on/);
+  await expect(dialog).toHaveAttribute("data-more", "");
   await dialog.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
-  await expect(dialog.locator(".panel-more")).not.toHaveClass(/on/);
+  await expect(dialog).not.toHaveAttribute("data-more");
 });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {

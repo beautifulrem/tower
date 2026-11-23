@@ -387,7 +387,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                     <div class="prov-head halt">
                       <span class="prov-badge">
                         <span class="claim-rule" aria-hidden="true">┆</span>
-                        {agentBlocked() ? t("decision.blockedClaim") : t("decision.holdoutDraftClaim")}
+                        <span>{agentBlocked() ? t("decision.blockedClaim") : t("decision.holdoutDraftClaim")}</span>
                       </span>
                     </div>
                     <div class="prov-body">

@@ -1,6 +1,6 @@
 /**
- * Space-key Quick Peek slide-over telemetry card (docs/19 §19.4):
- * L1 live action, L2 criteria + sentinels + latest claim, L3 budget & next step.
+ * Space-key Quick Peek slide-over instrument sheet (docs/19 §19.4):
+ * Live telemetry, dual-track criteria + sentinels + latest claim, budget & next step.
  */
 import { For, Show, createEffect, createResource, onCleanup, onMount } from "solid-js";
 
@@ -84,25 +84,26 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                   <button class="icon-btn peek-close" aria-label={t("common.close")} onClick={props.onClose}><Icon name="cross" size={12} /></button>
                 </div>
                 <h2 class="peek-title">{s().title}</h2>
-                <div class="row halt">
-                  <span class="meta t3">{engineLabel(engine())}</span>
-                  <TrustPill tier={tier()} label={t(`trust.${tier()}`)} />
-                  <span class="posture-pill num" hidden={!s().port_base && s().sandbox_tier !== "micro_vm"}>
-                    {[s().sandbox_tier === "micro_vm" ? "MicroVM" : "", s().port_base ? `:${s().port_base}` : ""].filter(Boolean).join(" ")}
+                <div class="peek-meta meta halt">
+                  <span class="meta-inline">
+                    <span class="t2">{engineLabel(engine())}</span>
+                    <TrustPill tier={tier()} label={t(`trust.${tier()}`)} />
+                    <span class="t2" hidden={s().sandbox_tier !== "micro_vm"}>MicroVM</span>
+                    <span class="code-val t2" hidden={!s().port_base}>:{s().port_base}</span>
                   </span>
                   <span class="grow" />
-                  <span class="meta num t3">{ago(s().updated_at, state.now)}</span>
+                  <span class="num t3">{ago(s().updated_at, state.now)}</span>
                 </div>
               </header>
 
               <div class="peek-body">
                 <section class="peek-band">
-                  <div class="peek-band-head halt"><span>{t("peek.l1")}</span><span class="peek-level">L1</span></div>
+                  <h3 class="peek-band-head halt">{t("peek.l1")}</h3>
                   <LiveLine goal={s() as GoalSummary} large />
-                  <div class="row meta halt">
-                    <span class="num">{t("goal.runN", { n: Math.max(1, s().run_no) })}</span>
+                  <div class="meta-inline meta halt">
+                    <span class="num t2">{t("goal.runN", { n: Math.max(1, s().run_no) })}</span>
                     <span class="t3 num" hidden={!s().rework_cycles}>{t("card.rework", { n: s().rework_cycles, max: s().max_rework })}</span>
-                    <span class="posture-pill" hidden={!detail()?.escalated_model}>{detail()?.escalated_model}</span>
+                    <code class="code-val t2" hidden={!detail()?.escalated_model}>{detail()?.escalated_model}</code>
                   </div>
                   <Show when={s().overlaps?.length}>
                     <div class="row meta t1"><NoticeMark /><span>{t("goal.overlaps", { id: s().overlaps.map((o) => o.goal_id).join(", ") })}</span></div>
@@ -110,7 +111,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                 </section>
 
                 <section class="peek-band">
-                  <div class="peek-band-head halt"><span>{t("peek.l2")}</span><span class="peek-level">L2</span></div>
+                  <h3 class="peek-band-head halt">{t("peek.l2")}</h3>
                   <CriteriaBar progress={s().progress} criteria={detail()?.criteria} compact />
                   <div class="peek-crit-list" hidden={!detail()?.criteria?.length}>
                     <For each={detail()?.criteria ?? []}>
@@ -143,7 +144,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                 </section>
 
                 <section class="peek-band">
-                  <div class="peek-band-head halt"><span>{t("peek.l3")}</span><span class="peek-level">L3</span></div>
+                  <h3 class="peek-band-head halt">{t("peek.l3")}</h3>
                   <div class="budget">
                     <div class="budget-bar">
                       <div class="budget-fill" classList={{ some: s().cost_usd > 0, over: s().cost_usd >= s().budget.soft_usd }} style={{ width: `${pct(s().cost_usd, s().budget.hard_usd)}%` }} />

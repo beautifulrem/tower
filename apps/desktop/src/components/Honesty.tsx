@@ -17,6 +17,7 @@ import { Icon, NeedsYouMark, NoticeMark, ResultMark } from "./Glyph";
 
 // What the first paint draws lives in HonestyCore (the desk loads it at start-up); re-exported so views take the grammar from one place.
 export { Claim, CriteriaBar, discountedOf } from "./HonestyCore";
+export { ProvenanceFrame, type ProvenanceKind } from "./ProvenanceFrame";
 
 /** Shared criterion-subrow layout: empty mark + id columns, content spanning under the title. */
 function ObsRow(props: { cls?: string; spanCls?: string; spanList?: Record<string, boolean>; canary?: string; title?: string; children: JSX.Element }) {

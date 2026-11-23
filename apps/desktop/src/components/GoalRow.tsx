@@ -122,7 +122,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
           )}
         </Show>
         <Show when={g().overlaps?.length}>
-          <span class="overlap-pill" title={g().overlaps.map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n")}>
+          <span class="g-overlap" title={g().overlaps.map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n")}>
             <NoticeMark title={t("goal.overlaps", { id: g().overlaps[0].goal_id })} />
             <span class="code-val">{g().overlaps[0].goal_id}</span>
             <Show when={g().overlaps.length > 1}>+{g().overlaps.length - 1}</Show>

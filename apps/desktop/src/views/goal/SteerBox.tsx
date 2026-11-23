@@ -127,14 +127,14 @@ export function SteerBox(props: { id: string; running: boolean; files?: string[]
       onDrop={(e) => (e.preventDefault(), setDrag(false), void addImgs(extractImages(e.dataTransfer)))}
     >
       <div class="steer-bar">
-        <span class="steer-title">Steering directive</span>
-        <div class="steer-mode" role="tablist" aria-label="Delivery timing">
-          <button type="button" class="tab" role="tab" aria-selected={mode() === "now"} classList={{ active: mode() === "now" }} disabled={!props.running} onClick={() => setMode("now")}>Steer now</button>
-          <button type="button" class="tab" role="tab" aria-selected={mode() === "queue"} classList={{ active: mode() === "queue" }} onClick={() => setMode("queue")}>Queue for next turn</button>
+        <span class="steer-title">{t("goal.steerTitle")}</span>
+        <div class="steer-mode" role="tablist" aria-label={t("goal.steerNow")}>
+          <button type="button" class="tab" role="tab" aria-selected={mode() === "now"} classList={{ active: mode() === "now" }} disabled={!props.running} onClick={() => setMode("now")}>{t("goal.steerNow")}</button>
+          <button type="button" class="tab" role="tab" aria-selected={mode() === "queue"} classList={{ active: mode() === "queue" }} onClick={() => setMode("queue")}>{t("goal.steerNext")}</button>
         </div>
         <span class="grow" />
         <input ref={fileIn} type="file" accept="image/*" multiple hidden onChange={(e) => (e.currentTarget.files?.length && void addImgs(Array.from(e.currentTarget.files)), (e.currentTarget.value = ""))} />
-        <button type="button" class="link-quiet text-btn meta" onClick={() => fileIn.click()}><Icon name="plus" size={10} /> Attach</button>
+        <button type="button" class="link-quiet text-btn meta" onClick={() => fileIn.click()}><Icon name="plus" size={10} /> {t("goal.attach")}</button>
       </div>
       <AttachChips items={atts()} onRemove={(a) => (setAtts((p) => p.filter((x) => x.id !== a.id)), void api.deleteAttachment(props.id, a.id).catch(() => {}))} />
       <div class="steer-input-wrap">
@@ -148,7 +148,7 @@ export function SteerBox(props: { id: string; running: boolean; files?: string[]
         <textarea
           ref={ta}
           rows={1}
-          aria-label="Steering directive"
+          aria-label={t("goal.steerTitle")}
           placeholder={mode() === "queue" ? t("goal.steerPaused") : t("goal.steerRunning")}
           value={text()}
           onFocus={ensureFiles}
@@ -176,7 +176,7 @@ export function SteerBox(props: { id: string; running: boolean; files?: string[]
         />
         <Show when={receipt()}><span class="meta saved-stamp" role="status">{receipt()}</span></Show>
         <Button size="s" disabled={!text().trim() && !atts().length} onClick={() => void send()} kbd={mode() === "queue" ? "alt+mod+enter" : "mod+enter"}>
-          {mode() === "queue" ? "Queue" : t("common.send")}
+          {mode() === "queue" ? t("goal.steerQueueBtn") : t("common.send")}
         </Button>
       </div>
     </div>

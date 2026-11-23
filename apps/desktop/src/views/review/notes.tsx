@@ -21,7 +21,7 @@ export interface ReviewNote {
   sentinel?: boolean;
 }
 
-/** Dashed Claim card for a review unit's agent-claimed rationale alongside solid risk badges. */
+/** Hanging-gutter Claim row for a review unit's agent-claimed rationale alongside inline risk notes. */
 export function UnitNarrative(props: { claim?: string | null; riskReasons?: string[]; highSentinels?: string[] }) {
   const badges = () => [
     ...(props.highSentinels ?? []).map((s) => ({ cls: "risk-badge risk-badge-danger", text: s })),
@@ -30,17 +30,16 @@ export function UnitNarrative(props: { claim?: string | null; riskReasons?: stri
   return (
     <Show when={props.claim}>
       <div class="unit-narrative prov-frame prov-claim">
-        <div class="unit-narrative-head">
-          <span class="unit-claim-tag">┆ Agent claims why</span>
-          <span class="sr-only">{t("honesty.srClaim")}</span>
-          <Show when={badges().length}>
-            <span class="grow" />
-            <div class="unit-risk-badges">
-              <For each={badges()}>{(b) => <span class={b.cls}>{b.text}</span>}</For>
-            </div>
-          </Show>
-        </div>
+        <span class="unit-claim-tag halt">
+          <span class="claim-rule" aria-hidden="true">┆</span> {t("review.agentWhy")}
+          <span class="sr-only"> {t("honesty.srClaim")}</span>
+        </span>
         <p class="unit-narrative-text">{props.claim}</p>
+        <Show when={badges().length}>
+          <div class="unit-risk-badges">
+            <For each={badges()}>{(b) => <span class={b.cls}>{b.text}</span>}</For>
+          </div>
+        </Show>
       </div>
     </Show>
   );

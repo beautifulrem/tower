@@ -34,7 +34,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
   };
 
   return (
-    <div class="holdout-panel" role="region" aria-label="Synthetic holdout drafts">
+    <div class="holdout-panel" role="region" aria-label={t("contract.synthHoldout")}>
       <div class="row">
         <span class="unit-claim-tag">┆ Draft claim · inactive until you ratify</span>
         <span class="grow" />

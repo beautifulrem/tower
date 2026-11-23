@@ -144,8 +144,8 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                   </div>
                   <Show when={c.verified?.flaky || errs().length > 0}>
                     <div class="ev-strip">
-                      <Show when={c.verified?.flaky}><span class="ev-pill ev-pill-obs" data-mark="obs">Flaky · 1× rerun passed</span></Show>
-                      <Show when={errs().length > 0}><span class="ev-pill ev-pill-danger" data-mark="danger" title={errs().join("\n")}>Console errors: {errs().length}</span></Show>
+                      <Show when={c.verified?.flaky}><span class="ev-pill ev-pill-obs">{t("goal.evFlaky")}</span></Show>
+                      <Show when={errs().length > 0}><span class="ev-pill ev-pill-danger" title={errs().join("\n")}>{t("look.consoleErrors", { n: errs().length })}</span></Show>
                     </div>
                   </Show>
                   <BaselineLine c={c} base={props.detail?.base_commit} />
@@ -309,13 +309,13 @@ export function AcceptPanel(props: AcceptPanelProps) {
             </span>
           </Show>
 
-          <div class="seal-checks" aria-label="Acceptance seal checks">
+          <div class="seal-checks" aria-label={t("review.acceptTitle", { id: props.id })}>
             <For
               each={[
-                [snapshotFresh() ? "ok" : "warn", snapshotFresh() ? "Snapshot fresh" : tampered().length ? "Seal withheld" : "Snapshot stale/unverified"],
-                [highSentinels().length ? "danger" : "ok", highSentinels().length ? `${highSentinels().length} high sentinel(s)` : "0 high sentinels"],
-                [unchecked() ? "warn" : "ok", unchecked() ? `${unchecked()} human check(s) left` : "Human checks clear"],
-                [overlaps().length ? "warn" : "ok", overlaps().length ? `Overlap: ${overlaps().map((o) => o.goal_id).join(", ")}` : "Merge prediction clear"],
+                [snapshotFresh() ? "ok" : "warn", t(snapshotFresh() ? "review.sealFresh" : tampered().length ? "review.sealWithheld" : "review.sealStale")],
+                [highSentinels().length ? "danger" : "ok", highSentinels().length ? t("review.sealSentinelsHit", { n: highSentinels().length }) : t("review.sealSentinelsOk")],
+                [unchecked() ? "warn" : "ok", unchecked() ? t("review.sealHumanLeft", { n: unchecked() }) : t("review.sealHumanOk")],
+                [overlaps().length ? "warn" : "ok", overlaps().length ? t("goal.overlaps", { id: overlaps().map((o) => o.goal_id).join(", ") }) : t("review.sealMergeOk")],
               ] as [string, string][]}
             >
               {([cls, text]) => <div class={`seal-check seal-check-${cls}`}>{text}</div>}

@@ -4,6 +4,8 @@ import { createSignal } from "solid-js";
 export type Route =
   | { name: "overview" }
   | { name: "inbox" }
+  | { name: "learning" }
+  | { name: "operations" }
   | { name: "goal"; id: string }
   | { name: "review"; id: string }
   | { name: "new"; projectId?: string; draftId?: string; amendId?: string }
@@ -43,7 +45,8 @@ function transition(from: Route, to: Route, apply: () => void) {
 function place(r: Route) {
   // Top-level destinations reset the stack; detail views push onto it.
   if (r.name === "overview") setStack([r]);
-  else if (r.name === "inbox" || r.name === "settings") setStack([{ name: "overview" }, r]);
+  else if (r.name === "inbox" || r.name === "learning" || r.name === "operations" || r.name === "settings")
+    setStack([{ name: "overview" }, r]);
   else setStack((s) => [...s, r].slice(-12));
 }
 

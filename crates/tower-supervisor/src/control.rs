@@ -32,7 +32,16 @@ pub fn pause_after_stop(inner: &Arc<Inner>, goal: &str, reason: PauseReason, det
     inner.transition(goal, Transition::Pause { reason }, None, &note)?;
     if reason.needs_human() {
         let rec = inner.store(|s| s.goal(goal))?;
-        inner.open_inbox(paused_item(&rec, reason, detail, lang, matches!(reason, PauseReason::IdleWithoutSubmit)))?;
+        inner.open_inbox(paused_item(
+            &rec,
+            reason,
+            detail,
+            lang,
+            matches!(reason, PauseReason::IdleWithoutSubmit | PauseReason::AgentReportedBlocked),
+        ))?;
+    }
+    if reason == PauseReason::AgentReportedBlocked {
+        let _ = crate::learning::record_calibration(inner, goal);
     }
     Ok(())
 }
@@ -53,8 +62,8 @@ pub fn paused_item(
         subject: why.into(),
         body: detail.into(),
         options: Choice::labels(&actions::pause_options(reason, rec), lang),
-        // A held-out failure is answered with a hint in your own words.
-        allow_text: allow_text || reason == PauseReason::HeldOutFailed,
+        // A held-out failure or blocked report is answered with a hint in your own words.
+        allow_text: allow_text || matches!(reason, PauseReason::HeldOutFailed | PauseReason::AgentReportedBlocked),
         urgency: 2,
         engine_ref: None,
     }
@@ -181,11 +190,20 @@ pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     );
     inner.set_mode(goal, Mode::Idle)?;
     inner.transition(goal, Transition::Abandon, None, "")?;
+    let _ = crate::ports_pool::release_for_root(&inner.paths.root, goal);
+    let _ = crate::learning::record_calibration(inner, goal);
     schedule(inner).await;
     Ok(())
 }
 
 pub async fn steer(inner: &Arc<Inner>, goal: &str, text: &str) -> Result<String> {
+    steer_with_queue(inner, goal, text, false).await
+}
+
+/// Sends a steering directive to a goal. When `queue` is `true`, queues the
+/// directive for the next turn (via `follow_up` when running) without
+/// interrupting an in-flight tool turn.
+pub async fn steer_with_queue(inner: &Arc<Inner>, goal: &str, text: &str, queue: bool) -> Result<String> {
     let text = text.trim();
     let lang = inner.lang();
     if text.is_empty() {
@@ -204,6 +222,11 @@ pub async fn steer(inner: &Arc<Inner>, goal: &str, text: &str) -> Result<String>
         );
         return Ok("queued_for_next_run".into());
     };
+    if queue {
+        inner.append(goal, EventKind::Injected { channel: "follow_up".into(), text: text.into() })?;
+        let resp = run.engine.follow_up(text).await.map_err(Error::from)?;
+        return Ok(resp.data.get("disposition").and_then(Value::as_str).unwrap_or("queued_for_next_turn").to_string());
+    }
     inner.append(goal, EventKind::Injected { channel: "steer".into(), text: text.into() })?;
     let resp = run.engine.steer(text).await.map_err(Error::from)?;
     Ok(resp.data.get("disposition").and_then(Value::as_str).unwrap_or("queued").to_string())

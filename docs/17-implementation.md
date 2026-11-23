@@ -7,11 +7,12 @@
 | 层 | 选择 | 理由 |
 |---|---|---|
 | 桌面外壳 | Tauri 2（Rust） | 安装包与内存比 Electron 小一个数量级；后端逻辑可以全部用 Rust 写 |
-| 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；启动时加载的 JS 约 51 KB（gzip，含一种界面语言的前一半；另一种只在切换时加载），目标页和只有后续视图才用的文字在首帧之后加载，评审、设置、合同编辑器、命令面板与原生菜单按需加载，语法高亮在 Worker 中；CI 检查各自的预算，另有目标页和全部界面 JS 合计的预算，把代码移出启动包也藏不住增长（`tools/bundle-budget.sh`：启动包 64 KB，目标页 12 KB，合计 160 KB；目前合计 142 KB、目标页 10 KB），远低于 `13` 的 250 KB 启动包预算 |
-| 状态 | SQLite（rusqlite，WAL） | 单文件、单写者；事件与投影在同一事务中写入 |
-| 视觉证据 | `look` 标准：验证器先确认端口空闲（被占则以环境问题暂停，写明是哪个程序），再在沙箱中启动应用，等本机地址可访问、并确认回应它的监听都在这次验证自己的沙箱里之后，用本机的 Chromium 类浏览器无头截图，基线与 Agent 快照各一张，评审时由你判断。浏览器在默认拒绝的配置下运行，只能访问应用自己的进程在监听的端口 | 需要 Chrome、Chromium、Edge、Brave 或 Arc；只截本机地址 |
-| 引擎 | Pi，RPC 模式 | 每个运行中的 Goal 一个 `pi --mode rpc` 子进程，严格按 LF 分帧 |
-| 沙箱 | macOS Seatbelt（`sandbox-exec`），默认拒绝 | Agent 的 bash、`read`/`edit`/`write` 与验证器命令都在 Tower 为每个 Goal 生成的配置下运行 |
+| 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；启动时加载的 JS 约 52 KB（gzip，含一种界面语言的前一半；另一种只在切换时加载），目标页和只有后续视图才用的文字在首帧之后加载，评审、设置、学习、运维、合同编辑器、快速速览与命令面板按需加载，语法高亮在 Worker 中；CI 检查各自的预算，另有目标页和全部界面 JS 合计的预算，把代码移出启动包也藏不住增长（`tools/bundle-budget.sh`：启动包 64 KB，目标页 12 KB，合计 160 KB；目前合计 156 KB、目标页 12 KB），远低于 `13` 的 250 KB 启动包预算 |
+| 状态 | SQLite（rusqlite，WAL + 并发读池） | 单文件、单写者 + 只读连接池；事件与投影在同一事务中写入 |
+| AST 分析 | `crates/tower-ast`（tree-sitter） | 覆盖 Rust / JS / TS / Python / Bash：内联测试块识别、断言/特判/分支结构分析、评审语义移动块折叠 |
+| 视觉证据 | `look` 标准：验证器先确认端口空闲（被占则以环境问题暂停，写明是哪个程序），再在沙箱中启动应用，等本机地址可访问、并确认回应它的监听都在这次验证自己的沙箱里之后，用本机的 Chromium 类浏览器无头截图（桌面 + 窄屏视口并采集 CDP 控制台错误），基线与 Agent 快照各一张，评审时由你判断。浏览器在默认拒绝的配置下运行，只能访问应用自己的进程在监听的端口 | 需要 Chrome、Chromium、Edge、Brave 或 Arc；只截本机地址 |
+| 引擎 | Pi（RPC）与通用 ACP 引擎（Claude Code / Codex / Gemini CLI / OpenCode） | 每个运行中的 Goal 独立子进程，严格按 LF 分帧；显式 `EngineTrustLevel` 信任分级与默认拒绝门禁 |
+| 沙箱 | `SandboxBackend`：macOS Seatbelt（含 `(deny file-link)` 与持久化 FS 辅助进程）、Linux `bubblewrap` + Landlock + cgroups v2、可选 macOS 26+ Apple Containerization MicroVM | 默认拒绝；Agent 的 bash、文件读写与验证器命令均受每 Goal 独立策略约束 |
 | 字体 | Inter Variable、JetBrains Mono（随应用打包） | 与 `12` §12.3 一致；中文回落到系统字体 |
 
 ## 17.2 代码结构
@@ -19,20 +20,21 @@
 ```
 crates/tower-core        领域模型（纯逻辑，无 I/O）
   lifecycle.rs           生命周期状态机：唯一的转移函数 apply()
-  contract.rs            合同、校验（红灯提示）、范围围栏
+  contract.rs            合同、校验（红灯提示）、范围围栏、depends_on、模型升级与附件
   honesty.rs             诚实语法：Fact / Observation / Claim / Human，说法与事实的一致性判定
   event.rs               事件日志的词汇
   review.rs              评审单元：≤300 行、按风险排序
   briefing.rs            重入简报的取舍
   view.rs                给界面的读模型（ts-rs 导出 TypeScript 类型）
-crates/tower-store       单写者事件存储与投影
-crates/tower-pi          Pi RPC 适配器：分帧、命令与回应的关联、事件解析、关闭与进程组终止
-crates/tower-git         卫星克隆、内容寻址的快照、干净检出、封装分支、合入判定、diff 解析
+crates/tower-ast         tree-sitter AST 分析：多语言内联测试定位、断言/分支哨兵、语义移动块识别
+crates/tower-store       单写者 SQLite WAL 事件存储、并发读池与投影（含学习、定时、合并队列）
+crates/tower-pi          Pi RPC 适配器：分帧、命令与回应的关联、多模态图片附件、事件解析与进程组终止
+crates/tower-git         卫星克隆、内容寻址快照、时间线对比、干净检出、封装分支、合并队列预判
 crates/tower-verify      验收命令执行器：进程组、超时、取消、输出截尾与脱敏
-crates/tower-supervisor  Supervisor：把以上部分串成 Goal 的生命周期
-apps/desktop/src-tauri   Tauri 命令（一一对应 Supervisor 方法）与更新事件
-apps/desktop/src         界面：views/、components/、lib/（api、store、nav、keys）、styles/（令牌）
-extensions/tower-goal    Pi 扩展：三个工具、门禁、沙箱版 bash 与文件工具
+crates/tower-supervisor  Supervisor：生命周期、沙箱后端、常驻 FS 辅助、端口池、学习/定时/远程 SSE
+apps/desktop/src-tauri   Tauri 命令（一一对应 Supervisor 方法）、自动更新插件与更新事件
+apps/desktop/src         界面：反聊天控制台（views/、components/、lib/、styles/）
+extensions/tower-goal    Pi 与 ACP 扩展：三个工具、POSIX shell 策略门禁、常驻沙箱 FS 与 bash
 tools/demo-engine        不调用模型的脚本化 Pi，用来演示与测试
 ```
 
@@ -78,7 +80,7 @@ Agent 启动的进程活不过它的运行（`procs.rs`）：运行结束（提�
 | 设计 | 原型 | 原因 / 影响 |
 |---|---|---|
 | Electron + Pi SDK（进程内），RPC 属 M2 | Tauri + Pi RPC | 后端是 Rust。RPC 模式下 Pi 的扩展 UI 对话框可用，`ask_user` 与审批走这条路 |
-| `read`/`edit`/`write` 也在 S2 沙箱中执行（ADR-220） | 已实现：三个文件工具的每次读写都是 `sandbox-exec` 下的子进程（`extensions/tower-goal/sandboxfs.ts`），与 bash 同一份配置；门禁仍做范围检查以便给出可读的审批 | 每次文件操作多一个子进程（约 10 ms） |
+| `read`/`edit`/`write` 也在 S2 沙箱中执行（ADR-220） | 已实现：默认经单进程常驻的沙箱文件辅助进程（`--fs-helper` + `extensions/tower-goal/sandboxfs.ts`）通过 JSONL 管道复用同一 Seatbelt 实例，消除每次读写的子进程开销，失败时仍可回退单次沙箱调用 | 保留同等级隔离的同时把文件读写开销降至亚毫秒 |
 | 影子 ref、检查点、bundle 备份 | `refs/tower/pin` 加每次运行开始时的快照（`refs/tower/runs/<n>`），快照提交内容寻址 | 可以撤销单个改动块，或回到任一次运行开始时；没有 bundle 备份 |
 | 卫星分离 gitdir、git 垫片、`GIT_CEILING_DIRECTORIES` 等 | 普通克隆 + 沙箱中 `.git/config` 与钩子只读 + 钩子路径指向空目录 | 防住了最直接的“Agent 改 git 配置让 Tower 执行”路径，其余未实现 |
 | 用户扩展经静态清单确认 | 设置中一个开关，默认不加载 | 简化 |
@@ -87,12 +89,12 @@ Agent 启动的进程活不过它的运行（`procs.rs`）：运行结束（提�
 | 哨兵（S1、S5、测试被删等） | 已实现为对 base→pin 差异的文本规则（`tower-core/src/sentinel.rs`）：删测试、`.skip`/`.only`、断言减少、改测试命令或配置、改快照、越界写入；高严重度暂停 Goal 等你决定。涉及程序代码的两条规则按语言解析真正的导入和赋值目标（`roles.rs`），不做子串匹配：导入断言库或测试运行器是中等，改写断言入口、运行器全局或模块加载是高严重度 | 文本匹配只用来解释和排序；真正的把关是“只留源码”复跑、必败金丝雀、运行时的断言入口身份检查，以及测试把期望值写成输入关系式时的扰动复跑。特判哨兵按扰动结果定轻重，评审排序也按它的轻重 |
 | 网络 | 合同中的“允许联网”开关，默认关闭：不能访问本机以外；本机回环也默认拒绝，只放行合同“本机端口”里声明的端口，以及命令启动时它自己沙箱里的进程已在监听的端口（Agent 的配置每 2 秒按它自己的监听重写一次）。Seatbelt 一条规则只能写一个端口、没有范围，配置在进程启动时就固定，所以同一条命令里自己起、自己连、端口在运行时才挑的服务器（0 号端口、构建守护进程）也连不上；这类测试不必先暂停：预检（以及验证的基线一步）在基线提交、也就是你未改动的代码上运行标准时，如果唯一的障碍是回环被拒绝，这个需要来自你自己的测试，而不是 Agent。Tower 于是为这条标准的验证运行放开回环（除命令启动时已在监听的服务外都可访问），在轨迹和这条标准的行上记下（“已放开本机回环：你的测试在基线上就用到它”），并打开项目设置“为这个项目的测试放开本机回环”，同一项目之后的目标一开始就放开，Agent 自己的命令也一样；你可以在设置里关掉。合同里的“放开本机回环”效果相同。之后才启动的服务在放开时可达。只在 Agent 的快照上才出现的回环拒绝不算这种证据，照旧暂停。放开回环只改网络规则：断言入口身份检查、它的只读文件和只能追加的记录文件在每份验证配置里都一样。本机代理端口与 `*_proxy` 一律屏蔽。回环被拒绝的标准记为环境问题，卡片写明端口与出路。Agent 工作区的准备命令可联网；验证中只有基线（你的内容）上的准备命令联网，Agent 快照上的准备命令离线，失败时由你决定是否为这个快照联网 | 关闭时，需要下载新依赖的改动要你批准；用到本机数据库的测试要声明端口 |
 | 工具链解析 | Tower 读取你交互式登录 shell 的环境（nvm、fnm、mise 等常写在交互式启动文件里），并让沙箱能读版本管理器选择默认版本所需的文件：环境里点名的工具链目录（`RUSTUP_HOME`、`NVM_DIR`、`FNM_DIR`、`VOLTA_HOME`、`ASDF_DATA_DIR`、`MISE_DATA_DIR`、`DEVELOPER_DIR` 等，`CARGO_HOME` 只开 `bin`）、主目录里只写版本号的文件（`.tool-versions`、`.nvmrc` 等）、包管理器前缀下 rustup 的后备设置 `etc/rustup`（Homebrew 装的 rustup 把默认工具链记在这里）、不设环境变量时 mise 的全局配置。仍然解析不了时，预检卡按命令输出说出原因（rustup 默认工具链、Node 版本管理器的默认版本、开发者工具、登录 shell 的 PATH 里没有这个程序、回环端口被关），给出不需要改仓库的出路，读取时按界面语言生成（`tower-core/src/env_cause.rs`） | 原因来自命令输出，只用来解释；判定不变 |
-| 引擎 | Pi（RPC）；Claude Code 经 ACP 桥（`extensions/tower-goal/acp.ts`）：对外说 Pi 的 RPC 协议，对内驱动 `claude-agent-acp`；Claude Code 不启用任何内置工具、设置、钩子或用户 MCP，只有 Tower 的 MCP 服务器（沙箱版 read/edit/write/bash 与 ask_user/log/submit） | 设置中的默认引擎或合同中的 `engine`；Codex 尚未接入 |
+| 引擎 | Pi（RPC）；Claude Code / Codex / Gemini CLI / OpenCode 经通用 ACP 桥（`extensions/tower-goal/acp.ts` + `engines.ts`）：对外说 Pi 的 RPC 协议，对内驱动各引擎 ACP 适配器；按 `EngineTrustLevel` 显式区分 `FullS2` / `RestrictedS2` / `Experimental` 并在无安全工具门禁时默认拒绝 | 设置中的默认引擎或合同中的 `engine`；返工超阈值可自动升级模型 |
 | 工具集 | Pi 以 `--tools read,bash,edit,write,ask_user,log,submit --no-mcp --no-approve` 启动 | MCP 工具与仓库自带的 Pi 资源会在沙箱外运行，因此不启用 |
 
-## 17.5 未实现
+## 17.5 仍未实现
 
-塑形（Agent 起草合同）、检验检出、项目迁移与清除、学习闭环（项目记忆与个人记忆已实现，但不会自动学习）、合并队列（重叠雷达与验收时的冲突预判已实现）、依赖（Goal 之间）、`serve` 远程模式、多机、磁盘满处理、自适应自主度，以及第 99–112 轮围绕写回中断与可达性的全部机制。
+塑形（Agent 起草合同）、检验检出、项目迁移与清除、`serve` 独立远程模式、多机协同、自适应自主度，以及第 99–112 轮围绕写回中断与可达性的全部机制。（注：学习闭环含污染追踪批准队列与校准记分板、合并队列与冲突预判、跨 Goal `depends_on` 依赖、定时目标、磁盘产物清理与 Linux `bwrap`/Landlock 与 MicroVM 沙箱后端已在 2026-11 演进中实现，详见 `docs/18-evolution-roadmap.md`。）
 
 ## 17.6 已知问题
 

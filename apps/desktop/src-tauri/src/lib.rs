@@ -4,8 +4,10 @@
 //! a single `tower://update` event. The renderer holds no authoritative
 //! state (`ADR-005`).
 
+mod commands_ops;
 mod menu;
 mod notify;
+mod updater;
 
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -382,8 +384,8 @@ async fn abandon(sup: Sup<'_>, id: String) -> Res<()> {
 }
 
 #[tauri::command]
-async fn steer(sup: Sup<'_>, id: String, text: String) -> Res<String> {
-    sup.steer(&id, &text).await
+async fn steer(sup: Sup<'_>, id: String, text: String, queue: Option<bool>) -> Res<String> {
+    sup.steer_with_queue(&id, &text, queue.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -469,10 +471,14 @@ pub fn run() {
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
 
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_notification::init());
+    if updater::configured_pubkey().is_some() {
+        builder = builder.plugin(updater::init_plugin());
+    }
+    let app = builder
         .setup(|app| {
             let handle = app.handle().clone();
             let config = Config {
@@ -589,6 +595,35 @@ pub fn run() {
             push,
             open_workspace,
             open_file,
+            commands_ops::compare_snapshots,
+            commands_ops::list_snapshots,
+            commands_ops::save_attachment,
+            commands_ops::attachment_data_url,
+            commands_ops::delete_attachment,
+            commands_ops::workspace_files,
+            commands_ops::memory_proposals,
+            commands_ops::approve_proposal,
+            commands_ops::reject_proposal,
+            commands_ops::calibration_rows,
+            commands_ops::scheduled_goals,
+            commands_ops::create_scheduled_goal,
+            commands_ops::toggle_scheduled_goal,
+            commands_ops::delete_scheduled_goal,
+            commands_ops::run_scheduled_goal_now,
+            commands_ops::merge_queue,
+            commands_ops::enqueue_merge,
+            commands_ops::reorder_merge_queue,
+            commands_ops::remove_from_merge_queue,
+            commands_ops::check_merge_queue,
+            commands_ops::reverify_merge_queue_entry,
+            commands_ops::storage_inventory,
+            commands_ops::reclaim_storage,
+            commands_ops::engines,
+            commands_ops::sandbox_posture,
+            commands_ops::generate_holdout_drafts,
+            commands_ops::ratify_holdout_draft,
+            updater::check_for_updates,
+            updater::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Tower");
@@ -614,8 +649,12 @@ mod tests {
         let shell = include_str!("lib.rs");
         let start = shell.find("generate_handler![").expect("handler list");
         let list = &shell[start..start + shell[start..].find("])").expect("end of list")];
-        let registered: Vec<&str> =
-            list.trim_start_matches("generate_handler![").split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+        let registered: Vec<&str> = list
+            .trim_start_matches("generate_handler![")
+            .split(',')
+            .map(|s| s.trim().rsplit("::").next().unwrap_or(""))
+            .filter(|s| !s.is_empty())
+            .collect();
         let mut missing = Vec::new();
         for part in api.split("invoke<").skip(1) {
             let Some(name) = part.split("(\"").nth(1).and_then(|r| r.split('"').next()) else { continue };

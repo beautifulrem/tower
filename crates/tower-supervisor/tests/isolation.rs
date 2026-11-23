@@ -377,3 +377,83 @@ async fn a_loopback_need_that_appears_only_after_the_agents_change_still_pauses(
     assert_eq!(h.sup.goal(&id).unwrap().criteria[0].loopback_opened, None);
     assert!(!h.sup.projects().unwrap()[0].loopback_open, "the project's choice is left alone");
 }
+
+/// P0.2 Seatbelt hardening in a real goal run: the generated `agent.sb`
+/// profile denies writing `AGENTS*.md`, `CLAUDE.md`, `.pi/`, `.agents/` and
+/// denies hard-link creation (`file-link`) under real `sandbox-exec`.
+#[tokio::test(flavor = "multi_thread")]
+async fn agent_profile_blocks_prompt_poisoning_and_hard_links() {
+    if !sandbox() {
+        return;
+    }
+    let h = harness("pass").await;
+    commit(&h, "AGENTS.md", "human instructions\n");
+    commit(&h, "CLAUDE.md", "claude instructions\n");
+    let id = create(&h, contract()).await;
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+
+    let profile = h.root.join("tower/goals").join(&id).join("agent.sb");
+    let ws = h.root.join("tower/work").join(&id);
+    assert!(profile.is_file(), "agent.sb must exist");
+
+    let run = |cmd: &str| {
+        Command::new("/usr/bin/sandbox-exec")
+            .arg("-f")
+            .arg(&profile)
+            .args(["/bin/sh", "-c", cmd])
+            .current_dir(&ws)
+            .output()
+            .unwrap()
+            .status
+            .success()
+    };
+    assert!(run("cat AGENTS.md >/dev/null"), "reading AGENTS.md works");
+    assert!(!run("echo pwn > AGENTS.md"), "writing AGENTS.md is denied");
+    assert!(!run("echo pwn > agents.override.md"), "writing AGENTS*.md is denied");
+    assert!(!run("echo pwn > CLAUDE.md"), "writing CLAUDE.md is denied");
+    assert!(!run("mkdir -p .pi && echo pwn > .pi/settings.json"), "writing .pi/ is denied");
+    assert!(!run("mkdir -p .agents && echo pwn > .agents/rule.md"), "writing .agents/ is denied");
+    assert!(!run("ln done.txt done-hardlink.txt"), "hard-link creation is denied");
+    assert!(run("ln -s done.txt done-symlink.txt"), "symlinks inside workspace stay allowed");
+    assert_eq!(std::fs::read_to_string(ws.join("AGENTS.md")).unwrap(), "human instructions\n");
+}
+
+/// P1.3 dynamic port pool: two goals allocate non-overlapping 10-port blocks
+/// and each goal's generated `agent.sb` loopback allowlist opens its own block
+/// without opening the other goal's block.
+#[tokio::test(flavor = "multi_thread")]
+async fn parallel_goals_get_non_overlapping_port_blocks_in_seatbelt() {
+    if !sandbox() {
+        return;
+    }
+    let h = harness("pass").await;
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    let g1 = h
+        .sup
+        .create_goal(NewGoalInput { project_id: p.id.clone(), title: "g1".into(), contract: contract(), ratify: true })
+        .await
+        .unwrap()
+        .id;
+    let g2 = h
+        .sup
+        .create_goal(NewGoalInput { project_id: p.id, title: "g2".into(), contract: contract(), ratify: true })
+        .await
+        .unwrap()
+        .id;
+    wait_for(&h, &g1, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+    wait_for(&h, &g2, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
+
+    let tower_root = h.root.join("tower");
+    let a1 = tower_supervisor::ports_pool::get_for_root(&tower_root, &g1).expect("g1 port block");
+    let a2 = tower_supervisor::ports_pool::get_for_root(&tower_root, &g2).expect("g2 port block");
+    assert_eq!(a1.count, 10);
+    assert_eq!(a2.count, 10);
+    assert!(!a1.ports().iter().any(|port| a2.contains(*port)), "blocks must not overlap: {a1:?} vs {a2:?}");
+
+    let sb1 = std::fs::read_to_string(tower_root.join("goals").join(&g1).join("agent.sb")).unwrap();
+    let sb2 = std::fs::read_to_string(tower_root.join("goals").join(&g2).join("agent.sb")).unwrap();
+    assert!(sb1.contains(&format!("(remote ip \"localhost:{}\")", a1.base)), "g1 allows its own port base");
+    assert!(!sb1.contains(&format!("(remote ip \"localhost:{}\")", a2.base)), "g1 does not allow g2's port base");
+    assert!(sb2.contains(&format!("(remote ip \"localhost:{}\")", a2.base)), "g2 allows its own port base");
+    assert!(!sb2.contains(&format!("(remote ip \"localhost:{}\")", a1.base)), "g2 does not allow g1's port base");
+}

@@ -58,13 +58,16 @@ function ContractSkeleton() {
 // start-up stays small and they are local files, so the delay is not perceptible. The goal page is one click from
 // every first screen, so it is fetched as soon as the first frame is up rather than on that click.
 const GoalPage = lazy(withLater(() => import("./views/GoalPage").then((m) => ({ default: m.GoalPage }))));
-const Review = lazy(withLater(() => import("./views/Review").then((m) => ({ default: m.Review }))));
-const Settings = lazy(withLater(() => import("./views/Settings").then((m) => ({ default: m.Settings }))));
-const ContractEditor = lazy(withLater(() => import("./views/ContractEditor").then((m) => ({ default: m.ContractEditor }))));
+const loadConsole = () => import("./views/Learning");
+const Review = lazy(withLater(() => loadConsole().then((m) => ({ default: m.Review }))));
+const Settings = lazy(withLater(() => loadConsole().then((m) => ({ default: m.Settings }))));
+const Learning = lazy(withLater(() => loadConsole().then((m) => ({ default: m.Learning }))));
+const Operations = lazy(withLater(() => loadConsole().then((m) => ({ default: m.Operations }))));
+const ContractEditor = lazy(withLater(() => loadConsole().then((m) => ({ default: m.ContractEditor }))));
 // The floating layers too: each opens on a key or a click, so its code comes then. Their keys are bound here.
-const CommandPalette = lazy(withLater(() => import("./components/Palette").then((m) => ({ default: m.CommandPalette }))));
-const ShortcutSheet = lazy(withLater(() => import("./components/ShortcutSheet").then((m) => ({ default: m.ShortcutSheet }))));
-const ActivityPanel = lazy(withLater(() => import("./components/Activity").then((m) => ({ default: m.ActivityPanel }))));
+const CommandPalette = lazy(withLater(() => loadConsole().then((m) => ({ default: m.CommandPalette }))));
+const ShortcutSheet = lazy(withLater(() => loadConsole().then((m) => ({ default: m.ShortcutSheet }))));
+const ActivityPanel = lazy(withLater(() => loadConsole().then((m) => ({ default: m.ActivityPanel }))));
 
 /** The next item that needs you, cycling (Codex ⌘⌥A, Conductor ⌘⌥L). */
 function nextNeedsYou() {
@@ -88,6 +91,10 @@ function titleOf(): string {
       return t("app.overview");
     case "inbox":
       return t("common.needsYou");
+    case "learning":
+      return t("app.learning");
+    case "operations":
+      return t("app.operations");
     case "settings":
       return t("app.settings");
     case "new":
@@ -167,8 +174,8 @@ export function App() {
   const active = (on: boolean) => () => (document.documentElement.dataset.windowActive = on ? "true" : "false");
   const unlisten = Promise.all([listen("tauri://focus", active(true)), listen("tauri://blur", active(false))]);
   onCleanup(() => void unlisten.then((fs) => fs.forEach((f) => f())));
-  // Once the first frame is up: the goal page, and with it the words the on-demand views say.
-  onMount(() => requestAnimationFrame(() => setTimeout(() => void GoalPage.preload(), 0)));
+  // Once the first frame is up: the goal page, the command palette/console chunk, and the second half of the words.
+  onMount(() => requestAnimationFrame(() => setTimeout(() => void GoalPage.preload().then(() => CommandPalette.preload()), 0)));
   // And the colours of the reviews waiting for you, while the window idles.
   prewarmReviews();
 
@@ -195,6 +202,8 @@ export function App() {
       { key: "mod+alt+arrowdown", run: nextNeedsYou, inInputs: true },
       { key: "mod+1", run: () => go({ name: "overview" }), inInputs: true, desc: () => t("chrome.openOverview") },
       { key: "mod+2", run: () => go({ name: "inbox" }), inInputs: true, desc: () => t("chrome.openInbox") },
+      { key: "mod+3", run: () => go({ name: "learning" }), inInputs: true, desc: () => t("chrome.openLearning") },
+      { key: "mod+4", run: () => go({ name: "operations" }), inInputs: true, desc: () => t("chrome.openOperations") },
       { key: "mod+,", run: () => go({ name: "settings" }), inInputs: true, desc: () => t("chrome.openSettings") },
       { key: "escape", run: back, desc: () => t("keys.back"), hint: "escape / mod+[" },
       { key: "mod+[", run: back, inInputs: true },
@@ -221,6 +230,16 @@ export function App() {
                 </Match>
                 <Match when={route().name === "inbox"}>
                   <Inbox />
+                </Match>
+                <Match when={route().name === "learning"}>
+                  <Suspense fallback={<div class="page-loading"><Loading /></div>}>
+                    <Learning />
+                  </Suspense>
+                </Match>
+                <Match when={route().name === "operations"}>
+                  <Suspense fallback={<div class="page-loading"><Loading /></div>}>
+                    <Operations />
+                  </Suspense>
                 </Match>
                 <Match when={route().name === "settings"}>
                   <Settings />

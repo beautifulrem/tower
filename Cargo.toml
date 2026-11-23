@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/tower-core",
+    "crates/tower-ast",
     "crates/tower-store",
     "crates/tower-pi",
     "crates/tower-git",
@@ -19,6 +20,7 @@ repository = "https://github.com/beautifulrem/tower"
 
 [workspace.dependencies]
 tower-core = { path = "crates/tower-core" }
+tower-ast = { path = "crates/tower-ast" }
 tower-store = { path = "crates/tower-store" }
 tower-pi = { path = "crates/tower-pi" }
 tower-git = { path = "crates/tower-git" }

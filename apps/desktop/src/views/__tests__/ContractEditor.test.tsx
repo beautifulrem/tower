@@ -53,7 +53,7 @@ vi.mock("../../lib/store", async () => {
 });
 
 const validated: unknown[] = [];
-const draft = vi.hoisted(() => ({ fail: false, goalFails: false, createGate: null as Promise<void> | null }));
+const draft = vi.hoisted(() => ({ fail: false, goalFails: false, createGate: null as Promise<void> | null, goalGate: null as Promise<void> | null }));
 const look = {
   id: "C4",
   title: "The checkout page still looks right",
@@ -89,6 +89,7 @@ vi.mock("../../lib/api", async () => {
         return { id: "att_1", name, mime: "image/png", path: "att_1.png", size_bytes: 4, created_at: 1 };
       },
       goal: async () => {
+        await draft.goalGate;
         if (draft.goalFails) throw "the store is locked";
         return {
       summary: { title: "Fix the cart total", project_id: "p1" },
@@ -250,6 +251,25 @@ describe("saving", () => {
     await waitFor(() => expect(invoked.some((x) => x.cmd === "create_goal")).toBe(true));
     const sent = invoked.filter((x) => x.cmd === "create_goal").at(-1)!.args as { contract: { attachments: Array<{ path: string; preview?: string }> } };
     expect(sent.contract.attachments.map((a) => [a.path, a.preview])).toEqual([["att_1.png", undefined]]);
+  });
+
+  it("never saves a blank form over a draft still loading: the skeleton stands in until it is read", async () => {
+    const { invoked } = await import("../../test/setup");
+    let open!: () => void;
+    draft.goalGate = new Promise<void>((r) => (open = r));
+    const { container } = render(() => <ContractEditor draftId="G-0008" />);
+    const early = screen.queryByText("Save as draft");
+    if (early) fireEvent.click(early);
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+    await new Promise((r) => setTimeout(r, 0));
+    const saved = invoked.filter((x) => x.cmd === "update_draft" && (x.args as { id: string }).id === "G-0008");
+    const shown = [early === null, container.querySelector(".contract-skeleton") !== null];
+    open();
+    draft.goalGate = null;
+    expect(saved).toEqual([]);
+    expect(shown).toEqual([true, true]);
+    await screen.findByDisplayValue("Fix the cart total");
+    expect(container.querySelector(".contract-skeleton")).toBeNull();
   });
 
   it("never saves over a draft it could not read: the blank form is not your draft", async () => {

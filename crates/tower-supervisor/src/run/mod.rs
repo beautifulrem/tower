@@ -164,12 +164,21 @@ impl Run {
     }
 }
 
-/// Starts ready goals while slots are free, oldest first.
-pub async fn schedule(inner: &Arc<Inner>) {
+/// Starts ready goals while slots are free, oldest first. Each start runs
+/// on its own task (setting up a workspace can take minutes, and whoever
+/// asked to schedule should not wait for it); a goal being started holds
+/// its slot from now on.
+///
+/// Boxed because starts schedule again when they end without a run.
+pub fn schedule(inner: &Arc<Inner>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+    Box::pin(schedule_inner(inner))
+}
+
+async fn schedule_inner(inner: &Arc<Inner>) {
     let max = inner.settings().max_concurrent as usize;
     let ready = inner.store(|s| s.goals_in_state(LifecycleState::Ready)).unwrap_or_default();
     for g in ready {
-        if inner.running_count() >= max {
+        if inner.busy_count() >= max {
             break;
         }
         // Respect cross-goal dependencies (`Contract.depends_on`): wait until
@@ -216,9 +225,20 @@ pub async fn schedule(inner: &Arc<Inner>) {
         if !still_ready {
             continue;
         }
-        if let Err(e) = start_scheduled(inner, &g.id, purpose, message, images).await {
-            tracing::warn!(goal = %g.id, error = %e, "could not start run");
-        }
+        let Some(starting) = Starting::claim(inner, &g.id, Some(max)) else { continue };
+        let inner = inner.clone();
+        tokio::spawn(async move {
+            let id = g.id;
+            if let Err(e) = start_scheduled(&inner, &id, purpose, message, images, starting).await {
+                tracing::warn!(goal = %id, error = %e, "could not start run");
+            }
+            // A start that ended without a run (it failed and paused the goal,
+            // or you paused it meanwhile) frees its slot for the next goal.
+            let ready = inner.store(|s| s.goal(&id)).is_ok_and(|g| g.state == LifecycleState::Ready);
+            if inner.run_of(&id).is_none() && !ready {
+                schedule(&inner).await;
+            }
+        });
     }
 }
 
@@ -361,19 +381,27 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
 }
 
 /// Marks a goal as being started; released when dropped.
-struct Starting<'a> {
-    inner: &'a Inner,
+pub(crate) struct Starting {
+    inner: Arc<Inner>,
     goal: String,
 }
 
-impl<'a> Starting<'a> {
-    fn claim(inner: &'a Inner, goal: &str) -> Option<Self> {
-        let fresh = inner.starting.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.to_string());
-        fresh.then(|| Starting { inner, goal: goal.to_string() })
+impl Starting {
+    /// `None` when the goal is already being started, or with `max` when
+    /// that many goals already run or start.
+    fn claim(inner: &Arc<Inner>, goal: &str, max: Option<usize>) -> Option<Self> {
+        inner.claim_start(goal, max).then(|| Starting { inner: inner.clone(), goal: goal.to_string() })
+    }
+
+    fn claim_one(inner: &Arc<Inner>, goal: &str) -> Result<Self> {
+        // One start at a time per goal: preparing a workspace takes a while,
+        // and two callers (the scheduler and a human resume) must not both get through.
+        Self::claim(inner, goal, None)
+            .ok_or_else(|| invalid(tr!(inner.lang(), "这个目标正在启动", "This goal is already starting")))
     }
 }
 
-impl Drop for Starting<'_> {
+impl Drop for Starting {
     fn drop(&mut self) {
         self.inner.starting.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.goal);
     }
@@ -389,7 +417,10 @@ pub fn start_run<'a>(
     purpose: &'a str,
     message: String,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(start_run_inner(inner, goal_id, purpose, message, Vec::new(), false))
+    Box::pin(async move {
+        let starting = Starting::claim_one(inner, goal_id)?;
+        start_run_inner(inner, goal_id, purpose, message, Vec::new(), false, starting).await
+    })
 }
 
 /// Starts a run carrying multimodal image attachments alongside `message`.
@@ -401,7 +432,10 @@ pub fn start_run_with_images<'a>(
     message: String,
     images: Vec<ImageAttachment>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(start_run_inner(inner, goal_id, purpose, message, images, false))
+    Box::pin(async move {
+        let starting = Starting::claim_one(inner, goal_id)?;
+        start_run_inner(inner, goal_id, purpose, message, images, false, starting).await
+    })
 }
 
 fn start_scheduled<'a>(
@@ -410,8 +444,9 @@ fn start_scheduled<'a>(
     purpose: &'a str,
     message: String,
     images: Vec<ImageAttachment>,
+    starting: Starting,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(start_run_inner(inner, goal_id, purpose, message, images, true))
+    Box::pin(start_run_inner(inner, goal_id, purpose, message, images, true, starting))
 }
 
 /// `only_if_ready`: the scheduler's starts, which must not start a goal that
@@ -423,14 +458,9 @@ async fn start_run_inner(
     message: String,
     images: Vec<ImageAttachment>,
     only_if_ready: bool,
+    _starting: Starting,
 ) -> Result<()> {
     let lang = inner.lang();
-    // One start at a time per goal: preparing a workspace takes a while, and
-    // two callers (the scheduler and a human resume) must not both get through.
-    let _starting = match Starting::claim(inner, goal_id) {
-        Some(s) => s,
-        None => return Err(invalid(tr!(lang, "这个目标正在启动", "This goal is already starting"))),
-    };
     if inner.run_of(goal_id).is_some() {
         return Err(invalid(tr!(lang, "这个目标已经在运行", "This goal is already running")));
     }

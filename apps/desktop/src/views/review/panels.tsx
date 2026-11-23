@@ -433,8 +433,7 @@ export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: ()
     <Overlay onClose={props.onClose} label={t("review.requestChanges")} title={t("review.requestChanges")} instant>
       <div class="dispatch-head">
         <Icon name="return" size={12} />
-        <span class="t1">Steering dispatch tray</span>
-        <span class="num t3">{props.comments.length ? `${props.comments.length} anchored` : "0"}</span>
+        <span class="t2">{t("review.dispatchHead", { n: props.comments.length })}</span>
       </div>
       <textarea
         class="panel-text"

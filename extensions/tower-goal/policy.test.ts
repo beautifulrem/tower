@@ -181,6 +181,43 @@ test("here-documents, unparsable commands, git aliases, dynamic subcommands and 
 	assert.equal(p.hasFileWriteRedirection, true);
 });
 
+test("arithmetic shifts, here-documents something runs, and exported git config cannot hide one-way doors", () => {
+	const hidden = [
+		// `<<` in arithmetic is a shift, not a here-document: what follows runs.
+		"(( x = 1 << 2 ))\ngit push origin main\n2",
+		"echo $[1<<2]\ngit push origin main\n2]",
+		'echo "$(echo $((1<<2))\n)" ; git push origin main ; echo "\n2\n)"',
+		// A here-document fed to whatever can run it.
+		"{ bash; } <<'EOF'\ngit push origin main\nEOF",
+		"(bash) <<'EOF'\ngit push origin main\nEOF",
+		"source /dev/stdin <<'EOF'\ngit push origin main\nEOF",
+		". /dev/stdin <<'EOF'\ngit push origin main\nEOF",
+		"eval \"$(cat <<'EOF'\ngit push origin main\nEOF\n)\"",
+		"cat <<'EOF' > s.sh\ngit push origin main\nEOF\nbash s.sh",
+		// git configuration exported for a later command.
+		"export GIT_CONFIG_GLOBAL=/tmp/g; git p origin main",
+		"HOME=/tmp/h; git p origin main",
+	];
+	for (const mode of ["autonomous", "standard", "cautious"] as const) {
+		for (const cmd of hidden) {
+			assert.equal(checkBash(cmd, mode).action, "ask", `expected ask in ${mode}: ${JSON.stringify(cmd)}`);
+		}
+	}
+	const fine = [
+		"git commit -m \"$(cat <<'EOF'\nfix: don't (ever) break `this`\n\tindented\nEOF\n)\"",
+		"find . -name x -print",
+		"find . -name '*.ts' -exec grep -l x {} \\;",
+		'x=$(grep a <<< "$y"\necho b\n)',
+		"echo $((1 + 2))",
+		"export PATH=/usr/bin:$PATH; git status",
+	];
+	for (const mode of ["autonomous", "standard"] as const) {
+		for (const cmd of fine) {
+			assert.equal(checkBash(cmd, mode).action, "allow", `expected allow in ${mode}: ${JSON.stringify(cmd)}`);
+		}
+	}
+});
+
 test("cautious mode rejects hidden writes via redirections, substitutions, and inline scripts", () => {
 	const hiddenWrites = [
 		"echo x > foo.txt",

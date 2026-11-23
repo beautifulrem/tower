@@ -55,6 +55,12 @@ export interface ParsedShell {
 	hasFileWriteRedirection: boolean;
 	hasDynamicCommand: boolean;
 	hasInlineScript: boolean;
+	/** Here-document bodies and here-strings, at any depth. */
+	feeds: string[];
+	/** Something here can run text it is fed or computes (a shell, `source`, `.`, `eval`). */
+	runsText: boolean;
+	/** Variables assigned or set for a command (`X=1`, `X=1 cmd`, `env X=1 cmd`). */
+	assignments: string[];
 	parseError?: string;
 }
 
@@ -94,6 +100,8 @@ interface LexResult {
 
 const MAX_DEPTH = 6;
 const SHELL_RUNNERS = new Set(["sh", "bash", "zsh", "dash", "ksh", "ash", "fish"]);
+/** Builtins that run text as shell: their input or arguments. */
+const TEXT_RUNNERS = new Set(["source", ".", "eval"]);
 const INLINE_SCRIPT_FLAGS: Record<string, Set<string>> = {
 	python: new Set(["-c"]),
 	python2: new Set(["-c"]),
@@ -161,8 +169,22 @@ function decodeAnsiC(src: string, start: number): { text: string; next: number; 
 	return { text: out, next: i, error: "unclosed ANSI-C quote" };
 }
 
-/** Scans from the character AFTER `$(`, `<(`, or `>(` until the matching `)`. */
-function scanParenBody(src: string, start: number): { body: string; next: number; error?: string } {
+/** The end of `$[ … ]` (old arithmetic) starting at `start` (the `$`). */
+function scanDollarBracket(src: string, start: number): number {
+	let depth = 0;
+	for (let j = start + 1; j < src.length; j++) {
+		if (src[j] === "[") depth++;
+		else if (src[j] === "]" && --depth === 0) return j + 1;
+	}
+	return src.length;
+}
+
+/**
+ * Scans from the character AFTER `$(`, `<(`, or `>(` until the matching `)`.
+ * In arithmetic (`arith`) `<<` is a shift; with `refuseShift` (a bare `((`,
+ * which bash may also read as two subshells) one is refused instead.
+ */
+function scanParenBody(src: string, start: number, arith = false, refuseShift = false): { body: string; next: number; error?: string } {
 	let i = start;
 	let depth = 1;
 	// Here-documents inside: their bodies (from the next line to the
@@ -172,7 +194,22 @@ function scanParenBody(src: string, start: number): { body: string; next: number
 	while (i < src.length) {
 		const c = src[i];
 		if (c === "\\") { i += 2; continue; }
-		if (c === "<" && src[i + 1] === "<" && src[i + 2] !== "<") {
+		if (src.startsWith("<<<", i)) { i += 3; continue; }
+		if (arith && src.startsWith("<<", i)) {
+			if (refuseShift) return fail("`<<` inside `((`");
+			i += 2;
+			continue;
+		}
+		// Arithmetic inside: `<<` there is a shift, never a here-document.
+		if (src.startsWith("$((", i) || (c === "(" && src[i + 1] === "(" && src[i - 1] !== "$")) {
+			const bare = c === "(";
+			const inner = scanParenBody(src, bare ? i + 1 : i + 2, true, bare);
+			if (inner.error) return fail(inner.error);
+			i = inner.next;
+			continue;
+		}
+		if (src.startsWith("$[", i)) { i = scanDollarBracket(src, i); continue; }
+		if (c === "<" && src[i + 1] === "<") {
 			i += 2;
 			const stripTabs = src[i] === "-";
 			if (stripTabs) i++;
@@ -222,7 +259,7 @@ function scanParenBody(src: string, start: number): { body: string; next: number
 			while (i < src.length && src[i] !== '"') {
 				if (src[i] === "\\") i += 2;
 				else if (src[i] === "$" && src[i + 1] === "(") {
-					const inner = scanParenBody(src, i + 2);
+					const inner = scanParenBody(src, i + 2, src[i + 2] === "(");
 					if (inner.error) return { body: src.slice(start), next: src.length, error: inner.error };
 					i = inner.next;
 				} else if (src[i] === "`") {
@@ -294,7 +331,7 @@ function lex(src: string): LexResult {
 
 	const scanDollarParen = (pos: number): number => {
 		const isArith = src[pos + 2] === "(";
-		const res = scanParenBody(src, pos + 2);
+		const res = scanParenBody(src, pos + 2, isArith);
 		if (res.error) recordErr(res.error);
 		if (!isArith) substitutions.push(res.body);
 		return res.next;
@@ -359,6 +396,12 @@ function lex(src: string): LexResult {
 			continue;
 		}
 		const op = opAt(src, i);
+		// `((` is arithmetic, where `<<` is a shift; read on as before, but a
+		// shift there would be taken for a here-document: refuse it.
+		if (op === "(" && src[i + 1] === "(") {
+			const arith = scanParenBody(src, i + 1, true, true);
+			if (arith.error) recordErr(arith.error);
+		}
 		if (op) {
 			tokens.push({ kind: "op", op });
 			i += op.length;
@@ -444,6 +487,12 @@ function lex(src: string): LexResult {
 				}
 				if (i >= src.length) recordErr("unclosed double quote");
 				else i++;
+			} else if (ch === "$" && src[i + 1] === "[") {
+				// Old-style arithmetic, one word: `<<` in it is a shift.
+				hasDynamic = true;
+				const next = scanDollarBracket(src, i);
+				value += src.slice(i, next);
+				i = next;
 			} else if (ch === "$" && src[i + 1] === "(") {
 				hasDynamic = true;
 				const next = scanDollarParen(i);
@@ -625,6 +674,9 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		hasFileWriteRedirection: false,
 		hasDynamicCommand: false,
 		hasInlineScript: false,
+		feeds: [],
+		runsText: false,
+		assignments: [],
 	};
 	if (!input.trim()) return result;
 
@@ -633,6 +685,7 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	if (lexed.substitutions.length > 0) result.hasCommandSubstitution = true;
 	if (lexed.processSubstitutions.length > 0) result.hasProcessSubstitution = true;
 	const nestedScripts = [...lexed.substitutions, ...lexed.processSubstitutions];
+	result.feeds.push(...lexed.heredocBodies);
 
 	let curWords: WordToken[] = [];
 	let curEnv: EnvAssignment[] = [];
@@ -642,8 +695,10 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	const flushCommand = () => {
 		if (curRedirects.some((r) => r.isWrite)) result.hasFileWriteRedirection = true;
 		const cmd = unwrapCommand(curWords, curEnv, curRedirects, depth, nestedScripts);
+		result.assignments.push(...curEnv.map((e) => e.name));
 		// What `find` runs for each file is a command of its own.
 		if (cmd?.name === "find") nestedScripts.push(...findActions(cmd.args));
+		if (cmd && (SHELL_RUNNERS.has(cmd.name) || TEXT_RUNNERS.has(cmd.name))) result.runsText = true;
 		if (cmd) {
 			result.commands.push(cmd);
 			curPipeline.push(cmd);
@@ -656,14 +711,6 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	};
 	const flushPipeline = () => {
 		flushCommand();
-		// A shell in the pipeline runs what it is fed on standard input: a
-		// here-document or here-string is then a script like `bash -c`'s.
-		if (curPipeline.some((c) => SHELL_RUNNERS.has(c.name))) {
-			for (const r of curPipeline.flatMap((c) => c.redirects)) {
-				if (r.op === "<<<") nestedScripts.push(r.target);
-				else if (r.heredoc !== undefined) nestedScripts.push(r.heredoc);
-			}
-		}
 		if (curPipeline.length > 0) {
 			result.pipelines.push({ commands: curPipeline });
 			curPipeline = [];
@@ -671,8 +718,10 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	};
 
 	let bodies = 0;
-	const withBody = (r: Redirection): Redirection =>
-		r.op === "<<" || r.op === "<<-" ? { ...r, heredoc: lexed.heredocBodies[bodies++] } : r;
+	const withBody = (r: Redirection): Redirection => {
+		if (r.op === "<<<") result.feeds.push(r.target);
+		return r.op === "<<" || r.op === "<<-" ? { ...r, heredoc: lexed.heredocBodies[bodies++] } : r;
+	};
 
 	const toks = lexed.tokens;
 	for (let i = 0; i < toks.length; i++) {
@@ -709,18 +758,28 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 	}
 	flushPipeline();
 
+	const merge = (nested: ParsedShell) => {
+		result.commands.push(...nested.commands);
+		result.pipelines.push(...nested.pipelines);
+		result.hasCommandSubstitution ||= nested.hasCommandSubstitution;
+		result.hasProcessSubstitution ||= nested.hasProcessSubstitution;
+		result.hasSubshell ||= nested.hasSubshell;
+		result.hasFileWriteRedirection ||= nested.hasFileWriteRedirection;
+		result.hasDynamicCommand ||= nested.hasDynamicCommand;
+		result.hasInlineScript ||= nested.hasInlineScript;
+		result.feeds.push(...nested.feeds);
+		result.runsText ||= nested.runsText;
+		result.assignments.push(...nested.assignments);
+		result.parseError ??= nested.parseError;
+	};
 	if (depth < MAX_DEPTH) {
-		for (const script of nestedScripts) {
-			const nested = parseShell(script, depth + 1);
-			result.commands.push(...nested.commands);
-			result.pipelines.push(...nested.pipelines);
-			result.hasCommandSubstitution ||= nested.hasCommandSubstitution;
-			result.hasProcessSubstitution ||= nested.hasProcessSubstitution;
-			result.hasSubshell ||= nested.hasSubshell;
-			result.hasFileWriteRedirection ||= nested.hasFileWriteRedirection;
-			result.hasDynamicCommand ||= nested.hasDynamicCommand;
-			result.hasInlineScript ||= nested.hasInlineScript;
-			result.parseError ??= nested.parseError;
+		for (const script of nestedScripts) merge(parseShell(script, depth + 1));
+		// Here-documents and here-strings are data, unless something here can
+		// run what it is fed (`bash <<EOF`, `{ bash; } <<EOF`, `source
+		// /dev/stdin`, `eval "$(cat <<EOF …)"`, a script written then run):
+		// then they are read as scripts too.
+		while (result.runsText && result.feeds.length > 0) {
+			for (const feed of result.feeds.splice(0)) merge(parseShell(feed, depth + 1));
 		}
 	}
 	return result;

@@ -192,8 +192,13 @@ export function Toggle(props: {
  * picks the mark: a hollow ring (nothing here), a dot (waiting), a square
  * (an error, in the danger colour).
  */
-/** A resource's value, or undefined once its load has failed: reading the resource itself would throw the error. */
-export const settled = <T,>(r: Resource<T>): T | undefined => (r.error !== undefined && !r.loading ? undefined : r());
+/**
+ * A resource's value, or undefined once its load has failed: reading the resource itself would throw the error. While
+ * it reloads, the value it had: reading the resource then would hand the nearest Suspense its spinner, blanking the
+ * page (and its scroll and focus) on every refetch.
+ */
+export const settled = <T,>(r: Resource<T>): T | undefined =>
+  r.error !== undefined && !r.loading ? undefined : r.state === "refreshing" ? r.latest : r();
 
 /** What a failed load says, with a way to try again; `pending` shows while there is no error. */
 export function Failed(props: { title?: string; error: unknown; onRetry: () => void; inline?: boolean; pending?: JSX.Element }) {

@@ -3,7 +3,8 @@
  * Single-layer Memory Ratification Ledger (with taint provenance & high-taint
  * CONFIRM gate) paired with the Model Calibration Scoreboard. Lazy-loaded via `withLater`.
  */
-import { For, type JSX, Show, createMemo, createResource, createSignal } from "solid-js";
+import { For, type JSX, Show, type Signal, createMemo, createResource, createSignal } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 
 import { DangerMark, Icon, NoticeMark } from "../components/Glyph";
 import { ProvenanceFrame } from "../components/ProvenanceFrame";
@@ -35,6 +36,15 @@ export { ask as askDialog, open as openDialog } from "@tauri-apps/plugin-dialog"
 const ALL = "__all__";
 const PHRASE = "CONFIRM";
 const pct = (v: number) => `${Math.round(Math.max(0, Math.min(1, v)) * 100)}%`;
+
+/**
+ * A console list's resource storage: each load is merged into the last one by `key`, so a refetch after an action
+ * updates the rows in place instead of drawing them anew, and the control you used keeps its focus.
+ */
+export const inPlace = (key = "id") => <T,>(init: T | undefined): Signal<T | undefined> => {
+  const [s, set] = createStore({ v: init });
+  return [() => s.v, (v: unknown) => (set("v", reconcile(typeof v === "function" ? v(s.v) : v, { key })), s.v)] as Signal<T | undefined>;
+};
 
 /** Shared section header with calm inline tabular metadata and right-aligned controls. */
 export function SecHead(props: { title: string; meta?: JSX.Element; children?: JSX.Element }) {
@@ -178,8 +188,8 @@ function ProposalRow(props: { p: MemoryProposal; onChanged: () => void }) {
 export function Learning() {
   const [status, setStatus] = createSignal<ProposalStatus>("pending");
   const [project, setProject] = createSignal(ALL);
-  const [proposals, { refetch: rfProp }] = createResource(status, (st) => api.memoryProposals(st));
-  const [rows, { refetch: rfCal }] = createResource(project, (p) => api.calibrationRows(p === ALL ? null : p));
+  const [proposals, { refetch: rfProp }] = createResource(status, (st) => api.memoryProposals(st), { storage: inPlace() });
+  const [rows, { refetch: rfCal }] = createResource(project, (p) => api.calibrationRows(p === ALL ? null : p), { storage: inPlace() });
 
   const onMutate = () => (void rfProp(), void refreshConsoleMeta());
   const list = () => settled(proposals) ?? [];

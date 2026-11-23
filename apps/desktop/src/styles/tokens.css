@@ -137,11 +137,12 @@
   --prov-human-edge: var(--text-1);
   --prov-human-bg: oklch(0.210 0.005 70);
 
-  /* Contrast on --bg-app (0.180): text-1 ≈ 16:1, text-2 ≈ 12:1, text-3 ≈ 7.6:1, text-4 ≈ 5.2:1. */
+  /* Contrast on --bg-app (0.180): text-1 ≈ 16:1, text-2 ≈ 12:1, text-3 ≈ 7.6:1, text-4 ≈ 5.5:1. Each holds 4.5:1 on
+     every surface it can sit on, the selected row (0.265) included: text-4 there is 4.6:1. */
   --text-1: oklch(0.945 0.003 70);
   --text-2: oklch(0.860 0.005 70);
   --text-3: oklch(0.720 0.006 70);
-  --text-4: oklch(0.620 0.006 70);
+  --text-4: oklch(0.645 0.006 70);
 
   /* No accent hue: selection and focus are carried by lightness. */
   --focus: oklch(0.945 0.003 70 / 0.70);
@@ -227,13 +228,14 @@
   --prov-human-edge: var(--text-1);
   --prov-human-bg: oklch(0.974 0.006 82);
 
-  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.2:1,
-     text-4 ≈ 4.6:1 (AA), so a line number or an empty segment drawn in it
-     is still legible; it is never used for a run of text. */
+  /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 5.6:1,
+     text-4 ≈ 5.0:1 (AA), so a line number or an empty segment drawn in it
+     is still legible; it is never used for a run of text. Both hold 4.5:1 on the
+     darkest light surface they meet, the selected row (0.940): 4.8:1 and 4.5:1. */
   --text-1: oklch(0.230 0.006 70);
   --text-2: oklch(0.430 0.006 70);
-  --text-3: oklch(0.530 0.006 70);
-  --text-4: oklch(0.555 0.005 70);
+  --text-3: oklch(0.510 0.006 70);
+  --text-4: oklch(0.525 0.005 70);
 
   --focus: oklch(0.230 0.006 70 / 0.65);
   --select-edge: oklch(0.20 0.01 70 / 0.30);

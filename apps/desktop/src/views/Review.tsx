@@ -46,7 +46,9 @@ function fitPins(stats: HTMLDivElement) {
   const fit = () => {
     stats.classList.remove("pins-off");
     const verify = stats.querySelector<HTMLElement>(".review-verify");
-    const over = stats.scrollWidth > stats.clientWidth + 1 || (!!verify && verify.scrollHeight > verify.clientHeight + 1);
+    // A part drops when the group wraps onto its hidden line, or when the criteria bar does inside itself.
+    const wraps = (el: HTMLElement | null | undefined) => !!el && el.scrollHeight > el.clientHeight + 1;
+    const over = stats.scrollWidth > stats.clientWidth + 1 || wraps(verify) || wraps(verify?.querySelector<HTMLElement>(".criteria-bar"));
     stats.classList.toggle("pins-off", over);
   };
   const ro = new ResizeObserver(fit);

@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use tower_core::i18n::Choice;
 use tower_core::lifecycle::Transition;
@@ -76,24 +77,23 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
             rec.id,
             rec.verified_pin.clone().unwrap_or_default()
         ));
-        let out = tokio::process::Command::new(gh)
-            .args([
-                "pr",
-                "create",
-                "--head",
-                &branch,
-                "--base",
-                &rec.base_branch,
-                "--title",
-                &rec.title,
-                "--body",
-                &body,
-            ])
-            .current_dir(&root)
-            .env_clear()
-            .envs(inner.env.pairs())
-            .output()
-            .await?;
+        let mut cmd = tokio::process::Command::new(gh);
+        cmd.args([
+            "pr",
+            "create",
+            "--head",
+            &branch,
+            "--base",
+            &rec.base_branch,
+            "--title",
+            &rec.title,
+            "--body",
+            &body,
+        ])
+        .current_dir(&root)
+        .env_clear()
+        .envs(inner.env.pairs());
+        let out = gh_output(cmd, GH_TIMEOUT).await?;
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr);
             let stderr = stderr.trim();
@@ -170,12 +170,9 @@ pub async fn check_integrations(inner: &Arc<Inner>) -> Result<()> {
 /// failing checks are announced.
 async fn check_pr(inner: &Arc<Inner>, gh: &Path, goal: &str) -> Result<()> {
     let Some(pr) = inner.store(|s| s.summary(goal))?.pr else { return Ok(()) };
-    let out = tokio::process::Command::new(gh)
-        .args(["pr", "view", &pr.url, "--json", "state,statusCheckRollup"])
-        .env_clear()
-        .envs(inner.env.pairs())
-        .output()
-        .await?;
+    let mut cmd = tokio::process::Command::new(gh);
+    cmd.args(["pr", "view", &pr.url, "--json", "state,statusCheckRollup"]).env_clear().envs(inner.env.pairs());
+    let out = gh_output(cmd, GH_TIMEOUT).await?;
     if !out.status.success() {
         return Ok(());
     }
@@ -218,12 +215,9 @@ pub(crate) async fn send_ci_failures(inner: &Arc<Inner>, goal: &str) -> Result<(
     let lang = inner.lang();
     let pr = inner.store(|s| s.summary(goal))?.pr.ok_or_else(|| invalid(tr!(lang, "没有 PR", "There is no PR")))?;
     let gh = inner.env.which("gh").ok_or_else(|| invalid(tr!(lang, "没有找到 gh", "gh was not found")))?;
-    let out = tokio::process::Command::new(&gh)
-        .args(["pr", "view", &pr.url, "--json", "statusCheckRollup"])
-        .env_clear()
-        .envs(inner.env.pairs())
-        .output()
-        .await?;
+    let mut cmd = tokio::process::Command::new(&gh);
+    cmd.args(["pr", "view", &pr.url, "--json", "statusCheckRollup"]).env_clear().envs(inner.env.pairs());
+    let out = gh_output(cmd, GH_TIMEOUT).await?;
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
     let mut report = String::new();
     for c in json.get("statusCheckRollup").and_then(|r| r.as_array()).into_iter().flatten() {
@@ -238,12 +232,9 @@ pub(crate) async fn send_ci_failures(inner: &Arc<Inner>, goal: &str) -> Result<(
         report.push_str(&format!("\n### {name}\n{link}\n"));
         // GitHub Actions: the failed steps' log, when gh can fetch it.
         if let Some(run_id) = link.split("/runs/").nth(1).and_then(|r| r.split('/').next()) {
-            let log = tokio::process::Command::new(&gh)
-                .args(["run", "view", run_id, "--log-failed"])
-                .env_clear()
-                .envs(inner.env.pairs())
-                .output()
-                .await;
+            let mut cmd = tokio::process::Command::new(&gh);
+            cmd.args(["run", "view", run_id, "--log-failed"]).env_clear().envs(inner.env.pairs());
+            let log = gh_output(cmd, GH_TIMEOUT).await;
             if let Ok(log) = log {
                 let text = String::from_utf8_lossy(&log.stdout);
                 let lines: Vec<&str> = text.lines().collect();
@@ -259,6 +250,30 @@ pub(crate) async fn send_ci_failures(inner: &Arc<Inner>, goal: &str) -> Result<(
     let note = tr!(lang, "把 CI 失败发给了 Agent", "Sent the CI failures to the agent");
     inner.transition(goal, Transition::RequestChanges, None, &note)?;
     run::start_run(inner, goal, "ci-fix", prompts::ci_failures(&pr.url, &report)).await
+}
+
+/// How long one `gh` call (a request to GitHub) may take.
+const GH_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Runs `gh`, which talks to GitHub over the network: past `limit` it is
+/// stopped, with everything it started (its own process group).
+async fn gh_output(mut cmd: tokio::process::Command, limit: Duration) -> std::io::Result<std::process::Output> {
+    use std::process::Stdio;
+    cmd.process_group(0).kill_on_drop(true).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let child = cmd.spawn()?;
+    let pid = child.id();
+    match tokio::time::timeout(limit, child.wait_with_output()).await {
+        Ok(out) => out,
+        Err(_) => {
+            if let Some(pid) = pid {
+                let _ = std::process::Command::new("/bin/kill").args(["-KILL", "--", &format!("-{pid}")]).status();
+            }
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("gh did not answer within {} s", limit.as_secs()),
+            ))
+        }
+    }
 }
 
 /// Summarises `gh pr view --json state,statusCheckRollup`.
@@ -306,5 +321,31 @@ mod tests {
         assert_eq!((s.state.as_str(), s.passed, s.failed, s.pending), ("open", 2, 1, 1));
         assert_eq!(s.failing, ["test"]);
         assert_eq!(parse_pr_status(r#"{"state":"MERGED","statusCheckRollup":[]}"#).unwrap().state, "merged");
+    }
+
+    /// A `gh` that never answers is stopped at its limit, with whatever it
+    /// started, instead of holding the push or the PR check forever.
+    #[tokio::test]
+    async fn a_gh_call_that_hangs_is_stopped() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let gh = tmp.path().join("gh");
+        std::fs::write(&gh, "#!/bin/sh\nsleep 20 &\necho $! > \"$1\"\nwait\n").unwrap();
+        std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let pid_file = tmp.path().join("pid");
+        let mut cmd = tokio::process::Command::new(&gh);
+        cmd.arg(&pid_file);
+
+        let started = std::time::Instant::now();
+        let err = gh_output(cmd, Duration::from_secs(2)).await.unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut, "{err}");
+        assert!(started.elapsed() < Duration::from_secs(10), "stopped at its limit");
+        let pid = std::fs::read_to_string(&pid_file).unwrap().trim().to_string();
+        let alive = || std::process::Command::new("/bin/kill").args(["-0", &pid]).status().is_ok_and(|s| s.success());
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while alive() && std::time::Instant::now() < deadline {
+            tokio::task::yield_now().await;
+        }
+        assert!(!alive(), "what gh started is stopped too");
     }
 }

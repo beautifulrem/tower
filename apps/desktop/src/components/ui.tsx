@@ -310,7 +310,8 @@ export function Select<T extends string>(props: {
   );
 }
 
-const FOCUSABLE = 'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([tabindex="-1"]), [href], [tabindex="0"]';
+const FOCUSABLE =
+  'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([tabindex="-1"]), [href], summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * A modal layer: dialog semantics, focus moved in, kept in (Tab wraps) and
@@ -373,8 +374,10 @@ export function Overlay(props: {
   // Tab walks the sheet's own controls and wraps: WebKit's own walk skips buttons unless macOS Full Keyboard Access
   // is on, and from the last field it would leave the modal sheet for the board behind it.
   const trap = (e: KeyboardEvent) => {
-    if (e.key !== "Tab") return;
+    // A sheet opened inside another (Look in Verify) is drawn inside it: the innermost one moves focus, once.
+    if (e.key !== "Tab" || e.defaultPrevented) return;
     e.preventDefault();
+    e.stopPropagation();
     const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
     if (!items.length) return panel.focus();
     const at = items.indexOf(document.activeElement as HTMLElement);

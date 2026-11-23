@@ -665,4 +665,34 @@ mod tests {
         assert!(missing.is_empty(), "not registered: {missing:?}");
         assert!(registered.len() >= 40, "the list was read: {}", registered.len());
     }
+
+    /// In a packaged app the extension is installed from the bundle's
+    /// resources, so every file `install_extension` copies must be bundled:
+    /// a missing one (the Claude Code adapter's lockfile, say) works in
+    /// development and fails only in the shipped app.
+    #[test]
+    fn every_extension_file_tower_installs_is_bundled() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let bundled: Vec<&str> = conf["bundle"]["resources"]
+            .as_object()
+            .expect("resources map")
+            .values()
+            .filter_map(|v| v.as_str())
+            .collect();
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../extensions/tower-goal");
+        let mut wanted = vec![
+            "tower-goal/acp-adapter/package.json".to_string(),
+            "tower-goal/acp-adapter/package-lock.json".to_string(),
+        ];
+        for e in std::fs::read_dir(&src).unwrap().flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if e.path().is_file() && ((name.ends_with(".ts") && !name.ends_with(".test.ts")) || name == "package.json")
+            {
+                wanted.push(format!("tower-goal/{name}"));
+            }
+        }
+        assert!(wanted.len() > 5, "the extension folder was read");
+        let missing: Vec<_> = wanted.iter().filter(|w| !bundled.contains(&w.as_str())).collect();
+        assert!(missing.is_empty(), "installed but not bundled: {missing:?}");
+    }
 }

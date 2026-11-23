@@ -1455,3 +1455,42 @@ async fn a_goal_in_setup_counts_against_the_limit() {
     h.sup.pause(&first).await.unwrap();
     wait_for(&h, &second, |g| g.state == LifecycleState::Running).await;
 }
+
+/// Preparing a new workspace can fail after it exists (a local file that
+/// cannot be read): the goal pauses with a card, and the retry finishes
+/// preparing it instead of skipping what was left.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_workspace_left_half_prepared_is_finished_on_retry() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = harness("pass").await;
+    std::fs::write(h.repo.join(".gitignore"), ".env\n").unwrap();
+    git(&h.repo, &["add", ".gitignore"]);
+    git(&h.repo, &["commit", "--quiet", "-m", "ignore env"]);
+    let env = h.repo.join(".env");
+    std::fs::write(&env, "API_TOKEN=local\n").unwrap();
+    std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![".env".into()],
+                memory: String::new(),
+                setup_command: "echo ready > .setup-done".into(),
+                holdout_files: vec![],
+            },
+        )
+        .unwrap();
+    let id = create(&h).await;
+    let card = wait_inbox(&h, &id, InboxKind::Paused).await;
+    let g = h.sup.goal(&id).unwrap();
+    assert_eq!(g.summary.pause_reason, Some(PauseReason::PrepareFailed));
+    let ws = PathBuf::from(g.workspace.expect("the workspace exists"));
+    std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o644)).unwrap();
+    h.sup.answer(&card.id, "Retry").await.unwrap();
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+    assert_eq!(std::fs::read_to_string(ws.join(".env")).unwrap(), "API_TOKEN=local\n");
+    assert_eq!(std::fs::read_to_string(ws.join(".setup-done")).unwrap(), "ready\n");
+}

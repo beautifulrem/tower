@@ -41,12 +41,19 @@ vi.mock("../../lib/store", async () => {
   return {
     state,
     toast: vi.fn(),
-    act: async <T,>(fn: () => Promise<T>) => fn(),
+    act: async <T,>(fn: () => Promise<T>) => {
+      try {
+        return await fn();
+      } catch {
+        return undefined;
+      }
+    },
     goalList: () => Object.values(state.goals),
   };
 });
 
 const validated: unknown[] = [];
+const draft = vi.hoisted(() => ({ fail: false, createGate: null as Promise<void> | null }));
 const look = {
   id: "C4",
   title: "The checkout page still looks right",
@@ -65,6 +72,14 @@ vi.mock("../../lib/api", async () => {
         return [];
       },
       baseTests: async () => null,
+      updateDraft: (id: string, title: string, contract: unknown) =>
+        draft.fail ? Promise.reject("the draft is invalid") : invoke("update_draft", { id, title, contract }),
+      ratify: (id: string) => invoke("ratify", { id }),
+      createGoal: async (g: Record<string, unknown>) => {
+        await invoke("create_goal", g);
+        await draft.createGate;
+        return { id: "G-0100" };
+      },
       sandboxPosture: () => invoke("sandbox_posture"),
       generateHoldoutDrafts: (projectId: string, intent: string) => invoke("generate_holdout_drafts", { projectId, intent }),
       ratifyHoldoutDraft: (projectId: string, filename: string, code: string) => invoke("ratify_holdout_draft", { projectId, filename, code }),
@@ -188,5 +203,32 @@ describe("the contract studio", () => {
     fireEvent.click(ratifyBtns[0]);
     await waitFor(() => expect(screen.getByText(/You ratified · hidden/)).toBeTruthy());
     expect(invoked.filter((x) => x.cmd === "ratify_holdout_draft").length).toBe(before + 1);
+  });
+});
+
+describe("saving", () => {
+  it("never ratifies a draft whose edits failed to save", async () => {
+    const { invoked } = await import("../../test/setup");
+    draft.fail = true;
+    render(() => <ContractEditor draftId="G-0001" />);
+    await screen.findByDisplayValue("Fix the cart total");
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoked.some((x) => x.cmd === "ratify")).toBe(false);
+    draft.fail = false;
+  });
+
+  it("creates one goal however fast ⌘↩ is pressed twice", async () => {
+    const { invoked } = await import("../../test/setup");
+    let open!: () => void;
+    draft.createGate = new Promise<void>((r) => (open = r));
+    render(() => <ContractEditor projectId="p1" />);
+    const before = invoked.filter((x) => x.cmd === "create_goal").length;
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true });
+    await new Promise((r) => setTimeout(r, 0));
+    open();
+    expect(invoked.filter((x) => x.cmd === "create_goal").length).toBe(before + 1);
+    draft.createGate = null;
   });
 });

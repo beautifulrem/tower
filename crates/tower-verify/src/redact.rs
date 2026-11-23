@@ -98,10 +98,7 @@ fn authority_end(url: &str) -> usize {
     let digits = url[colon + 1..].bytes().take_while(u8::is_ascii_digit).count();
     let port = (1..=5).contains(&digits) && url[colon + 1 + digits..].starts_with('/');
     let query = url[colon + 1..].find(['?', '#']).map(|q| colon + 1 + q);
-    // A `,` or `;` in the path ends a cell of an unquoted CSV row or a `key=value;` list: an `@` after it is the next
-    // cell's.
-    let cell = url[first..].find([',', ';']).map_or(url.len(), |c| first + c);
-    for (at, _) in url.match_indices('@').rev().take_while(|&(at, _)| at > first).filter(|&(at, _)| at < cell) {
+    for (at, _) in url.match_indices('@').rev().take_while(|&(at, _)| at > first) {
         // `5173/@vite`, `5173/node_modules/@scope`: a port and a path whose `@` begins a segment; `8080/u?email=a@b`:
         // a port, a path, and a query or fragment the `@` is in. Anything else ends a password.
         let port_then_path = port && (url[..at].ends_with('/') || query.is_some_and(|q| q < at));
@@ -126,12 +123,17 @@ fn secret_param(name: &str) -> bool {
 /// - A URL's credentials and secret query values are masked in the shapes tools print: git, curl and package
 ///   manager lines, JSON (escaped or not), YAML, TOML, CSV, `psql -A`, HTML and XML, Markdown, shell quoting.
 /// - Text around a URL stays: neighbouring fields, emails, tags. Where a separator could be a password's or a field's
-///   end, the URL is masked over rather than the password risked (`user:pw@host,ada@…`, `host:4873/react@18`).
+///   end, the URL is masked over rather than the password risked: a `,` or `;` and then an `@` after
+///   `user:pass@host` or in a path runs the URL to that `@` (`user:pw@host,ada@…`, `host/path;contact=ops@…`,
+///   `ssh://git@host:o/r.git,ada@…`), and so does an `@` in a path after a port (`host:4873/react@18`).
 /// - Known leaks, by design: a password holding its own wrapper's closer (a `)` inside `(…)`), a `|` outside quotes
 ///   or brackets, or whitespace; a password of 1–5 digits and then `/?#`; a user name holding punctuation; a password
 ///   more than 256 bytes past its first punctuation; URLs nested more than two deep in query values.
 ///   JDBC-style `;password=…` path parameters are left to the `password=` assignment rule, so a value under 8
 ///   characters stays.
+///   A URL nested in the query value of a `:\/\/`-escaped URL is not read; a password holding an `@` and then
+///   more URL-ending punctuation (`deploy:Xy(7@q)Zr@host`) shows what follows the first such `@`; a password holding
+///   `://` is read as the start of another URL.
 /// - One pass over the text, whatever it holds.
 fn redact_urls(text: &str) -> String {
     redact_urls_within(text, 0)
@@ -556,6 +558,12 @@ mod tests {
             ("GET https://api.example.com/x?filter[a]=1&access_token=tok12345678 200", "tok12345678"),
             // JDBC and matrix parameters: `;password=…` in the path.
             ("jdbc:postgresql://db:5432/app;user=ada;password=s3cret0040", "s3cret0040"),
+            // A `/?#` in the password, then a `,` or `;` later in it: the `@` past them is still this URL's.
+            ("fatal: unable to access 'https://deploy:Ab/9;xK0041@git.example.com/r.git/': 403", "xK0041"),
+            ("https://ada:pa/ss,word0042@db.example.com/app", "word0042"),
+            ("https://ada:p#ss;w0043@host.example.com/r", "w0043"),
+            (r#"{"url":"https://ada:p\/w;x0044@db.example.com/app"}"#, "x0044"),
+            ("https://ada:p@ss/w;x0045@db.example.com/app", "x0045"),
             ("callback http://[::1]:8080/cb?token=ipv6tok0001 ok", "ipv6tok0001"),
             ("redirect https://a.example.com/login?next=https://ada:nestedpw0002@b.example.com/x", "nestedpw0002"),
             ("fatal: https://ada:pa/ss0003@host.example.com/o/r.git", "ss0003"),
@@ -684,22 +692,14 @@ mod tests {
             // A `;` list (`key=value;…`, a connection string) as a CSV row.
             ("url=http://localhost:3000;mail=ada@example.com", "url=http://localhost:3000;mail=ada@example.com"),
             ("url=https://deploy:pw@git.example.com;mail=ada@example.com", "url=https://[redacted]@example.com"),
-            (
-                "url=http://localhost:8080/api;contact=ops@corp.com",
-                "url=http://localhost:8080/api;contact=ops@corp.com",
-            ),
-            (
-                "DSN=postgres://ada:secret@db:5432/app;admin=root@example.com",
-                "DSN=postgres://[redacted]@db:5432/app;admin=root@example.com",
-            ),
-            // One tie-break everywhere: after `user:pass@host` a `;` may be the password's, so the URL is masked over.
+            // One tie-break everywhere: a `,` or `;` after `user:pass@host`, or in a path, may be a password's, so the
+            // URL runs to the last `@` and is masked over, credentials or not.
             ("url=https://ada:pa(ss@db;mail=bob@example.com", "url=https://[redacted]@example.com"),
-            ("http://localhost:3000/api,ada@example.com,x", "http://localhost:3000/api,ada@example.com,x"),
-            ("ssh://git@github.com:o/r.git,ada@example.com,x", "ssh://git@github.com:o/r.git,ada@example.com,x"),
-            (
-                "https://deploy:pw@git.example.com/o/r.git,ada@example.com,x",
-                "https://[redacted]@git.example.com/o/r.git,ada@example.com,x",
-            ),
+            ("url=http://localhost:8080/api;contact=ops@corp.com", "url=http://[redacted]@corp.com"),
+            ("DSN=postgres://ada:secret@db:5432/app;admin=root@example.com", "DSN=postgres://[redacted]@example.com"),
+            ("http://localhost:3000/api,ada@example.com,x", "http://[redacted]@example.com,x"),
+            ("ssh://git@github.com:o/r.git,ada@example.com,x", "ssh://[redacted]@example.com,x"),
+            ("https://deploy:pw@git.example.com/o/r.git,ada@example.com,x", "https://[redacted]@example.com,x"),
             (
                 "{\"msg\":\"using proxy http://user:tok@proxy:8080\",\"pkg\":\"app@1.0.0\"}",
                 "{\"msg\":\"using proxy http://[redacted]@proxy:8080\",\"pkg\":\"app@1.0.0\"}",

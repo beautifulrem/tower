@@ -107,6 +107,8 @@ interface LexResult {
 }
 
 const MAX_DEPTH = 6;
+/** Words that open a compound command, or negate one. */
+const COMPOUND = new Set(["{", "!", "if", "while", "until", "for", "case", "select", "[["]);
 /** Builtins that run text as shell: their input or arguments. */
 const TEXT_RUNNERS = new Set(["source", ".", "eval"]);
 const CONTROL_KEYWORDS = new Set([
@@ -581,7 +583,8 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 		result.candidates.push(...candidates);
 		for (const c of cmd ? [cmd, ...candidates] : []) {
 			curPipeline.push(c);
-			if (c.readsStdin) result.stdinScript = true;
+			// Only the command itself reads its input as a script, not a candidate.
+			if (c === cmd && c.readsStdin) result.stdinScript = true;
 			if (SHELL_RUNNERS.has(c.name) || TEXT_RUNNERS.has(c.name)) result.runsText = true;
 			if (c.hasDynamicName) result.hasDynamicCommand = true;
 			// A candidate is only checked for what it may hide, not read as cautious mode's inline script.
@@ -629,9 +632,12 @@ export function parseShell(input: string, depth = 0): ParsedShell {
 			continue;
 		}
 		if (curWords.length === 0 && !tok.quoted && (tok.value === "time" || tok.value === "coproc")) {
-			// `time [-p]` and `coproc [NAME]` before `{`, `(` or `!` are keywords: the block runs.
+			// `time [-p]` and `coproc [NAME]` before a compound command (`{`, `(`, `((`, `!`, `if`,
+			// `while`, `until`, `for`, `case`, `select`, `[[`) are keywords: the command runs.
 			const word = (k: number) => (toks[k]?.kind === "word" ? (toks[k] as WordToken) : undefined);
-			const opens = (k: number) => (toks[k]?.kind === "op" && (toks[k] as OpToken).op === "(") || (!word(k)?.quoted && ["{", "!"].includes(word(k)?.value ?? ""));
+			const opens = (k: number) =>
+				(toks[k]?.kind === "op" && (toks[k] as OpToken).op === "(") ||
+				(!word(k)?.quoted && COMPOUND.has(word(k)?.value ?? ""));
 			let j = i + 1;
 			if (tok.value === "time" && word(j)?.value === "-p") j++;
 			else if (tok.value === "coproc" && word(j) && !opens(j) && opens(j + 1)) j++;

@@ -45,7 +45,8 @@ export function registerDict(l: Locale, d: Partial<DictNow> | Partial<DictLater>
   });
 }
 
-const loaders: Record<Locale, Record<Half, () => Promise<Partial<DictNow> | Partial<DictLater>>>> = {
+/** Where each half comes from (exported for tests, which make a load fail). */
+export const loaders: Record<Locale, Record<Half, () => Promise<Partial<DictNow> | Partial<DictLater>>>> = {
   en: { now: () => import("./locales/en").then((m) => m.en), later: () => import("./locales/en.later").then((m) => m.enLater) },
   "zh-CN": { now: () => import("./locales/zh-CN").then((m) => m.zh), later: () => import("./locales/zh-CN.later").then((m) => m.zhLater) },
 };
@@ -57,10 +58,17 @@ function ensure(l: Locale, half: Half): Promise<void> {
   if (done.has(k)) return Promise.resolve();
   let p = pending.get(k);
   if (!p) {
-    p = loaders[l][half]().then((d) => {
-      registerDict(l, d);
-      done.add(k);
-    });
+    // A load that failed is forgotten, so the next ask (a Retry, the next view) fetches it again.
+    p = loaders[l][half]().then(
+      (d) => {
+        registerDict(l, d);
+        done.add(k);
+      },
+      (e) => {
+        pending.delete(k);
+        throw e;
+      },
+    );
     pending.set(k, p);
   }
   return p;

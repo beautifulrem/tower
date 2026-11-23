@@ -6,7 +6,7 @@ const { en } = await import("../locales/en");
 const { zh } = await import("../locales/zh-CN");
 const { enLater } = await import("../locales/en.later");
 const { zhLater } = await import("../locales/zh-CN.later");
-const { t, registerDict } = await import("../i18n");
+const { t, registerDict, loaders, ensureLater } = await import("../i18n");
 registerDict("en", en);
 registerDict("zh-CN", zh);
 registerDict("en", enLater);
@@ -40,6 +40,21 @@ function resolveImport(from: string, spec: string): string | undefined {
   const base = parts.join("/");
   return [base, `${base}.ts`, `${base}.tsx`].find((f) => f in sources);
 }
+
+describe("loading the words", () => {
+  it("tries again after a failed load: a dictionary that could not be read once is not refused forever", async () => {
+    const real = loaders.en.later;
+    let calls = 0;
+    loaders.en.later = () => (++calls === 1 ? Promise.reject(new Error("offline")) : real());
+    try {
+      await expect(ensureLater()).rejects.toThrow("offline");
+      await expect(ensureLater()).resolves.toBeUndefined();
+      expect(calls).toBe(2);
+    } finally {
+      loaders.en.later = real;
+    }
+  });
+});
 
 describe("interface text", () => {
   const halves = {

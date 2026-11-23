@@ -15,7 +15,7 @@
 //!   Tower itself runs git there outside the sandbox.
 //!
 //! The keychain service is never reachable. With the network allowed, TLS
-//! trust evaluation goes through `trustd` and `ocspd` only.
+//! trust evaluation goes through `trustd`, `ocspd` and `TrustEvaluationAgent` only.
 
 use std::path::{Path, PathBuf};
 

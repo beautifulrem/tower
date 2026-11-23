@@ -110,7 +110,7 @@ fn profile_is_closed_by_default_and_names_its_rules() {
     let p = profile(&spec(Path::new("/w"), Path::new("/Users/a"), false));
     assert!(p.contains("(deny default)"));
     assert!(p.contains("(subpath \"/Users/a/.ssh\")"));
-    assert!(p.contains("(literal \"/w/ws/.git/config\")"));
+    assert!(p.contains(r#"(regex #"^/w/ws/\.[Gg][Ii][Tt]/([Cc][Oo][Nn][Ff][Ii][Gg]|"#), "git config is named");
     assert!(!p.contains("com.apple.SecurityServer"), "no keychain service");
     assert!(!p.contains("(remote ip \"localhost:*\")"), "loopback is closed by default");
     // Tower's append-only transcript (the assertion-identity guard's) stays
@@ -496,4 +496,57 @@ fn profile_denies_instruction_writes_and_hard_links() {
     assert!(!run(&format!("ln {}/.ssh/id stolen_hard.txt", home.display())), "hard link to secret must be denied");
     assert!(!ws.join("hard.txt").exists());
     assert!(!ws.join("stolen_hard.txt").exists());
+}
+
+/// Tower runs git in the workspace outside the sandbox, so the agent must
+/// not be able to point that git at a configuration of its own: not by
+/// naming another directory in `.git/commondir` (in any letter case: the
+/// disk ignores it), by a per-worktree config, or by replacing `.git` with
+/// a `gitdir:` file or a link. Everything else under `.git` stays writable,
+/// so the agent's own commits work.
+#[cfg(target_os = "macos")]
+#[test]
+fn profile_keeps_git_on_its_own_config() {
+    if !available() {
+        return;
+    }
+    let tmp = tempfile::tempdir_in("/tmp").unwrap();
+    let root = crate::paths::real(tmp.path());
+    for d in ["ws", "tmp", "cache", "home"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    let ws = root.join("ws");
+    let init = std::process::Command::new("git").args(["init", "--quiet"]).current_dir(&ws).status().unwrap();
+    assert!(init.success());
+    std::fs::write(ws.join("other"), "../.evil\n").unwrap();
+    let sb = root.join("p.sb");
+    std::fs::write(&sb, profile(&spec(&root, &root.join("home"), false))).unwrap();
+    let run = |cmd: &str| sandboxed(&sb, &ws, cmd);
+    let git = std::process::Command::new("/usr/bin/sandbox-exec")
+        .arg("-f")
+        .arg(&sb)
+        .args(["/bin/sh", "-c", "echo a > a && git add a && git -c user.name=a -c user.email=a@b commit --quiet -m a"])
+        .env("PATH", format!("{}:/usr/bin:/bin", developer_bin().map(|d| d.display().to_string()).unwrap_or_default()))
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .current_dir(&ws)
+        .output()
+        .unwrap();
+    assert!(git.status.success(), "the agent's own commits work: {}", String::from_utf8_lossy(&git.stderr));
+    for cmd in [
+        "echo ../.evil > .git/commondir",
+        "echo ../.evil > .git/COMMONDIR",
+        "echo x > .git/config.worktree",
+        "echo x > .git/Config.Worktree",
+        "ln -s ../.evil .git/commondir",
+        "cp other .git/commondir",
+        "mv other .git/commondir",
+        "mv .git .git2",
+        "rm -rf .git; echo 'gitdir: ../.evil' > .git",
+        "mv .git/config .git/config2",
+        "echo x > .git/CONFIG",
+    ] {
+        assert!(!run(cmd), "must deny: {cmd}");
+    }
+    assert!(ws.join(".git").is_dir(), ".git is still the repository");
+    assert!(!ws.join(".git/commondir").exists() && !ws.join(".git/config.worktree").exists());
 }

@@ -292,14 +292,20 @@ fn unauthorized_response(inner: &Inner) -> Response {
     json(401, &serde_json::json!({"error": text}))
 }
 
-fn state_json(inner: &Inner) -> crate::Result<String> {
-    let state = State {
-        goals: inner.store(|st| st.summaries())?,
-        inbox: inner.store(|st| st.open_inbox_items())?,
+/// What the phone page shows. Read from the WAL reader pool: every open
+/// page asks for it each second, and it must not queue behind (or hold up)
+/// the single writer the supervisor's own work goes through.
+fn state(inner: &Inner) -> crate::Result<State> {
+    Ok(State {
+        goals: inner.read_store(|st| st.summaries())?,
+        inbox: inner.read_store(|st| st.open_inbox_items())?,
         lang: inner.lang().code().to_string(),
         max_running: inner.settings().max_concurrent,
-    };
-    Ok(serde_json::to_string(&state).unwrap_or_else(|_| "{}".into()))
+    })
+}
+
+fn state_json(inner: &Inner) -> crate::Result<String> {
+    Ok(serde_json::to_string(&state(inner)?).unwrap_or_else(|_| "{}".into()))
 }
 
 fn map_result(lang: tower_core::Lang, res: crate::Result<serde_json::Value>) -> Response {
@@ -368,15 +374,7 @@ async fn handle_async(
             let inner2 = inner.clone();
             match tokio::time::timeout(
                 STATE_TIMEOUT,
-                tokio::task::spawn_blocking(move || {
-                    let state = State {
-                        goals: inner2.store(|st| st.summaries())?,
-                        inbox: inner2.store(|st| st.open_inbox_items())?,
-                        lang: inner2.lang().code().to_string(),
-                        max_running: inner2.settings().max_concurrent,
-                    };
-                    Ok(serde_json::to_value(state).unwrap_or_default())
-                }),
+                tokio::task::spawn_blocking(move || Ok(serde_json::to_value(state(&inner2)?).unwrap_or_default())),
             )
             .await
             {
@@ -718,5 +716,40 @@ mod tests {
 
         drop(sse_reader);
         remote.stop();
+    }
+
+    /// The phone page's state (polled every second per open page) is read
+    /// from the WAL reader pool, so it neither waits for nor holds up the
+    /// single writer the supervisor's own work goes through.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_phone_state_is_read_without_the_writer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = crate::Config {
+            paths: crate::Paths::new(tmp.path()),
+            extension_source: std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal"),
+            env: Some(crate::shell_env::ShellEnv::from_pairs(vec![("PATH".into(), "/usr/bin:/bin".into())])),
+            demo_engine: None,
+        };
+        let sup = crate::Supervisor::start(cfg, Arc::new(crate::NullSink)).await.unwrap();
+        assert!(sup.inner.read_pool.is_some(), "a file-backed store has a reader pool");
+        let inner = sup.inner.clone();
+        let (held_tx, held_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let writer = std::thread::spawn(move || {
+            let _guard = inner.store.lock().unwrap();
+            held_tx.send(()).unwrap();
+            let _ = release_rx.recv_timeout(Duration::from_secs(10));
+        });
+        held_rx.recv().unwrap();
+        let inner = sup.inner.clone();
+        let read = tokio::time::timeout(
+            Duration::from_secs(2),
+            tokio::task::spawn_blocking(move || super::state_json(&inner)),
+        )
+        .await;
+        release_tx.send(()).unwrap();
+        writer.join().unwrap();
+        let json = read.expect("state read while the writer is busy").unwrap().unwrap();
+        assert!(json.contains("\"goals\"") && json.contains("\"max_running\""), "{json}");
     }
 }

@@ -74,13 +74,18 @@ fn without_credentials(config: &str) -> String {
         }
         let trimmed = line.trim_start();
         if trimmed.starts_with('[') && !trimmed.contains('=') {
-            table = trimmed.trim_matches(['[', ']', ' ']).to_ascii_lowercase();
+            // `[env] # build vars`, `[[bin]]`: the name, without brackets or a comment after them.
+            table = trimmed.trim_start_matches('[').split(']').next().unwrap_or("").trim().to_ascii_lowercase();
         } else if let Some((key, value)) = trimmed.split_once('=') {
             let key = key.trim().to_ascii_lowercase();
             let value = value.trim();
             let names_secret = |s: &str| NAMES.iter().any(|n| s.contains(n));
             let inline_secret = value.starts_with('{') && names_secret(&value.to_ascii_lowercase());
-            let env_secret = table == "env" && ENV_NAMES.iter().any(|n| key.contains(n));
+            // `[env]`, a top-level `env.NAME = …`, or `env = { NAME = … }`.
+            let in_env = table == "env" || (table.is_empty() && (key == "env" || key.starts_with("env.")));
+            let env_names = |s: &str| ENV_NAMES.iter().any(|n| s.contains(n));
+            let env_secret =
+                in_env && (env_names(&key) || (value.starts_with('{') && env_names(&value.to_ascii_lowercase())));
             if table.starts_with("credential-alias")
                 || names_secret(&key)
                 || env_secret
@@ -306,7 +311,12 @@ mod tests {
         std::fs::write(repo.join("Cargo.toml"), "[package]\n").unwrap();
         std::fs::write(
             home.join(".cargo/config.toml"),
-            r#"[source.crates-io]
+            // Line by line, as the filter reads it: a top-level dotted `env.` key and an inline `env` table are
+            // `[env]` variables too (not one valid file with `[env]` below; the filter never parses the whole).
+            r#"env.TOP_API_KEY = "envkey0009"
+env = { DEPLOY_AUTH = "envauth0010" }
+
+[source.crates-io]
 replace-with = "mirror"
 
 [source.mirror]
@@ -334,7 +344,7 @@ proxy = "http://ada:proxypass0005@proxy.example.com:8080"
 jobs = 4
 registries.other.token = "dottedtoken0006"
 
-[env]
+[env] # build vars
 OPENAI_API_KEY = "sk-envkey0007"
 DEPLOY_AUTH = "envauth0008"
 RUST_LOG = "info"
@@ -353,7 +363,9 @@ keygen = "run --bin keygen"
 
         let cache = prepare(&tmp.path().join("cache"), &home, &repo).unwrap();
         let copied = std::fs::read_to_string(cache.join("cargo/config.toml")).unwrap();
-        for secret in ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "cargo:macos-keychain"] {
+        for secret in
+            ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "cargo:macos-keychain"]
+        {
             assert!(!copied.contains(secret), "{secret} left in:\n{copied}");
         }
         for kept in [

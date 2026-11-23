@@ -47,6 +47,8 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 qrcode = { version = "0.15", default-features = false, features = ["svg"] }
 sys-locale = "0.3"
 sha2 = "0.11"
+# The agent's copy of ~/.cargo/config.toml is built from a parse, not a line filter (docs/16 §16.8).
+toml = "1.1"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

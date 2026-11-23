@@ -30,7 +30,7 @@ import { type ReviewScope, TimelineSwitcher, buildSnapshots, lastTurnRev } from 
 import { type ReviewNote, ReviewNotes, UnitNarrative } from "./review/notes";
 import { AcceptPanel, ChangesPanel, VerifyPanel } from "./review/panels";
 import { PathPalette, TreeRow, UnitItem } from "./review/sidebar";
-import "./review/theater.css";
+import "../styles/workbenches.css";
 import { type Anchor, type Composing, type Panel, type Reveals } from "./review/types";
 
 const RELOAD_VIEW = new Set(["pinned", "human_edited", "rolled_back"]);
@@ -613,45 +613,34 @@ export function Review(props: { id: string }) {
       </Show>
 
       <div class="review-status halt">
-        <Show
-          when={units().length > 0}
-          fallback={
+        <span class="review-keys">
+          <Show
+            when={units().length > 0}
+            fallback={
+              <span>
+                <Kbd k="escape" /> {t("keys.back")}
+              </span>
+            }
+          >
             <span>
-              <Kbd k="escape" /> {t("keys.back")}
+              <Kbd k="j k" /> {t("review.keyUnits")}
             </span>
-          }
-        >
-          <span>
-            <Kbd k="j k" /> {t("review.keyUnits")}
-          </span>
-          <span>
-            <Kbd k="] [" /> {t("review.keyHunks")}
-          </span>
-          <span>
-            <Kbd k="v" /> {t("review.keyViewed")}
-          </span>
-          <span>
-            <Kbd k="e" /> {t("review.keyVerification")}
-          </span>
-          <span title={t("review.acceptHunkNote")}>
-            <Kbd k="a" /> {t("review.keyAccept")}
-          </span>
-          <span>
-            <Kbd k="shift+a" /> {t("review.keyTakeBack")}
-          </span>
-          <Show when={editable()}>
             <span>
-              <Kbd k="u" /> {t("review.keyUndo")}
+              <Kbd k="] [" /> {t("review.keyHunks")}
+            </span>
+            <span>
+              <Kbd k="v" /> {t("review.keyViewed")}
+            </span>
+            <span title={t("review.acceptHunkNote")}>
+              <Kbd k="a" /> {t("review.keyAccept")}
+            </span>
+            <span>
+              <Kbd k="shift+a" /> {t("review.keyTakeBack")}
             </span>
           </Show>
-          <Show when={wide()}>
-            <span>
-              <Kbd k="alt+v" /> {t("review.keySplit")}
-            </span>
-          </Show>
-        </Show>
-        <span>
-          <Kbd k="?" /> {t("keys.allKeys")}
+          <span>
+            <Kbd k="?" /> {t("keys.allKeys")}
+          </span>
         </span>
         <span class="grow" />
         <Show when={comments().length > 0}>
@@ -661,10 +650,6 @@ export function Review(props: { id: string }) {
             <Kbd k="c" />
           </button>
         </Show>
-        <Show when={units().length > 0}>
-          <span class="status-mouse t4">{t("review.keyComment")}</span>
-          <span class="status-mouse t4">{t("review.keyOpen")}</span>
-        </Show>
         <Show when={unitAccepted() > 0}>
           <span class="num review-accepted" title={t("review.acceptHunkNote")}>
             <Icon name="check" size={10} />
@@ -672,17 +657,17 @@ export function Review(props: { id: string }) {
               {t("review.hunksAccepted", { n: unitAccepted(), total: unitHunks() })}
             </Show>
             <Show when={unitAccepted() === unitHunks() && unitIdx() < units().length - 1}>
-              <span class="sep" />
+              <span class="sep" aria-hidden="true">·</span>
               <Kbd k="v" /> {t("review.keyNextUnit")}
             </Show>
             <Show when={unitAccepted() === unitHunks() && unitIdx() === units().length - 1 && g()?.state === "in_review"}>
-              <span class="sep" />
+              <span class="sep" aria-hidden="true">·</span>
               <Kbd k="mod+shift+enter" /> {t("review.accept")}
             </Show>
           </span>
         </Show>
         <Show when={units().length > 1}>
-          <span class="num">{t("review.unitOf", { i: unitIdx() + 1, n: units().length })}</span>
+          <span class="num unit-counter">{t("review.unitOf", { i: unitIdx() + 1, n: units().length })}</span>
         </Show>
       </div>
 

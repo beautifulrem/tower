@@ -4,7 +4,7 @@
 use std::sync::{Arc, PoisonError};
 
 use tower_core::lifecycle::Transition;
-use tower_core::{LifecycleState, tr};
+use tower_core::{EventKind, LifecycleState, Mode, tr};
 
 use super::{Run, schedule};
 use crate::{Inner, Result, invalid};
@@ -52,25 +52,34 @@ pub(super) async fn reschedule_unless_running(inner: &Arc<Inner>, goal: &str) {
 /// a goal you paused or abandoned meanwhile must not start. The check, the
 /// transition and the insert happen under the store's lock, so a pause or
 /// abandon lands either before (the start gives up) or after (it finds the
-/// run and stops it).
-pub(super) fn begin(inner: &Arc<Inner>, run: &Arc<Run>, seen: LifecycleState, purpose: &str) -> Result<bool> {
+/// run and stops it, its `RunEnded` after this `RunStarted`).
+pub(super) fn begin(
+    inner: &Arc<Inner>,
+    run: &Arc<Run>,
+    seen: LifecycleState,
+    purpose: &str,
+    start_pin: Option<String>,
+) -> Result<bool> {
     let goal = run.goal_id.as_str();
     let began = inner.store(|s| {
         if s.goal(goal)?.state != seen {
             return Ok(None);
         }
-        let entry = match seen {
-            LifecycleState::Running => None,
-            _ => Some(s.transition(goal, Transition::RunStarted, None, purpose)?),
-        };
+        let mut entries = Vec::new();
+        if seen != LifecycleState::Running {
+            entries.push(s.transition(goal, Transition::RunStarted, None, purpose)?);
+        }
+        let run_no = run.run_no;
+        entries.push(s.append(goal, EventKind::RunStarted { run_no, purpose: purpose.into(), start_pin })?);
+        if s.goal(goal)?.mode != Mode::Starting {
+            entries.push(s.append(goal, EventKind::ModeChanged { mode: Mode::Starting })?);
+        }
         inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.into(), run.clone());
-        Ok(Some(entry))
+        Ok(Some(entries))
     })?;
-    let Some(entry) = began else { return Ok(false) };
-    if let Some(entry) = entry {
-        inner.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
-        inner.flush_traces();
-        inner.emit_goal_now(goal);
-    }
+    let Some(entries) = began else { return Ok(false) };
+    inner.traces.lock().unwrap_or_else(PoisonError::into_inner).extend(entries);
+    inner.flush_traces();
+    inner.emit_goal_now(goal);
     Ok(true)
 }

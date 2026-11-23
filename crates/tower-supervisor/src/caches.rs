@@ -44,13 +44,11 @@ pub fn env(cache: &Path) -> Vec<(String, String)> {
         // credential helpers); git treats an unreadable one as fatal.
         ("GIT_CONFIG_GLOBAL".into(), "/dev/null".into()),
         // Nor the system's (Homebrew's and the Command Line Tools' set the
-        // keychain credential helper), and no credential helper at all: an
-        // empty `credential.helper` from the command-line scope, read last,
-        // clears the ones any other configuration lists.
+        // keychain credential helper): with neither, only the workspace's
+        // own configuration, which Tower writes, is left. No
+        // `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_0` here: the agent's shell drops
+        // names with KEY in them, and a count without its key is fatal to git.
         ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
-        ("GIT_CONFIG_COUNT".into(), "1".into()),
-        ("GIT_CONFIG_KEY_0".into(), "credential.helper".into()),
-        ("GIT_CONFIG_VALUE_0".into(), String::new()),
         ("GIT_TERMINAL_PROMPT".into(), "0".into()),
     ]
 }
@@ -224,51 +222,65 @@ mod tests {
         assert!(env(&cache).iter().any(|(k, v)| k == "npm_config_cache" && v.ends_with("/npm")));
     }
 
-    /// The agent's git reads no system configuration (Homebrew's sets the
-    /// keychain credential helper), runs no credential helper from any
-    /// configuration, and never prompts.
+    /// The agent's git reads neither the system configuration (Homebrew's
+    /// sets the keychain credential helper) nor yours, so it runs no
+    /// credential helper, and it never prompts. This holds both as the
+    /// verifier passes the environment and as the agent's shell gets it:
+    /// the tower-goal extension drops credential-looking names
+    /// (`scrubEnv` in policy.ts), and what is left must still be an
+    /// environment git accepts.
     #[test]
     fn agent_git_runs_no_credential_helper_and_reads_no_system_config() {
         let tmp = tempfile::tempdir().unwrap();
         let repo = tmp.path().join("repo");
-        let marker = tmp.path().join("helper-ran");
         let system = tmp.path().join("system-gitconfig");
-        std::fs::write(
-            &system,
-            format!("[tower]\n\tprobe = yes\n[credential]\n\thelper = \"!touch {}.system; true\"\n", marker.display()),
-        )
-        .unwrap();
-        let git = |args: &[&str], input: Option<&str>| {
-            let mut c = std::process::Command::new("git");
-            c.args(args)
-                .current_dir(&repo)
-                .env_clear()
-                .env("PATH", std::env::var("PATH").unwrap_or_default())
-                .env("HOME", tmp.path())
-                .env("GIT_CONFIG_SYSTEM", &system)
-                .envs(env(&tmp.path().join("cache")))
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped());
-            let mut child = c.spawn().unwrap();
-            if let Some(text) = input {
-                std::io::Write::write_all(&mut child.stdin.take().unwrap(), text.as_bytes()).unwrap();
-            }
-            drop(child.stdin.take());
-            child.wait_with_output().unwrap()
-        };
+        let helper =
+            |name: &str| format!("[credential]\n\thelper = \"!touch {}; true\"\n", tmp.path().join(name).display());
+        std::fs::write(&system, format!("[tower]\n\tprobe = yes\n{}", helper("system-helper-ran"))).unwrap();
+        std::fs::write(tmp.path().join(".gitconfig"), helper("global-helper-ran")).unwrap();
         std::fs::create_dir_all(&repo).unwrap();
-        assert!(git(&["init", "--quiet"], None).status.success());
-        let helper = format!("!touch {}; true", marker.display());
-        assert!(git(&["config", "credential.helper", &helper], None).status.success());
-
-        let probe = git(&["config", "--get", "tower.probe"], None);
-        assert!(String::from_utf8_lossy(&probe.stdout).trim().is_empty(), "the system configuration is not read");
-        git(&["credential", "fill"], Some("protocol=https\nhost=example.com\n\n"));
-        assert!(!marker.exists(), "the repository's credential helper did not run");
-        assert!(!tmp.path().join("helper-ran.system").exists(), "the system credential helper did not run");
-        let helpers = git(&["config", "--get-all", "credential.helper"], None);
-        assert_eq!(String::from_utf8_lossy(&helpers.stdout).lines().last(), Some(""), "the helper list ends reset");
+        let credential_looking = |k: &str| {
+            let k = k.to_ascii_uppercase();
+            ["KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "AUTH", "COOKIE", "SESSION"]
+                .iter()
+                .any(|w| k.contains(w))
+        };
+        for scrubbed in [false, true] {
+            let vars: Vec<_> = env(&tmp.path().join("cache"))
+                .into_iter()
+                .filter(|(k, _)| !scrubbed || !credential_looking(k))
+                .collect();
+            let git = |args: &[&str], input: Option<&str>| {
+                let mut c = std::process::Command::new("git");
+                c.args(args)
+                    .current_dir(&repo)
+                    .env_clear()
+                    .env("PATH", std::env::var("PATH").unwrap_or_default())
+                    .env("HOME", tmp.path())
+                    .env("GIT_CONFIG_SYSTEM", &system)
+                    .envs(vars.iter().cloned())
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped());
+                let mut child = c.spawn().unwrap();
+                if let Some(text) = input {
+                    std::io::Write::write_all(&mut child.stdin.take().unwrap(), text.as_bytes()).unwrap();
+                }
+                drop(child.stdin.take());
+                child.wait_with_output().unwrap()
+            };
+            let init = git(&["init", "--quiet"], None);
+            assert!(init.status.success(), "scrubbed: {scrubbed}: {}", String::from_utf8_lossy(&init.stderr));
+            let status = git(&["status", "--porcelain"], None);
+            assert!(status.status.success(), "scrubbed: {scrubbed}: {}", String::from_utf8_lossy(&status.stderr));
+            let probe = git(&["config", "--get", "tower.probe"], None);
+            assert!(String::from_utf8_lossy(&probe.stdout).trim().is_empty(), "the system configuration is not read");
+            git(&["credential", "fill"], Some("protocol=https\nhost=example.com\n\n"));
+            assert!(!tmp.path().join("system-helper-ran").exists(), "the system credential helper did not run");
+            assert!(!tmp.path().join("global-helper-ran").exists(), "your credential helper did not run");
+            let helpers = git(&["config", "--get-all", "credential.helper"], None);
+            assert!(String::from_utf8_lossy(&helpers.stdout).trim().is_empty(), "no credential helper is configured");
+        }
         assert!(env(Path::new("/c")).contains(&("GIT_TERMINAL_PROMPT".into(), "0".into())));
     }
 

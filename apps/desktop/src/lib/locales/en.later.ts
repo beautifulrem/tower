@@ -774,6 +774,8 @@ export const enLater: DictLater = {
   },
   ops: {
     kpiReclaimable: "Reclaimable",
+    moveUp: "Move up",
+    moveDown: "Move down",
     schedulesTitle: "Scheduled goals",
     schedulesNote: "One-way doors pause",
     schedulePlaceholder: "Nightly audit",

@@ -261,6 +261,28 @@ describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () =>
     expect(apiMock.reclaimStorage).toHaveBeenCalledWith(["G-0004"]);
   });
 
+  it("runs a schedule once however fast Run is pressed, and deletes one only once you say so", async () => {
+    const { ask } = await import("@tauri-apps/plugin-dialog");
+    render(() => <Operations />);
+    await screen.findByText("Nightly dependency audit");
+    let open!: () => void;
+    apiMock.runScheduledGoalNow.mockImplementationOnce(() => new Promise((r) => (open = () => r({}))));
+    const run = screen.getByRole("button", { name: "Run" });
+    fireEvent.click(run);
+    fireEvent.click(run);
+    open();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(apiMock.runScheduledGoalNow).toHaveBeenCalledTimes(1);
+    vi.mocked(ask).mockResolvedValueOnce(false);
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(apiMock.deleteScheduledGoal).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(apiMock.deleteScheduledGoal).toHaveBeenCalledWith("sc-1");
+  });
+
   it("says a schedule's cron is in UTC, as the supervisor reads it, and when it next runs with the day", async () => {
     render(() => <Operations />);
     await screen.findByText("Nightly dependency audit");

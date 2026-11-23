@@ -53,13 +53,16 @@ pub fn redact(text: &str) -> String {
 fn redact_pem(text: &str) -> String {
     let mut out = String::new();
     let mut rest = text;
+    // Once no END follows, none follows any later header either: it is looked for no more.
+    let mut no_end = false;
     while let Some(start) = rest.find("-----BEGIN ") {
         let (before, from) = rest.split_at(start);
         out.push_str(before);
         let header_end = from.find('\n').unwrap_or(from.len());
-        if from[..header_end].contains("PRIVATE KEY")
-            && let Some(end) = from.find("-----END ")
-        {
+        let key = from[..header_end].contains("PRIVATE KEY");
+        let end = if key && !no_end { from.find("-----END ") } else { None };
+        no_end |= key && end.is_none();
+        if let Some(end) = end {
             let end_line = from[end..].find('\n').map(|i| end + i).unwrap_or(from.len());
             out.push_str("-----BEGIN PRIVATE KEY----- ");
             out.push_str(MASK);
@@ -774,6 +777,15 @@ mod tests {
             let _ = redact(&text);
             assert!(started.elapsed() < std::time::Duration::from_secs(2), "took {:?}", started.elapsed());
         }
+    }
+
+    /// Private key headers with no END line, one per line, are read in one pass: the END is looked for once.
+    #[test]
+    fn unclosed_private_keys_are_read_in_one_pass() {
+        let text = "-----BEGIN PRIVATE KEY-----\n".repeat(40_000);
+        let started = std::time::Instant::now();
+        assert_eq!(redact(&text), text);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "took {:?}", started.elapsed());
     }
 
     /// A URL full of `@`s is read in one pass: each one is judged on its own.

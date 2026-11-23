@@ -767,6 +767,8 @@ export const zhLater = {
   },
   ops: {
     kpiReclaimable: "可回收",
+    moveUp: "上移",
+    moveDown: "下移",
     schedulesTitle: "定时目标",
     schedulesNote: "单向门一律暂停",
     schedulePlaceholder: "每晚依赖巡检",

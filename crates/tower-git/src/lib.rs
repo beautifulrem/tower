@@ -103,6 +103,9 @@ impl Git {
         refuse_redirect(dir)?;
         let mut c = self.command(dir);
         c.args(["-c", "core.hooksPath=/dev/null"]).env("GIT_CONFIG_NOSYSTEM", "1");
+        // This repository and no other: were `.git` broken (its HEAD
+        // deleted), git would otherwise search the directories above.
+        c.env("GIT_DIR", ".git").env("GIT_WORK_TREE", ".");
         Ok(c)
     }
 

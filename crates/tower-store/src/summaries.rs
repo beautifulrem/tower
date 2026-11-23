@@ -139,14 +139,20 @@ impl Store {
             .query_row([id], summary_row)
             .optional()?
             .ok_or_else(|| StoreError::NotFound(format!("goal {id}")))?;
-        let mut stmt = self.conn.prepare_cached("SELECT id, title, state, touched FROM goals WHERE project_id = ?1")?;
-        let project: Vec<(String, String, String, String)> = stmt
-            .query_map([&row.rec.project_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
-            .collect::<rusqlite::Result<_>>()?;
-        let pid = row.rec.project_id.as_str();
-        let touching = Touching::build(project.iter().filter_map(|(id, title, state, touched)| {
-            Some((id.as_str(), pid, title.as_str(), LifecycleState::parse(state)?, touched.as_str()))
-        }))?;
+        // Only unmerged work overlaps: other goals need not be read.
+        let touching = if row.rec.state.is_unmerged_work() {
+            let mut stmt =
+                self.conn.prepare_cached("SELECT id, title, state, touched FROM goals WHERE project_id = ?1")?;
+            let project: Vec<(String, String, String, String)> = stmt
+                .query_map([&row.rec.project_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            let pid = row.rec.project_id.as_str();
+            Touching::build(project.iter().filter_map(|(id, title, state, touched)| {
+                Some((id.as_str(), pid, title.as_str(), LifecycleState::parse(state)?, touched.as_str()))
+            }))?
+        } else {
+            Touching::default()
+        };
         let board =
             Board { touching, needs_you: self.needs_you(Some(id))?, depends_on: self.dependencies(Some(id)).ok() };
         self.build_summary(row, &board)
@@ -378,6 +384,9 @@ mod tests {
         let mut c = Contract::quick("x", Some("true".into()), Lang::En);
         c.depends_on = vec![b.clone(), alone];
         s.append(&a, EventKind::ContractRatified { contract: c }).unwrap();
+        s.append(&a, EventKind::PortBlockAllocated { base: 41000, count: 10 }).unwrap();
+        let pr_url = Some("https://example.com/pr/1".to_string());
+        s.append(&b, EventKind::BranchPushed { remote: "origin".into(), branch: "tower/b".into(), pr_url }).unwrap();
 
         let all = s.summaries().unwrap();
         assert_eq!(all.len(), 10);
@@ -399,5 +408,8 @@ mod tests {
         assert_eq!((many.overlaps[0].total, many.overlaps[0].files.len()), (7, 5), "more than five shared files");
         assert_eq!(many.needs_you, 2);
         assert_eq!(many.depends_on.len(), 2);
+        assert_eq!(many.port_base, Some(41000));
+        let pushed = all.iter().find(|g| g.id == b).unwrap();
+        assert_eq!(pushed.pr.as_ref().map(|p| p.url.as_str()), Some("https://example.com/pr/1"));
     }
 }

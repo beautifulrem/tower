@@ -1,9 +1,10 @@
 /**
- * Title bar telemetry strip (docs/19 §19.2):
- * Active slots lamp strip + swept RunsGauge, blocking Needs-You pulse chip,
- * heartbeat, spend, sandbox posture pill, quiet hours, phone status, engine.
+ * Title bar instrument strip (docs/19 §19.2):
+ * Borderless Airbus/Linear lights-out readings — blocking Needs-You count,
+ * swept RunsGauge, heartbeat, spend, sandbox posture (framed only on warning),
+ * quiet hours, remote phone posture, and active engine.
  */
-import { For, Show } from "solid-js";
+import { Show } from "solid-js";
 
 import { clock, usd } from "../lib/format";
 import { t } from "../lib/i18n";
@@ -27,20 +28,24 @@ export function TelemetryStrip() {
     return state.engines.find((d) => d.id === e)?.available ?? true;
   };
   const noSandbox = () => hasIssue(state.env, "no_sandbox");
-  const sandboxLabel = () => state.sandboxPosture?.backend_name ?? (noSandbox() ? t("chrome.sandboxOff") : t("chrome.sandboxOn"));
-  const slots = () => Array.from({ length: Math.min(8, Math.max(1, max())) }, (_, i) => i < running());
+  const sandboxWarn = () => noSandbox() || (state.sandboxPosture?.warnings.length ?? 0) > 0;
+  const sandboxLabel = () => {
+    const raw = state.sandboxPosture?.backend_name;
+    if (raw) return raw.replace(/^macOS\s+Seatbelt\s*\(S2\)$/i, "Seatbelt S2");
+    return noSandbox() ? t("chrome.sandboxOff") : t("chrome.sandboxOn");
+  };
   const engineMeta = () => {
     const e = engine();
     if (e === "claude-code") {
       const cmd = state.settings?.claude_acp_command || "claude-agent-acp";
-      return { title: `Claude Code · ${cmd}`, ver: `Claude Code ${cmd.split("/").pop()!.split(" ")[0]}` };
+      return { title: `${t("chrome.engine")}: Claude Code · ${cmd}`, label: "Claude Code" };
     }
     if (e === "pi") {
       const v = state.env?.pi_version ?? "";
-      return { title: `Pi ${v} · ${state.env?.pi_path ?? ""}`, ver: `Pi ${v.split(" ")[0]}` };
+      return { title: `${t("chrome.engine")}: Pi ${v} · ${state.env?.pi_path ?? ""}`, label: "Pi" };
     }
     const lbl = engineLabel(e);
-    return { title: lbl, ver: lbl };
+    return { title: `${t("chrome.engine")}: ${lbl}`, label: lbl };
   };
 
   return (
@@ -63,24 +68,22 @@ export function TelemetryStrip() {
         </button>
       </Show>
       <Show when={running() > 0}>
-        <span class="gauge gauge-active tel-slots" title={t("chrome.running", { n: running(), max: max() })}>
-          <span class="tel-lamps" aria-hidden="true">
-            <For each={slots()}>{(lit) => <i class="tel-lamp" classList={{ lit }} />}</For>
-          </span>
+        <span class="gauge gauge-active" title={t("chrome.running", { n: running(), max: max() })}>
           <RunsGauge n={running()} max={max()} />
           {t("chrome.runningShort", { n: running(), max: max() })}
         </span>
       </Show>
       <Heartbeat running={running()} />
       <span class="gauge" title={t("chrome.spent", { usd: usd(spent()) })}>{usd(spent())}</span>
-      <span class="tel-sep" aria-hidden="true" />
       <button
         class="gauge gauge-sandbox link-plain"
-        classList={{ warn: noSandbox() || (state.sandboxPosture?.warnings.length ?? 0) > 0 }}
+        classList={{ warn: sandboxWarn() }}
         onClick={() => go({ name: "operations" })}
         title={t("chrome.sandboxTitle")}
       >
-        <Icon name="shield" size={10} />
+        <Show when={sandboxWarn()}>
+          <NeedsYouMark />
+        </Show>
         <span>{sandboxLabel()}</span>
       </button>
       <button
@@ -102,7 +105,7 @@ export function TelemetryStrip() {
         )}
       </Show>
       <Show when={state.settings?.remote_enabled && !state.remoteProblem}>
-        <button class="gauge gauge-phone-ok link-plain" onClick={() => go({ name: "settings" })} title={t("chrome.phoneOn")}>
+        <button class="gauge gauge-phone-ok link-plain" onClick={() => go({ name: "settings" })} title={t("chrome.phoneOn")} aria-label={t("chrome.phoneOn")}>
           <Icon name="network" size={12} />
         </button>
       </Show>
@@ -117,8 +120,7 @@ export function TelemetryStrip() {
       >
         <span class="gauge gauge-engine" title={engineMeta().title}>
           <span class="gauge-dot" />
-          {t("chrome.engine")}
-          <span class="t3 gauge-version">{engineMeta().ver}</span>
+          <span>{engineMeta().label}</span>
         </span>
       </Show>
     </div>

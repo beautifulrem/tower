@@ -11,6 +11,7 @@ import { For, Match, Show, Switch, createResource, createSignal, onMount } from 
 import { pickQuiet } from "../components/Chrome";
 import { GitIdentityForm } from "../components/GitIdentity";
 import { DangerMark, Icon, NeedsYouMark, NoticeMark } from "../components/Glyph";
+import { TrustPill } from "../components/ProvenanceFrame";
 import { TestCheckLine } from "../components/TestCheck";
 import { Button, ClauseHead, Empty, Field, IconButton, Loading, Select, Toggle } from "../components/ui";
 import { SETTINGS_CLAUSES, SettingsIndex } from "./SettingsIndex";
@@ -297,8 +298,8 @@ export function Settings() {
             <Field label={t("settings.engine")} hint={engineDesc()?.note || (engine() === "claude-code" ? t("settings.engineTrust") : t("settings.engineHintPi"))}>
               <Select value={engine()} options={engineOptions()} onChange={(v) => void patchNow({ engine: v, default_model: "" })} />
             </Field>
-            <div class="engine-trust-row">
-              <span class={`trust-pill trust-${trustTier() === "full_s2" ? "full" : trustTier() === "restricted_s2" ? "restricted" : "experimental"}`}>{t(`trust.${trustTier()}`)}</span>
+            <div class="engine-trust-row meta-inline halt">
+              <TrustPill tier={trustTier()} label={t(`trust.${trustTier()}`)} />
               <span class="field-hint">{t(`trust.hint_${trustTier()}` as Parameters<typeof t>[0])}</span>
             </div>
             <Show when={engine() === "claude-code"}>

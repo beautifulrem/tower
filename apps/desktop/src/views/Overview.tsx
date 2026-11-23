@@ -223,16 +223,16 @@ export function Overview() {
               </div>
             </section>
           </Show>
-          <Show when={groups().length > 0}>
-            <BoardCols class="flight-strip-head" />
-          </Show>
           <For each={groups()}>
-            {(grp) => (
+            {(grp, i) => (
               <section class="board-group">
                 <h2 class="scale-title halt">
                   {groupLabel(grp.key)}
                   <span class="num">{grp.goals.length}</span>
                 </h2>
+                <Show when={i() === 0}>
+                  <BoardCols class="flight-strip-head" />
+                </Show>
                 <div class="board-rows" role="list">
                   <For each={grp.goals}>
                     {(g) => (
@@ -419,20 +419,22 @@ function QuickPath(props: { project?: string }) {
           onChange={setProject}
         />
       </Show>
-      <span class="quick-prompt" aria-hidden="true">
-        ›
-      </span>
-      <input
-        class="quick-input"
-        aria-label={t("overview.quickLabel", { project: current()?.name ?? t("overview.project") })}
-        placeholder={t("overview.quickPlaceholder", { project: current()?.name ?? t("overview.project") })}
-        value={intent()}
-        disabled={busy()}
-        onInput={(e) => setIntent(e.currentTarget.value)}
-        onKeyDown={submit}
-      />
-      <div class="quick-hints" aria-hidden="true">
-        {t("overview.quickHints")}
+      <div class="quick-line">
+        <span class="quick-prompt" aria-hidden="true">
+          ›
+        </span>
+        <input
+          class="quick-input"
+          aria-label={t("overview.quickLabel", { project: current()?.name ?? t("overview.project") })}
+          placeholder={t("overview.quickPlaceholder", { project: current()?.name ?? t("overview.project") })}
+          value={intent()}
+          disabled={busy()}
+          onInput={(e) => setIntent(e.currentTarget.value)}
+          onKeyDown={submit}
+        />
+        <div class="quick-hints halt" aria-hidden="true">
+          {t("overview.quickHints")}
+        </div>
       </div>
       <Show when={current() && !current()!.test_command}>
         <div class="quick-warn meta">

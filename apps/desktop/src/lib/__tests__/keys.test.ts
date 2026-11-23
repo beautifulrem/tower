@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { createRoot } from "solid-js";
+import { createComponent, createRoot } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 
-import { activatesTarget, normalizeCombo, useKeys } from "../keys";
+import { activatesTarget, KeyLayer, normalizeCombo, type Scope, useKeys } from "../keys";
 
 const press = (key: string, init: KeyboardEventInit = {}) => window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...init }));
 
@@ -101,5 +101,34 @@ describe("keys", () => {
     expect(viewEscape).not.toHaveBeenCalled();
     disposeView();
     disposeModal();
+  });
+
+  it("puts a dialog opened last on top, even over a dialog nested deeper", () => {
+    const closeSheet = vi.fn();
+    const closeCompare = vi.fn();
+    const closePalette = vi.fn();
+    const lateSheetKey = vi.fn();
+    // The verification sheet, the screenshot comparison opened inside it, then the palette (⌘K) from the app.
+    let sheet!: Scope;
+    const disposeSheet = createRoot((d) => ((sheet = useKeys([{ key: "escape", run: closeSheet }], undefined, { modal: true })), d));
+    const inSheet = (fn: () => void) =>
+      createRoot((d) => (createComponent(KeyLayer.Provider, { value: sheet, get children() { fn(); return null; } }), d));
+    const disposeCompare = inSheet(() => useKeys([{ key: "escape", run: closeCompare }], undefined, { modal: true }));
+    const disposePalette = createRoot((d) => (useKeys([{ key: "escape", run: closePalette }], undefined, { modal: true }), d));
+    // A key the sheet's content registers now stays under the dialogs opened after the sheet.
+    const disposeLate = inSheet(() => useKeys([{ key: "x", run: lateSheetKey }]));
+    press("x");
+    expect(lateSheetKey).not.toHaveBeenCalled();
+    press("Escape");
+    expect(closePalette).toHaveBeenCalledTimes(1);
+    expect(closeCompare).not.toHaveBeenCalled();
+    disposePalette();
+    press("Escape");
+    expect(closeCompare).toHaveBeenCalledTimes(1);
+    disposeCompare();
+    press("x");
+    expect(lateSheetKey).toHaveBeenCalledTimes(1);
+    disposeLate();
+    disposeSheet();
   });
 });

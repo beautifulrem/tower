@@ -189,17 +189,27 @@ async fn poll_due_schedules(inner: &Arc<Inner>) -> Result<()> {
         let slot_min = sch.next_run_at.unwrap_or(now).div_euclid(60_000);
         let checkpoint = format!("cron:{slot_min}");
         let claimed = inner.store(|s| s.claim_schedule_checkpoint(&sch.id, &checkpoint))?;
+        let next = parsed.next_after(now);
         if !claimed {
+            // This slot was claimed before and the schedule never moved on
+            // (Tower stopped mid-launch, or recording the run failed): skip
+            // the slot, never run it twice, but keep the schedule alive.
+            if let Err(e) = inner.store(|s| s.set_schedule_next_run(&sch.id, next)) {
+                tracing::warn!(schedule = %sch.id, error = %e, "could not move a schedule past a claimed slot");
+            }
             continue;
         }
-        let next = parsed.next_after(now);
         match instantiate_scheduled_goal(&sup, &sch).await {
             Ok(goal) => {
-                let _ = inner.store(|s| s.record_schedule_run(&sch.id, now, next, &goal.id));
+                if let Err(e) = inner.store(|s| s.record_schedule_run(&sch.id, now, next, &goal.id)) {
+                    tracing::warn!(schedule = %sch.id, goal = %goal.id, error = %e, "could not record a scheduled run");
+                }
             }
             Err(e) => {
                 tracing::warn!(schedule = %sch.id, error = %e, "failed to launch scheduled goal");
-                let _ = inner.store(|s| s.set_scheduled_goal_enabled(&sch.id, sch.enabled, next));
+                if let Err(e) = inner.store(|s| s.set_schedule_next_run(&sch.id, next)) {
+                    tracing::warn!(schedule = %sch.id, error = %e, "could not move a schedule past a failed launch");
+                }
             }
         }
     }
@@ -303,5 +313,63 @@ mod tests {
         assert!(CronSchedule::parse("bad cron").is_err());
         assert!(CronSchedule::parse("61 * * * *").is_err());
         assert!(CronSchedule::parse("*/0 * * * *").is_err());
+    }
+
+    async fn supervisor(tmp: &tempfile::TempDir) -> (Supervisor, String) {
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::write(repo.join("README.md"), "hello\n").unwrap();
+        tower_git::Git::default().init_with_commit(&repo, "init").unwrap();
+        let ext = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal");
+        let sup = Supervisor::start(
+            crate::Config {
+                paths: crate::Paths::new(tmp.path().join("tower-home")),
+                extension_source: ext,
+                env: Some(crate::shell_env::ShellEnv::from_pairs(std::env::vars())),
+                demo_engine: None,
+            },
+            Arc::new(crate::NullSink),
+        )
+        .await
+        .unwrap();
+        let p = sup.add_project(repo.to_str().unwrap()).await.unwrap();
+        (sup, p.id)
+    }
+
+    fn every_minute(sup: &Supervisor, project_id: &str, next_run_at: Option<Millis>) -> ScheduledGoal {
+        let contract = tower_core::contract::Contract::quick("nightly", Some("true".into()), Lang::En);
+        sup.inner
+            .store(|s| {
+                s.create_scheduled_goal(NewScheduledGoal {
+                    project_id: project_id.into(),
+                    title: "nightly".into(),
+                    cron_expr: "* * * * *".into(),
+                    contract_template: contract,
+                    enabled: true,
+                    next_run_at,
+                    unattended_strict: true,
+                })
+            })
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_slot_claimed_by_a_run_that_never_finished_does_not_stop_the_schedule() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        let now = tower_store::system_now();
+        let slot = now - 60_000;
+        let sch = every_minute(&sup, &pid, Some(slot));
+        // An earlier poll claimed the slot, then Tower stopped before the
+        // schedule moved on (a crash, or a launch whose result was lost).
+        let checkpoint = format!("cron:{}", slot.div_euclid(60_000));
+        assert!(sup.inner.store(|s| s.claim_schedule_checkpoint(&sch.id, &checkpoint)).unwrap());
+
+        poll_due_schedules(&sup.inner).await.unwrap();
+
+        let after = sup.inner.store(|s| s.scheduled_goal(&sch.id)).unwrap();
+        assert!(after.next_run_at.is_some_and(|n| n > now), "the schedule moves on: {:?}", after.next_run_at);
+        assert_eq!(after.last_goal_id, None, "the claimed slot is not run a second time");
+        assert!(sup.inner.read_store(|s| s.summaries()).unwrap().is_empty());
     }
 }

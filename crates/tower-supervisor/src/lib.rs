@@ -139,6 +139,8 @@ impl Supervisor {
         };
         let git = Git::new(env.which("git").unwrap_or_else(|| PathBuf::from("git")), env.pairs());
         let db_path = config.paths.db();
+        // Whether this folder was Tower's before this start: opening the store creates the file.
+        let had_store = db_path.is_file();
         let store = Store::open(&db_path)?;
         let read_pool = ReadPool::open(&db_path, 4).ok();
         config.paths.restrict_store()?;
@@ -169,7 +171,7 @@ impl Supervisor {
         procs::ensure_marker(&sup.inner.paths.root)?;
         let paths = sup.inner.paths.clone();
         let _ = tokio::task::spawn_blocking(move || procs::stop_all_leftovers(&paths)).await;
-        sweep(&sup.inner.paths);
+        sweep(&sup.inner.paths, had_store);
         if let Err(e) = sup.apply_remote() {
             tracing::warn!(error = %e, "phone page not started");
             sup.inner.sink.emit(UiUpdate::Toast { level: ToastLevel::Warning, text: e.to_string(), goal_id: None });

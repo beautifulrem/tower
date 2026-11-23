@@ -18,28 +18,38 @@ use crate::run::{Stop, human_notes_since_last_run, schedule, start_run, stop_eng
 use crate::{Error, Inner, Result, actions, invalid, prompts, verify};
 
 /// Moves a goal whose engine is not running into `paused`, and raises a
-/// Needs-You item when leaving the pause needs a decision.
+/// Needs-You item when leaving the pause needs a decision. A goal already
+/// paused stays as it is: a pause you made stands.
 pub fn pause_after_stop(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str) -> Result<()> {
-    let state = inner.store(|s| s.goal(goal))?.state;
-    if state == LifecycleState::Paused {
-        return Ok(());
-    }
+    record_pause(inner, goal, reason, detail, false)
+}
+
+/// A start that failed. Recorded even when the goal was already paused (a
+/// retry from its card, a continue at launch): the pause then carries the
+/// new failure, and there is a card to answer.
+pub fn pause_failed_start(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str) -> Result<()> {
+    record_pause(inner, goal, reason, detail, true)
+}
+
+fn record_pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str, again: bool) -> Result<()> {
+    let rec = inner.store(|s| s.goal(goal))?;
     let lang = inner.lang();
+    if rec.state == LifecycleState::Paused {
+        if !again {
+            return Ok(());
+        }
+        // A card still open is for the earlier reason.
+        inner.withdraw(goal, &[InboxKind::Paused], &tr!(lang, "又暂停了一次", "Paused again"));
+    }
     inner.withdraw(goal, &[InboxKind::Question, InboxKind::Approval], &tr!(lang, "运行已停止", "The run stopped"));
     inner.set_mode(goal, Mode::Idle)?;
     // The trace keeps the words of the moment; the card is worded on read.
     let note = tower_core::i18n::PauseNote::render(detail, lang);
-    inner.transition(goal, Transition::Pause { reason }, None, &note)?;
-    if reason.needs_human() {
-        let rec = inner.store(|s| s.goal(goal))?;
-        inner.open_inbox(paused_item(
-            &rec,
-            reason,
-            detail,
-            lang,
-            matches!(reason, PauseReason::IdleWithoutSubmit | PauseReason::AgentReportedBlocked),
-        ))?;
-    }
+    let item = reason.needs_human().then(|| {
+        let allow_text = matches!(reason, PauseReason::IdleWithoutSubmit | PauseReason::AgentReportedBlocked);
+        paused_item(&rec, reason, detail, lang, allow_text)
+    });
+    inner.transition_with_item(goal, Transition::Pause { reason }, None, &note, item)?;
     if reason == PauseReason::AgentReportedBlocked {
         let _ = crate::learning::record_calibration(inner, goal);
     }
@@ -92,6 +102,10 @@ pub async fn pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: 
         c.cancel();
     }
     pause_after_stop(inner, goal, reason, detail)?;
+    // A start that began its run just before this pause was recorded.
+    if let Some(run) = inner.run_of(goal) {
+        stop_engine(inner, &run, Stop::Pause(reason)).await;
+    }
     schedule(inner).await;
     Ok(())
 }
@@ -128,7 +142,7 @@ pub async fn resume(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     let edits = human_edits(inner, goal).await.unwrap_or_default();
     // The prompt is for the agent, so the reason is in English.
     let message = prompts::resume(pause_label(reason, Lang::En), &human_notes_since_last_run(inner, goal), &edits);
-    if inner.running_count() >= inner.settings().max_concurrent as usize {
+    if inner.busy_count() >= inner.settings().max_concurrent as usize {
         inner.transition(goal, Transition::Resume, None, &tr!(lang, "等待执行槽位", "Waiting for a free slot"))?;
         return Ok(());
     }
@@ -190,6 +204,10 @@ pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     );
     inner.set_mode(goal, Mode::Idle)?;
     inner.transition(goal, Transition::Abandon, None, "")?;
+    // A start that began its run just before the goal was abandoned.
+    if let Some(run) = inner.run_of(goal) {
+        stop_engine(inner, &run, Stop::Abandon).await;
+    }
     let _ = crate::ports_pool::release_for_root(&inner.paths.root, goal);
     let _ = crate::learning::record_calibration(inner, goal);
     schedule(inner).await;

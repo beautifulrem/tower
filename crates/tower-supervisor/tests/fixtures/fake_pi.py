@@ -10,6 +10,9 @@ the behaviour:
   fail_then_fix  submit without the file; on the rework prompt create it
   ask            ask a question, write the answer to done.txt, submit
   idle           settle without submitting (twice)
+  provider_error   settle right after a provider error
+  retry_then_idle  a provider error Pi retries successfully, then idle
+  error_then_turn  a provider error, a later turn that succeeds, then idle
 """
 import json, os, sys, threading
 
@@ -281,6 +284,20 @@ def run(message):
         open("done.txt", "w").write("ok\n")
         tool("submit", {"summary": "完成", "criteria": [{"id": "C1", "met": True, "evidence": "ok"}]})
     elif scenario == "idle":
+        out({"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "嗯"}], "stopReason": "stop"}})
+    elif scenario == "provider_error":
+        out({"type": "message_end", "message": {"role": "assistant", "content": [], "stopReason": "error",
+                                                "errorMessage": "overloaded"}})
+    elif scenario in ("retry_then_idle", "error_then_turn"):
+        if n == 1:
+            out({"type": "message_end", "message": {"role": "assistant", "content": [], "stopReason": "error",
+                                                    "errorMessage": "overloaded"}})
+            if scenario == "retry_then_idle":
+                out({"type": "auto_retry_start", "attempt": 1, "maxAttempts": 3, "errorMessage": "overloaded"})
+                out({"type": "auto_retry_end", "success": True})
+            else:
+                out({"type": "turn_end", "message": {}, "toolResults": []})
+                out({"type": "turn_start"})
         out({"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "嗯"}], "stopReason": "stop"}})
     settle()
 

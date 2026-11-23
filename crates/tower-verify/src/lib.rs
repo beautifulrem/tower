@@ -109,6 +109,11 @@ impl Cancel {
         *self.tx.borrow()
     }
 
+    /// Whether `other` is a clone of this signal (the same verification).
+    pub fn same(&self, other: &Cancel) -> bool {
+        self.tx.same_channel(&other.tx)
+    }
+
     fn subscribe(&self) -> watch::Receiver<bool> {
         self.tx.subscribe()
     }

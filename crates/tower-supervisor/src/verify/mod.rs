@@ -67,7 +67,7 @@ fn start(inner: Arc<Inner>, goal: String, asked: bool) {
     }
     tokio::spawn(async move {
         let result = verify(&inner, &goal, &cancel).await;
-        inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
+        forget(&inner.verifications, &goal, &cancel);
         if !cancel.is_cancelled() {
             run_again_if_asked(&inner, &goal);
         }
@@ -83,6 +83,16 @@ fn start(inner: Arc<Inner>, goal: String, asked: bool) {
             run::report(&inner, &goal, r).await;
         }
     });
+}
+
+/// Forgets a verification of `goal` once it is over, unless another took
+/// its place: a pause cancels a verification and forgets it at once, and
+/// "verify again" may start the next while this one winds down.
+fn forget(verifications: &std::sync::Mutex<std::collections::HashMap<String, Cancel>>, goal: &str, cancel: &Cancel) {
+    let mut v = verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if v.get(goal).is_some_and(|c| c.same(cancel)) {
+        v.remove(goal);
+    }
 }
 
 /// A verification asked for while the last one wound down: the agent's
@@ -135,7 +145,7 @@ pub fn preflight(inner: Arc<Inner>, goal: String) {
             r
         }
         .await;
-        inner.verifications.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&goal);
+        forget(&inner.verifications, &goal, &cancel);
         run_again_if_asked(&inner, &goal);
         let problem = match found {
             Ok(p) => p,
@@ -162,10 +172,9 @@ fn to_paused(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str) 
     if state == LifecycleState::Verifying {
         // The edge out of verifying for a non-rework outcome.
         let note = tower_core::i18n::PauseNote::render(detail, inner.lang());
-        inner.transition(goal, Transition::VerifyFailed { rework: false }, Some(reason), &note)?;
         let rec = inner.store(|s| s.goal(goal))?;
-        inner.open_inbox(run::paused_item(&rec, reason, detail, inner.lang(), false))?;
-        Ok(())
+        let item = run::paused_item(&rec, reason, detail, inner.lang(), false);
+        inner.transition_with_item(goal, Transition::VerifyFailed { rework: false }, Some(reason), &note, Some(item))
     } else {
         run::pause_after_stop(inner, goal, reason, detail)
     }
@@ -654,6 +663,23 @@ mod tests {
         assert_eq!(tests_ran("sh check.sh", "anything"), None);
     }
     use super::*;
+
+    /// A pause cancels a verification and forgets it at once; "verify
+    /// again" can then start the next while the first winds down. The
+    /// first, ending, must not forget the second.
+    #[test]
+    fn a_verification_ending_forgets_only_itself() {
+        let map = std::sync::Mutex::new(std::collections::HashMap::new());
+        let (first, second) = (Cancel::default(), Cancel::default());
+        map.lock().unwrap().insert("G-1".to_string(), first.clone());
+        first.cancel();
+        map.lock().unwrap().remove("G-1");
+        map.lock().unwrap().insert("G-1".to_string(), second.clone());
+        forget(&map, "G-1", &first);
+        assert!(map.lock().unwrap().contains_key("G-1"), "the second is still known");
+        forget(&map, "G-1", &second);
+        assert!(map.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn criteria_naming_held_out_paths_are_known() {

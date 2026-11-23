@@ -322,6 +322,40 @@ async fn an_agent_that_stops_without_submitting_is_nudged_then_paused() {
     assert!(carded, "no Paused card in the inbox");
 }
 
+/// A provider error the run got past (Pi retried it, or a later turn
+/// succeeded) is not why the agent stopped: it gets the one reminder, and
+/// the pause that follows is for settling without `submit`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_provider_error_the_run_recovered_from_does_not_skip_the_nudge() {
+    for scenario in ["retry_then_idle", "error_then_turn"] {
+        let h = harness(scenario).await;
+        let id = create(&h).await;
+        let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
+        let trace = h.sup.trace(&id, None, 200).unwrap();
+        assert_eq!(
+            g.pause_reason,
+            Some(PauseReason::IdleWithoutSubmit),
+            "{scenario}: {:#?}",
+            trace.iter().rev().take(8).collect::<Vec<_>>()
+        );
+        let nudges = trace
+            .iter()
+            .filter(
+                |e| matches!(&e.event, EventKind::Injected { text, .. } if text.contains("without calling `submit`")),
+            )
+            .count();
+        assert_eq!(nudges, 1, "{scenario}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn settling_right_after_a_provider_error_pauses_for_it() {
+    let h = harness("provider_error").await;
+    let id = create(&h).await;
+    let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
+    assert_eq!(g.pause_reason, Some(PauseReason::ProviderError));
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn pausing_stops_the_engine_and_resume_continues() {
     let h = harness("ask").await;
@@ -1277,4 +1311,236 @@ async fn held_out_tests_no_criterion_runs_are_reported() {
     wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Paused)).await;
     let d = h.sup.goal(&id).unwrap();
     assert!(d.sentinels.iter().any(|s| s.sentinel == "held_out_not_run"), "{:?}", d.sentinels);
+}
+
+/// A retry that fails the same way leaves the goal paused with a card that
+/// says so: answering the first card must not leave it with none.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_retry_that_fails_again_raises_a_new_card() {
+    let h = harness("pass").await;
+    h.sup.save_settings(Settings { pi_path: "/nonexistent/pi".into(), ..h.sup.settings() }).unwrap();
+    let id = create(&h).await;
+    let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
+    assert_eq!(g.pause_reason, Some(PauseReason::PrepareFailed));
+    let first = wait_inbox(&h, &id, InboxKind::Paused).await;
+    assert!(h.sup.answer(&first.id, "Retry").await.is_err(), "the retry fails the same way");
+    let second = wait_inbox(&h, &id, InboxKind::Paused).await;
+    assert_ne!(second.id, first.id, "a new card for the new failure");
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::PrepareFailed)));
+}
+
+/// A goal Tower paused on quitting continues at the next launch; when it
+/// cannot start, the pause says why and has a card.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_goal_that_cannot_continue_after_a_restart_raises_a_card() {
+    let h = harness("hold").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::Running && g.needs_you > 0).await;
+    h.sup.shutdown().await;
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!(g.pause_reason, Some(PauseReason::AppQuit));
+    h.sup.save_settings(Settings { pi_path: "/nonexistent/pi".into(), ..h.sup.settings() }).unwrap();
+    let Harness { _tmp, repo, sup, sink } = h;
+    drop(sup);
+    let root = std::fs::canonicalize(_tmp.path()).unwrap();
+    let ext = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal");
+    let env = ShellEnv::from_pairs([
+        ("PATH".to_string(), std::env::var("PATH").unwrap()),
+        ("HOME".to_string(), root.join("home").display().to_string()),
+    ]);
+    let sup = Supervisor::start(
+        Config { paths: Paths::new(root.join("tower")), extension_source: ext, env: Some(env), demo_engine: None },
+        sink.clone(),
+    )
+    .await
+    .unwrap();
+    let h = Harness { _tmp, repo, sup, sink };
+    wait_inbox(&h, &id, InboxKind::Paused).await;
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::PrepareFailed)));
+}
+
+/// A project whose setup command takes a while, so a start can be caught
+/// halfway.
+async fn slow_setup(h: &Harness, seconds: u32) {
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![],
+                memory: String::new(),
+                setup_command: format!("sleep {seconds}"),
+                holdout_files: vec![],
+            },
+        )
+        .unwrap();
+}
+
+/// The first goal whose workspace exists and is not `except` (its start is
+/// in setup).
+async fn wait_preparing(h: &Harness, except: &[&str]) -> String {
+    for _ in 0..1200 {
+        let ids: Vec<String> = h.sup.goals().unwrap().into_iter().map(|g| g.id).collect();
+        if let Some(id) = ids
+            .into_iter()
+            .filter(|id| !except.contains(&id.as_str()))
+            .find(|id| h.sup.goal(id).is_ok_and(|d| d.workspace.is_some()))
+        {
+            return id;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("no goal got a workspace");
+}
+
+/// Whether a start ended: a run began, or the start gave up.
+fn start_ended(h: &Harness, id: &str) -> bool {
+    h.sup.trace(id, None, 500).unwrap().iter().any(|e| match &e.event {
+        EventKind::RunStarted { .. } => true,
+        EventKind::Note { text } => text.contains("did not start"),
+        _ => false,
+    })
+}
+
+async fn wait_start_ended(h: &Harness, id: &str) {
+    for _ in 0..1200 {
+        if start_ended(h, id) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("the start of {id} never ended");
+}
+
+/// Pausing a goal while its workspace is being set up stops the start: the
+/// agent never runs and the goal stays paused.
+#[tokio::test(flavor = "multi_thread")]
+async fn pausing_a_goal_while_it_starts_keeps_it_paused() {
+    let h = harness("hold").await;
+    slow_setup(&h, 2).await;
+    let pause = async {
+        let id = wait_preparing(&h, &[]).await;
+        h.sup.pause(&id).await.unwrap();
+        id
+    };
+    let (created, id) = tokio::join!(create(&h), pause);
+    assert_eq!(created, id);
+    wait_start_ended(&h, &id).await;
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!((g.state, g.pause_reason), (LifecycleState::Paused, Some(PauseReason::Human)));
+    assert_eq!(g.run_no, 0, "no run began");
+}
+
+/// A goal being set up holds its slot: with one slot, a second goal waits
+/// until the first is running and then until it stops. Creating a goal
+/// does not wait for another goal's (or its own) setup.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_goal_in_setup_counts_against_the_limit() {
+    let h = harness("hold").await;
+    h.sup.save_settings(Settings { max_concurrent: 1, ..h.sup.settings() }).unwrap();
+    slow_setup(&h, 2).await;
+    let (a, b) = tokio::join!(create(&h), create(&h));
+    let returned_early = !start_ended(&h, &a) && !start_ended(&h, &b);
+    let first = wait_preparing(&h, &[]).await;
+    let second = if first == a { b } else { a };
+    wait_for(&h, &first, |g| g.state == LifecycleState::Running).await;
+    assert!(h.sup.goal(&second).unwrap().workspace.is_none(), "only one goal started");
+    assert_eq!(h.sup.goal(&second).unwrap().summary.state, LifecycleState::Ready);
+    assert!(returned_early, "creating a goal returns while setups run");
+    // The slot frees when the first stops, and the second starts.
+    h.sup.pause(&first).await.unwrap();
+    wait_for(&h, &second, |g| g.state == LifecycleState::Running).await;
+}
+
+/// Preparing a new workspace can fail after it exists (a local file that
+/// cannot be read): the goal pauses with a card, and the retry finishes
+/// preparing it instead of skipping what was left.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_workspace_left_half_prepared_is_finished_on_retry() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = harness("pass").await;
+    std::fs::write(h.repo.join(".gitignore"), ".env\n").unwrap();
+    git(&h.repo, &["add", ".gitignore"]);
+    git(&h.repo, &["commit", "--quiet", "-m", "ignore env"]);
+    let env = h.repo.join(".env");
+    std::fs::write(&env, "API_TOKEN=local\n").unwrap();
+    std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![".env".into()],
+                memory: String::new(),
+                setup_command: "echo ready > .setup-done".into(),
+                holdout_files: vec![],
+            },
+        )
+        .unwrap();
+    let id = create(&h).await;
+    let card = wait_inbox(&h, &id, InboxKind::Paused).await;
+    let g = h.sup.goal(&id).unwrap();
+    assert_eq!(g.summary.pause_reason, Some(PauseReason::PrepareFailed));
+    let ws = PathBuf::from(g.workspace.expect("the workspace exists"));
+    std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o644)).unwrap();
+    h.sup.answer(&card.id, "Retry").await.unwrap();
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+    assert_eq!(std::fs::read_to_string(ws.join(".env")).unwrap(), "API_TOKEN=local\n");
+    assert_eq!(std::fs::read_to_string(ws.join(".setup-done")).unwrap(), "ready\n");
+}
+
+/// A start you asked for (a retry from a card) holds the only slot while
+/// it sets up; when it ends without a run, the goal waiting behind it starts.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slot_freed_by_a_retry_that_did_not_start_goes_to_the_next_goal() {
+    use std::os::unix::fs::PermissionsExt;
+    let h = harness("hold").await;
+    h.sup.save_settings(Settings { max_concurrent: 1, ..h.sup.settings() }).unwrap();
+    std::fs::write(h.repo.join(".gitignore"), ".env\n").unwrap();
+    git(&h.repo, &["add", ".gitignore"]);
+    git(&h.repo, &["commit", "--quiet", "-m", "ignore env"]);
+    let env = h.repo.join(".env");
+    std::fs::write(&env, "API_TOKEN=local\n").unwrap();
+    std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let p = h.sup.add_project(h.repo.to_str().unwrap()).await.unwrap();
+    h.sup
+        .update_project(
+            &p.id,
+            &tower_store::ProjectPatch {
+                base_branch: "main".into(),
+                test_command: None,
+                local_files: vec![".env".into()],
+                memory: String::new(),
+                setup_command: "sleep 2".into(),
+                holdout_files: vec![],
+            },
+        )
+        .unwrap();
+    let first = create(&h).await;
+    let card = wait_inbox(&h, &first, InboxKind::Paused).await;
+    std::fs::set_permissions(&env, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let meanwhile = async {
+        // The retry copied the local files and is in setup.
+        while !h
+            .sup
+            .trace(&first, None, 500)
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e.event, EventKind::LocalFilesCopied { .. }))
+        {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        let second = create(&h).await;
+        assert_eq!(h.sup.goal(&second).unwrap().summary.state, LifecycleState::Ready, "the slot is taken");
+        h.sup.abandon(&first).await.unwrap();
+        second
+    };
+    let (_, second) = tokio::join!(h.sup.answer(&card.id, "Retry"), meanwhile);
+    wait_for(&h, &second, |g| g.state == LifecycleState::Running).await;
 }

@@ -7,9 +7,9 @@ import { For, type JSX, Show, createMemo, createResource, createSignal } from "s
 
 import { DangerMark, Icon, NoticeMark } from "../components/Glyph";
 import { ProvenanceFrame } from "../components/ProvenanceFrame";
-import { Empty, Prose, Select } from "../components/ui";
+import { Empty, Failed, Prose, Select, settled } from "../components/ui";
 import { api } from "../lib/api";
-import type { CalibrationRow, MemoryProposal, ProposalStatus } from "../lib/apiTypes";
+import type { MemoryProposal, ProposalStatus } from "../lib/apiTypes";
 import { ago, usd } from "../lib/format";
 import { t } from "../lib/i18n";
 import { engineLabel } from "../lib/labels";
@@ -84,9 +84,9 @@ export function ProvBox(props: { kind: "fact" | "claim" | "human"; badge: string
 }
 
 /** Shared single-border numeric instrument table with empty state. */
-export function DataTable<T>(props: { headers: [string, boolean?][]; empty: string; items: T[]; row: (item: T) => JSX.Element }) {
+export function DataTable<T>(props: { headers: [string, boolean?][]; empty: string; items: T[]; row: (item: T) => JSX.Element; error?: unknown; onRetry?: () => void }) {
   return (
-    <Show when={props.items.length > 0} fallback={<Empty title={props.empty} inline />}>
+    <Show when={props.items.length > 0} fallback={<Failed inline error={props.error} onRetry={() => props.onRetry?.()} pending={<Empty title={props.empty} inline />} />}>
       <div class="data-table-wrap">
         <table class="data-table num">
           <thead>
@@ -178,12 +178,12 @@ function ProposalRow(props: { p: MemoryProposal; onChanged: () => void }) {
 export function Learning() {
   const [status, setStatus] = createSignal<ProposalStatus>("pending");
   const [project, setProject] = createSignal(ALL);
-  const [proposals, { refetch: rfProp }] = createResource(status, (st) => api.memoryProposals(st).catch(() => [] as MemoryProposal[]));
-  const [rows, { refetch: rfCal }] = createResource(project, (p) => api.calibrationRows(p === ALL ? null : p).catch(() => [] as CalibrationRow[]));
+  const [proposals, { refetch: rfProp }] = createResource(status, (st) => api.memoryProposals(st));
+  const [rows, { refetch: rfCal }] = createResource(project, (p) => api.calibrationRows(p === ALL ? null : p));
 
   const onMutate = () => (void rfProp(), void refreshConsoleMeta());
-  const list = () => (Array.isArray(proposals()) ? proposals()! : []);
-  const cal = () => (Array.isArray(rows()) ? rows()! : []);
+  const list = () => settled(proposals) ?? [];
+  const cal = () => settled(rows) ?? [];
   const pendingCount = () => (status() === "pending" ? list().length : state.pendingProposals);
   const avgPass = createMemo(() => {
     const r = cal(), tot = r.reduce((s, x) => s + x.goals_total, 0);
@@ -202,7 +202,7 @@ export function Learning() {
             ))}
           </div>
         </SecHead>
-        <Show when={list().length > 0} fallback={<Empty title={t("learning.queueEmpty")} inline />}>
+        <Show when={list().length > 0} fallback={<Failed inline error={proposals.error} onRetry={() => void rfProp()} pending={<Empty title={t("learning.queueEmpty")} inline />} />}>
           <div class="proposal-ledger"><For each={list()}>{(p) => <ProposalRow p={p} onChanged={onMutate} />}</For></div>
         </Show>
       </section>
@@ -234,6 +234,8 @@ export function Learning() {
           ]}
           empty={t("learning.calEmpty")}
           items={cal()}
+          error={rows.error}
+          onRetry={rfCal}
           row={(r) => (
             <tr>
               <td>

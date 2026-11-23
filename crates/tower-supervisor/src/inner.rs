@@ -335,9 +335,33 @@ impl Inner {
         self.runs.lock().unwrap_or_else(PoisonError::into_inner).len()
     }
 
+    /// Goals that hold a slot: running, or being started (setting up a
+    /// workspace can take minutes). A run is inserted while its start is
+    /// still marked, so the two are counted once.
+    pub fn busy_count(&self) -> usize {
+        let starting = self.starting.lock().unwrap_or_else(PoisonError::into_inner);
+        busy(&starting, &self.runs.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+
+    /// Marks `goal` as being started, unless it already is or, with `max`,
+    /// that many goals already hold a slot (checked under the same lock).
+    pub(crate) fn claim_start(&self, goal: &str, max: Option<usize>) -> bool {
+        let mut starting = self.starting.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(max) = max
+            && busy(&starting, &self.runs.lock().unwrap_or_else(PoisonError::into_inner)) >= max
+        {
+            return false;
+        }
+        starting.insert(goal.to_string())
+    }
+
     pub fn run_of(&self, goal: &str) -> Option<Arc<Run>> {
         self.runs.lock().unwrap_or_else(PoisonError::into_inner).get(goal).cloned()
     }
+}
+
+fn busy(starting: &HashSet<String>, runs: &HashMap<String, Arc<Run>>) -> usize {
+    runs.len() + starting.iter().filter(|g| !runs.contains_key(*g)).count()
 }
 
 /// Updates the files each unfinished goal changes; when any list changed,

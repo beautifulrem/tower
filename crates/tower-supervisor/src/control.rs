@@ -142,7 +142,7 @@ pub async fn resume(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     let edits = human_edits(inner, goal).await.unwrap_or_default();
     // The prompt is for the agent, so the reason is in English.
     let message = prompts::resume(pause_label(reason, Lang::En), &human_notes_since_last_run(inner, goal), &edits);
-    if inner.running_count() >= inner.settings().max_concurrent as usize {
+    if inner.busy_count() >= inner.settings().max_concurrent as usize {
         inner.transition(goal, Transition::Resume, None, &tr!(lang, "等待执行槽位", "Waiting for a free slot"))?;
         return Ok(());
     }

@@ -18,7 +18,7 @@ use crate::paths::real;
 use crate::{Inner, Result, invalid, prompts};
 
 pub(crate) use crate::control::{
-    abandon, answer_dialog, pause, pause_after_stop, paused_item, repin, report, resume, steer,
+    abandon, answer_dialog, pause, pause_after_stop, pause_failed_start, paused_item, repin, report, resume, steer,
 };
 pub(crate) use crate::jail::{Dirs, Net, TowerFiles, agent_jail, verifier_jail};
 
@@ -164,12 +164,21 @@ impl Run {
     }
 }
 
-/// Starts ready goals while slots are free, oldest first.
-pub async fn schedule(inner: &Arc<Inner>) {
+/// Starts ready goals while slots are free, oldest first. Each start runs
+/// on its own task (setting up a workspace can take minutes, and whoever
+/// asked to schedule should not wait for it); a goal being started holds
+/// its slot from now on.
+///
+/// Boxed because starts schedule again when they end without a run.
+pub fn schedule(inner: &Arc<Inner>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+    Box::pin(schedule_inner(inner))
+}
+
+async fn schedule_inner(inner: &Arc<Inner>) {
     let max = inner.settings().max_concurrent as usize;
     let ready = inner.store(|s| s.goals_in_state(LifecycleState::Ready)).unwrap_or_default();
     for g in ready {
-        if inner.running_count() >= max {
+        if inner.busy_count() >= max {
             break;
         }
         // Respect cross-goal dependencies (`Contract.depends_on`): wait until
@@ -216,9 +225,15 @@ pub async fn schedule(inner: &Arc<Inner>) {
         if !still_ready {
             continue;
         }
-        if let Err(e) = start_scheduled(inner, &g.id, purpose, message, images).await {
-            tracing::warn!(goal = %g.id, error = %e, "could not start run");
-        }
+        let Some(starting) = Starting::claim(inner, &g.id, Some(max)) else { continue };
+        let inner = inner.clone();
+        tokio::spawn(async move {
+            let id = g.id;
+            if let Err(e) = start_scheduled(&inner, &id, purpose, message, images, starting).await {
+                tracing::warn!(goal = %id, error = %e, "could not start run");
+            }
+            reschedule_unless_running(&inner, &id).await;
+        });
     }
 }
 
@@ -361,19 +376,27 @@ fn engine_config(inner: &Inner, goal: &tower_store::GoalRecord, ws: &Path) -> Re
 }
 
 /// Marks a goal as being started; released when dropped.
-struct Starting<'a> {
-    inner: &'a Inner,
+pub(crate) struct Starting {
+    inner: Arc<Inner>,
     goal: String,
 }
 
-impl<'a> Starting<'a> {
-    fn claim(inner: &'a Inner, goal: &str) -> Option<Self> {
-        let fresh = inner.starting.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.to_string());
-        fresh.then(|| Starting { inner, goal: goal.to_string() })
+impl Starting {
+    /// `None` when the goal is already being started, or with `max` when
+    /// that many goals already run or start.
+    fn claim(inner: &Arc<Inner>, goal: &str, max: Option<usize>) -> Option<Self> {
+        inner.claim_start(goal, max).then(|| Starting { inner: inner.clone(), goal: goal.to_string() })
+    }
+
+    fn claim_one(inner: &Arc<Inner>, goal: &str) -> Result<Self> {
+        // One start at a time per goal: preparing a workspace takes a while,
+        // and two callers (the scheduler and a human resume) must not both get through.
+        Self::claim(inner, goal, None)
+            .ok_or_else(|| invalid(tr!(inner.lang(), "这个目标正在启动", "This goal is already starting")))
     }
 }
 
-impl Drop for Starting<'_> {
+impl Drop for Starting {
     fn drop(&mut self) {
         self.inner.starting.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.goal);
     }
@@ -389,7 +412,12 @@ pub fn start_run<'a>(
     purpose: &'a str,
     message: String,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(start_run_inner(inner, goal_id, purpose, message, Vec::new(), false))
+    Box::pin(async move {
+        let starting = Starting::claim_one(inner, goal_id)?;
+        let r = start_run_inner(inner, goal_id, purpose, message, Vec::new(), false, starting).await;
+        reschedule_unless_running(inner, goal_id).await;
+        r
+    })
 }
 
 /// Starts a run carrying multimodal image attachments alongside `message`.
@@ -401,7 +429,23 @@ pub fn start_run_with_images<'a>(
     message: String,
     images: Vec<ImageAttachment>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(start_run_inner(inner, goal_id, purpose, message, images, false))
+    Box::pin(async move {
+        let starting = Starting::claim_one(inner, goal_id)?;
+        let r = start_run_inner(inner, goal_id, purpose, message, images, false, starting).await;
+        reschedule_unless_running(inner, goal_id).await;
+        r
+    })
+}
+
+/// A start holds a slot while it runs; one that ended without a run (it
+/// failed and paused the goal, or you paused or abandoned it meanwhile)
+/// hands the slot to the next ready goal. Not when the goal is still ready:
+/// the scheduler would only try it again at once.
+async fn reschedule_unless_running(inner: &Arc<Inner>, goal: &str) {
+    let ready = inner.store(|s| s.goal(goal)).is_ok_and(|g| g.state == LifecycleState::Ready);
+    if inner.run_of(goal).is_none() && !ready {
+        schedule(inner).await;
+    }
 }
 
 fn start_scheduled<'a>(
@@ -410,8 +454,9 @@ fn start_scheduled<'a>(
     purpose: &'a str,
     message: String,
     images: Vec<ImageAttachment>,
+    starting: Starting,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
-    Box::pin(start_run_inner(inner, goal_id, purpose, message, images, true))
+    Box::pin(start_run_inner(inner, goal_id, purpose, message, images, true, starting))
 }
 
 /// `only_if_ready`: the scheduler's starts, which must not start a goal that
@@ -423,14 +468,9 @@ async fn start_run_inner(
     message: String,
     images: Vec<ImageAttachment>,
     only_if_ready: bool,
+    _starting: Starting,
 ) -> Result<()> {
     let lang = inner.lang();
-    // One start at a time per goal: preparing a workspace takes a while, and
-    // two callers (the scheduler and a human resume) must not both get through.
-    let _starting = match Starting::claim(inner, goal_id) {
-        Some(s) => s,
-        None => return Err(invalid(tr!(lang, "这个目标正在启动", "This goal is already starting"))),
-    };
     if inner.run_of(goal_id).is_some() {
         return Err(invalid(tr!(lang, "这个目标已经在运行", "This goal is already running")));
     }
@@ -438,6 +478,8 @@ async fn start_run_inner(
     if only_if_ready && goal.state != LifecycleState::Ready {
         return Ok(());
     }
+    // The state this start began from; see `begin`.
+    let seen = goal.state;
 
     if goal.workspace.is_none() {
         inner.set_mode(goal_id, Mode::Starting)?;
@@ -454,11 +496,6 @@ async fn start_run_inner(
                     goal_id,
                     EventKind::WorkspacePrepared { workspace: ws.display().to_string(), base_commit: base },
                 )?;
-                let copied = copy_local_files(inner, &goal, &ws).await?;
-                if !copied.is_empty() {
-                    inner.append(goal_id, EventKind::LocalFilesCopied { files: copied })?;
-                }
-                setup_workspace(inner, &goal, &ws).await?;
                 goal = inner.store(|s| s.goal(goal_id))?;
             }
             Err(e) => {
@@ -472,6 +509,17 @@ async fn start_run_inner(
         }
     }
     let ws = PathBuf::from(goal.workspace.clone().expect("workspace prepared"));
+    // Until a run has begun and setup has finished (it records its outcome,
+    // pass or fail), the workspace is not ready yet: a start that failed
+    // halfway through preparing it does the rest again. Once the agent has
+    // run, local files are never copied over its workspace again.
+    if goal.run_no == 0 && inner.store(|s| s.last_event(goal_id, "setup_finished"))?.is_none() {
+        if let Err(e) = finish_workspace(inner, &goal, &ws).await {
+            fail_to_start(inner, goal_id, &tr!(lang, "准备工作区失败：{e}", "Could not prepare the workspace: {e}"))?;
+            return Err(e);
+        }
+        goal = inner.store(|s| s.goal(goal_id))?;
+    }
 
     // Lockfile-verified ACP adapter installation for any bundled ACP engine.
     let engine_id = inner.engine_of(&goal);
@@ -517,14 +565,8 @@ async fn start_run_inner(
         }
         None => None,
     };
-    if goal.state != LifecycleState::Running {
-        inner.transition(goal_id, Transition::RunStarted, None, purpose)?;
-    }
-    inner.append(goal_id, EventKind::RunStarted { run_no, purpose: purpose.into(), start_pin: start_pin.clone() })?;
-    inner.set_mode(goal_id, Mode::Starting)?;
-
     let mut initial_flags = Flags::default();
-    initial_flags.probe.last_progress_pin = start_pin.or_else(|| goal.pin.clone());
+    initial_flags.probe.last_progress_pin = start_pin.clone().or_else(|| goal.pin.clone());
 
     let run = Arc::new(Run {
         goal_id: goal_id.into(),
@@ -534,7 +576,20 @@ async fn start_run_inner(
         workspace: real(&ws).display().to_string(),
         flags: Mutex::new(initial_flags),
     });
-    inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal_id.into(), run.clone());
+    if !begin(inner, &run, seen, purpose)? {
+        // Nothing reads this engine yet (its events stay in `rx`).
+        run.engine.shutdown(Duration::from_secs(5)).await;
+        inner.set_mode(goal_id, Mode::Idle)?;
+        let text = tr!(
+            lang,
+            "启动期间目标被暂停或放弃，这次运行没有开始",
+            "The goal was paused or abandoned while it was starting, so the run did not start"
+        );
+        inner.append(goal_id, EventKind::Note { text })?;
+        return Ok(());
+    }
+    inner.append(goal_id, EventKind::RunStarted { run_no, purpose: purpose.into(), start_pin })?;
+    inner.set_mode(goal_id, Mode::Starting)?;
     inner.update_keep_awake();
     // The criteria on your own code, while the agent starts (once; see
     // `verify::preflight`).
@@ -558,6 +613,44 @@ async fn start_run_inner(
     }
     inner.set_mode(goal_id, Mode::Thinking)?;
     Ok(())
+}
+
+/// Makes `run` the goal's live run, if the goal is still in the state its
+/// start began from. Preparing and setting up a workspace can take minutes;
+/// a goal you paused or abandoned meanwhile must not start. The check, the
+/// transition and the insert happen under the store's lock, so a pause or
+/// abandon lands either before (the start gives up) or after (it finds the
+/// run and stops it).
+fn begin(inner: &Arc<Inner>, run: &Arc<Run>, seen: LifecycleState, purpose: &str) -> Result<bool> {
+    let goal = run.goal_id.as_str();
+    let began = inner.store(|s| {
+        if s.goal(goal)?.state != seen {
+            return Ok(None);
+        }
+        let entry = match seen {
+            LifecycleState::Running => None,
+            _ => Some(s.transition(goal, Transition::RunStarted, None, purpose)?),
+        };
+        inner.runs.lock().unwrap_or_else(PoisonError::into_inner).insert(goal.into(), run.clone());
+        Ok(Some(entry))
+    })?;
+    let Some(entry) = began else { return Ok(false) };
+    if let Some(entry) = entry {
+        inner.traces.lock().unwrap_or_else(PoisonError::into_inner).push(entry);
+        inner.flush_traces();
+        inner.emit_goal_now(goal);
+    }
+    Ok(true)
+}
+
+/// What a new workspace gets before its first run: the project's local
+/// files, then its setup command.
+async fn finish_workspace(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, ws: &Path) -> Result<()> {
+    let copied = copy_local_files(inner, goal, ws).await?;
+    if !copied.is_empty() {
+        inner.append(&goal.id, EventKind::LocalFilesCopied { files: copied })?;
+    }
+    setup_workspace(inner, goal, ws).await
 }
 
 /// Copies the project's git-ignored local files (e.g. `.env`) into `dest`.
@@ -675,7 +768,7 @@ fn report_stall(inner: &Arc<Inner>, run: &Arc<Run>, detector: &str, stall: tower
 
 fn fail_to_start(inner: &Arc<Inner>, goal_id: &str, detail: &str) -> Result<()> {
     inner.append(goal_id, EventKind::EngineError { message: detail.into() })?;
-    pause_after_stop(inner, goal_id, PauseReason::PrepareFailed, detail)
+    pause_failed_start(inner, goal_id, PauseReason::PrepareFailed, detail)
 }
 
 mod events;

@@ -107,6 +107,15 @@ pub(super) type RunAll = (Outcome, Found, Option<crate::verify::perturb::Report>
 
 type Exec = (tower_core::contract::Criterion, String, u32);
 
+/// Where one verification's guard goes, and what removes it when that
+/// verification is over: its own directory only, as another verification
+/// of the goal may have started while this one wound down. (What a quit cut
+/// short is removed at the next launch.)
+fn guard_dir(root: &Path, goal: &str, run: &str) -> (std::path::PathBuf, GuardDir) {
+    let dir = root.join("assert-guard").join(goal).join(run);
+    (dir.clone(), GuardDir(dir))
+}
+
 impl<'a> Bench<'a> {
     pub(super) async fn open(
         inner: &'a Arc<Inner>,
@@ -116,6 +125,12 @@ impl<'a> Bench<'a> {
         base: &str,
         cancel: &'a Cancel,
     ) -> Result<Bench<'a>> {
+        // A verification cancelled before it got here was replaced (or is
+        // being): clearing the goal's directories below would remove the
+        // newer one's.
+        if cancel.is_cancelled() {
+            return Err(invalid("verification cancelled"));
+        }
         let run_id = uuid::Uuid::new_v4().simple().to_string();
         let short = &run_id[..12];
         // New paths every time: a process that outlived an earlier
@@ -142,10 +157,8 @@ impl<'a> Bench<'a> {
         // Tower's own: the guard the runners load before any project code,
         // and the transcripts it reports to. Outside every directory the
         // sandbox may write, so a run can neither rewrite nor delete them.
-        let guard_root = inner.paths.root.join("assert-guard").join(goal);
-        guard::remove_dir(&guard_root);
-        let guard = Guard::install(&guard_root.join(short)).unwrap_or_default();
-        let guard_cleanup = GuardDir(guard_root);
+        let (guard_dir, guard_cleanup) = guard_dir(&inner.paths.root, goal, short);
+        let guard = Guard::install(&guard_dir).unwrap_or_default();
         let tower_files = run::TowerFiles {
             read: guard.iter().map(|g| g.dir().to_path_buf()).collect(),
             append: guard.iter().flat_map(|g| g.logs()).collect(),
@@ -686,5 +699,26 @@ impl<'a> Bench<'a> {
             found.push(hit);
         }
         Ok(found)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two verifications of one goal can overlap (one cancelled and winding
+    /// down, the next started): the first one's end leaves the second's
+    /// guard in place.
+    #[test]
+    fn one_verifications_guard_outlives_another_ending() {
+        let root = tempfile::tempdir().unwrap();
+        let (first, first_cleanup) = guard_dir(root.path(), "G-1", "aaa");
+        std::fs::create_dir_all(&first).unwrap();
+        let (second, second_cleanup) = guard_dir(root.path(), "G-1", "bbb");
+        std::fs::create_dir_all(&second).unwrap();
+        drop(first_cleanup);
+        assert!(second.is_dir(), "the second verification's guard is still there");
+        drop(second_cleanup);
+        assert!(!second.exists());
     }
 }

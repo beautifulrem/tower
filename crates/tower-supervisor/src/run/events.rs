@@ -39,7 +39,12 @@ pub(super) async fn pump(inner: Arc<Inner>, run: Arc<Run>, mut rx: mpsc::Unbound
 async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> {
     let g = run.goal_id.as_str();
     match e {
-        PiEvent::AgentStart | PiEvent::TurnStart => inner.set_mode(g, Mode::Thinking)?,
+        PiEvent::AgentStart | PiEvent::TurnStart => {
+            // A new turn is a new request: an earlier turn's provider error
+            // is no longer why the agent might stop.
+            run.flags().last_error = None;
+            inner.set_mode(g, Mode::Thinking)?
+        }
         PiEvent::TextDelta { delta } => {
             let text = {
                 let mut f = run.flags();
@@ -180,7 +185,13 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                 },
             )?;
         }
-        PiEvent::RetryEnd { .. } => inner.set_mode(g, Mode::Thinking)?,
+        PiEvent::RetryEnd { success } => {
+            // A retry that got through leaves no error behind.
+            if success {
+                run.flags().last_error = None;
+            }
+            inner.set_mode(g, Mode::Thinking)?
+        }
         PiEvent::TurnEnd => check_budget(inner, run).await?,
         PiEvent::UiRequest(req) => on_ui_request(inner, run, req)?,
         PiEvent::ExtensionError { extension, event, error } => {

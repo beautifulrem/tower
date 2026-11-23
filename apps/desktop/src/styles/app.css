@@ -114,7 +114,7 @@
 .gauge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 .gauge-active {
   color: var(--text-1);
@@ -233,7 +233,8 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  margin: -7px;
+  /* A 28px hit area round a 14px glyph keeps the glyph's own footprint: half the difference on each side. */
+  margin: calc((14px - 28px) / 2);
   cursor: default;
 }
 .icon-btn:hover:not(:disabled) {
@@ -582,7 +583,7 @@
 }
 .claim-label {
   display: flex;
-  gap: 5px;
+  gap: 6px;
   font-size: var(--fs-hint);
   line-height: var(--lh-body);
   color: var(--text-3);
@@ -755,7 +756,7 @@
 .btn-label {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 .btn-s {
   height: 24px;
@@ -861,7 +862,7 @@
   background: var(--kbd-bg);
   font-family: var(--font-mono);
   font-feature-settings: var(--font-features-mono);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0;
   color: var(--text-3);
@@ -938,7 +939,7 @@ textarea,
 .select {
   width: 100%;
   min-width: 0;
-  padding: 4px 9px;
+  padding: var(--sp-1) var(--sp-2);
   border-radius: var(--radius-m);
   border: 1px solid var(--border);
   background: var(--bg-field);
@@ -1036,9 +1037,10 @@ input[type="radio"] {
   position: relative;
   display: block;
 }
+/* The unit stands where the field's text does: its padding plus the 1px border. */
 .unit-wrap .unit {
   position: absolute;
-  right: 9px;
+  right: calc(var(--sp-2) + 1px);
   top: 0;
   height: 28px;
   display: inline-flex;
@@ -1052,11 +1054,11 @@ input[type="radio"] {
 }
 .unit-wrap.unit-left .unit {
   right: auto;
-  left: 9px;
+  left: calc(var(--sp-2) + 1px);
 }
 .unit-wrap.unit-left input {
-  padding-left: 22px !important;
-  padding-right: 9px !important;
+  padding-left: var(--sp-5) !important;
+  padding-right: var(--sp-2) !important;
 }
 
 .field {
@@ -1529,7 +1531,7 @@ input[type="radio"] {
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   font-size: 13px;
   line-height: 14px;
   letter-spacing: -0.01em;
@@ -2448,7 +2450,7 @@ input[type="radio"] {
 .snoozed-head {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-height: 24px;
 }
 .snoozed-head:hover {
@@ -2602,7 +2604,7 @@ input[type="radio"] {
 .injected-head {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: var(--fs-meta);
   color: var(--text-2);
 }
@@ -3262,8 +3264,10 @@ input[type="radio"] {
 /* A sheet never runs past the window: at most the overlay's height, the body scrolls and the actions stay at its
    foot, on the sheet's own surface (at 1040×640 a tall Accept sheet otherwise put Accept below the window's edge). */
 .panel {
+  --panel-pad-y: var(--sp-4);
+  --panel-pad-x: var(--sp-5);
   background: var(--bg-overlay);
-  padding: 16px 18px;
+  padding: var(--panel-pad-y) var(--panel-pad-x);
   display: grid;
   gap: var(--sp-4);
   max-height: 100%;
@@ -3272,10 +3276,10 @@ input[type="radio"] {
 }
 .panel > .panel-actions {
   position: sticky;
-  bottom: -16px;
+  bottom: calc(-1 * var(--panel-pad-y));
   z-index: 2;
-  margin: 0 -18px -16px;
-  padding: var(--sp-3) 18px 16px;
+  margin: 0 calc(-1 * var(--panel-pad-x)) calc(-1 * var(--panel-pad-y));
+  padding: var(--sp-3) var(--panel-pad-x) var(--panel-pad-y);
   background: var(--bg-overlay);
 }
 .panel-title {
@@ -4471,8 +4475,8 @@ input[type="radio"] {
 .panel-more::before {
   content: "";
   position: absolute;
-  left: -18px;
-  right: -18px;
+  left: calc(-1 * var(--panel-pad-x));
+  right: calc(-1 * var(--panel-pad-x));
   bottom: 0;
   height: 32px;
   background: linear-gradient(to bottom, transparent, var(--bg-overlay));

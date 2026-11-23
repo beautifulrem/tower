@@ -80,20 +80,20 @@ fn ends_url(c: char) -> bool {
 }
 
 /// Where a URL's authority ends: at the first `/?#`, or past `user:pass@`
-/// when the password itself holds an unescaped `/` (never a path's `@`, as
-/// in `/@types/node`: a user name holds no `/`). The last `@` before the
-/// query is taken, so a password holding `@` too goes whole. Where it cannot
-/// tell, it masks: `host:4873/react@18` loses its host rather than risk a
-/// password (`user:1234/abc@host` reads the same).
+/// when the password itself holds an unescaped `/`, `?` or `#` (never a
+/// path's or a query's `@`, as in `/@types/node` or `?email=a@b`: a user name
+/// holds none of `/?#`, and a port's path and query are told apart below).
+/// The last `@` is taken, so a password holding `@` too goes whole. Where it
+/// cannot tell, it masks: `host:4873/react@18` loses its host rather than
+/// risk a password (`user:1234/abc@host` reads the same).
 fn authority_end(url: &str) -> usize {
     let first = url.find(['/', '?', '#']).unwrap_or(url.len());
-    let before_query = url.find(['?', '#']).unwrap_or(url.len());
-    if let Some(at) = url[..before_query].rfind('@')
+    if let Some(at) = url.rfind('@')
         && at > first
         && !url.starts_with('[')
         && let Some((user, pass)) = url[..at].split_once(':')
         && !user.is_empty()
-        && !user.contains('/')
+        && !user.contains(['/', '?', '#'])
         && !is_port_then_path(pass)
     {
         return at + 1 + url[at + 1..].find(['/', '?', '#']).unwrap_or(url.len() - at - 1);
@@ -102,11 +102,12 @@ fn authority_end(url: &str) -> usize {
 }
 
 /// `5173/@vite`, `5173/node_modules/@scope`: a port (one to five digits) and a
-/// path whose `@` begins a segment. A password that starts with `/` or with
+/// path whose `@` begins a segment, or `8080/u?email=a`: a port, a path, and a
+/// query or fragment the `@` is in. A password that starts with `/` or with
 /// digits then `/` ends in something other than `/`, and stays a password.
 fn is_port_then_path(pass: &str) -> bool {
     let digits = pass.bytes().take_while(u8::is_ascii_digit).count();
-    (1..=5).contains(&digits) && pass[digits..].starts_with('/') && pass.ends_with('/')
+    (1..=5).contains(&digits) && pass[digits..].starts_with('/') && (pass.ends_with('/') || pass.contains(['?', '#']))
 }
 
 /// Query parameters that carry a credential.
@@ -318,6 +319,9 @@ mod tests {
             ("fatal: https://ada:1234/digitpw0005@host.example.com/o/r.git", "digitpw0005"),
             // A password with both `@` and `/` in it: the host is after the last `@`.
             ("fatal: https://ada:pa@ss/atslash0006@host.example.com/o/r.git", "atslash0006"),
+            // `#` and `?` in a password do not start a fragment or a query before the host.
+            ("fatal: https://ada:pa#hashpw0007@host.example.com/o/r.git", "hashpw0007"),
+            ("fatal: https://ada:p?qmarkpw0008@host.example.com/o", "qmarkpw0008"),
         ];
         for (text, secret) in cases {
             let r = redact(text);
@@ -330,6 +334,8 @@ mod tests {
             "https://registry.npmjs.org:443/@types/node",
             "http://[::1]:8080/@id/x",
             "GET http://localhost:5173/node_modules/@scope/pkg/index.js 200",
+            "GET https://example.com/u?email=ada@example.org 200",
+            "GET http://localhost:8080/u?email=ada@example.org#top 200",
         ] {
             assert_eq!(redact(kept), kept);
         }

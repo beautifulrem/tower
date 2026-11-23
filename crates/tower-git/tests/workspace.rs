@@ -263,3 +263,82 @@ fn snapshot_timeline_and_sequential_merge_queue_check() {
     assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "one\ntwo\n");
     assert!(!repo.join("c.txt").exists());
 }
+
+/// The agent can write most of its workspace's `.git`. Should it point git
+/// at a configuration of its own (a copy of `.git` named by `commondir`)
+/// that asks for an fsmonitor, hooks, a filter or a textconv, nothing Tower
+/// runs there may start them: Tower's git runs outside the sandbox.
+#[test]
+fn a_redirected_workspace_config_runs_nothing_for_tower() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = tmp.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+    user_repo(&repo);
+    let git = Git::default();
+    let ws = tmp.path().join("ws");
+    let base = git.prepare_workspace(&repo, "main", &ws, "G-0001").unwrap();
+    let base_pin = git.snapshot(&ws, &base).unwrap().pin;
+
+    // What the agent does from inside: copy `.git`, give the copy commands
+    // that each leave their own marker, and redirect to it.
+    let marker = |what: &str| tmp.path().join(format!("ran-{what}"));
+    let evil = ws.join(".evil");
+    assert!(Command::new("cp").arg("-R").arg(ws.join(".git")).arg(&evil).status().unwrap().success());
+    let hooks = ws.join("evil-hooks");
+    fs::create_dir(&hooks).unwrap();
+    for hook in ["reference-transaction", "post-checkout", "post-index-change"] {
+        fs::write(hooks.join(hook), format!("#!/bin/sh\ntouch '{}'\n", marker("hook").display())).unwrap();
+        fs::set_permissions(hooks.join(hook), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let touch = |what: &str| format!("touch '{}'; cat", marker(what).display());
+    let config = evil.join("config");
+    for (k, v) in [
+        ("core.fsmonitor", format!("touch '{}'; false", marker("fsmonitor").display())),
+        ("core.hooksPath", hooks.display().to_string()),
+        ("filter.x.clean", touch("clean")),
+        ("filter.x.smudge", touch("smudge")),
+        ("diff.x.textconv", touch("textconv")),
+    ] {
+        let mut c = Command::new("git");
+        c.arg("config").arg("-f").arg(&config).args([k, v.as_str()]);
+        assert!(c.status().unwrap().success());
+    }
+    fs::write(ws.join(".gitattributes"), "*.txt filter=x diff=x\n").unwrap();
+    fs::write(ws.join(".git/commondir"), "../.evil\n").unwrap();
+    fs::write(ws.join("a.txt"), "changed\n").unwrap();
+
+    let ran = || {
+        ["fsmonitor", "hook", "clean", "smudge", "textconv"]
+            .into_iter()
+            .filter(|w| marker(w).exists())
+            .collect::<Vec<_>>()
+    };
+    let _ = git.touched(&ws, &base);
+    assert_eq!(ran(), [""; 0], "the background refresh ran the agent's commands");
+    let pin = git.snapshot(&ws, &base).map(|s| s.pin);
+    assert_eq!(ran(), [""; 0], "a snapshot ran the agent's commands");
+    let _ = git.diff(&ws, &base, pin.as_deref().unwrap_or(&base_pin));
+    let _ = git.revert_hunk(&ws, &base, pin.as_deref().unwrap_or(&base_pin), "a.txt", 0);
+    assert_eq!(ran(), [""; 0], "a diff ran the agent's commands");
+    let _ = git.restore(&ws, &base_pin);
+    assert_eq!(ran(), [""; 0], "restoring ran the agent's commands");
+
+    // And should the workspace's own config ever ask for an fsmonitor or
+    // hooks (the sandbox keeps it read-only), Tower's git still runs neither.
+    fs::remove_file(ws.join(".git/commondir")).unwrap();
+    fs::remove_file(ws.join(".gitattributes")).unwrap();
+    for (k, v) in [
+        ("core.fsmonitor", format!("touch '{}'; false", marker("fsmonitor").display())),
+        ("core.hooksPath", hooks.display().to_string()),
+    ] {
+        let mut c = Command::new("git");
+        c.arg("config").arg("-f").arg(ws.join(".git/config")).args([k, v.as_str()]);
+        assert!(c.status().unwrap().success());
+    }
+    git.touched(&ws, &base).unwrap();
+    let pin = git.snapshot(&ws, &base).unwrap().pin;
+    git.keep(&ws, "refs/tower/runs/1", &pin).unwrap();
+    git.restore(&ws, &base_pin).unwrap();
+    assert_eq!(ran(), [""; 0], "the workspace's own config ran commands for Tower");
+}

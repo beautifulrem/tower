@@ -77,13 +77,32 @@ impl Git {
         if !self.env.is_empty() {
             c.env_clear().envs(self.env.iter().cloned());
         }
-        // Never prompt, never page, never run a user's diff driver.
+        // Never prompt, never page, never run a user's diff driver. Never an
+        // fsmonitor either: a speed cache Tower does not need, and a command
+        // git would run.
         c.env("GIT_TERMINAL_PROMPT", "0").env("GIT_PAGER", "cat").env("LC_ALL", "C");
+        c.args(["-c", "core.fsmonitor=false"]);
         c
     }
 
-    fn run_with(&self, cwd: &Path, args: &[&str], f: impl FnOnce(&mut Command)) -> Result<String> {
-        let mut c = self.command(cwd);
+    /// git in a directory the agent can write: its workspace, or a
+    /// verification checkout its criteria ran in. Tower's git runs outside
+    /// the sandbox, so nothing there may choose what it runs: `.git` must be
+    /// the repository itself (not a `gitdir:` file or a link to one the agent
+    /// made), no hooks run, and only the user's global configuration and the
+    /// repository's own (which the sandbox keeps read-only) apply.
+    fn satellite(&self, dir: &Path) -> Result<Command> {
+        let git = dir.join(".git");
+        if !std::fs::symlink_metadata(&git).is_ok_and(|m| m.is_dir()) {
+            return Err(GitError::Invalid(format!("{} is not a repository directory", git.display())));
+        }
+        refuse_redirect(dir)?;
+        let mut c = self.command(dir);
+        c.args(["-c", "core.hooksPath=/dev/null"]).env("GIT_CONFIG_NOSYSTEM", "1");
+        Ok(c)
+    }
+
+    fn exec(mut c: Command, args: &[&str], f: impl FnOnce(&mut Command)) -> Result<String> {
         c.args(args);
         f(&mut c);
         let out: Output = c.output()?;
@@ -97,12 +116,30 @@ impl Git {
         }
     }
 
+    fn run_with(&self, cwd: &Path, args: &[&str], f: impl FnOnce(&mut Command)) -> Result<String> {
+        refuse_redirect(cwd)?;
+        Self::exec(self.command(cwd), args, f)
+    }
+
     fn run(&self, cwd: &Path, args: &[&str]) -> Result<String> {
         self.run_with(cwd, args, |_| {})
     }
 
     fn run_trim(&self, cwd: &Path, args: &[&str]) -> Result<String> {
         Ok(self.run(cwd, args)?.trim().to_string())
+    }
+
+    /// [`Git::run_with`] in a directory the agent can write ([`Git::satellite`]).
+    fn ws_run_with(&self, ws: &Path, args: &[&str], f: impl FnOnce(&mut Command)) -> Result<String> {
+        Self::exec(self.satellite(ws)?, args, f)
+    }
+
+    fn ws_run(&self, ws: &Path, args: &[&str]) -> Result<String> {
+        self.ws_run_with(ws, args, |_| {})
+    }
+
+    fn ws_run_trim(&self, ws: &Path, args: &[&str]) -> Result<String> {
+        Ok(self.ws_run(ws, args)?.trim().to_string())
     }
 
     pub fn version(&self) -> Result<String> {
@@ -175,8 +212,8 @@ impl Git {
         let root_str = project_root.to_string_lossy();
         self.run(project_root, &["clone", "--quiet", "--no-hardlinks", "--no-checkout", &root_str, &ws_str])?;
         let branch = format!("tower/{goal_id}");
-        self.run(ws, &["checkout", "--quiet", "-B", &branch, &base])?;
-        self.run(ws, &["remote", "remove", "origin"])?;
+        self.ws_run(ws, &["checkout", "--quiet", "-B", &branch, &base])?;
+        self.ws_run(ws, &["remote", "remove", "origin"])?;
         // Hooks in the repository are code the agent can edit; they must not
         // run when anything commits in the satellite.
         let hooks = ws.join(".git").join("tower-empty-hooks");
@@ -188,7 +225,7 @@ impl Git {
             ("commit.gpgSign", "false"),
             ("gc.auto", "0"),
         ] {
-            self.run(ws, &["config", k, v])?;
+            self.ws_run(ws, &["config", k, v])?;
         }
         Ok(base)
     }
@@ -202,11 +239,11 @@ impl Git {
         let with_index = |c: &mut Command| {
             c.env("GIT_INDEX_FILE", &index_str);
         };
-        self.run_with(ws, &["add", "--all", "."], with_index)?;
-        let tree = self.run_with(ws, &["write-tree"], with_index)?.trim().to_string();
+        self.ws_run_with(ws, &["add", "--all", "."], with_index)?;
+        let tree = self.ws_run_with(ws, &["write-tree"], with_index)?.trim().to_string();
         let _ = std::fs::remove_file(&index);
         let pin = self
-            .run_with(ws, &["commit-tree", &tree, "-p", base, "-m", "tower snapshot"], |c| {
+            .ws_run_with(ws, &["commit-tree", &tree, "-p", base, "-m", "tower snapshot"], |c| {
                 c.env("GIT_AUTHOR_NAME", AGENT_NAME)
                     .env("GIT_AUTHOR_EMAIL", AGENT_EMAIL)
                     .env("GIT_COMMITTER_NAME", AGENT_NAME)
@@ -216,13 +253,13 @@ impl Git {
             })?
             .trim()
             .to_string();
-        self.run(ws, &["update-ref", "refs/tower/pin", &pin])?;
+        self.ws_run(ws, &["update-ref", "refs/tower/pin", &pin])?;
         let (stat, changed) = self.numstat(ws, base, &pin)?;
         Ok(Snapshot { pin, stat, changed })
     }
 
-    fn numstat(&self, repo: &Path, from: &str, to: &str) -> Result<(DiffStat, Vec<String>)> {
-        let out = self.run(repo, &["diff", "--numstat", "-M", "--no-color", "--no-ext-diff", from, to])?;
+    fn numstat(&self, ws: &Path, from: &str, to: &str) -> Result<(DiffStat, Vec<String>)> {
+        let out = self.ws_run(ws, &["diff", "--numstat", "-M", "--no-color", "--no-ext-diff", from, to])?;
         let mut stat = DiffStat::default();
         let mut changed = Vec::new();
         for line in out.lines() {
@@ -239,8 +276,8 @@ impl Git {
         Ok((stat, changed))
     }
 
-    pub fn diff(&self, repo: &Path, from: &str, to: &str) -> Result<Vec<DiffFile>> {
-        let out = self.run(repo, &["diff", "-M", "-U3", "--no-color", "--no-ext-diff", from, to])?;
+    pub fn diff(&self, ws: &Path, from: &str, to: &str) -> Result<Vec<DiffFile>> {
+        let out = self.ws_run(ws, &["diff", "-M", "-U3", "--no-color", "--no-ext-diff", from, to])?;
         Ok(diff::parse(&out))
     }
 
@@ -249,16 +286,16 @@ impl Git {
         if dir.exists() {
             self.remove_verify_checkout(ws, dir)?;
         }
-        self.run(ws, &["worktree", "add", "--quiet", "--detach", "--force", &dir.to_string_lossy(), pin])?;
+        self.ws_run(ws, &["worktree", "add", "--quiet", "--detach", "--force", &dir.to_string_lossy(), pin])?;
         Ok(())
     }
 
     pub fn remove_verify_checkout(&self, ws: &Path, dir: &Path) -> Result<()> {
-        let _ = self.run(ws, &["worktree", "remove", "--force", &dir.to_string_lossy()]);
+        let _ = self.ws_run(ws, &["worktree", "remove", "--force", &dir.to_string_lossy()]);
         if dir.exists() {
             std::fs::remove_dir_all(dir)?;
         }
-        let _ = self.run(ws, &["worktree", "prune"]);
+        let _ = self.ws_run(ws, &["worktree", "prune"]);
         Ok(())
     }
 
@@ -276,7 +313,7 @@ impl Git {
         message: &str,
     ) -> Result<(String, String)> {
         let who = self.identity(project_root);
-        let tree = self.run_trim(ws, &["rev-parse", &format!("{pin}^{{tree}}")])?;
+        let tree = self.ws_run_trim(ws, &["rev-parse", &format!("{pin}^{{tree}}")])?;
         let commit = self.commit_tree_with_message(ws, &tree, base, message, &who)?;
         self.publish(project_root, ws, &commit, branch)
     }
@@ -295,8 +332,8 @@ impl Git {
     ) -> Result<String> {
         let who = self.identity(project_root);
         // The previous seal lives in the user's repository; bring it here.
-        self.run(ws, &["fetch", "--quiet", "--no-tags", &project_root.to_string_lossy(), previous])?;
-        let tree = self.run_trim(ws, &["rev-parse", &format!("{pin}^{{tree}}")])?;
+        self.ws_run(ws, &["fetch", "--quiet", "--no-tags", &project_root.to_string_lossy(), previous])?;
+        let tree = self.ws_run_trim(ws, &["rev-parse", &format!("{pin}^{{tree}}")])?;
         let commit = self.commit_tree_with_message(ws, &tree, previous, message, &who)?;
         let refspec = format!("{commit}:refs/heads/{branch}");
         self.run(project_root, &["fetch", "--quiet", "--no-tags", &ws.to_string_lossy(), &refspec])?;
@@ -325,7 +362,7 @@ impl Git {
         who: &Identity,
     ) -> Result<String> {
         Ok(self
-            .run_with(ws, &["commit-tree", tree, "-p", base, "-m", message], |c| {
+            .ws_run_with(ws, &["commit-tree", tree, "-p", base, "-m", message], |c| {
                 c.env("GIT_AUTHOR_NAME", &who.name)
                     .env("GIT_AUTHOR_EMAIL", &who.email)
                     .env("GIT_COMMITTER_NAME", &who.name)
@@ -390,16 +427,16 @@ impl Git {
     }
 
     /// Paths that differ between two snapshots.
-    pub fn changed_between(&self, repo: &Path, from: &str, to: &str) -> Result<Vec<String>> {
-        let out = self.run(repo, &["diff", "--name-only", "-z", "--no-renames", from, to])?;
+    pub fn changed_between(&self, ws: &Path, from: &str, to: &str) -> Result<Vec<String>> {
+        let out = self.ws_run(ws, &["diff", "--name-only", "-z", "--no-renames", from, to])?;
         Ok(out.split('\0').filter(|p| !p.is_empty()).map(String::from).collect())
     }
 
     /// Files the working tree of `workspace` changes relative to `base`,
     /// including new untracked files. Cheap enough to poll.
     pub fn touched(&self, workspace: &Path, base: &str) -> Result<Vec<String>> {
-        let tracked = self.run(workspace, &["diff", "--name-only", "-z", "--no-renames", base])?;
-        let untracked = self.run(workspace, &["ls-files", "--others", "--exclude-standard", "-z"])?;
+        let tracked = self.ws_run(workspace, &["diff", "--name-only", "-z", "--no-renames", base])?;
+        let untracked = self.ws_run(workspace, &["ls-files", "--others", "--exclude-standard", "-z"])?;
         let mut files: Vec<String> =
             tracked.split('\0').chain(untracked.split('\0')).filter(|p| !p.is_empty()).map(String::from).collect();
         files.sort();
@@ -440,7 +477,7 @@ impl Git {
         }
         let (root, d) = (project_root.to_string_lossy(), dir.to_string_lossy());
         self.run(project_root, &["clone", "--quiet", "--no-checkout", "--no-hardlinks", &root, &d])?;
-        self.run(dir, &["checkout", "--quiet", "--detach", base])?;
+        self.ws_run(dir, &["checkout", "--quiet", "--detach", base])?;
         Ok(())
     }
 
@@ -448,12 +485,12 @@ impl Git {
     /// checkout made by [`Git::trusted_checkout`] and switches to it, keeping
     /// untracked and ignored files (installed dependencies).
     pub fn switch_to_pin(&self, dir: &Path, ws: &Path, pin: &str) -> Result<()> {
-        self.run(dir, &["fetch", "--quiet", "--no-tags", &ws.to_string_lossy(), "+refs/tower/pin:refs/tower/pin"])?;
-        let fetched = self.run_trim(dir, &["rev-parse", "refs/tower/pin"])?;
+        self.ws_run(dir, &["fetch", "--quiet", "--no-tags", &ws.to_string_lossy(), "+refs/tower/pin:refs/tower/pin"])?;
+        let fetched = self.ws_run_trim(dir, &["rev-parse", "refs/tower/pin"])?;
         if fetched != pin {
             return Err(GitError::Invalid(format!("the workspace's snapshot moved ({fetched} is not {pin})")));
         }
-        self.run(dir, &["checkout", "--quiet", "--force", "--detach", pin])?;
+        self.ws_run(dir, &["checkout", "--quiet", "--force", "--detach", pin])?;
         Ok(())
     }
 
@@ -461,7 +498,7 @@ impl Git {
     /// (whatever setup or a criterion changed), keeping untracked and
     /// ignored files.
     pub fn reset_tracked(&self, dir: &Path, rev: &str) -> Result<()> {
-        self.run(dir, &["reset", "--quiet", "--hard", rev])?;
+        self.ws_run(dir, &["reset", "--quiet", "--hard", rev])?;
         Ok(())
     }
 
@@ -493,37 +530,37 @@ impl Git {
 
     /// Removes untracked, non-ignored files (`git clean -fd`).
     pub fn clean_untracked(&self, dir: &Path) -> Result<()> {
-        self.run(dir, &["clean", "-fdq"])?;
+        self.ws_run(dir, &["clean", "-fdq"])?;
         Ok(())
     }
 
     /// Switches a verification checkout to `rev`, keeping untracked and
     /// ignored files (installed dependencies, build caches).
     pub fn checkout_detached(&self, dir: &Path, rev: &str) -> Result<()> {
-        self.run(dir, &["checkout", "--quiet", "--force", "--detach", rev])?;
+        self.ws_run(dir, &["checkout", "--quiet", "--force", "--detach", rev])?;
         Ok(())
     }
 
     /// Points `refname` at `commit`, so the snapshot outlives garbage collection.
     pub fn keep(&self, ws: &Path, refname: &str, commit: &str) -> Result<()> {
-        self.run(ws, &["update-ref", refname, commit])?;
+        self.ws_run(ws, &["update-ref", refname, commit])?;
         Ok(())
     }
 
     /// Makes the working tree of `ws` exactly the snapshot `commit`: files
     /// it does not have are removed, ignored files (e.g. `.env`) are kept.
     pub fn restore(&self, ws: &Path, commit: &str) -> Result<()> {
-        self.run(ws, &["checkout", "--no-overlay", commit, "--", "."])?;
-        self.run(ws, &["clean", "-fdq"])?;
+        self.ws_run(ws, &["checkout", "--no-overlay", commit, "--", "."])?;
+        self.ws_run(ws, &["clean", "-fdq"])?;
         // The index goes back to HEAD; snapshots never use it.
-        self.run(ws, &["reset", "-q"])?;
+        self.ws_run(ws, &["reset", "-q"])?;
         Ok(())
     }
 
     /// Undoes hunk number `hunk` (0-based) of `path` in the diff `from → to`
     /// in the working tree of `ws`, which must still hold `to` for that file.
     pub fn revert_hunk(&self, ws: &Path, from: &str, to: &str, path: &str, hunk: usize) -> Result<()> {
-        let patch = self.run(ws, &["diff", "-U3", "--no-color", "--no-ext-diff", from, to, "--", path])?;
+        let patch = self.ws_run(ws, &["diff", "-U3", "--no-color", "--no-ext-diff", from, to, "--", path])?;
         let mut header = String::new();
         let mut hunks: Vec<String> = Vec::new();
         for line in patch.split_inclusive('\n') {
@@ -540,7 +577,7 @@ impl Git {
         };
         let file = ws.join(".git").join("tower-revert.patch");
         std::fs::write(&file, format!("{header}{chosen}"))?;
-        let r = self.run(ws, &["apply", "-R", "--whitespace=nowarn", &file.to_string_lossy()]);
+        let r = self.ws_run(ws, &["apply", "-R", "--whitespace=nowarn", &file.to_string_lossy()]);
         let _ = std::fs::remove_file(&file);
         r.map(|_| ())
     }
@@ -636,6 +673,19 @@ impl Git {
             .into(),
         )
     }
+}
+
+/// Refuses a checkout whose `.git` names another directory as the one that
+/// holds its configuration (`commondir`): only linked worktrees' own
+/// metadata has that file, never the `.git` of a checkout Tower runs in, so
+/// one there was planted to make git read a configuration of someone's
+/// choosing.
+fn refuse_redirect(cwd: &Path) -> Result<()> {
+    let commondir = cwd.join(".git").join("commondir");
+    if std::fs::symlink_metadata(&commondir).is_ok() {
+        return Err(GitError::Invalid(format!("{} redirects git; refusing to run git there", commondir.display())));
+    }
+    Ok(())
 }
 
 fn rename_target(path: &str) -> String {

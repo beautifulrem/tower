@@ -283,6 +283,32 @@ fn write_hardening_rules(s: &mut String, workspace: &Path) {
     s.push_str("(deny file-link)\n");
 }
 
+/// Tower runs git in the workspace outside the sandbox, so what decides
+/// which configuration and hooks that git uses is closed to the agent: the
+/// config and hooks themselves, `.git` (which a `gitdir:` file or a link
+/// could replace), `commondir` (which names another directory whose config
+/// git then reads) and the per-worktree config. Case-insensitively, as the
+/// disk is: git would read `.git/COMMONDIR` too.
+fn git_rules(s: &mut String, workspace: &Path) {
+    let ws = regex_escape(workspace.to_string_lossy().trim_end_matches('/'));
+    let ci = |name: &str| -> String {
+        name.chars()
+            .map(|c| match c {
+                c if c.is_ascii_alphabetic() => format!("[{}{}]", c.to_ascii_uppercase(), c.to_ascii_lowercase()),
+                '.' => "\\.".to_string(),
+                c => c.to_string(),
+            })
+            .collect()
+    };
+    let git = ci(".git");
+    let files = ["config", "config.lock", "commondir", "config.worktree"].map(ci).join("|");
+    let dirs = ["hooks", "tower-empty-hooks"].map(ci).join("|");
+    s.push_str(&format!(
+        "(deny file-write*\n  (regex #\"^{ws}/{git}$\")\n  (regex #\"^{ws}/{git}/({files})$\")\n  \
+         (regex #\"^{ws}/{git}/({dirs})(/|$)\"))\n"
+    ));
+}
+
 pub fn profile(spec: &Spec) -> String {
     let home = &spec.home;
     let rw = [&spec.workspace, &spec.tmp, &spec.cache];
@@ -383,14 +409,7 @@ pub fn profile(spec: &Spec) -> String {
     s.push_str(
         "  (literal \"/dev/null\")\n  (literal \"/dev/zero\")\n  (literal \"/dev/tty\")\n  (regex #\"^/dev/fd/\"))\n",
     );
-    let git = spec.workspace.join(".git");
-    s.push_str(&format!(
-        "(deny file-write*\n  (literal {})\n  (literal {})\n  (subpath {})\n  (subpath {}))\n",
-        q(&git.join("config")),
-        q(&git.join("config.lock")),
-        q(&git.join("hooks")),
-        q(&git.join("tower-empty-hooks")),
-    ));
+    git_rules(&mut s, &spec.workspace);
     // Tower's own transcript: data may be added and nothing else — no
     // truncation, no unlink, no change of the append-only flag. What the
     // command reports about itself can therefore grow, never shrink.

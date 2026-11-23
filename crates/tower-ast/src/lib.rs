@@ -133,7 +133,6 @@ fn write_normalized(node: Node<'_>, src: &str, out: &mut String) {
     out.push('(');
     out.push_str(kind);
     out.push(' ');
-    let count = node.child_count();
     let mut cursor = node.walk();
     let children: Vec<Node<'_>> = node.children(&mut cursor).filter(|c| !is_comment_kind(c.kind())).collect();
     for (idx, child) in children.iter().enumerate() {
@@ -145,7 +144,7 @@ fn write_normalized(node: Node<'_>, src: &str, out: &mut String) {
         if ck == "," {
             let next_closes =
                 children.get(idx + 1).is_some_and(|n| matches!(n.kind(), ")" | "]" | "}" | "expression_statement"));
-            if next_closes || idx + 1 == count {
+            if next_closes || idx + 1 == children.len() {
                 continue;
             }
         }

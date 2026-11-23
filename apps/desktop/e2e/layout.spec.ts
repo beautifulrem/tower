@@ -97,6 +97,30 @@ for (const route of ["review/G-0003", "review/G-0001"]) for (const mode of statM
   });
 }
 
+// The pin pair is the first stat to go, but only for want of room: a review with room for it shows it (G-0003 at
+// 1440; G-0001's long criteria line takes that room until 1600), and at no width does it show cut or half off the line.
+for (const [route, roomy] of [["review/G-0003", 1440], ["review/G-0001", 1600]] as const) {
+  test(`${route}: the pin pair shows whenever the line has room for it`, async ({ page }) => {
+    await openTower(page, route, { lang: "en", enrich: enrichRich });
+    await settled(page, route);
+    const seen = async (w: number) => {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      return page.evaluate(() => {
+        const stats = document.querySelector(".review-stats")!.getBoundingClientRect();
+        const pins = document.querySelector(".review-stat-pins");
+        if (!pins) return "none";
+        const r = pins.getBoundingClientRect();
+        if (r.width < 1 || r.top >= stats.bottom - 0.5) return "gone";
+        const group = pins.parentElement!.getBoundingClientRect();
+        return r.right <= Math.min(stats.right, group.right) + 0.5 && r.bottom <= stats.bottom + 0.5 ? "whole" : "cut";
+      });
+    };
+    expect(await seen(roomy)).toBe("whole");
+    for (const w of [1024, 1241, 1283, 1440, 1560]) expect(["whole", "gone"]).toContain(await seen(w));
+  });
+}
+
 // The merge queue at the narrow end: a goal id is one token ("G-0003", never "G-" over "0003"), and a branch too long
 // for its place ends in an ellipsis on one line, its whole name in the title.
 test("operations: the merge queue keeps a goal id whole and a long branch on one line", async ({ page }) => {

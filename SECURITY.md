@@ -9,7 +9,7 @@ Tower runs coding agents that execute commands on your machine. Its safety rests
 - processes the agent starts do not outlive its run: when a run ends (submitted, paused, abandoned, crashed) and when Tower quits or starts again, every process in that goal's agent sandbox is stopped, wherever it moved; your own programs, even working in the same folder, are not touched;
 - a `look` screenshot is only ever of the app the verification started: the port must be free before it starts, every listener answering it must be in the verification's own sandbox, and the screenshot browser runs under a deny-by-default profile that reaches only that app's ports and writes, in your home, only its own crash folder (`Library/Application Support/<browser>/Crashpad`, which Chromium uses whatever its flags say);
 - the model can call only seven tools (`read`, `bash`, `edit`, `write`, `ask_user`, `log`, `submit`); MCP and a repository's own Pi resources are disabled;
-- Tower never pushes or writes to your repository except a new local branch you accepted;
+- Tower writes to your repository only a new local branch you accepted, and pushes it (and opens a pull request) only when you press Push;
 - verification runs in a clean checkout under the same sandbox rules, without credentials and without anything the agent could write (a fresh package cache each time);
 - the agent cannot change the git configuration or hooks Tower itself uses.
 
@@ -65,6 +65,8 @@ Every property above has a test that CI runs on each push (macOS runner, real `s
 | Pushes carry no agent text and no token, https only | flow `blocking_items_are_pushed_to_the_configured_topic`; `inner::push_tests::*` |
 | The ACP engine bridge and Onboarding Trust Gate allow Tower's tools only across Claude, Codex, Gemini CLI, and OpenCode, with lockfile SRI verification | extension `the ACP bridge allows Tower's tools once and refuses everything else`, `ACP Trust Gate rejects built-in tools across Claude, Codex, Gemini CLI, and OpenCode formats`, `ACP bridge penetration test hard-rejects unauthorized built-in tools and emits audit events`; `acp_adapter::tests::lockfile_verification_rejects_missing_integrity_or_symlink_entries`; flow `an_acp_agent_runs_through_the_bridge` |
 | Diagnostics leave secrets out | flow `diagnostics_leave_secrets_out` |
+| A goal's work reaches your repository only as a new local branch you accepted, pushed to `origin` only by Push | `a_goal_runs_in_isolation_and_lands_as_a_branch`, `local_files_and_push` |
+| The Pi engine's model gets only Tower's seven gated tools; MCP and the repository's own Pi resources are off | `only_gated_tools_are_enabled` |
 
 ## Known limits
 

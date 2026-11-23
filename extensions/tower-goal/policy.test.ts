@@ -119,6 +119,68 @@ test("one-way doors cannot be bypassed by quoting, escapes, env prefixes, wrappe
 	}
 });
 
+test("here-documents, unparsable commands, git aliases, dynamic subcommands and find -exec cannot hide one-way doors", () => {
+	const hidden = [
+		// A quote inside a here-document body is data; it must not swallow the next line.
+		"cat <<EOF\necho '\nEOF\ngit push origin main #'",
+		"cat <<'EOF'\n'\nEOF\ngit push origin main #'",
+		"cat <<-EOF\n\techo '\n\tEOF\ngit push origin main #'",
+		// An unquoted here-document runs its substitutions.
+		"cat <<EOF\n$(git push origin main)\nEOF",
+		"cat <<EOF\n`git push origin main`\nEOF",
+		// A here-document inside a substitution.
+		"echo $(cat <<EOF\n'\nEOF\n); git push origin main; echo $(echo ')",
+		// A shell fed a here-document or here-string runs it.
+		"bash <<EOF\ngit push origin main\nEOF",
+		"cat <<'EOF' | sh\ngit push origin main\nEOF",
+		"bash <<< 'git push origin main'",
+		"cat <<2>out\nx\n2",
+		// What cannot be parsed reliably asks, whatever the mode.
+		"cat <<EOF\nnever closed",
+		"echo 'unterminated; git push origin main",
+		// git aliases and subcommands only known when the command runs.
+		"git -c alias.p=push p origin main",
+		"git -c Alias.P='!git push' P",
+		"git --config-env=alias.p=P p origin main",
+		"GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p origin main",
+		"git -c include.path=/tmp/aliases p origin main",
+		"HOME=/tmp/elsewhere git p origin main",
+		"git $p origin main",
+		'git "$(echo push)" origin main',
+		// Commands find runs, through wrappers too.
+		"find . -maxdepth 0 -exec git push origin main \\;",
+		"find . -execdir git push origin main {} +",
+		"find . -ok sudo id \\;",
+		"find . -exec sh -c 'git push origin main' \\;",
+		"find . -exec env git push origin main \\;",
+	];
+	for (const mode of ["autonomous", "standard", "cautious"] as const) {
+		for (const cmd of hidden) {
+			assert.equal(checkBash(cmd, mode).action, "ask", `expected ask in ${mode}: ${JSON.stringify(cmd)}`);
+		}
+	}
+	// Here-documents and here-strings themselves stay ordinary.
+	const fine = [
+		"cat <<EOF\nhello 'world\nEOF",
+		"cat <<'EOF'\n$(not run)\nEOF",
+		"cat <<'EOF'\ngit push origin main\nEOF",
+		"grep x <<< 'a b'",
+		"git -c color.ui=never log",
+		"find . -name '*.ts' -exec grep -l x {} +",
+		// The usual way to pass a commit message.
+		"git commit -m \"$(cat <<'EOF'\nfix: don't break (really)\nEOF\n)\"",
+	];
+	for (const mode of ["autonomous", "standard"] as const) {
+		for (const cmd of fine) {
+			assert.equal(checkBash(cmd, mode).action, "allow", `expected allow in ${mode}: ${JSON.stringify(cmd)}`);
+		}
+	}
+	const p = parseShell("cat <<EOF > out.txt\nbody 'x\nEOF\nls");
+	assert.equal(p.parseError, undefined);
+	assert.deepEqual(p.commands.map((c) => c.name), ["cat", "ls"]);
+	assert.equal(p.hasFileWriteRedirection, true);
+});
+
 test("cautious mode rejects hidden writes via redirections, substitutions, and inline scripts", () => {
 	const hiddenWrites = [
 		"echo x > foo.txt",

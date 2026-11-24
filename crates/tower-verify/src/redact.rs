@@ -128,10 +128,10 @@ fn secret_param(name: &str) -> bool {
 ///   manager lines, JSON (`\/` and `&` as `\u0026` read as the URL's own anywhere; `\"`, `\\` and `\uXXXX` inside a
 ///   password), YAML, TOML, CSV, `psql -A`, HTML and XML (`&amp;` included), Markdown, shell quoting.
 /// - Text around a URL stays: neighbouring fields, emails, tags. Where a separator could be a password's or a field's
-///   end, the URL is masked over rather than the password risked. It then runs to the last `@` before whitespace or
-///   other URL-ending punctuation (`|`, quotes, brackets), so several CSV cells can go; a secret query value likewise
-///   runs to that end, so cells after it in an unquoted CSV or `;` row go with it. The shapes masked over, credentials
-///   or not:
+///   end, the URL is masked over rather than the password risked. The mask then runs to an `@` that can lie past
+///   brackets, quotes and other punctuation, though never past whitespace, so several CSV cells or bracketed words
+///   can go; a secret query value likewise runs to where the URL is read to end, so cells after it in an unquoted
+///   CSV or `;` row go with it. The shapes masked over, credentials or not:
 ///   - a `,` or `;` in the authority and then an `@` (`example.com,ada@…`, `localhost:3000;mail=ada@…`,
 ///     `ada@[::1],bob@…`, `user:pw@host,ada@…`): the separator may be a password's, a user name's (`CORP;svc:pw@`)
 ///     or a host list's (`h1:27017,h2:27017`);

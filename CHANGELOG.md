@@ -5,10 +5,25 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 ## [Unreleased]
 
 ### Fixed
+- The packaged app ships the Claude Code adapter's lockfile, so the Claude Code engine installs outside development builds.
+- A scheduled goal whose launch never finished no longer stops its schedule; Run now pressed twice in a minute creates one goal; the cron field and column say UTC (cron is evaluated in UTC) and the next run shows its date.
+- Accepting a goal again while it is being sealed writes one branch, not a stray `-v2` in your repository.
+- Removing a project removes its goals' rows and folders; abandon, pause and start-up recovery each write in one transaction.
+- A database written by a newer Tower is refused instead of opened.
+- `git push` and `gh` give up after a time limit instead of hanging Tower's background loop.
+- An unsaved contract asks before you leave it, and a draft still loading cannot be saved blank; Settings keeps an edit made just before a keyboard shortcut leaves the page.
+- Acting on an Operations or Learning row reloads the list in place instead of blanking the page.
+- At the minimum window size every sheet fits, scrolls and keeps its actions on screen.
+- A light-theme window opens light (no dark first frame).
 - A verification cut short (an error, or Tower quitting) left its assertion-guard transcripts append-only, so nothing could delete them and a later verification of the same snapshot could not set up its guard — that verification ran without the assertion-identity check, and restarting re-verifies exactly such goals. They are now removed with their flag cleared, also when Tower starts.
 - An answer on a pause card given while the last verification was still cleaning up was dropped; a verification you ask for now always runs once the last one is done.
 
 ### Security
+- With the contract's network switch on, the agent's sandbox (and the screenshot browser's) reached every Unix socket on the Mac — including ssh-agent, and with it your SSH keys. It now reaches the internet by address and the system resolver only.
+- The agent's git reads no system git configuration and never prompts. Its copy of your Cargo configuration keeps only mirrors, registry indexes and `[net]` retry settings (the allowlist the design specifies), read from a parse of the file: no tokens, credential providers, proxy passwords or `[env]` variables, and no `[build]`, `[target]`, `[patch]` or `[alias]` either.
+- Diagnostics and stored events mask URL passwords, credential query parameters and `Authorization` headers; the push topic stays out of the export.
+- `~/.tower` and its database are yours alone (0700/0600); an empty `TOWER_HOME` means the default and a relative one is refused.
+- The window may open Tower's data folder itself, not the agent-written workspaces under it.
 - Loopback is closed by default without the network: the agent's commands and the criteria reach only the ports the contract declares (new “Ports on this machine” field) and the servers their own sandbox's processes already listen on, not services anyone else runs on this Mac, started before or after the goal. Suites whose servers pick their ports at run time (port 0, a build daemon) do not pause their first goal: when the preflight finds a criterion refused loopback on your unchanged code, Tower opens loopback for that criterion's verification, says so in the trace and on the criterion's row, and keeps the choice as a project setting (Settings, en + zh-CN) for the project's next goals; a refusal that first appears after the agent's change still pauses. A contract can also open loopback itself (“Open loopback”). A refused loopback connection pauses for the environment with the port and the way out, instead of counting as a failing test.
 - Processes the agent starts do not outlive its run: when a run ends, pauses, goes to review or is abandoned, and when Tower quits or starts again, everything in that goal's sandbox is stopped, identified by the kernel's sandbox check rather than by folder or process group, so your own programs are never touched. Verification's leftovers are found the same way.
 - `look` screenshots are only ever of the app the verification started: a port someone else holds pauses the goal naming the program, and a listener outside the verification's sandbox answering the URL means no picture. The screenshot browser's profile is now deny-by-default and reaches only the app's own ports.

@@ -232,6 +232,18 @@ describe("Learning console (Memory Ratification + Calibration Scoreboard)", () =
   });
 });
 
+describe("Learning console counts", () => {
+  it("say one model as one, and the pending count as a phrase", async () => {
+    apiMock.calibrationRows.mockResolvedValueOnce([mockCalibration[0]]);
+    const { container } = render(() => <Learning />);
+    await screen.findByText("claude-sonnet-4");
+    const head = container.querySelector(".calibration-sec .console-sec-head")!;
+    expect(head.textContent).toContain("1 model");
+    expect(head.textContent).not.toContain("1 models");
+    expect(container.querySelector(".console-sec-head")!.textContent).toContain("2 pending");
+  });
+});
+
 describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -259,5 +271,44 @@ describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () =>
     fireEvent.click(cleanBtn);
     await new Promise((r) => setTimeout(r, 10));
     expect(apiMock.reclaimStorage).toHaveBeenCalledWith(["G-0004"]);
+  });
+
+  it("runs a schedule once however fast Run is pressed, and deletes one only once you say so", async () => {
+    const { ask } = await import("@tauri-apps/plugin-dialog");
+    render(() => <Operations />);
+    await screen.findByText("Nightly dependency audit");
+    let open!: () => void;
+    apiMock.runScheduledGoalNow.mockImplementationOnce(() => new Promise((r) => (open = () => r({}))));
+    const run = screen.getByRole("button", { name: "Run" }) as HTMLButtonElement;
+    fireEvent.click(run);
+    fireEvent.click(run);
+    open();
+    await vi.waitFor(() => expect(run.disabled).toBe(false));
+    expect(apiMock.runScheduledGoalNow).toHaveBeenCalledTimes(1);
+    vi.mocked(ask).mockResolvedValueOnce(false);
+    const del = screen.getByRole("button", { name: "Delete" }) as HTMLButtonElement;
+    fireEvent.click(del);
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(del.disabled).toBe(false));
+    expect(apiMock.deleteScheduledGoal).not.toHaveBeenCalled();
+    fireEvent.click(del);
+    await vi.waitFor(() => expect(apiMock.deleteScheduledGoal).toHaveBeenCalledWith("sc-1"));
+  });
+
+  it("says a schedule's cron is in UTC, as the supervisor reads it, and when it next runs with the day", async () => {
+    render(() => <Operations />);
+    await screen.findByText("Nightly dependency audit");
+    expect(screen.getByRole("columnheader", { name: "Cron (UTC)" })).toBeTruthy();
+    expect(screen.getByLabelText("Cron (UTC)")).toBeTruthy();
+    const next = mockSchedules[0].next_run_at!;
+    const cell = screen.getByText("Nightly dependency audit").closest("tr")!.children[3];
+    expect(cell.textContent).toContain(new Date(next).toLocaleDateString("en", { month: "short", day: "numeric" }));
+  });
+
+  it("says the zone on screen before the first schedule, while you write its cron", async () => {
+    apiMock.scheduledGoals.mockResolvedValueOnce([]);
+    const { container } = render(() => <Operations />);
+    await screen.findByText("No schedules");
+    expect(container.querySelector(".console-sec")!.querySelector(".console-sec-head")!.textContent).toContain("Cron (UTC)");
   });
 });

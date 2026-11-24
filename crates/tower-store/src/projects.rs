@@ -119,9 +119,10 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// Removes a project. Refused while it still has goals that are not
-    /// archived or abandoned.
-    pub fn remove_project(&mut self, id: &str) -> Result<()> {
+    /// Removes a project and every row of its goals. Refused while it still
+    /// has goals that are not archived or abandoned. Returns the removed
+    /// goals, whose directories the caller deletes.
+    pub fn remove_project(&mut self, id: &str) -> Result<Vec<String>> {
         let live: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM goals WHERE project_id = ?1 AND state NOT IN ('archived','abandoned')",
             [id],
@@ -137,6 +138,10 @@ impl Store {
             return Err(StoreError::Conflict(message));
         }
         let tx = self.conn.transaction()?;
+        let goals: Vec<String> = {
+            let mut stmt = tx.prepare("SELECT id FROM goals WHERE project_id = ?1 ORDER BY seq")?;
+            stmt.query_map([id], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?
+        };
         for table in [
             "events",
             "runs",
@@ -149,6 +154,12 @@ impl Store {
             "goal_attachments",
             "goal_dependencies",
             "calibration_facts",
+            "goal_ui_state",
+            "baseline_results",
+            "original_results",
+            "looks",
+            "canary_results",
+            "loopback_opened",
         ] {
             tx.execute(
                 &format!("DELETE FROM {table} WHERE goal_id IN (SELECT id FROM goals WHERE project_id = ?1)"),
@@ -160,7 +171,7 @@ impl Store {
         tx.execute("DELETE FROM goals WHERE project_id = ?1", [id])?;
         tx.execute("DELETE FROM projects WHERE id = ?1", [id])?;
         tx.commit()?;
-        Ok(())
+        Ok(goals)
     }
 }
 
@@ -198,5 +209,65 @@ mod tests {
         s.set_project_loopback_open(&created.id, true).unwrap();
         assert!(s.project(&created.id).unwrap().loopback_open, "a project can open loopback for its goals");
         assert_eq!(updated.memory, patch.memory);
+    }
+
+    /// Every table keyed by goal, today's and any added later.
+    fn goal_tables(s: &Store) -> Vec<String> {
+        let mut stmt = s
+            .conn
+            .prepare(
+                "SELECT m.name FROM sqlite_master m, pragma_table_info(m.name) c
+                 WHERE m.type = 'table' AND c.name = 'goal_id' ORDER BY m.name",
+            )
+            .unwrap();
+        stmt.query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap()
+    }
+
+    #[test]
+    fn removing_a_project_leaves_no_row_of_its_goals() {
+        let (mut s, _) = store();
+        let project =
+            NewProject { name: "web".into(), root: "/r/web".into(), base_branch: "main".into(), test_command: None };
+        let p = s.add_project(project).unwrap();
+        let contract = tower_core::contract::Contract::quick("x", None, Lang::En);
+        let g = s.create_goal(crate::NewGoal { project_id: p.id.clone(), title: "x".into(), contract }).unwrap().id;
+        s.conn.execute("UPDATE goals SET state = 'abandoned' WHERE id = ?1", [&g]).unwrap();
+        // One row in each, with whatever its required columns need, and the
+        // project where a table has one (a global memory proposal mined
+        // from the goal outlives the project: it is yours, not the project's).
+        for table in goal_tables(&s) {
+            let sql = format!("SELECT name, type, \"notnull\", dflt_value FROM pragma_table_info('{table}')");
+            let mut stmt = s.conn.prepare(&sql).unwrap();
+            let cols: Vec<(String, String, bool, Option<String>)> = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap();
+            let needed: Vec<_> = cols
+                .iter()
+                .filter(|c| matches!(c.0.as_str(), "goal_id" | "project_id") || (c.2 && c.3.is_none()))
+                .collect();
+            let names: Vec<&str> = needed.iter().map(|c| c.0.as_str()).collect();
+            let values: Vec<String> = needed
+                .iter()
+                .map(|c| match (c.0.as_str(), c.1.as_str()) {
+                    ("goal_id", _) => format!("'{g}'"),
+                    ("project_id", _) => format!("'{}'", p.id),
+                    (_, "INTEGER" | "REAL") => "0".into(),
+                    _ => "'x'".into(),
+                })
+                .collect();
+            s.conn
+                .execute(&format!("INSERT INTO {table} ({}) VALUES ({})", names.join(", "), values.join(", ")), [])
+                .unwrap_or_else(|e| panic!("{table}: {e}"));
+        }
+
+        assert_eq!(s.remove_project(&p.id).unwrap(), vec![g.clone()]);
+
+        let count = |t: &str| -> i64 {
+            s.conn.query_row(&format!("SELECT COUNT(*) FROM {t} WHERE goal_id = ?1"), [&g], |r| r.get(0)).unwrap()
+        };
+        let left: Vec<String> = goal_tables(&s).into_iter().filter(|t| count(t) > 0).collect();
+        assert!(left.is_empty(), "rows of the removed goal left in {left:?}");
     }
 }

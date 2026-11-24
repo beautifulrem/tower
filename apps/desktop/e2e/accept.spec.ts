@@ -68,6 +68,12 @@ test("the accept sheet's masthead is the stamp: a 1px ink frame, the interface's
   // It presses in once: the frame's impression and the ink, finite.
   const names = await stamp.evaluate((el) => el.getAnimations({ subtree: true }).map((a) => (a as CSSAnimation).animationName));
   expect(names).toContain("stamp-frame");
+  // Within the lock's motion range (120–250ms), on its tokens: the ceremony is in the impression, not in a slow press.
+  const durations = await stamp.evaluate((el) => el.getAnimations({ subtree: true }).map((a) => Number(a.effect!.getTiming().duration)));
+  for (const d of durations) {
+    expect(d).toBeGreaterThanOrEqual(120);
+    expect(d).toBeLessThanOrEqual(250);
+  }
 });
 
 test("with reduced motion the stamp stands already pressed; a goal you accepted wears it at its head", async ({ page }) => {

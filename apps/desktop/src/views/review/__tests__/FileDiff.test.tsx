@@ -164,7 +164,7 @@ describe("FileDiff comment flow", () => {
     expect(screen.getByText("Moved unchanged")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Expand hunk" }));
     expect(container.querySelectorAll(".dl")).toHaveLength(4);
-    expect(screen.getByRole("button", { name: "Fold" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fold hunk" })).toBeTruthy();
 
     const { container: fmt } = mount({ formattingHunks: [0] });
     expect(fmt.querySelectorAll(".dl")).toHaveLength(0);

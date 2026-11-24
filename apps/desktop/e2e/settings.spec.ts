@@ -4,6 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 
+import { enrichPhone } from "./rich";
 import { openTower } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
@@ -93,6 +94,32 @@ test("a field saved on the Settings page keeps the quiet mode the palette turned
   expect(saves[1][1].settings.quiet_until).not.toBeNull();
 });
 
+test("what you typed in Settings is saved when you leave by a key straight after, with the field still focused", async ({ page }) => {
+  await openTower(page, "settings");
+  const saved = async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings" || cmd === "update_project") as Array<[string, any]>;
+  // A project's field…
+  await page.locator('.project [data-field="test"]').first().fill("pnpm vitest run");
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  await expect.poll(async () => (await saved()).some(([c, a]) => c === "update_project" && JSON.stringify(a).includes("pnpm vitest run"))).toBe(true);
+  // …and one of the app's.
+  await page.keyboard.press("Meta+,");
+  await page.getByLabel("Editor command").fill("zed");
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  await expect.poll(async () => (await saved()).some(([c, a]) => c === "save_settings" && a.settings.editor === "zed")).toBe(true);
+});
+
+test("Settings left as it opened writes nothing on the way out", async ({ page }) => {
+  await openTower(page, "settings");
+  await expect(page.getByLabel("Editor command")).toBeVisible();
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  await page.keyboard.press("Meta+,");
+  await expect(page.getByLabel("Editor command")).toBeVisible();
+  expect((await calls(page)).filter(([cmd]) => cmd === "save_settings" || cmd === "update_project")).toEqual([]);
+});
+
 test("a field saved on the Settings page keeps quiet mode off once the palette turned it off", async ({ page }) => {
   const saves = async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings") as Array<[string, { settings: { quiet_until: number | null } }]>;
   await openTower(page, "overview");
@@ -111,4 +138,18 @@ test("a field saved on the Settings page keeps quiet mode off once the palette t
   await page.getByRole("switch", { name: /Enable the phone page/ }).click();
   await expect.poll(async () => (await saves()).length).toBe(3);
   expect((await saves())[2][1].settings.quiet_until).toBeNull();
+});
+
+test("a field saved after New pairing link keeps the new token, never puts back the one you revoked", async ({ page }) => {
+  const saves = async () => (await calls(page)).filter(([cmd]) => cmd === "save_settings") as Array<[string, { settings: { remote_token: string | null } }]>;
+  await openTower(page, "settings", { enrich: (F) => (enrichPhone(F), (F.settings.remote_token = "revoked-token")) });
+  await page.evaluate(() => ((window as unknown as { __towerAsk: boolean }).__towerAsk = true));
+  await page.getByRole("button", { name: /New pairing link/ }).click();
+  await expect.poll(async () => (await calls(page)).some(([cmd]) => cmd === "reset_remote_token")).toBe(true);
+  await page.getByLabel("Editor command").fill("zed");
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  await expect.poll(async () => (await saves()).length).toBeGreaterThan(0);
+  const last = (await saves()).at(-1)![1].settings;
+  expect(last.remote_token).toMatch(/^fresh-/);
 });

@@ -4,29 +4,27 @@
  */
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 
+import { ALL, DataTable, MeterCell, ProjectFilter, SecHead, SmBtn, inPlace } from "../components/Console";
 import { DangerMark, Icon, LifecycleGlyph, NoticeMark } from "../components/Glyph";
 import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
-import type { MergeQueueEntry, StorageInventory } from "../lib/apiTypes";
-import { clock } from "../lib/format";
+import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
+import { bytes, dayClock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { stateLabel } from "../lib/labels";
 import { ask } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, goalList, refreshConsoleMeta, state } from "../lib/store";
-import { DataTable, MeterCell, ProjectFilter, SecHead, SmBtn } from "./Learning";
 import { blankContract } from "./ContractEditor";
 
-const ALL = "__all__";
-const fmtB = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 const ZERO_P = { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 };
 
 export function Operations() {
-  const [schedules, { refetch: rfSched }] = createResource(() => api.scheduledGoals());
+  const [schedules, { refetch: rfSched }] = createResource(() => api.scheduledGoals(), { storage: inPlace() });
   const [mqProj, setMqProj] = createSignal(ALL);
-  const [queue, { refetch: rfQueue }] = createResource(mqProj, (p) => api.mergeQueue(p === ALL ? null : p));
-  const [storage, { refetch: rfStore }] = createResource(() => api.storageInventory());
+  const [queue, { refetch: rfQueue }] = createResource(mqProj, (p) => api.mergeQueue(p === ALL ? null : p), { storage: inPlace("goal_id") });
+  const [storage, { refetch: rfStore }] = createResource(() => api.storageInventory(), { storage: inPlace("goal_id") });
 
   const [newProj, setNewProj] = createSignal(state.projects[0]?.id ?? "");
   const [newTitle, setNewTitle] = createSignal("");
@@ -41,6 +39,23 @@ export function Operations() {
   const run = async (fn: () => Promise<unknown>, rf: () => unknown, msg?: string) => {
     if ((await act(fn, msg)) !== undefined) (void rf(), void refreshConsoleMeta());
   };
+  // A schedule's Run and Delete: one at a time per row, so a second press can't start a goal twice.
+  const [rowBusy, setRowBusy] = createSignal<string[]>([]);
+  const once = async (id: string, fn: () => Promise<unknown>) => {
+    if (rowBusy().includes(id)) return;
+    setRowBusy((b) => [...b, id]);
+    await fn().finally(() => setRowBusy((b) => b.filter((x) => x !== id)));
+  };
+  // A Run now that fails may still have made a draft (one that would not start): the row's last run moved either way.
+  const runNow = async (id: string) => {
+    await act(() => api.runScheduledGoalNow(id), t("ops.runNow"));
+    void rfSched();
+    void refreshConsoleMeta();
+  };
+  const remove = (s: ScheduledGoal) =>
+    once(s.id, async () => {
+      if (await ask(t("ops.deleteConfirm", { title: s.title }), { ok: t("ops.deleteSchedule"), cancel: t("common.cancel"), kind: "warning" })) await run(() => api.deleteScheduledGoal(s.id), rfSched);
+    });
 
   const acceptedNotQueued = createMemo(() => {
     const q = new Set(mqList().map((e) => e.goal_id));
@@ -84,6 +99,7 @@ export function Operations() {
               <>
                 <span class="meta num t2">{schedList().filter((s) => s.enabled).length}</span>
                 <span class="meta t3">{t("ops.schedulesNote")}</span>
+                <span class="meta t3">{t("ops.cronUtc")}</span>
               </>
             }
           />
@@ -91,12 +107,12 @@ export function Operations() {
             <form class="schedule-form" onSubmit={(e) => void addSchedule(e)}>
               <Select label={t("contract.project")} value={newProj() || state.projects[0]?.id || ""} options={state.projects.map((p) => ({ value: p.id, label: p.name }))} onChange={setNewProj} />
               <input aria-label={t("ops.schedulesTitle")} placeholder={t("ops.schedulePlaceholder")} value={newTitle()} onInput={(e) => setNewTitle(e.currentTarget.value)} />
-              <input class="mono" aria-label="Cron" placeholder="0 2 * * 1-5" value={newCron()} onInput={(e) => setNewCron(e.currentTarget.value)} />
+              <input class="mono" aria-label={t("ops.cronUtc")} placeholder="0 2 * * 1-5" value={newCron()} onInput={(e) => setNewCron(e.currentTarget.value)} />
               <SmBtn type="submit" variant="primary" disabled={busy() || !newTitle().trim() || !newCron().trim()}>{t("ops.addSchedule")}</SmBtn>
             </form>
           </Show>
           <DataTable
-            headers={[[t("ops.schedulesTitle")], ["Cron"], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
+            headers={[[t("ops.schedulesTitle")], [t("ops.cronUtc")], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
             empty={t("ops.schedulesEmpty")}
             items={schedList()}
             error={schedules.error}
@@ -112,14 +128,14 @@ export function Operations() {
                 <td><code class="code-val">{s.cron_expr}</code></td>
                 <td class="meta t2">{t(s.unattended_strict ? "ops.unattendedStrict" : "contract.standard")}</td>
                 <td class="meta t2">
-                  {s.next_run_at ? clock(s.next_run_at) : "—"}
+                  {s.next_run_at ? dayClock(s.next_run_at) : "—"}
                   <button type="button" class="link-quiet code-val ml-8" hidden={!s.last_goal_id} onClick={() => s.last_goal_id && go({ name: "goal", id: s.last_goal_id })}>{s.last_goal_id}</button>
                 </td>
                 <td class="col-r">
                   <div class="row row-end">
                     <Toggle checked={s.enabled} onChange={(v) => void run(() => api.toggleScheduledGoal(s.id, v), rfSched)} label={t(s.enabled ? "quiet.on" : "settings.escalationOff")} />
-                    <SmBtn onClick={() => void run(() => api.runScheduledGoalNow(s.id), rfSched, t("ops.runNow"))}>{t("ops.runNow")}</SmBtn>
-                    <SmBtn onClick={() => void run(() => api.deleteScheduledGoal(s.id), rfSched)}>{t("common.delete")}</SmBtn>
+                    <SmBtn disabled={rowBusy().includes(s.id)} onClick={() => void once(s.id, () => runNow(s.id))}>{t("ops.runNow")}</SmBtn>
+                    <SmBtn disabled={rowBusy().includes(s.id)} onClick={() => void remove(s)}>{t("common.delete")}</SmBtn>
                   </div>
                 </td>
               </tr>
@@ -152,7 +168,7 @@ export function Operations() {
                     <div class="row">
                       <button type="button" class="link-quiet code-val t2" onClick={() => go({ name: "goal", id: entry.goal_id })}>{entry.goal_id}</button>
                       <span class="t1 ellipsis">{entry.goal_title}</span>
-                      <code class="code-val meta t3" hidden={!entry.branch}>{entry.branch}</code>
+                      <code class="code-val meta t3" hidden={!entry.branch} title={entry.branch ?? undefined}>{entry.branch}</code>
                     </div>
                     <div class="mq-conflicts meta t3" hidden={!entry.conflict_files.length}>
                       <code class="code-val t2">{entry.conflict_files.join(" · ")}</code>
@@ -183,8 +199,8 @@ export function Operations() {
             title={t("ops.storageTitle")}
             meta={
               <>
-                <span class="meta num t2">{fmtB(inv().total_bytes)}</span>
-                <span class="meta num t2" hidden={!inv().reclaimable_bytes}>{fmtB(inv().reclaimable_bytes)} {t("ops.kpiReclaimable").toLowerCase()}</span>
+                <span class="meta num t2">{bytes(inv().total_bytes)}</span>
+                <span class="meta num t2" hidden={!inv().reclaimable_bytes}>{t("ops.reclaimable", { size: bytes(inv().reclaimable_bytes) })}</span>
                 <span class="ops-posture-line meta-inline meta">
                   <span>{state.sandboxPosture?.backend_name ?? t("chrome.sandboxOn")}</span>
                   <span hidden={!state.sandboxPosture?.microvm_available}>{t("ops.microvmReady")}</span>
@@ -195,7 +211,7 @@ export function Operations() {
               </>
             }
           >
-            <SmBtn variant="default" hidden={!reclaimIds().length} onClick={() => void cleanGoals(reclaimIds())}>{t("ops.cleanAll", { size: fmtB(inv().reclaimable_bytes) })}</SmBtn>
+            <SmBtn variant="default" hidden={!reclaimIds().length} onClick={() => void cleanGoals(reclaimIds())}>{t("ops.cleanAll", { size: bytes(inv().reclaimable_bytes) })}</SmBtn>
           </SecHead>
           <DataTable
             headers={[[t("overview.colGoal")], [t("ops.colWorkspace"), true], [t("ops.colVerify"), true], [t("ops.colCache"), true], [t("ops.colTotal"), true], ["", true]]}
@@ -213,10 +229,10 @@ export function Operations() {
                     <span class="meta t3">{stateLabel(g.state)}</span>
                   </div>
                 </td>
-                <td class="col-r meta">{fmtB(g.workspace_bytes)}</td>
-                <td class="col-r meta">{fmtB(g.verify_bytes)}</td>
-                <td class="col-r meta">{fmtB(g.cache_bytes)}</td>
-                <td class="col-r"><MeterCell wrapCls="storage-bar-cell" label={fmtB(g.total_bytes)} width={`${Math.round((g.total_bytes / maxBytes()) * 100)}%`} /></td>
+                <td class="col-r meta">{bytes(g.workspace_bytes)}</td>
+                <td class="col-r meta">{bytes(g.verify_bytes)}</td>
+                <td class="col-r meta">{bytes(g.cache_bytes)}</td>
+                <td class="col-r"><MeterCell wrapCls="storage-bar-cell" label={bytes(g.total_bytes)} width={`${Math.round((g.total_bytes / maxBytes()) * 100)}%`} /></td>
                 <td class="col-r">{g.reclaimable ? <SmBtn onClick={() => void cleanGoals([g.goal_id])}>{t("ops.clean")}</SmBtn> : <span class="meta t3">{t("ops.protected")}</span>}</td>
               </tr>
             )}

@@ -30,6 +30,10 @@ pub(crate) struct Inner {
     pub sink: Arc<dyn UiSink>,
     pub runs: Mutex<HashMap<String, Arc<Run>>>,
     pub verifications: Mutex<HashMap<String, Cancel>>,
+    /// Verification and preflight tasks still running per goal, cancelled or
+    /// not (a pause takes a cancelled one out of `verifications` at once, but
+    /// it may still be writing into the goal's folders as it winds down).
+    pub(crate) live_verifications: Mutex<HashMap<String, usize>>,
     /// Goals that asked for verification while one was still winding down
     /// (a quick rework can submit before the last one has cleaned up), and
     /// whether you asked (an answer, a resume, "verify again"): yours is run
@@ -199,7 +203,7 @@ impl Inner {
     /// (yours) and a fixed sentence for the kind of item, never the agent's
     /// text — and the link opens the phone page without its token (a
     /// paired phone keeps it).
-    fn push(&self, item: &InboxItem) {
+    pub(crate) fn push(&self, item: &InboxItem) {
         let s = self.settings();
         if item.kind == InboxKind::Assumption || (item.kind == InboxKind::ReviewReady && !s.push_ready) {
             return;

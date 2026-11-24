@@ -6,7 +6,7 @@
  * the contract. Every field saves when you leave it and the clause says so —
  * no Save button.
  */
-import { For, Match, Show, Switch, createResource, createSignal, onMount } from "solid-js";
+import { For, Match, Show, Switch, createResource, createSignal, onCleanup, onMount } from "solid-js";
 
 import { pickQuiet } from "../components/Chrome";
 import { GitIdentityForm } from "../components/GitIdentity";
@@ -96,8 +96,10 @@ export function Settings() {
   const [installing, setInstalling] = createSignal(false);
   const saved = useSavedStamp();
   const [loadFailed, setLoadFailed] = createSignal<unknown>(null);
-  const load = () => (setLoadFailed(null), api.settings().then((v) => setS(v as SettingsExt), setLoadFailed));
+  const load = () => (setLoadFailed(null), api.settings().then((v) => (setS(v as SettingsExt), (last = JSON.stringify(s()))), setLoadFailed));
   onMount(load);
+  // Leaving by a key straight after typing: WebKit sends no focusout for a field that is removed, so save on the way out.
+  onCleanup(() => void commit());
   const noModels = () => !!state.env?.pi_version && !models.loading && models() !== null && models()!.length === 0;
   const engine = () => s()?.engine || "pi";
   const engineDesc = () => state.engines.find((d) => d.id === engine());
@@ -132,14 +134,18 @@ export function Settings() {
     // Quiet mode and muted goals are set from the title bar and the palette, not this form: the form's copy of them
     // is from when the page opened, so the live values go with the save.
     // `null` is a value here (quiet mode turned off), so it is taken as is, not replaced by the form's stale copy.
+    // So is the pairing token, which the form never edits: New pairing link replaces it, and the form's copy would
+    // put back the token you just revoked.
     const live = state.settings;
-    const v = live ? { ...form, quiet_until: live.quiet_until, muted_goals: live.muted_goals } : form;
-    const now = JSON.stringify(v);
+    const v = live ? { ...form, quiet_until: live.quiet_until, muted_goals: live.muted_goals, remote_token: live.remote_token } : form;
+    // Only the form's own edits count: the page left as it opened writes nothing.
+    const now = JSON.stringify(form);
     if (now === last) return false;
-    const ok = await act(() => api.saveSettings(v));
-    if (ok === undefined) return false;
-    // Only a save that went through is the baseline: after a failure, leaving the field again retries it.
+    // Taken at once, so a focusout and the page closing don't send it twice; only a save that went through stays the
+    // baseline: after a failure, leaving the field again retries it.
+    const prev = last;
     last = now;
+    if ((await act(() => api.saveSettings(v))) === undefined) return ((last = prev), false);
     saved.mark();
     await refreshEnvironment();
     // The supervisor may have filled in what we left blank (a generated pairing token).
@@ -734,6 +740,7 @@ function ProjectRow(props: { p: ProjectView }) {
       await refreshProjects();
     }
   };
+  onCleanup(() => void save());
   const remove = async () => {
     const ok = await ask(t("settings.removeConfirm", { name: props.p.name }), {
       title: t("settings.removeTitle"),

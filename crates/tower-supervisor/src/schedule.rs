@@ -189,17 +189,27 @@ async fn poll_due_schedules(inner: &Arc<Inner>) -> Result<()> {
         let slot_min = sch.next_run_at.unwrap_or(now).div_euclid(60_000);
         let checkpoint = format!("cron:{slot_min}");
         let claimed = inner.store(|s| s.claim_schedule_checkpoint(&sch.id, &checkpoint))?;
+        let next = parsed.next_after(now);
         if !claimed {
+            // This slot was claimed before and the schedule never moved on
+            // (Tower stopped mid-launch, or recording the run failed): skip
+            // the slot, never run it twice, but keep the schedule alive.
+            if let Err(e) = inner.store(|s| s.set_schedule_next_run(&sch.id, next)) {
+                tracing::warn!(schedule = %sch.id, error = %e, "could not move a schedule past a claimed slot");
+            }
             continue;
         }
-        let next = parsed.next_after(now);
         match instantiate_scheduled_goal(&sup, &sch).await {
             Ok(goal) => {
-                let _ = inner.store(|s| s.record_schedule_run(&sch.id, now, next, &goal.id));
+                if let Err(e) = inner.store(|s| s.record_schedule_run(&sch.id, now, next, &goal.id)) {
+                    tracing::warn!(schedule = %sch.id, goal = %goal.id, error = %e, "could not record a scheduled run");
+                }
             }
             Err(e) => {
                 tracing::warn!(schedule = %sch.id, error = %e, "failed to launch scheduled goal");
-                let _ = inner.store(|s| s.set_scheduled_goal_enabled(&sch.id, sch.enabled, next));
+                if let Err(e) = inner.store(|s| s.set_schedule_next_run(&sch.id, next)) {
+                    tracing::warn!(schedule = %sch.id, error = %e, "could not move a schedule past a failed launch");
+                }
             }
         }
     }
@@ -207,19 +217,17 @@ async fn poll_due_schedules(inner: &Arc<Inner>) -> Result<()> {
 }
 
 async fn instantiate_scheduled_goal(sup: &Supervisor, sch: &ScheduledGoal) -> Result<GoalSummary> {
+    sup.create_goal(scheduled_input(sch, true)).await
+}
+
+fn scheduled_input(sch: &ScheduledGoal, ratify: bool) -> NewGoalInput {
     let mut contract = sch.contract_template.clone();
     if sch.unattended_strict {
         // Hard-enforce cautious autonomy in unattended mode: one-way doors and
         // non-read-only commands always pause to Needs-You, never auto-execute.
         contract.autonomy = Autonomy::Cautious;
     }
-    sup.create_goal(NewGoalInput {
-        project_id: sch.project_id.clone(),
-        title: sch.title.clone(),
-        contract,
-        ratify: true,
-    })
-    .await
+    NewGoalInput { project_id: sch.project_id.clone(), title: sch.title.clone(), contract, ratify }
 }
 
 fn validate_cron(expr: &str, lang: Lang) -> Result<CronSchedule> {
@@ -269,19 +277,56 @@ impl Supervisor {
         self.inner.store(|s| s.delete_scheduled_goal(id))
     }
 
-    /// Manually triggers a scheduled goal immediately (records a manual checkpoint).
+    /// Manually triggers a scheduled goal immediately. A `manual:<minute>`
+    /// checkpoint makes a second press in the same minute (a double click,
+    /// the phone and the desktop together) create no second goal.
     pub async fn run_scheduled_goal_now(&self, id: &str) -> Result<GoalSummary> {
         let sch = self.inner.store(|s| s.scheduled_goal(id))?;
         let now = tower_store::system_now();
+        let checkpoint = format!("manual:{}", now.div_euclid(60_000));
+        // The checkpoint this claim replaces, read under the same lock.
+        let (previous, claimed) =
+            self.inner.store(|s| Ok((s.schedule_checkpoint(id)?, s.claim_schedule_checkpoint(id, &checkpoint)?)))?;
+        if !claimed {
+            return Err(invalid(tr!(
+                self.inner.lang(),
+                "这个定时目标刚刚已经运行过，请一分钟后再试",
+                "This scheduled goal was just run; try again in a minute"
+            )));
+        }
         let next = CronSchedule::parse(&sch.cron_expr).ok().and_then(|c| c.next_after(now));
-        let goal = instantiate_scheduled_goal(self, &sch).await?;
-        let _ = self.inner.store(|s| s.record_schedule_run(id, now, next, &goal.id));
-        Ok(goal)
+        let draft = match self.create_goal(scheduled_input(&sch, false)).await {
+            Ok(goal) => goal,
+            Err(e) => {
+                // No goal was created: a retry in the same minute may go ahead.
+                if let Err(e) =
+                    self.inner.store(|s| s.release_schedule_checkpoint(id, &checkpoint, previous.as_deref()))
+                {
+                    tracing::warn!(schedule = %id, error = %e, "could not release a manual run's checkpoint");
+                }
+                return Err(e);
+            }
+        };
+        // From here a goal exists, started or not: the minute stays claimed, so a retry makes no second one.
+        if let Err(e) = self.inner.store(|s| s.record_schedule_run(id, now, next, &draft.id)) {
+            tracing::warn!(schedule = %id, goal = %draft.id, error = %e, "could not record a manual scheduled run");
+        }
+        let ratified = self.ratify(&draft.id).await;
+        self.inner.emit_goal_now(&draft.id);
+        if let Err(e) = ratified {
+            let id = &draft.id;
+            return Err(invalid(tr!(
+                self.inner.lang(),
+                "已创建草稿 {id}，但未能开始：{e}",
+                "Created draft {id} but could not start it: {e}"
+            )));
+        }
+        self.inner.store(|s| s.summary(&draft.id))
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -303,5 +348,149 @@ mod tests {
         assert!(CronSchedule::parse("bad cron").is_err());
         assert!(CronSchedule::parse("61 * * * *").is_err());
         assert!(CronSchedule::parse("*/0 * * * *").is_err());
+    }
+
+    pub(crate) async fn supervisor(tmp: &tempfile::TempDir) -> (Supervisor, String) {
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::write(repo.join("README.md"), "hello\n").unwrap();
+        tower_git::Git::default().init_with_commit(&repo, "init").unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // A ratified goal starts a run: on the scripted engine, never a real one.
+        let env = crate::shell_env::ShellEnv::from_pairs([
+            ("PATH".to_string(), std::env::var("PATH").unwrap()),
+            ("HOME".to_string(), home.display().to_string()),
+            ("PI_FAKE_SCENARIO".to_string(), "pass".to_string()),
+        ]);
+        let sup = Supervisor::start(
+            crate::Config {
+                paths: crate::Paths::new(tmp.path().join("tower-home")),
+                extension_source: manifest.join("../../extensions/tower-goal"),
+                env: Some(env),
+                demo_engine: None,
+            },
+            Arc::new(crate::NullSink),
+        )
+        .await
+        .unwrap();
+        let fake = manifest.join("tests/fixtures/fake_pi.py").display().to_string();
+        sup.save_settings(tower_core::view::Settings { pi_path: fake, language: "en".into(), ..Default::default() })
+            .unwrap();
+        let p = sup.add_project(repo.to_str().unwrap()).await.unwrap();
+        (sup, p.id)
+    }
+
+    fn every_minute(sup: &Supervisor, project_id: &str, next_run_at: Option<Millis>) -> ScheduledGoal {
+        let contract = tower_core::contract::Contract::quick("nightly", Some("true".into()), Lang::En);
+        sup.inner
+            .store(|s| {
+                s.create_scheduled_goal(NewScheduledGoal {
+                    project_id: project_id.into(),
+                    title: "nightly".into(),
+                    cron_expr: "* * * * *".into(),
+                    contract_template: contract,
+                    enabled: true,
+                    next_run_at,
+                    unattended_strict: true,
+                })
+            })
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_slot_claimed_by_a_run_that_never_finished_does_not_stop_the_schedule() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        let now = tower_store::system_now();
+        let slot = now - 60_000;
+        let sch = every_minute(&sup, &pid, Some(slot));
+        // An earlier poll claimed the slot, then Tower stopped before the
+        // schedule moved on (a crash, or a launch whose result was lost).
+        let checkpoint = format!("cron:{}", slot.div_euclid(60_000));
+        assert!(sup.inner.store(|s| s.claim_schedule_checkpoint(&sch.id, &checkpoint)).unwrap());
+
+        poll_due_schedules(&sup.inner).await.unwrap();
+
+        let after = sup.inner.store(|s| s.scheduled_goal(&sch.id)).unwrap();
+        assert!(after.next_run_at.is_some_and(|n| n > now), "the schedule moves on: {:?}", after.next_run_at);
+        assert_eq!(after.last_goal_id, None, "the claimed slot is not run a second time");
+        assert!(sup.inner.read_store(|s| s.summaries()).unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn run_now_pressed_twice_in_a_minute_creates_one_goal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        let sch = every_minute(&sup, &pid, None);
+
+        let (a, b) = tokio::join!(sup.run_scheduled_goal_now(&sch.id), sup.run_scheduled_goal_now(&sch.id));
+
+        assert_eq!([a.is_ok(), b.is_ok()].iter().filter(|ok| **ok).count(), 1, "{a:?} {b:?}");
+        assert_eq!(sup.inner.read_store(|s| s.summaries()).unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_run_now_whose_goal_was_created_but_not_started_keeps_its_minute() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        // A template that no longer ratifies (saved before a check it now fails): the goal is created as a draft,
+        // then cannot start.
+        let mut contract = tower_core::contract::Contract::quick("nightly", Some("true".into()), Lang::En);
+        contract.criteria.clear();
+        contract.intent.clear();
+        let sch = sup
+            .inner
+            .store(|s| {
+                s.create_scheduled_goal(NewScheduledGoal {
+                    project_id: pid.clone(),
+                    title: "nightly".into(),
+                    cron_expr: "* * * * *".into(),
+                    contract_template: contract,
+                    enabled: true,
+                    next_run_at: None,
+                    unattended_strict: true,
+                })
+            })
+            .unwrap();
+
+        let first = sup.run_scheduled_goal_now(&sch.id).await.unwrap_err().to_string();
+        assert!(sup.run_scheduled_goal_now(&sch.id).await.is_err());
+
+        let goals = sup.inner.read_store(|s| s.summaries()).unwrap();
+        assert_eq!(goals.len(), 1, "a retry in the same minute creates no second goal");
+        // The error says a goal was made, and which, so it isn't taken for a run that made nothing.
+        assert!(first.contains(&goals[0].id), "{first}");
+        let after = sup.inner.store(|s| s.scheduled_goal(&sch.id)).unwrap();
+        assert_eq!(after.last_goal_id.as_deref(), Some(goals[0].id.as_str()), "the run that created it is recorded");
+    }
+
+    #[tokio::test]
+    async fn a_run_now_that_fails_gives_back_the_slot_the_scheduler_claimed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        let contract = tower_core::contract::Contract::quick("nightly", Some("true".into()), Lang::En);
+        // A title the goal cannot be created with: the launch fails.
+        let sch = sup
+            .inner
+            .store(|s| {
+                s.create_scheduled_goal(NewScheduledGoal {
+                    project_id: pid.clone(),
+                    title: String::new(),
+                    cron_expr: "* * * * *".into(),
+                    contract_template: contract,
+                    enabled: true,
+                    next_run_at: None,
+                    unattended_strict: true,
+                })
+            })
+            .unwrap();
+        sup.inner.store(|s| s.claim_schedule_checkpoint(&sch.id, "cron:42")).unwrap();
+
+        assert!(sup.run_scheduled_goal_now(&sch.id).await.is_err());
+
+        let checkpoint = sup.inner.store(|s| s.schedule_checkpoint(&sch.id)).unwrap();
+        assert_eq!(checkpoint.as_deref(), Some("cron:42"), "the scheduler's slot stays claimed");
     }
 }

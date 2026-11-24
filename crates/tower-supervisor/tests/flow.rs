@@ -258,6 +258,38 @@ async fn a_goal_goes_from_intent_to_a_branch() {
     assert!(h.sink.0.lock().unwrap().iter().any(|u| matches!(u, UiUpdate::Stream { .. })));
 }
 
+/// Accept pressed again while an accept is still sealing (a double click,
+/// the phone and the desktop together) writes one branch: the later press
+/// is refused, never sealed as a `-v2` branch into your repository, and
+/// never fails on the first one's git lock.
+#[tokio::test(flavor = "multi_thread")]
+async fn accepting_again_while_accepting_writes_one_branch() {
+    let h = harness("pass").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+
+    let sup = h.sup.clone();
+    let first = {
+        let id = id.clone();
+        tokio::spawn(async move { sup.accept(&id).await })
+    };
+    // Pressed again and again for as long as the first accept runs, so
+    // presses land in every step of it.
+    let mut again = Vec::new();
+    while !first.is_finished() {
+        again.push(h.sup.accept(&id).await);
+        tokio::task::yield_now().await;
+    }
+    let first = first.await.unwrap();
+    let all: Vec<_> = std::iter::once(&first).chain(&again).collect();
+    assert_eq!(all.iter().filter(|r| r.is_ok()).count(), 1, "{all:?}");
+    assert!(all.iter().all(|r| matches!(r, Ok(_) | Err(tower_supervisor::Error::Invalid(_)))), "{all:?}");
+    assert_eq!(git(&h.repo, &["branch", "--list", "tower/*"]).lines().count(), 1);
+    let trace = h.sup.trace(&id, None, 500).unwrap();
+    assert_eq!(trace.iter().filter(|e| matches!(e.event, EventKind::BranchWritten { .. })).count(), 1);
+    wait_for(&h, &id, |g| g.state == LifecycleState::Accepted).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn failed_verification_is_handed_back_as_rework() {
     let h = harness("fail_then_fix").await;
@@ -354,6 +386,32 @@ async fn settling_right_after_a_provider_error_pauses_for_it() {
     let id = create(&h).await;
     let g = wait_for(&h, &id, |g| g.state == LifecycleState::Paused).await;
     assert_eq!(g.pause_reason, Some(PauseReason::ProviderError));
+}
+
+/// Removing a project takes its ended goals' folders with their records:
+/// nothing is left in Tower's data folder that no view can reach or reclaim.
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_a_project_removes_its_goals_folders() {
+    let h = harness("ask").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.needs_you > 0).await;
+    h.sup.abandon(&id).await.unwrap();
+    wait_for(&h, &id, |g| g.state == LifecycleState::Abandoned).await;
+    let g = h.sup.goal(&id).unwrap();
+    let ws = std::path::PathBuf::from(g.workspace.unwrap());
+    let root = ws.parent().and_then(Path::parent).unwrap().to_path_buf();
+    std::fs::create_dir_all(root.join("goals").join(&id).join("attachments")).unwrap();
+    std::fs::create_dir_all(root.join("sessions").join(&id)).unwrap();
+    // Go's module cache leaves its folders read-only: they go too.
+    let go_mod = root.join("goals").join(&id).join("cache/go/pkg/mod/example.com/m@v1");
+    std::fs::create_dir_all(&go_mod).unwrap();
+    std::fs::write(go_mod.join("go.mod"), "module m\n").unwrap();
+    std::fs::set_permissions(&go_mod, std::os::unix::fs::PermissionsExt::from_mode(0o555)).unwrap();
+    assert!(ws.exists());
+    h.sup.remove_project(&g.summary.project_id).await.unwrap();
+    for left in [ws, root.join("goals").join(&id), root.join("sessions").join(&id), root.join("tmp").join(&id)] {
+        assert!(!left.exists(), "{} is removed", left.display());
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -984,12 +1042,33 @@ fn tower_supervisor_test_support_browser() -> Option<&'static str> {
 async fn diagnostics_leave_secrets_out() {
     let h = harness("pass").await;
     h.sup.save_settings(Settings { remote_enabled: true, remote_port: 0, ..h.sup.settings() }).ok();
+    // The ntfy topic is the push channel's only secret.
+    let topic = "http://127.0.0.1:9/tower-secret-topic-0001";
+    h.sup.save_settings(Settings { push_url: topic.into(), ..h.sup.settings() }).unwrap();
+    // An origin URL with a password in it, pushed to (locally, through
+    // pushInsteadOf) while the goal is still in the archive.
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
+    h.sup.accept(&id).await.unwrap();
+    wait_for(&h, &id, |g| g.state == LifecycleState::Accepted).await;
+    let bare = h.repo.parent().unwrap().join("origin.git");
+    git(&h.repo, &["init", "--quiet", "--bare", bare.to_str().unwrap()]);
+    let origin = "https://ada:origin-pass-0002@git.example.com/o/r.git";
+    git(&h.repo, &["remote", "add", "origin", origin]);
+    git(&h.repo, &["config", &format!("url.{}.pushInsteadOf", bare.display()), origin]);
+    h.sup.push(&id, false).await.unwrap();
+    let trace = format!("{:?}", h.sup.trace(&id, None, 300).unwrap());
+    assert!(trace.contains("git.example.com/o/r.git") && !trace.contains("origin-pass-0002"), "{trace}");
+
     let token = h.sup.settings().remote_token;
     let zip = h.sup.export_diagnostics().unwrap();
     let out = Command::new("/usr/bin/unzip").arg("-p").arg(&zip).output().unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("\"tower\""), "the archive has content");
+    assert!(text.contains("branch_pushed"), "the pushed goal's trace is in the archive");
     assert!(token.is_empty() || !text.contains(&token), "no pairing token");
+    assert!(!text.contains("tower-secret-topic-0001"), "no push topic");
+    assert!(!text.contains("origin-pass-0002"), "no password from the origin URL");
 }
 
 /// Pushes (ntfy): an item that blocks a goal sends its goal's and its own
@@ -1543,4 +1622,42 @@ async fn a_slot_freed_by_a_retry_that_did_not_start_goes_to_the_next_goal() {
     };
     let (_, second) = tokio::join!(h.sup.answer(&card.id, "Retry"), meanwhile);
     wait_for(&h, &second, |g| g.state == LifecycleState::Running).await;
+}
+
+/// Starting Tower in a folder that is not yet Tower's (a stray TOWER_HOME) clears nothing in it: the start-up sweep
+/// goes by whether the store was there before Tower opened it, not after. In Tower's own folder it still clears.
+#[tokio::test]
+async fn starting_in_a_folder_that_is_not_towers_removes_none_of_its_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    let ext = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/tower-goal");
+    let env = ShellEnv::from_pairs([
+        ("PATH".to_string(), std::env::var("PATH").unwrap()),
+        ("HOME".to_string(), root.join("home").display().to_string()),
+    ]);
+    let dirs = ["verify/keep", "verify-cache/keep", "checks/keep", "tmp/notes-verify/keep"];
+    for (name, towers) in [("someone-elses", false), ("towers-own", true)] {
+        let home = root.join(name);
+        for d in dirs {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        if towers {
+            std::fs::write(home.join("tower.db"), "").unwrap();
+        }
+        let sup = Supervisor::start(
+            Config {
+                paths: Paths::new(home.clone()),
+                extension_source: ext.clone(),
+                env: Some(env.clone()),
+                demo_engine: None,
+            },
+            Arc::new(Collect::default()),
+        )
+        .await
+        .unwrap();
+        for d in dirs {
+            assert_eq!(home.join(d).exists(), !towers, "{name}: {d}");
+        }
+        drop(sup);
+    }
 }

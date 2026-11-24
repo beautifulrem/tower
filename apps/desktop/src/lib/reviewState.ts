@@ -51,14 +51,20 @@ export interface ReviewState {
   accepted: AcceptedHunks | null;
 }
 
-const parse = <T>(raw: string | undefined | null, fallback: T): T => {
+/** What was saved, if it is JSON of the shape `ok` expects; else the fallback (a "null" or "{}" must not break the review). */
+const parse = <T>(raw: string | undefined | null, fallback: T, ok: (v: unknown) => boolean): T => {
   if (!raw) return fallback;
   try {
-    return JSON.parse(raw) as T;
+    const v: unknown = JSON.parse(raw);
+    return ok(v) ? (v as T) : fallback;
   } catch {
     return fallback;
   }
 };
+const isMap = (v: unknown) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isViewed = (v: unknown) => isMap(v) && Object.values(v as object).every((h) => typeof h === "string");
+const isDrafts = (v: unknown) => Array.isArray(v) && v.every(isMap);
+const isAccepted = (v: unknown) => isMap(v) && typeof (v as AcceptedHunks).range === "string" && isMap((v as AcceptedHunks).files);
 
 /** Loads a goal's review state, migrating any pre-SQLite localStorage copy once. */
 export async function loadReviewState(goal: string): Promise<ReviewState> {
@@ -70,32 +76,35 @@ export async function loadReviewState(goal: string): Promise<ReviewState> {
   }
   const legacy = migrateLegacy(goal);
   const state: ReviewState = {
-    viewed: parse(stored.viewed, legacy?.viewed ?? {}),
-    drafts: parse(stored.drafts, legacy?.drafts ?? []),
+    viewed: parse(stored.viewed, legacy?.viewed ?? {}, isViewed),
+    drafts: parse(stored.drafts, legacy?.drafts ?? [], isDrafts),
     reviewed: stored.reviewed ?? legacy?.reviewed ?? null,
     layout: stored.layout === "split" ? "split" : "unified",
-    accepted: parse<AcceptedHunks | null>(stored.accepted, null),
+    accepted: parse<AcceptedHunks | null>(stored.accepted, null, isAccepted),
   };
   if (legacy) {
-    void api.setUiState(goal, "viewed", JSON.stringify(state.viewed)).catch(() => {});
-    if (state.drafts.length) void api.setUiState(goal, "drafts", JSON.stringify(state.drafts)).catch(() => {});
-    if (state.reviewed) void api.setUiState(goal, "reviewed", state.reviewed).catch(() => {});
+    // The browser's copy goes only once SQLite has it: after a failed write, the next open migrates it again.
+    void Promise.all([
+      api.setUiState(goal, "viewed", JSON.stringify(state.viewed)),
+      state.drafts.length && api.setUiState(goal, "drafts", JSON.stringify(state.drafts)),
+      state.reviewed && api.setUiState(goal, "reviewed", state.reviewed),
+    ]).then(() => legacyKeys(goal).forEach((k) => localStorage.removeItem(k)), () => {});
   }
   return state;
 }
 
+const legacyKeys = (goal: string) => [`tower.viewed.${goal}`, `tower.drafts.${goal}`, `tower.reviewed.${goal}`];
+
 function migrateLegacy(goal: string): ReviewState | null {
-  const keys = [`tower.viewed.${goal}`, `tower.drafts.${goal}`, `tower.reviewed.${goal}`];
+  const keys = legacyKeys(goal);
   if (!keys.some((k) => localStorage.getItem(k) !== null)) return null;
-  const s: ReviewState = {
-    viewed: parse(localStorage.getItem(keys[0]), {}),
-    drafts: parse(localStorage.getItem(keys[1]), []),
+  return {
+    viewed: parse(localStorage.getItem(keys[0]), {}, isViewed),
+    drafts: parse(localStorage.getItem(keys[1]), [], isDrafts),
     reviewed: localStorage.getItem(keys[2]),
     layout: "unified",
     accepted: null,
   };
-  keys.forEach((k) => localStorage.removeItem(k));
-  return s;
 }
 
 export const persist = {

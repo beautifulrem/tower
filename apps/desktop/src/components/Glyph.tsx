@@ -2,8 +2,8 @@
  * Tower's one-pen glyph set (docs/12 §12.6.1, §12.9).
  *
  * Everything drawn in the interface — lifecycle glyphs, result marks,
- * navigation icons, the harness "measured" mark — is a 1.25px butt-capped
- * line on the same grid, so the whole product reads as one hand. Shapes
+ * navigation icons, the harness "measured" mark — is a line of about 1.25px
+ * with round ends and round joins, so the whole product reads as one hand. Shapes
  * carry meaning in greyscale; colour is added only by the verifier (green,
  * red), by activity (blue-grey) or by a decision waiting for you (amber).
  *
@@ -46,7 +46,8 @@ const color: Record<Tone, string> = {
   faint: "var(--text-4)",
 };
 
-const DASH = "1.7 1.45";
+/* Round caps add half the pen at each end: the dash shows 1.7 and the gap 1.45, as with square ends. */
+const DASH = "0.45 2.7";
 
 export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin"> & { id?: string }; size?: number }) {
   const verified = () => machineVerified(props.goal as GoalSummary);
@@ -65,8 +66,6 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
       fill="none"
       stroke={c()}
       stroke-width="1.25"
-      stroke-linecap="butt"
-      stroke-linejoin="miter"
       role="img"
       aria-label={t(`state.${props.goal.state}`)}
     >
@@ -220,7 +219,6 @@ export type IconName =
   | "sandbox"
   | "return"
   | "sliders"
-  | "pulse"
   | "dot"
   | "network"
   | "copy"
@@ -229,7 +227,6 @@ export type IconName =
   | "columns"
   | "keyboard"
   | "list"
-  | "folder"
   | "expand"
   | "arrow-right"
   | "rework"
@@ -238,157 +235,126 @@ export type IconName =
   | "undo"
   | "learning"
   | "operations"
-  | "shield"
   | "peek";
 
+/* Drawn on a 16-unit grid with a 2.5-unit margin: round caps and joins, corners rounded, 2 units at least between
+   strokes (docs/12 §12.9). The pen's width is set per size in CSS (`.icon`), so a 10px icon is not drawn hairline. */
 const PATHS: Record<IconName, () => JSX.Element> = {
-  plus: () => <path d="M6 2.25 V9.75 M2.25 6 H9.75" />,
+  plus: () => <path d="M8 3.5v9M3.5 8h9" />,
   grid: () => (
     <>
-      <rect x="2" y="2" width="3.25" height="3.25" />
-      <rect x="6.75" y="2" width="3.25" height="3.25" />
-      <rect x="2" y="6.75" width="3.25" height="3.25" />
-      <rect x="6.75" y="6.75" width="3.25" height="3.25" />
+      <rect x="2.5" y="2.5" width="4" height="4" rx="1" />
+      <rect x="9.5" y="2.5" width="4" height="4" rx="1" />
+      <rect x="2.5" y="9.5" width="4" height="4" rx="1" />
+      <rect x="9.5" y="9.5" width="4" height="4" rx="1" />
     </>
   ),
-  inbox: () => <path d="M6 1.4 L10.6 6 L6 10.6 L1.4 6 Z" />,
-  "chevron-left": () => <path d="M7.5 2.25 L3.75 6 L7.5 9.75" />,
-  "chevron-right": () => <path d="M4.5 2.25 L8.25 6 L4.5 9.75" />,
-  "caret-down": () => <path d="M2.75 4.25 L6 7.5 L9.25 4.25" />,
-  "caret-right": () => <path d="M4.25 2.75 L7.5 6 L4.25 9.25" />,
-  ellipsis: () => (
-    <>
-      <circle cx="2.25" cy="6" r="1" fill="currentColor" stroke="none" />
-      <circle cx="6" cy="6" r="1" fill="currentColor" stroke="none" />
-      <circle cx="9.75" cy="6" r="1" fill="currentColor" stroke="none" />
-    </>
-  ),
+  /* The tray things wait in for you. */
+  inbox: () => <path d="M2.5 8.5h3l1 2h3l1-2h3M2.5 8.5l1.7-4.7a1 1 0 0 1 .9-.8h5.8a1 1 0 0 1 .9.8l1.7 4.7V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12z" />,
+  "chevron-left": () => <path d="M10 3.5 5.5 8l4.5 4.5" />,
+  "chevron-right": () => <path d="M6 3.5l4.5 4.5L6 12.5" />,
+  "caret-down": () => <path d="M4 6l4 4 4-4" />,
+  "caret-right": () => <path d="M6 4l4 4-4 4" />,
+  ellipsis: () => <path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.5" />,
   search: () => (
     <>
-      <circle cx="5.25" cy="5.25" r="3.4" />
-      <path d="M7.75 7.75 L10.75 10.75" />
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="M10.25 10.25 13.5 13.5" />
     </>
   ),
   /* A scale: Tower measured it. Replaces the gear, which reads as "settings". */
-  harness: () => <path d="M1.25 9.4 H10.75 M3.25 9.4 V6.1 M6 9.4 V3.1 M8.75 9.4 V6.1" />,
-  check: () => <path d="M2.4 6.3 L4.9 8.8 L9.7 3.4" />,
-  cross: () => <path d="M2.9 2.9 L9.1 9.1 M9.1 2.9 L2.9 9.1" />,
-  stale: () => (
-    <>
-      <path d="M9.6 6.2 A3.6 3.6 0 1 1 8.55 3.35" />
-      <path d="M8.9 1.1 V3.7 H6.3" />
-    </>
-  ),
+  harness: () => <path d="M2.5 13h11M5 13V9.5M8 13V3.5M11 13V9.5" />,
+  check: () => <path d="M3 8.5l3.25 3.25L13 5" />,
+  cross: () => <path d="M4 4l8 8m0-8-8 8" />,
+  stale: () => <path d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M12 1.75V4.5H9.25" />,
   "ring-check": () => (
     <>
-      <circle cx="6" cy="6" r="4.4" />
-      <path d="M3.9 6.2 L5.4 7.7 L8.2 4.5" />
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M5.5 8.25l1.75 1.75 3.25-3.75" />
     </>
   ),
   "ring-cross": () => (
     <>
-      <circle cx="6" cy="6" r="4.4" />
-      <path d="M4.2 4.2 L7.8 7.8 M7.8 4.2 L4.2 7.8" />
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M6 6l4 4m0-4-4 4" />
     </>
   ),
   /* The environment: the sandbox's box, its wall broken where something tried to pass. Not a warning triangle — an
      environment problem is nobody's failure — and not ◇ or ◆, which belong to notices and decisions. */
-  sandbox: () => <path d="M4.5 2 H2 V10 H10 V2 H7.5" />,
-  return: () => <path d="M2.75 1.75 V7.75 H9.75 M7.5 5.5 L9.75 7.75 L7.5 10" />,
+  sandbox: () => <path d="M5.25 2.5H4A1.5 1.5 0 0 0 2.5 4v8A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5V4A1.5 1.5 0 0 0 12 2.5h-1.25" />,
+  return: () => <path d="M3 2.5v5a2 2 0 0 0 2 2h8m-3-3 3 3-3 3" />,
   sliders: () => (
     <>
-      <path d="M1.25 4 H10.75 M1.25 8 H10.75" />
-      <circle cx="7.75" cy="4" r="1.6" fill="var(--bg-app)" />
-      <circle cx="4.25" cy="8" r="1.6" fill="var(--bg-app)" />
+      <path d="M2.5 5h6m4 0h1m-11 6h1m4 0h6" />
+      <circle cx="10.5" cy="5" r="2" />
+      <circle cx="5.5" cy="11" r="2" />
     </>
   ),
-  pulse: () => <path d="M0.75 6.5 H3 L4.6 2.25 L7.1 9.75 L8.7 6.5 H11.25" />,
-  dot: () => <circle cx="6" cy="6" r="1.25" fill="currentColor" stroke="none" />,
+  dot: () => <circle cx="8" cy="8" r="1.75" fill="currentColor" stroke="none" />,
   network: () => (
     <>
-      <circle cx="6" cy="6" r="4.5" />
-      <path d="M1.5 6 H10.5 M6 1.5 C3.9 3.4 3.9 8.6 6 10.5 M6 1.5 C8.1 3.4 8.1 8.6 6 10.5" />
+      <circle cx="8" cy="8" r="5.75" />
+      <ellipse cx="8" cy="8" rx="2.5" ry="5.75" />
+      <path d="M2.25 8h11.5" />
     </>
   ),
   copy: () => (
     <>
-      <rect x="4" y="4" width="6.5" height="6.5" />
-      <path d="M8 4 V1.5 H1.5 V8 H4" />
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+      <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" />
     </>
   ),
-  "arrow-up": () => <path d="M6 10 V2 M2.75 5.25 L6 2 L9.25 5.25" />,
-  "arrow-down": () => <path d="M6 2 V10 M2.75 6.75 L6 10 L9.25 6.75" />,
+  "arrow-up": () => <path d="M8 13V3M4 7l4-4 4 4" />,
+  "arrow-down": () => <path d="M8 3v10M4 9l4 4 4-4" />,
   columns: () => (
     <>
-      <rect x="1.5" y="2" width="9" height="8" />
-      <path d="M6 2 V10" />
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+      <path d="M8 2.5v11" />
     </>
   ),
   keyboard: () => (
     <>
-      <rect x="1" y="3" width="10" height="6.5" />
-      <path d="M3 5.25 H3.5 M5.25 5.25 H5.75 M7.5 5.25 H8 M3.5 7.5 H8.5" />
+      <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" />
+      <path d="M4.5 6.5h1m2 0h1m2 0h1m-6 3h5" />
     </>
   ),
-  list: () => <path d="M1.5 3 H10.5 M1.5 6 H10.5 M1.5 9 H7.5" />,
-  folder: () => <path d="M1.5 3 H5 L6.25 4.25 H10.5 V9.75 H1.5 Z" />,
-  expand: () => <path d="M6 1.5 V10.5 M3.5 4 L6 1.5 L8.5 4 M3.5 8 L6 10.5 L8.5 8" />,
-  "arrow-right": () => <path d="M1.75 6 H10 M7 2.75 L10.25 6 L7 9.25" />,
+  list: () => <path d="M2.5 4h11M2.5 8h11M2.5 12h7" />,
+  expand: () => <path d="M8 2.5v11M5 5.5l3-3 3 3M5 10.5l3 3 3-3" />,
+  "arrow-right": () => <path d="M3 8h10M9 4l4 4-4 4" />,
   /* Rework: two arcs chasing each other — distinct from `stale`, which is one arc and a return. */
-  rework: () => (
-    <>
-      <path d="M2.4 5 A3.6 3.6 0 0 1 9.1 3.6" />
-      <path d="M9.6 7 A3.6 3.6 0 0 1 2.9 8.4" />
-      <path d="M9.4 1.2 V3.8 H6.8 M2.6 10.8 V8.2 H5.2" />
-    </>
-  ),
+  rework: () => <path d="M3 8a5 5 0 0 1 8.5-3.55M11.75 1.75v3h-3M13 8a5 5 0 0 1-8.5 3.55M4.25 14.25v-3h3" />,
   /* A hollow ring: not yet measured. */
-  ring: () => <circle cx="6" cy="6" r="3" />,
-  bell: () => (
-    <>
-      <path d="M3 8.5 V5.5 A3 3 0 0 1 9 5.5 V8.5 L10 9.5 H2 Z" />
-      <path d="M5 10.5 H7" />
-    </>
-  ),
-  undo: () => <path d="M4.5 3.25 L1.75 6 L4.5 8.75 M1.75 6 H7.5 A2.75 2.75 0 0 1 7.5 11.5 H5.5" />,
-  /* Calibration / learning ledger: two pages of rules & scores. */
-  learning: () => (
-    <>
-      <path d="M1.75 2.5 H5.25 A1.25 1.25 0 0 1 6 3.5 V10 A1.25 1.25 0 0 0 5.25 9.25 H1.75 Z" />
-      <path d="M10.25 2.5 H6.75 A1.25 1.25 0 0 0 6 3.5 V10 A1.25 1.25 0 0 1 6.75 9.25 H10.25 Z" />
-    </>
-  ),
-  /* Operations clock / schedule dial. */
+  ring: () => <circle cx="8" cy="8" r="4" />,
+  bell: () => <path d="M4 10.5v-4a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3" />,
+  undo: () => <path d="M5.5 3.5l-3 3 3 3M2.5 6.5h7.25a3.5 3.5 0 0 1 0 7H8" />,
+  /* Learning: an open book, the rules you have taught. */
+  learning: () => <path d="M8 4.5C6.75 3.5 5 3 2.5 3v9.5c2.5 0 4.25.5 5.5 1.5 1.25-1 3-1.5 5.5-1.5V3C11 3 9.25 3.5 8 4.5zm0 0V14" />,
+  /* Operations: the schedule's dial. */
   operations: () => (
     <>
-      <circle cx="6" cy="6" r="4.25" />
-      <path d="M6 3.5 V6.25 L8 7.5" />
+      <circle cx="8" cy="8" r="5.75" />
+      <path d="M8 5v3.25l2 1.25" />
     </>
   ),
-  /* Sandbox posture shield. */
-  shield: () => <path d="M6 1.25 L10.25 2.75 V6.2 C10.25 8.5 8.4 10 6 10.75 C3.6 10 1.75 8.5 1.75 6.2 V2.75 Z" />,
   /* Slide-over quick peek drawer. */
   peek: () => (
     <>
-      <rect x="1.5" y="2" width="9" height="8" />
-      <path d="M7.25 2 V10" />
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+      <path d="M9.5 2.5v11" />
     </>
   ),
 };
 
-/** One of Tower's own line icons; 12px by default, 16px for toolbar buttons. */
-export function Icon(props: { name: IconName; size?: 10 | 12 | 16; class?: string; label?: string }) {
+/** One of Tower's own line icons; 12px by default, 14px in the sidebar, 16px for toolbar buttons. */
+export function Icon(props: { name: IconName; size?: 10 | 12 | 14 | 16; class?: string; label?: string }) {
   return (
     <svg
       class={`icon ${props.class ?? ""}`}
       width={props.size ?? 12}
       height={props.size ?? 12}
-      viewBox="0 0 12 12"
+      viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.25"
-      stroke-linecap="butt"
-      stroke-linejoin="miter"
       role={props.label ? "img" : undefined}
       aria-label={props.label}
       aria-hidden={props.label ? undefined : "true"}

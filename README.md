@@ -1,225 +1,254 @@
+<div align="center">
+
+<img src="assets/icon.png" alt="Tower" width="120" height="120">
+
 # Tower
 
-English · [简体中文](README.zh-CN.md)
+### The control tower for your coding agents.
 
-Tower is a macOS desktop app for supervising coding agents. You give an agent a goal with acceptance criteria. The agent works in a sandbox. When it says it is done, Tower checks the work itself in a clean checkout. Then you review the change and accept it.
+Run several agents at once, each in its own sandbox.<br>
+Tower checks their work itself, in a clean checkout, before you ever see a green light.
 
-![Tower overview, dark theme](assets/screenshots/overview.png)
+[![CI](https://github.com/beautifulrem/tower/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/beautifulrem/tower/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg?logo=apple)](#-quick-start)
+[![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB.svg?logo=tauri&logoColor=white)](https://tauri.app)
+[![Rust](https://img.shields.io/badge/Rust-supervisor-B7410E.svg?logo=rust&logoColor=white)](crates/)
+[![SolidJS](https://img.shields.io/badge/SolidJS-interface-2C4F7C.svg?logo=solid&logoColor=white)](apps/desktop/)
 
-Chat-style agent tools show you a transcript. With several agents running for hours, a transcript tells you little: "all tests pass" in a message looks the same as a real test run. Tower is built around different questions. For each goal it shows what the agent was asked to do, what it is doing now, what has actually been proven, and what changed.
+[**Quick start**](#-quick-start) · [**Features**](#-features) · [**How it works**](#-how-it-works) · [**Security**](#-security) · [**Docs**](#-documentation) · [**简体中文**](README.zh-CN.md)
 
-> **Status:** there is no signed public release yet. Build it from source (below). macOS 13 or later is the supported platform, and CI runs on macOS only.
+</div>
 
-## How a goal works
+<br>
 
-A goal is a **contract**. It holds:
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="assets/screenshots/overview-light.png">
+  <img src="assets/screenshots/overview.png" alt="Tower overview: goals that need you pinned on top, running goals below with live status, criteria, spend and engine">
+</picture>
 
-- the intent;
-- the acceptance criteria: commands to run, screenshots to compare (`look`), and checks only you can make;
-- the files the agent may touch;
-- a spend and time budget;
-- how much the agent may do without asking.
+<br>
 
-A goal moves through three states:
+## 🧭 Why Tower?
 
-1. **Claimed:** the agent says it is done.
-2. **Verified:** Tower ran the criteria itself and they passed.
-3. **Accepted:** you reviewed the change and sealed it.
+Most agent tools hand you a chat transcript. That works for one agent and one short task. It stops working when three agents run for an afternoon. A scrolling log looks like progress. And *"all tests pass"* in a message looks exactly like a real test run.
 
-The screen keeps four kinds of statement apart, by shape and not by color alone:
+Tower is built around four questions instead: **what was the agent asked to do, what is it doing now, what has actually been proven, and what changed?**
 
-| Kind | What it is | Can it be green? |
+| | Chat-style agent tools | **Tower** |
 |---|---|---|
-| **Fact** | Something Tower measured, such as a verifier result | Only a fresh, untampered verifier pass |
-| **Observation** | Output seen inside the agent's own sandbox | No |
-| **Claim** | Anything the agent wrote: logs, summaries, "blocked" reports | No |
-| **Human** | Your contracts, approvals and acceptances | — |
+| Unit of work | A session | **A goal**, with a contract and acceptance criteria |
+| "Done" means | The agent says so | **Tower re-runs your criteria** in a fresh, credential-free checkout |
+| Agent's own words | Shown like everything else | **Marked as claims**, and never shown in green |
+| Many agents at once | Many tabs | **One board**, with what needs you pinned on top |
+| Agent's reach | Often your whole account | **A per-goal, deny-by-default kernel sandbox** |
+| Where changes land | Straight in your working copy | **In a separate clone**; you seal them into a local branch and push it yourself |
 
-## Verification
+## ✨ Features
 
-When the agent claims a goal is done, Tower pins a snapshot of the work. It checks that snapshot in a new clean checkout, with no credentials and a throwaway package cache:
+### 🛡️ Verification that doesn't take the agent's word for it
 
-1. **Base run.** The criteria run on the base commit first. A criterion that already passes there cannot prove the goal was done.
-2. **Visible criteria.** They run on the snapshot, under the goal's sandbox. Setup is offline unless the contract allows network.
-3. **Held-out tests.** These never enter the agent's workspace or prompts. They run after the visible criteria pass. Tower checks that each test file actually ran.
-4. **Source-only re-run.** Tower reverts every change that is not source code (tests, fixtures, config, scripts) and runs the criteria again. Rust inline tests are restored with a Tree-sitter parse.
-5. **Tamper checks.** Tower adds a test that must fail and changes expected values. If the criteria still pass, the pass is not counted. Assertion libraries are guarded before project code loads, and results are written append-only.
-6. **Perturbation and flaky checks.** Tower changes numeric inputs to catch some hard-coded answers. A newly failing criterion runs once more, so a flaky test is shown as flaky.
+When an agent claims it is done, Tower pins a snapshot and checks it on its own in a fresh checkout, with no credentials. It runs six steps:
 
-These checks raise the cost of cheating but do not rule it out. The real-model anti-cheat run does not pass yet, and [`docs/17-implementation.md`](docs/17-implementation.md) §17.7 lists the kinds of cheat it still misses.
+1. **Base run.** A criterion that already passes on the base commit can't prove anything.
+2. **Visible criteria.** These run under the goal's sandbox, offline unless the contract allows network.
+3. **Held-out tests.** The agent never sees them, and Tower confirms that each file actually ran.
+4. **Source-only re-run.** Every non-source edit is reverted (tests, fixtures, config, scripts), and the criteria run again.
+5. **Tamper checks.** A must-fail canary and changed expected values catch a test harness that always passes.
+6. **Perturbation and flaky checks.** Changed inputs catch some hard-coded answers, and one re-run tells a flaky test from a real failure.
 
-For `look` criteria, Tower takes before and after screenshots in a headless browser, at desktop and phone sizes, and records the page's console errors next to them.
+For UI work, `look` criteria take before/after screenshots at desktop and phone sizes, with the page's console errors attached.
 
-The details are in [`docs/07-verification-and-honesty.md`](docs/07-verification-and-honesty.md).
+<table>
+<tr>
+<td width="50%"><img src="assets/screenshots/goal.png" alt="Goal page: criteria, sentinels and the contract"></td>
+<td width="50%"><img src="assets/screenshots/peek.png" alt="Quick peek: live status, criteria and budget without leaving the board"></td>
+</tr>
+<tr>
+<td align="center"><b>Goal page</b>: facts, claims and sentinels, kept apart</td>
+<td align="center"><b>Quick peek</b> (<code>Space</code>): check any goal without leaving the board</td>
+</tr>
+</table>
 
-## Sandbox
+### 🧱 A kernel sandbox for every goal
 
-Each goal gets its own deny-by-default sandbox. On macOS that is Seatbelt:
+On macOS each goal runs under its own Seatbelt profile, which denies by default:
 
-- **Reads:** system paths, toolchains and the goal's workspace only. Your home folder, other projects and credential stores (`~/.ssh`, `~/.aws`, `~/.config/gh`) are closed, and `*_API_KEY` variables are not passed in.
-- **Writes:** only the goal's workspace, its temp folder and a copy-on-write package cache. Your own caches can't be changed.
-- **Agent instruction files:** writes to `AGENTS*.md`, `CLAUDE*.md`, `.pi/` and `.agents/` are refused at any depth, and so are hard links.
-- **Network:** off unless the contract turns it on. Each goal has its own block of 10 loopback ports. Other Unix sockets, such as `docker.sock` and ssh-agent, stay closed.
-- **Cleanup:** when a run ends, Tower stops every process the kernel reports inside that goal's sandbox, and none of yours.
+- **Your secrets stay out of reach.** That covers your home folder, other projects, `~/.ssh`, `~/.aws`, `~/.config/gh` and every `*_API_KEY` variable.
+- **Writes stay in the goal's own workspace,** plus a copy-on-write package cache, so your own caches can't be poisoned.
+- **The agent can't rewrite its own instructions.** `AGENTS*.md`, `CLAUDE*.md`, `.pi/` and `.agents/` are read-only at any depth, and so are hard links.
+- **Network is off** unless the contract turns it on. Each goal gets its own 10 loopback ports. Other Unix sockets stay closed, including `docker.sock` and ssh-agent.
+- **Clean teardown.** When a run ends, every process the kernel places in that sandbox is stopped, and none of yours.
 
-There is also a Linux backend (`bubblewrap`, Landlock and cgroups v2) and an optional MicroVM tier using Apple Containerization on macOS 26+ with Apple Silicon. CI runs on macOS only and tests neither of them for real.
+### 🔌 Bring your own engine
 
-[`SECURITY.md`](SECURITY.md) has the threat model and the 118 security tests that CI runs on every push. It also lists the known limits.
-
-## Engines
-
-| Engine | Connection | Trust tier | Tools the agent gets |
+| Engine | Connection | Trust tier | What the agent can touch |
 |---|---|---|---|
-| [Pi](https://github.com/earendil-works/pi) (default) | Native JSONL RPC | Full | 7 fixed tools: `read`, `bash`, `edit`, `write`, `ask_user`, `log`, `submit`. MCP and repo-local Pi resources are off. |
-| Claude Code | ACP | Full | Only Tower's sandboxed MCP tools. Built-in tools, hooks and other MCP servers are removed. |
-| Codex CLI, Gemini CLI, OpenCode | ACP | Restricted | Any permission request for a tool outside Tower's is refused and logged. |
-| Other ACP adapters | ACP | Experimental | Labeled as experimental everywhere they appear. |
+| **[Pi](https://github.com/earendil-works/pi)** (default) | Native JSONL RPC | Full | 7 fixed tools: `read` `bash` `edit` `write` `ask_user` `log` `submit` |
+| **Claude Code** | ACP | Full | Only Tower's sandboxed MCP tools. Built-in tools, hooks and other MCPs are removed. |
+| **Codex CLI · Gemini CLI · OpenCode** | ACP | Restricted | A request for any tool outside Tower's is refused and logged |
+| **Any ACP adapter** | ACP | Experimental | Labeled as experimental everywhere |
 
-The agent's `bash` commands go through a POSIX shell parser before they run. Commands that can't be undone, and hidden writes in cautious mode, stop for your answer.
+Every `bash` command goes through a real POSIX shell parser first. Commands that can't be undone stop and wait for you. An agent that is truly stuck can say so with `submit(outcome: "blocked")`, without having to fake a pass.
 
-An agent that can't finish can say so with `submit(outcome: "blocked")`. That pauses the goal and shows the agent's reason as a Claim. A goal also pauses if the agent keeps hitting the sandbox outside its workspace without making progress.
+### 🔍 Review built for evidence
 
-## Review and acceptance
+<img src="assets/screenshots/review.png" alt="Review: risk-ordered units, snapshot timeline and folded noise">
 
-- **Review order:** changes are split into units of up to 300 lines, riskiest first. Moved code and formatting-only changes are folded.
-- **Snapshots:** compare all changes, changes since your last review, the last turn, or any two runs.
-- **Comments:** line comments go back to the agent as one steering message (`⌘↩`). You can also accept or revert single hunks.
-- **Acceptance (`⌘⇧↩`):** checks that the snapshot is fresh, there are no high-severity sentinels, your own checks are done, and the merge is predicted clean. It then writes one commit, authored by you, to a new local branch `tower/<goal>-<slug>`.
+- **Risk first.** Changes come in units of up to 300 lines, riskiest first. Moved code and formatting-only changes are folded away.
+- **A snapshot timeline.** Compare everything, the changes since your last review, the last turn, or any two runs.
+- **Steer in place.** Line comments go back to the agent as one message (`⌘↩`). You can also accept or revert single hunks.
+- **The acceptance seal** (`⌘⇧↩`). It checks that the snapshot is fresh, there are no high-severity sentinels, your own checks are done, and the merge is predicted clean. Then it writes one commit, authored by you, to a local `tower/<goal>-<slug>` branch. Pushing is always up to you.
 
-Pushing the branch and opening a PR are always yours to do.
+### 🗂️ And the rest of the deck
 
-## Other features
+<table>
+<tr>
+<td width="50%"><img src="assets/screenshots/learning.png" alt="Learning"></td>
+<td width="50%"><img src="assets/screenshots/operations.png" alt="Operations"></td>
+</tr>
+<tr>
+<td><b>Learning</b> (<code>⌘3</code>)
+<ul>
+<li>Rules mined from your review comments and from failed checks, each approved by you before use.</li>
+<li>Per-model stats: first-pass rate, rework rounds, cost per accepted goal.</li>
+</ul></td>
+<td><b>Operations</b> (<code>⌘4</code>)
+<ul>
+<li>Scheduled goals (cron, in UTC).</li>
+<li>A merge queue with conflict prediction, and <code>depends_on</code> between goals.</li>
+<li>Disk use per goal, with safe cleanup.</li>
+</ul></td>
+</tr>
+</table>
 
-- **Overview (`⌘1`):** one row per goal, with the questions waiting for you pinned on top. `Space` opens a quick peek. On a goal page, `W` opens the full time-indexed record, including every message Tower sent the agent.
-- **Inbox (`⌘2`):** everything that waits on you.
-- **Learning (`⌘3`):** rules mined from your review comments and from verification failures. Each waits for you to approve it, and text from outside sources is held back. Also per-model stats: first-pass verification rate, rework rounds and cost per accepted goal.
-- **Operations (`⌘4`):**
-  - Scheduled goals, with cron evaluated in UTC.
-  - A per-project merge queue with conflict prediction, and `depends_on` between goals.
-  - Disk use per goal, with safe cleanup.
-- **Away from the desk:** both are off by default.
-  - A phone page, served over Tailscale (the local network is a separate opt-in) and paired with a token. Decisions that widen access can't be made from the phone.
-  - [ntfy](https://ntfy.sh) pushes that carry only the goal ID, its title and the kind of item.
-- **Languages:** English and Simplified Chinese. The language set in Settings covers the interface, menus, notifications and the agent.
+- 📱 **Away from the desk** (both off by default):
+  - A phone page over Tailscale, paired by token.
+  - [ntfy](https://ntfy.sh) pushes that carry only a goal's ID, title and kind of item.
+- 🎞️ **The full record** (`W`): a time-indexed log of every step, including every message Tower sent the agent.
+- 🌐 **English and 简体中文** for the interface, menus, notifications, and the agent itself.
 
-| Quick peek | Goal page |
-|---|---|
-| ![Quick peek](assets/screenshots/peek.png) | ![Goal page](assets/screenshots/goal.png) |
+## 🔄 How it works
 
-| Review | Contract |
-|---|---|
-| ![Review](assets/screenshots/review.png) | ![Contract](assets/screenshots/contract.png) |
-
-| Learning | Operations |
-|---|---|
-| ![Learning](assets/screenshots/learning.png) | ![Operations](assets/screenshots/operations.png) |
-
-## Getting started
-
-### Build
-
-You need:
-
-- macOS 13+;
-- Rust (the version is pinned in [`rust-toolchain.toml`](rust-toolchain.toml));
-- Node 22+ (CI uses 24);
-- `pnpm` and `git`.
-
-```sh
-pnpm install
-pnpm dev        # dev build with hot reload
-pnpm build      # .app and .dmg in target/release/bundle
-pnpm check      # type check, unit tests, clippy, cargo test, extension tests
+```mermaid
+flowchart LR
+    A["📝 Contract<br/>intent · criteria · scope · budget"] --> B["🤖 Agent works<br/>in its own sandbox"]
+    B -->|claims done| C["🛡️ Tower verifies<br/>fresh clean checkout · 6 steps"]
+    C -->|fails| B
+    C -->|verified| D["🔍 You review<br/>risk-ordered units"]
+    D -->|steer| B
+    D -->|seal| E["✅ Accepted<br/>local branch, your commit"]
 ```
 
-### Try the demo
+On screen, every statement has one of four shapes, so they stay distinguishable even without color:
 
-Choose **Try a demo goal** on the Welcome screen. Tower makes a small sample repository and runs a scripted engine through a full goal: a question, a claim, verification, sentinels and review. No model or API key is needed. Node.js is needed to run the demo's tests.
+| Kind | Source | Green allowed? |
+|---|---|---|
+| **Fact** | Measured by Tower | ✅ Only for a fresh, untampered verifier pass |
+| **Observation** | Seen inside the agent's sandbox | — |
+| **Claim** | Written by the agent | — |
+| **Human** | Your contracts, approvals and seals | — |
 
-### Connect an engine
+## 🚀 Quick start
 
-Install Pi and sign in:
+> [!NOTE]
+> There is no signed release yet, so Tower is built from source. It takes about five minutes on a recent Mac.
+
+**1. Build and run.** You need macOS 13+, Rust (pinned in [`rust-toolchain.toml`](rust-toolchain.toml)), Node 22+, `pnpm` and `git`.
+
+```sh
+git clone https://github.com/beautifulrem/tower.git
+cd tower
+pnpm install
+pnpm dev
+```
+
+**2. Try the demo, with no API key.** On the Welcome screen, choose **Try a demo goal**. A scripted engine walks through a full goal: a question, a claim, verification, sentinels and review.
+
+**3. Connect a real engine.** Install Pi, or pick Claude Code, Codex CLI, Gemini CLI or OpenCode in Settings.
 
 ```sh
 npm i -g @earendil-works/pi-coding-agent
 pi            # then /login
 ```
 
-To use a different engine, choose it in Settings, or per goal in the contract. If your models come from a Pi extension package, add its entry file under **Settings → Extra Pi extensions to load** and export its key in your login shell. Tower passes `*_API_KEY` variables to Pi but never to the agent's shell.
+`pnpm build` puts a `.app` and `.dmg` in `target/release/bundle`. Tagged releases build universal installers and update the Homebrew cask. See [`RELEASING.md`](RELEASING.md).
 
-### Releases
+## 🔐 Security
 
-Pushing a `v*` tag builds universal `.dmg` installers and updates the Homebrew cask ([`packaging/homebrew/tower.rb`](packaging/homebrew/tower.rb)). See [`RELEASING.md`](RELEASING.md). Builds are signed and notarized only once Apple Developer credentials are set up. Until then, open the app the first time with right-click → **Open**.
+[`SECURITY.md`](SECURITY.md) holds the threat model and **118 security tests**, which CI runs on every push against the real `sandbox-exec` and real git. It also lists the known limits. Please report vulnerabilities privately, as it describes.
 
-The updater is off unless signing keys are configured. It checks only when you ask, and installs only when you confirm.
+**Being honest about where it stops:**
 
-## Development
+- The verification steps raise the cost of cheating. They don't rule it out. The real-model anti-cheat regression doesn't pass yet, and [`docs/17-implementation.md`](docs/17-implementation.md) §17.7 lists what it still misses.
+- The Linux backend (`bubblewrap`, Landlock, cgroups v2) and the optional Apple Containerization MicroVM tier (macOS 26+, Apple Silicon) exist. CI runs on macOS only, so neither is tested there for real.
 
-```sh
-# A demo workspace, kept apart from ~/.tower
-tools/demo-engine/make_demo_repo.sh /tmp/tower-demo/shop
-TOWER_HOME=/tmp/tower-demo/home cargo run -p tower-supervisor --example seed_demo -- /tmp/tower-demo/shop
-TOWER_HOME=/tmp/tower-demo/home pnpm dev
-
-# Run one goal without the interface, against a real Pi engine
-TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
-  <repo> "<intent>" "<acceptance command>" [provider/model] [extension…]
-
-# Run the checks before you push (CONTRIBUTING.md shows how to make this the git pre-push hook)
-tools/pre-push.sh </dev/null
-tools/adversarial.sh            # optional: anti-cheat regression with a real model
-```
-
-You may set these environment variables. Tower sets every other `TOWER_*` name itself, for the processes it starts.
-
-| Variable | Effect |
-|---|---|
-| `TOWER_HOME` | Tower's data folder. The default is `~/.tower`, and an empty value also means the default. A relative path is refused at start. |
-| `TOWER_OPEN` | A view to open at launch: `goal/G-0001`, `review/G-0001`, `inbox`, … |
-| `TOWER_LANG` | The language the supervisor writes in until Settings picks one: `zh…` for Chinese, anything else for English. |
-| `TOWER_FLAKY_RERUN` | `1`/`true`/`on`/`yes` or `0`/`false`/`off`/`no` overrides the Settings choice to re-run a failing test once. Any other value leaves it to Settings. |
-| `TOWER_ACP_COMMAND_<ENGINE>` | The command that starts an ACP engine, for example `TOWER_ACP_COMMAND_CODEX`, instead of looking for its binary on `PATH`. |
-| `TOWER_CDP_DEBUG` | Set to any value to log the screenshot browser's DevTools traffic. |
-
-## Architecture
+## 🏗️ Architecture
 
 ```text
-apps/desktop/            Tauri 2 shell and SolidJS interface
-  src-tauri/             Commands that map 1:1 to supervisor methods; batched update stream
-  src/                   Views, design tokens, locales
+apps/desktop/            Tauri 2 shell + SolidJS interface
 crates/
-  tower-core/            Domain model: lifecycle, contracts, provenance, sentinels, review units
+  tower-core/            Domain model: lifecycle, contracts, provenance, sentinels
   tower-ast/             Tree-sitter analysis (Rust, JS/TS, Python, Bash)
   tower-store/           SQLite WAL event log: one writer, a pool of readers
   tower-pi/              Pi JSONL RPC adapter
   tower-git/             Satellite clones, snapshots, sealing, merge queue
   tower-verify/          Criterion runner: process groups, timeouts, redacted output
-  tower-supervisor/      The single writer: lifecycle, verification, sandbox backends,
-                         port pool, learning, schedules, storage, phone page
+  tower-supervisor/      The single writer: lifecycle, verification, sandboxes, schedules
 extensions/tower-goal/   Pi and ACP bridge: tool policy, shell parser, sandboxed file access
 tools/                   Demo engine, CI gates, end-to-end and adversarial runners
-docs/                    Design specification (in Chinese)
 ```
 
-The supervisor owns all state, and the interface holds a read-only copy. Start-up JavaScript is about 53 KB gzipped. Most views load the first time you open them. CI enforces three bundle budgets with [`tools/bundle-budget.sh`](tools/bundle-budget.sh):
+The supervisor owns all state, and the interface holds a read-only copy. It is light: start-up JavaScript is about 53 KB gzipped, and most views load the first time you open them. CI holds three budgets with [`tools/bundle-budget.sh`](tools/bundle-budget.sh): start-up 64 KB, the goal page 12 KB, and all interface JavaScript 160 KB (about 159 KB today).
 
-- start-up: 64 KB;
-- the goal page: 12 KB;
-- all interface JavaScript together: 160 KB, about 159 KB today.
+<details>
+<summary><b>Development commands and environment variables</b></summary>
 
-## Documentation
+```sh
+pnpm check                      # type check, unit tests, clippy, cargo test, extension tests
+tools/pre-push.sh </dev/null    # the full local gate (CONTRIBUTING.md shows how to make it a hook)
+tools/adversarial.sh            # optional: anti-cheat regression with a real model
 
-The design specification is in [`docs/`](docs/), written in Chinese. It covers the domain model, lifecycle, verification, isolation, security, the visual system and more. There are 240 decision records in [`docs/15-decision-log.md`](docs/15-decision-log.md) and 112 rounds of design review in [`docs/reviews/`](docs/reviews/).
+# A demo workspace, kept apart from ~/.tower
+tools/demo-engine/make_demo_repo.sh /tmp/tower-demo/shop
+TOWER_HOME=/tmp/tower-demo/home cargo run -p tower-supervisor --example seed_demo -- /tmp/tower-demo/shop
+TOWER_HOME=/tmp/tower-demo/home pnpm dev
 
-Good places to start:
+# One goal without the interface, against a real Pi engine
+TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
+  <repo> "<intent>" "<acceptance command>" [provider/model] [extension…]
+```
 
-- [`docs/17-implementation.md`](docs/17-implementation.md): how the code maps to the spec, and where it differs
-- [`docs/19-anti-chat-console-design.md`](docs/19-anti-chat-console-design.md): the interface design
-- [`ROADMAP.md`](ROADMAP.md) and [`docs/18-evolution-roadmap.md`](docs/18-evolution-roadmap.md): what shipped and what is next
-- [`SECURITY.md`](SECURITY.md): the threat model and its tests
+| Variable | Effect |
+|---|---|
+| `TOWER_HOME` | The data folder. The default is `~/.tower`, and an empty value also means the default. A relative path is refused. |
+| `TOWER_OPEN` | A view to open at launch: `goal/G-0001`, `review/G-0001`, `inbox`, … |
+| `TOWER_LANG` | The supervisor's language until Settings picks one: `zh…` for Chinese, anything else for English. |
+| `TOWER_FLAKY_RERUN` | `1`/`true`/`on`/`yes` or `0`/`false`/`off`/`no` overrides the Settings choice to re-run a failing test once. |
+| `TOWER_ACP_COMMAND_<ENGINE>` | The command that starts an ACP engine, for example `TOWER_ACP_COMMAND_CODEX`. |
+| `TOWER_CDP_DEBUG` | Set it to log the screenshot browser's DevTools traffic. |
 
-## Contributing and license
+Tower sets every other `TOWER_*` name itself. If your models come from a Pi extension package, add it under **Settings → Extra Pi extensions to load**. Tower passes `*_API_KEY` to Pi, never to the agent's shell.
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Report security problems privately, as [`SECURITY.md`](SECURITY.md) describes.
+</details>
 
-MIT License, see [`LICENSE`](LICENSE).
+## 📚 Documentation
+
+The full design specification lives in [`docs/`](docs/), written in Chinese. It has 240 decision records and 112 rounds of design review.
+
+| Start here | What it covers |
+|---|---|
+| [`docs/17-implementation.md`](docs/17-implementation.md) | How the code maps to the spec, and where it differs |
+| [`docs/07-verification-and-honesty.md`](docs/07-verification-and-honesty.md) | Verification in depth |
+| [`docs/19-anti-chat-console-design.md`](docs/19-anti-chat-console-design.md) | The interface design |
+| [`ROADMAP.md`](ROADMAP.md) · [`docs/18-evolution-roadmap.md`](docs/18-evolution-roadmap.md) | What shipped and what's next |
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup and the checks every change has to pass, and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+
+If Tower is useful to you, a ⭐ helps others find it.
+
+## 📄 License
+
+[MIT](LICENSE)

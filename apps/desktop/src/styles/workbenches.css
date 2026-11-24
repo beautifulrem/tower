@@ -93,16 +93,19 @@
 }
 
 /* Verification bench notes under a criterion: quiet inline text, frame exceptions only */
+/* A criterion's sub-lines all start where its title does: the row's 14px mark, its 2.5em id column (in the row's own
+   body size, not the line's), and the two gaps — the strip, the held-out files and the sentence lines share one edge. */
 .ev-strip {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 2px 0;
-  margin: 1px 0 3px calc(14px + 2.5em + var(--sp-2) * 2);
-  font-size: var(--fs-hint);
-  line-height: var(--lh-hint);
+  margin: 1px 0 3px calc(14px + 2.5 * var(--fs-body) + var(--sp-2) * 2);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-3);
 }
+
 .ev-pill {
   display: inline-flex;
   align-items: center;
@@ -123,7 +126,8 @@
   border-radius: var(--radius-xs);
   color: var(--text-1);
 }
-.ev-strip > :is(.ev-pill-attn, .ev-pill-danger)::before { content: none; margin: 0; }
+.ev-strip > .ev-pill + :is(.ev-pill-attn, .ev-pill-danger)::before { content: none; margin: 0; }
+.ev-strip > :is(.ev-pill-attn, .ev-pill-danger):first-child { margin-left: -5px; }
 .ev-pill-attn { background: var(--attention-bg); }
 .ev-pill-danger { background: var(--danger-bg); }
 
@@ -132,9 +136,9 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 8px;
-  margin: 1px 0 3px calc(14px + 2.5em + var(--sp-2) * 2);
-  font-size: var(--fs-hint);
-  line-height: var(--lh-hint);
+  margin: 1px 0 3px calc(14px + 2.5 * var(--fs-body) + var(--sp-2) * 2);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-3);
 }
 .ev-hf {

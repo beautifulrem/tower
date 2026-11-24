@@ -76,8 +76,10 @@ export function FileDiff(props: FileDiffProps) {
 
   // AST semantic noise state: moved_unchanged & formatting_only hunks collapse by default, expandable per hunk.
   const [noiseExpanded, setNoiseExpanded] = createSignal<Record<number, boolean>>({});
+  // A file the change adds or deletes is new or gone line for line: none of it is folded away as moved or reformatted,
+  // whatever the hint says.
   const noiseOf = (index: number | null): "moved" | "formatting" | null => {
-    if (index === null) return null;
+    if (index === null || props.file.status === "added" || props.file.status === "deleted") return null;
     const ef = props.file as ExtDiffFile;
     const eh = props.file.hunks[index] as ExtHunk | undefined;
     if (props.movedHunks?.includes(index) || ef.moved_hunks?.includes(index) || eh?.moved_unchanged) return "moved";

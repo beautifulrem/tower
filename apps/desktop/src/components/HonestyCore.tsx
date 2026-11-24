@@ -17,18 +17,26 @@ import { t } from "../lib/i18n";
  * layer is enough: the gutter says the kind (cause, next step…) when there
  * is one, and "Agent 称" otherwise. The text column starts clean.
  */
+/**
+ * The agent's words. The label column always names the speaker ("Agent says"), so no claim reads as Tower's own
+ * line at a glance; what kind of claim it is (summary, cause, assumption) leads its text, a step quieter.
+ */
 export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX.Element; bare?: boolean; dim?: boolean }) {
-  const kind = () => props.kind ?? t("honesty.agentSaysPlain");
   return (
     <div class="claim" classList={{ "claim-dim": !!props.dim }}>
-      <span class="claim-label halt" title={props.kind ? `${kind()} · ${t("honesty.agentSaysPlain")}` : t("honesty.agentSaysPlain")}>
+      <span class="claim-label halt">
         <span class="claim-rule" aria-hidden="true">
           ┆
         </span>
         <span class="sr-only">{t("honesty.srClaim")} </span>
-        <span class="claim-kind">{kind()}</span>
+        <span class="claim-kind">{t("honesty.agentSaysPlain")}</span>
       </span>
-      <div class="claim-text">{props.children}</div>
+      <div class="claim-text">
+        <Show when={props.kind}>
+          <span class="claim-sub">{props.kind} </span>
+        </Show>
+        {props.children}
+      </div>
       <Show when={props.aside}>
         <div class="claim-aside">{props.aside}</div>
       </Show>

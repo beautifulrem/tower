@@ -29,29 +29,44 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
   const mark = () => (!v() ? "pending" : v()!.stale ? "stale" : v()!.passed ? "pass" : "fail");
   const proof = () => v()?.held_out_proof ?? null;
 
-  const pills = createMemo<[string, string, string?][]>(() => {
+  // A 4th element marks a pill whose fact a sentence line below says in full: folded, the pill stands for it; open, the line does.
+  const pills = createMemo<[string, string, string?, 1?][]>(() => {
     const ver = v();
     if (human() || !ver) return [];
-    const cur = c(), sents = props.sentinels ?? [], out: [string, string, string?][] = [];
+    const cur = c(), sents = props.sentinels ?? [], out: [string, string, string?, 1?][] = [];
     const okC = cur.canary !== "tampered";
-    if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", t("goal.evRedGreen")]);
+    if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", t("goal.evRedGreen"), undefined, 1]);
     if (cur.passes_with_source_only === true && okC) out.push(["fact", t("goal.evSourceOnly")]);
-    else if (cur.passes_with_source_only === false) out.push(["attn", t("goal.dependsOnEditedTests")]);
-    if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk")]);
-    else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered")]);
-    else if (cur.canary === "not_checked") out.push(["obs", t("goal.canaryNotChecked")]);
+    else if (cur.passes_with_source_only === false) out.push(["attn", t("goal.dependsOnEditedTests"), undefined, 1]);
+    if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk"), undefined, 1]);
+    else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered"), undefined, 1]);
+    else if (cur.canary === "not_checked") out.push(["obs", t("goal.canaryNotChecked"), undefined, 1]);
     const forCur = (h: SentinelHit) => !h.detail || h.detail.includes(cur.criterion.id) || !/\bC\d+\b/.test(h.detail);
     const gh = sents.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
     if (gh) out.push([gh.severity >= 3 ? "danger" : "attn", /guard|unchecked/.test(gh.sentinel) ? t("goal.evGuardGap") : t("goal.evAssertTamper"), gh.detail || gh.title]);
     else if (ver.passed && cur.canary === "intact") out.push(["fact", t("goal.evGuardOk")]);
+    const ho = ver.held_out_proof;
+    if (ho?.not_ran.length) out.push(["attn", t("goal.heldOutSome", { m: ho.ran.length, n: ho.ran.length + ho.not_ran.length }), undefined, 1]);
     if (ver.flaky) out.push(["obs", t("goal.evFlaky")]);
-    if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? t("goal.evLoopbackBase") : t("goal.evLoopbackProject")]);
+    if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? t("goal.evLoopbackBase") : t("goal.evLoopbackProject"), undefined, 1]);
     const bh = sents.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
     if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? t("goal.evBypass") : bh.sentinel.includes("perturb") ? t("goal.evPerturb") : t("goal.evTestExpectation"), bh.detail || bh.title]);
     const errs = ver.console_errors ?? cur.look?.console_errors ?? [];
     if (errs.length) out.push(["danger", t("look.consoleErrors", { n: errs.length }), errs.join("\n")]);
     return out;
   });
+
+  // Each fact once (the guard gap and an unchecked canary say the same thing), and a pass never wears danger red: what
+  // stands against a pass is a question for you, in the attention ground.
+  const shown = createMemo(() => {
+    const seen = new Set<string>();
+    return pills()
+      .filter(([, label]) => !seen.has(label) && !!seen.add(label))
+      .map(([tone, label, title, line]): [string, string, string?, 1?] => [tone === "danger" && mark() === "pass" ? "attn" : tone, label, title, line]);
+  });
+  // Folded, a criterion is its verdict and at most one line of what qualifies it — warnings only; the confirmations,
+  // the held-out files, the baseline and canary readings and the output are one click away.
+  const strip = () => (open() ? shown().filter((p) => !p[3]) : shown().filter(([tone]) => tone !== "ok" && tone !== "fact"));
 
   const hoItems = createMemo<[string, string][]>(() => {
     const p = proof();
@@ -104,23 +119,24 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
         </Show>
       </div>
 
-      <Show when={pills().length}>
-        <div class="ev-strip" aria-label={t("goal.evidence")}>
-          <For each={pills()}>{([tone, label, title]) => <span class={`ev-pill ev-pill-${tone}`} data-mark={tone} title={title}>{label}</span>}</For>
+      <Show when={strip().length}>
+        <div class="ev-strip" aria-label={t("goal.evidence")} onClick={() => v() && setOpen(true)}>
+          <For each={strip()}>{([tone, label, title]) => <span class={`ev-pill ev-pill-${tone}`} data-mark={tone} title={title}>{label}</span>}</For>
         </div>
       </Show>
 
-      <Show when={hoItems().length}>
-        <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
-          <span class="meta t2">{t("goal.heldOut")}</span>
-          <For each={hoItems()}>{([cls, text]) => <span class={cls}>{text}</span>}</For>
-        </div>
+      <Show when={open() || !v()}>
+        <Show when={hoItems().length}>
+          <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
+            <span class="meta t2">{t("goal.heldOut")}</span>
+            <For each={hoItems()}>{([cls, text]) => <span class={cls}>{text}</span>}</For>
+          </div>
+        </Show>
+        <BaselineLine c={c()} base={props.base} />
+        <CanaryLine c={c()} />
+        <HeldOutLine c={c()} />
+        <LoopbackLine c={c()} />
       </Show>
-
-      <BaselineLine c={c()} base={props.base} />
-      <CanaryLine c={c()} />
-      <HeldOutLine c={c()} />
-      <LoopbackLine c={c()} />
       <Show when={stepsOpen() && steps().length}>
         <ol class="look-step-list look-step-list-read">
           <For each={steps()}>{(s, i) => <li class="look-step"><span class="look-step-no num" aria-hidden="true">{String(i() + 1).padStart(2, "0")}</span><code class="code-val">{s}</code></li>}</For>

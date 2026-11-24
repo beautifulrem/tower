@@ -160,8 +160,8 @@ const enrichConsole = (F: F) => {
       { rev: "99a1b2c", kind: "run_start", label: "R-01 @99a1b2c", run_no: 1, at: now - 1800_000 },
       { rev: rev.pin, kind: "pin", label: `Current @${String(rev.pin).slice(0, 7)}`, run_no: 2, at: now - 120_000 },
     ];
+    // Only a modified file can hold a moved block; an added file's lines are all new, and the diff never folds them.
     if (rev.files[0]?.hunks?.length > 1) rev.moved_hunks = { [rev.files[0].path]: [rev.files[0].hunks.length - 1] };
-    else if (rev.files.length > 1 && rev.files[1]?.hunks?.length) rev.moved_hunks = { [rev.files[1].path]: [0] };
   }
 };
 
@@ -250,7 +250,7 @@ const screens: Screen[] = [
       await page.locator(".peek-drawer").waitFor();
     },
   }),
-  // The floating material: the palette over the board, the board blurred through it.
+  // The palette over the board: an opaque sheet you read in (only toasts and the @ completion float).
   ...bothThemes({
     name: "palette",
     route: "overview",

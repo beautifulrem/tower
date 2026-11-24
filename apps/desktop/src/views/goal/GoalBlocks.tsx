@@ -7,10 +7,11 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { DangerMark, Icon, NoticeMark, ResultMark } from "../../components/Glyph";
 import { ConsistencyBadge, HumanStamp } from "../../components/Honesty";
-import { Claim, CriteriaBar, discountedOf } from "../../components/HonestyCore";
+import { Claim } from "../../components/HonestyCore";
 import { Button, Empty, Kbd, Prose, Section } from "../../components/ui";
 import type { ClaimView } from "../../gen/ClaimView";
 import type { RunView } from "../../gen/RunView";
+import type { SentinelHit } from "../../gen/SentinelHit";
 import { api } from "../../lib/api";
 import { ago, clock, count, duration, short } from "../../lib/format";
 import { t } from "../../lib/i18n";
@@ -49,6 +50,10 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
   const ledger = () => d().claims.filter((c) => c.kind === "criterion_met");
   const failing = () => d().criteria.filter((c) => c.verified && !c.verified.passed && !c.verified.stale);
   const [allRuns, setAllRuns] = createSignal(false);
+  // Low sentinels fold to one line under the criteria, naming the most sensitive path one of them touched.
+  const low = () => d().sentinels.filter((h) => h.severity < 3);
+  const [lowOpen, setLowOpen] = createSignal(false);
+  const sensitive = () => low().map((h) => h.detail.match(SENSITIVE)?.[0]).find(Boolean);
   const runs = () => {
     const list = [...d().runs].reverse();
     return allRuns() ? list : list.slice(0, 3);
@@ -68,71 +73,7 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
         </Section>
       </Show>
 
-      <Show when={g().state === "in_review" && !editedSinceVerify()}>
-        <Section title={t("goal.next")}>
-          <div class="section-cta">
-            <Button variant={props.hasDecision ? "default" : "primary"} size="s" kbd="r" onClick={() => go({ name: "review", id: g().id })}>
-              {t("goal.reviewUnits", { n: g().diffstat?.files ?? 0 })}
-            </Button>
-            <span class="meta">
-              {discountedOf(d().criteria) > 0 ? t("goal.reviewCtaTampered") : g().verified_pin ? t("goal.reviewCtaVerified") : t("goal.reviewCtaUnverified")}
-            </span>
-          </div>
-        </Section>
-      </Show>
-
-      <Show when={causes().shown.length || failing().length}>
-        <Section title={t("goal.cause")}>
-          <For each={failing()}>
-            {(c) => (
-              <div class="criterion-row">
-                <ResultMark kind="fail" />
-                <span class="num t3">{c.criterion.id}</span>
-                <span class="criterion-main">
-                  <span class="criterion-title t1">{t("goal.criterionFailed", { title: c.criterion.title })}</span>
-                </span>
-                <span class="col-result">{t("common.failed")}</span>
-                <span class="col-dur">{duration(c.verified!.duration_ms)}</span>
-                <span class="col-pin">
-                  <Icon name="harness" size={10} />@{short(c.verified!.pin)}
-                </span>
-                <span class="col-age">{ago(c.verified!.at, state.now)}</span>
-              </div>
-            )}
-          </For>
-          <For each={causes().shown}>{(c) => <Claim bare>{c.text}</Claim>}</For>
-          <Show when={causes().hidden > 0}>
-            <div class="claim">
-              <span />
-              <span class="claim-more">{t("goal.moreSame", { n: causes().hidden })}</span>
-            </div>
-          </Show>
-        </Section>
-      </Show>
-
-      <Show when={d().sentinels.length}>
-        <Section title={t("goal.sentinels")}>
-          <For each={d().sentinels}>
-            {(h) => (
-              <div class="sentinel">
-                <div class="fact-row">
-                  <span class="result">
-                    <Show when={h.severity >= 3} fallback={<NoticeMark />}>
-                      <DangerMark />
-                    </Show>
-                  </span>
-                  <span class="t1">{h.title}</span>
-                  <span class="grow" />
-                  <span class="meta">{h.severity >= 3 ? t("goal.needsConfirm") : t("goal.noteInReview")}</span>
-                </div>
-                <SentinelDetail text={h.detail} />
-              </div>
-            )}
-          </For>
-        </Section>
-      </Show>
-
-      <Section title={t("goal.criteria")} aside={<CriteriaBar progress={g().progress} criteria={d().criteria} />}>
+      <Section title={t("goal.criteria")}>
         <For each={d().criteria}>
           {(c) => <CriterionRow goalId={g().id} c={c as ExtCriterionView} state={g().state} base={d().base_commit} sentinels={d().sentinels} />}
         </For>
@@ -164,6 +105,32 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
           </Empty>
         </Show>
       </Section>
+
+      <Show when={low().length}>
+        <Section
+          title={t("goal.noteInReview")}
+          minor
+          aside={
+            <button class="link-quiet text-btn meta" aria-expanded={lowOpen()} onClick={() => setLowOpen((o) => !o)}>
+              {low().length}
+              <Icon name={lowOpen() ? "caret-down" : "caret-right"} size={10} />
+            </button>
+          }
+        >
+          <Show
+            when={lowOpen()}
+            fallback={
+              <p class="meta sentinel-fold">
+                <NoticeMark />
+                <Show when={sensitive()}>{(path) => <code class="code-val t1">{path()}</code>}</Show>
+                <span class="ellipsis">{low().map((h) => h.title).join("\u2003")}</span>
+              </p>
+            }
+          >
+            <For each={low()}>{(h) => <SentinelItem h={h} />}</For>
+          </Show>
+        </Section>
+      </Show>
 
       <Section
         title={t("goal.changes")}
@@ -205,6 +172,35 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
           <Claim kind={t("goal.submitSummary")}>{d().submit_summary}</Claim>
         </Show>
       </Section>
+
+      <Show when={causes().shown.length || failing().length}>
+        <Section title={t("goal.cause")}>
+          <For each={failing()}>
+            {(c) => (
+              <div class="criterion-row">
+                <ResultMark kind="fail" />
+                <span class="num t3">{c.criterion.id}</span>
+                <span class="criterion-main">
+                  <span class="criterion-title t1">{t("goal.criterionFailed", { title: c.criterion.title })}</span>
+                </span>
+                <span class="col-result">{t("common.failed")}</span>
+                <span class="col-dur">{duration(c.verified!.duration_ms)}</span>
+                <span class="col-pin">
+                  <Icon name="harness" size={10} />@{short(c.verified!.pin)}
+                </span>
+                <span class="col-age">{ago(c.verified!.at, state.now)}</span>
+              </div>
+            )}
+          </For>
+          <For each={causes().shown}>{(c) => <Claim bare>{c.text}</Claim>}</For>
+          <Show when={causes().hidden > 0}>
+            <div class="claim">
+              <span />
+              <span class="claim-more">{t("goal.moreSame", { n: causes().hidden })}</span>
+            </div>
+          </Show>
+        </Section>
+      </Show>
 
       <Show when={!settled() && !props.hasDecision}>
         <Section title={t("goal.next")}>
@@ -271,6 +267,39 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
   );
 }
 
+const SENSITIVE = /\S*\/\.(ssh|aws|gnupg|netrc|npmrc|docker)\S*|\S*\.env\b/;
+
+/** High sentinels, above the decisions: what makes the evidence itself doubtful, each with its lines. */
+export function HighSentinels(props: { d: ExtGoalDetail }) {
+  const high = () => props.d.sentinels.filter((h) => h.severity >= 3);
+  return (
+    <Show when={high().length}>
+      <Section title={t("goal.sentinels")} class="sentinels-high">
+        <For each={high()}>{(h) => <SentinelItem h={h} />}</For>
+      </Section>
+    </Show>
+  );
+}
+
+function SentinelItem(props: { h: SentinelHit }) {
+  const h = () => props.h;
+  return (
+    <div class="sentinel">
+      <div class="fact-row">
+        <span class="result">
+          <Show when={h().severity >= 3} fallback={<NoticeMark />}>
+            <DangerMark />
+          </Show>
+        </span>
+        <span class="t1">{h().title}</span>
+        <span class="grow" />
+        <span class="meta">{h().severity >= 3 ? t("goal.needsConfirm") : t("goal.noteInReview")}</span>
+      </div>
+      <SentinelDetail text={h().detail} />
+    </div>
+  );
+}
+
 const MACHINE_DETAIL = /^(\s{2,}|[~./]|[\w@.-]+(\/[\w@.-]+)+|\S+\.(js|ts|tsx|jsx|mjs|cjs|py|rs|go|rb|json|ya?ml|toml|lock|sh|txt|snap)\b)/;
 
 export function SentinelDetail(props: { text: string }) {
@@ -278,7 +307,7 @@ export function SentinelDetail(props: { text: string }) {
   return (
     <div class="sentinel-detail">
       <For each={lines()}>
-        {(line) => (MACHINE_DETAIL.test(line) ? <span class="sentinel-machine code-val">{line}</span> : <span class="sentinel-prose">{line ? <Prose text={line} /> : "\u00a0"}</span>)}
+        {(line) => (MACHINE_DETAIL.test(line) ? <span class="sentinel-machine code-val">{line}</span> : <span class="sentinel-prose" title={line}>{line ? <Prose text={line} /> : "\u00a0"}</span>)}
       </For>
     </div>
   );

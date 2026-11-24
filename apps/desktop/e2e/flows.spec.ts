@@ -19,13 +19,42 @@ import {
   enrichSecondReady,
   enrichSnoozed,
 } from "./rich";
-import { criterion, openTower, settled } from "./tauri";
+import { criterion, openReadings, openSourceUnit, openTower, settled } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
 
 test("every decision card offers to be put aside", async ({ page }) => {
   const { fixtures } = await openTower(page, "inbox");
   await expect(page.getByRole("button", { name: "Remind me later" })).toHaveCount((fixtures.inbox as unknown[]).length);
+});
+
+test("in the inbox amber says only 'needs you': the focused card is told by the neutral selection ground, each card keeps one ◆, and a sidebar row under Needs you adds none", async ({ page }) => {
+  await openTower(page, "inbox", { enrich: enrichRich });
+  const cards = page.locator(".inbox .decision");
+  await expect(cards.first()).toHaveClass(/focused/);
+  const ground = (i: number) => cards.nth(i).locator(".decision-head").evaluate((el) => getComputedStyle(el).backgroundColor);
+  const tokens = await page.evaluate(() => {
+    const probe = document.createElement("i");
+    document.body.append(probe);
+    const read = (v: string) => ((probe.style.backgroundColor = `var(${v})`), getComputedStyle(probe).backgroundColor);
+    const out = { selected: read("--bg-selected"), attention: read("--attention-bg") };
+    probe.remove();
+    return out;
+  });
+  expect(await ground(0)).toBe(tokens.selected);
+  for (let i = 0; i < (await cards.count()); i++) {
+    expect(await ground(i)).not.toBe(tokens.attention);
+    await expect(cards.nth(i).locator(".decision-head .mark-attention")).toHaveCount(1);
+  }
+  await page.keyboard.press("j");
+  await expect(cards.nth(1)).toHaveClass(/focused/);
+  expect(await ground(1)).toBe(tokens.selected);
+  expect(await ground(0)).not.toBe(tokens.selected);
+  // The sidebar's Needs-you group says it once, in its title; its rows add no trailing ◆ (a row's lifecycle glyph may be one).
+  const rows = page.locator(".sidebar .side-group").filter({ hasText: "Needs you" }).locator(".side-goal");
+  expect(await rows.count()).toBeGreaterThan(0);
+  await expect(rows.locator(":scope > .mark-attention")).toHaveCount(0);
+  for (let i = 0; i < (await rows.count()); i++) expect(await rows.nth(i).locator(".mark-attention").count()).toBeLessThanOrEqual(1);
 });
 
 test("answering a card closes the loop: the card sits in a folding slot that folds with it, and the receipt rises in with your rule", async ({ page }) => {
@@ -176,10 +205,14 @@ test("the review sidebar names each file once, grouped by unit", async ({ page }
   await expect(aside.locator(".tree-file")).toHaveCount(3);
   await expect(aside.locator(".unit")).toHaveCount(2);
   await expect(aside.getByText("money.js")).toHaveCount(1);
-  // The second unit's row carries its risk; clicking it switches the diff.
+  // The review opens on the riskiest unit, and its row says why it is risky in words, not only in a tooltip.
+  await expect(page.getByText("Unit 1 / 2")).toBeVisible();
+  await expect(aside.locator(".unit").first().locator(".unit-why")).toHaveText("test harness: runner config, setup or mocks");
+  await expect(page.locator(".review-notes")).toContainText("test harness");
+  // A unit with no risk says nothing more; clicking it switches the diff.
+  await expect(aside.locator(".unit").nth(1).locator(".unit-why")).toHaveCount(0);
   await aside.locator(".unit").nth(1).click();
   await expect(page.getByText("Unit 2 / 2")).toBeVisible();
-  await expect(page.locator(".review-notes")).toContainText("test harness");
 });
 
 for (const scheme of ["light", "dark"] as const) {
@@ -362,6 +395,7 @@ test("rolling back is not only for the pointer: a run you can roll back to is a 
 
 test("the look comparison answers the keyboard: modes, slider, held space", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichLook });
+  await openReadings(page);
   await expect(page.getByText("couldn't check on")).toBeVisible();
   // The reason is on the line, not only in its tooltip.
   await expect(page.locator(".criterion-obs .base-why").first()).toBeVisible();
@@ -451,6 +485,7 @@ test("⌘P jumps to a file by path", async ({ page }) => {
 
 test("A accepts the current hunk as a reading mark: it folds to its header, the review moves on, the count says so, and the mark is kept with the review", async ({ page }) => {
   await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await openSourceUnit(page);
   await expect(page.locator("table").first()).toBeVisible();
   const heads = page.locator(".hunk-head[data-hunk-index]");
   const before = await heads.count();
@@ -496,10 +531,18 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   const fileHunks = await file.locator(".hunk-head[data-hunk-index]").count();
   for (let i = 0; i < fileHunks; i++) await file.locator(".accept-hunk").nth(i).click();
   await expect(file.getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "true");
-  // Every hunk of the unit accepted: the status bar says so, and where to go next (V, the next unit).
+  // Every hunk of the unit accepted: the status bar says so, and where to go next. This is the last unit, so the goal's accept.
   const all = page.locator(".review-diff .accept-hunk");
-  for (let i = 0; i < (await all.count()); i++) if ((await all.nth(i).getAttribute("aria-pressed")) !== "true") await all.nth(i).click();
+  const acceptAll = async () => {
+    for (let i = 0; i < (await all.count()); i++) if ((await all.nth(i).getAttribute("aria-pressed")) !== "true") await all.nth(i).click();
+  };
+  await acceptAll();
   await expect(status).toHaveText(/All \d+ hunks accepted/);
+  await expect(status.locator("kbd")).toHaveText("⌘⇧↩");
+  // On a unit with another after it, V and the next unit.
+  await page.locator(".review-units .unit").first().click();
+  await acceptAll();
+  await expect(status).toHaveText(/All \d+ hunks? accepted/);
   await expect(status.locator("kbd")).toHaveText("V");
   await expect(status).toContainText("next unit");
 });
@@ -589,7 +632,7 @@ test("with the phone page on, each link is named by its network", async ({ page 
   await expect(page.locator(".phone-links")).not.toContainText("http://");
 });
 
-test("an empty board shows its own grid: column heads and three hollow lines, no pretend data", async ({ page }) => {
+test("an empty board says so and draws no ghost rows: a loaded board is not a loading one", async ({ page }) => {
   await openTower(page, "overview", {
     enrich: (F) => {
       F.goals = [];
@@ -597,20 +640,7 @@ test("an empty board shows its own grid: column heads and three hollow lines, no
     },
   });
   await expect(page.getByText("No active goals")).toBeVisible();
-  const ghost = page.locator(".board-ghost");
-  await expect(ghost).toBeVisible();
-  await expect(ghost.locator(".g-row")).toHaveCount(4);
-  await expect(ghost.locator(".board-ghost-head")).toContainText("Goal");
-  await expect(ghost.locator(".board-ghost-row .seg")).toHaveCount(9);
-  // Hollow: no digits, no words in the rows.
-  expect(await ghost.locator(".board-ghost-row").allInnerTexts()).toEqual(["", "", ""]);
-  // The heads sit in the same columns the rows use (the title's and the live line's left edges, the age's right edge).
-  for (const [i, edge] of [[1, "x"], [2, "x"], [6, "right"]] as const) {
-    const h = await ghost.locator(".board-ghost-head > span").nth(i).boundingBox();
-    const r = await ghost.locator(".board-ghost-row").first().locator("> span").nth(i).boundingBox();
-    const at = (b: { x: number; width: number }) => (edge === "x" ? b.x : b.x + b.width);
-    expect(Math.abs(at(h!) - at(r!))).toBeLessThan(1);
-  }
+  await expect(page.locator(".overview .ghost-bar, .overview .g-row")).toHaveCount(0);
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/overview-empty-ghost.png` });
 });
 
@@ -725,6 +755,7 @@ test("under the Chinese seed the enriched cards speak Chinese too: the held-out 
 
 test("a result produced with the held-out tests present is marked for you only, on the goal page and in the verification sheet", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichHeldOut });
+  await openReadings(page);
   const chips = page.locator(".chip-you");
   await expect(chips).toHaveCount(1);
   await expect(chips).toHaveText("held-out tests, for you only");
@@ -740,6 +771,7 @@ test("a result produced with the held-out tests present is marked for you only, 
 
 test("the held-out mark follows the proof: m of n with the rest named, and a result none ran is never labelled held-out", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichHeldOutPartly });
+  await openReadings(page);
   const chips = page.locator(".goal-page .chip-you");
   await expect(chips).toHaveCount(1);
   await expect(chips).toHaveText("held-out tests: 1 of 2 ran, for you only");
@@ -766,6 +798,7 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
       enrichLook(F);
     },
   });
+  await openReadings(page);
   const lines = page.locator(".goal-page .canary-line");
   await expect(lines).toHaveCount(3);
   // C2 was run with the held-out tests present too: its own line, one register to a line, every note starting under the title.
@@ -792,7 +825,7 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // C2 failed on the base and passed with an unchecked canary: it still says red → green (C1's base could not run in this fixture).
   await expect(page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C2$/ }) }).first()).toContainText("red → green");
   // The totals say the same thing as the line: the pass leaves the verified count, takes an amber segment, and the header's seal is withheld.
-  const bar = page.locator(".goal-page .section .criteria-bar").first();
+  const bar = page.locator(".goal-page .goal-verdict .criteria-bar").first();
   await expect(bar).toContainText("Verified 2/3");
   await expect(bar).toContainText("1 doesn't count");
   await expect(bar.locator(".seg-discounted")).toHaveCount(1);
@@ -800,7 +833,13 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(seal).toHaveClass(/seal-tampered/);
   await expect(seal).toContainText("Passed, doesn't count");
   await expect(seal.locator(".mark-attention")).toBeVisible();
-  await expect(page.locator(".goal-page .section-cta .meta")).toContainText("doesn't count");
+  await expect(page.locator(".goal-page .goal-verdict .seal")).toContainText("doesn't count");
+  // The high sentinels stand above the decisions, whole; the medium ones fold to one line under the criteria that still
+  // names the most sensitive path one of them touched, and open on a click.
+  await expect(page.locator(".sentinels-high .sentinel")).toHaveCount(2);
+  const fold = page.locator(".sentinel-fold");
+  await expect(fold.locator("code")).toHaveText("~/.ssh/config");
+  await page.locator(".section").filter({ has: fold }).locator("button[aria-expanded]").click();
   // The sentinels: the high ones are squares, the medium ones hollow diamonds; the probing detail is a sentence over a list of paths.
   const sentinels = page.locator(".sentinel");
   await expect(sentinels).toHaveCount(4);
@@ -915,6 +954,7 @@ test("a sandbox refusal is an environment problem: the card says so before its d
   await expect(page.locator(".project [data-field='test']")).toBeFocused();
   // On the goal page the criterion's base line: the environment mark, the sentence, the refused lines as machine values; no red, no "red → green".
   await openTower(page, "goal/G-0001", { enrich: enrichSandboxRefused });
+  await openReadings(page);
   const c1 = page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C1$/ }) }).first();
   const line = c1.locator(".env-line");
   await expect(line).toHaveCount(1);
@@ -1226,18 +1266,22 @@ test("the goal page folds its rail under the main column in a half-screen window
   expect(await rail.evaluate((el) => getComputedStyle(el).display)).toBe("grid");
 });
 
-test("the goal page's rail starts under the header, level with the decision card, and stays in sight as the page scrolls", async ({ page }) => {
+test("the goal page's rail starts under the header, level with the main column's first block, and stays in sight as the page scrolls", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichCi });
   const card = page.locator(".goal-decisions .decision").first();
   const rail = page.locator(".goal-rail");
   await expect(card).toBeVisible();
   await expect(rail.locator(".rail")).toBeVisible();
+  // A high sentinel stands above the decisions (it makes the evidence itself doubtful); the rail starts level with it.
+  const first = (await page.locator(".goal-main > :first-child").boundingBox())!;
   const [c, r] = [(await card.boundingBox())!, (await rail.boundingBox())!];
-  expect(Math.abs(c.y - r.y)).toBeLessThan(2);
+  expect(Math.abs(first.y - r.y)).toBeLessThan(2);
   // The card is the main column's width, not the page's: it ends where the blocks under it end.
   const main = (await page.locator(".goal-main").boundingBox())!;
   expect(Math.abs(c.x + c.width - (main.x + main.width))).toBeLessThan(1);
-  // Scrolled to the end of a long page, the rail is still at the top of the view.
+  // Scrolled to the end of a long page, the rail is still at the top of the view. (The page folds its detail now, so a
+  // shorter window makes it long enough to scroll past where the rail starts.)
+  await page.setViewportSize({ width: 1440, height: 640 });
   const view = page.locator(".view");
   const scrolled = await view.evaluate((el) => (el.scrollTo({ top: el.scrollHeight }), el.scrollTop));
   expect(scrolled).toBeGreaterThan(r.y);

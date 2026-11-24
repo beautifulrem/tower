@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-import { openTower, settled } from "./tauri";
+import { openReadings, openTower, settled } from "./tauri";
 
 test("the board shows every goal and what needs you", async ({ page }) => {
   const { errors, fixtures } = await openTower(page, "overview");
@@ -97,6 +97,7 @@ test("the goal page's warnings and evidence speak Chinese too, with no English l
   });
   const flags = page.locator(".goal-head .wb-exception");
   await expect(flags).toHaveText(["实验", "无沙箱（S0）", "已升级：anthropic/claude-opus-4-5"]);
+  await openReadings(page);
   const strip = page.locator(".ev-strip").first();
   await expect(strip).toHaveAttribute("aria-label", "验证证据");
 });

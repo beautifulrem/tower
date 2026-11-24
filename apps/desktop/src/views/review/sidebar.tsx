@@ -44,6 +44,10 @@ export function UnitItem(props: { u: ReviewUnit; active: boolean; viewed: boolea
           <Icon name="check" size={10} label={t("review.viewed")} />
         </Show>
       </span>
+      {/* Why a unit is risky is said on it, not only in its tooltip: what to read first, and what for. */}
+      <Show when={props.u.risk >= 2 && props.u.risk_reasons[0]}>
+        <span class="unit-why">{props.u.risk_reasons[0]}</span>
+      </Show>
     </button>
   );
 }

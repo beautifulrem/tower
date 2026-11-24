@@ -1,6 +1,6 @@
 /**
  * Space-key Quick Peek slide-over instrument sheet (docs/19 §19.4):
- * Live telemetry, dual-track criteria + sentinels + latest claim, budget & next step.
+ * Now (the live line), evidence (dual-track criteria + sentinels + latest claim), budget and next step.
  */
 import { For, Show, createEffect, createResource, onCleanup, onMount } from "solid-js";
 

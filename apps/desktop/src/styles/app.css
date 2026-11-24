@@ -630,6 +630,11 @@
   user-select: text;
   min-width: 0;
 }
+/* The claim's kind leads its text, in the label's grey: the speaker is in the column, the kind is part of what they said. */
+.claim-sub {
+  color: var(--text-3);
+  margin-right: 0.25em;
+}
 .claim-aside {
   justify-self: end;
 }
@@ -668,7 +673,7 @@
   color: var(--text-1);
 }
 .consistency-unsupported {
-  color: var(--text-3);
+  color: var(--text-1);
 }
 /* The agent's own words say a pass cannot confirm the claim: read as
    firmly as a refutation, not dimmed like a claim without evidence. */
@@ -1597,6 +1602,45 @@ input[type="radio"] {
   font-variation-settings: var(--opsz-display);
 }
 /* Identity on the left, the seal on the right. */
+/* The verdict line: the seal (or its withholding) and the two tracks, in body size on the title's reading path —
+   the first thing read after the goal's name, before who and where. */
+.goal-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  margin-top: var(--sp-1);
+  min-height: 24px;
+}
+.goal-verdict .seal {
+  font-size: var(--fs-body);
+}
+/* The goal's one primary action ends the verdict line, right after what it rests on. */
+.goal-verdict-act {
+  margin-left: var(--sp-2);
+}
+/* Above the decisions a high sentinel keeps its evidence (the code lines) whole; its explanation, which restates its
+   title, is one line here and whole on hover and in review. */
+.sentinels-high .sentinel-prose {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* Low sentinels folded to one line: the mark, the most sensitive path one of them touched, then their titles. */
+.sentinel-fold {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.sentinel-fold > * {
+  flex: 0 0 auto;
+}
+.sentinel-fold > .ellipsis {
+  flex: 0 1 auto;
+  min-width: 0;
+}
 .goal-sub {
   margin-top: 2px;
   display: flex;
@@ -2207,10 +2251,16 @@ input[type="radio"] {
     background-color: var(--attention-flash);
   }
 }
-.decision.quiet .decision-head {
+.decision.listed .decision-head {
   background: transparent;
   border-bottom: 1px solid var(--border-subtle);
+}
+.decision.quiet .decision-head {
   animation: none;
+}
+/* Where you are in a queue is selection, not attention: the neutral ground, as a selected row on the board. */
+.decision.listed.focused .decision-head {
+  background: var(--bg-selected);
 }
 .decision.focused {
   border-color: var(--border-strong);
@@ -2815,6 +2865,21 @@ input[type="radio"] {
 }
 .unit-group .unit {
   width: 100%;
+}
+.unit:has(.unit-why) {
+  height: auto;
+  padding-block: 4px;
+}
+.unit-why {
+  grid-column: 1 / -1;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-2);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .unit-lines {
   font-size: var(--fs-hint);
@@ -4091,47 +4156,10 @@ input[type="radio"] {
 .inbox > .empty-poster {
   margin-top: 24vh;
 }
-/* The empty board: the poster sits higher, and under it the board's own grid waits — heads, then three hollow lines. */
+/* The empty board: the poster sits higher, alone. A loaded board with no goals draws no ghost rows — they read as
+   loading; the loading skeletons keep the ghost bars. */
 .overview > .empty-poster {
   margin-top: clamp(72px, 14vh, 180px);
-}
-.board-ghost {
-  margin-top: var(--sp-10);
-}
-.board-ghost .g-row {
-  pointer-events: none;
-}
-.board-ghost .g-row > span {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.board-ghost .g-diff,
-.board-ghost .g-spend,
-.board-ghost .g-age,
-.board-ghost .g-id {
-  justify-content: flex-end;
-  text-align: right;
-}
-/* The heads: the wordmark's voice — small, tracked, the quietest grey — one line above the hairline.
-   The size goes on the cells, not the row: the row's em-sized tracks must stay the rows' own. */
-.board-ghost-head {
-  height: 24px;
-  border-bottom-color: var(--border);
-}
-.board-ghost-head > span {
-  overflow: visible;
-  white-space: nowrap;
-  font-size: var(--fs-hint);
-  line-height: 12px;
-  font-weight: 500;
-  color: var(--text-4);
-}
-.board-ghost-row .g-glyph {
-  color: var(--text-4);
-}
-.board-ghost-row .seg {
-  border-color: var(--border-strong);
 }
 /* Where a reading will be: a 6px rule in the selection grey, never a word. */
 .ghost-bar {

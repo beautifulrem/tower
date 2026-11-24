@@ -117,6 +117,8 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       // Words carried in from the board are yours too: the blank form is the baseline, so leaving with them asks.
       base = now();
       if (intent) (setC("intent", intent), setTitle(intent.slice(0, 48)));
+      // A new contract starts where you write: the intent (the title is optional, made from it), caret after any carried words.
+      queueMicrotask(() => intentEl && (intentEl.focus(), intentEl.setSelectionRange(intentEl.value.length, intentEl.value.length)));
     }
   });
 
@@ -135,11 +137,15 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const errors = () => issues().filter((i) => i.level === "error");
   const issueFor = (field: string) => (touched() ? (issues().find((i) => i.field === field)?.message ?? null) : null);
 
+  let intentEl: HTMLTextAreaElement | undefined;
+  // A criterion you add is one you are about to name: its title takes the focus.
+  let focusId: string | null = null;
   const addCriterion = (kind: Criterion["kind"]["type"]) => {
     let id = `C${c.criteria.length + 1}`;
     while (c.criteria.some((x) => x.id === id)) id = `C${Number(id.slice(1)) + 1}`;
     const k: Criterion["kind"] =
       kind === "exec" ? { type: "exec", command: "", timeout_secs: 600 } : kind === "look" ? { type: "look", start: "", url: "http://localhost:3000/", timeout_secs: 60 } : { type: "human" };
+    focusId = id;
     setC("criteria", (l) => [...l, { id, title: "", kind: k }]);
   };
   const setKind = (i: number, fn: (k: Criterion["kind"]) => void) => setC("criteria", i, "kind", produce(fn));
@@ -228,6 +234,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <Show when={!editingId}><BaseTestsNotice projectId={projectId()} /></Show>
               <Field label={t("contract.intent")} error={issueFor("intent")} class="field-intent">
                 <textarea
+                  ref={intentEl}
                   rows={2}
                   class="reading"
                   value={c.intent}
@@ -272,7 +279,13 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                 {(cr, i) => (
                   <div class="criterion-edit" classList={{ "criterion-edit-look": cr.kind.type === "look" }}>
                     <span class="num">{cr.id}</span>
-                    <input value={cr.title} aria-label={`${cr.id} ${t("contract.criterionTitle")}`} placeholder={cr.kind.type === "look" ? t("contract.lookTitlePlaceholder") : t("contract.criterionTitle")} onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)} />
+                    <input
+                      ref={(el) => cr.id === focusId && ((focusId = null), queueMicrotask(() => el.focus()))}
+                      value={cr.title}
+                      aria-label={`${cr.id} ${t("contract.criterionTitle")}`}
+                      placeholder={cr.kind.type === "look" ? t("contract.lookTitlePlaceholder") : t("contract.criterionTitle")}
+                      onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)}
+                    />
                     <Show when={cr.kind.type !== "human"} fallback={<span class="meta">{t("contract.humanCheck")}</span>}>
                       <span class="unit-wrap timeout" classList={{ "timeout-look": cr.kind.type === "look" }}>
                         <input class="num" type="number" min="1" value={(cr.kind as { timeout_secs: number }).timeout_secs} title={t("contract.timeout")} aria-label={`${cr.id} ${t("contract.timeout")}`} onInput={(e) => setKind(i(), (k) => k.type !== "human" && (k.timeout_secs = Number(e.currentTarget.value) || 1))} />

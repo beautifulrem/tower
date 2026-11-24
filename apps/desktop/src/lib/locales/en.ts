@@ -240,7 +240,7 @@ export const en: DictNow = {
     queued: "Queued",
     waitingSlot: "Waiting for a run slot",
     draft: "Draft",
-    unratified: "Contract not ratified",
+    unratified: "Contract not approved",
     runningFor: "running {d}",
     lastMove: "last activity {d}",
   },

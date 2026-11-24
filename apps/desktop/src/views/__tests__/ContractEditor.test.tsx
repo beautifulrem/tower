@@ -191,6 +191,15 @@ describe("the contract studio", () => {
     await waitFor(() => expect(screen.queryByText("Ports on this machine")).toBeNull());
   });
 
+  it("starts where you write: the intent has the focus, and a criterion you add takes it for its title", async () => {
+    render(() => <ContractEditor projectId="p1" />);
+    await waitFor(() => expect(document.activeElement?.tagName).toBe("TEXTAREA"));
+    fireEvent.click(screen.getByRole("button", { name: /^Command$/ }));
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^C\d+ /));
+    const ids = Array.from(document.querySelectorAll(".criterion-edit > .num")).map((n) => n.textContent);
+    expect(document.activeElement?.getAttribute("aria-label")?.split(" ")[0]).toBe(ids[ids.length - 1]);
+  });
+
   it("supports selecting cross-goal dependencies and sandbox tier defaults", async () => {
     render(() => <ContractEditor projectId="p1" />);
     const depBtn = screen.getByRole("button", { name: /G-0009/ });
@@ -210,14 +219,14 @@ describe("the contract studio", () => {
     render(() => <ContractEditor projectId="p1" />);
     fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
     const ratifyBtns = await waitFor(() => {
-      const btns = screen.getAllByRole("button", { name: /Ratify into holdout\// });
+      const btns = screen.getAllByRole("button", { name: /Approve into holdout\// });
       expect(btns.length).toBeGreaterThan(0);
       return btns;
     });
-    expect(screen.getByText(/Draft claim · inactive until you ratify/)).toBeTruthy();
+    expect(screen.getByText(/Draft claim · inactive until you approve it/)).toBeTruthy();
     const before = invoked.filter((x) => x.cmd === "ratify_holdout_draft").length;
     fireEvent.click(ratifyBtns[0]);
-    await waitFor(() => expect(screen.getByText(/You ratified · hidden/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/You approved · hidden/)).toBeTruthy());
     expect(invoked.filter((x) => x.cmd === "ratify_holdout_draft").length).toBe(before + 1);
   });
 });
@@ -306,7 +315,7 @@ describe("synthetic holdout drafts", () => {
       render(() => <ContractEditor projectId="p1" />);
       fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
       await waitFor(() => expect(screen.getByText(/the project is gone/)).toBeTruthy());
-      expect(screen.queryByRole("button", { name: /Ratify into holdout\// })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Approve into holdout\// })).toBeNull();
     } finally {
       draft.holdout = "ok";
     }
@@ -318,12 +327,12 @@ describe("synthetic holdout drafts", () => {
     try {
       render(() => <ContractEditor projectId="p1" />);
       fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
-      const btn = await waitFor(() => screen.getByRole("button", { name: /Ratify into holdout\// }));
+      const btn = await waitFor(() => screen.getByRole("button", { name: /Approve into holdout\// }));
       fireEvent.click(btn);
       await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith("error", expect.stringContaining("read-only")));
-      expect(screen.queryByText(/You ratified · hidden/)).toBeNull();
+      expect(screen.queryByText(/You approved · hidden/)).toBeNull();
       expect(vi.mocked(toast)).not.toHaveBeenCalledWith("success", expect.anything());
-      expect(screen.getByRole("button", { name: /Ratify into holdout\// })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Approve into holdout\// })).toBeTruthy();
     } finally {
       draft.holdout = "ok";
     }

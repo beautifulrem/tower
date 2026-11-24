@@ -7,12 +7,13 @@
 import { expect, test } from "@playwright/test";
 
 import { enrichReview } from "./rich";
-import { openTower } from "./tauri";
+import { openSourceUnit, openTower } from "./tauri";
 
 const head = (page: import("@playwright/test").Page, path: string) => page.locator(`.hunk-head[data-hunk-path="${path}"]`);
 
 test("on a diff that fits the pane, ] moves the current hunk in the tree's order, A accepts that one and moves on, and a second A never takes it back", async ({ page }) => {
   await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await openSourceUnit(page);
   await expect(page.locator("table").first()).toBeVisible();
   const pane = page.locator(".review-diff");
   // The case the scroll position cannot answer: the whole unit fits, the pane does not scroll.
@@ -79,6 +80,7 @@ test("on a diff that fits the pane, ] moves the current hunk in the tree's order
 
 test("taking a mark back with the header's button says so too", async ({ page }) => {
   await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await openSourceUnit(page);
   const money = head(page, "src/cart/money.js");
   await expect(money).toBeVisible();
   await money.getByRole("button", { name: "Accept this hunk" }).click();
@@ -93,6 +95,7 @@ test("taking a mark back with the header's button says so too", async ({ page })
 
 test("⇧A right after A takes that accept back, and with nothing to take back it says so", async ({ page }) => {
   await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await openSourceUnit(page);
   const money = head(page, "src/cart/money.js");
   const cart = head(page, "src/cart.js");
   await expect(money).toHaveClass(/hunk-current/);

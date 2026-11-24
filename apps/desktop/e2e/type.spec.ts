@@ -13,15 +13,15 @@ const features = (el: Element) => {
   return { family: s.fontFamily, features: s.fontFeatureSettings };
 };
 
-test("the Chinese masthead is tracked 0.08em and a Latin name in it keeps its own, the clause titles are untracked headings; an empty state's reason has its own measure and no orphan", async ({ page }) => {
+test("the masthead is quiet untracked meta in Chinese too (no tracked capitals anywhere), the clause titles are untracked headings; an empty state's reason has its own measure and no orphan", async ({ page }) => {
   await openTower(page, "new", { lang: "zh-CN" });
   // Wait for the real ContractEditor masthead, not the lazy-route ContractSkeleton
   // which also renders a `.contract-mast` placeholder past 150 ms.
   await expect(page.locator(".editor:not(.contract-skeleton) .contract-mast-word")).toBeVisible();
   const spacing = (sel: string) => page.locator(sel).first().evaluate((el) => (parseFloat(getComputedStyle(el).letterSpacing) || 0) / parseFloat(getComputedStyle(el).fontSize));
-  expect(await spacing(".editor:not(.contract-skeleton) .contract-mast")).toBeCloseTo(0.08, 2);
+  expect(await spacing(".editor:not(.contract-skeleton) .contract-mast")).toBeCloseTo(0, 2);
   expect(await spacing(".clause-title")).toBeCloseTo(0, 2);
-  expect(await spacing(".contract-mast-project")).toBeCloseTo(0.02, 2);
+  expect(await page.locator(".editor:not(.contract-skeleton) .contract-mast").evaluate((el) => getComputedStyle(el).textTransform)).toBe("none");
   await openTower(page, "goal/G-0004", { lang: "zh-CN" });
   const body = page.locator(".goal-page .empty-body").first();
   await expect(body).toBeVisible();

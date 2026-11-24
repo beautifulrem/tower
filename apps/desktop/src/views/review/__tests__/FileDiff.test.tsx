@@ -171,6 +171,16 @@ describe("FileDiff comment flow", () => {
     expect(screen.getByText("Formatting only")).toBeTruthy();
   });
 
+  it("never folds a hunk of a file the change adds or deletes, whatever the hint says: every line of it is new or gone", () => {
+    for (const status of ["added", "deleted"] as const) {
+      const { container, unmount } = mount({ file: { ...file, status }, movedHunks: [0], formattingHunks: [0] });
+      expect(container.querySelectorAll(".dl")).toHaveLength(4);
+      expect(screen.queryByText("Moved unchanged")).toBeNull();
+      expect(screen.queryByText("Formatting only")).toBeNull();
+      unmount();
+    }
+  });
+
   it("activates Split-Geometry virtualization for diffs exceeding 400 rows while preserving commenting", () => {
     const bigFile: DiffFile = {
       path: "src/huge.ts",

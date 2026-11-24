@@ -1337,13 +1337,14 @@ for (const route of ["overview", "inbox", "goal/G-0001", "goal/G-0002", "review/
         if (!n.textContent?.includes("·")) continue;
         const el = n.parentElement!;
         // The instruments keep it; the supervisor's and the agent's own words are quoted as written.
-        if (el.closest(".criteria-bar, .budget-line, pre, code, .mono, .sentinel-prose, .decision-body, .claim-text, [aria-hidden='true']")) continue;
+        // (Hidden from a screen reader is not hidden from the eye: an aria-hidden dot counts.)
+        if (el.closest(".criteria-bar, .budget-line, pre, code, .mono, .sentinel-prose, .decision-body, .claim-text")) continue;
         if (!el.getClientRects().length) continue;
         out.push(`${el.className}: ${n.textContent.trim().slice(0, 60)}`);
       }
       // A dot drawn by CSS between items is the same dot.
       for (const el of document.body.querySelectorAll("*")) {
-        if (!el.getClientRects().length || el.closest(".criteria-bar, .budget-line, [aria-hidden='true']")) continue;
+        if (!el.getClientRects().length || el.closest(".criteria-bar, .budget-line")) continue;
         for (const pseudo of ["::before", "::after"]) if (getComputedStyle(el, pseudo).content.includes("·")) out.push(`${el.className}${pseudo}`);
       }
       return out;

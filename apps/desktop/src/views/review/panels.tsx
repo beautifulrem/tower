@@ -184,6 +184,10 @@ export interface AcceptPanelProps {
   onFinish?: () => void;
 }
 
+// A clear check is neutral: green is the verifier's word, and these are Tower's own checks and yours. An overlap is
+// worth noticing (◇, as on the goal page), not a decision.
+const SEAL_MARK = { ok: () => <Icon name="check" size={10} />, warn: () => <NeedsYouMark />, notice: () => <NoticeMark />, danger: () => <DangerMark /> };
+
 export function AcceptPanel(props: AcceptPanelProps) {
   const [busy, setBusy] = createSignal(false);
   const g = () => state.goals[props.id];
@@ -347,10 +351,15 @@ export function AcceptPanel(props: AcceptPanelProps) {
                 [snapshotFresh() ? "ok" : "warn", t(snapshotFresh() ? "review.sealFresh" : tampered().length ? "review.sealWithheld" : "review.sealStale")],
                 [highSentinels().length ? "danger" : "ok", highSentinels().length ? t("review.sealSentinelsHit", { n: highSentinels().length }) : t("review.sealSentinelsOk")],
                 [unchecked() ? "warn" : "ok", unchecked() ? t("review.sealHumanLeft", { n: unchecked() }) : t("review.sealHumanOk")],
-                [overlaps().length ? "warn" : "ok", overlaps().length ? t("goal.overlaps", { id: overlaps().map((o) => o.goal_id).join(", ") }) : t("review.sealMergeOk")],
-              ] as [string, string][]}
+                [overlaps().length ? "notice" : "ok", overlaps().length ? t("goal.overlaps", { id: overlaps().map((o) => o.goal_id).join(", ") }) : t("review.sealMergeOk")],
+              ] as [keyof typeof SEAL_MARK, string][]}
             >
-              {([cls, text]) => <div class={`seal-check seal-check-${cls}`}>{text}</div>}
+              {([cls, text]) => (
+                <div class={`seal-check seal-check-${cls}`}>
+                  {SEAL_MARK[cls]()}
+                  {text}
+                </div>
+              )}
             </For>
           </div>
         </div>

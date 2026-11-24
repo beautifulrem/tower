@@ -173,7 +173,7 @@ export function Operations() {
                       <code class="code-val meta t3" hidden={!entry.branch} title={entry.branch ?? undefined}>{entry.branch}</code>
                     </div>
                     <div class="mq-conflicts meta t3" hidden={!entry.conflict_files.length}>
-                      <code class="code-val t2">{entry.conflict_files.join(" · ")}</code>
+                      <code class="code-val t2">{entry.conflict_files.join(", ")}</code>
                     </div>
                   </div>
                 </td>

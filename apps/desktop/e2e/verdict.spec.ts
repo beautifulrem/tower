@@ -48,7 +48,7 @@ test("a pass that doesn't count reads so on the inbox card: not Ready to accept,
   await openTower(page, "inbox", { enrich: enrichRich });
   await settled(page, "inbox");
   // The group says what you do with these, not what the supervisor concluded.
-  await expect(page.getByText("To review", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Review queue", { exact: true }).first()).toBeVisible();
   const card = page.locator(".decision").filter({ hasText: "Fix the cart total" }).filter({ has: page.locator(".seal") }).first();
   await expect(card).toBeVisible();
   await expect(card.locator(".decision-head")).not.toContainText("Ready to accept");
@@ -276,7 +276,8 @@ test("in Chinese, a claim's gutter label breaks between speaker and kind, never 
   await expect(page.locator(".peek-drawer")).toHaveCount(1);
   await settled(page);
   const broken = async () =>
-    page.locator(".prov-badge .nw, .prov-badge > span:not(.claim-rule)").evaluateAll((els) =>
+    // Each run (speaker, kind) and the mark stay whole; `.prov-words` holds the runs and breaks only between them.
+    page.locator(".prov-badge .nw, .prov-badge > span:not(.claim-rule):not(.prov-words)").evaluateAll((els) =>
       els.filter((e) => e.getClientRects().length > 1 || (e as HTMLElement).offsetHeight > parseFloat(getComputedStyle(e).lineHeight) * 1.5).map((e) => e.textContent),
     );
   expect(await broken()).toEqual([]);
@@ -293,6 +294,183 @@ test("in Chinese, a claim's gutter label breaks between speaker and kind, never 
   expect(await broken()).toEqual([]);
   for (const b of await page.locator(".proposal-card .prov-badge").allInnerTexts()) expect(b.split(/Agent/).length - 1, b).toBeLessThanOrEqual(1);
 });
+
+// The board cell of a pass that doesn't count, measured as the reviewer measured it: nothing spills or is cut, no words
+// lie over a segment, a segment is never under 5px, and from 1400px the human count stands whole beside the words.
+for (const lang of ["en", "zh-CN"] as const)
+  for (const w of [1100, 1280, 1399, 1440, 1800]) {
+    test(`the board cell of a pass that doesn't count holds its words and segments whole (${lang}, ${w})`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: 800 });
+      await openTower(page, "overview", { enrich: noCi, lang });
+      await settled(page, "overview");
+      const out = await page.locator('[data-goal="G-0001"] .g-crit').evaluate((cell) => {
+        const box = cell.getBoundingClientRect();
+        const segs = [...cell.querySelectorAll(".seg")].map((s) => s.getBoundingClientRect());
+        const words = [...cell.querySelectorAll(".meta")].filter((m) => getComputedStyle(m).display !== "none").map((m) => m.getBoundingClientRect());
+        const meets = (a: DOMRect, b: DOMRect) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom && b.top < a.bottom;
+        const human = cell.querySelector(".meta.crit-human") as HTMLElement | null;
+        return {
+          spill: cell.scrollWidth - cell.clientWidth,
+          narrowest: Math.min(...segs.map((r) => r.width)),
+          overlaps: words.filter((t) => segs.some((s) => meets(t, s))).length,
+          outside: words.filter((t) => t.right > box.right + 0.5).length,
+          human: human && getComputedStyle(human).display !== "none" ? human.getBoundingClientRect().right <= box.right + 0.5 : null,
+        };
+      });
+      expect(out.spill).toBeLessThanOrEqual(0);
+      expect(out.narrowest).toBeGreaterThanOrEqual(5);
+      expect(out.overlaps).toBe(0);
+      expect(out.outside).toBe(0);
+      // From 1400px the human count is there and whole; below, it is in the cell's tooltip.
+      if (w >= 1400) expect(out.human).toBe(true);
+      else expect(out.human).toBeNull();
+    });
+  }
+
+// A claim's gutter in the peek: the mark and the speaker share the first line, level with the statement's first line;
+// the kind follows on the next line, never starting left of the mark.
+for (const lang of ["en", "zh-CN"] as const)
+  for (const w of [1100, 1440, 1800]) {
+    test(`in the peek a claim's speaker stands beside its statement (${lang}, ${w})`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: 900 });
+      await openTower(page, "overview", { enrich: enrichRich, lang });
+      await settled(page, "overview");
+      await selectLine(page, "Fix the cart total");
+      await page.keyboard.press("Space");
+      await expect(page.locator(".peek-drawer .prov-claim").first()).toBeVisible();
+      await settled(page);
+      const frames = await page.locator(".peek-drawer .prov-frame").evaluateAll((frames) =>
+        frames.map((f) => {
+          const mark = f.querySelector(".prov-badge > :first-child")!.getBoundingClientRect();
+          const words = [...f.querySelectorAll(".prov-words, .prov-words > *")].flatMap((e) => [...e.getClientRects()]);
+          const first = f.querySelector(".prov-words")!.getClientRects()[0];
+          const body = f.querySelector(".prov-body")!;
+          const range = document.createRange();
+          range.selectNodeContents(body);
+          const line = range.getClientRects()[0];
+          return {
+            text: f.textContent!.trim().slice(0, 40),
+            level: Math.abs(first.top - line.top),
+            sameLine: mark.top < first.top + first.height && first.top < mark.bottom,
+            leftOfMark: words.filter((r) => r.left < mark.right - 0.5).length,
+          };
+        }),
+      );
+      expect(frames.length).toBeGreaterThan(0);
+      for (const f of frames) {
+        expect(f.level, f.text).toBeLessThanOrEqual(2);
+        expect(f.sameLine, f.text).toBe(true);
+        expect(f.leftOfMark, f.text).toBe(0);
+      }
+    });
+  }
+
+test("⇧R from inside a peek closes it and starts the review queue, as on the board", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await openTower(page, "overview", { enrich: enrichRich });
+  await settled(page, "overview");
+  await selectLine(page, "Speed up the product list");
+  await page.keyboard.press("Space");
+  await expect(page.locator(".peek-drawer")).toHaveCount(1);
+  await page.keyboard.press("Shift+R");
+  await expect(page.locator(".peek-drawer")).toHaveCount(0);
+  await expect(page.locator(".review-head")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+/** How many times `re` is said in the drawn text of `root`. */
+const said = (root: Locator, re: RegExp) => root.innerText().then((s) => (s.match(new RegExp(re.source, "g")) ?? []).length);
+const visibleMarks = (rows: Locator) =>
+  rows.evaluateAll((rows) =>
+    rows.map((r) => [r.textContent!.trim().slice(0, 30), [...r.querySelectorAll(".mark-attention")].filter((m) => m.getClientRects().length && getComputedStyle(m).display !== "none").length] as const),
+  );
+
+test("the title bar says in words how many need you, the Needs you count; a sidebar row wears at most one ◆", async ({ page }) => {
+  await openTower(page, "overview", { enrich: enrichRich });
+  await settled(page, "overview");
+  const tel = page.locator(".tel-blocking");
+  await expect(tel).toHaveText(/^\s*\d+ needs? you\s*$/);
+  const n = (await tel.innerText()).match(/\d+/)![0];
+  await expect(page.locator(".sidebar .side-row").filter({ hasText: "Needs you" }).first().locator(".side-count")).toHaveText(n);
+  for (const [row, marks] of await visibleMarks(page.locator(".sidebar .side-goal"))) expect(marks, row).toBeLessThanOrEqual(1);
+  // One name, one set: the sidebar's Review queue and the Needs you page's Review queue count the same items.
+  const queue = (await page.locator(".sidebar .side-row").filter({ hasText: "Review queue" }).locator(".side-count").innerText()).trim();
+  await openTower(page, "inbox", { enrich: enrichRich });
+  await settled(page, "inbox");
+  await expect(page.locator(".scale-title").filter({ hasText: "Review queue" }).locator(".num")).toHaveText(queue);
+});
+
+test("a pass that doesn't count is said once in the peek and once on its inbox card", async ({ page }) => {
+  await openTower(page, "overview", { enrich: enrichRich });
+  await settled(page, "overview");
+  await selectLine(page, "Fix the cart total");
+  await page.keyboard.press("Space");
+  const peek = page.locator(".peek-drawer");
+  await expect(peek.locator(".live-line").first()).toBeVisible();
+  expect(await said(peek, /Passed, doesn.t count/)).toBe(1);
+  for (const [row, marks] of await visibleMarks(peek.locator(".peek-head"))) expect(marks, row).toBeLessThanOrEqual(1);
+  await page.keyboard.press("Escape");
+  await openTower(page, "inbox", { enrich: enrichRich });
+  await settled(page, "inbox");
+  const card = page.locator(".decision").filter({ hasText: "Fix the cart total" }).filter({ hasText: /doesn.t count/ }).first();
+  await expect(card).toBeVisible();
+  expect(await said(card, /Passed, doesn.t count/)).toBe(1);
+});
+
+/** The drawn lines of an element's text, by width: its text's rects grouped by line (a flex item is one box, so not its own rects). */
+const lines = (el: Locator) =>
+  el.evaluate((e) => {
+    const range = document.createRange();
+    range.selectNodeContents(e);
+    const byTop = new Map<number, [number, number]>();
+    for (const r of range.getClientRects()) {
+      if (!r.width) continue;
+      const top = [...byTop.keys()].find((t) => Math.abs(t - r.top) < r.height / 2) ?? r.top;
+      const [l, rt] = byTop.get(top) ?? [r.left, r.right];
+      byTop.set(top, [Math.min(l, r.left), Math.max(rt, r.right)]);
+    }
+    return [...byTop.entries()].sort((a, b) => a[0] - b[0]).map(([, [l, r]]) => Math.round(r - l));
+  });
+
+for (const lang of ["en", "zh-CN"] as const)
+  test(`the contract rail names the goal's ports on one line (${lang})`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openTower(page, "goal/G-0001", { enrich: noCi, lang });
+    await settled(page, "goal/G-0001");
+    const dt = page.locator(".rail dt[title]").first();
+    await expect(dt).toBeVisible();
+    const h = await dt.evaluate((e) => e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight));
+    expect(h).toBeLessThan(1.5);
+  });
+
+for (const w of [1100, 1440])
+  test(`in Chinese the held-out hint reads in one line, and the welcome's git check leaves no character alone (${w})`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 900 });
+    await openTower(page, "inbox", { enrich: enrichRich, lang: "zh-CN" });
+    await settled(page, "inbox");
+    const note = page.locator(".heldout-note > span").first();
+    await expect(note).toBeVisible();
+    expect(await lines(note)).toHaveLength(1);
+    // The note names no button: the options are the supervisor's words, not always in the reader's language.
+    await expect(page.locator(".decision-note").filter({ hasText: "说明" }).first()).not.toContainText("批准");
+
+    await openTower(page, "overview", {
+      lang: "zh-CN",
+      enrich: (F) => {
+        F.environment.issues = F.environment.issues.filter((i: { kind: string }) => i.kind !== "git_identity_missing");
+        F.environment.issues.push({ kind: "git_identity_missing", blocking: false, text: "", fix: "git config --global user.name x" });
+        F.projects = [];
+        F.goals = [];
+        F.inbox = [];
+      },
+    });
+    const title = page.locator(".check-row .t1").filter({ hasText: "git 还没设置" });
+    await expect(title).toBeVisible();
+    const drawn = await lines(title);
+    const em = await title.evaluate((e) => parseFloat(getComputedStyle(e).fontSize));
+    expect(drawn.at(-1)!).toBeGreaterThan(2 * em);
+  });
 
 /**
  * The middle dot belongs to two scales only — the criteria count and the budget — and machine text says what it says.

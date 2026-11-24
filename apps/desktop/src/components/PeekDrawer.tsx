@@ -13,6 +13,7 @@ import { useKeys } from "../lib/keys";
 import { notEvidence } from "../lib/discounted";
 import { effectiveEngine, engineLabel, engineTrustTier, statusWord } from "../lib/labels";
 import { go } from "../lib/nav";
+import { reviewEach } from "../lib/reviewQueue";
 import { act, state } from "../lib/store";
 import { ProvBox } from "./Console";
 import { DangerMark, Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
@@ -52,6 +53,8 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
       { key: "p", run: toggleRun, when: canToggle, desc: () => t(canPause() ? "goal.pause" : "goal.resume") },
       { key: "r", run: () => canReview() && openTo("review"), when: canReview, desc: () => t("goal.review") },
       { key: "enter", run: () => openTo("goal"), desc: () => t("review.openGoal") },
+      // The board's ⇧R, from inside the peek too: close it and start the review queue.
+      { key: "shift+r", run: () => (props.onClose(), reviewEach()), desc: () => t("inbox.reviewAll") },
     ],
     () => t("peek.scope"),
     { modal: true },
@@ -88,7 +91,10 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                   <Show when={!(s().state === "in_review" && s().verified_pin)}>
                     <span class="meta t3">{statusWord(s() as GoalSummary)}</span>
                   </Show>
-                  <Seal pin={s().verified_pin} compact tampered={notEvidence(s())} />
+                  {/* A pass that doesn't count: the glyph marks it here, and "Now" says the verdict once, with its pin. */}
+                  <Show when={!notEvidence(s())}>
+                    <Seal pin={s().verified_pin} compact />
+                  </Show>
                   <span class="grow" />
                   <button class="icon-btn peek-close" aria-label={t("common.close")} onClick={props.onClose}><Icon name="cross" size={12} /></button>
                 </div>

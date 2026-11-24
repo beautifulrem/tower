@@ -128,12 +128,14 @@ fn secret_param(name: &str) -> bool {
 ///   password), YAML, TOML, CSV, `psql -A`, HTML and XML (`&amp;` included), Markdown, shell quoting.
 /// - Text around a URL stays: neighbouring fields, emails, tags. Where a separator could be a password's or a field's
 ///   end, the URL is masked over rather than the password risked. It then runs to the last `@` before whitespace, so
-///   several CSV cells can go. The shapes masked over, credentials or not:
-///   - a `,` or `;` and then an `@`, when the authority before it holds a `:`: `user:pass@host`, a port, or scp-like
-///     `host:path` (`user:pw@host,ada@…`, `localhost:8080/api;contact=ops@…`, `ssh://git@host:o/r.git,ada@…`).
-///     With no `:` the URL ends at the separator: `host.example.com/path;contact=ops@…` stays;
-///   - after `user@` plus `localhost:port` or `[v6]` (`git@localhost:3000;mail=ada@…`, `ada@[::1],bob@…`), and after
-///     `host:port` whose host has no `.` and is not `localhost` (`db:5432,ada@…`);
+///   several CSV cells can go; a secret query value likewise runs to whitespace, so cells after it in an unquoted CSV
+///   or `;` row go with it. The shapes masked over, credentials or not:
+///   - a `,` or `;` in the authority and then an `@` (`example.com,ada@…`, `localhost:3000;mail=ada@…`,
+///     `ada@[::1],bob@…`, `user:pw@host,ada@…`): the separator may be a password's, a user name's (`CORP;svc:pw@`)
+///     or a host list's (`h1:27017,h2:27017`);
+///   - a `,` or `;` in the path and then an `@`, when the authority holds a `:`: `user:pass@host`, a port, or scp-like
+///     `host:path` (`localhost:8080/api;contact=ops@…`, `ssh://git@host:o/r.git,ada@…`). With no `:` the URL ends
+///     there: `host.example.com/path;contact=ops@…` stays;
 ///   - an `@` in a path after a port (`host:4873/react@18`), and in a `\/`-escaped URL an `@` anywhere after a port
 ///     (`api.example.com:8443\/u?email=a@b.com`), since the port is not read as one there.
 /// - Known leaks, by design:
@@ -141,9 +143,8 @@ fn secret_param(name: &str) -> bool {
 ///     whitespace;
 ///   - a password holding `\n`, `\r`, `\t`, `\b` or `\f` inside a double-quoted string, JSON or not: the escape ends the URL;
 ///   - a password of 1–5 digits and then `/?#`;
-///   - a user name holding punctuation, `.` included: `first.last:2024;Summer@db` reads as `host:port`;
-///   - a password holding `://`, or starting with `//` and then punctuation (`u://#pw@host`): it reads as the start of
-///     another URL;
+///   - a user name holding punctuation that ends a URL (`ada(x:pw@host`);
+///   - a password holding `://` or starting with `//` (`u://#pw@host`): it may be read as the start of another URL;
 ///   - a password holding an `@` and then more URL-ending punctuation (`deploy:Xy(7@q)Zr@host`): what follows the first
 ///     such `@` shows;
 ///   - a password more than 256 bytes past its first punctuation;
@@ -250,21 +251,6 @@ fn url_end_from(text: &str, from: usize) -> usize {
         .map_or(text.len(), |(i, _)| from + i)
 }
 
-/// Whether `head`, the start of a URL's authority up to a `,` or `;`, is a whole host: no `:` at all (a name or
-/// `user@host`), `[v6]` or `[v6]:port` with nothing before it, or `host:port` whose host has a `.` or is `localhost`. The
-/// whole of `head` is tested, so `git@localhost:3000` and `ada@[::1]` are not hosts and the URL is masked over:
-/// `ada:2024` and `ada:p@ss` may be passwords.
-fn host_or_port(head: &str) -> bool {
-    let port = |p: &str| (1..=5).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit());
-    if let Some(v6) = head.strip_prefix('[') {
-        return v6.split_once(']').is_some_and(|(_, rest)| rest.is_empty() || rest.strip_prefix(':').is_some_and(port));
-    }
-    match head.split_once(':') {
-        None => true,
-        Some((host, p)) => (host.contains('.') || host == "localhost") && port(p),
-    }
-}
-
 /// Where something next occurs in `text` at or after a start that only moves forward: found once and kept until the
 /// start passes it, so finding it for every URL of a long line is still one pass.
 struct Next<F: Fn(&str) -> Option<usize>> {
@@ -297,8 +283,6 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
     let (mut in_string, mut in_element, mut in_tag) = (false, false, false);
     let mut ends = Next::new(|s: &str| s.find(ends_url));
     let mut queries = Next::new(|s: &str| s.find(['?', '#']));
-    let mut paths = Next::new(|s: &str| s.find(['/', '?', '#']));
-    let mut commas = Next::new(|s: &str| s.find([',', ';']));
     let mut schemes = Next::new(|s: &str| s.find("://"));
     // PHP's JSON writes `://` as `:\/\/`.
     let mut escaped_schemes = Next::new(|s: &str| s.find(":\\/\\/"));
@@ -351,13 +335,6 @@ fn redact_urls_within(text: &str, depth: u8) -> String {
             end = url[..inner_scheme]
                 .trim_end_matches(|c: char| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
                 .len();
-        }
-        // A host holds no `,` or `;`: in an unquoted CSV row (`https://example.com,ada@example.com`) or a `key=value;`
-        // list the URL ends at one that follows a host, `host:port` or `user@host`. One after `user:` may be the
-        // password's (`ada:2024;Summer@db`, `ada:p@ss;word@db`): that URL is masked over rather than risked.
-        let comma = within(commas.at_or_after(text, pos));
-        if comma < within(paths.at_or_after(text, pos)).min(end) && host_or_port(&url[..comma]) {
-            end = comma;
         }
         // A password may hold `'()"{}<>\` or a backtick, which git sends as they are. When such punctuation cuts the URL
         // inside `user:pass`, and an `@` follows within 256 bytes with no whitespace, no other `://` and nothing that
@@ -587,6 +564,12 @@ mod tests {
             // A JSON `\uXXXX` escape (Go's `<` `>`, Python's `ensure_ascii`) inside a password.
             (r#"{"url":"https://deploy:Xy\u003cZr0046@git.example.com/o/r.git"}"#, "Zr0046"),
             (r#"{"url": "https://ada:p\u00e4ssw0047@db.example.com/app"}"#, "ssw0047"),
+            // Several hosts in one authority (libpq, MongoDB, Redis Sentinel), and a `;` in the user name (SMB domain, curl
+            // login options): a `,` or `;` there ends nothing.
+            ("mongodb://h1.example.com:27017,h2.example.com:27017/db?replicaSet=rs0&sig=Hx70048", "Hx70048"),
+            ("mongodb://db1,db2/app?code=Hx70049 ok", "Hx70049"),
+            ("mount: smb://CORP;svc_backup:Hx70050@nas.corp.local/backups failed", "Hx70050"),
+            ("imap://alice;AUTH=*:Hx70051@mail.example.com/INBOX", "Hx70051"),
             ("callback http://[::1]:8080/cb?token=ipv6tok0001 ok", "ipv6tok0001"),
             ("redirect https://a.example.com/login?next=https://ada:nestedpw0002@b.example.com/x", "nestedpw0002"),
             ("fatal: https://ada:pa/ss0003@host.example.com/o/r.git", "ss0003"),
@@ -698,12 +681,12 @@ mod tests {
             ),
             ("1|https://u:tok@h.com|ada@example.com|x", "1|https://[redacted]@h.com|ada@example.com|x"),
             ("x\nhttps://u:tok@h.com|ada@example.com|x", "x\nhttps://[redacted]@h.com|ada@example.com|x"),
-            // Unquoted CSV: a host holds no `,`, so a URL's authority ends at one after a host or `user@host`.
-            ("https://example.com,ada@example.com,x", "https://example.com,ada@example.com,x"),
-            ("https://example.com:8443,ada@example.com,x", "https://example.com:8443,ada@example.com,x"),
-            // After `user:pass@host` a `,` may still be the password's (`p@ss,word@host`): masked over, not risked.
+            // Unquoted CSV: a `,` or `;` in the authority may be a password's, a user name's (`CORP;svc:pw@`) or part of a
+            // host list (`h1:27017,h2:27017`), so with an `@` after it the URL is masked over, not risked.
+            ("https://example.com,ada@example.com,x", "https://[redacted]@example.com,x"),
+            ("https://example.com:8443,ada@example.com,x", "https://[redacted]@example.com,x"),
             ("https://deploy:pw@git.example.com,ada@example.com,x", "https://[redacted]@example.com,x"),
-            ("https://ada@git.example.com,bob@example.com,x", "https://[redacted]@git.example.com,bob@example.com,x"),
+            ("https://ada@git.example.com,bob@example.com,x", "https://[redacted]@example.com,x"),
             ("https://u:p,w@host/r", "https://[redacted]@host/r"),
             // An escape in a JSON string ends a URL there; a `>` in prose is not an element's text.
             (
@@ -713,7 +696,7 @@ mod tests {
             ("INFO -> http://localhost:3000|ada@example.com|x", "INFO -> http://localhost:3000|ada@example.com|x"),
             ("<b>a</b> http://localhost:3000|ada@example.com|", "<b>a</b> http://localhost:3000|ada@example.com|"),
             // A `;` list (`key=value;…`, a connection string) as a CSV row.
-            ("url=http://localhost:3000;mail=ada@example.com", "url=http://localhost:3000;mail=ada@example.com"),
+            ("url=http://localhost:3000;mail=ada@example.com", "url=http://[redacted]@example.com"),
             ("url=https://deploy:pw@git.example.com;mail=ada@example.com", "url=https://[redacted]@example.com"),
             // One tie-break everywhere: a `,` or `;` after `user:pass@host`, or in a path, may be a password's, so the
             // URL runs to the last `@` and is masked over, credentials or not.

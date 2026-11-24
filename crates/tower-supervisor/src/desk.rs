@@ -35,6 +35,13 @@ impl Supervisor {
         write("environment.json", &serde_json::to_value(self.environment()).unwrap_or_default())?;
         let mut settings = inner.settings();
         settings.remote_token = String::new();
+        // The ntfy topic is what lets anyone read the pushes: only the server stays.
+        if !settings.push_url.is_empty() {
+            let server = settings.push_url.find("://").map_or(0, |at| {
+                at + 3 + settings.push_url[at + 3..].find('/').unwrap_or(settings.push_url.len() - at - 3)
+            });
+            settings.push_url = format!("{}/[redacted]", &settings.push_url[..server]);
+        }
         write("settings.json", &serde_json::to_value(settings).unwrap_or_default())?;
         let goals = inner.store(|s| s.summaries())?;
         write("goals.json", &serde_json::to_value(&goals).unwrap_or_default())?;

@@ -1048,7 +1048,7 @@ Coalescer 位于 Supervisor 中，按“订阅者 × topic”运行。它决定*
 
 ### 6.6.1 目录布局
 
-`TOWER_HOME` 默认 `~/.tower`（Windows：`%USERPROFILE%\.tower`），可以用环境变量覆盖。Electron 的 `userData` 只存 Chromium 缓存和窗口状态，不存业务数据。
+`TOWER_HOME` 默认 `~/.tower`（Windows：`%USERPROFILE%\.tower`），可以用环境变量覆盖；值为空等同未设置，相对路径被拒绝（启动失败并说明原因——否则数据目录会落在启动时的当前目录，启动清理也会作用于那里）。启动清理只在含 `tower.db` 的数据目录中进行。Electron 的 `userData` 只存 Chromium 缓存和窗口状态，不存业务数据。
 
 ```
 ~/.tower/

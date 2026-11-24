@@ -15,11 +15,21 @@ use crate::{Result, invalid};
 /// Whether visible criteria get a single automatic rerun on their first failure
 /// to distinguish flaky tests from real regressions.
 ///
-/// Honors `Settings.flaky_rerun` and allows overriding via `TOWER_FLAKY_RERUN`.
+/// Honors `Settings.flaky_rerun`; a clear on or off in `TOWER_FLAKY_RERUN`
+/// overrides it.
 pub(super) fn flaky_rerun_enabled(inner: &crate::Inner) -> bool {
-    match std::env::var("TOWER_FLAKY_RERUN") {
-        Ok(v) => !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no"),
-        Err(_) => inner.settings().flaky_rerun,
+    flaky_rerun_override(std::env::var("TOWER_FLAKY_RERUN").ok().as_deref())
+        .unwrap_or_else(|| inner.settings().flaky_rerun)
+}
+
+/// What `TOWER_FLAKY_RERUN` says: on (`1`, `true`, `on`, `yes`), off
+/// (`0`, `false`, `off`, `no`), or nothing (unset, empty or anything else),
+/// which leaves it to Settings.
+fn flaky_rerun_override(value: Option<&str>) -> Option<bool> {
+    match value?.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "on" | "yes" => Some(true),
+        "0" | "false" | "off" | "no" => Some(false),
+        _ => None,
     }
 }
 
@@ -191,5 +201,26 @@ impl Bench<'_> {
             found.push(hit);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flaky_rerun_override;
+
+    /// Only a clear on or off overrides Settings; an empty or mistyped
+    /// value leaves the decision to Settings.
+    #[test]
+    fn the_flaky_rerun_override_is_read_strictly() {
+        for on in ["1", "true", "on", "yes", " TRUE "] {
+            assert_eq!(flaky_rerun_override(Some(on)), Some(true), "{on:?}");
+        }
+        for off in ["0", "false", "off", "no", "Off"] {
+            assert_eq!(flaky_rerun_override(Some(off)), Some(false), "{off:?}");
+        }
+        for unclear in ["", "  ", "maybe", "2", "enabled"] {
+            assert_eq!(flaky_rerun_override(Some(unclear)), None, "{unclear:?}");
+        }
+        assert_eq!(flaky_rerun_override(None), None);
     }
 }

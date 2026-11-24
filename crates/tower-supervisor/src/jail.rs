@@ -155,10 +155,23 @@ pub(crate) async fn follow_agent_listeners(inner: Arc<Inner>, goal: String, run_
         known = now;
         let Ok(rec) = inner.store(|s| s.goal(&goal)) else { break };
         let Some(ws) = rec.workspace.clone() else { break };
+        // The run may have ended while the ports were read: a profile written
+        // now would recreate the goal's folders and take back its port block
+        // after the end released them. Every end of a run takes it out of the
+        // runs, then waits for the run's profile lock: holding that lock across
+        // the check and the write makes them one step, without holding the
+        // run's flags (its events, pause and abandon) while netstat and lsof run.
+        let Some(run) = inner.run_of(&goal).filter(|r| r.run_no == run_no) else { break };
+        let profile = run.profile.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let current = inner.run_of(&goal).is_some_and(|r| r.run_no == run_no);
+        if !current || run.flags().stopping.is_some() {
+            break;
+        }
         let tmp = inner.paths.tmp(&goal);
         if let Err(e) = agent_jail(&inner, &rec, Path::new(&ws), &tmp, "agent", rec.contract.network) {
             tracing::warn!(goal = %goal, error = %e, "could not refresh the agent's loopback ports");
         }
+        drop(profile);
     }
 }
 

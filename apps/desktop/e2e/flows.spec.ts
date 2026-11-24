@@ -396,9 +396,9 @@ test("a look thumbnail is as tall as its frame and no wider than its page; the v
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   // Four criteria with their output tails run past 80vh: the fade is on, and goes once the sheet is scrolled to its end.
-  await expect(dialog.locator(".panel-more")).toHaveClass(/on/);
+  await expect(dialog).toHaveAttribute("data-more", "");
   await dialog.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
-  await expect(dialog.locator(".panel-more")).not.toHaveClass(/on/);
+  await expect(dialog).not.toHaveAttribute("data-more");
 });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
@@ -1014,6 +1014,8 @@ test("the command palette can put the page's card aside, and H does the same", a
   await expect(page.locator(".decision").first()).toBeVisible();
   await page.keyboard.press("Meta+k");
   const dialog = page.getByRole("dialog");
+  // The palette loads on demand: typed before its field has focus, the words land nowhere.
+  await expect(dialog.getByRole("combobox").or(dialog.locator("input"))).toBeFocused();
   await page.keyboard.type("put aside");
   const option = dialog.getByRole("option").filter({ hasText: /Put aside G-0004: / });
   await expect(option).toBeVisible();

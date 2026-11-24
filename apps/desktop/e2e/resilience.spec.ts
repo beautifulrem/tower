@@ -52,3 +52,53 @@ test("a live update keeps your place on the board: the row you are on stays focu
   await expect(page.locator(".board-group h2", { hasText: "Paused" })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.activeElement === (window as any).__was && document.activeElement?.isConnected)).toBe(true);
 });
+
+test("the review of a goal that no longer exists says so and offers the overview, not a Retry that cannot work", async ({ page }) => {
+  await openTower(page, "review/G-9999");
+  await expect(page.getByText("G-9999 was not found")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open overview" }).click();
+  await expect(page.locator(".view .overview")).toBeVisible();
+});
+
+test("acting on a console row reloads its list in place: no page spinner, and the control you used keeps its focus", async ({ page }) => {
+  await openTower(page, "operations", {
+    enrich: (F) => {
+      const pid = F.projects[0].id;
+      F.scheduledGoals = [
+        { id: "sc-1", project_id: pid, title: "Nightly audit", cron_expr: "0 2 * * 1-5", enabled: true, unattended_strict: true, next_run_at: null, last_goal_id: null },
+        { id: "sc-2", project_id: pid, title: "Weekly hunt", cron_expr: "0 4 * * 0", enabled: false, unattended_strict: true, next_run_at: null, last_goal_id: null },
+      ];
+    },
+  });
+  const toggle = page.getByRole("switch").nth(1);
+  await toggle.focus();
+  await page.evaluate(() => {
+    (window as any).__spun = false;
+    new MutationObserver(() => document.querySelector(".page-loading") && ((window as any).__spun = true)).observe(document.body, { childList: true, subtree: true });
+    (window as any).__was = document.activeElement;
+    (window as any).__towerCalls.length = 0;
+  });
+  await page.keyboard.press("Space");
+  await expect.poll(() => page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "scheduled_goals").length)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => document.activeElement === (window as any).__was && document.activeElement?.isConnected)).toBe(true);
+  expect(await page.evaluate(() => (window as any).__spun)).toBe(false);
+});
+
+// A Run now can fail after it made a goal (a draft that would not start): the row's last run changed all the same, so
+// the list is read again whether the run started or not.
+test("a Run now that fails reloads the schedules: it may have made a draft", async ({ page }) => {
+  await openTower(page, "operations", {
+    enrich: (F) => {
+      F.scheduledGoals = [
+        { id: "sc-1", project_id: F.projects[0].id, title: "Nightly audit", cron_expr: "0 2 * * 1-5", enabled: true, unattended_strict: true, next_run_at: null, last_goal_id: null },
+      ];
+      F.runNowError = "Created draft G-0042 but could not start it: the intent cannot be empty";
+    },
+  });
+  await expect(page.getByText("Nightly audit")).toBeVisible();
+  await page.evaluate(() => ((window as any).__towerCalls.length = 0));
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(page.getByText("Created draft G-0042", { exact: false })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "scheduled_goals").length)).toBeGreaterThan(0);
+});

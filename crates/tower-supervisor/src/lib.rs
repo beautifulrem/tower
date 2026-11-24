@@ -39,6 +39,7 @@ mod settings_api;
 pub mod shell_env;
 pub mod storage;
 mod summarize;
+mod tree;
 mod verify;
 
 use std::path::{Path, PathBuf};
@@ -53,7 +54,7 @@ use tower_core::view::{
     EnvironmentStatus, GoalDetail, GoalSummary, InboxItem, InboxKind, ModelInfo, ProjectView, ReviewView, Settings,
     SnapshotPoint, TraceEntry,
 };
-use tower_core::{EventKind, LifecycleState, Mode, PauseReason, tr};
+use tower_core::{EventKind, LifecycleState, PauseReason, tr};
 use tower_git::{Git, GitError};
 use tower_pi::EngineError;
 use tower_store::{NewGoal, NewProject, ProjectPatch, ReadPool, Store, StoreError};
@@ -139,8 +140,11 @@ impl Supervisor {
         };
         let git = Git::new(env.which("git").unwrap_or_else(|| PathBuf::from("git")), env.pairs());
         let db_path = config.paths.db();
+        // Whether this folder was Tower's before this start: opening the store creates the file.
+        let had_store = db_path.is_file();
         let store = Store::open(&db_path)?;
         let read_pool = ReadPool::open(&db_path, 4).ok();
+        config.paths.restrict_store()?;
         let inner = Arc::new(Inner {
             paths: config.paths,
             env,
@@ -151,6 +155,7 @@ impl Supervisor {
             runs: Mutex::default(),
             verifications: Mutex::default(),
             verify_again: Mutex::default(),
+            live_verifications: Mutex::default(),
             dirty: Mutex::default(),
             traces: Mutex::default(),
             models: Mutex::default(),
@@ -168,7 +173,7 @@ impl Supervisor {
         procs::ensure_marker(&sup.inner.paths.root)?;
         let paths = sup.inner.paths.clone();
         let _ = tokio::task::spawn_blocking(move || procs::stop_all_leftovers(&paths)).await;
-        sweep(&sup.inner.paths);
+        sweep(&sup.inner.paths, had_store);
         if let Err(e) = sup.apply_remote() {
             tracing::warn!(error = %e, "phone page not started");
             sup.inner.sink.emit(UiUpdate::Toast { level: ToastLevel::Warning, text: e.to_string(), goal_id: None });
@@ -245,14 +250,15 @@ impl Supervisor {
         for g in running {
             // The process that ran it is gone (crash or forced quit): close the run.
             let _ = inner.append(&g.id, EventKind::RunEnded { run_no: g.run_no, outcome: "interrupted".into() });
-            inner.withdraw(
-                &g.id,
-                &[InboxKind::Question, InboxKind::Approval],
-                &tr!(lang, "Tower 重新启动", "Tower restarted"),
-            );
-            let _ = inner.set_mode(&g.id, Mode::Idle);
+            // Cards, mode and the pause in one write: a refused transition
+            // leaves the goal as it was, for the next start to recover.
+            let cards: &[InboxKind] = &[InboxKind::Question, InboxKind::Approval];
+            let why = tr!(lang, "Tower 重新启动", "Tower restarted");
             let note = tr!(lang, "上次退出时仍在运行", "Still running when Tower last quit");
-            let _ = inner.transition(&g.id, Transition::Pause { reason: PauseReason::AppQuit }, None, &note);
+            let pause = Transition::Pause { reason: PauseReason::AppQuit };
+            if let Err(e) = control::settle(inner, &g.id, &[(cards, why)], pause, &note, None) {
+                tracing::warn!(goal = %g.id, "could not pause a goal left running: {e}");
+            }
         }
         // What verifications cut short by the last quit left: their guard
         // transcripts stay undeletable until their flag is cleared.
@@ -485,10 +491,54 @@ impl Supervisor {
         Ok(p)
     }
 
-    pub fn remove_project(&self, id: &str) -> Result<()> {
-        self.inner.store(|s| s.remove_project(id))?;
+    /// Removes a project whose goals have all ended, with their records and
+    /// folders. The folders go off the main thread (they can be gigabytes of
+    /// packages), after any verification still winding down has stopped, so
+    /// nothing recreates them behind the removal.
+    pub async fn remove_project(&self, id: &str) -> Result<()> {
+        let goals = self.inner.store(|s| s.remove_project(id))?;
         self.emit_projects();
+        // Their records are gone, so nothing could reach or reclaim these later.
+        for g in &goals {
+            self.stop_verification(g).await;
+            let _ = crate::ports_pool::release_for_root(&self.inner.paths.root, g);
+        }
+        let paths = self.inner.paths.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let tmp = paths.root.join("tmp");
+            for g in &goals {
+                for dir in [
+                    paths.workspace(g),
+                    paths.tmp(g),
+                    paths.verify(g),
+                    paths.sessions(g),
+                    paths.goal_dir(g),
+                    tmp.join(format!("{g}-verify")),
+                ] {
+                    if let Err(e) = tree::remove_tree(&dir) {
+                        tracing::warn!(dir = %dir.display(), "removing a removed project's goal folder: {e}");
+                    }
+                }
+            }
+        })
+        .await;
         Ok(())
+    }
+
+    /// Cancels a goal's verification or preflight and waits (≤10 s) until every
+    /// one winding down, cancelled earlier too, has let go of the goal's folders.
+    pub(crate) async fn stop_verification(&self, id: &str) {
+        if let Some(c) = self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).get(id) {
+            c.cancel();
+        }
+        for _ in 0..200 {
+            let running = self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id)
+                || self.inner.live_verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id);
+            if !running {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
     }
 
     fn emit_projects(&self) {
@@ -699,15 +749,7 @@ impl Supervisor {
         }
         // A verification or preflight still winding down writes into these
         // folders: stop it and let it finish first.
-        if let Some(c) = self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).get(id) {
-            c.cancel();
-        }
-        for _ in 0..200 {
-            if !self.inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).contains_key(id) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        self.stop_verification(id).await;
         let paths = self.inner.paths.clone();
         let goal = id.to_string();
         tokio::task::spawn_blocking(move || -> std::io::Result<()> {
@@ -716,15 +758,7 @@ impl Supervisor {
             {
                 // A process that was still writing may leave a file behind
                 // once: try again before giving up.
-                let mut result = Ok(());
-                for _ in 0..3 {
-                    result = if dir.exists() { std::fs::remove_dir_all(&dir) } else { Ok(()) };
-                    if result.is_ok() {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                }
-                result?;
+                tree::remove_tree(&dir)?;
             }
             Ok(())
         })

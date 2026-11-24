@@ -80,3 +80,42 @@ test("a slow first open of the editor shows the contract's skeleton, past 150 ms
   await expect(page.locator(".editor .contract-mast-word")).toBeVisible();
   await expect(skeleton).toHaveCount(0);
 });
+
+test("an unsaved contract is not lost to a key or a click away: Tower asks first, and stays unless you discard it", async ({ page }) => {
+  await openTower(page, "new");
+  const intent = page.locator(".field-intent textarea");
+  await intent.fill("Make the cart survive a double click");
+  const asked = () => page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "plugin:dialog|message").length);
+  // ⌘1, ⌘[, Esc out of the field and the sidebar: each asks, and "no" keeps the editor with your words.
+  await page.keyboard.press("Meta+1");
+  await expect.poll(asked).toBe(1);
+  await page.keyboard.press("Meta+[");
+  await expect.poll(asked).toBe(2);
+  await intent.blur();
+  await page.keyboard.press("Escape");
+  await expect.poll(asked).toBe(3);
+  await page.locator(".sidebar .side-top .side-row").nth(1).click();
+  await expect.poll(asked).toBe(4);
+  await expect(intent).toHaveValue("Make the cart survive a double click");
+  // Saying yes leaves.
+  await page.evaluate(() => ((window as any).__towerAsk = true));
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+});
+
+test("words carried in from the board count as unsaved: leaving asks", async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem("tower.draftIntent", "Make the cart survive a double click"));
+  await openTower(page, "new");
+  await expect(page.locator(".field-intent textarea")).toHaveValue("Make the cart survive a double click");
+  await page.keyboard.press("Meta+1");
+  await expect.poll(() => page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "plugin:dialog|message").length)).toBe(1);
+  await expect(page.locator(".field-intent textarea")).toBeVisible();
+});
+
+test("a contract left as it opened leaves without a question", async ({ page }) => {
+  await openTower(page, "new");
+  await expect(page.locator(".field-intent textarea")).toBeVisible();
+  await page.keyboard.press("Meta+1");
+  await expect(page.locator(".view .overview")).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "plugin:dialog|message").length)).toBe(0);
+});

@@ -114,7 +114,7 @@
 .gauge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 .gauge-active {
   color: var(--text-1);
@@ -233,7 +233,8 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  margin: -7px;
+  /* A 28px hit area round a 14px glyph keeps the glyph's own footprint: half the difference on each side. */
+  margin: calc((14px - 28px) / 2);
   cursor: default;
 }
 .icon-btn:hover:not(:disabled) {
@@ -288,10 +289,14 @@
   color: var(--text-1);
   transition-duration: 0ms;
 }
+/* The 2px pen runs straight down the row's edge: that side of the ground is square, so the rule never bends into a
+   bracket round the corner (the board's row and the current hunk are square too). */
 .side-row.active {
   background: var(--bg-selected);
   color: var(--text-1);
   box-shadow: inset 2px 0 0 var(--text-3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 .side-icon {
   width: 16px;
@@ -578,7 +583,7 @@
 }
 .claim-label {
   display: flex;
-  gap: 5px;
+  gap: 6px;
   font-size: var(--fs-hint);
   line-height: var(--lh-body);
   color: var(--text-3);
@@ -751,7 +756,7 @@
 .btn-label {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 .btn-s {
   height: 24px;
@@ -857,7 +862,7 @@
   background: var(--kbd-bg);
   font-family: var(--font-mono);
   font-feature-settings: var(--font-features-mono);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0;
   color: var(--text-3);
@@ -934,7 +939,7 @@ textarea,
 .select {
   width: 100%;
   min-width: 0;
-  padding: 4px 9px;
+  padding: var(--sp-1) var(--sp-2);
   border-radius: var(--radius-m);
   border: 1px solid var(--border);
   background: var(--bg-field);
@@ -1032,9 +1037,10 @@ input[type="radio"] {
   position: relative;
   display: block;
 }
+/* The unit stands where the field's text does: its padding plus the 1px border. */
 .unit-wrap .unit {
   position: absolute;
-  right: 9px;
+  right: calc(var(--sp-2) + 1px);
   top: 0;
   height: 28px;
   display: inline-flex;
@@ -1048,11 +1054,11 @@ input[type="radio"] {
 }
 .unit-wrap.unit-left .unit {
   right: auto;
-  left: 9px;
+  left: calc(var(--sp-2) + 1px);
 }
 .unit-wrap.unit-left input {
-  padding-left: 22px !important;
-  padding-right: 9px !important;
+  padding-left: var(--sp-5) !important;
+  padding-right: var(--sp-2) !important;
 }
 
 .field {
@@ -1525,7 +1531,7 @@ input[type="radio"] {
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   font-size: 13px;
   line-height: 14px;
   letter-spacing: -0.01em;
@@ -1891,13 +1897,15 @@ input[type="radio"] {
   white-space: nowrap;
 }
 
+/* An output block is a container inside a card or a sheet: it takes the chip radius, never the card's own (the lock's
+   concentric rule), so it reads as a well in the card rather than a second card. */
 .output-tail {
   font-feature-settings: var(--font-features-mono);
   margin: 6px 0 10px;
   padding: 10px 12px;
   max-height: 320px;
   overflow: auto;
-  border-radius: var(--radius-m);
+  border-radius: var(--radius-s);
   background: var(--bg-inset);
   border: 1px solid var(--border-subtle);
   font-family: var(--font-mono);
@@ -2034,6 +2042,8 @@ input[type="radio"] {
   outline: none;
   background: var(--bg-selected);
   box-shadow: inset 2px 0 0 var(--text-3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 .run-row-back:focus-visible .run-rollback {
   color: var(--text-1);
@@ -2440,7 +2450,7 @@ input[type="radio"] {
 .snoozed-head {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-height: 24px;
 }
 .snoozed-head:hover {
@@ -2594,7 +2604,7 @@ input[type="radio"] {
 .injected-head {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: var(--fs-meta);
   color: var(--text-2);
 }
@@ -2656,7 +2666,7 @@ input[type="radio"] {
   letter-spacing: var(--tr-14);
   font-weight: 500;
 }
-/* The header is always two lines: the stats never wrap, they truncate, and the pin pair goes first. */
+/* The header is always two lines: the stats never wrap; short of room they drop whole, the pin pair first. */
 .review-stats {
   display: flex;
   align-items: center;
@@ -2673,16 +2683,61 @@ input[type="radio"] {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+/* Short of room, a stat goes whole, never cut through a word. The counts go by width band (below); what is left to
+   give is the verification group at the end. It is one line that wraps onto a second line nobody sees: its criteria
+   line gives way first (the human count, then the words, and last the bar), and if even the seal has no room, as when
+   two run pickers share the line, the seal goes whole (a zero-width first item holds the visible line). */
+.review-stats > * {
+  flex-shrink: 0;
+}
+.review-stats > .review-verify {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  height: 20px;
+  /* The hidden line starts below the padding too: the clip is the padding box. */
+  row-gap: var(--sp-1);
+  overflow: hidden;
+}
+.review-verify::before {
+  content: "";
+  width: 0;
+  height: 16px;
+  margin-right: calc(-1 * var(--sp-2));
+}
+.review-verify .seal {
+  flex: none;
+}
+.review-verify .criteria-bar {
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  min-width: 0;
+  height: 16px;
+  row-gap: 0;
+  overflow: hidden;
+}
+/* Every part stands a full line tall, so the hidden line starts below the line you see. */
+.review-verify .criteria-bar > .segs {
+  height: 16px;
+  align-items: center;
 }
 .review-stat-pins {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
+/* The pin pair goes first, and only for want of room (the seal carries the verified pin): the review hides it
+   (`pins-off`) when, with it, the verification group would drop a part. */
+.review-stats.pins-off .review-stat-pins {
+  display: none;
+}
+/* In the narrow band the pins and the file and unit counts go outright: the file tree heads with its count and the
+   status line says "Unit 1 / 2". */
 @media (max-width: 1240px) {
-  .review-stat-pins,
-  .review-stat-pins + .sep {
+  .review-stats > .review-stat-group:first-child > :not(:first-child) {
     display: none;
   }
 }
@@ -2983,7 +3038,7 @@ input[type="radio"] {
 }
 /* Colours later than the wait arrive as a 120ms tint from the plain foreground, never a snap (reduced motion: at once). */
 .code-late .code > span:not(.sign) {
-  animation: tint-in 120ms var(--ease-out);
+  animation: tint-in var(--dur-view) var(--ease-out);
 }
 @keyframes tint-in {
   from {
@@ -3058,6 +3113,7 @@ input[type="radio"] {
   align-items: flex-start;
   padding-top: 14vh;
   background: var(--scrim);
+  padding-bottom: var(--sp-6);
   animation: fade var(--dur-fast) var(--ease-out);
   overflow: hidden;
 }
@@ -3218,11 +3274,29 @@ input[type="radio"] {
   color: var(--text-3);
 }
 
+/* A sheet never runs past the window: at most the overlay's height, the body scrolls and the actions stay at its
+   foot, on the sheet's own surface (at 1040×640 a tall Accept sheet otherwise put Accept below the window's edge). */
 .panel {
+  --panel-pad-y: var(--sp-4);
+  --panel-pad-x: var(--sp-5);
   background: var(--bg-overlay);
-  padding: 16px 18px;
+  padding: var(--panel-pad-y) var(--panel-pad-x);
   display: grid;
   gap: var(--sp-4);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* A control reached with Tab scrolls clear of the actions' band, not under it. */
+  scroll-padding-bottom: calc(var(--sp-8) + var(--sp-3) + var(--panel-pad-y));
+}
+.panel > .panel-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--panel-pad-y));
+  z-index: 2;
+  /* The band above the buttons covers what scrolls under them; in the flow it takes no more room than the gap. */
+  margin: calc(-1 * var(--sp-3)) calc(-1 * var(--panel-pad-x)) calc(-1 * var(--panel-pad-y));
+  padding: var(--sp-3) var(--panel-pad-x) var(--panel-pad-y);
+  background: var(--bg-overlay);
 }
 .panel-title {
   font-size: var(--fs-question);
@@ -3298,14 +3372,14 @@ input[type="radio"] {
   border-left-style: dashed;
 }
 /* The impression, once, as the sheet opens: the frame lands a half pixel heavy and settles to its 1px while the ink
-   comes up from nothing — 280ms, no bounce, no rotation, no scale beyond a breath. It answers your action (opening
-   the sheet to accept); with reduced motion the stamp simply stands, already pressed. */
+   comes up from nothing, 60ms behind — each over --dur-space, no bounce, no rotation, no scale beyond a breath. It
+   answers your action (opening the sheet to accept); with reduced motion the stamp simply stands, already pressed. */
 @media (prefers-reduced-motion: no-preference) {
   .stamp-press {
-    animation: stamp-frame 280ms var(--ease-out) both;
+    animation: stamp-frame var(--dur-space) var(--ease-out) both;
   }
   .stamp-press > :not(.sr-only) {
-    animation: stamp-ink 220ms var(--ease-out) 60ms both;
+    animation: stamp-ink var(--dur-space) var(--ease-out) 60ms both;
   }
 }
 @keyframes stamp-frame {
@@ -3691,6 +3765,8 @@ input[type="radio"] {
   color: var(--text-1);
   background: var(--bg-selected);
   box-shadow: inset 2px 0 0 var(--text-3);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 @media (max-width: 1280px) {
   .settings-page {
@@ -4401,30 +4477,23 @@ input[type="radio"] {
 
 .panel-wide {
   width: min(760px, 94vw);
-  max-height: 80vh;
-  overflow: auto;
+  max-height: min(80vh, 100%);
 }
 /* "There is more below": a functional fade at the sheet's foot, above the actions, gone once the end is in view. */
-.panel-more {
-  position: sticky;
-  bottom: calc(16px + 26px + var(--sp-4));
-  height: 0;
-  margin-top: calc(-1 * var(--sp-4));
-  pointer-events: none;
-  z-index: 1;
-}
-.panel-more::before {
+/* More below: a fade over the top of the action band while the body runs on under it (set by Overlay). */
+.panel > .panel-actions::before {
   content: "";
   position: absolute;
-  left: -18px;
-  right: -18px;
-  bottom: 0;
+  left: 0;
+  right: 0;
+  bottom: 100%;
   height: 32px;
   background: linear-gradient(to bottom, transparent, var(--bg-overlay));
+  pointer-events: none;
   opacity: 0;
   transition: opacity var(--dur-fast) linear;
 }
-.panel-more.on::before {
+.panel[data-more] > .panel-actions::before {
   opacity: 1;
 }
 .overlay-top {
@@ -4879,7 +4948,7 @@ input[type="radio"] {
 .suggestion {
   margin: 0;
   padding: 6px 10px;
-  border-radius: var(--radius-s);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
   background: var(--bg-inset);
   border-left: 2px solid var(--st-verified);
   font-size: var(--fs-code);

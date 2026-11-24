@@ -156,6 +156,10 @@ pub struct Run {
     pub engine: Engine,
     pub workspace: String,
     pub flags: Mutex<Flags>,
+    /// Held while the agent's profile is rewritten for the run (new loopback
+    /// ports): every end of the run waits on this after taking the run out of
+    /// the runs, so no rewrite lands after the end released its ports and folders.
+    pub profile: Mutex<()>,
 }
 
 impl Run {
@@ -551,6 +555,7 @@ async fn start_run_inner(
         engine,
         workspace: real(&ws).display().to_string(),
         flags: Mutex::new(initial_flags),
+        profile: Mutex::default(),
     });
     if !begin(inner, &run, seen, purpose, start_pin)? {
         // Nothing reads this engine yet (its events stay in `rx`).
@@ -922,6 +927,7 @@ done"#;
             engine,
             workspace: repo.display().to_string(),
             flags: Mutex::new(Flags::default()),
+            profile: Mutex::default(),
         });
         assert!(begin(inner, &run, LifecycleState::Ready, "initial", None).unwrap());
         pause(inner, &id, PauseReason::Human, "").await.unwrap();

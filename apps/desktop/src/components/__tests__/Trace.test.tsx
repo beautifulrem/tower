@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { TraceEntry } from "../../gen/TraceEntry";
 
-const trace = vi.hoisted(() => ({ calls: 0, next: null as null | (() => Promise<unknown>) }));
+const trace = vi.hoisted(() => ({ calls: 0, next: null as null | (() => Promise<unknown>), live: (_e: unknown) => {} }));
 vi.mock("../../lib/api", () => ({
   api: {
     trace: () => {
@@ -15,7 +15,7 @@ vi.mock("../../lib/api", () => ({
 }));
 vi.mock("../../lib/store", () => ({
   act: async <T,>(fn: () => Promise<T>) => fn(),
-  onTrace: () => () => {},
+  onTrace: (_id: string, fn: (e: unknown) => void) => ((trace.live = fn), () => {}),
   refreshProjects: async () => {},
   state: { goals: {}, projects: [], now: Date.now() },
 }));
@@ -40,6 +40,21 @@ describe("the trace", () => {
     fireEvent.scroll(scroller);
     await new Promise((r) => setTimeout(r, 0));
     expect(trace.calls).toBeLessThanOrEqual(2);
+  });
+
+  it("shows an entry once when it arrives live while the first page, which has it too, is still being read", async () => {
+    let answer!: (page: TraceEntry[]) => void;
+    trace.next = () => new Promise((r) => (answer = r));
+    const { container } = render(() => <Trace id="G-0001" />);
+    trace.live(entry(201));
+    await vi.waitFor(() => expect(container.querySelectorAll(".trace-row")).toHaveLength(1));
+    answer([entry(201), entry(200), entry(199)]);
+    await vi.waitFor(() => expect(container.querySelectorAll(".trace-row").length).toBeGreaterThan(1));
+    expect(container.querySelectorAll(".trace-row")).toHaveLength(3);
+    // And once more when it comes live again after the page has it.
+    trace.live(entry(200));
+    trace.live(entry(202));
+    await vi.waitFor(() => expect(container.querySelectorAll(".trace-row")).toHaveLength(4));
   });
 
   it("says when the trace could not be read, and reads it again on Retry", async () => {

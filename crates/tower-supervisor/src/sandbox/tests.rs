@@ -120,7 +120,8 @@ fn profile_is_closed_by_default_and_names_its_rules() {
     assert!(profile(&with_log).contains("(allow file-write-data\n  (literal \"/t/guard/pin.log\")\n)"));
     let with_network = profile(&spec(Path::new("/w"), Path::new("/Users/a"), true));
     assert!(!with_network.contains("com.apple.SecurityServer"), "not even with the network");
-    assert!(with_network.contains("(allow network-outbound)"));
+    assert!(with_network.contains("(allow network-outbound (remote ip))"), "the internet, by IP");
+    assert!(!with_network.contains("(allow network-outbound)\n"), "never every socket on the Mac");
 }
 
 /// Loopback without the network: one rule per port the contract declares
@@ -405,6 +406,107 @@ fn tls_works_with_network_and_without_keychain() {
         "TLS through trustd/TrustEvaluationAgent only: {}",
         String::from_utf8_lossy(&out.stderr)
     );
+}
+
+/// The network switch opens the internet, never the Mac's own Unix sockets: a
+/// listening socket outside the goal's directories (where ssh-agent, Docker,
+/// gpg-agent and password managers listen) stays unreachable with the network
+/// on as with it off, while one inside the goal's directories still connects.
+#[cfg(target_os = "macos")]
+#[test]
+fn unix_sockets_outside_the_goal_stay_closed_with_the_network_on() {
+    if !available() {
+        return;
+    }
+    let tmp = tempfile::tempdir_in("/tmp").unwrap();
+    let root = crate::paths::real(tmp.path());
+    for d in ["ws", "tmp", "cache", "home", "outside"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    // A listener that answers every connection with an HTTP reply, so a
+    // successful `curl --unix-socket` means the connection was made.
+    let listen = |path: PathBuf| {
+        let l = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        std::thread::spawn(move || {
+            for mut c in l.incoming().flatten() {
+                use std::io::{Read, Write};
+                let mut buf = [0u8; 512];
+                let _ = c.read(&mut buf);
+                let _ = c.write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok");
+            }
+        });
+        path
+    };
+    let outside = listen(root.join("outside/agent.sock"));
+    let inside = listen(root.join("tmp/own.sock"));
+    let reach = |sb: &Path, sock: &Path| {
+        sandboxed(
+            sb,
+            &root.join("ws"),
+            &format!("/usr/bin/curl -sf -m 3 --unix-socket '{}' http://x/ >/dev/null", sock.display()),
+        )
+    };
+    for network in [false, true] {
+        let sb = root.join(format!("p-{network}.sb"));
+        std::fs::write(&sb, profile(&spec(&root, &root.join("home"), network))).unwrap();
+        assert!(!reach(&sb, &outside), "a socket outside the goal is unreachable (network {network})");
+        assert!(reach(&sb, &inside), "the goal's own socket connects (network {network})");
+    }
+}
+
+/// The screenshot browser with the network on: the internet, but never a Unix
+/// socket outside its own folders. (`curl` stands in for the browser.)
+#[cfg(target_os = "macos")]
+#[test]
+fn the_browser_with_the_network_on_reaches_no_outside_unix_socket() {
+    if !available() {
+        return;
+    }
+    let tmp = tempfile::tempdir_in("/tmp").unwrap();
+    let root = crate::paths::real(tmp.path());
+    let (own, outside, home) = (root.join("own"), root.join("outside"), root.join("home"));
+    for d in [&own, &outside, &home] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let listen = |path: PathBuf| {
+        let l = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        std::thread::spawn(move || {
+            for mut c in l.incoming().flatten() {
+                use std::io::{Read, Write};
+                let mut buf = [0u8; 512];
+                let _ = c.read(&mut buf);
+                let _ = c.write_all(b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok");
+            }
+        });
+        path
+    };
+    let (theirs, mine) = (listen(outside.join("agent.sock")), listen(own.join("own.sock")));
+    let sb = root.join("b.sb");
+    let text = browser_profile(&BrowserSpec {
+        browser: Path::new("/usr/bin/curl"),
+        home: &home,
+        readable: &[],
+        writable: &[&own],
+        user_temp: None,
+        ports: &[],
+        network: true,
+        proxy_ports: &[],
+    });
+    std::fs::write(&sb, text).unwrap();
+    let reach = |sock: &Path| {
+        std::process::Command::new("/usr/bin/sandbox-exec")
+            .arg("-f")
+            .arg(&sb)
+            .args(["/usr/bin/curl", "-sf", "-m", "3", "-o", "/dev/null", "--unix-socket"])
+            .arg(sock)
+            .arg("http://x/")
+            .output()
+            .unwrap()
+            .status
+            .success()
+    };
+    assert!(!reach(&theirs), "a socket outside its folders is closed");
+    assert!(reach(&mine), "its own socket connects");
 }
 
 /// The drop box, against the real sandbox-exec: a file can be created

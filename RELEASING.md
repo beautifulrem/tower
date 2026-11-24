@@ -12,10 +12,13 @@ Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed.
    | `APPLE_CERTIFICATE` | The Developer ID certificate and key exported as `.p12`, base64-encoded |
    | `APPLE_CERTIFICATE_PASSWORD` | The `.p12` export password |
    | `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-   | `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH` | An App Store Connect API key for notarization (or use `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID`) |
+   | `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH`, `APPLE_TEAM_ID` | An App Store Connect API key for notarization. The workflow passes these through as they are; it does not write a key file on the runner, and it does not pass `APPLE_ID` / `APPLE_PASSWORD`. Confirm notarization on the first signed release (see below) |
+   | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The update-signing key pair's private half (`pnpm tauri signer generate`) |
+   | `TOWER_UPDATER_PUBKEY` | Its public half. It is compiled into the app (`src-tauri/src/updater.rs`); the workflow also writes it into the generated `tauri.updater.json` |
+   | `HOMEBREW_TAP_TOKEN` | Optional: a token that may push to the tap repository |
 
-   Without them the release is unsigned and its notes say so.
-3. **Homebrew tap** (optional): a repository `homebrew-tower` with `Casks/tower.rb` from `packaging/homebrew/tower.rb`.
+   Without the Apple secrets the release is unsigned and its notes say so. Without both update-signing secrets the app never checks for updates.
+3. **Homebrew tap** (optional): a repository `homebrew-tower` with `Casks/tower.rb` from `packaging/homebrew/tower.rb`. With `HOMEBREW_TAP_TOKEN` set, the workflow's `homebrew-cask` job bumps it.
 
 ## Each release
 
@@ -23,8 +26,14 @@ Releases are built by `.github/workflows/release.yml` when a `v*` tag is pushed.
 2. `pnpm check` must pass locally; CI must be green on `main`.
 3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 4. When the workflow finishes, open the draft release, check the notes and the `.dmg` (install it on a clean account: it should open without a Gatekeeper warning when signed), then publish.
-5. Update the cask: set `version`, and `sha256` to `shasum -a 256 Tower_X.Y.Z_universal.dmg`.
+5. The cask: with `HOMEBREW_TAP_TOKEN` the workflow sets `version` and `sha256` itself. It does so while the release is still a draft, so the cask's download link works only once you publish. Without the token, set them by hand (`shasum -a 256 Tower_X.Y.Z_universal.dmg`).
 
-## Not yet in place
+## Known gaps in the release workflow
 
-- **Automatic updates.** The Tauri updater needs an update-signing key pair (`pnpm tauri signer generate`); the public key goes into `tauri.conf.json`, the private key into the `TAURI_SIGNING_PRIVATE_KEY` secret, and the workflow then publishes `latest.json`. Until then, updates are manual (or via the cask).
+These need a change to `.github/workflows/release.yml` or the repository settings:
+
+- **Notarization.** It is unproven: no release has been signed yet. On the first one, check `xcrun stapler validate` and `spctl -a -vv` on the `.dmg`'s app.
+- **The cask.** It is bumped while the release is a draft, and for unsigned builds too.
+- **Versions.** Nothing checks that the tag matches the version in `tauri.conf.json`, `Cargo.toml` and `package.json`.
+- **Tags.** Any tag can start a release: no ruleset limits tags to commits on `main` that passed CI.
+- **Actions.** They are referenced by major tag rather than pinned to a commit SHA.

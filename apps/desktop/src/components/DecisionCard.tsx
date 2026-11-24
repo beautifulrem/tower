@@ -15,7 +15,7 @@
  * motion Tower makes on its own. Destructive options never fire from one
  * press: the first arms the button for two seconds, the second confirms.
  */
-import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Show, createSignal, onCleanup } from "solid-js";
 
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
@@ -236,10 +236,8 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   const [leaving, setLeaving] = createSignal(false);
   const it = () => props.item;
   const goal = () => state.goals[it().goal_id];
-  // A goal waiting for acceptance is named by its verdict ("Passed, doesn't count" too), never "Ready to accept" alone;
-  // when its pass is not evidence the card reads the criteria, so the bar says which one doesn't count.
+  // A goal waiting for acceptance is named by its verdict ("Passed, doesn't count" too), never "Ready to accept" alone.
   const head = () => (it().kind === "review_ready" && goal() ? statusWord(goal()!) : kindLabel(it().kind));
-  const [criteria] = createResource(() => it().kind === "review_ready" && notEvidence(goal()) && it().goal_id, (id) => api.goal(id).then((d) => d.criteria, () => null));
   // Arrived just now: play the amber decay once.
   const fresh = Date.now() - props.item.created_at < 5000;
   const [tick, setTick] = createSignal(Date.now());
@@ -306,7 +304,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
       classList={{ focused: !!props.focused, listed: !!props.quiet, quiet: !!props.quiet && !props.focused, leaving: leaving(), "decision-heldout": heldOut() }}
       data-new={fresh ? "true" : undefined}
       tabindex="-1"
-      aria-label={`${head()} · ${it().goal_id} · ${it().subject}`}
+      aria-label={`${head()}, ${it().goal_id}, ${it().subject}`}
     >
       <header class="decision-head halt">
         <NeedsYouMark />
@@ -341,7 +339,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                       <span class="num">{t("common.files", { n: g().diffstat!.files })}</span>
                     </Show>
                     <span class="sep" />
-                    <CriteriaBar progress={g().progress} criteria={criteria()} compact />
+                    <CriteriaBar progress={g().progress} id={g().id} compact />
                   </div>
                 )}
               </Show>

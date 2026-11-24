@@ -65,7 +65,7 @@ export function ProjectFilter(props: { value: string; onChange: (v: string) => v
 }
 
 /** Shared Swiss hanging-label provenance row used by lazy console views (Fact / Claim / Human). */
-export function ProvBox(props: { kind: "fact" | "claim" | "human"; badge: string; meta?: string; aside?: JSX.Element; danger?: boolean; children: JSX.Element }) {
+export function ProvBox(props: { kind: "fact" | "claim" | "human"; badge?: string; meta?: string; aside?: JSX.Element; danger?: boolean; children: JSX.Element }) {
   return <ProvenanceFrame kind={props.kind} label={props.badge} meta={props.meta} aside={props.aside} danger={props.danger}>{props.children}</ProvenanceFrame>;
 }
 

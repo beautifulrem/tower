@@ -552,7 +552,7 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   const file = page.locator(".file").first();
   const fileHunks = await file.locator(".hunk-head[data-hunk-index]").count();
   for (let i = 0; i < fileHunks; i++) await file.locator(".accept-hunk").nth(i).click();
-  await expect(file.getByRole("button", { name: /Reviewed/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(file.locator(".file-viewed")).toHaveText("Reviewed");
   // Every hunk of the unit accepted: the status bar says so, and where to go next. This is the last unit, so the goal's accept.
   const all = page.locator(".review-diff .accept-hunk");
   const acceptAll = async () => {
@@ -706,9 +706,9 @@ test("the phone page switched on but not served says why, with its way out, and 
 test("quiet hours are a daily window with two edges, and the last push's failure is a line with its time and reason", async ({ page }) => {
   await openTower(page, "settings", { enrich: enrichPushes });
   await expect(page.getByRole("heading", { name: "Notifications and pushes" })).toBeVisible();
-  const from = page.getByLabel("Quiet hours · From");
+  const from = page.getByLabel("Quiet hours, From");
   await expect(from).toHaveValue("22:00");
-  await expect(page.getByLabel("Quiet hours · to")).toHaveValue("08:00");
+  await expect(page.getByLabel("Quiet hours, to")).toHaveValue("08:00");
   await from.fill("23:30");
   await from.blur();
   await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { quiet_hours: { start: number } | null } }).settings.quiet_hours?.start === 23 * 60 + 30)).toBe(true);

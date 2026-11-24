@@ -710,7 +710,7 @@ export function Review(props: { id: string }) {
               <Kbd k="] [" /> {t("review.keyHunks")}
             </span>
             <span>
-              <Kbd k="v" /> {t("review.keyViewed")}
+              <Kbd k="v" /> {t("review.keyViewed").toLowerCase()}
             </span>
             <span title={t("review.acceptHunkNote")}>
               <Kbd k="a" /> {t("review.keyAccept")}

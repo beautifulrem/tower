@@ -238,7 +238,8 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null; to
             {(r) => (
               <>
                 <ResultMark kind="env" title={t("goal.baseRefused")} />
-                <span class="t2" title={c().base_error ?? undefined}>{t("goal.baseRefused", { base: short(props.base) })}</span>
+                {/* Told by the pause card, the line drops its "— an environment problem…" (both languages set it after a dash): the card says it. */}
+                <span class="t2" title={c().base_error ?? undefined}>{props.told ? t("goal.baseRefused", { base: short(props.base) }).split(/\s*—/)[0] : t("goal.baseRefused", { base: short(props.base) })}</span>
                 <Show when={!props.told} fallback={<span class="t3">{t("goal.refusedAbove")}</span>}>
                   <For each={r()}>{(line) => <code class="code-val t1 env-refused">{line}</code>}</For>
                 </Show>

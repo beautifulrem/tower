@@ -38,11 +38,11 @@ export function TelemetryStrip() {
     const e = engine();
     if (e === "claude-code") {
       const cmd = state.settings?.claude_acp_command || "claude-agent-acp";
-      return { title: `${t("chrome.engine")}: Claude Code · ${cmd}`, label: "Claude Code" };
+      return { title: `${t("chrome.engine")}: Claude Code, ${cmd}`, label: "Claude Code" };
     }
     if (e === "pi") {
       const v = state.env?.pi_version ?? "";
-      return { title: `${t("chrome.engine")}: Pi ${v} · ${state.env?.pi_path ?? ""}`, label: "Pi" };
+      return { title: `${t("chrome.engine")}: Pi ${v}, ${state.env?.pi_path ?? ""}`, label: "Pi" };
     }
     const lbl = engineLabel(e);
     return { title: `${t("chrome.engine")}: ${lbl}`, label: lbl };

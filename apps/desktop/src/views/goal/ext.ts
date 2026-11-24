@@ -13,6 +13,7 @@ import type { GoalDetail } from "../../gen/GoalDetail";
 import type { GoalSummary } from "../../gen/GoalSummary";
 import type { Hunk } from "../../gen/Hunk";
 import type { LookView } from "../../gen/LookView";
+import type { SentinelHit } from "../../gen/SentinelHit";
 import type { ReviewUnit } from "../../gen/ReviewUnit";
 import type { ReviewView } from "../../gen/ReviewView";
 
@@ -120,3 +121,48 @@ export const trustTierOf = engineTrustTier;
 export const trustLabel = (tier: EngineTrustTier) => t(`trust.${tier}`);
 export const sandboxTag = (tier: SandboxTier, noSb: boolean) =>
   tier === "micro_vm" ? "MicroVM" : t(noSb ? "chrome.sandboxOff" : "chrome.sandboxOn");
+
+const GUARD_RE = /assertion|guard|source_patches_tests/;
+const BYPASS_RE = /bypass|perturb|rust_test_branch|expectations_changed/;
+const RANK = ["ok", "fact", "obs", "attn", "danger"];
+
+/**
+ * What qualifies a machine criterion's reading, as [tone, label, title?, line?] — the goal page's evidence strip and the
+ * verification readout draw this one list, so neither says less than the other. `line` marks a fact a sentence line below
+ * says in full: folded, the pill stands for it; open, the line does. Each fact once (the guard gap and an unchecked canary
+ * say the same thing), in the weightier of its tones: a high sentinel behind it makes it a question for you on every
+ * criterion it names. A pass never wears danger red: what stands against a pass is a question for you, in the attention ground.
+ */
+export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [string, string, string?, 1?][] {
+  const ver = cur.verified;
+  if (cur.criterion.kind.type !== "exec" || !ver) return [];
+  const out: [string, string, string?, 1?][] = [];
+  const okC = cur.canary !== "tampered";
+  if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", t("goal.evRedGreen"), undefined, 1]);
+  if (cur.passes_with_source_only === true && okC) out.push(["fact", t("goal.evSourceOnly")]);
+  else if (cur.passes_with_source_only === false) out.push(["attn", t("goal.dependsOnEditedTests"), undefined, 1]);
+  if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk"), undefined, 1]);
+  else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered"), undefined, 1]);
+  else if (cur.canary === "not_checked") out.push(["obs", t("goal.canaryNotChecked"), undefined, 1]);
+  const forCur = (h: SentinelHit) => !h.detail || h.detail.includes(cur.criterion.id) || !/\bC\d+\b/.test(h.detail);
+  const gh = sents.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
+  if (gh) out.push([gh.severity >= 3 ? "danger" : "attn", /guard|unchecked/.test(gh.sentinel) ? t("goal.evGuardGap") : t("goal.evAssertTamper"), gh.detail || gh.title]);
+  else if (ver.passed && cur.canary === "intact") out.push(["fact", t("goal.evGuardOk")]);
+  const ho = ver.held_out_proof;
+  if (ho?.not_ran.length) out.push(["attn", t("goal.heldOutSome", { m: ho.ran.length, n: ho.ran.length + ho.not_ran.length }), undefined, 1]);
+  if (ver.flaky) out.push(["obs", t("goal.evFlaky")]);
+  if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? t("goal.evLoopbackBase") : t("goal.evLoopbackProject"), undefined, 1]);
+  const bh = sents.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
+  if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? t("goal.evBypass") : bh.sentinel.includes("perturb") ? t("goal.evPerturb") : t("goal.evTestExpectation"), bh.detail || bh.title]);
+  const errs = ver.console_errors ?? cur.look?.console_errors ?? [];
+  if (errs.length) out.push(["danger", t("look.consoleErrors", { n: errs.length }), errs.join("\n")]);
+  const by = new Map<string, [string, string, string?, 1?]>();
+  // (Merged, the pill keeps "has its own line when open" if either had it, so the open row never says it twice.)
+  for (const p of out) {
+    const was = by.get(p[1]);
+    if (!was || RANK.indexOf(p[0]) > RANK.indexOf(was[0])) by.set(p[1], [p[0], p[1], p[2] ?? was?.[2], p[3] ?? was?.[3]]);
+    else if (p[3]) was[3] = 1;
+  }
+  const pass = ver.passed && !ver.stale;
+  return [...by.values()].map(([tone, label, title, line]): [string, string, string?, 1?] => [tone === "danger" && pass ? "attn" : tone, label, title, line]);
+}

@@ -28,7 +28,7 @@ import { t, withLater } from "../lib/i18n";
 import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, statusWord } from "../lib/labels";
 import { linger } from "../lib/linger";
 import { spaceMs } from "../lib/motion";
-import { go } from "../lib/nav";
+import { go, lastGoal } from "../lib/nav";
 import { act, goalList, state } from "../lib/store";
 
 // The first-run screen and Space quick-peek drawer load only on demand, keeping start-up JS lean.
@@ -123,6 +123,8 @@ export function Overview() {
     if (id && !folding && (e.target as HTMLElement).matches(".decision-line .g-title")) setSelected(id);
   };
   const goalOf = (c: Item) => (c.kind === "goal" ? c.id : c.item.goal_id);
+  // Back from a goal's page or review, its first line on the board is the one selected: j/k go on from where you were.
+  setSelected(flat().find((c) => goalOf(c) === lastGoal)?.id ?? null);
   const openCurrent = () => {
     const c = current();
     if (!c) return;
@@ -331,7 +333,7 @@ function Briefing() {
         <span class="briefing-title">{t("overview.since", { time: clock(since) })}</span>
         <For each={shown()}>
           {(g) => (
-            <button class="briefing-item link-plain" onClick={() => go({ name: "goal", id: g.id })} title={`${g.id} · ${describe(g)}`}>
+            <button class="briefing-item link-plain" onClick={() => go({ name: "goal", id: g.id })} title={`${g.id}, ${describe(g)}`}>
               <span class="num t3">{g.id}</span> {describe(g)}
             </button>
           )}

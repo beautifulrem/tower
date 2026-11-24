@@ -1426,10 +1426,6 @@ input[type="radio"] {
 .briefing-item {
   color: var(--text-2);
 }
-.briefing-item::before {
-  content: "· ";
-  color: var(--text-3);
-}
 .briefing-claim::before {
   content: "┆ ";
 }
@@ -4295,6 +4291,10 @@ input[type="radio"] {
 .g-live {
   min-width: 0;
 }
+/* On a board line the glyph column wears the withheld seal's ◆ and the word says the verdict: the seal stays on the goal page. */
+.g-live .seal-tampered {
+  display: none;
+}
 .g-live .live-line {
   grid-template-columns: minmax(3.5em, max-content) minmax(0, 1fr);
 }
@@ -4303,11 +4303,21 @@ input[type="radio"] {
   overflow: hidden;
   white-space: nowrap;
 }
+/* A board cell is 11em: the words keep whole and the segments narrow (never fewer) when a goal has many criteria. */
+.criteria-bar.tiny {
+  max-width: 100%;
+  gap: var(--sp-1);
+}
+.criteria-bar.tiny .segs {
+  min-width: 0;
+}
 .criteria-bar.tiny .seg {
-  width: 9px;
+  flex: 0 1 9px;
+  min-width: 3px;
   height: 5px;
 }
 .criteria-bar.tiny .meta {
+  flex: none;
   font-size: var(--fs-hint);
 }
 .g-diff,
@@ -5005,13 +5015,14 @@ input[type="radio"] {
 .suggestion-label {
   margin-top: 2px;
 }
-/* One ground inside the amber comment, not a green one laid over it; the verifier's colour is one rule on the left. Code never folds: it scrolls. */
+/* One ground inside the amber comment; a neutral rule on the left marks the proposed code. Green is the verifier's alone,
+   and a suggestion is a person's proposal, not a result. Code never folds: it scrolls. */
 .suggestion {
   margin: 0;
   padding: 6px 10px;
   border-radius: 0 var(--radius-s) var(--radius-s) 0;
   background: var(--bg-inset);
-  border-left: 2px solid var(--st-verified);
+  border-left: 2px solid var(--border-strong);
   font-size: var(--fs-code);
   line-height: var(--lh-code);
   white-space: pre;

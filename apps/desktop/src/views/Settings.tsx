@@ -656,11 +656,11 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
             <div class="form-row quiet-hours num" role="group" aria-label={t("settings.quietHours")}>
               <label>
                 <span class="t3">{t("settings.quietFrom")}</span>
-                <input class="quiet-time num" inputmode="numeric" placeholder="22:00" value={hhmm(q().start)} onChange={(e) => setEdge("start", e.currentTarget.value)} aria-label={`${t("settings.quietHours")} · ${t("settings.quietFrom")}`} />
+                <input class="quiet-time num" inputmode="numeric" placeholder="22:00" value={hhmm(q().start)} onChange={(e) => setEdge("start", e.currentTarget.value)} aria-label={`${t("settings.quietHours")}, ${t("settings.quietFrom")}`} />
               </label>
               <label>
                 <span class="t3">{t("settings.quietTo")}</span>
-                <input class="quiet-time num" inputmode="numeric" placeholder="08:00" value={hhmm(q().end)} onChange={(e) => setEdge("end", e.currentTarget.value)} aria-label={`${t("settings.quietHours")} · ${t("settings.quietTo")}`} />
+                <input class="quiet-time num" inputmode="numeric" placeholder="08:00" value={hhmm(q().end)} onChange={(e) => setEdge("end", e.currentTarget.value)} aria-label={`${t("settings.quietHours")}, ${t("settings.quietTo")}`} />
               </label>
             </div>
           )}

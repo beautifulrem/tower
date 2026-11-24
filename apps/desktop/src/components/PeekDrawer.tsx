@@ -38,7 +38,12 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
   const canToggle = () => g()?.state === "running" || g()?.state === "paused";
   const canReview = () => !!g()?.diffstat?.files;
   const toggleRun = () => { const s = g(); if (s) void act(() => (s.state === "running" ? api.pause(s.id) : api.resume(s.id))); };
-  const openTo = (name: "goal" | "review") => (props.onClose(), go({ name, id: props.goalId }));
+  // The id first: closing unmounts the drawer, and its props die with it.
+  const openTo = (name: "goal" | "review") => {
+    const id = props.goalId;
+    props.onClose();
+    go({ name, id });
+  };
 
   useKeys(
     [

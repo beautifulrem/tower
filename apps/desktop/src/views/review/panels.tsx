@@ -27,7 +27,7 @@ import { back } from "../../lib/nav";
 import type { Draft } from "../../lib/reviewState";
 import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
 import { act, state, toast } from "../../lib/store";
-import { type ExtCriterionView } from "../goal/ext";
+import { type ExtCriterionView, qualifiers } from "../goal/ext";
 import { toComment } from "./types";
 
 const TAIL_LINES = 4;
@@ -85,7 +85,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
           <For each={criteria()} fallback={<Empty title={t("goal.noCriteria")} inline />}>
             {(raw) => {
               const c = raw as ExtCriterionView;
-              const errs = () => c.verified?.console_errors ?? c.look?.console_errors ?? [];
+              const pills = () => qualifiers(c, props.detail?.sentinels).filter((p) => !p[3]);
               return (
                 <div class="verify-item">
                   <div class="criterion-row">
@@ -127,10 +127,10 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                       )}
                     </Show>
                   </div>
-                  <Show when={c.verified?.flaky || errs().length > 0}>
+                  {/* What qualifies the reading, as the goal page's open row says it: the pills whose fact has no line of its own below. */}
+                  <Show when={pills().length}>
                     <div class="ev-strip">
-                      <Show when={c.verified?.flaky}><span class="ev-pill ev-pill-obs">{t("goal.evFlaky")}</span></Show>
-                      <Show when={errs().length > 0}><span class="ev-pill ev-pill-danger" title={errs().join("\n")}>{t("look.consoleErrors", { n: errs().length })}</span></Show>
+                      <For each={pills()}>{([tone, label, title]) => <span class={`ev-pill ev-pill-${tone}`} data-mark={tone} title={title}>{label}</span>}</For>
                     </div>
                   </Show>
                   <BaselineLine c={c} base={props.detail?.base_commit} />
@@ -478,7 +478,8 @@ export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: ()
               <span class="grow">
                 {withoutSuggestion(c.text) || c.text}
                 <Show when={suggestionOf(c.text) !== null}>
-                  <span class="t3"> · {t("review.suggestion")}</span>
+                  <span class="sep" />
+                  <span class="t3">{t("review.suggestion")}</span>
                 </Show>
               </span>
               <IconButton icon="cross" size={22} label={t("common.delete")} onClick={() => props.onRemove(i())} />

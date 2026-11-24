@@ -73,3 +73,21 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   helpers — no budget raised. Gates: tsc; vitest 41 files / 220 tests; Playwright WebKit 245 passed, 0 failed (76 shot tests skip without SHOTS);
   shots 69/69 (`/tmp/tower-design/iter4/shots`); line limit; bundle all JS 163,810 / 163,840 B (30 B left), goal page
   12,106 / 12,288 B; detector: no new findings.
+- 2026-11-25 Review of `815bd99` (independent, own worktree and port 1441): **not accepted, 7.2 / 10**; P1-01 the
+  peek's exits threw a stale-value error on every goal (my D48 fix had hidden R, not fixed the cause), P1-02 a no-CI
+  goal whose pass doesn't count filed under "To accept" with a board bar that didn't say so; P2-01–P2-05, P3-01–P3-08.
+  Recorded as D59–D70.
+- 2026-11-25 Iteration 5 (T34–T39): peek exits read the id before closing; "To review / 待评审"; a per-goal count of
+  passes that don't count, read by every bar given an `id`; middle dots out of attributes, a `::before` and two locale
+  tags, with an e2e sweep over 9 routes and 5 overlays in both languages that reads aria-label, title and placeholder;
+  neutral suggestion rule; "Mark reviewed"; one `qualifiers()` for the goal page and the readout; merge-queue verdict;
+  provenance runs that wrap between words; one ◆ per board line; palette in queue order; env phrase once; the board
+  re-selects the goal you come back from. My own look at the no-CI board found the 11em criteria cell cutting the new
+  words and the withheld seal's pin at 1100 px (D71): the tiny bar now says the words instead of "2/3", segments narrow
+  first, the line drops the seal; e2e measures the words inside the cell. New tests were checked against the old code
+  (peek exits, dot sweep, clipping all fail there). Gates: tsc; vitest 41 files / 220 tests; Playwright WebKit 284
+  passed, 0 failed (76 shot tests skip without SHOTS; the run logs 3 Vite client "Importing a module script failed"
+  rejections under parallel load, none in a single-worker run of the new spec, no test fails on them); shots 69/69
+  (`/tmp/tower-design/iter5/shots`); line limit; bundle all JS 163,818 / 163,840 B, goal page 11,381 / 12,288 B (the
+  DecisionCard read and the virtual badge removed, qualifiers moved out of the goal chunk); detector: the same 15
+  findings as at HEAD (13 app.css, 2 unchanged workbenches.css lines), nothing new.

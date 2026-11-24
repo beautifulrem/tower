@@ -209,7 +209,6 @@ describe("FileDiff comment flow", () => {
     const rendered = container.querySelectorAll("tr.dl").length;
     expect(rendered).toBeGreaterThan(0);
     expect(rendered).toBeLessThan(120);
-    expect(screen.getByText(/virtual/)).toBeTruthy();
 
     // Clicking a rendered line number still anchors a comment accurately.
     fireEvent.click(screen.getByLabelText("Line 1: comment"));

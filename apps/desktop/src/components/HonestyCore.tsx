@@ -5,10 +5,12 @@
  * your stamp — is in `Honesty.tsx`, which only on-demand views load (and
  * which re-exports these, so either import works there).
  */
-import { type JSX, Show } from "solid-js";
+import { type JSX, Show, createEffect } from "solid-js";
 
 import type { CriterionView } from "../gen/CriterionView";
 import type { Progress } from "../gen/Progress";
+import { api } from "../lib/api";
+import { discountedN, firstAsk } from "../lib/discounted";
 import { t } from "../lib/i18n";
 
 /**
@@ -60,10 +62,15 @@ export const discountedOf = (criteria: readonly CriterionView[] | null | undefin
  * the criteria at hand the bar says so instead of leaving a gap — an amber
  * segment of its own and "verified 2/3 · 1 doesn't count".
  */
-export function CriteriaBar(props: { progress: Progress; criteria?: readonly CriterionView[] | null; compact?: boolean; tiny?: boolean }) {
+export function CriteriaBar(props: { progress: Progress; criteria?: readonly CriterionView[] | null; id?: string; compact?: boolean; tiny?: boolean }) {
   const p = () => props.progress;
   const verified = () => p().verified;
-  const discounted = () => Math.max(0, Math.min(discountedOf(props.criteria), p().machine - verified()));
+  // Without the criteria at hand (a board row, a card) the bar asks by goal: a goal the supervisor flags reads its
+  // detail once, so every bar of it says which pass doesn't count, as the goal page does.
+  createEffect(() => {
+    if (props.id && p().not_evidence && firstAsk(props.id)) void api.goal(props.id).catch(() => {});
+  });
+  const discounted = () => Math.max(0, Math.min(props.criteria ? discountedOf(props.criteria) : discountedN(props.id), p().machine - verified()));
   const segs = () =>
     Array.from({ length: p().machine }, (_, i) =>
       i < verified() ? "verified" : i < verified() + discounted() ? "discounted" : i < Math.max(verified() + discounted(), p().observed) ? "observed" : "empty",
@@ -88,9 +95,11 @@ export function CriteriaBar(props: { progress: Progress; criteria?: readonly Cri
           <Show
             when={!props.tiny}
             fallback={
-              <>
-                {verified()}/{p().machine}
-              </>
+              // On a board line the segments already count the passes: when one doesn't count, the words say that instead
+              // of "2/3", so the cell's 11em holds them whole.
+              <Show when={discounted() > 0} fallback={<>{verified()}/{p().machine}</>}>
+                <span class="discounted">{t("honesty.discounted", { n: discounted() })}</span>
+              </Show>
             }
           >
             {t("honesty.verified", { v: verified(), m: p().machine })}

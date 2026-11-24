@@ -27,7 +27,7 @@ function Shot(props: { file: string | null; error: string | null; label: string;
     <figure class="look-shot">
       <Show when={props.file && !props.error} fallback={<div class="look-missing meta t3">{props.error ?? t("look.notCaptured")}</div>}>
         <Show when={src()} fallback={<div class="look-missing meta t3">{src.loading ? t("common.loading") : t("look.gone")}</div>}>
-          <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label} · ${t("look.enlarge")}`}>
+          <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label}, ${t("look.enlarge")}`}>
             <img class="look-img" src={src()!} alt={props.label} />
           </button>
         </Show>

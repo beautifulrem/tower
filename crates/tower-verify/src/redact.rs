@@ -93,8 +93,9 @@ fn ends_url(c: char) -> bool {
 /// (`user:1234/abc@host` reads the same).
 fn authority_end(url: &str) -> usize {
     let first = url.find(['/', '?', '#']).unwrap_or(url.len());
-    // `user:` comes before any `/?#` (a user name holds none), and not on an IPv6 host.
-    let Some(colon) = url.find(':').filter(|&c| c > 0 && c < first && !url.starts_with('[')) else {
+    // `user:` (or a bare `:` for a password with no user, as Redis writes) comes before any `/?#`, and not on an IPv6
+    // host.
+    let Some(colon) = url.find(':').filter(|&c| c < first && !url.starts_with('[')) else {
         return first;
     };
     // Each `@` is judged in constant time, so text full of them costs one pass.
@@ -127,17 +128,19 @@ fn secret_param(name: &str) -> bool {
 ///   manager lines, JSON (`\/` and `&` as `\u0026` read as the URL's own anywhere; `\"`, `\\` and `\uXXXX` inside a
 ///   password), YAML, TOML, CSV, `psql -A`, HTML and XML (`&amp;` included), Markdown, shell quoting.
 /// - Text around a URL stays: neighbouring fields, emails, tags. Where a separator could be a password's or a field's
-///   end, the URL is masked over rather than the password risked. It then runs to the last `@` before whitespace, so
-///   several CSV cells can go; a secret query value likewise runs to whitespace, so cells after it in an unquoted CSV
-///   or `;` row go with it. The shapes masked over, credentials or not:
+///   end, the URL is masked over rather than the password risked. It then runs to the last `@` before whitespace or
+///   other URL-ending punctuation (`|`, quotes, brackets), so several CSV cells can go; a secret query value likewise
+///   runs to that end, so cells after it in an unquoted CSV or `;` row go with it. The shapes masked over, credentials
+///   or not:
 ///   - a `,` or `;` in the authority and then an `@` (`example.com,ada@…`, `localhost:3000;mail=ada@…`,
 ///     `ada@[::1],bob@…`, `user:pw@host,ada@…`): the separator may be a password's, a user name's (`CORP;svc:pw@`)
 ///     or a host list's (`h1:27017,h2:27017`);
 ///   - a `,` or `;` in the path and then an `@`, when the authority holds a `:`: `user:pass@host`, a port, or scp-like
 ///     `host:path` (`localhost:8080/api;contact=ops@…`, `ssh://git@host:o/r.git,ada@…`). With no `:` the URL ends
 ///     there: `host.example.com/path;contact=ops@…` stays;
-///   - an `@` in a path after a port (`host:4873/react@18`), and in a `\/`-escaped URL an `@` anywhere after a port
-///     (`api.example.com:8443\/u?email=a@b.com`), since the port is not read as one there.
+///   - an `@` in a path after a port (`host:4873/react@18`; one that begins a segment, `5173/@vite`, stays), and in a
+///     `\/`-escaped URL an `@` anywhere after a port (`api.example.com:8443\/u?email=a@b.com`), since the port is not
+///     read as one there.
 /// - Known leaks, by design:
 ///   - a password holding its own wrapper's closer (a `)` inside `(…)`), a `|` outside quotes or brackets, or
 ///     whitespace;
@@ -152,7 +155,11 @@ fn secret_param(name: &str) -> bool {
 ///     as a query (`host:8443?email=a@b.com&sig=…`, `user:pw@host/cb?email=a@b.com&sig=…`);
 ///   - a secret query value after `\"`, `\\` or a `\uXXXX` other than `\u0026` in a JSON path or query: the escape ends
 ///     the URL (`/caf\u00e9?sig=…`);
-///   - URLs nested more than two deep in query values, or at all in a `:\/\/`-escaped URL's query value;
+///   - a secret query value after a `;` used as the query's separator (`?n=1;sig=…`);
+///   - a secret query value after a URL nested in the query, when the outer URL's password needed the look past
+///     punctuation (`deploy:pa(ss@host/cb?next=https://x/y&sig=…`);
+///   - URLs nested more than two deep in query values (a `,` list of URLs with queries counts as nesting), or at all
+///     in a `:\/\/`-escaped URL's query value;
 ///   - JDBC-style `;password=…` path parameters, left to the `password=` assignment rule, so a value under 8
 ///     characters stays.
 /// - One pass over the text, whatever it holds.
@@ -570,6 +577,9 @@ mod tests {
             ("mongodb://db1,db2/app?code=Hx70049 ok", "Hx70049"),
             ("mount: smb://CORP;svc_backup:Hx70050@nas.corp.local/backups failed", "Hx70050"),
             ("imap://alice;AUTH=*:Hx70051@mail.example.com/INBOX", "Hx70051"),
+            // No user name, only a password (Redis): `/` or `?` in it as in any other.
+            ("REDIS_URL=redis://:a8F/k2Hx70052+9w==@cache.example.com:6379/0", "Hx70052"),
+            ("rediss://:Zx9?Hx70053@cache.example.com:6380", "Hx70053"),
             ("callback http://[::1]:8080/cb?token=ipv6tok0001 ok", "ipv6tok0001"),
             ("redirect https://a.example.com/login?next=https://ada:nestedpw0002@b.example.com/x", "nestedpw0002"),
             ("fatal: https://ada:pa/ss0003@host.example.com/o/r.git", "ss0003"),

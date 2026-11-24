@@ -240,6 +240,25 @@ for (const [route, sel] of [
   });
 }
 
+// The "Needs you" tray keeps its amber while you are on that page and while the pointer is on the row: the selection's
+// ink must not wash the one colour that says something waits for you.
+test("the Needs-you tray stays amber on its own page and under the pointer", async ({ page }) => {
+  await openTower(page, "inbox", { lang: "en", enrich: enrichRich });
+  await settled(page, "inbox");
+  const icon = page.locator(".sidebar .side-row.active .side-icon");
+  const amber = () => icon.evaluate((el) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--st-attention)";
+    el.appendChild(probe);
+    const want = getComputedStyle(probe).color;
+    probe.remove();
+    return getComputedStyle(el).color === want;
+  });
+  expect(await amber()).toBe(true);
+  await icon.hover();
+  expect(await amber()).toBe(true);
+});
+
 // Concentric radii (the design lock): a container inside a card (an output block, a well) never repeats the card's
 // radius — a 6px block in a 6px card reads as a second card. Controls keep the control radius wherever they sit.
 for (const route of ["inbox", "goal/G-0001", "goal/G-0004", "goal/G-0005"]) {

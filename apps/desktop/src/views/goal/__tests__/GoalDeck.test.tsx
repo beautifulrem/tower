@@ -61,13 +61,22 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
       />
     ));
 
-    expect(screen.getByText("Base→Pin proved")).toBeTruthy();
-    expect(screen.getByText("Source-only ✓")).toBeTruthy();
-    expect(screen.getByText("Canary intact")).toBeTruthy();
-    expect(screen.getByText("Guard multi-proc gap")).toBeTruthy();
-    expect(screen.getByText("Flaky: 1× rerun passed")).toBeTruthy();
-    expect(screen.getByText("Loopback: base evidence")).toBeTruthy();
-    expect(screen.getByText("Bypass-around-bug")).toBeTruthy();
+    // Folded: the verdict and one line of what qualifies it — warnings only, and a pass wears no danger red.
+    const strip = () => document.querySelector(".ev-strip")!;
+    expect(screen.getByText("assertions not checked")).toBeTruthy();
+    expect(screen.getByText("works around the bug")).toBeTruthy();
+    expect(screen.getByText("held-out tests: 1 of 2 ran, for you only")).toBeTruthy();
+    expect(screen.getByText("flaky: passed on rerun")).toBeTruthy();
+    expect(strip().querySelector(".ev-pill-danger")).toBeNull();
+    expect(screen.queryByText("passes from the code alone")).toBeNull();
+    expect(screen.queryByText(/✓ holdout\/rounding\.test\.js/)).toBeNull();
+    // Open: every reading, each once — a fact a sentence line says in full is not also a pill.
+    fireEvent.click(screen.getByText("passed"));
+    expect(screen.getByText("passes from the code alone")).toBeTruthy();
+    expect(screen.getByText("assertions not checked")).toBeTruthy();
+    expect(screen.getByText("red → green")).toBeTruthy();
+    expect(screen.getByText("must-fail tests failed, as they must")).toBeTruthy();
+    expect(screen.queryByText("must-fail tests failed")).toBeNull();
     expect(screen.getByText(/✓ holdout\/rounding\.test\.js/)).toBeTruthy();
     expect(screen.getByText(/✕ holdout\/tax\.test\.js/)).toBeTruthy();
   });
@@ -94,8 +103,9 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
         sentinels={[{ sentinel: "assertion_guard_incomplete", severity: 3, title: "Guard gap", detail: "C2: worker exited early" }]}
       />
     ));
-    expect(screen.getByText("Assertion guard ✓")).toBeTruthy();
-    expect(screen.queryByText("Guard multi-proc gap")).toBeNull();
+    fireEvent.click(screen.getByText("passed"));
+    expect(screen.getByText("assertions untouched")).toBeTruthy();
+    expect(screen.queryByText("assertions not checked")).toBeNull();
   });
 });
 

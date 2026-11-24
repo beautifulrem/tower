@@ -13,6 +13,23 @@ import type { Locator, Page } from "@playwright/test";
  * A goal page's (or readout's) criterion block by its id, matched on the id cell exactly. A bare `hasText: "C2"` is a
  * case-insensitive substring: it also finds a row whose commit hash, command or title happens to contain "c2".
  */
+/** Opens every verified criterion's readings on the goal page: folded, a criterion shows its verdict and one line of
+ *  what qualifies it; the baseline, canary and held-out lines are in its open readings. */
+export async function openReadings(page: Page): Promise<void> {
+  await page.locator(".goal-page .criterion").first().waitFor();
+  const closed = page.locator('.goal-page .criterion .col-result[aria-expanded="false"]');
+  for (let n = await closed.count(); n > 0; n--) await closed.first().click();
+}
+
+/**
+ * The review opens on the riskiest unit, as the supervisor orders them. The hunk-loop tests read the source unit
+ * (`enrichReview`'s second, `src/`, two files and two hunks): open it the way a reader would, by its row.
+ */
+export async function openSourceUnit(page: Page): Promise<void> {
+  await page.locator(".review-units .unit").filter({ hasText: "src/" }).click();
+  await page.locator('.hunk-head[data-hunk-path="src/cart/money.js"]').waitFor();
+}
+
 export function criterion(scope: Page | Locator, id: string, within = ".goal-page .criterion"): Locator {
   const page = "page" in scope ? scope.page() : scope;
   return scope.locator(within).filter({ has: page.locator(".criterion-row > .num", { hasText: new RegExp(`^${id}$`) }) });

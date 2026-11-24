@@ -23,7 +23,7 @@ import { go } from "../lib/nav";
 import { act, onTrace, state, toast } from "../lib/store";
 import { ContractRail } from "./goal/ContractRail";
 import { GoalActions } from "./goal/GoalActions";
-import { GoalBlocks } from "./goal/GoalBlocks";
+import { GoalBlocks, HighSentinels } from "./goal/GoalBlocks";
 import { type ExtGoalDetail, type ExtGoalSummary, trustTierOf } from "./goal/ext";
 
 const Trace = lazy(withLater(() => import("./Learning").then((m) => ({ default: m.Trace }))));
@@ -132,6 +132,19 @@ export function GoalPage(props: { id: string }) {
                 <LifecycleGlyph goal={g()} size={14} />
                 <h1 class="goal-title ellipsis">{g().title}</h1>
               </div>
+              {/* The verdict and what it stands on, on the title's own reading path: the seal (or its withholding) and the
+                  two tracks — how far from done, and on what evidence — before who, where and which run. */}
+              <div class="goal-verdict halt">
+                <Show when={!["accepted", "integrated"].includes(g().state)}>
+                  <Seal pin={g().verified_pin} tampered={discountedOf(detailOk()?.criteria) > 0} />
+                </Show>
+                <CriteriaBar progress={g().progress} criteria={detailOk()?.criteria} />
+                <Show when={g().state === "in_review" && !detailOk()?.criteria.some((c) => c.verified?.stale)}>
+                  <Button size="s" class="goal-verdict-act" variant={inbox().length || !g().verified_pin || discountedOf(detailOk()?.criteria) ? "default" : "primary"} kbd="r" onClick={() => go({ name: "review", id: g().id })}>
+                    {t("goal.reviewUnits", { n: g().diffstat?.files ?? 0 })}
+                  </Button>
+                </Show>
+              </div>
               <div class="goal-sub meta halt">
                 <div class="goal-identity">
                   <span class="code-val t2">{g().id}</span>
@@ -177,7 +190,7 @@ export function GoalPage(props: { id: string }) {
               <div class="goal-actions">
                 <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
               </div>
-              <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin} fallback={<Seal pin={g().verified_pin} large tampered={discountedOf(detailOk()?.criteria) > 0} />}>
+              <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin}>
                 {(pin) => <Stamp pin={pin()} size="m" tampered={discountedOf(detailOk()?.criteria) > 0} />}
               </Show>
             </div>
@@ -196,6 +209,8 @@ export function GoalPage(props: { id: string }) {
               <Show when={["running", "claimed", "verifying"].includes(g().state)}>
                 <div class="annunciator"><LiveLine goal={g()} large hideTarget={inbox().length > 0} /></div>
               </Show>
+              {/* What makes the evidence itself doubtful comes before any decision: a high sentinel, with its lines. */}
+              <Show when={!watch() && extDetail()}>{(d) => <HighSentinels d={d()} />}</Show>
               <Show when={shownInbox.list().length > 0}>
                 <div class="goal-decisions">
                   <For each={shownInbox.list()}>

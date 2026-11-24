@@ -15,7 +15,6 @@ import { For, Show, Suspense, createComputed, createEffect, createMemo, createSi
 
 import { DecisionCard, DecisionLine, chooseOption } from "../components/DecisionCard";
 import { DemoButton } from "../components/Demo";
-import { Icon } from "../components/Glyph";
 import { GoalRow } from "../components/GoalRow";
 import { BaseTestsNotice } from "../components/TestCheck";
 import { Button, Empty, Kbd, Select } from "../components/ui";
@@ -209,7 +208,6 @@ export function Overview() {
               >
                 {t("overview.emptyBody")}
               </Empty>
-              <BoardGhost />
             </>
           }
         >
@@ -281,12 +279,6 @@ export function Overview() {
   );
 }
 
-/** Ghost rows: where each reading will land, as bar widths per column (title, live, change, spend, age, identity). */
-const GHOST_ROWS: number[][] = [
-  [62, 44, 60, 72, 48, 70],
-  [48, 58, 40, 72, 36, 56],
-  [70, 36, 52, 72, 56, 64],
-];
 
 /**
  * The board before anything stands on it: its column heads and three empty
@@ -310,45 +302,6 @@ function BoardCols(props: { class: string }) {
   );
 }
 
-function BoardGhost() {
-  return (
-    <div class="board-ghost" aria-hidden="true">
-      <BoardCols class="board-ghost-head" />
-      <For each={GHOST_ROWS}>
-        {(w) => (
-          <div class="g-row board-ghost-row">
-            <span class="g-glyph">
-              <Icon name="ring" size={10} />
-            </span>
-            <span>
-              <i class="ghost-bar" style={{ width: `${w[0]}%` }} />
-            </span>
-            <span>
-              <i class="ghost-bar" style={{ width: `${w[1]}%` }} />
-            </span>
-            <span class="segs">
-              <i class="seg" />
-              <i class="seg" />
-              <i class="seg" />
-            </span>
-            <span class="g-diff">
-              <i class="ghost-bar" style={{ width: `${w[2]}%` }} />
-            </span>
-            <span class="g-spend">
-              <i class="ghost-bar" style={{ width: `${w[3]}%` }} />
-            </span>
-            <span class="g-age">
-              <i class="ghost-bar" style={{ width: `${w[4]}%` }} />
-            </span>
-            <span class="g-id">
-              <i class="ghost-bar" style={{ width: `${w[5]}%` }} />
-            </span>
-          </div>
-        )}
-      </For>
-    </div>
-  );
-}
 
 const SEEN_KEY = "tower.overviewSeenAt";
 /** The briefing names this many goals; the rest are a count. */

@@ -107,9 +107,10 @@ export function enrichReview(F: F) {
     ]),
     added("test/setup.js", ["import { mock } from 'node:test';", "", "mock.timers.enable({ apis: ['Date'], now: 0 });"]),
   ];
+  // In the supervisor's order: riskiest first (crates/tower-core/src/review.rs sorts units by risk, descending).
   r.units = [
-    { id: "U1", title: "src/", files: ["src/cart.js", "src/cart/money.js"], lines: 9, risk: 0, risk_reasons: [] },
     { id: "U2", title: "test/", files: ["test/setup.js"], lines: 3, risk: 3, risk_reasons: ["test harness: runner config, setup or mocks"] },
+    { id: "U1", title: "src/", files: ["src/cart.js", "src/cart/money.js"], lines: 9, risk: 0, risk_reasons: [] },
   ];
   r.stat = { files: 3, additions: 11, deletions: 1 };
   const g = F["goal-G-0003"];

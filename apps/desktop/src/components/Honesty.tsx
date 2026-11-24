@@ -84,6 +84,10 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
       <Show when={props.value === "stale"}>
         <ResultMark kind="stale" />
       </Show>
+      {/* No fact supports the claim: worth a look, not a decision — the hollow ◇ in body ink (docs/12 §12.6.2). */}
+      <Show when={props.value === "unsupported"}>
+        <NoticeMark />
+      </Show>
       {text()}
     </span>
   );

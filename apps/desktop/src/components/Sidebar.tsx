@@ -8,6 +8,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import { type Group, groupLabel, groupOf, isBlocking, statusWord } from "../lib/labels";
+import { startQueue } from "../lib/reviewQueue";
 import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
@@ -39,13 +40,16 @@ export function Sidebar() {
   const groupAt = (k: Group) => groups().find((g) => g.key === k) ?? { key: k, goals: [] as GoalSummary[], count: 0 };
   const ended = createMemo(() => goalList().filter(isEnded));
   const blocking = () => blockingItems().length;
-  const toReview = () => state.inbox.length - blocking();
+  // Goals waiting for your review: the row starts the review queue over them (⇧R), not a second door to Needs you.
+  const ready = () => state.inbox.filter((i) => !isBlocking(i)).map((i) => i.goal_id);
+  const toReview = () => ready().length;
   const activeId = () => {
     const r = route();
     return r.name === "goal" || r.name === "review" ? r.id : null;
   };
 
-  const GoalRow = (props: { g: GoalSummary }) => (
+  // Under "Needs you" the group's title already says it: a row there carries no ◆ of its own (its glyph may be one).
+  const GoalRow = (props: { g: GoalSummary; inNeedsYou?: boolean }) => (
     <button
       class="side-row side-goal"
       classList={{ active: activeId() === props.g.id, ended: isEnded(props.g) }}
@@ -58,7 +62,7 @@ export function Sidebar() {
         <LifecycleGlyph goal={props.g} />
       </span>
       <span class="ellipsis grow">{props.g.title}</span>
-      <Show when={props.g.needs_you > 0}>
+      <Show when={props.g.needs_you > 0 && !props.inNeedsYou}>
         <NeedsYouMark />
       </Show>
     </button>
@@ -98,7 +102,7 @@ export function Sidebar() {
           </span>
         </button>
         <Show when={toReview() > 0}>
-          <button class="side-row" onClick={() => go({ name: "inbox" })}>
+          <button class="side-row" classList={{ active: route().name === "review" }} onClick={() => go({ name: "review", id: startQueue(ready())! })}>
             <span class="side-icon">
               <Icon name="ring-check" size={14} />
             </span>
@@ -150,7 +154,7 @@ export function Sidebar() {
                   </button>
                 </Show>
                 <Show when={grp().key !== "done" || doneOpen() || grp().goals.some((g) => activeId() === g.id)}>
-                  <For each={grp().goals}>{(g) => <GoalRow g={g} />}</For>
+                  <For each={grp().goals}>{(g) => <GoalRow g={g} inNeedsYou={key === "needs_you"} />}</For>
                 </Show>
               </div>
             );

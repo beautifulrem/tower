@@ -171,8 +171,8 @@
   --diff-del-word: oklch(0.750 0.150 25 / 0.26);
 
   --shadow-overlay: 0 16px 48px oklch(0 0 0 / 0.45), 0 0 0 1px var(--border);
-  /* Floating material: the layers that float over content (the palette, the peek drawer, popovers, toasts) let what
-     is under them show through, blurred, so you keep your place. Tuned per theme: on Warm Carbon the surface stays
+  /* Floating material: the small passing layers that float over content (toasts, the @ completion) let what is under
+     them show through, blurred, so you keep your place; the palette and the peek drawer are read, so they are opaque. Tuned per theme: on Warm Carbon the surface stays
      dark enough for text-2 and the top edge catches a faint light; sheets you read in stay opaque. The veil is thick
      (HIG's thick material): blur does the softening, and where a renderer has none the layer still reads. */
   --material-float: oklch(0.225 0.005 70 / 0.86);

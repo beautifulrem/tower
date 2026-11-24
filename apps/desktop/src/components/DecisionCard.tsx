@@ -1,8 +1,10 @@
 /**
  * DecisionCard (docs/04 §4.8.2): one actionable question and its ways out.
  * Amber lives only in the 28px header strip — the ECAM title-bar idea — so
- * a page of decisions does not become a page of amber. In lists, only the
- * focused card lights its strip; the others stay quiet with their ◆.
+ * a page of decisions does not become a page of amber. In a queue every card
+ * needs you, so amber cannot say which one you are on: there each strip is
+ * quiet with its one ◆, and the focused card's strip takes the neutral
+ * selection ground.
  *
  * The strip says the kind (`item.kind`), the question line says only the
  * variable part (`item.subject`); both arrive in the interface language.
@@ -301,7 +303,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
     <article
       ref={props.ref}
       class="decision"
-      classList={{ focused: !!props.focused, quiet: !!props.quiet && !props.focused, leaving: leaving(), "decision-heldout": heldOut() }}
+      classList={{ focused: !!props.focused, listed: !!props.quiet, quiet: !!props.quiet && !props.focused, leaving: leaving(), "decision-heldout": heldOut() }}
       data-new={fresh ? "true" : undefined}
       tabindex="-1"
       aria-label={`${kindLabel(it().kind)} · ${it().goal_id} · ${it().subject}`}

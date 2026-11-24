@@ -46,7 +46,8 @@ export function ProvenanceFrame(props: {
           ) : props.kind === "claim" ? (
             <span class="claim-rule" aria-hidden="true">┆</span>
           ) : null}
-          <span>{props.label ?? t(PROV_LABELS[props.kind])}</span>
+          {/* A claim's frame names its speaker before its kind: "Agent says · Next", never "Next" alone. */}
+          <span>{props.kind === "claim" && props.label ? `${t("honesty.agentSaysPlain")} · ${props.label}` : (props.label ?? t(PROV_LABELS[props.kind]))}</span>
         </span>
         {props.meta && <span class="prov-meta">{props.meta}</span>}
       </div>

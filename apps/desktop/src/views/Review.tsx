@@ -594,7 +594,6 @@ export function Review(props: { id: string }) {
               <div class="page-loading">
                 <Empty
                   title={t("review.noChanges")}
-                  poster
                   action={
                     <Button size="s" onClick={() => go({ name: "goal", id: props.id })}>
                       {t("review.openGoal")}

@@ -206,7 +206,7 @@ const screens: Screen[] = [
   ...pair({ name: "review-G-0003-all-accepted", route: "review/G-0003", after: async (page) => (await reviewReady(page), await press("a", "a", "a", "a")(page)) }),
   ...pair({ name: "review-G-0001-readout", route: "review/G-0001", after: async (page) => (await reviewReady(page), await press("e")(page)) }),
   ...pair({ name: "review-G-0001-accept", route: "review/G-0001", after: async (page) => (await reviewReady(page), await press("Meta+Shift+Enter")(page)) }),
-  ...pair({ name: "review-empty", route: "review/G-0002", enrich: emptyReview, ready: ".empty-poster" }),
+  ...pair({ name: "review-empty", route: "review/G-0002", enrich: emptyReview, ready: ".review .page-loading > .empty" }),
 
   // The contract editor, fresh (its placeholders) and with a look criterion carrying a step it refuses.
   ...pair({ name: "contract", route: "new" }),

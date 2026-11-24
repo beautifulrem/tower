@@ -2708,8 +2708,11 @@ input[type="radio"] {
   overflow: auto;
   padding: var(--sp-6) var(--sp-8);
 }
-.review .page-loading .empty-poster {
-  margin-top: clamp(80px, 22vh, 260px);
+/* A review with nothing in it is a page of the review, not the app's emptiest screen: no wordmark, and its words start
+   on the title's line (84px past the traffic lights, the 24px back button, its gap), the 14px ring and the same gap
+   hanging in front of them, a fifth of the way down. */
+.review .page-loading > .empty {
+  margin: clamp(48px, 18vh, 200px) 0 0 calc(84px + 24px - 14px - var(--sp-8));
 }
 /* Full width: the traffic lights sit in the first 80px, so the header starts after them. */
 .review-head {

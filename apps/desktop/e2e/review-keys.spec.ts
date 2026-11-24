@@ -51,13 +51,13 @@ test("on a diff that fits the pane, ] moves the current hunk in the tree's order
   // A second A is not a take-back.
   await page.keyboard.press("a");
   await expect(cart).toHaveClass(/hunk-accepted/);
-  await expect(page.locator(".review-accepted")).toHaveText(/1\/2 hunks accepted/);
+  await expect(page.locator(".review-accepted")).toHaveText(/1\/2 hunks read/);
 
   await page.keyboard.press("[");
   await expect(money).toHaveClass(/hunk-current/);
   await page.keyboard.press("a");
   await expect(money).toHaveClass(/hunk-accepted/);
-  await expect(page.locator(".review-accepted")).toHaveText(/All 2 hunks accepted/);
+  await expect(page.locator(".review-accepted")).toHaveText(/All 2 hunks read/);
   await expect(page.locator(".file").first().getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "true");
   // Every hunk accepted, "here" is still told from "read": the current header keeps the selection ground.
   const ground = (h: import("@playwright/test").Locator) => h.locator("td").first().evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -74,7 +74,7 @@ test("on a diff that fits the pane, ] moves the current hunk in the tree's order
   const toast = page.locator(".toast").filter({ hasText: "Taken back: src/cart/money.js" });
   await expect(toast).toBeVisible();
   await expect(page.locator(".file").first().getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "false");
-  await toast.getByRole("button", { name: "Accept again" }).click();
+  await toast.getByRole("button", { name: "Mark read again" }).click();
   await expect(money).toHaveClass(/hunk-accepted/);
 });
 
@@ -83,11 +83,11 @@ test("taking a mark back with the header's button says so too", async ({ page })
   await openSourceUnit(page);
   const money = head(page, "src/cart/money.js");
   await expect(money).toBeVisible();
-  await money.getByRole("button", { name: "Accept this hunk" }).click();
+  await money.getByRole("button", { name: "Mark read" }).click();
   await expect(money).toHaveClass(/hunk-accepted/);
   // Accepting by the button moves "current" on, as A does.
   await expect(head(page, "src/cart.js")).toHaveClass(/hunk-current/);
-  await money.getByRole("button", { name: /Accepted/ }).click();
+  await money.getByRole("button", { name: /^Read, / }).click();
   await expect(money).not.toHaveClass(/hunk-accepted/);
   await expect(money).toHaveClass(/hunk-current/);
   await expect(page.locator(".toast").filter({ hasText: "Taken back: src/cart/money.js" })).toBeVisible();
@@ -117,7 +117,7 @@ test("⇧A right after A takes that accept back, and with nothing to take back i
   // Two accepts, two take-backs, newest first.
   await page.keyboard.press("a");
   await page.keyboard.press("a");
-  await expect(page.locator(".review-accepted")).toHaveText(/All 2 hunks accepted/);
+  await expect(page.locator(".review-accepted")).toHaveText(/All 2 hunks read/);
   await page.keyboard.press("Shift+A");
   await expect(cart).not.toHaveClass(/hunk-accepted/);
   await page.keyboard.press("Shift+A");

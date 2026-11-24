@@ -2,17 +2,17 @@
 
 > 本文定义 Tower 何时、以何种强度、通过什么渠道占用人的注意力；如何度量和调节这件事本身；人回来时如何快速重建情境；以及 Goal 的模式（Mode）如何从引擎事件推导并映射到注意力。
 >
-> 依据：`00` R3/R5/R6/R10、北极星问题 1/2/4；`02` §2.4 Mode、§2.9 NeedsYouItem、`Goal.watermarks`；`03` I4；ADR-010/014/019/020/023/034；`07` §7.10 严重度表。默认数值与快捷键以 `16-registry.md`（ADR-039）为单一来源。研究依据（`research/theory-brainstorm.md`，简写 *TB*）：A8 例外管理/暗驾驶舱、A9 ISA-18.2 与报警疲劳、A10 中断研究（Iqbal & Bailey、Parnin、Horvitz）、A6 模式混淆、C8/C9、D#7/8/18/19。
+> 依据：`00` R3/R5/R6/R10、北极星问题 1/2/4；`02` §2.4 Mode、§2.9 NeedsYouItem、`Goal.watermarks`；`03` I4；ADR-010/014/019/020/023/034；`07` §7.10 严重度表。默认数值与快捷键以 `16-registry.md`（ADR-039）为单一来源。研究依据：例外管理/暗驾驶舱、ISA-18.2 与报警疲劳、中断研究（Iqbal & Bailey、Parnin、Horvitz）、模式混淆。
 
 ---
 
 ## 8.0 设计立场
 
-1. **注意力是 Tower 最稀缺的预算。** 遥测显示，即使同时运行 4 个以上 Agent，用户仍有超过 80% 的活跃时间花在其中一个上（*TB* A10 Jellyfish）。因此路由必须**跨 Goal 全局**进行，不能按 Goal 各自为政（*TB* B1“中断研究”行）。
-2. **每次打扰都必须可行动、去重、限流、可度量**（ADR-010）。权限弹窗的批准率高达 93–97%，是典型的滋扰告警；计划被拒绝的比例是 39%，人的判断实际发生在这一层（*TB* A9）。
-3. **在断点投递。** 把打扰推迟到粗粒度断点，恢复速度可快 69%、恼怒程度低 18%（*TB* A10 Iqbal & Bailey）。延迟几秒也有收益。
-4. **重入靠可导航线索，不靠散文。** 自动恢复线索能让任务成功率翻倍（*TB* A10 Parnin）。
-5. **平静不等于沉默**（*TB* A7 Case：“work even when it fails”）。心跳与新鲜度保证“没有灯亮”确实意味着正常。
+1. **注意力是 Tower 最稀缺的预算。** 遥测显示，即使同时运行 4 个以上 Agent，用户仍有超过 80% 的活跃时间花在其中一个上（Jellyfish）。因此路由必须**跨 Goal 全局**进行，不能按 Goal 各自为政。
+2. **每次打扰都必须可行动、去重、限流、可度量**（ADR-010）。权限弹窗的批准率高达 93–97%，是典型的滋扰告警；计划被拒绝的比例是 39%，人的判断实际发生在这一层。
+3. **在断点投递。** 把打扰推迟到粗粒度断点，恢复速度可快 69%、恼怒程度低 18%（Iqbal & Bailey）。延迟几秒也有收益。
+4. **重入靠可导航线索，不靠散文。** 自动恢复线索能让任务成功率翻倍（Parnin）。
+5. **平静不等于沉默**（Case：“work even when it fails”）。心跳与新鲜度保证“没有灯亮”确实意味着正常。
 
 ---
 
@@ -28,7 +28,7 @@
 
 一条 Needs-You 的**级别**随时间变化：先由基础级别（§8.3.1）决定，再被断点、预算、洪泛、勿扰时段（§8.3–8.5）向下调整，**向上只能因为严重度升级或等待超时**。
 
-**菜单栏字形**（*TB* D#23）：每个运行中的 Goal 一个小字形，最多 8 个，超出时合并为“+N”。字形只反映该 Goal 最高的未处理级别，只用形状、不着色：L0 `·`；L1 `◇`；L2 及以上 `◆`。菜单栏没有任何动画，L3/L4 也不闪烁或淡入（唯一规格 `12` §12.8.1；该字形行默认关）。
+**菜单栏字形**：每个运行中的 Goal 一个小字形，最多 8 个，超出时合并为“+N”。字形只反映该 Goal 最高的未处理级别，只用形状、不着色：L0 `·`；L1 `◇`；L2 及以上 `◆`。菜单栏没有任何动画，L3/L4 也不闪烁或淡入（唯一规格 `12` §12.8.1；该字形行默认关）。
 
 **项目级 L1 通知**（ADR-174）：本地文件一域有三条不属于任何 Goal 的 L1 通知——内容命中改为机密（事件 `project.local_file_secret_detected`，ADR-170/172）、自动恢复（事件 `project.local_file_unmark_reverted`，ADR-172）、无法读取（ADR-173；条目在目标的代码中已被跟踪、这次未复制时用同一条通知的另一种文案，ADR-206）。上表的 L1 渠道以 Goal 为单位，它们另按下列规则呈现：
 - **位置**：本地文件设置页对应行显示 `◇` 与说明（`04` §4.15.1）；侧栏底部的设置入口（项目设置由此进入）显示一枚项目级 `◇`：只有一个项目有通知时为 `◇ <项目名>`，点击进入该项目的本地文件设置页；多个项目时为 `◇ N 个项目`，点击进入项目设置列表，有通知的项目带 `◇`（`04` §4.3.2，ADR-175）。不进入收件箱，不计入 Dock 角标与打扰预算；不进入菜单栏字形与重入简报（两者以 Goal 为单位）。
@@ -75,7 +75,7 @@ function baseLevel(it: NeedsYouItem): Level {
 
 ### 8.3.2 优先级 `P`（用于排序与断点门限）
 
-借用 Horvitz 的期望效用框架（*TB* A10、C8）：`priority = 延迟代价 × 严重度 × 置信度`，再加上随时间增长的项。
+借用 Horvitz 的期望效用框架：`priority = 延迟代价 × 严重度 × 置信度`，再加上随时间增长的项。
 
 ```
 P(item, t) = S · q · U(t) · g
@@ -105,7 +105,7 @@ g = Goal 优先级因子：在用户手动排序中位于前 1/3 → 1.25，中�
 | Tower 聚焦，处于评审模式，或 5 s 内在评论编辑器里敲过键 | `busy_in_tower_review` |
 | Tower 聚焦，其他视图 | `in_tower` |
 | Tower 内部动作：验收、request changes、处理完一条 Needs-You、关闭评审、发出评论 | **粗断点**（60 s 内有效） |
-| 监听 `Project.checkouts[*]/.git/logs/HEAD` 的追加写（用户在自己的 checkout 里提交） | **粗断点**（*TB* C8“just committed”） |
+| 监听 `Project.checkouts[*]/.git/logs/HEAD` 的追加写（用户在自己的 checkout 里提交） | **粗断点**（“just committed”） |
 | 完成一个评审单元的查看 | 中断点（30 s 内有效） |
 
 **断点门限 θ**：只有 `P ≥ θ(state)` 时才投递 L3。
@@ -164,7 +164,7 @@ function routeTick(now: Iso) {
 - **防饿死的第二步：** 升过一次 L3 仍未处理的 `agent_blocked` 条目，在下一次重入简报（§8.10）中置顶，并在站会摘要的“需要你”区块排第一。
 - **channelFor：** 见 §8.7.2。
 
-### 8.3.5 演算：实际投递延迟与起作用的常数（R1-D8-07、R1-D8-04）
+### 8.3.5 演算：实际投递延迟与起作用的常数
 
 按 §8.3.2 的公式计算“条目产生 → 以 L3 投递”的延迟（假设令牌充足、无洪泛、不在勿扰时段；`g = 1`，括号内为 `g = 1.25` 的置顶 Goal）。
 
@@ -182,7 +182,7 @@ function routeTick(now: Iso) {
 
 **有效常数**：maxHold（blocked sev2 180 s、sev3 30 s）、θ(`busy_elsewhere`) = 5、令牌桶（6/h，突发 3）、防饿死 20 min。k、τ、θ 的其余取值只影响收件箱排序，不影响投递时刻。
 
-**吞吐损失估算（R1-D8-04）**：假设每个运行中的 Goal 每小时产生 0.5 条阻塞性条目（问题或审批），人在场时投递延迟 0–3 min、响应中位数 2 min，则每条阻塞约 3–5 min，Goal 运行时间的损失约 2.5–4%。令牌耗尽时，每条阻塞最坏为 20 min（防饿死前的等待）+ 2 min 响应 = 22 min：按上面每小时 0.5 条计，损失 11 min/h ≈ **18%**；若每小时 1 条且每条都碰上令牌耗尽，则为 22 min/h ≈ **37%**（R2-D8-02 更正）。人离开且 `unattended:"wait"` 时，阻塞一直持续到人回来——这是设计选择（R5：例外必须由人处理），重入简报会把这些条目置顶。
+**吞吐损失估算**：假设每个运行中的 Goal 每小时产生 0.5 条阻塞性条目（问题或审批），人在场时投递延迟 0–3 min、响应中位数 2 min，则每条阻塞约 3–5 min，Goal 运行时间的损失约 2.5–4%。令牌耗尽时，每条阻塞最坏为 20 min（防饿死前的等待）+ 2 min 响应 = 22 min：按上面每小时 0.5 条计，损失 11 min/h ≈ **18%**；若每小时 1 条且每条都碰上令牌耗尽，则为 22 min/h ≈ **37%**。人离开且 `unattended:"wait"` 时，阻塞一直持续到人回来——这是设计选择（R5：例外必须由人处理），重入简报会把这些条目置顶。
 
 **E3 标定方法（`14`）**：对每个条目记录产生时的用户状态、`P`、投递时刻、首次查看时刻、处置时刻与 `outcomeClass`。指标：(a) 阻塞时长分布；(b) 投递后 5 s 内未看就关闭的比例（打扰代价的代理）；(c) 打扰精度。在内部试用中对 maxHold 做 90/180/300 s 三档 A/B，选择在 (b) 不显著上升的前提下使 (a) 最短的一档；θ(`busy_elsewhere`) 按同样方法在 3/5/8 之间选择。
 
@@ -205,7 +205,7 @@ function routeTick(now: Iso) {
 | `anomaly`（`detector = post_settle_activity`，sev 2，只用于进入 `claimed` 之后的活动；ADR-128/129） | `an:{goalId}:post_settle_activity` | 同一 Goal 内合并，次数累加 |
 | `anomaly`（`detector = structured_content_dropped`，sev 2，提示性；`07` §7.10.1，ADR-201） | `an:{goalId}:structured_content_dropped` | 同一 Goal 内合并，次数累加，列出丢弃结构化结果的扩展 |
 | `anomaly`（`detector = tower_goal_handler_error`，sev 3，L3，提示性；tower-goal 的 `tool_call`、`turn_start` 或 `tool_result` 处理器出错时自报，`05` §5.6.5 第 6 项，`07` §7.10.1，ADR-239） | `an:{goalId}:tower_goal_handler_error` | 同一 Goal 内合并为一条：subject 为处理器名，各处理器的次数累加，只在条目首次打开时打断（同一处理器连续 3 次时 Goal 另以 `prepare_failed` 暂停，条目是 `st:{goalId}:prepare`） |
-| `stop_condition`（sev 2，`costOfDelay:"agent_blocked"`；ADR-133 第 14 轮 lint 补记） | `stc:{goalId}:{conditionId}` | 同一 Goal 同一停止条件合并为一条；不同条件分别成条。`conditionId` = `StopCondition.id`（`02`；与 `Criterion.id` 同规则，合同版本内不变，修订合同时未改动的条目保留原 id，ADR-135），因此“修订合同后继续”不会把同一条件拆成新条目。选项与命令（卡片见 `04` §4.8）：“继续” → `goal.resume`；“修订合同后继续” → `contract.amend` 后 `goal.resume`；“这里不该停” → `goal.resume{feedback:"stop_condition_false_positive"}`。**再武装**（ADR-139，求值点见 `07` §7.7.1，静默状态与清除时机唯一定义在 `16` `Goal.stopConditionSilences`）：“继续”只对本次命中的对象静默一个 Run，“这里不该停”使该条件静默到下一次合同修订——所以同一条件在人作出决定后不会立即再次暂停 Goal；之后的真正新命中（不同对象、下一个 Run、修订之后）在条目已处置时生成新条目，而不是重新打开旧条目，标注不重复计数。卡片显示命中的对象（路径、命令或无进展时长）。返工次数不是停止条件（`rework_cycles_over` 已删除，ADR-143），达到 `maxReworkCycles` 时是 `verify_failed` 条目，“这里不该停”不影响它。`natural` 类不产生本条目（模型以 `ask_user` 提问，生成 `question`） |
+| `stop_condition`（sev 2，`costOfDelay:"agent_blocked"`；ADR-133 补记） | `stc:{goalId}:{conditionId}` | 同一 Goal 同一停止条件合并为一条；不同条件分别成条。`conditionId` = `StopCondition.id`（`02`；与 `Criterion.id` 同规则，合同版本内不变，修订合同时未改动的条目保留原 id，ADR-135），因此“修订合同后继续”不会把同一条件拆成新条目。选项与命令（卡片见 `04` §4.8）：“继续” → `goal.resume`；“修订合同后继续” → `contract.amend` 后 `goal.resume`；“这里不该停” → `goal.resume{feedback:"stop_condition_false_positive"}`。**再武装**（ADR-139，求值点见 `07` §7.7.1，静默状态与清除时机唯一定义在 `16` `Goal.stopConditionSilences`）：“继续”只对本次命中的对象静默一个 Run，“这里不该停”使该条件静默到下一次合同修订——所以同一条件在人作出决定后不会立即再次暂停 Goal；之后的真正新命中（不同对象、下一个 Run、修订之后）在条目已处置时生成新条目，而不是重新打开旧条目，标注不重复计数。卡片显示命中的对象（路径、命令或无进展时长）。返工次数不是停止条件（`rework_cycles_over` 已删除，ADR-143），达到 `maxReworkCycles` 时是 `verify_failed` 条目，“这里不该停”不影响它。`natural` 类不产生本条目（模型以 `ask_user` 提问，生成 `question`） |
 | `external_change`（sev 2；ADR-128） | `ec:{goalId}` | 重复检测时把新路径并入同一条目（与 `Goal.externalChange.paths` 一致），基线不变；`costOfDelay`：继续目标（`Goal.continuation`，ADR-134）为 `run`/`settle` 时 `agent_blocked`，否则 `none`。`external_change` 只在 `alsoApplies` 中（当前暂停原因是别的）时，该条目与卡片**照常出现**，并标注“当前暂停原因：<原因>”。卡片措辞：“检测到 N 个文件在没有 Agent 工具调用、也没有被追踪的 Agent 进程时被写入——可能来自你的编辑器、其他程序，或未被追踪的 Agent 后台进程”；含 `mixedPaths` 时注明“撤销会一并撤销 Agent 在这些文件上的编辑” |
 | `budget` | `b:{goal}:{soft|hard}:{dimension}` | — |
 | `stalled` | `st:{goal}:{runId}` | 一个 Run 一条；子类型（loop/silent/unresponsive/idle_without_submit）作为字段。同一 Run 中先后检测到不同子类型时，子类型、选项与 `costOfDelay` 改为最近一次检测的（ADR-197） |
@@ -249,7 +249,7 @@ function routeTick(now: Iso) {
 
 ### 8.5.2 洪泛抑制
 
-借用 ISA-18.2 的基准：约每 10 min 1 条“很可能可接受”，每 10 min 2 条是可管理的上限，10 min 内超过 10 条即为洪泛，洪泛窗口应占时间窗口的 1% 以下（*TB* A9）。
+借用 ISA-18.2 的基准：约每 10 min 1 条“很可能可接受”，每 10 min 2 条是可管理的上限，10 min 内超过 10 条即为洪泛，洪泛窗口应占时间窗口的 1% 以下。
 
 ```
 全局：滑动 10 min 窗口内新呈现（L≥2）的条目数 > 10  → flood.active = true
@@ -319,11 +319,11 @@ unblock(g) = 1，若有 Goal 依赖 g（dependsOn），或（阻止模式下）�
 同一个 Goal 内部：评审单元按 risk.score 降序（`02` §2.8、R8）
 ```
 
-**评审批次：** 推荐的批次 ≤ 400 LOC，预计 ≤ 60 min（SmartBear：单次评审超过 400 LOC 或 60–90 min 后检出率骤降，*TB* A15）。批次结束时算作一个粗断点。
+**评审批次：** 推荐的批次 ≤ 400 LOC，预计 ≤ 60 min（SmartBear：单次评审超过 400 LOC 或 60–90 min 后检出率骤降）。批次结束时算作一个粗断点。
 
 ### 8.5.6 下一件最值得看的事（Next Best Thing）
 
-“没有产品在调度人”：不做评审批处理、不限制待审 Goal 的 WIP、不按“下一件最值得看的事”排序（*LS* §D.6）。Tower 在侧边栏顶部固定显示**唯一一条**推荐。用户在粗断点回到 Tower 时，推荐会被高亮。
+“没有产品在调度人”：不做评审批处理、不限制待审 Goal 的 WIP、不按“下一件最值得看的事”排序。Tower 在侧边栏顶部固定显示**唯一一条**推荐。用户在粗断点回到 Tower 时，推荐会被高亮。
 
 - **候选**：打开的 Needs-You 条目（L≥2）、评审积压中的下一批评审单元、当天的 `ratify` 聚合条目。
 - **统一打分**：Needs-You 条目使用 §8.3.2 的 `P`；评审单元换算为 `P_review = 3 · GoalReviewScore(g) · (H ≤ 0 ? 1.5 : 1)`；`ratify` 聚合条目为 `P = 0.5`。severity 3 永远排第一。
@@ -339,7 +339,7 @@ unblock(g) = 1，若有 Goal 依赖 g（dependsOn），或（阻止模式下）�
 - 该 Goal 的 Watch 视图可见且窗口聚焦时，它的 L3 条目以**视图内横幅**呈现，不弹 toast，也不发 OS 通知；仍然消耗打扰预算，仍然计入精度统计。
 - Watch 视图可见且聚焦时，该 Goal 的水位线持续推进（§8.10.1）。所以退出 Watch 模式时不会弹出重入简报。
 - Watch 模式**不会**降低其他 Goal 的路由强度，也不改变严重度。人盯着一个 Goal 时，其他 Goal 的例外照样要能叫到人（R5）。
-- 如果某个 Goal 在 Watch 模式下持续超过 30 min，而期间没有任何人工动作（*TB* A2：监视很少发生变化的信息源，有效注意力维持不超过约半小时），Live Line 旁会出现一次性的 L1 提示：“它在正常运行，可以切回状态视图；有例外时会叫你”。不重复提示。
+- 如果某个 Goal 在 Watch 模式下持续超过 30 min，而期间没有任何人工动作（监视很少发生变化的信息源，有效注意力维持不超过约半小时），Live Line 旁会出现一次性的 L1 提示：“它在正常运行，可以切回状态视图；有例外时会叫你”。不重复提示。
 
 ---
 
@@ -401,7 +401,7 @@ function deriveMode(s: ModeInputs, now: number): Mode | undefined {
 
 Agent 有时会用普通文本提问或结束，而不调用 `ask_user`/`submit`。此时出现 `agent_settled`，但 Goal 仍是 `running`，模式变为 `settled`。处理分两步：
 
-1. 在 tower-goal 的 `agent_before_settle` 中：如果本轮既没有 `submit` 也没有挂起的 `ask_user`，并且本 Run 内还没有这样补过，则返回 `{continue: true, entries:[custom_message "Tower: if you need input, call ask_user; if the goal is done, call submit; otherwise continue."]}`（*pi.md* §12.4 的模式，每个 Run 限 1 次）。这条提醒属于**模型面特性**（ADR-048）：≤ 60 token、在 Trace 中以“Tower 注入”原样可见，与 nudge 共用 E5 附属指标与撤回规则。
+1. 在 tower-goal 的 `agent_before_settle` 中：如果本轮既没有 `submit` 也没有挂起的 `ask_user`，并且本 Run 内还没有这样补过，则返回 `{continue: true, entries:[custom_message "Tower: if you need input, call ask_user; if the goal is done, call submit; otherwise continue."]}`（每个 Run 限 1 次）。这条提醒属于**模型面特性**（ADR-048）：≤ 60 token、在 Trace 中以“Tower 注入”原样可见，与 nudge 共用 E5 附属指标与撤回规则。
    **nudge 守卫不成立时**（只有 human 标准、`nudge.max = 0` 等，`05` §5.6.5，ADR-135）跳过本步，settle 时没有有效提交直接进入第 2 步，不 nudge——这只适用于**非 draining 且 `outcome = completed`** 的 settle；draining 时按 `drainingFor` 的原因集合暂停（最高者为 `pauseReason`，ADR-141），`aborted`/`error` 按 abort 原因或 provider 规则（ADR-138）。“本 Run 内”以本 Run 的起点为锚：`before_agent_start` 时持久化为会话条目 `tower.run_start`，重启与分叉后从分支上重建（ADR-143），含由 `tower.*` 消息触发的 Run；不以最后一条 user 消息为锚。
 2. 如果仍然 settled：生成 `stalled{subtype:"idle_without_submit"}`（severity 2，`agent_blocked`），把最后一条 assistant 消息的前 3 行作为证据（Claim 语法）。Goal 按 `03` §3.2 转为 `paused(idle_without_submit)`。**选项**以 `03` §3.2.1 `idle_without_submit` 行为唯一定义（ADR-143），本文不另列。
 
@@ -442,7 +442,7 @@ Agent 有时会用普通文本提问或结束，而不调用 `ask_user`/`submit`
 | `stalled`（检测器 escalate，`07` §7.7.1） | 只能**暂停**：超时 = Goal 进入 `paused(stalled_timeout)`（Run 以 abort 方式 drain 到回合边界）；条目保持打开，只记录 `timedOutAt`（ADR-183） |
 | 任意 | 永远不能由超时触发：批准单向门、验收 Goal、扩展预算、覆盖 severity 3 哨兵 |
 
-**“可逆”由 Harness 判定，不取 Agent 的说法**（R1-D8-01）：推荐项的后果只涉及卫星内文件，且 Harness 对该选项后续动作的分类（`11` §11.3）不含任何单向门动作类、不含 `edit.outside_worktree`、`dep.add`、`config.change`。无法判定（例如自由文本选项）时一律视为不可逆。
+**“可逆”由 Harness 判定，不取 Agent 的说法**：推荐项的后果只涉及卫星内文件，且 Harness 对该选项后续动作的分类（`11` §11.3）不含任何单向门动作类、不含 `edit.outside_worktree`、`dep.add`、`config.change`。无法判定（例如自由文本选项）时一律视为不可逆。
 
 **是否计时由合同 `unattended` 决定**（`02` §2.5）：
 
@@ -451,7 +451,7 @@ Agent 有时会用普通文本提问或结束，而不调用 `ask_user`/`submit`
 | `"wait"`（默认） | **不超时**，也不向 Pi 传 timeout。人不在时 Agent 一直等待，Goal 保持 `waiting_human` / `blocked_guard` |
 | `"use_defaults"` | 从 `surfacedAt`（条目首次以 ≥ L2 投递的时刻）起算 `defaultIfIgnored.afterSec`，到期由 **Supervisor** 按上表应答；Pi 侧兜底 timeout = `afterSec + 60 s`（ADR-023），只在 Supervisor 失联时生效 |
 
-- **倒计时文案（R4-D8-03，`04` §4.8.2 的 CountdownLabel 引用此表）：** 只在确实会计时的情况下显示倒计时，并写明默认结果。
+- **倒计时文案（`04` §4.8.2 的 CountdownLabel 引用此表）：** 只在确实会计时的情况下显示倒计时，并写明默认结果。
 
   | 情形 | 文案 |
   |---|---|
@@ -461,7 +461,7 @@ Agent 有时会用普通文本提问或结束，而不调用 `ask_user`/`submit`
   | `use_defaults` 下 standard/high 风险的 question，或推荐项不可逆 | “超时后暂停（不自动作答）” |
   | `use_defaults` 下 low 风险、推荐项可逆的 question | “N 分钟后 → 采用推荐：<选项>” |
   | `use_defaults` 下检测器 escalate 的 `stalled`（`07` §7.7.1，默认 1800 s，`16` §16.2.2；ADR-182） | “30 分钟后 → 暂停（仅 use_defaults）”；超时 → `paused(stalled_timeout)`，条目保持打开（ADR-183） |
-- **两种超时结果要区分（R3-D8-01）：**
+- **两种超时结果要区分：**
   - **超时并按默认作答**（approval 默认拒绝；low 风险问题默认可逆推荐项）：写 `resolution.by = "timeout"`，条目关闭，`outcomeClass:"timeout"`，在重入简报中归入“替你做的决定”（§8.10）。
   - **超时并暂停**（standard/high 风险的问题，或不可逆的推荐项；检测器 escalate 的 `stalled`）：条目保持打开，只记录 `timedOutAt`；Goal 为 `paused(question_timeout)`（问题）或 `paused(stalled_timeout)`（停滞，ADR-183），暂停以 `⚙ 超时默认` 显示（`12` §12.6.5）。重入简报在“需要你”区块置顶，并注明“已超时，Goal 因此暂停”。人作答后条目按普通作答关闭；停滞条目没有作答，随 `stalled_timeout` 的解除关闭（§8.8 `stalled` 行，ADR-184）。
 
@@ -482,13 +482,13 @@ function channelFor(level: Level, w: WindowState): Channel[] {
 - **通知身份：** 每个 `dedupeKey` 最多保留一条 OS 通知；新内容出现时关闭旧的 `Notification` 对象再发新的，不堆积。
 - **通知内容：** `"<GoalId> · <需要你决定什么>"`，例如“G-0142 · 需要批准：pnpm add stripe”。**通知中不包含代码、diff 或密钥。** `lockScreenPrivacy` 为真时只显示“Tower：1 项需要你”。
 - **点击通知：** 深链接到该条目，证据面板已展开。若条目类型属于 §8.13 的触发条件，则直接打开诊断视图。
-- **提示音（earcon）：** 只有三类（*TB* D#33）：需要你、已验证、异常。默认关闭；`soundForSeverity3 = true` 时只用于 L4。
+- **提示音（earcon）：** 只有三类：需要你、已验证、异常。默认关闭；`soundForSeverity3 = true` 时只用于 L4。
 - **`serve` 模式和移动端（M2，ADR-038）：** 与桌面端共享同一对令牌桶，不会因为多一个设备而多打扰一倍。哪些条目可以在远程处理、哪些只能在本机桌面处理，以 `16` §16.5 远程能力矩阵为准（例如合同只允许远程 `quick_ratify`，ADR-051）；通知中对不可远程处理的条目只提供“在桌面打开”。
 
 ### 8.7.3 Dock 角标与托盘
 
 - **Dock 角标数 = 状态为打开、生效级别 ≥ L2、severity ≥ 2、没有被延后（snooze）、不在“稍后”分区的 Needs-You 条目数。** 根因合并后的成员条目不重复计数。severity 1、chip、`ratify` 聚合条目都不计入。
-- 角标只表示“有事需要你”，不表示“有新活动”。没有可行动的事项时，角标为空，即暗驾驶舱原则（*TB* A8）。
+- 角标只表示“有事需要你”，不表示“有新活动”。没有可行动的事项时，角标为空，即暗驾驶舱原则。
 
 ---
 
@@ -556,7 +556,7 @@ function channelFor(level: Level, w: WindowState): Channel[] {
 
 ### 8.9.1 周报（周一的站会摘要附带，另有完整的“注意力报告”页）
 
-1. 一句话总结：“本周你的打扰中 72% 导致了行动（目标 70%）”（*TB* D#19）。
+1. 一句话总结：“本周你的打扰中 72% 导致了行动（目标 70%）”。
 2. 打扰精度与收件箱精度，以及较上周的变化。
 3. 打扰速率：活跃小时的 p50/p95（目标 p95 ≤ 6/h），洪泛窗口占比（目标 < 1%）。
 4. 首次响应时间中位数，按严重度分列；超时决策数。
@@ -611,7 +611,7 @@ function channelFor(level: Level, w: WindowState): Channel[] {
 
 ### 8.10.3 Delta 计算（来自事件日志，确定性，不用 LLM）
 
-为避免“摘要漂移”（*TB* C16.5），简报每次都从账本重新生成，从不在旧摘要的基础上再摘要。
+为避免“摘要漂移”，简报每次都从账本重新生成，从不在旧摘要的基础上再摘要。
 
 ```ts
 function computeDelta(goalId, fromSeq, toSeq): Delta {
@@ -671,11 +671,11 @@ interface Cue {
 ```
 
 - 快捷键：简报可见时，`1`–`7` 跳转到对应行，`↩` 表示“知道了”（以 `16-registry.md` 为准）。
-- 度量：重入后到第一个正确动作的耗时（R10，*TB* 实验 4），在 `14` 中对比有无简报的情况。
+- 度量：重入后到第一个正确动作的耗时（R10），在 `14` 中对比有无简报的情况。
 
 ---
 
-### 8.10.5 覆盖层的优先级与互斥（R1-D8-08）
+### 8.10.5 覆盖层的优先级与互斥
 
 人回到 Tower 的那一刻，可能同时满足多个自动覆盖层的条件。规则在此定义（唯一定义），`04` 与 `12` §12.8 引用（ADR-232）。
 
@@ -709,7 +709,7 @@ interface Cue {
   1. 总览：`运行 4 · 待验收 2 · 阻塞 1 · 异常 3`。
   2. 需要你：按 kind 计数，并列出 `P` 最高的前 3 条。
   3. 待验收：每个 Goal 一行，显示 `已验证 V/M`（只有人工标准的 Goal 显示“未经机器验证”，ADR-031），附预计评审时间（SmartBear 300–500 LOC/h，仅作展示，ADR-014）。
-  3a. 运行中：每个 Goal 一行 `已验证 V/M · 观测到 O/M`；对于不可能被机器验证的 Goal（全部 exec 标准生态未支持、S0 授权被拒、子模块项目），从一开始就显示 `观测 O/M · 未经机器验证（原因）`，不显示 `已验证 0/M`（R4-D8-04）。
+  3a. 运行中：每个 Goal 一行 `已验证 V/M · 观测到 O/M`；对于不可能被机器验证的 Goal（全部 exec 标准生态未支持、S0 授权被拒、子模块项目），从一开始就显示 `观测 O/M · 未经机器验证（原因）`，不显示 `已验证 0/M`。
   4. 自上次摘要以来已验收或已合入的 Goal。
   5. 阻塞或停滞的 Goal：每个一行，写明原因。
   6. 批处理的 severity 1：按检测器分组计数，例如“flake 3（2 个 Goal）· 配置变更 2”。
@@ -724,7 +724,7 @@ interface Cue {
 - 查看一个评审单元时，记录 `ReviewView{unitId, contentHash, treeAtView, viewedAt, userId}`。
 - 再次进入评审时，把单元分为四类：
   - **未变**（contentHash 相同）：保留批准状态，折叠显示。
-  - **已变**（contentHash 不同）：按 I2 重置为 `unseen`。默认显示 **inter-diff**，即 `git diff <treeAtView> <currentTree> -- <单元涉及的文件>`，并裁剪到单元的 hunk 行区间（只看自上次查看以来改了什么），可切换为完整 hunk。做法参考 `pi-review-loop` 基于检查点的 since-review diff（*pi.md* §10）。
+  - **已变**（contentHash 不同）：按 I2 重置为 `unseen`。默认显示 **inter-diff**，即 `git diff <treeAtView> <currentTree> -- <单元涉及的文件>`，并裁剪到单元的 hunk 行区间（只看自上次查看以来改了什么），可切换为完整 hunk。做法参考 `pi-review-loop` 基于检查点的 since-review diff。
   - **新增**：没有查看记录。
   - **已移除**。
 - 评论回执的变化：对于上次查看之后状态有变化的评论，显示 `delivered → acknowledged → addressed @commit`，并直接链接到对其进行处理的那段 inter-diff。
@@ -768,7 +768,7 @@ interface Cue {
 
 | 区块 | 内容 |
 |---|---|
-| a. Trace 窗口 | 锚点**之前 6 次**工具调用 + 锚点之后至多 20 次（*TB* B3.1）。每次调用显示：工具、参数摘要、退出码或 isError、耗时、对应 assistant 文本的前 2 行（Claim 语法）、本窗口内 Claim 的 crossCheck 状态 |
+| a. Trace 窗口 | 锚点**之前 6 次**工具调用 + 锚点之后至多 20 次。每次调用显示：工具、参数摘要、退出码或 isError、耗时、对应 assistant 文本的前 2 行（Claim 语法）、本窗口内 Claim 的 crossCheck 状态 |
 | b. 失败输出 | first-bad 与最近一次失败的完整日志链接，内联显示末尾 80 行并高亮失败签名所在行；last-good 与 first-bad 输出的行级 diff（经 §7.7.1 掩码，去除时间戳和地址噪声） |
 | c. 检查点 | last-good 检查点（观察器显示该命令或标准最后一次通过时的检查点；没有时取 base）与当前 tree 的文件级 diff。文件按窗口内的编辑次数排序 |
 | d. Agent 的说法 | 当前计划和步骤 Claim、未批准的假设、最近 3 条转向消息及其送达回执、Pi `queue_update` 中排队的 steer/followUp |
@@ -802,13 +802,13 @@ interface Cue {
 
 ---
 
-## 8.15 阈值来源审计（R1-D3-05、R1-D3-02）
+## 8.15 阈值来源审计
 
 证据等级：⚪ 一手来源 · 🟡 二手 · 🔴 轶事/跨领域 · ⚫ 设计假设。“迁移假设”一列说明从原研究情境搬到“开发者一边做别的工作一边监督 Agent”时所做的假设。
 
 | 数值 | 来源 | 等级 | 迁移假设 | 回填它的实验 |
 |---|---|---|---|---|
-| 全局 6 次/h、上限 12 次/h | ISA-18.2/EEMUA 191：每 10 min 约 1 条“很可能可接受”、2 条为可管理上限（*TB* A9） | 🟡（二手摘要） | 原标准针对全职控制室操作员；开发者的主任务不是监控，承受力应**更低**，所以 6/h 是上限而不是目标 | E3：打扰率与打扰精度、5 s 内未看即关闭的比例 |
+| 全局 6 次/h、上限 12 次/h | ISA-18.2/EEMUA 191：每 10 min 约 1 条“很可能可接受”、2 条为可管理上限 | 🟡（二手摘要） | 原标准针对全职控制室操作员；开发者的主任务不是监控，承受力应**更低**，所以 6/h 是上限而不是目标 | E3：打扰率与打扰精度、5 s 内未看即关闭的比例 |
 | 洪泛 > 10 / 10 min、洪泛窗口 < 1% | 同上 | 🟡 | 同上 | E3 |
 | 断点投递、粗断点优先 | Iqbal & Bailey：恢复快 69%、恼怒少 18% | ⚪ | 实验任务是办公类；假设编程中的“提交、关闭评审”等同粗断点 | E3（投递时状态 × 响应时延） |
 | θ 各值、k、τ、g | 无 | ⚫ | — | E3（§8.3.5 的 A/B） |

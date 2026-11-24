@@ -16,6 +16,7 @@ import { api, errorText } from "../lib/api";
 import { type Gap, splitLines } from "../lib/diffview";
 import { buildTree, treeOrder, unitUnder } from "../lib/filetree";
 import { count, short } from "../lib/format";
+import { notEvidence } from "../lib/discounted";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
 import { ask } from "../lib/native";
@@ -541,7 +542,7 @@ export function Review(props: { id: string }) {
               <TimelineSwitcher scope={scope()} onScope={(sc) => (setScope(sc), setPick(null), resetTexts())} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => (setCmp([f, to]), resetTexts())} />
               <Show when={g()}>
                 <button class="review-stat-group review-verify link-plain" onClick={() => setPanel("verify")} title={t("review.verifyOpen")} aria-haspopup="dialog">
-                  <Seal pin={g()!.verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
+                  <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} />
                   <CriteriaBar progress={g()!.progress} criteria={detail()?.criteria} compact />
                 </button>
               </Show>
@@ -698,7 +699,7 @@ export function Review(props: { id: string }) {
             when={units().length > 0}
             fallback={
               <span>
-                <Kbd k="escape" /> {t("keys.back")}
+                <Kbd k="escape" /> {t("keys.back").toLowerCase()}
               </span>
             }
           >
@@ -726,7 +727,7 @@ export function Review(props: { id: string }) {
         <Show when={comments().length > 0}>
           <button class="dispatch-pill" onClick={() => setPanel("changes")}>
             <Icon name="return" size={10} />
-            {comments().length} queued for steering
+            {t("review.steerQueued", { n: comments().length })}
             <Kbd k="c" />
           </button>
         </Show>
@@ -742,7 +743,7 @@ export function Review(props: { id: string }) {
             </Show>
             <Show when={unitAccepted() === unitHunks() && unitIdx() === units().length - 1 && g()?.state === "in_review"}>
               <span class="sep" />
-              <Kbd k="mod+shift+enter" /> {t("review.accept")}
+              <Kbd k="mod+shift+enter" /> {t("review.accept").toLowerCase()}
             </Show>
           </span>
         </Show>

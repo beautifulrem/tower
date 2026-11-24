@@ -62,22 +62,19 @@ function Check(props: { ok: boolean | null; blocking?: boolean; title: string; d
   );
 }
 
-/** The six stations of a goal's life, in the order the board shows them; the last two are verified, so they are green. */
-const LIFE: Array<{ state: LifecycleState; verified: boolean }> = [
-  { state: "draft", verified: false },
-  { state: "running", verified: false },
-  { state: "claimed", verified: false },
-  { state: "verifying", verified: false },
-  { state: "in_review", verified: true },
-  { state: "accepted", verified: true },
-];
+/**
+ * The six stations of a goal's life, in the order the board shows them, all in the neutral chain: a station is a step,
+ * not a verifier's result, and accepting does not need a verified pass. The sample seal under the line is where green
+ * is shown, on the verifier's word.
+ */
+const LIFE: LifecycleState[] = ["draft", "running", "claimed", "verifying", "in_review", "accepted"];
 
 /**
  * A goal's life in Tower's own glyphs: ring, half-disc, dashed claim, the
  * verifier filling it in, the check, the seal — each with its word, joined
  * by hairlines like a route. The one picture that says what Tower does
  * without a sentence: the agent's "done" is the dashed station in the
- * middle, and green begins only after the verifier.
+ * middle, and the verifier comes after it.
  */
 function LifeLine() {
   return (
@@ -85,8 +82,8 @@ function LifeLine() {
       <For each={LIFE}>
         {(s) => (
           <li class="welcome-station">
-            <LifecycleGlyph goal={{ state: s.state, progress: { verified: s.verified ? 1 : 0, observed: 0, machine: 1, human: 0, human_done: 0 }, verified_pin: s.verified ? "a4a90b2" : null }} size={14} />
-            <span class="welcome-station-word">{stateLabel(s.state)}</span>
+            <LifecycleGlyph goal={{ state: s, progress: { verified: 0, observed: 0, machine: 1, human: 0, human_done: 0 }, verified_pin: null }} size={14} />
+            <span class="welcome-station-word">{stateLabel(s)}</span>
           </li>
         )}
       </For>

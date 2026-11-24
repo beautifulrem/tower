@@ -8,7 +8,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import { type Group, groupLabel, groupOf, isBlocking, statusWord } from "../lib/labels";
-import { startQueue } from "../lib/reviewQueue";
+import { reviewEach, toReviewIds } from "../lib/reviewQueue";
 import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
@@ -41,8 +41,7 @@ export function Sidebar() {
   const ended = createMemo(() => goalList().filter(isEnded));
   const blocking = () => blockingItems().length;
   // Goals waiting for your review: the row starts the review queue over them (⇧R), not a second door to Needs you.
-  const ready = () => state.inbox.filter((i) => !isBlocking(i)).map((i) => i.goal_id);
-  const toReview = () => ready().length;
+  const toReview = () => toReviewIds().length;
   const activeId = () => {
     const r = route();
     return r.name === "goal" || r.name === "review" ? r.id : null;
@@ -102,7 +101,7 @@ export function Sidebar() {
           </span>
         </button>
         <Show when={toReview() > 0}>
-          <button class="side-row" classList={{ active: route().name === "review" }} onClick={() => go({ name: "review", id: startQueue(ready())! })}>
+          <button class="side-row" classList={{ active: route().name === "review" }} onClick={reviewEach}>
             <span class="side-icon">
               <Icon name="ring-check" size={14} />
             </span>

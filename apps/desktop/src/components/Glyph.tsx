@@ -18,7 +18,7 @@ import { type JSX, Match, Show, Switch } from "solid-js";
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { LifecycleState } from "../gen/LifecycleState";
 import { t } from "../lib/i18n";
-import { isDiscounted } from "../lib/discounted";
+import { notEvidence } from "../lib/discounted";
 import { machineVerified } from "../lib/labels";
 
 type Tone = "neutral" | "active" | "verified" | "faint";
@@ -53,7 +53,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   // Ready or accepted with a pass that is not evidence: the seal's amber ◆ stands where the green check would, so the
   // title, the sidebar and the board never draw green on a goal whose header says "Passed, not evidence".
   const discounted = () =>
-    (props.goal.state === "in_review" || props.goal.state === "accepted") && (!!props.goal.progress?.not_evidence || isDiscounted(props.goal.id));
+    (props.goal.state === "in_review" || props.goal.state === "accepted") && notEvidence(props.goal);
   const c = () => color[toneOf(props.goal.state, verified())];
   const s = () => props.size ?? 10;
   const svg = (children: JSX.Element) => (

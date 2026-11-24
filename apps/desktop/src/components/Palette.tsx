@@ -14,7 +14,7 @@ import { isBlocking, statusWord } from "../lib/labels";
 import { closePalette, openActivity, openShortcuts, paletteOpen } from "../lib/layers";
 import { go, route } from "../lib/nav";
 import { bumpRecent, recentIds } from "../lib/recent";
-import { startQueue } from "../lib/reviewQueue";
+import { reviewEach, toReviewIds } from "../lib/reviewQueue";
 import { act, goalList, patchSettings, quietNow, state } from "../lib/store";
 import { snoozeMenu } from "./DecisionCard";
 import { Icon, type IconName, LifecycleGlyph, NeedsYouMark } from "./Glyph";
@@ -97,17 +97,7 @@ export function CommandPalette() {
     const ready = goalList().filter((g) => g.state === "in_review");
     for (const g of ready)
       verbs.push({ id: `review-${g.id}`, title: t("chrome.reviewGoal", { id: g.id, title: g.title }), icon: "ring-check", goalRef: g.id, run: () => go({ name: "review", id: g.id }) });
-    if (ready.length > 1)
-      verbs.push({
-        id: "review-all",
-        title: t("inbox.reviewAll"),
-        hint: "shift+r",
-        icon: "ring-check",
-        run: () => {
-          const first = startQueue(ready.map((g) => g.id));
-          if (first) go({ name: "review", id: first });
-        },
-      });
+    if (toReviewIds().length > 1) verbs.push({ id: "review-all", title: t("inbox.reviewAll"), hint: "shift+r", icon: "ring-check", run: reviewEach });
     for (const it of state.inbox)
       if (isBlocking(it))
         verbs.push({ id: `answer-${it.id}`, title: t("chrome.answerCard", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), icon: "inbox", goalRef: it.goal_id, run: () => go({ name: "goal", id: it.goal_id }) });

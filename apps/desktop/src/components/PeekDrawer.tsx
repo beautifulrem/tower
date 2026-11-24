@@ -10,6 +10,7 @@ import type { CriterionResultExt, GoalDetailExt, GoalSummaryExt } from "../lib/a
 import { ago, duration, short, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
+import { notEvidence } from "../lib/discounted";
 import { effectiveEngine, engineLabel, engineTrustTier, statusWord } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, state } from "../lib/store";
@@ -35,7 +36,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
 
   const canPause = () => g()?.state === "running";
   const canToggle = () => g()?.state === "running" || g()?.state === "paused";
-  const canReview = () => !!g()?.diffstat;
+  const canReview = () => !!g()?.diffstat?.files;
   const toggleRun = () => { const s = g(); if (s) void act(() => (s.state === "running" ? api.pause(s.id) : api.resume(s.id))); };
   const openTo = (name: "goal" | "review") => (props.onClose(), go({ name, id: props.goalId }));
 
@@ -52,7 +53,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
   );
 
   const engine = () => effectiveEngine(g()?.engine, state.settings?.engine);
-  const tier = () => state.engines.find((e) => e.id === engine())?.trust_tier ?? engineTrustTier(engine());
+  const tier = () => engineTrustTier(engine());
   const nextClaim = () => detail()?.claims?.find((c) => c.kind === "next") ?? null;
   const latestClaim = () => detail()?.claims?.filter((c) => c.kind !== "next").at(-1) ?? null;
   const nextText = () => nextClaim()?.text ?? detail()?.submit_summary ?? "";
@@ -82,7 +83,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                   <Show when={!(s().state === "in_review" && s().verified_pin)}>
                     <span class="meta t3">{statusWord(s() as GoalSummary)}</span>
                   </Show>
-                  <Seal pin={s().verified_pin} compact />
+                  <Seal pin={s().verified_pin} compact tampered={notEvidence(s())} />
                   <span class="grow" />
                   <button class="icon-btn peek-close" aria-label={t("common.close")} onClick={props.onClose}><Icon name="cross" size={12} /></button>
                 </div>

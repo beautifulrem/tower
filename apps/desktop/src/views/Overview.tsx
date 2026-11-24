@@ -261,10 +261,10 @@ export function Overview() {
               <Kbd k="space" /> {t("overview.keyPeek")}
             </span>
             <span>
-              <Kbd k="enter" /> {t("common.open")}
+              <Kbd k="enter" /> {t("common.open").toLowerCase()}
             </span>
             <span>
-              <Kbd k="r" /> {t("goal.review")}
+              <Kbd k="r" /> {t("goal.review").toLowerCase()}
             </span>
           </p>
         </Show>

@@ -9,8 +9,9 @@ import type { Mode } from "../gen/Mode";
 import type { OptionTone } from "../gen/OptionTone";
 import type { PauseReason } from "../gen/PauseReason";
 import type { EngineTrustTier } from "./apiTypes";
-import { isDiscounted } from "./discounted";
+import { notEvidence } from "./discounted";
 import { t } from "./i18n";
+import { state } from "./store";
 
 export const stateLabel = (s: LifecycleState): string => t(`state.${s}`);
 
@@ -21,7 +22,7 @@ export const stateLabel = (s: LifecycleState): string => t(`state.${s}`);
  */
 export function statusWord(g: Pick<GoalSummary, "id" | "state" | "progress" | "verified_pin">): string {
   if (g.state === "in_review") {
-    if (g.progress?.not_evidence || isDiscounted(g.id)) return t("honesty.sealTampered");
+    if (notEvidence(g)) return t("honesty.sealTampered");
     if (!g.verified_pin || !g.progress?.machine) return t("honesty.notMachineVerified");
   }
   return stateLabel(g.state);
@@ -112,8 +113,12 @@ export function engineLabel(engine: string): string {
   }
 }
 
-/** Default sandbox trust tier per engine when the backend descriptor list has not arrived yet. */
+/** An engine's sandbox trust tier: the backend's descriptor when it has arrived, else the same per-engine default
+ *  the supervisor uses (`acp_adapter::trust_level`). Every surface asks here, so the peek, the goal rail and
+ *  Settings can't disagree. */
 export function engineTrustTier(engine: string): EngineTrustTier {
+  const known = state.engines.find((e) => e.id === engine)?.trust_tier;
+  if (known) return known;
   if (engine === "pi" || engine === "claude-code" || !engine) return "full_s2";
   if (engine === "codex" || engine === "gemini-cli" || engine === "opencode") return "restricted_s2";
   return "experimental";

@@ -8,7 +8,8 @@ import { For, Show, Suspense, createEffect, createMemo, createResource, createSi
 
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
-import { Claim, CriteriaBar, discountedOf } from "../components/HonestyCore";
+import { Claim, CriteriaBar } from "../components/HonestyCore";
+import { notEvidence } from "../lib/discounted";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
 import { Button, Empty, Failed, Loading, Section, settled } from "../components/ui";
@@ -136,14 +137,15 @@ export function GoalPage(props: { id: string }) {
                   two tracks — how far from done, and on what evidence — before who, where and which run. */}
               <div class="goal-verdict halt">
                 <Show when={!["accepted", "integrated"].includes(g().state)}>
-                  <Seal pin={g().verified_pin} tampered={discountedOf(detailOk()?.criteria) > 0} />
+                  <Seal pin={g().verified_pin} tampered={notEvidence(g())} />
                 </Show>
                 {/* R is always here and always "Review n files", whatever the state: the changes, after what they rest on. The
                     bar and its button wrap together, so a narrow window never leaves the button on a line of its own. */}
                 <span class="goal-verdict-track">
                   <CriteriaBar progress={g().progress} criteria={detailOk()?.criteria} />
-                  <Show when={g().diffstat?.files && !(g().state === "in_review" && detailOk()?.criteria.some((c) => c.verified?.stale))}>
-                    <Button size="s" class="goal-verdict-act" variant={g().state !== "in_review" || inbox().length || !g().verified_pin || discountedOf(detailOk()?.criteria) ? "default" : "primary"} kbd="r" onClick={() => go({ name: "review", id: g().id })}>
+                  <Show when={g().diffstat?.files}>
+                    {/* Primary only when accepting is the next step: not over a decision, a pass that doesn't count, or a stale one (Verify again leads). */}
+                    <Button size="s" class="goal-verdict-act" variant={g().state !== "in_review" || inbox().length || !g().verified_pin || notEvidence(g()) || detailOk()?.criteria.some((c) => c.verified?.stale) ? "default" : "primary"} kbd="r" onClick={() => go({ name: "review", id: g().id })}>
                       {t("goal.reviewUnits", { n: g().diffstat!.files })}
                     </Button>
                   </Show>
@@ -195,7 +197,7 @@ export function GoalPage(props: { id: string }) {
                 <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
               </div>
               <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin}>
-                {(pin) => <Stamp pin={pin()} size="m" tampered={discountedOf(detailOk()?.criteria) > 0} />}
+                {(pin) => <Stamp pin={pin()} size="m" tampered={notEvidence(g())} />}
               </Show>
             </div>
           </header>

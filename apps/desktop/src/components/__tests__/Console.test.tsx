@@ -173,7 +173,6 @@ vi.mock("../../lib/store", async () => {
 });
 
 const { ProvenanceFrame, TrustPill, TaintPill } = await import("../ProvenanceFrame");
-const { FlakyLine } = await import("../Honesty");
 const { TelemetryStrip } = await import("../TelemetryStrip");
 const { LookStrip } = await import("../Look");
 const { matches } = await import("../Trace");
@@ -197,21 +196,19 @@ describe("Four-Provenance physical frames & pills", () => {
     expect(h.container.querySelector(".prov-frame.prov-human")).not.toBeNull();
   });
 
-  it("renders TrustPill, TaintPill and FlakyLine", () => {
+  it("renders TrustPill and TaintPill", () => {
     const { container } = render(() => (
       <>
         <TrustPill tier="full_s2" label="Full S2" />
         <TrustPill tier="restricted_s2" label="Restricted S2" />
         <TrustPill tier="experimental" label="Experimental" />
         <TaintPill level="high" label="Taint: high" />
-        <FlakyLine c={mockGoalDetail.criteria[0]} />
       </>
     ));
     expect(container.querySelector(".trust-pill.trust-full")).not.toBeNull();
     expect(container.querySelector(".trust-pill.trust-restricted")).not.toBeNull();
     expect(container.querySelector(".trust-pill.trust-experimental")).not.toBeNull();
     expect(container.querySelector(".taint-pill.taint-high")).not.toBeNull();
-    expect(container.querySelector(".flaky-line")?.textContent).toContain("Flaky");
   });
 });
 

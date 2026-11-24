@@ -36,6 +36,7 @@ vi.mock("../../lib/store", async () => {
       },
     },
     inbox: [],
+    engines: [],
     now: Date.now(),
   });
   return {
@@ -431,5 +432,16 @@ describe("saving", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(invoked.filter((x) => x.cmd === "update_draft" && (x.args as { id: string }).id === "G-0007")).toEqual([]);
     draft.goalFails = false;
+  });
+});
+
+describe("a title made from the purpose", () => {
+  it("keeps a purpose that fits whole, and cuts a long one at a word with an ellipsis, never inside a word", async () => {
+    const { titleFrom } = await import("../ContractEditor");
+    expect(titleFrom("Checkout shows the discounted total on every page")).toBe("Checkout shows the discounted total on every page");
+    const long = titleFrom("Checkout shows the discounted total on every page, including the mobile checkout");
+    expect(long).toBe("Checkout shows the discounted total on every page…");
+    expect(long.length).toBeLessThanOrEqual(61);
+    expect(titleFrom("First line\nsecond line")).toBe("First line");
   });
 });

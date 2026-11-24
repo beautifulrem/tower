@@ -60,3 +60,16 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   replaced by gaps, the e2e check now reads pseudo-elements on nine routes (verified failing on the old CSS).
   Operations: zone on Next/Last, storage bars as share of the total. Detector on changed files: the same three
   triaged `side-tab` warnings (`/tmp/tower-design/detect-iter3.json`). Shots in `/tmp/tower-design/iter3/shots`.
+- 2026-11-25 Review of `3faaf0c` (independent, own worktree and port 1441): **not accepted, 7.2 / 10**; P1-01 a
+  not-evidence pass read as ready with a green seal on the inbox card and in the peek, P1-02 green CI count and legend
+  steps; P2-01–P2-05, P3-01–P3-08. Recorded as D41–D58 (D58 is a product question for the owner).
+- 2026-11-25 Iteration 4 (T27–T33): one `notEvidence()` verdict behind every seal, status word and glyph; neutral CI
+  counts; criteria head ≤ 600 px in all four variants (578 / 560 / 588 / 542); one review queue and a global ⇧R; peek R
+  only with changes; reviewed / read; `titleFrom`; aligned decision-line slot and lowercase hints; matching accept
+  summary; one trust-tier lookup (mock corrected to the supervisor); held-out path first in the low fold; refusal
+  output said once, and the zh refusal now parsed at all; steer pill translated. New `e2e/verdict.spec.ts` (13 tests).
+  The bundle went 234 B over the total after the fixes; paid back by removing repetition (ghost "Open changes",
+  Cause's copies of failed rows, dead `FlakyLine`), a shorter look-sheet line, hints from existing words and smaller
+  helpers — no budget raised. Gates: tsc; vitest 41 files / 220 tests; Playwright WebKit 245 passed, 0 failed (76 shot tests skip without SHOTS);
+  shots 69/69 (`/tmp/tower-design/iter4/shots`); line limit; bundle all JS 163,810 / 163,840 B (30 B left), goal page
+  12,106 / 12,288 B; detector: no new findings.

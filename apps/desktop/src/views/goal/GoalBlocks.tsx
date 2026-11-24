@@ -5,7 +5,7 @@
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
 
-import { DangerMark, Icon, NoticeMark, ResultMark } from "../../components/Glyph";
+import { DangerMark, Icon, NoticeMark } from "../../components/Glyph";
 import { ConsistencyBadge, HumanStamp } from "../../components/Honesty";
 import { Claim } from "../../components/HonestyCore";
 import { Button, Empty, Kbd, Prose, Section } from "../../components/ui";
@@ -13,12 +13,12 @@ import type { ClaimView } from "../../gen/ClaimView";
 import type { RunView } from "../../gen/RunView";
 import type { SentinelHit } from "../../gen/SentinelHit";
 import { api } from "../../lib/api";
-import { ago, clock, count, duration, short } from "../../lib/format";
+import { clock, count, duration, short } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { runOutcomeLabel, runPurposeLabel } from "../../lib/labels";
 import { ask } from "../../lib/native";
 import { go, goProjectSetting } from "../../lib/nav";
-import { act, state, toast } from "../../lib/store";
+import { act, toast } from "../../lib/store";
 import { CriterionRow } from "./CriterionRow";
 import { type ExtCriterionView, type ExtGoalDetail } from "./ext";
 
@@ -48,9 +48,8 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
   const decisions = () => d().claims.filter((c) => c.kind === "decision");
   const next = () => [...d().claims].reverse().find((c) => c.kind === "next");
   const ledger = () => d().claims.filter((c) => c.kind === "criterion_met");
-  const failing = () => d().criteria.filter((c) => c.verified && !c.verified.passed && !c.verified.stale);
   const [allRuns, setAllRuns] = createSignal(false);
-  // Low sentinels fold to one line under the criteria, naming the most sensitive path one of them touched.
+  // Low sentinels fold to one line under the criteria, naming the most telling path one of them touched (HOLDOUT, then SENSITIVE).
   const low = () => d().sentinels.filter((h) => h.severity < 3);
   const [lowOpen, setLowOpen] = createSignal(false);
   const runs = () => {
@@ -74,7 +73,7 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
 
       <Section title={t("goal.criteria")}>
         <For each={d().criteria}>
-          {(c) => <CriterionRow goalId={g().id} c={c as ExtCriterionView} state={g().state} base={d().base_commit} sentinels={d().sentinels} />}
+          {(c) => <CriterionRow goalId={g().id} c={c as ExtCriterionView} state={g().state} base={d().base_commit} sentinels={d().sentinels} told={props.hasDecision && g().pause_reason === "criteria_cannot_run"} />}
         </For>
         <Show when={!d().has_held_out_tests && g().progress.machine > 0}>
           <p class="meta held-out-none">
@@ -122,7 +121,7 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
               <p class="meta sentinel-fold">
                 <NoticeMark />
                 <span class="ellipsis">
-                  <For each={low().map((h) => [h.detail.match(SENSITIVE)?.[0], h.title] as const).sort((a, b) => +!a[0] - +!b[0])}>
+                  <For each={low().map((h) => [(h.detail.match(HOLDOUT) ?? h.detail.match(SENSITIVE))?.[0], h.title] as const).sort((a, b) => +!a[0] - +!b[0])}>
                     {([path, title], i) => (
                       <>
                         {i() ? "\u2003" : ""}
@@ -142,16 +141,8 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
         </Section>
       </Show>
 
-      <Section
-        title={t("goal.changes")}
-        aside={
-          <Show when={g().diffstat?.files}>
-            <Button size="s" variant="ghost" onClick={() => go({ name: "review", id: g().id })}>
-              {t("goal.openChanges")}
-            </Button>
-          </Show>
-        }
-      >
+      {/* The one way into the review is "Review n files" under the title (R): this section says what changed, not how to open it. */}
+      <Section title={t("goal.changes")}>
         <Show
           when={g().diffstat?.files}
           fallback={
@@ -183,25 +174,10 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
         </Show>
       </Section>
 
-      <Show when={causes().shown.length || failing().length}>
+      {/* What the agent says caused it. The failed criteria are not repeated here: the list above shows each one failed,
+          with its output, and a failed check is the effect, not a cause. */}
+      <Show when={causes().shown.length}>
         <Section title={t("goal.cause")}>
-          <For each={failing()}>
-            {(c) => (
-              <div class="criterion-row">
-                <ResultMark kind="fail" />
-                <span class="num t3">{c.criterion.id}</span>
-                <span class="criterion-main">
-                  <span class="criterion-title t1">{t("goal.criterionFailed", { title: c.criterion.title })}</span>
-                </span>
-                <span class="col-result">{t("common.failed")}</span>
-                <span class="col-dur">{duration(c.verified!.duration_ms)}</span>
-                <span class="col-pin">
-                  <Icon name="harness" size={10} />@{short(c.verified!.pin)}
-                </span>
-                <span class="col-age">{ago(c.verified!.at, state.now)}</span>
-              </div>
-            )}
-          </For>
           <For each={causes().shown}>{(c) => <Claim bare>{c.text}</Claim>}</For>
           <Show when={causes().hidden > 0}>
             <div class="claim">
@@ -277,6 +253,8 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
   );
 }
 
+// A read at the held-out tests goes first: it bears on whether the evidence can be trusted, where a dotfile only on privacy.
+const HOLDOUT = /(?:[^\s/]+\/)?holdout\/\S*/;
 const SENSITIVE = /\S*\/\.(ssh|aws|gnupg|netrc|npmrc|docker)\S*|\S*\.env\b/;
 
 /** High sentinels, above the decisions: what makes the evidence itself doubtful, each with its lines. */

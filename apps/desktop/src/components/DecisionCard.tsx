@@ -15,13 +15,14 @@
  * motion Tower makes on its own. Destructive options never fire from one
  * press: the first arms the button for two seconds, the second confirms.
  */
-import { For, Show, createSignal, onCleanup } from "solid-js";
+import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
 
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
 import { ago, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
+import { notEvidence } from "../lib/discounted";
 import { approves, optionTone, statusWord } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go, goProjectSetting } from "../lib/nav";
@@ -207,12 +208,12 @@ export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPee
         <span class="ellipsis">{it().goal_title}</span>
       </button>
       <span class="decision-line-ask">
-        {/* A goal waiting for acceptance says its verdict first, in the goal page's words: what you would be accepting. */}
-        <Show when={goal()?.state === "in_review"}>
-          <span class="t2">{statusWord(goal()!)}</span>
-          <span class="sep" />
+        {/* The first slot is one width on every line, so what follows starts on one line: a goal waiting for acceptance
+            puts its verdict there, in the goal page's words (what you would be accepting), and its question after it. */}
+        <Show when={goal()?.state === "in_review"} fallback={<span class="decision-kind decision-line-slot">{kindLabel(it().kind)}</span>}>
+          <span class="t2 decision-line-slot">{statusWord(goal()!)}</span>
+          <span class="decision-kind">{kindLabel(it().kind)}</span>
         </Show>
-        <span class="decision-kind">{kindLabel(it().kind)}</span>
         <span class="ellipsis t2" classList={{ "code-val": it().kind === "ci_failed" }} title={it().subject}>
           {it().subject}
         </span>
@@ -235,6 +236,10 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   const [leaving, setLeaving] = createSignal(false);
   const it = () => props.item;
   const goal = () => state.goals[it().goal_id];
+  // A goal waiting for acceptance is named by its verdict ("Passed, doesn't count" too), never "Ready to accept" alone;
+  // when its pass is not evidence the card reads the criteria, so the bar says which one doesn't count.
+  const head = () => (it().kind === "review_ready" && goal() ? statusWord(goal()!) : kindLabel(it().kind));
+  const [criteria] = createResource(() => it().kind === "review_ready" && notEvidence(goal()) && it().goal_id, (id) => api.goal(id).then((d) => d.criteria, () => null));
   // Arrived just now: play the amber decay once.
   const fresh = Date.now() - props.item.created_at < 5000;
   const [tick, setTick] = createSignal(Date.now());
@@ -257,43 +262,26 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   const parts = () => bodyParts(it());
   const held = () => heldOutParts(it().body);
 
-  const send = async (i: number) => {
+  /** Busy while `run` is out; a reply that landed lets the card leave and says so. */
+  const sending = async (run: () => Promise<boolean>) => {
     setBusy(true);
-    const sent = await chooseOption(it(), i, text());
+    const ok = await run();
     setBusy(false);
-    if (sent) {
-      setLeaving(true);
-      toast("success", t("decision.replied"), { ttl: 2000 });
-    }
+    if (ok) (setLeaving(true), toast("success", t("decision.replied"), { ttl: 2000 }));
   };
-  const reply = async () => {
-    if (!text().trim()) return;
-    setBusy(true);
-    const ok = await act(() => api.answer(it().id, text().trim()));
-    setBusy(false);
-    if (ok !== undefined) {
-      setLeaving(true);
-      toast("success", t("decision.replied"), { ttl: 2000 });
-    }
-  };
+  const send = (i: number) => sending(() => chooseOption(it(), i, text()));
+  const reply = () => text().trim() && sending(async () => (await act(() => api.answer(it().id, text().trim()))) !== undefined);
   const isAssumption = () => it().kind === "assumption";
 
   /** The free-text field and its button: the usual note under the options, or a held-out card's hint — its primary path. */
+  const hint = () => t(heldOut() ? "decision.hintPlaceholder" : isAssumption() ? "decision.assumptionNotePlaceholder" : it().kind === "question" ? "decision.answerPlaceholder" : "decision.notePlaceholder");
   const TextBox = () => (
     <div class="decision-text">
       <textarea
         ref={(el) => autogrow(el, 1, 6)}
         rows={1}
-        aria-label={heldOut() ? t("decision.hintPlaceholder") : isAssumption() ? t("decision.assumptionNotePlaceholder") : it().kind === "question" ? t("decision.answerPlaceholder") : t("decision.notePlaceholder")}
-        placeholder={
-          heldOut()
-            ? t("decision.hintPlaceholder")
-            : isAssumption()
-              ? t("decision.assumptionNotePlaceholder")
-              : it().kind === "question"
-                ? t("decision.answerPlaceholder")
-                : t("decision.notePlaceholder")
-        }
+        aria-label={hint()}
+        placeholder={hint()}
         value={text()}
         onInput={(e) => setText(e.currentTarget.value)}
         onKeyDown={(e) => {
@@ -318,24 +306,18 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
       classList={{ focused: !!props.focused, listed: !!props.quiet, quiet: !!props.quiet && !props.focused, leaving: leaving(), "decision-heldout": heldOut() }}
       data-new={fresh ? "true" : undefined}
       tabindex="-1"
-      aria-label={`${kindLabel(it().kind)} · ${it().goal_id} · ${it().subject}`}
+      aria-label={`${head()} · ${it().goal_id} · ${it().subject}`}
     >
       <header class="decision-head halt">
         <NeedsYouMark />
-        <span class="decision-kind">{kindLabel(it().kind)}</span>
+        <span class="decision-kind">{head()}</span>
         <Show when={props.showGoal !== false}>
           <button class="link-quiet ellipsis" onClick={() => go({ name: "goal", id: it().goal_id })}>
             <span class="code-val t2">{it().goal_id}</span> {it().goal_title}
           </button>
         </Show>
         {/* The PR reading belongs with the goal's name; the right edge is the time's alone. On the goal's own page the identity line already carries it. */}
-        <Show when={it().kind === "ci_failed" && props.showGoal !== false && goal()?.pr}>
-          {(pr) => (
-            <>
-              <PrLine pr={pr()} compact />
-            </>
-          )}
-        </Show>
+        <Show when={it().kind === "ci_failed" && props.showGoal !== false && goal()?.pr}>{(pr) => <PrLine pr={pr()} compact />}</Show>
         <span class="grow" />
         <span class="meta num">{ago(it().created_at, state.now)}</span>
         <IconButton icon="bell" size={22} label={t("decision.snooze")} title={`${t("decision.snooze")} H`} aria-haspopup="menu" class="decision-snooze" onClick={() => void snoozeMenu(it())} />
@@ -348,7 +330,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <Show when={goal()} fallback={<p class="decision-question">{it().subject}</p>}>
                 {(g) => (
                   <div class="decision-readout decision-readout-main halt">
-                    <Seal pin={g().verified_pin} large />
+                    <Seal pin={g().verified_pin} large tampered={notEvidence(g())} />
                     <Show when={g().diffstat}>
                       <span class="sep" />
                       <span class="num">
@@ -359,7 +341,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                       <span class="num">{t("common.files", { n: g().diffstat!.files })}</span>
                     </Show>
                     <span class="sep" />
-                    <CriteriaBar progress={g().progress} compact />
+                    <CriteriaBar progress={g().progress} criteria={criteria()} compact />
                   </div>
                 )}
               </Show>
@@ -373,12 +355,15 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </>
           }
         >
-          {/* A failing check's name is a machine value inside the question, not the question's typeface. */}
-          <p class="decision-question">
-            <Show when={it().kind === "ci_failed"} fallback={it().subject}>
-              <span class="code-val">{it().subject}</span>
-            </Show>
-          </p>
+          {/* A failing check's name is a machine value inside the question, not the question's typeface. On the goal's own
+              page the PR line just above already names the failing checks, so the card does not say them again. */}
+          <Show when={!(it().kind === "ci_failed" && props.showGoal === false && goal()?.pr)}>
+            <p class="decision-question">
+              <Show when={it().kind === "ci_failed"} fallback={it().subject}>
+                <span class="code-val">{it().subject}</span>
+              </Show>
+            </p>
+          </Show>
           <Show when={!heldOut()}>
             {/* An environment problem is said as one before its details: the environment mark, not the red of a failed test. */}
             <Show when={envProblem()}>

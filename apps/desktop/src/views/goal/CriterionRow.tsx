@@ -18,7 +18,7 @@ const LookStrip = lazy(withLater(() => import("../Learning").then((m) => ({ defa
 const GUARD_RE = /assertion|guard|source_patches_tests/;
 const BYPASS_RE = /bypass|perturb|rust_test_branch|expectations_changed/;
 
-export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state: string; base?: string | null; sentinels?: SentinelHit[] }) {
+export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state: string; base?: string | null; sentinels?: SentinelHit[]; told?: boolean }) {
   const c = () => props.c;
   const v = () => c().verified;
   const [open, setOpen] = createSignal(false);
@@ -61,7 +61,12 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
   // on another. A pass never wears danger red: what stands against a pass is a question for you, in the attention ground.
   const shown = createMemo(() => {
     const rank = ["ok", "fact", "obs", "attn", "danger"], by = new Map<string, [string, string, string?, 1?]>();
-    for (const p of pills()) if (rank.indexOf(p[0]) > rank.indexOf(by.get(p[1])?.[0] ?? "ok") || !by.has(p[1])) by.set(p[1], p);
+    // (Merged, the pill keeps "has its own line when open" if either had it, so the open row never says it twice.)
+    for (const p of pills()) {
+      const was = by.get(p[1]);
+      if (!was || rank.indexOf(p[0]) > rank.indexOf(was[0])) by.set(p[1], [p[0], p[1], p[2] ?? was?.[2], p[3] ?? was?.[3]]);
+      else if (p[3]) was[3] = 1;
+    }
     return [...by.values()].map(([tone, label, title, line]): [string, string, string?, 1?] => [tone === "danger" && mark() === "pass" ? "attn" : tone, label, title, line]);
   });
   // Folded, a criterion is its verdict and at most one line of what qualifies it — warnings only; the confirmations,
@@ -126,7 +131,7 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
       </Show>
 
       <Show when={open() || !v()}>
-        <BaselineLine c={c()} base={props.base} />
+        <BaselineLine c={c()} base={props.base} told={props.told} />
         <CanaryLine c={c()} />
         {/* The held-out line names them ("held-out tests, for you only"); the files follow it, unnamed again. */}
         <HeldOutLine c={c()} />

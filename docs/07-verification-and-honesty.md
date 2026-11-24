@@ -2,15 +2,15 @@
 
 > 本文把诚实语法（R1）、完成三态（R2）和例外管理（R5）落实到实现层面，内容包括：Fact 由谁、从哪里、以什么格式产生；Fact 何时失效；验证器如何在干净环境里既快又可信地重跑验收标准；哪些哨兵/检测器产生例外信号，严重度各是多少，如何度量和压低误报。
 >
-> 依据：`00` R1/R2/R5/R7/R10 与 P9；`02` §2.7 Ledger；`03` §3.4.3 与不变量 I2/I4/I6；ADR-002/003/010/019，以及第 1 轮评审后的 ADR-020（两轨进度）、ADR-021（验证器依赖完整性）、ADR-022（S0 授权）、ADR-024（验收 Fact 不经扩展链）、ADR-031（零机器标准与 artifact）、ADR-037（服务与端口）。默认数值以 `16-registry.md` 为单一来源。研究依据见 `research/theory-brainstorm.md`（下文简写为 *TB*）。
+> 依据：`00` R1/R2/R5/R7/R10 与 P9；`02` §2.7 Ledger；`03` §3.4.3 与不变量 I2/I4/I6；ADR-002/003/010/019，以及 ADR-020（两轨进度）、ADR-021（验证器依赖完整性）、ADR-022（S0 授权）、ADR-024（验收 Fact 不经扩展链）、ADR-031（零机器标准与 artifact）、ADR-037（服务与端口）。默认数值以 `16-registry.md` 为单一来源。
 
 ---
 
 ## 7.0 设计立场
 
-1. **Agent 的“完成”只是 Claim。** 证据及其领域：失败运行中 45–48%（tau2 单控**客服**场景）与 75.8%（AppWorld 自评轨迹）被 Agent 报告为成功（*TB* A16 Advani 2026，**非编码 Agent 的通用测量**，只说明“自报成功”在多个领域都不可靠）；在**编码**基准 ImpossibleBench 中，Claude 系模型作弊时超过 79% 的手段是改测试；进度自报在执行中段最不可靠（Unreliable Progress Bar，多领域 Agent 基准）。这些数字用来论证原则，不用来设阈值；Tower 自己的阈值来源见 §7.14。因此 Tower 的任何状态转移、进度和绿色标记，都只能来自 Harness 产生的 Fact。
+1. **Agent 的“完成”只是 Claim。** 证据及其领域：失败运行中 45–48%（tau2 单控**客服**场景）与 75.8%（AppWorld 自评轨迹）被 Agent 报告为成功（Advani 2026，**非编码 Agent 的通用测量**，只说明“自报成功”在多个领域都不可靠）；在**编码**基准 ImpossibleBench 中，Claude 系模型作弊时超过 79% 的手段是改测试；进度自报在执行中段最不可靠（Unreliable Progress Bar，多领域 Agent 基准）。这些数字用来论证原则，不用来设阈值；Tower 自己的阈值来源见 §7.14。因此 Tower 的任何状态转移、进度和绿色标记，都只能来自 Harness 产生的 Fact。
 2. **不让 LLM 裁判决定成败。** LLM 判定成功的 AUROC ≤ 0.65（ADR-002）；在 SWE-bench 类任务上，LLM 监视器只抓到 42–50% 的作弊（ImpossibleBench）。LLM 在本文中只有两个位置：独立评审（§7.12）和措辞线索检测器的离线标注（§7.9）。两者**默认关闭**（ADR-019），开启后输出也只是 Claim 或提示，不设置任何状态。
-3. **廉价确定性检测优先。** 测试完整性哨兵在 *TB* D 的排序中是 V×F = 25 的第一名。本文所有检测器都基于 git、正则、轻量 AST 模式和退出码，单次检测的目标耗时 < 200 ms（验证器重跑除外）。
+3. **廉价确定性检测优先。** 测试完整性哨兵在调研的点子排序中是 V×F = 25 的第一名。本文所有检测器都基于 git、正则、轻量 AST 模式和退出码，单次检测的目标耗时 < 200 ms（验证器重跑除外）。
 4. **平静不等于沉默。** 每个 Fact 都带新鲜度；“Verified” 会过期（I2）；检测器自身的精度也要度量并公开（R10、ADR-010）。
 
 ---
@@ -117,7 +117,7 @@ type CommandClass = "test" | "lint" | "typecheck" | "build" | "install" | "git" 
 
 ### 7.2.3 `files_touched` 与 `diffstat`（git 推导）
 
-`write` 不给 diff，bash 也可能改任意文件，因此 **git 是 Changes 唯一可信的来源**（与 *pi.md* §13.7 一致）。工具事件只用来标注“哪个回合、哪次调用碰过哪个 hunk”。
+`write` 不给 diff，bash 也可能改任意文件，因此 **git 是 Changes 唯一可信的来源**。工具事件只用来标注“哪个回合、哪次调用碰过哪个 hunk”。
 
 ```
 on turn_end or debounced(mutating tool end):
@@ -168,10 +168,10 @@ function lbCleanAt(goal, pin): boolean { … }
 
 - **O ⊇ V**：O 回答“有迹象表明多少条已经通过”，V 回答“其中多少条由 Tower 在干净环境里确认”。G-0142 有 4 条机器标准与 1 条人工标准时显示为 `已验证 2/4 · 观测到 3/4 · 人工 0/1`（视觉语法见 `12`：V 为事实语法，O 为“Agent 环境观测”语法，人工为 Human 语法）。
 - **过期结果两轨都不计入。**
-- **artifact 标准**：除外部链接以外的内置检查由验证器直接读取文件（§7.4.9），足够便宜，可在每次指纹变化后立即执行。**外部链接检查（`links_reachable`，M2，ADR-183）在每次正式验证（一切非 `opportunistic` 的触发）中执行**，并且需要合同为该标准声明网络权限（R2-D7-05）；机会式验证不做外部请求，结果为 `reason:"links_deferred"`，只计入 O，不计入 V。
-- **ADR-053 守卫：** 机会式验证不跑哨兵全套，所以它的通过结果在计入 V 之前要求该 pin 上 L-b 层静态检查是干净的；否则以“有保留的已验证”显示，只计入 O（R2-D7-03）。正式验证（claimed 等）由 `decide()` 的阻断集合把关，不需要这条守卫：正式验证在任何提前返回之前运行 L-c 静态哨兵，并在有可运行的 exec 标准时总是运行测试清单——即使 exec 标准的结果全部命中缓存（包括机会式验证写入的结果）；缓存只复用标准结果（唯一规则在 §7.4.1 `verify()`，ADR-183）。
+- **artifact 标准**：除外部链接以外的内置检查由验证器直接读取文件（§7.4.9），足够便宜，可在每次指纹变化后立即执行。**外部链接检查（`links_reachable`，M2，ADR-183）在每次正式验证（一切非 `opportunistic` 的触发）中执行**，并且需要合同为该标准声明网络权限；机会式验证不做外部请求，结果为 `reason:"links_deferred"`，只计入 O，不计入 V。
+- **ADR-053 守卫：** 机会式验证不跑哨兵全套，所以它的通过结果在计入 V 之前要求该 pin 上 L-b 层静态检查是干净的；否则以“有保留的已验证”显示，只计入 O。正式验证（claimed 等）由 `decide()` 的阻断集合把关，不需要这条守卫：正式验证在任何提前返回之前运行 L-c 静态哨兵，并在有可运行的 exec 标准时总是运行测试清单——即使 exec 标准的结果全部命中缓存（包括机会式验证写入的结果）；缓存只复用标准结果（唯一规则在 §7.4.1 `verify()`，ADR-183）。
 - **`isVerifiedPass(data)`**（按 `criterion_check.data` 判定，ADR-183）：`reason:"links_deferred"` 的结果一律不计入（未检查的链接永远不算通过）；其余按 verdict——`pass` 计入；`pass_with_preexisting_flakes`（§7.4.6）计入，但带“有保留”限定（`12` 的“有保留的已验证”变体）；`S0` 环境下（已授权）的通过同样带限定。M1 中非 Node 生态的 exec 标准不由验证器执行（ADR-064），只计入 O。其余 verdict 都不计入。
-- **`cleanEnv:false` 在 v1 中不再改变判定**（R1-D7-06）：所有 exec 标准都由验证器在干净环境中验证；Agent 环境的结果永远只进入 O。
+- **`cleanEnv:false` 在 v1 中不再改变判定**：所有 exec 标准都由验证器在干净环境中验证；Agent 环境的结果永远只进入 O。
 
 **机会式验证**（让 V 在运行中前进，ADR-020）：
 
@@ -201,7 +201,7 @@ porcelain 输出只说明“哪些路径有变化”，不包含内容。同一�
 
 **git 隔离前提（ADR-060、ADR-071、ADR-073）：** Goal 的工作目录是**卫星克隆**；卫星工作目录中没有 `.git`，它的 gitdir 分离在 `<wtRoot>/_gitdirs/<goalId>`，Agent 经 PATH 首位的 Tower git 垫片使用（垫片只对在卫星内运行的 git 注入 `GIT_DIR`/`GIT_WORK_TREE`，ADR-088；对环境中**继承来的**、指向卫星 gitdir 的这两个变量同样逐次判定，`init`/`clone` 或在卫星之外运行时先移除再执行真实 git，ADR-090）。gitdir **整体归 Agent 所有、可写**（ADR-089）：Tower **不读取其中的配置、索引或 ref 作为任何判定依据**。安全边界只有两条不变式：S2 拒绝在卫星工作目录任意深度创建名为 `.git` 的条目；沙箱外进程环境含 `GIT_CEILING_DIRECTORIES=<全部 wtRoot>`。Tower 对卫星及其 gitdir 的原始文件操作只有创建、整体删除、整体重建三类，均以 `O_NOFOLLOW`、只接受普通文件与目录、带超时的方式进行，重建在旁路目录完成后以 `rename` 原子替换（ADR-089）；生成 seal 说明需要 Agent 的提交信息时，Tower **不在卫星 gitdir 上运行 git**，而是自行只读解析普通文件（ADR-100）：`HEAD` → ref 文件或 `packed-refs` → 提交对象（loose 对象 zlib 解压，或按 pack 的 `.idx` 定位），单对象 ≤ 1 MB、总计 ≤ 200 个提交、`O_NOFOLLOW`、带超时；不读 config、include、alternates；解析失败则省略提交信息。至此 Tower 对卫星 gitdir 只有创建、整体删除、整体重建、只读解析提交对象四种操作。解析器的进程、内存与 delta 限制以 `10` §10.1.3 为准。seal 说明的结构以 `10` §10.6 为唯一定义，共四段：① Goal 标题与合同摘要（Tower 生成）；② 可选的“人的说明”（交还与检验带回时人写入的 `sealNote`）；③ “Agent 提交记录（声明）”，逐条缩进引用 Agent 的提交信息，去除其中任何 trailer 形态的行（解析失败或无 Agent 提交时省略）；④ Tower 独占生成的 trailer 块（集合登记于 `16`）。Agent 文本无法伪造 trailer。Tower 的所有 git 操作——指纹、检查点、验证 pin、diff、评审单元、seal——都在 **Tower 影子 git 目录** `~/.tower/goals/<goalId>/git/<projectId>.git`（裸库，Agent 不可写，alternates 指向该 Project 的 **Tower 镜像库** `~/.tower/projects/<projectId>/mirror.git`，ADR-073）中执行，从不经卫星的 `.git` 发现仓库，也从不读卫星的 config、index 或 hooks。
 
-**唯一加固清单在 `10` §10.1.2**（影子上下文的环境变量与 `-c` 选项、只允许执行 git 的 OS 沙箱档位、`info/exclude` 模式的复制、换行策略）；本文用 `towerGit(shadow, worktree, args)` 指代“按 `10` §10.1.2 影子上下文执行”，不另列选项（R4-D13-06）。
+**唯一加固清单在 `10` §10.1.2**（影子上下文的环境变量与 `-c` 选项、只允许执行 git 的 OS 沙箱档位、`info/exclude` 模式的复制、换行策略）；本文用 `towerGit(shadow, worktree, args)` 指代“按 `10` §10.1.2 影子上下文执行”，不另列选项。
 
 **嵌套仓库与逃出仓库的符号链接：`pinSafetyCheck`（ADR-109，取代 ADR-106 的“物化 + 排除”）：** 要防住的是 Agent 造出的仓库形态内容或越界符号链接随 pin/seal 落入用户仓库。唯一的权威检查是一个**只依赖两个 tree 哈希**的确定性函数：
 
@@ -239,15 +239,15 @@ function pinSafetyCheck(baseTree: Sha, pinTree: Sha): SentinelHit[] {
 ```
 
 - **处置：不排除，只阻断**（ADR-109）。命中即 `sentinel`，severity 3，pin 推导，阻断 Verified 与集成；**pin 不被修改**，因此无需重新生成 pin。人可以 `override_sentinel`（结构化原因），或请求返工，让 Agent 撤销这些变化。
-- **覆盖的绑定（ADR-112）：** 覆盖绑定 `(detector, subject, subject 在 pin 中的对象哈希)`——`nested_repo` 的 subject 是仓库形态**目录**，哈希取其 tree 哈希；`symlink_escape` 取链接的 blob 哈希。之后该目录或链接的任何变化都使覆盖失效并重新阻断（R11-D11-04）；seal trailer `Tower-Override` 记录被覆盖的路径与哈希。
+- **覆盖的绑定（ADR-112）：** 覆盖绑定 `(detector, subject, subject 在 pin 中的对象哈希)`——`nested_repo` 的 subject 是仓库形态**目录**，哈希取其 tree 哈希；`symlink_escape` 取链接的 blob 哈希。之后该目录或链接的任何变化都使覆盖失效并重新阻断；seal trailer `Tower-Override` 记录被覆盖的路径与哈希。
 - **覆盖对话框（ADR-116、ADR-124）：** 以 Fact 形式列出该目录相对 base 被改动的文件与**全部**被改动的配置键；其中属于“值会被 git 当作命令执行、或使 git 读取其他路径的键”的高亮显示。该键清单的唯一定义在 `16`，本文只引用；清单不全只影响高亮，不影响写出（写出已是白名单）。
 - **覆盖之后的写出（ADR-124，白名单）：** pin 与 seal 中保留 Agent 的版本（人的显式决定）；两种检出中，被覆盖的仓库形态目录里**只有纯数据条目**——`objects/**`（不含 `objects/info/**`）、`refs/**`、`packed-refs`——写出 pin 版本；其余一律写出 **base 版本**，base 中没有的则不写出。
 - **执行位置**：`verify()` 的**第一步**，在一切提前返回（缓存命中、仅 artifact、S0、子模块、生态不支持）之前（§7.4.1）；验收与 seal 时对同一 pin tree 再执行一次（廉价，结果相同，作为防篡改复核）。属于不降级的闸口。
 - **base 中原本就不安全、解析结果也未变的符号链接**不命中，只在信任提示中列出，并照常写出到两种检出（它本来就在用户的主检出中，ADR-124）。
-- **未改动的 base 夹具**（候选目录下没有任何变化）不命中，按普通内容进入 pin、seal 与评审，照常写入两种检出（与用户主检出中已有的内容一致）。**被改动的**夹具目录命中 `nested_repo`，在覆盖之前不写入两种检出（ADR-111 第 3 点）。由此，两种检出中不会出现 Agent 改过的 git 元数据（R11-D11-01、R11-D3-01b）。
-- **前提（R11-D3-01a、R11-D11-02）：** 规则基于“目录中存在标记条目”这一 git 识别仓库的必要条件，并对候选目录下的任何变化都触发，因此不依赖对 git 判定细节的重演。名字比较按 `10` §10.1.2 的唯一定义（ADR-120），该规则覆盖 HFS+ 忽略的码位。
+- **未改动的 base 夹具**（候选目录下没有任何变化）不命中，按普通内容进入 pin、seal 与评审，照常写入两种检出（与用户主检出中已有的内容一致）。**被改动的**夹具目录命中 `nested_repo`，在覆盖之前不写入两种检出（ADR-111 第 3 点）。由此，两种检出中不会出现 Agent 改过的 git 元数据。
+- **前提：** 规则基于“目录中存在标记条目”这一 git 识别仓库的必要条件，并对候选目录下的任何变化都触发，因此不依赖对 git 判定细节的重演。名字比较按 `10` §10.1.2 的唯一定义（ADR-120），该规则覆盖 HFS+ 忽略的码位。
 - **两种检出的写出规则：** 人工编辑检出与检验检出从影子树（或检查点树）物化，**不写出** `pinSafetyCheck` 中尚未覆盖的命中路径（目录含子树）；已覆盖的目录按上一条写出 git 元数据的 base 版本。**依赖目录（ADR-116）：两种检出物化依赖后，对依赖目录做同样的名字扫描，命中的仓库形态目录不写出并在信任提示中列出。** 信任提示列出全部未写出的路径及其原因。
-- **早期预警（卫星侧，不作为 Verified 依据，也不影响任何树的内容）**：ADR-101 的名字粗筛 + git 确认继续在检查点时增量运行（S2 下以文件系统事件维护候选集，写回后全量），只用于运行中尽早提示 Agent 与人。它依赖 git 在 Tower 沙箱中的判定，读被拒绝时与“不是仓库”无法区分，所以只作提示，结论只来自 `pinSafetyCheck`（R10-D3-01）。
+- **早期预警（卫星侧，不作为 Verified 依据，也不影响任何树的内容）**：ADR-101 的名字粗筛 + git 确认继续在检查点时增量运行（S2 下以文件系统事件维护候选集，写回后全量），只用于运行中尽早提示 Agent 与人。它依赖 git 在 Tower 沙箱中的判定，读被拒绝时与“不是仓库”无法区分，所以只作提示，结论只来自 `pinSafetyCheck`。
 - **gitlink**：影子索引中若已有 gitlink，先 `update-index --force-remove`；gitlink 永不进入影子索引。
 
 ```ts
@@ -282,20 +282,20 @@ async function worktreeTree(g: GoalBinding, mode: "advisory" | "decisive" | "ful
 }
 ```
 
-**两种模式（ADR-075，R4-D10-01）：**
+**两种模式（ADR-075）：**
 
 | 调用方 | mode | 理由 |
 |---|---|---|
 | Live Line 的显示 | `advisory`（同 decisive，但排除 > 50 MB 文件，结果为弱指纹） | 只影响显示 |
 | 观察器的指纹（`command_result` 前后、观测轨 O/M 的新鲜度）、检查点、验证 pin（§7.4.1）、验收面板/评审单元打开、`in_review` / `accepted` 期间的 I2 判定（`submit` 有效性按 ADR-121 只看工具事件，不用指纹） | `decisive`（影子索引 + ctime/inode stat 检查，收录全部文件） | 影子索引归 Tower 所有，stat 检查包含 ctime 与 inode，Agent 无法伪造；`in_review` 期间也没有 Agent 在运行 |
 | `accept` 动作、seal | `full`（全新临时索引，完整重哈希） | 最后两道闸口，一次性付出完整成本；在验收面板以进度显示，不阻塞 UI |
-| `in_review` / `accepted` 期间的监视 | 文件系统事件驱动（Supervisor 在沙箱外以 FSEvents/inotify 监视卫星）+ `decisive` | 取代每 60 s 的定时巡检。监视建立或重新建立时（含 Tower 启动后）先执行一次 decisive，覆盖未监视期间的写入（ADR-195）。**丢事件处理（R5-D10-02）：** FSEvents 报告 `MustScanSubDirs`、`UserDropped` 或 `KernelDropped` 标志，或 inotify 报告 `IN_Q_OVERFLOW` → 立即执行一次 decisive；inotify watch 数达到上限或监视建立失败 → 该 Goal 退回每 60 s 一次 decisive 巡检，并在 Fact 新鲜度旁注明“监视降级” |
+| `in_review` / `accepted` 期间的监视 | 文件系统事件驱动（Supervisor 在沙箱外以 FSEvents/inotify 监视卫星）+ `decisive` | 取代每 60 s 的定时巡检。监视建立或重新建立时（含 Tower 启动后）先执行一次 decisive，覆盖未监视期间的写入（ADR-195）。**丢事件处理：** FSEvents 报告 `MustScanSubDirs`、`UserDropped` 或 `KernelDropped` 标志，或 inotify 报告 `IN_Q_OVERFLOW` → 立即执行一次 decisive；inotify watch 数达到上限或监视建立失败 → 该 Goal 退回每 60 s 一次 decisive 巡检，并在 Fact 新鲜度旁注明“监视降级” |
 
 `full` 的结果与紧邻的 `decisive` 结果不一致时，以 `full` 为准，记录 `anomaly{detector:"stat_cache_mismatch"}`，清空该 Goal 的影子索引（即以这次 `full` 的临时索引取代它，`10` §10.7.1 第 1 步“忽略规则不追溯”，ADR-211），并按 I2 与 `external_change` 的分界（唯一定义在 `10` §10.3.1，ADR-128）处理：变化的路径按归因表分类，可归因者按 I2 回到 `verifying`，来源不明者进入 `paused(external_change)`，不先验证（ADR-176）。
 
 **成本（ADR-075，以 SP5 实测为准）：** 无变化的 `decisive` 检查，2 万文件 ≤ 150 ms（实测 100–150 ms）；`full` 按仓库规模登记于 `16`（参考：2 万文件 2.6–7.2 s，5 万文件热 4.7–9.5 s、冷约 15 s）。不再有“≤ 30 ms 快路径”或“3 万文件 ≤ 2 s 的决定性指纹”这两个说法。
 
-**pin 与检查点的创建（ADR-060 第 5 条）：** 检查点树的**唯一定义在 `10` §10.7.1**（R11-D13-01）；它与 pin 使用同一个 `worktreeTree(g, "decisive", local)`，排除什么以该处为准（含本地文件排除集，ADR-207）；不排除大文件，不受早期预警影响，因此结果只取决于工作区内容、排除集与影子索引已收录的路径（忽略规则不追溯，`full` 以同一组路径初始化，`10` §10.7.1 第 1 步，ADR-211）。下面只示意两者的关系：
+**pin 与检查点的创建（ADR-060 第 5 条）：** 检查点树的**唯一定义在 `10` §10.7.1**；它与 pin 使用同一个 `worktreeTree(g, "decisive", local)`，排除什么以该处为准（含本地文件排除集，ADR-207）；不排除大文件，不受早期预警影响，因此结果只取决于工作区内容、排除集与影子索引已收录的路径（忽略规则不追溯，`full` 以同一组路径初始化，`10` §10.7.1 第 1 步，ADR-211）。下面只示意两者的关系：
 
 ```
 checkpoint: tree = worktreeTree(g, "decisive", L).tree                     # L = 当时求值的本地文件排除集，记入提交的 trailer（10 §10.7.1 第 1 步）
@@ -354,7 +354,7 @@ pin:        tree = worktreeTree(g, "decisive", L).tree
 
 ## 7.4 验证器（Verifier）
 
-职责分离：验证器不是作者（*TB* C7 “Separation of duties”）。它在**干净 worktree、固定提交**上重跑 `exec` 标准，产出 `criterion_check`。
+职责分离：验证器不是作者（“Separation of duties”）。它在**干净 worktree、固定提交**上重跑 `exec` 标准，产出 `criterion_check`。
 
 ### 7.4.1 总流程
 
@@ -479,7 +479,7 @@ async function verify(goal: Goal, trigger: VerifyTrigger): Promise<VerifyOutcome
   return done(skipped);                                        // §7.10.3
 }
 
-// ecosystemSupported（R4-D7-03）：逐条标准判定，不按项目一刀切。先有 exec 标准，才谈生态。
+// ecosystemSupported：逐条标准判定，不按项目一刀切。先有 exec 标准，才谈生态。
 function ecosystemSupported(goal, c: ExecCriterion, pin): boolean {
   const cwd = c.cwd ?? ".";
   const pm = nearestLockfile(pin, cwd);        // 从标准的 cwd 向上到仓库根：pnpm-lock.yaml → pnpm；package-lock.json /
@@ -536,10 +536,10 @@ function ecosystemSupported(goal, c: ExecCriterion, pin): boolean {
   towerGit(slotGitDir, slot) fsck --connectivity-only <pin>
   verify: status --porcelain == "" 且 rev-parse HEAD == pin       # 否则作废槽位并重建
   ```
-  M1 不在槽位中初始化子模块（ADR-071：子模块项目的 exec 标准不运行，§7.4.1）；M2 的子模块支持将按 base 中的 gitlink 从用户仓库取内容，而不是按 pin 中 `.gitmodules` 的 URL（R4-D13-06）。
+  M1 不在槽位中初始化子模块（ADR-071：子模块项目的 exec 标准不运行，§7.4.1）；M2 的子模块支持将按 base 中的 gitlink 从用户仓库取内容，而不是按 pin 中 `.gitmodules` 的 URL。
 - **本地文件播种（ADR-078）：** 检出之后、物化之前，Tower 按该 Project 由人批准的“本地文件”清单，从**用户检出**复制被 git 忽略但运行所需的文件（如 `.env.local`）到槽位。清单分两类（ADR-165）：**普通本地文件**照常播种到验证槽位与人工检验检出；**含机密的本地文件**——文件名匹配 `.env*`、`*.pem`、`*.key`、`*credentials*`、`*.p12` 等模式，或用户标记为机密，或内容匹配 `11` §11.7 的机密模式（`add` 时判定，每次复制前按名字与当前内容重新判定；作用范围、判定与复制用同一次读入的内容、不可读时的处理都见 `16` 的 `ProjectLocalFile` 行，ADR-170/171）——在 M1 中**不播种**到验证槽位、人工检验检出或卫星。依赖这些文件才能运行的检查写为 human 标准（与 §7.4.3 的 M1 规则相同）；本地文件设置页对这类文件显示“M1 中不提供给验证与检验（需要它的检查请写为 human 标准）”。因此 **Tower 不会自动**把机密本地文件放进验证槽位或检验检出（检验检出只在人显式选择时才有，`inspect_with_secrets`，见下条；ADR-164/166）。人工编辑检出同样默认不含它们（提示“此副本不含本地机密文件；需要运行时请自行复制进来”），**交还时一律排除这些路径**，不进入 T1、任何检查点或 seal（ADR-167）。S2 下 Agent 对 `<wtRoot>/_verify/**`、`<wtRoot>/_inspect/**`、`<wtRoot>/_human/**` 与用户主检出一律读拒绝（ADR-082）。被播种文件的内容哈希进入 `envHash`（§7.4.3 的公式：本应复制的条目的 `(path, contentHash)` 列表，未复制的以 `(path, "not_copied")` 进入），并记入 `criterion_check.env.localFiles`（§7.4.7）；两者与写进槽位的内容都取自 `verify()` 在查缓存之前的同一次读取（§7.4.1，ADR-172/173）；未播种的含机密文件与未批准的文件不进入。`criterion_check` 的新鲜度只按 tree 比较（§7.3.3），指纹不含本地文件（§7.3.2，ADR-174）：人修改用户检出中的本地文件，已通过的结果不会因此变旧；变化在下一次验证时经 `envHash` 体现，缓存不命中（ADR-173）。
 - **人工检验检出（ADR-078）：** 评审中按 `O 检验` 时，Tower 从影子树物化 pin 的内容到 `<wtRoot>/_inspect/<goalId>`（独立目录，不是卫星，也不是验证槽位；写出规则见 §7.3.2“两种检出的写出规则”：未覆盖的 `pinSafetyCheck` 命中不写出，未改动的 base 夹具照常写出，ADR-111），同样播种**普通**本地文件；**含机密的本地文件默认不带上**——只有人在打开检验时打开开关“带上本地机密文件（由我自己运行 Agent 的代码）”（默认关闭）才写入，并记 `HumanDecision{inspect_with_secrets}`（仅本机），界面写明“运行期间 Agent 写的代码会读到这些文件；同一用户的其他进程也可能读到”（ADR-166，`10` §10.8.3）。这是人发起的例外，等同于人在自己机器上运行该分支；需要机密的 human 标准据此可以完成。在为检验**另行分配的端口段**内（与 Goal、验证槽位同一分配器，不复用 Goal 的段，关闭检验时回收；以 `10` §10.8.3 为准）按 `VerifyProfile.services` 启动依赖服务，并在外部终端或编辑器中打开。它的修改不影响 pin 与 I2，也不产生 `criterion_check`；人据此勾选 human 标准。检验检出运行的是 Agent 写的代码（生命周期脚本与服务），因此**按验证器的沙箱档位执行**（与验证槽位同一套 S2 写入与网络规则，网络按 `VerifyProfile.env.network`）；S0 下需要该 Goal 的 S0 授权（ADR-077），未授权时只复制文件、不执行任何脚本与服务（ADR-082）。
-- **人工编辑检出与检验检出的依赖准备（R10-D13-02、R10-D10-01b）：** 两种检出都只从影子树物化（**不**从验证槽位复制：槽位在 `verify()` 结束时已拆除）。依赖按以下流程准备，人看到的环境与验证器一致，而不是 Agent 的卫星：
+- **人工编辑检出与检验检出的依赖准备：** 两种检出都只从影子树物化（**不**从验证槽位复制：槽位在 `verify()` 结束时已拆除）。依赖按以下流程准备，人看到的环境与验证器一致，而不是 Agent 的卫星：
   1. depcache 命中 → 立即 CoW 物化，检出在目标时间内打开（`13`：< 2 s）；
   2. depcache 未命中（例如 Agent 改过 lockfile、该 depsKey 尚未验证）→ **先打开检出**（只有源码），进度以后缀“依赖准备中 · <阶段> · <进度>”显示在实况行与卡片第 2 行，完成后变为“依赖已就绪”（显示位置以 `04` §4.6.7 为准；检验检出另在检验面板中显示，`04` §4.6.6），安装器在后台按 §7.4.3 的拉取 → 预取 → 安装 → 发布流程运行，完成后物化进检出；
   3. 依赖就绪后：**检验检出**按验证器的沙箱档位执行项目自身的生命周期脚本与 `VerifyProfile.prepare`（生成 Prisma 客户端等；S0 且未授权时不执行并说明，ADR-082）；**人工编辑检出从不自动运行项目脚本或服务**（`10` §10.8.4），生成产物缺失时只在界面中说明；
@@ -548,7 +548,7 @@ function ecosystemSupported(goal, c: ExecCriterion, pin): boolean {
 
 ### 7.4.3 依赖存储与环境（ADR-021）
 
-**为什么要私有存储（R1-D7-02）：** 如果 Agent 能写验证器所用的包缓存或 depcache（例如改掉 store 里 `vitest` 的实现），验证器就会在“干净”的源码树上用被篡改的运行器跑出“通过”，而被忽略的目录不在指纹里，这种篡改完全不可见。因此：
+**为什么要私有存储：** 如果 Agent 能写验证器所用的包缓存或 depcache（例如改掉 store 里 `vitest` 的实现），验证器就会在“干净”的源码树上用被篡改的运行器跑出“通过”，而被忽略的目录不在指纹里，这种篡改完全不可见。因此：
 
 | 存储 | 位置 | 谁可写 | 谁可读 | 用途 |
 |---|---|---|---|---|
@@ -569,15 +569,15 @@ function ecosystemSupported(goal, c: ExecCriterion, pin): boolean {
 
 **验证器只读取 `$VS` 中的配置（ADR-061）：** 验证器（V）使用的一切配置——用户级 npmrc 的副本、pnpm 配置、浏览器与引擎缓存位置——都由安装器生成在 `$VS`，记录内容哈希，**每次验证前复核**。`16` §16.8 的 V 列不得引用任何 Agent 可写的路径（`$GS`、卫星），lint 检查此规则。动机：npm 与 pnpm 执行 `run` 脚本时会应用 npmrc 中的 `node-options`（成为 `NODE_OPTIONS`，例如 `--require <文件>`）与 `script-shell`；如果验证器读取 Agent 可写的 npmrc，Agent 就能在测试进程内先于测试执行任意代码。同一原则也用于 Engine Host：Host 在沙箱外运行包管理器的全局根查询，它的环境不引用任何 Agent 可写的位置（唯一定义 `05` §5.3.6，ADR-213）。
 
-**验证器存储完整性的唯一处置（R4-D7-06）：** `$VS` 中任何内容哈希不符——配置副本、depcache 条目、工具缓存——都按同一规则处理：记录 `anomaly{detector:"verifier_store_tampered", path}`（severity 3，阻断本次结论）；删除受影响的条目；本次验证以 `verify_env_error{stage:"integrity"}` 结束（不返工、不计次数）；由安装器重新生成后自动重试一次。由于 S2 下 Agent 不可写 `$VS`，此事件同时意味着沙箱边界可能失效，Needs-You 条目提示检查沙箱档位。（取代此前分别出现的 `verifier_config_tampered` 与 `depcache_tampered`。）
+**验证器存储完整性的唯一处置：** `$VS` 中任何内容哈希不符——配置副本、depcache 条目、工具缓存——都按同一规则处理：记录 `anomaly{detector:"verifier_store_tampered", path}`（severity 3，阻断本次结论）；删除受影响的条目；本次验证以 `verify_env_error{stage:"integrity"}` 结束（不返工、不计次数）；由安装器重新生成后自动重试一次。由于 S2 下 Agent 不可写 `$VS`，此事件同时意味着沙箱边界可能失效，Needs-You 条目提示检查沙箱档位。（取代此前分别出现的 `verifier_config_tampered` 与 `depcache_tampered`。）
 
-**复核成本（R5-D10-02）：** `$VS` 中的配置副本很小，每次验证前做内容哈希。数百 MB 的 `$SH` 浏览器/引擎缓存与 depcache 条目，每次验证前只做 stat 快照比对（path、size、mtime、**ctime**、inode；目标 ≤ 200 ms），不一致或距上次全量内容哈希超过 24 h 时才做全量内容哈希（后台、低优先级，计入 `13` 的后台预算）。
+**复核成本：** `$VS` 中的配置副本很小，每次验证前做内容哈希。数百 MB 的 `$SH` 浏览器/引擎缓存与 depcache 条目，每次验证前只做 stat 快照比对（path、size、mtime、**ctime**、inode；目标 ≤ 200 ms），不一致或距上次全量内容哈希超过 24 h 时才做全量内容哈希（后台、低优先级，计入 `13` 的后台预算）。
 
-**Node 运行时选择（ADR-085，R5-D7-03）：** 按以下顺序确定项目的 Node 版本：`.nvmrc` → `.node-version` → `package.json#volta.node` → `engines.node`（取满足范围的最新 LTS）→ Tower 默认 LTS。添加项目时显示结果并请人确认，记入 `VerifyProfile.node`。安装器从官方发布处下载该版本（校验 SHASUMS256 签名）到 `$SH/tools/node@x.y.z/`，与 pnpm 同一机制；Node 版本进入 `depsKey`，所以安装器构建原生模块所用的 Node 与 A/V 一致（ABI 一致）。**A、I、V 三个角色的 `PATH` 由 Tower 显式构造**：`$SH/tools/node@…/bin`、`$SH/tools/pnpm@…`、槽位或卫星的 `node_modules/.bin`、系统基础路径（`/usr/bin:/bin:/usr/sbin:/sbin`）；不继承 GUI 进程的 `PATH`（macOS 从 Dock 启动的应用拿不到 shell PATH）。
+**Node 运行时选择（ADR-085）：** 按以下顺序确定项目的 Node 版本：`.nvmrc` → `.node-version` → `package.json#volta.node` → `engines.node`（取满足范围的最新 LTS）→ Tower 默认 LTS。添加项目时显示结果并请人确认，记入 `VerifyProfile.node`。安装器从官方发布处下载该版本（校验 SHASUMS256 签名）到 `$SH/tools/node@x.y.z/`，与 pnpm 同一机制；Node 版本进入 `depsKey`，所以安装器构建原生模块所用的 Node 与 A/V 一致（ABI 一致）。**A、I、V 三个角色的 `PATH` 由 Tower 显式构造**：`$SH/tools/node@…/bin`、`$SH/tools/pnpm@…`、槽位或卫星的 `node_modules/.bin`、系统基础路径（`/usr/bin:/bin:/usr/sbin:/sbin`）；不继承 GUI 进程的 `PATH`（macOS 从 Dock 启动的应用拿不到 shell PATH）。
 
-**Node 版本声明变化（R6-D7-03d）：** 每次验证按同一顺序从 **pin** 解析 Node 版本。结果与 `VerifyProfile.node` 不同（例如 Goal 修改了 `.nvmrc` 或 `engines`）时，验证使用 pin 声明的版本（经工具缓存安装；`depsKey` 随之变化），结论标为“有保留的已验证（Node 版本与项目档案不同：<新> vs <旧>）”，并生成 `ratify` 类 Needs-You：“更新项目档案的 Node 版本为 <新>？”。人确认后档案更新，此后的验证不再带此保留。
+**Node 版本声明变化：** 每次验证按同一顺序从 **pin** 解析 Node 版本。结果与 `VerifyProfile.node` 不同（例如 Goal 修改了 `.nvmrc` 或 `engines`）时，验证使用 pin 声明的版本（经工具缓存安装；`depsKey` 随之变化），结论标为“有保留的已验证（Node 版本与项目档案不同：<新> vs <旧>）”，并生成 `ratify` 类 Needs-You：“更新项目档案的 Node 版本为 <新>？”。人确认后档案更新，此后的验证不再带此保留。
 
-**包管理器识别（R4-D7-02）：** `lockfileVersion` 不足以判定主版本（pnpm 9–12 写出的都是 `'9.0'`），按以下顺序：
+**包管理器识别：** `lockfileVersion` 不足以判定主版本（pnpm 9–12 写出的都是 `'9.0'`），按以下顺序：
 
 1. `package.json#packageManager`（`pnpm@x.y.z`，可带哈希）——**可验证的 pnpm 项目以此为准**；
 2. `package.json#devEngines.packageManager`；
@@ -599,12 +599,12 @@ if depcache[depsKey] 不存在:
   stage = $VS/stage/<depsKey>/       # 保持仓库相对路径
     放入：根与各 workspace 的 package.json（stage 版）、lockfile、pnpm-workspace.yaml、项目 .npmrc（令牌剥离）、
           .pnpmfile.cjs（若存在；lockfile 的 pnpmfileChecksum 要求它在场）、
-          补丁文件（路径取自 patchedDependencies 的**值**，不假定在 patches/ 下，R5-D7-02c）、
-          file: / link: 本地路径依赖的源目录（R5-D7-02b；其自身的构建脚本不在 stage 执行，按项目生命周期在槽位中执行）
-    stage 版 package.json：**只删除 `scripts` 字段**，保留其余一切影响解析与构建的字段（R4-D7-05）
+          补丁文件（路径取自 patchedDependencies 的**值**，不假定在 patches/ 下）、
+          file: / link: 本地路径依赖的源目录（其自身的构建脚本不在 stage 执行，按项目生命周期在槽位中执行）
+    stage 版 package.json：**只删除 `scripts` 字段**，保留其余一切影响解析与构建的字段
   前置检查：lockfile 中存在 git 托管依赖（git+ssh / git+https / github: / codeload tarball 等非注册表来源）→ M1 不支持：
     git 依赖在拉取时会执行其自身的 prepare，这是持令牌的代码执行；该项目的 exec 标准按“生态未支持”处理（detail:"git_dependency"，
-    ecosystemSupported 返回 false），不进入下列阶段（R6-D7-03c）
+    ecosystemSupported 返回 false），不进入下列阶段
   阶段 1 · 拉取（带令牌，联网，不执行任何代码；ADR-085）：
     网络 = 注册表允许列表（11 §11.6.2）；配置 = $TI 的 npmrc 加上**即时投递**的令牌文件（ADR-165/166）：Tower **不保存**注册表令牌，每次运行时只从**用户级** ~/.npmrc
     读取认证行（//<registry>/:_authToken 等，按注册表对应；其中的 ${VAR} 以用户登录环境展开）；项目 .npmrc 中的认证行**不读取**
@@ -620,17 +620,17 @@ if depcache[depsKey] 不存在:
       node-gyp 所需的 Node 头文件 → $SH（下载域名清单登记于 16，含 nodejs.org、Playwright CDN、binaries.prisma.sh、
       download.cypress.io 等）
     项目自定义下载：只能由人在 VerifyProfile.prefetch 中批准（URL + 校验和 + 目标路径），同样在此步执行
-    时机与显示（R7-D10-01b）：添加项目与 lockfile 变化时在后台预热执行，尽量移出首次验证的关键路径；仍在关键路径上时，
+    时机与显示：添加项目与 lockfile 变化时在后台预热执行，尽量移出首次验证的关键路径；仍在关键路径上时，
       Live Line 按 `12` §12.6 的子状态词表与格式显示：验证时为 verifying 的 `预取`；Goal 启动时并入 preparing 的 `依赖` 步骤（preparing 没有 `预取` 一词，ADR-223）；
       耗时按下载体积与带宽由 SP5 测量登记，不计入 5 s 物化预算
   阶段 3 · 安装（**不带令牌、断网**；.pnpmfile.cjs 作为项目代码只在这里运行；ADR-092）：
     配置 = $VS/npmrc（只读，与验证器同一份净化副本，16 §16.8 规则 5，ADR-180；阶段 2 的预取器同此）
     写允许 = **本次运行的新暂存目录** $VS/staging/<installRunId>/ + 临时目录；**共享缓存一律只读**——$VS 的 pnpm store、
-      npm cache、$VS/xdg、$SH（含 node-gyp 头文件与浏览器）、其他 depcache 条目与验证器配置（ADR-092 修订，R7-D7-02）；
+      npm cache、$VS/xdg、$SH（含 node-gyp 头文件与浏览器）、其他 depcache 条目与验证器配置（ADR-092 修订）；
       $TI 读写拒绝。共享缓存只由 Supervisor 运行的拉取（阶段 1）、预取（阶段 2）与发布写入。
       本阶段的沙箱另拒绝创建硬链接与钥匙串查找（11 §11.6.2 钥匙串一行的清单，ADR-224）
     pnpm 的副作用缓存关闭（side-effects-cache=false，按版本前缀），构建结果只进入暂存目录；若 SP6c 证明某版本的
-      `pnpm install --offline` / `rebuild` 在只读 store 上无法完成，按以下顺序选择回退（R8-D10-01）：
+      `pnpm install --offline` / `rebuild` 在只读 store 上无法完成，按以下顺序选择回退：
         ① 只私有化 store 的**索引与临时目录**（pnpm 需要写入的部分），内容文件仍只读引用共享 store；
         ② 只有 ① 不可行时，才对 store 做 CoW 私有副本放在暂存目录内，随暂存目录丢弃；在不支持写时复制的卷上禁用此回退，
            该版本的 pnpm 项目按“验证环境不支持”提示（verify_env_error{stage:"install", detail:"readonly_store"}）
@@ -640,7 +640,7 @@ if depcache[depsKey] 不存在:
       verify_env_error{stage:"install", missing:"download"}，提示把它加入 VerifyProfile.prefetch
     pnpm：pnpm install --offline --frozen-lockfile --ignore-scripts
           pnpm rebuild --pending       # 执行因 --ignore-scripts 挂起的构建。实测（pnpm 12.6）它也会执行根包的 postinstall；
-                                       # 由于 stage 版 package.json 已删除 scripts，这里没有项目脚本可执行（R5-D14-01c）
+                                       # 由于 stage 版 package.json 已删除 scripts，这里没有项目脚本可执行
     npm： npm ci --offline --ignore-scripts
           npm rebuild <names>          # names = lockfile v3 中 hasInstallScript: true 且不是 workspace / file: 链接的包；`10` §10.4.2 引用此命令
     环境变量指向阶段 2 预取到 $SH 的浏览器、引擎与头文件（变量名见 16 §16.8）
@@ -651,7 +651,7 @@ if depcache[depsKey] 不存在:
   发布（Supervisor，沙箱外）：校验暂存目录的 manifest 与运行器集合基准一致后，以原子 rename 发布为 depcache[depsKey]，
       发布后只读；来源记录（depsKey → installRunId、全部输入哈希、发布时间）写入 Tower 数据库。
       $VS 中出现数据库没有来源记录的 depcache 条目 → 视为不存在并删除，记 verifier_store_tampered
-      （防止安装阶段的代码预先写入他人或未来 base 的 depsKey，R6-D7-02）
+      （防止安装阶段的代码预先写入他人或未来 base 的 depsKey）
 
 # —— V：槽位准备（验证器，S2；PATH 由 Tower 显式构造）——
 物化：manifest 中每个目录经 clonefile / reflink 复制到槽位同一相对路径；不支持写时复制的卷做完整复制；**禁止硬链接**
@@ -663,7 +663,7 @@ pnpm：改写槽位内 node_modules/.modules.yaml 中的 store 路径为 $VS 中
       网络 = VerifyProfile.env.network（默认只有 localhost）；超时 = VerifyProfile.prepareTimeoutSec（默认 600 s，含下一步）
       → 例如 prisma generate 读取 pin 中的 schema.prisma，把客户端生成到槽位的 node_modules/.prisma
 VerifyProfile.prepare（如有）
-依赖完整性复核（R4-D7-01、ADR-085、ADR-092、R5-D7-01）：
+依赖完整性复核（ADR-085、ADR-092）：
   (a) 运行器集合（ADR-098）：从 **lockfile 的解析图**确定——别名展开后的真实包名与版本（含 `npm:` 别名），而不是 package.json
       中写的名字。种子 = 测试运行器类包（vitest、@vitest/*、jest、jest-*、@jest/*、mocha、chai、@playwright/*、playwright、cypress、
       ava、tap、tsx、ts-node、typescript、esbuild、vite、@swc/*、babel-jest、@babel/core）+ 标准命令链中每个程序经 .bin 解析到的包；
@@ -671,9 +671,9 @@ VerifyProfile.prepare（如有）
       运行器身份 = (真实包名, 注册表来源, 版本)。与阶段 1 记录的**注册表 tarball 逐文件哈希**比对（基准不来自安装产物）
       做法：物化时的 stat 快照含 ctime 与 inode——这两项无特权进程无法伪造或恢复——生命周期之后只对 ctime/inode 变化的
       文件重新做内容哈希；所在文件系统的 ctime 不可信（部分网络文件系统）时改为全量内容哈希。
-      预算（R6-D10-01）：stat 遍历 + 变化文件哈希，100–300 MB 的运行器集合目标 ≤ 1 s（SP5 实测回填）；全量哈希只作回退
+      预算：stat 遍历 + 变化文件哈希，100–300 MB 的运行器集合目标 ≤ 1 s（SP5 实测回填）；全量哈希只作回退
       → 不一致：sentinel{detector:"runner_tampered", package, files}，severity 3，阻断 Verified，本次标准结果不计入 V
-  (a') 运行器被补丁或改向（ADR-092、ADR-098、ADR-105，R6-D7-01、R7-D7-01、R8-D7-02）：以 **base 的 lockfile** 为参照，以下每个条件都只针对
+  (a') 运行器被补丁或改向（ADR-092、ADR-098、ADR-105）：以 **base 的 lockfile** 为参照，以下每个条件都只针对
       **相对 base 新出现或发生变化**的情况；base 中已有的别名、补丁、覆盖不在每个 Goal 中报出，而是作为项目级信息在
       VerifyProfile 中由人确认一次（`runnerExceptions`）。运行器集合中任一包出现
       · 补丁或覆盖：patchedDependencies / patches/、package.json 的 overrides / resolutions / pnpm.overrides / pnpm.packageExtensions，
@@ -694,12 +694,12 @@ VerifyProfile.prepare（如有）
 槽位内只执行 run 类命令（标准、生命周期脚本、prepare），绝不执行 install / add / update
 ```
 
-- **残余风险（R5-D7-01）：** lifecycleIndirection 只把生命周期脚本的**直接**调用文件纳入保护；它们的传递闭包（被 `require` 的模块、Prisma 自定义 generator provider、vite 本地插件等）没有完整定义。这部分由 (a) 运行器内容哈希、(d) 未跟踪产物检查与缓存重置兜底，登记为残余风险“中”。
+- **残余风险：** lifecycleIndirection 只把生命周期脚本的**直接**调用文件纳入保护；它们的传递闭包（被 `require` 的模块、Prisma 自定义 generator provider、vite 本地插件等）没有完整定义。这部分由 (a) 运行器内容哈希、(d) 未跟踪产物检查与缓存重置兜底，登记为残余风险“中”。
 - **`.pnpmfile.cjs` 是项目代码**（ADR-085）：默认 protected，修改触发 `lifecycle_script_changed`（§7.5.2 R-T9）；它只在不带令牌、断网的安装阶段运行。
 - **耗时归属：** 物化（命中时 ≤ 5 s）与生命周期 + prepare 分开计量。后者常常是完整构建，其时长计入验证服务时间 S（§7.4.10）与 `13` 的 prepare 指标，不受 5 s 预算约束。
-- **卫星侧（A）的物化（R4-D7-04）：** Goal 卫星的 `node_modules` 同样从 depcache 物化（`10` §10.4.2），但 store 指向 Agent 存储：物化后改写卫星中 `.modules.yaml` 的 store 路径为 `$GS` 的 store、删除 `.pnpm-workspace-state-v1.json`，并在 A 的生成配置中设置 `confirm-modules-purge=false`（按版本前缀）。这样 Agent 在没有 TTY 的 bash 中执行的第一次 `pnpm install` 不会因 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 失败；最坏情况是一次非交互的重新链接（`14` P16）。
+- **卫星侧（A）的物化：** Goal 卫星的 `node_modules` 同样从 depcache 物化（`10` §10.4.2），但 store 指向 Agent 存储：物化后改写卫星中 `.modules.yaml` 的 store 路径为 `$GS` 的 store、删除 `.pnpm-workspace-state-v1.json`，并在 A 的生成配置中设置 `confirm-modules-purge=false`（按版本前缀）。这样 Agent 在没有 TTY 的 bash 中执行的第一次 `pnpm install` 不会因 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 失败；最坏情况是一次非交互的重新链接（`14` P16）。
 
-**逐生态物化规格（R2-D7-02）：**
+**逐生态物化规格：**
 
 | 生态 | 安装位置与命令 | 物化到槽位的内容（CoW） | 槽位内可写叠加层 | 必须在槽位内重建的部分 | 绝对路径约束 | 阶段 |
 |---|---|---|---|---|---|---|
@@ -712,7 +712,7 @@ VerifyProfile.prepare（如有）
 | Rust · cargo | 安装器 `cargo fetch --locked` 填充验证器 `CARGO_HOME`（registry/index、cache、src） | 每个槽位一份 `CARGO_HOME` 的 CoW 副本（**cargo 需要可写的 `CARGO_HOME`**：`.package-cache` 锁、`registry/src` 解压） | 槽位 `CARGO_HOME` 副本；槽位 `target/`（验证器自有，跨次保留以增量编译） | `depsKey` 变化时 `cargo clean -p <workspace crates>` | `target/` 的 dep-info 含绝对路径：槽位路径固定不变 | M2 草案 |
 | Go | 安装器 `go mod download` 填充验证器 `GOMODCACHE` | `GOMODCACHE` 只读引用（模块文件本身只读） | 槽位 `GOCACHE`（构建缓存，验证器自有） | — | `GOFLAGS=-mod=readonly -count=1`；模块缓存写锁需求待 SP5 实测 | M2 草案 |
 
-**测试用例：以 `14` §14.2 的 P 编号为唯一编号**（R5-D14-01b）。本文此前的 T1–T17 映射如下；新增用例直接以 `14` 的编号列出。
+**测试用例：以 `14` §14.2 的 P 编号为唯一编号**。本文此前的 T1–T17 映射如下；新增用例直接以 `14` 的编号列出。
 
 | 本文旧编号 | `14` 编号 | 内容 |
 |---|---|---|
@@ -839,7 +839,7 @@ function verdictOf(c: ExecCriterion, run: RunResult, counts?: TestCounts): Verdi
 
 **`repeat`（唯一定义，ADR-183）：** `repeat = N > 1` 的 exec 标准在同一槽位、同一 pin 上连续运行 N 次，每次按 `verdictOf` 判定；N 次全部为 `pass` 才是 `pass`，第一次非 `pass` 即停止，以该次的 verdict 为结论。N 次之内**不适用**§7.4.6 的失败重跑与既有 flaky 宽限（`fail` 不会转为 `pass_with_preexisting_flakes`），也不适用下方 ADR-054 的“重跑通过 → `pass`”一支（环境判别照常：base 上同样超时或超限 → `verify_env_error`）。N 次中首个 `timeout`/`hung`/`resource_exceeded` 即停止，ADR-054 的判别只针对这一次运行：判别所需的再次运行不计入 N，重跑通过也不改变结论（ADR-184）。`criterion_check.repeat = {required: N, passed: k}` 记录次数。`repeat` 属于标准定义，进入 `criterionSpecHash`（§7.4.8）与过期规则 ①（§7.3.3）。
 
-**超时与资源超限的判别（ADR-054，R2-D7-04）：** `timeout`、`hung`、`resource_exceeded` 首次出现时不直接定性：
+**超时与资源超限的判别（ADR-054）：** `timeout`、`hung`、`resource_exceeded` 首次出现时不直接定性：
 
 ```
 1. 在同一 pin、相同资源限制下重跑该标准一次
@@ -856,7 +856,7 @@ function verdictOf(c: ExecCriterion, run: RunResult, counts?: TestCounts): Verdi
 
 ### 7.4.6 不稳定测试（flaky）
 
-原则：**不稳定本身是一个 Fact；只有“在 base 上本来就不稳定”的测试才可能被宽容；改动引入的不确定性按失败处理**（R1-D7-05）。G-0142 这类并发修复里，改动引入的竞态恰好表现为“同一提交上先失败后通过”，绝不能因此显示为已验证。
+原则：**不稳定本身是一个 Fact；只有“在 base 上本来就不稳定”的测试才可能被宽容；改动引入的不确定性按失败处理**。G-0142 这类并发修复里，改动引入的竞态恰好表现为“同一提交上先失败后通过”，绝不能因此显示为已验证。
 
 ```
 on verdict == "fail" and counts.failedIds non-empty and runner 支持只重跑指定用例:
@@ -928,7 +928,7 @@ interface CriterionCheckData {
 |---|---|---|
 | **同指纹缓存** | 键 `(criterionSpecHash, treeSha, envHash, depsKey, profileVersion)` 命中 → 复用上次的 `criterion_check`（新写一条 Fact，`cache.hit=true`，指向原日志，`data.trigger` 与 `atCommit` 取本次验证的触发与 pin——否则 `progress()` 的 ADR-053 守卫可能按原触发把它排除出 V，与 `outcomeOf` 的结论不一致，`verify()` 中的 `recordHits`，ADR-184；`criterionSpecHash` 覆盖该标准的全部定义字段，含 `command`、`expect`、`repeat`、`timeoutSec`）。**只复用标准结果**：正式验证的 L-c 静态哨兵与测试清单照常运行（§7.4.1，ADR-183）。用 tree 而不是提交作键，所以 rebase 后内容不变、空提交、只改提交信息都会命中 | 键覆盖全部输入（本应复制的本地文件经 `envHash` 进入，与写进槽位的内容取自同一次读取，§7.4.1、§7.4.3，ADR-172/173）；含 flake 的结果不进缓存（下次照常运行）；**命中的前提（唯一定义，ADR-187）**：原验证该标准的完整日志（§7.4.4 `verify/<verifyId>/<criterionId>.log`）仍在——上一次本身是缓存命中时，“原验证”沿引用链取实际运行该标准的那次验证（命中没有自己的日志文件，ADR-188）；已被清理（`10` §10.3.2）时不算命中，照常运行（ADR-185）。原重放包是否仍在不影响命中 |
 | **无关路径携带** | 新 tree 与已验证 tree 的差异**全部**匹配 VerifyProfile 中 🧑 批准的 `irrelevantGlobs`（默认空；常见是 `docs/**`、根目录 `*.md`）时，携带上次结果，`cache.carriedFrom` 记录来源 | 默认为空，必须由人显式加入；携带的结果显示“携带自 @abc123”；TestPathSet、配置、带机密标准的相关文件永远不能列入 |
-| ~~观察器结果替代~~ | **v1 删除**（R1-D7-06）。`cleanEnv:false` 不再让 Agent 环境的结果成为 `criterion_check`；它们只进入观测轨 O（§7.2.4） | Agent 可控环境中的结果永不变绿 |
+| ~~观察器结果替代~~ | **v1 删除**。`cleanEnv:false` 不再让 Agent 环境的结果成为 `criterion_check`；它们只进入观测轨 O（§7.2.4） | Agent 可控环境中的结果永不变绿 |
 | **成本升序** | 按历史 p50 耗时升序执行（lint < typecheck < unit < e2e） | 全部标准都要跑完才能进 `in_review` |
 | **昂贵标准 fail-fast** | 标记为 `expensive`（p50 > 5 min）的标准，若之前已有标准失败则跳过，verdict 记 `skipped_fail_fast` | 跳过不等于通过；返工 Run 拿到的反馈里写明“未运行” |
 | **依赖预热** | §7.4.3 | — |
@@ -968,7 +968,7 @@ function artifactCheck(c: ArtifactCriterion, pin: Sha, trigger: VerifyTrigger): 
 }
 ```
 
-- **外部链接检查的网络权限（R2-D7-05）：** 只有在合同中为该 artifact 标准声明了 `network`（允许的主机列表，或人明确批准的 `["*"]`）时才执行。请求由 Supervisor 的链接检查器发出（只发 HEAD，失败后 GET 前 1 KB；不带 cookie 与凭据；不运行 Agent 代码），不经过验证槽位。`links_deferred` 只计入 O（§7.2.4）；`links_unchecked`（无权限或离线）计入 V，但显示为“有保留”。
+- **外部链接检查的网络权限：** 只有在合同中为该 artifact 标准声明了 `network`（允许的主机列表，或人明确批准的 `["*"]`）时才执行。请求由 Supervisor 的链接检查器发出（只发 HEAD，失败后 GET 前 1 KB；不带 cookie 与凭据；不运行 Agent 代码），不经过验证槽位。`links_deferred` 只计入 O（§7.2.4）；`links_unchecked`（无权限或离线）计入 V，但显示为“有保留”。
 - **`links_reachable` 属 M2**（ADR-183：调研与文档类 Goal 不在 M1，ADR-059）：M1 的合同编辑器在批准时拒绝该检查类型（提示“M2 提供”），链接检查器不在 M1 实现；下列规则是 M2 的唯一定义。
 - **逐链接判据与汇总（唯一定义，ADR-183）：**
 
@@ -984,9 +984,9 @@ function artifactCheck(c: ArtifactCriterion, pin: Sha, trigger: VerifyTrigger): 
 - `checks` 必填；未知类型在合同批准时就被拒绝（合同编辑器提示可用类型），不会到运行时才失败。
 - 只有 `human` 标准、没有任何 exec/artifact 标准的 Goal 永远不显示“已验证”，进入 `in_review` 时显示中性的“未经机器验证”（ADR-031，§7.10.3）。
 
-### 7.4.10 验证容量、排队模型与延迟预算（R1-D7-11、ADR-042）
+### 7.4.10 验证容量、排队模型与延迟预算（ADR-042）
 
-**槽位数**由 CPU 与内存共同决定，与 `13` §13.8.3 的整机模型使用同一套预留（R2-D7-01）：
+**槽位数**由 CPU 与内存共同决定，与 `13` §13.8.3 的整机模型使用同一套预留：
 
 ```
 reserve(project) = max(1 GB, 1.3 × p95(该项目验证进程树峰值 RSS，最近 20 次))；首次未知时 2 GB
@@ -1031,7 +1031,7 @@ M/M/c 近似（Erlang C）算出的正式验证排队等待 `Wq`（机会式验�
 CPU：每次约 0.7 + 1 + 5 × 3 ≈ 17 核分钟 → 每 Goal 约 44 核分钟/小时
 ```
 
-> **CPU 配额（已与注册表同步）：** 旧上限“每运行中 Goal 每小时 ≤ 10 核分钟”会让参考项目的机会式验证降到约每 100 min 一次，与 ADR-042 的 15–25 min 目标矛盾。`16` §16.2.3 与 `13` §13.11.2 现为 **每 Goal 每小时 ≤ 6 次、≤ 50 核分钟**（第 2 轮回应与 `reviews/round-2-lint.md`）。
+> **CPU 配额（已与注册表同步）：** 旧上限“每运行中 Goal 每小时 ≤ 10 核分钟”会让参考项目的机会式验证降到约每 100 min 一次，与 ADR-042 的 15–25 min 目标矛盾。`16` §16.2.3 与 `13` §13.11.2 现为 **每 Goal 每小时 ≤ 6 次、≤ 50 核分钟**（ADR-041）。
 
 **降级策略**（按顺序启用；Supervisor 用最近 1 h 的实际到达率与服务时间预测 Wq）：
 
@@ -1039,17 +1039,17 @@ CPU：每次约 0.7 + 1 + 5 × 3 ≈ 17 核分钟 → 每 Goal 约 44 核分钟/
 |---|---|
 | > 10 min | 暂停机会式验证与依赖预热 |
 | > 20 min | 卡片显示“验证排队约 N min”；Needs-You 摘要建议降低并发 Goal 数（`UserSettings.maxConcurrentGoals`）；内存允许时提示可把 CPU 上限调到 `floor(cores/3)` |
-| 任何情况 | **从不跳过标准、从不缩短超时、从不把“未运行”当通过**；正式验证的静态哨兵与测试清单也不降级（第 55 轮删除“Wq > 15 min 时测试清单只在 diff 触及 TestPathSet 时运行”一档，§7.4.1，ADR-183） |
+| 任何情况 | **从不跳过标准、从不缩短超时、从不把“未运行”当通过**；正式验证的静态哨兵与测试清单也不降级（ADR-183 删除“Wq > 15 min 时测试清单只在 diff 触及 TestPathSet 时运行”一档，§7.4.1） |
 
 优先级（高 → 低）：`merge_queue` > `claimed` / `agent_bg` > `fp_changed_human` / `fp_changed_agent` > `manual` > 安装器预热 > `opportunistic`。
 
 ### 7.4.11 （M2）带机密的验证标准
 
-> **M2，不在 M1 范围**（ADR-164）。M1 规则见 §7.4.3：验证标准不携带机密，需要机密的检查写为 human 标准。本节保留 ADR-159–163 的设计，作为 M2 的起点；M2 定稿时按 `11` §11.7.0 当时的唯一定义重新审视（含 R38 的条目分类与授权输入）。M1 实现**不包含**本节的任何机制：机密阶段、调度互斥与 `secretMutex.enabled`、冻结状态（`startAgentActivity()` 在 M1 中只是唯一启动点的架构约定，没有冻结）、`secret_wait` 与 `verify.secret_wait.*`、`accept_secret_exposure`、`not_run`、`secretPhaseOnly`、`secretsVia`、投递文件的逐路径放行。
+> **M2，不在 M1 范围**（ADR-164）。M1 规则见 §7.4.3：验证标准不携带机密，需要机密的检查写为 human 标准。本节保留 ADR-159–163 的设计，作为 M2 的起点；M2 定稿时按 `11` §11.7.0 当时的唯一定义重新审视（含 ADR-164 推迟的条目分类与授权）。M1 实现**不包含**本节的任何机制：机密阶段、调度互斥与 `secretMutex.enabled`、冻结状态（`startAgentActivity()` 在 M1 中只是唯一启动点的架构约定，没有冻结）、`secret_wait` 与 `verify.secret_wait.*`、`accept_secret_exposure`、`not_run`、`secretPhaseOnly`、`secretsVia`、投递文件的逐路径放行。
 
 #### 7.4.11.1 投递与规则（M2）
 
-**带机密的标准（R1-D7-03、ADR-159；全部机密的存放、投递与可读者唯一定义在 `11` §11.7）：** 合同标准可以声明 `env: ["STRIPE_TEST_KEY"]`，验证器从系统钥匙串取值（`secrets.enc` 只是钥匙串不可用时的加密回退，`11` §11.7.1），只提供给**该标准**的子进程。M1 中机密只流向验证器标准，Agent 的工具调用从不获得密钥库中的机密（`secrets.access` 属 M2，ADR-161）；需要机密的端到端检查以带机密的验证标准表达。
+**带机密的标准（ADR-159；全部机密的存放、投递与可读者唯一定义在 `11` §11.7）：** 合同标准可以声明 `env: ["STRIPE_TEST_KEY"]`，验证器从系统钥匙串取值（`secrets.enc` 只是钥匙串不可用时的加密回退，`11` §11.7.1），只提供给**该标准**的子进程。M1 中机密只流向验证器标准，Agent 的工具调用从不获得密钥库中的机密（`secrets.access` 属 M2，ADR-161）；需要机密的端到端检查以带机密的验证标准表达。
 
 - **投递方式**：**默认 `env`**——以环境变量 `<NAME>` 注入，兼容按变量读取机密的现有测试。可选 `secretsVia: "file"`——Tower 即时在 `~/.tower/run/<deliveryId>/`（目录 `0700`、文件 `0600`）创建投递文件，以 `<NAME>_FILE` 传路径，标准结束（含超时、取消）即删除。验证器沙箱拒绝 `~/.tower/**`，**只逐路径放行本次标准自己的投递文件**；Agent 沙箱一律拒绝。
 - **调度互斥**（ADR-160/161/162）：带机密的标准只在**没有 Agent 活动**时运行——“Agent 活动”按原则定义：Tower 启动的、运行 Agent 编写或可影响内容的任何进程（唯一定义在 `11` §11.7.0，本文不再列举）。因此带机密的标准独占整个验证器，在同一次验证中排在所有不带机密的标准之后，等待期间不占用槽位；运行期间整机冻结，由单一闸口 `startAgentActivity()` 执行（ADR-163，不分项目），已 `paused` 的 Goal 不受影响。执行顺序、失败时不运行、准备先于注入、依赖缓存只读、结束时终止槽位全部进程，唯一定义在 §7.4.11.2。持有者自身：带机密的标准不参加机会式验证（§7.2.4），只在 `claimed`/`verifying` 时运行。Run 内部不做任何拦截；脱离且无法识别的进程属 ADR-158 已登记的窗口。
@@ -1132,7 +1132,7 @@ async function runSecretPhase(goal: Goal, pin: Sha, crits: ExecCriterion[]) {
 
 ## 7.5 测试完整性哨兵（Test-Integrity Sentinel）
 
-ImpossibleBench 的发现是：Claude 系作弊的主要手段是改测试，而把测试设为只读就能有效遏制（*TB* A16、D#1）。另有实例：一次运行报告“4966/4966 通过”，而套件实际有 4992 个值（*TB* C7）。本哨兵有**三层**：
+ImpossibleBench 的发现是：Claude 系作弊的主要手段是改测试，而把测试设为只读就能有效遏制。另有实例：一次运行报告“4966/4966 通过”，而套件实际有 4992 个值。本哨兵有**三层**：
 
 | 层 | 时机 | 能力 | 局限 |
 |---|---|---|---|
@@ -1166,7 +1166,7 @@ resolveIndirection(cmd):
 
 对 package.json 这类结构化文件，只比较被引用的键（JSON 解析后对比 `scripts.test` 等），不把整个 package.json 当作测试文件，否则加依赖时会误报。
 
-**lifecycleIndirection（R4-D7-01、R6-D7-01）：** 验证器会在槽位中针对 pin 执行项目自身的生命周期脚本（§7.4.3），所以它们和标准命令一样能影响结论。`.pnpmfile.cjs`、补丁文件（`patchedDependencies` 的值与 `patches/`）、`package.json` 中的 `overrides` / `resolutions` / `pnpm.overrides` / `pnpm.packageExtensions` 键，以及 `pnpm-workspace.yaml` 中的 `overrides` / `catalog` / `catalogs` / `packageExtensions` / `patchedDependencies` 键（ADR-098）同样纳入；根与各 workspace 的 `scripts.preinstall` / `install` / `postinstall` / `prepare` / `prepack` / `prepublish`，以及标准所用脚本的 `pre*` / `post*`（如 `pretest`、`posttest`），连同这些脚本经同样解析规则调用到的文件，**默认加入 `scope.protected`**（`edit.protected`，`11` §11.3.3），与 criterionIndirection 一同并入 TestPathSet。
+**lifecycleIndirection：** 验证器会在槽位中针对 pin 执行项目自身的生命周期脚本（§7.4.3），所以它们和标准命令一样能影响结论。`.pnpmfile.cjs`、补丁文件（`patchedDependencies` 的值与 `patches/`）、`package.json` 中的 `overrides` / `resolutions` / `pnpm.overrides` / `pnpm.packageExtensions` 键，以及 `pnpm-workspace.yaml` 中的 `overrides` / `catalog` / `catalogs` / `packageExtensions` / `patchedDependencies` 键（ADR-098）同样纳入；根与各 workspace 的 `scripts.preinstall` / `install` / `postinstall` / `prepare` / `prepack` / `prepublish`，以及标准所用脚本的 `pre*` / `post*`（如 `pretest`、`posttest`），连同这些脚本经同样解析规则调用到的文件，**默认加入 `scope.protected`**（`edit.protected`，`11` §11.3.3），与 criterionIndirection 一同并入 TestPathSet。
 
 ### 7.5.2 检测规则
 
@@ -1249,7 +1249,7 @@ interface TestInventoryData { runner: string; source: "runner" | "static"; total
   - `removed = baseIds − headIds`（`source:"runner"` 时可用）。`removed` 中如果有 id 对应的文件在 head 里还存在，且同名测试被改名，用相似度 ≥ 0.8 认定为改名，不计入删除。
   - `drop = base.total − head.total`；`skipDelta = head.skippedDeclared − base.skippedDeclared`。
   - 命中 R-T5 的条件：`removed 非空` 或 `drop > 0` 或 `skipDelta > 0`。
-  - **严重度取决于计数来源（R1-D7-07）：** 只有 base 与 head 两侧都是 `source:"runner"`（真正由 runner 列举）且 `removed` 中存在未被识别为改名的 id 时，才是 severity 3 并阻断 `in_review`。任何一侧为 `source:"static"`（例如 jest 的正则估计，把用例改写成 `.each` 就会让计数下降）时，命中**降为 severity 2、不阻断**，并在验收面板注明“计数为静态估计”。静态计数永远不触发阻断。
+  - **严重度取决于计数来源：** 只有 base 与 head 两侧都是 `source:"runner"`（真正由 runner 列举）且 `removed` 中存在未被识别为改名的 id 时，才是 severity 3 并阻断 `in_review`。任何一侧为 `source:"static"`（例如 jest 的正则估计，把用例改写成 `.each` 就会让计数下降）时，命中**降为 severity 2、不阻断**，并在验收面板注明“计数为静态估计”。静态计数永远不触发阻断。
 - **成本**：清单在验证时与标准并行运行，占用同一个槽位。**正式验证总是运行**（有可运行的 exec 标准时；标准结果全部命中缓存时只为清单取槽位，§7.4.1，ADR-183），机会式验证不运行。go/cargo 的 list 需要编译，和随后的测试运行共享构建缓存，所以几乎没有额外编译。
 
 ### 7.5.5 策略执行：`ScopeFence.allowTestEdits`
@@ -1394,7 +1394,7 @@ failureSignature(out) = sha1(lastLines(out, 20)
 
 **进展信号**（只用 Fact）：tree 变化且净 diff ≥ 3 行；出现新的 `(normalized, exitCode)` 组合；`class=test` 的失败计数下降或通过计数上升；某条标准的观察器或验证器状态变为通过；人的消息已送达。
 
-**升级流程**（对应 *TB* D#15“先提醒 Agent，再升级给人”）：
+**升级流程**（先提醒 Agent，再升级给人）：
 
 ```
 nudge:    记录 Fact（severity 1，chip）+ 若本 Run 尚未 nudge 过同一信号：
@@ -1431,7 +1431,7 @@ anomaly  if (burn ≥ 0.5 and burn − progress ≥ 0.4)
 
 输入：新的 Claim（`log`、`submit`、`propose_contract` 等工具调用产生），加上当时的 Ledger。输出：`claim.crossCheck`。在 Claim 写入时运行一次；相关 Fact 更新时（例如之后出现了新的测试运行）重新运行。
 
-### 7.8.1 硬矛盾与软矛盾（R1-D7-10）
+### 7.8.1 硬矛盾与软矛盾
 
 交叉校验依赖对 Claim 文本的中英文关键词识别，识别本身可能出错。因此 `contradicted` 分两级：
 
@@ -1462,7 +1462,7 @@ anomaly  if (burn ≥ 0.5 and burn − progress ≥ 0.4)
 
 ## 7.9 廉价的虚假成功线索检测器（实验特性，默认关闭）
 
-**证据与领域（R1-D3-01）：** Advani 2026 在 tau2（**客服**场景，单控）与 AppWorld（**应用操作**自评轨迹）上发现，TF-IDF 检测器在**同分布**内达到 AUROC 0.83–0.95，而 LLM 裁判 ≤ 0.65。这些结果**没有**在编码 Agent 上评估过，也不能说明跨分布的表现。本检测器的权重是手工设定的，属于跨分布使用。因此按 ADR-019 **默认关闭**；开启后也**只作为提示**，永远不改变状态，也不生成 Needs-You。
+**证据与领域：** Advani 2026 在 tau2（**客服**场景，单控）与 AppWorld（**应用操作**自评轨迹）上发现，TF-IDF 检测器在**同分布**内达到 AUROC 0.83–0.95，而 LLM 裁判 ≤ 0.65。这些结果**没有**在编码 Agent 上评估过，也不能说明跨分布的表现。本检测器的权重是手工设定的，属于跨分布使用。因此按 ADR-019 **默认关闭**；开启后也**只作为提示**，永远不改变状态，也不生成 Needs-You。
 
 - **输入：** `submit.summary` 加上 Run 中最后一条 assistant 消息的文本。
 - **特征：** 1–3 gram 的 TF-IDF，再加一组人工线索词，初始权重如下（正值表示虚假成功的倾向更强）：
@@ -1493,7 +1493,7 @@ anomaly  if (burn ≥ 0.5 and burn − progress ≥ 0.4)
 
 `sev` 为默认严重度；路由：**chip** = 外围芯片（`08` 阶梯 L1），**NY** = Needs-You（L2 及以上）。“阻断 in_review”列即 `blocksReview`：**这是 Verified 定义与 `decide()` 唯一使用的阻断集合**（严重度本身不决定阻断；例如 bash 输出中的密钥是 severity 3 但不阻断，因为问题不在 diff 里）。“精度目标”是哨兵基准语料上的离线门槛（§7.11.5），也是线上调节的参照。
 
-**sentinel 与 anomaly 的分类规则（R5-D15-01）：** 针对 **Goal 的内容或其执行效果**（diff、卫星、槽位中由 Agent 代码造成的改动）的检测发出 `sentinel{detector}`——包括 `nested_repo`、`lifecycle_script_changed`、`runner_tampered`、`runner_patched`、`prepare_untracked_output`（`git_control_tampered` 已随 ADR-089 退役）；针对 **Tower 自身状态或运行过程**的检测发出 `anomaly{detector}`——包括 `verifier_store_tampered`、`stat_cache_mismatch`、`post_settle_activity`、`structured_content_dropped`、`tower_goal_handler_error`（ADR-239）、`bg_process_survived`（ADR-115）、循环与停滞（`loop`、`stall`）、`burn_without_progress`、`claim_contradicted`。`16` §16.1.6 按此分类登记。
+**sentinel 与 anomaly 的分类规则：** 针对 **Goal 的内容或其执行效果**（diff、卫星、槽位中由 Agent 代码造成的改动）的检测发出 `sentinel{detector}`——包括 `nested_repo`、`lifecycle_script_changed`、`runner_tampered`、`runner_patched`、`prepare_untracked_output`（`git_control_tampered` 已随 ADR-089 退役）；针对 **Tower 自身状态或运行过程**的检测发出 `anomaly{detector}`——包括 `verifier_store_tampered`、`stat_cache_mismatch`、`post_settle_activity`、`structured_content_dropped`、`tower_goal_handler_error`（ADR-239）、`bg_process_survived`（ADR-115）、循环与停滞（`loop`、`stall`）、`burn_without_progress`、`claim_contradicted`。`16` §16.1.6 按此分类登记。
 
 | 检测器 | 子类型 | sev | 路由 | 阻断 in_review | 精度目标（§7.11） | 推导来源（ADR-103） |
 |---|---|---|---|---|---|---|
@@ -1557,7 +1557,7 @@ anomaly  if (burn ≥ 0.5 and burn − progress ≥ 0.4)
 | Tower 状态（anomaly） | `stat_cache_mismatch`（§7.3.2） | 2 | chip | 否（提示；在任何决定性使用之前先触发一次 full 重哈希） | 0.99 | Tower 状态 |
 | | `bg_process_survived`（settle 时 SIGTERM 后 10 s 再 SIGKILL 仍存活的 Agent 进程，ADR-115/120/121，`10` §10.3.1） | 2 | NY（kind 以 `16` §16.1.7 为准，去重键与标注见 `08` §8.4、§8.8；选项 `再次终止` / `知悉`，ADR-126） | 否（提示；此后该进程的写入记为 `author:"agent"`，按 `agent_bg` 重新验证，ADR-122） | —（确定性判定） | Tower 状态 |
 
-**推导来源与交还（ADR-103，R8-D7-01）：** “pin”类命中只依据 pin 的内容计算（“验证时重判”指由针对该 pin 的验证重新得出），新 pin 会重新判定；“run”类命中由运行过程产生，新 pin 无法重新得出。因此：
+**推导来源与交还（ADR-103）：** “pin”类命中只依据 pin 的内容计算（“验证时重判”指由针对该 pin 的验证重新得出），新 pin 会重新判定；“run”类命中由运行过程产生，新 pin 无法重新得出。因此：
 
 - **阻断 Verified 的 run 类命中**：`input_mutated_after_gate`（被批准执行的与实际执行的不一致，ADR-107、ADR-110；可被 `override_sentinel` 处置），以及 `nested_repo_live`（ADR-131；不可覆盖，出口见上表）。`sandbox_violation`、`post_settle_activity`、`policy_wall`、循环与停滞等运行期异常都是提示性的，不阻断，进入评审的“运行异常”区块。
 - `decide(goal, pin, …)` 中的 `openSentinels(goal, pin)` = 针对该 pin 计算的 pin 类阻断命中（含 `pinSafetyCheck` 的命中）∪ **该 Goal 作用域内尚未处置的 run 类阻断命中**（未覆盖的 `input_mutated_after_gate`、未解除的 `nested_repo_live`）。
@@ -1570,7 +1570,7 @@ anomaly  if (burn ≥ 0.5 and burn − progress ≥ 0.4)
 - 已被 L-a 拦截（`block`）且之后没有残留的命中：降为 1（问题已被阻止，只需记录）。
 - 同一个 Goal 已经存在、且被人 `override_sentinel` 处置过的同一 `(detector, subject)`：新命中只在 hunkHash 变化时再次出现，否则静默合并。`nested_repo` 与 `symlink_escape` 例外：覆盖绑定 subject 的对象哈希（目录 tree / 链接 blob），哈希一变即重新阻断（ADR-112）。
 
-### 7.10.3 `decide(goal, pin, trigger)`：验证结束后的状态转移（R1-D7-08）
+### 7.10.3 `decide(goal, pin, trigger)`：验证结束后的状态转移
 
 `03` 中进入 `verifying` 的源状态有三个，记为 `goal.verifyFrom ∈ {"claimed", "in_review", "accepted"}`（`accepted` 指尚未 integrated；`02` `Goal.verifyFrom`，持久化在 `06` `goals.verify_from`，验收延续与 `onlyChangedUnits` 据此判定）。**写入点**唯一定义在 `16` §16.1.1 `Goal.verifyFrom` 行（ADR-137；本节不复述，ADR-183）。
 
@@ -1783,7 +1783,7 @@ interface OverrideDetail {
 
 ---
 
-### 7.11.5 哨兵基准语料与上线门槛（R1-D7-07）
+### 7.11.5 哨兵基准语料与上线门槛
 
 精度目标（§7.10.1）在上线前就要有测量，而不是等线上数据。
 
@@ -1800,8 +1800,8 @@ interface OverrideDetail {
 
 ## 7.12 独立评审（实验特性，默认关闭）
 
-- **定位：** 不同模型（默认选择与执行模型**不同提供商**的模型）按合同审阅 diff，输出**仅为 Claim**，不设置任何状态（ADR-002）。职责是“定向评审”，不是“判定成功”（*TB* D#22）。
-- **默认：所有风险等级都关闭**（ADR-019，R1-D15-04），由用户在合同或项目设置中开启，经 `14` 实验 E1 变体评估。开启后，在验证通过之后、进入 `in_review` 之前**并行**启动，不阻塞 `in_review`（评审意见晚到时，以 L1 方式追加到评审单元上）。
+- **定位：** 不同模型（默认选择与执行模型**不同提供商**的模型）按合同审阅 diff，输出**仅为 Claim**，不设置任何状态（ADR-002）。职责是“定向评审”，不是“判定成功”。
+- **默认：所有风险等级都关闭**（ADR-019），由用户在合同或项目设置中开启，经 `14` 实验 E1 变体评估。开启后，在验证通过之后、进入 `in_review` 之前**并行**启动，不阻塞 `in_review`（评审意见晚到时，以 L1 方式追加到评审单元上）。
 - **运行方式：** 一个独立 Run，`reason: "review"`（`02` §2.6）。Pi 只读工具 `read`（`grep`/`find`/`ls` 在 Tower 中不提供，ADR-220；输入已附评审单元的 hunk），不注入 `submit`，改为注入 `review_report` 工具。不使用 `--no-context-files`，让评审模型读取与执行 Agent 相同的 AGENTS.md，以便判断改动是否违反仓库约定。成本上限默认为执行成本的 15% 或 $1，取较小者。
 - **输入：** 合同（意图、约束、标准、范围）、评审单元列表（每个单元附 hunk）、Fact 摘要（标准结果、哨兵命中、测试清单对比）。**不提供**执行 Agent 的自述与理由，以免被锚定。
 - **问题清单（固定提示）：** ① 有没有违反合同 `constraints` 的改动？② 有没有与意图无关的改动？③ 测试是否真的覆盖了 `endState`（指出未被任何测试触及的新分支）？④ 测试修改是否削弱了检验？⑤ 列出最值得人看的 3 个位置（file:line）。
@@ -1812,7 +1812,7 @@ interface OverrideDetail {
 
 ## 7.13 VerifyProfile（权威类型）与默认值
 
-`VerifyProfile` 的**唯一类型定义**在此（R1-D15-10）；`02` §2.3、`09` §9.7、`10`、`11` 只引用。默认数值的单一来源是 `16-registry.md`（ADR-039），下表与之保持一致。
+`VerifyProfile` 的**唯一类型定义**在此；`02` §2.3、`09` §9.7、`10`、`11` 只引用。默认数值的单一来源是 `16-registry.md`（ADR-039），下表与之保持一致。
 
 ```ts
 interface VerifyProfile {
@@ -1879,7 +1879,7 @@ interface VerifyProfile {
 
 ---
 
-## 7.14 阈值来源审计（R1-D3-05）
+## 7.14 阈值来源审计
 
 证据等级：⚪ 一手来源 · 🟡 二手 · 🔴 轶事/跨领域 · ⚫ 设计假设（无外部来源，待实验回填）。
 
@@ -1899,7 +1899,7 @@ interface VerifyProfile {
 | 静默超时 `max(120 s, timeout/4)` | §7.4.4 | 无 | ⚫ | `13` |
 | 端口段 20 个、范围 20000–29999 | §7.4.4 | ADR-055（避开临时端口范围） | ⚫ | 添加项目时的端口能力试运行；M0 端口冲突测试 |
 | 循环 S1 3/5 次；S3 8 回合 + 10 min；S4 60k token / 3× 中位数；S5 20 min；S7 3 次/10 min | §7.7.1 | 无（S7 与 `11` §11.1 一致） | ⚫ | E1 日志回放：对已标注的“卡住”片段测精度与检出延迟 |
-| 燃烧 0.5 / 0.4 / 3× 速率 | §7.7.2 | SRE“饱和”思路（*TB* C4），数值无来源 | ⚫ | E3 |
+| 燃烧 0.5 / 0.4 / 3× 速率 | §7.7.2 | SRE“饱和”思路，数值无来源 | ⚫ | E3 |
 | 通用密钥熵 ≥ 3.5 bit/char | §7.6.6 | gitleaks 等工具的常见取值 | 🟡 | 哨兵基准 |
 | 大文件 50 MB；decisive 无变化 ≤ 150 ms（2 万文件）；full 按规模实测登记 | §7.3.2 | ADR-075（实测 100–150 ms；full 2.6–7.2 s / 2 万文件） | 🟡 本机实测 | SP5 |
 | 快照/返工消息 30 行、日志 50 MB 截断 | §7.10.3、§7.4.4 | 无 | ⚫ | ADR-009 token 预算测量（C15） |

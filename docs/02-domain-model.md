@@ -534,7 +534,7 @@ interface HumanDecision {
   integrate?: "local_merge" | "push_pr" | "branch_only" | "none";   // 仅 accept：goal.accept 的去向参数（06 §6.4.3）；存 06 decisions.payload 列（ADR-188）
   grant?: Grant;                       // 仅 approve_action 选“本 Goal 内同类”时（M1；“本项目内同类”属 M3，ADR-183；§2.5 Grant 的存放处；06 decisions.payload 列，ADR-180/182）
   targetTree?: Sha;                    // 仅 hand_back / bring_back_inspection：写回目标树（take_external 时为 T0），只作审计；崩溃续写读 Goal.humanCheckout.targetTree 与 .params（ADR-176/178）
-  sealNote?: string;                   // 仅 hand_back / bring_back_inspection：写入 seal 说明第 2 段“人的说明”的文字（与给 Agent 的 note 分开，`10` §10.6，R10-D4-01b）
+  sealNote?: string;                   // 仅 hand_back / bring_back_inspection：写入 seal 说明第 2 段“人的说明”的文字（与给 Agent 的 note 分开，`10` §10.6）
   actor: string; at: Iso;
 }
 ```
@@ -615,7 +615,7 @@ interface NeedsYouItem {
     | "flood"               // ⚙️ 洪泛汇总（global/project）
     | "sync_conflict"       // ⚙️ 记忆同步冲突（global，09）
     | "external_change"     // ⚙️ 来源不明的写入待人决定（ADR-128）；severity 2；去重键 ec:{goalId}
-    | "stop_condition"      // ⚙️ 合同停止条件命中（paused(stop_condition)，ADR-133 第 14 轮 lint 补记）；severity 2，agent_blocked；去重键 stc:{goalId}:{conditionId}
+    | "stop_condition"      // ⚙️ 合同停止条件命中（paused(stop_condition)，ADR-133 补记）；severity 2，agent_blocked；去重键 stc:{goalId}:{conditionId}
     | "integration"         // ⚙️ owner=goal：M2 推送失败（pre-push 钩子、网络、认证），去重键 int:{goalId}；owner=project：macOS 上带凭据 URL 的远端被拒（int:{projectId}:credential_url）；severity 2（ADR-157/158）
     | "anomaly"             // ⚙️ Tower 状态异常需人处置（如 bg_process_survived，ADR-126）；去重键前缀 an:（08 §8.4）
     | "project_identity";   // ⚙️ 绑定时根集合/远端不一致，需人确认“同一项目 / 新项目”（ADR-080；决定 merge_projects / split_project）

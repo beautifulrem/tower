@@ -322,10 +322,11 @@
 .side-row:hover .side-icon {
   color: var(--text-2);
 }
-.side-row .side-icon-attention {
+/* After the hover and "here" inks, at their weight: the row you are on keeps the colour that says something waits. */
+.side-row .side-icon.side-icon-attention {
   color: var(--st-attention);
 }
-.side-row .side-icon-danger {
+.side-row .side-icon.side-icon-danger {
   color: var(--st-danger);
 }
 .side-row .kbd {
@@ -2057,7 +2058,8 @@ input[type="radio"] {
   border-radius: var(--radius-s);
 }
 .run-row-back:focus-visible {
-  outline: none;
+  outline: 1.5px solid var(--focus);
+  outline-offset: -1.5px;
   background: var(--bg-selected);
 }
 .run-row-back:focus-visible .run-rollback {

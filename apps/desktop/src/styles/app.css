@@ -64,6 +64,22 @@
   flex: 0 0 auto;
   display: inline-block;
   vertical-align: -1px;
+  stroke-width: 1.5;
+}
+/* One pen at every size: the 16-unit drawing is scaled, so its stroke is set per size to land near 1.3px. */
+.icon[width="10"] {
+  stroke-width: 2;
+}
+.icon[width="12"] {
+  stroke-width: 1.75;
+}
+.icon[width="14"] {
+  stroke-width: 1.6;
+}
+.icon,
+.glyph {
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* ---------- title bar: breadcrumb left, gauges right ---------- */
@@ -305,6 +321,12 @@
 .side-row.active .side-icon,
 .side-row:hover .side-icon {
   color: var(--text-2);
+}
+.side-row .side-icon-attention {
+  color: var(--st-attention);
+}
+.side-row .side-icon-danger {
+  color: var(--st-danger);
 }
 .side-row .kbd {
   opacity: 0;

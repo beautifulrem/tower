@@ -131,9 +131,9 @@
   border-radius: 1px;
   background: var(--text-3);
 }
-.meter-micro-fill.verified { background: var(--st-verified); }
+/* Statistics are neutral: green is a fresh verifier pass and red a failure, never a rate. Amber marks spend over its
+   soft cap, which is a decision coming. */
 .meter-micro-fill.over { background: var(--st-attention); }
-.meter-micro-fill.danger { background: var(--st-danger); }
 .meter-micro-tick {
   position: absolute;
   top: -1.5px;

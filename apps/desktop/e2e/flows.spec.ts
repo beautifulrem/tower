@@ -52,7 +52,7 @@ test("answering a card closes the loop: the card sits in a folding slot that fol
   await expect.poll(async () => slot.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
 });
 
-test("a queue has one filled primary at a time, on the focused card, and it follows j/k; the overview's decisions are lines until one is selected", async ({ page }) => {
+test("a queue has one filled primary at a time, on the focused card, and it follows j/k; the overview's decisions are lines until one is opened", async ({ page }) => {
   await openTower(page, "inbox", { enrich: enrichCi });
   const cards = page.locator(".decision-slot .decision");
   await expect(cards.nth(1)).toBeVisible();
@@ -96,12 +96,22 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   // One right edge: the lines end where the board's rows end.
   const right = async (sel: string) => page.locator(sel).first().evaluate((el) => Math.round(el.getBoundingClientRect().right));
   expect(await right(".board-queue .decision-line")).toBe(await right(".board-rows [data-goal]"));
-  // j opens the first line into its card, which takes the keyboard and the one black button; Esc folds it back.
+  // j selects the first line and the board does not move: the line stays a line, highlighted, and the row below it
+  // keeps its place. Enter opens it into its card, which takes the keyboard and the one black button; Esc folds it back.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const below = async () => Math.round((await firstRow.boundingBox())!.y);
+  const before = await below();
   await expect.poll(async () => {
-    if (!(await page.locator(".board-queue .decision").count())) await page.keyboard.press("j");
-    return page.locator(".board-queue .decision").count();
+    if (!(await page.locator(".board-queue .decision-slot.selected").count())) await page.keyboard.press("j");
+    return page.locator(".board-queue .decision-slot.selected").count();
   }, { intervals: [250, 500, 1000] }).toBe(1);
+  await page.keyboard.press("j");
+  await expect(page.locator(".board-queue .decision")).toHaveCount(0);
+  expect(await below()).toBe(before);
+  await page.keyboard.press("k");
+  await expect(lines.first().locator(".g-title")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".board-queue .decision")).toHaveCount(1);
   const open = page.locator(".board-queue .decision");
   await expect(open).toHaveClass(/focused/);
   await expect(open).toBeFocused();
@@ -788,9 +798,9 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(bar.locator(".seg-discounted")).toHaveCount(1);
   const seal = page.locator(".goal-head .seal");
   await expect(seal).toHaveClass(/seal-tampered/);
-  await expect(seal).toContainText("Passed, not evidence");
+  await expect(seal).toContainText("Passed, doesn't count");
   await expect(seal.locator(".mark-attention")).toBeVisible();
-  await expect(page.locator(".goal-page .section-cta .meta")).toContainText("not evidence");
+  await expect(page.locator(".goal-page .section-cta .meta")).toContainText("doesn't count");
   // The sentinels: the high ones are squares, the medium ones hollow diamonds; the probing detail is a sentence over a list of paths.
   const sentinels = page.locator(".sentinel");
   await expect(sentinels).toHaveCount(4);
@@ -835,7 +845,7 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // The accept sheet: the pass counts for nothing, and the criterion heads what is still open.
   await page.keyboard.press("Meta+Shift+Enter");
   const accept = page.getByRole("dialog");
-  await expect(accept).toContainText("2 of 3 machine criteria count as evidence; 1 passed with a tampered canary");
+  await expect(accept).toContainText("2 of 3 machine criteria count; in 1 a test that must fail passed, so it doesn't");
   await expect(accept.locator(".panel-section .row.meta").first()).toContainText("C4: a test that must fail passed");
 });
 

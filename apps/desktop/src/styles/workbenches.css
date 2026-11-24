@@ -140,7 +140,7 @@
 .ev-hf {
   font-family: var(--font-mono);
   font-feature-settings: var(--font-features-mono);
-  font-size: 11px;
+  font-size: var(--fs-meta);
   color: var(--text-2);
 }
 .ev-hf-miss {
@@ -425,7 +425,9 @@
 .editor .att-list { margin: calc(-1 * var(--sp-2)) 0 var(--sp-4); }
 
 .editor-side .radio b { color: var(--text-1); font-weight: 500; }
-.editor-side .radio.disabled { opacity: 0.5; }
+/* A tier this Mac cannot run: the control greys out, but the line saying why stays readable (muted, not faded). */
+.editor-side .radio.disabled input { opacity: 0.5; }
+.editor-side .radio.disabled b { color: var(--text-3); font-weight: 400; }
 @media (max-width: 1280px) {
   .sandbox-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
 }

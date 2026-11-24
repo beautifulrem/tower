@@ -14,7 +14,7 @@ describe("a goal's glyph", () => {
     noteDetail({ summary: { id: "G-0009" }, criteria: [{ canary: "intact" }, { canary: "tampered" }] });
     expect(svg().classList.contains("mark-attention")).toBe(true);
     expect(svg().querySelector("path")!.getAttribute("fill")).toBe("var(--st-attention)");
-    expect(svg().getAttribute("aria-label")).toBe("Ready to accept · Passed, not evidence");
+    expect(svg().getAttribute("aria-label")).toBe("Passed, doesn't count");
     // Re-verified without the tampering: green again.
     noteDetail({ summary: { id: "G-0009" }, criteria: [{ canary: "intact" }] });
     expect(svg().getAttribute("stroke")).toBe("var(--st-verified)");

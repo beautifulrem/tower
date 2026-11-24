@@ -12,7 +12,7 @@ import { api } from "../lib/api";
 import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
 import { bytes, dayClock } from "../lib/format";
 import { t } from "../lib/i18n";
-import { stateLabel } from "../lib/labels";
+import { stateLabel, statusWord } from "../lib/labels";
 import { ask } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, goalList, refreshConsoleMeta, state } from "../lib/store";
@@ -155,7 +155,7 @@ export function Operations() {
             <For each={acceptedNotQueued()}>{(g) => <SmBtn onClick={() => void run(() => api.enqueueMerge(g.id), rfQueue)}>+ {g.id}</SmBtn>}</For>
           </div>
           <DataTable
-            headers={[["#"], [t("overview.colGoal")], [t("ops.colPosture")], ["", true]]}
+            headers={[["#"], [t("overview.colGoal")], [t("ops.colMerge")], ["", true]]}
             empty={t("ops.mergeQueueEmpty")}
             items={mqList()}
             error={queue.error}
@@ -223,10 +223,10 @@ export function Operations() {
               <tr>
                 <td>
                   <div class="row">
-                    <LifecycleGlyph goal={{ state: g.state, progress: ZERO_P, verified_pin: null }} />
+                    <LifecycleGlyph goal={state.goals[g.goal_id] ?? { state: g.state, progress: ZERO_P, verified_pin: null }} />
                     <code class="code-val t2">{g.goal_id}</code>
                     <span class="ellipsis t1">{g.title}</span>
-                    <span class="meta t3">{stateLabel(g.state)}</span>
+                    <span class="meta t3">{state.goals[g.goal_id] ? statusWord(state.goals[g.goal_id]) : stateLabel(g.state)}</span>
                   </div>
                 </td>
                 <td class="col-r meta">{bytes(g.workspace_bytes)}</td>

@@ -10,7 +10,7 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 import { api } from "../lib/api";
 import { type Match, fuzzy, matchText, segments } from "../lib/fuzzy";
 import { t } from "../lib/i18n";
-import { isBlocking, stateLabel } from "../lib/labels";
+import { isBlocking, statusWord } from "../lib/labels";
 import { closePalette, openActivity, openShortcuts, paletteOpen } from "../lib/layers";
 import { go, route } from "../lib/nav";
 import { bumpRecent, recentIds } from "../lib/recent";
@@ -282,7 +282,7 @@ export function CommandPalette() {
                               <Show when={g().needs_you > 0}>
                                 <NeedsYouMark />
                               </Show>
-                              {stateLabel(g().state)}
+                              {statusWord(g())}
                             </span>
                           )}
                         </Show>

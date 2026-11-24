@@ -26,7 +26,7 @@ import { type Box, play, snapshot } from "../lib/flip";
 import { useKeys } from "../lib/keys";
 import { clock } from "../lib/format";
 import { t, withLater } from "../lib/i18n";
-import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, stateLabel } from "../lib/labels";
+import { type Group, groupLabel, groupOf, isBlocking, modeLabel, pauseLabel, statusWord } from "../lib/labels";
 import { linger } from "../lib/linger";
 import { spaceMs } from "../lib/motion";
 import { go } from "../lib/nav";
@@ -45,6 +45,9 @@ type Item = { kind: "decision"; id: string; item: InboxItem } | { kind: "goal"; 
 
 export function Overview() {
   const [selected, setSelected] = createSignal<string | null>(null);
+  // Which decision is open as its card. Selecting a line (j/k, Tab) only moves the highlight, so the board never jumps
+  // under the keys; Enter or a click opens the card where its line was.
+  const [opened, setOpened] = createSignal<string | null>(null);
   const [peeking, setPeeking] = createSignal<string | null>(null);
   const [project, setProject] = createSignal(localStorage.getItem(FILTER_KEY) ?? ALL);
   const pickProject = (id: string) => {
@@ -83,13 +86,14 @@ export function Overview() {
   const focusCard = (id: string) => document.querySelector<HTMLElement>(`[data-decision="${id}"] .decision`)?.focus({ preventScroll: true });
   const openDecision = (id: string) => {
     setSelected(id);
+    setOpened(id);
     focusCard(id);
   };
   // Esc folds the open card back into its line and leaves the keyboard on that line.
   let folding = false;
   const closeDecision = () => {
-    const id = selected();
-    setSelected(null);
+    const id = opened();
+    setOpened(null);
     folding = true;
     document.querySelector<HTMLElement>(`[data-decision="${id}"] .g-title`)?.focus({ preventScroll: true });
     folding = false;
@@ -108,27 +112,27 @@ export function Overview() {
     const i = list.findIndex((x) => x.id === selected());
     const next = list[Math.max(0, Math.min(list.length - 1, i < 0 ? 0 : i + d))];
     setSelected(next.id);
-    const el =
-      next.kind === "goal"
-        ? document.querySelector<HTMLElement>(`[data-goal="${next.id}"] .g-title`)
-        : document.querySelector<HTMLElement>(`[data-decision="${next.id}"] .decision`);
+    if (opened() && opened() !== next.id) setOpened(null);
+    const el = document.querySelector<HTMLElement>(next.kind === "goal" ? `[data-goal="${next.id}"] .g-title` : `[data-decision="${next.id}"] .g-title`);
     el?.focus({ preventScroll: true });
     el?.scrollIntoView({ block: "nearest" });
   };
-  // A line reached with Tab opens like one reached with j/k.
+  // A line reached with Tab is selected like one reached with j/k, and stays a line.
   const onQueueFocus = (e: FocusEvent) => {
     const slot = (e.target as HTMLElement).closest<HTMLElement>("[data-decision]");
     const id = slot?.dataset.decision;
-    if (id && !folding && selected() !== id && (e.target as HTMLElement).matches(".decision-line .g-title")) openDecision(id);
+    if (id && !folding && (e.target as HTMLElement).matches(".decision-line .g-title")) setSelected(id);
   };
+  const goalOf = (c: Item) => (c.kind === "goal" ? c.id : c.item.goal_id);
   const openCurrent = () => {
     const c = current();
     if (!c) return;
-    go({ name: "goal", id: c.kind === "goal" ? c.id : c.item.goal_id });
+    if (c.kind === "decision" && opened() !== c.id) return openDecision(c.id);
+    go({ name: "goal", id: goalOf(c) });
   };
   const reviewCurrent = () => {
     const c = current();
-    if (c?.kind === "goal" && c.goal.diffstat) go({ name: "review", id: c.id });
+    if (c && state.goals[goalOf(c)]?.diffstat) go({ name: "review", id: goalOf(c) });
   };
   const peekGoal = (id: string) => {
     setSelected(id);
@@ -136,16 +140,17 @@ export function Overview() {
   };
   const peekCurrent = () => {
     const c = current();
-    if (c?.kind === "goal") peekGoal(c.id);
+    if (c) setPeeking((cur) => (cur === goalOf(c) ? null : goalOf(c)));
   };
   const closePeek = () => {
     const id = peeking();
     setPeeking(null);
-    if (id) document.querySelector<HTMLElement>(`[data-goal="${id}"] .g-title`)?.focus({ preventScroll: true });
+    if (id) document.querySelector<HTMLElement>(`[data-goal="${id}"] .g-title, [data-decision="${selected()}"] .g-title`)?.focus({ preventScroll: true });
   };
+  // Numbers choose on an open card only: a folded line does not show the options they would pick.
   const pick = (n: number) => {
     const c = current();
-    if (c?.kind === "decision") void chooseOption(c.item, n);
+    if (c?.kind === "decision" && opened() === c.id) void chooseOption(c.item, n);
   };
 
   useKeys(
@@ -154,11 +159,11 @@ export function Overview() {
       { key: "k", run: () => move(-1) },
       { key: "arrowdown", run: () => move(1) },
       { key: "arrowup", run: () => move(-1) },
-      { key: "space", run: peekCurrent, desc: () => t("keys.peekSelected"), when: () => current()?.kind === "goal" },
+      { key: "space", run: peekCurrent, desc: () => t("keys.peekSelected"), when: () => !!current() },
       { key: "enter", run: openCurrent, desc: () => t("keys.open") },
       { key: "r", run: reviewCurrent, desc: () => t("keys.reviewSelected") },
       { key: "/", run: () => document.querySelector<HTMLInputElement>(".quick-input")?.focus(), desc: () => t("keys.quick") },
-      { key: "escape", run: closeDecision, desc: () => t("keys.foldCard"), when: () => current()?.kind === "decision" },
+      { key: "escape", run: closeDecision, desc: () => t("keys.foldCard"), when: () => !!opened() },
       ...Array.from({ length: 9 }, (_, i) => ({ key: String(i + 1), run: () => pick(i), desc: i === 0 ? () => t("keys.choose") : undefined, hint: i === 0 ? "1–9" : undefined })),
     ],
     () => t("app.overview"),
@@ -217,8 +222,8 @@ export function Overview() {
               <div class="board-rows board-queue" role="list" onFocusIn={onQueueFocus}>
                 <For each={shownDecisions.list()}>
                   {(it) => (
-                    <div role="listitem" class="decision-slot" classList={{ leaving: shownDecisions.leaving(it.id), open: selected() === it.id }} data-decision={it.id}>
-                      <Show when={selected() === it.id} fallback={<DecisionLine item={it} onOpen={() => openDecision(it.id)} />}>
+                    <div role="listitem" class="decision-slot" classList={{ leaving: shownDecisions.leaving(it.id), open: opened() === it.id, selected: selected() === it.id }} data-decision={it.id}>
+                      <Show when={opened() === it.id} fallback={<DecisionLine item={it} onOpen={() => openDecision(it.id)} />}>
                         <DecisionCard item={it} focused />
                       </Show>
                     </div>
@@ -365,7 +370,7 @@ function Briefing() {
       ? t("overview.pausedWith", { reason: shortPauseLabel(g.pause_reason) })
       : g.needs_you > 0 && g.state === "running"
         ? modeLabel("waiting_on_you")
-        : stateLabel(g.state);
+        : statusWord(g);
   return (
     <Show when={open() && changed().length > 0}>
       <div class="today-bar halt" role="status">

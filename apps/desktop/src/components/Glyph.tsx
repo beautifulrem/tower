@@ -78,7 +78,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   return (
     <Switch>
       <Match when={discounted()}>
-        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" role="img" aria-label={`${t(`state.${props.goal.state}`)} · ${t("honesty.sealTampered")}`}>
+        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" role="img" aria-label={props.goal.state === "in_review" ? t("honesty.sealTampered") : `${t(`state.${props.goal.state}`)} · ${t("honesty.sealTampered")}`}>
           <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
         </svg>
       </Match>

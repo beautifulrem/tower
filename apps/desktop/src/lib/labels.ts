@@ -9,9 +9,23 @@ import type { Mode } from "../gen/Mode";
 import type { OptionTone } from "../gen/OptionTone";
 import type { PauseReason } from "../gen/PauseReason";
 import type { EngineTrustTier } from "./apiTypes";
+import { isDiscounted } from "./discounted";
 import { t } from "./i18n";
 
 export const stateLabel = (s: LifecycleState): string => t(`state.${s}`);
+
+/**
+ * The one word for where a goal stands, the same on every surface that names it in text (palette, peek, Operations,
+ * the board's briefing): the lifecycle state, except that a goal waiting to be accepted is never called ready unless
+ * the verifier's pass counts — a tampered canary says so, and so does a goal no machine criterion verified.
+ */
+export function statusWord(g: Pick<GoalSummary, "id" | "state" | "progress" | "verified_pin">): string {
+  if (g.state === "in_review") {
+    if (g.progress?.not_evidence || isDiscounted(g.id)) return t("honesty.sealTampered");
+    if (!g.verified_pin || !g.progress?.machine) return t("honesty.notMachineVerified");
+  }
+  return stateLabel(g.state);
+}
 
 export const pauseLabel = (r: PauseReason | "agent_reported_blocked"): string => t(`pause.${r}` as Parameters<typeof t>[0]);
 

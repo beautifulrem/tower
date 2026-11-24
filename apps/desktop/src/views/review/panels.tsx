@@ -197,6 +197,18 @@ export function AcceptPanel(props: AcceptPanelProps) {
     return b;
   };
   const blocked = () => blockers().length > 0 || unchecked() > 0;
+  const uncheckedIds = () => humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ");
+  /** Why the button is disabled, said beside it — not only in its tooltip — and one click from the first thing to fix. */
+  const reasons = () => [
+    ...(g()?.state !== "in_review" ? [t("review.notInReview")] : []),
+    ...(identityMissing() ? [t("review.identityShort")] : []),
+    ...(unchecked() ? [t("review.humanUnchecked", { id: uncheckedIds() })] : []),
+  ];
+  const toBlocker = () => {
+    const el = document.querySelector<HTMLElement>(".panel .panel-blockers input, .panel .fact-row input:not(:checked)");
+    el?.scrollIntoView({ block: "center" });
+    el?.focus();
+  };
   const tampered = () => props.detail?.criteria.filter((c) => c.canary === "tampered") ?? [];
   const counted = () => Math.max(0, (g()?.progress.machine ?? 0) - tampered().length);
   const highSentinels = () => (props.detail?.sentinels ?? []).filter((h) => h.severity >= 3);
@@ -264,6 +276,21 @@ export function AcceptPanel(props: AcceptPanelProps) {
   };
   return (
     <Overlay onClose={props.onClose} label={t("review.acceptTitle", { id: props.id })} title={t("review.acceptTitle", { id: props.id })} instant initialFocus="panel">
+      <Show when={blockers().length}>
+        <div class="panel-blockers" role="alert">
+          <For each={blockers()}>
+            {(b) => (
+              <div class="panel-blocker">
+                <NoticeMark />
+                <span>{b}</span>
+              </div>
+            )}
+          </For>
+          <Show when={identityMissing() && g()}>
+            {(goal) => <GitIdentityForm projectId={goal().project_id} projectName={goal().project_name} />}
+          </Show>
+        </div>
+      </Show>
       <div class="panel-section">
         <div class="accept-verdict">
           <Show
@@ -357,22 +384,12 @@ export function AcceptPanel(props: AcceptPanelProps) {
           </dd>
         </dl>
       </div>
-      <Show when={blockers().length}>
-        <div class="panel-blockers" role="alert">
-          <For each={blockers()}>
-            {(b) => (
-              <div class="panel-blocker">
-                <NoticeMark />
-                <span>{b}</span>
-              </div>
-            )}
-          </For>
-          <Show when={identityMissing() && g()}>
-            {(goal) => <GitIdentityForm projectId={goal().project_id} projectName={goal().project_name} />}
-          </Show>
-        </div>
-      </Show>
       <div class="panel-actions">
+        <Show when={blocked()}>
+          <button type="button" class="link-quiet text-btn panel-reason" onClick={toBlocker}>
+            {reasons().join(" · ")}
+          </button>
+        </Show>
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.cancel")}
         </Button>
@@ -381,7 +398,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
           class={armedLeft() ? "armed" : ""}
           busy={busy()}
           disabled={blocked()}
-          title={unchecked() > 0 ? t("review.humanUnchecked", { id: humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ") }) : judgement().length ? t("decision.pressTwice") : undefined}
+          title={unchecked() > 0 ? t("review.humanUnchecked", { id: uncheckedIds() }) : judgement().length ? t("decision.pressTwice") : undefined}
           aria-live={armedLeft() ? "polite" : undefined}
           onClick={press}
         >

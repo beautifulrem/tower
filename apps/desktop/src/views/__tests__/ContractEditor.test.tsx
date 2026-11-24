@@ -168,12 +168,12 @@ describe("the contract studio", () => {
   it("reads as a 5-clause contract with masthead, numbered clauses, and schedule", () => {
     const { container } = render(() => <ContractEditor projectId="p1" />);
     const mast = container.querySelector(".contract-mast")!;
-    expect([...mast.children].map((el) => el.textContent)).toEqual(["Contract", "", "shop", "", "new"]);
+    expect([...mast.children].map((el) => el.textContent)).toEqual(["Contract", "", "shop", "", "New"]);
     const heads = [...container.querySelectorAll(".clause-head")].map((h) => `${h.querySelector(".clause-no")!.textContent} ${h.querySelector(".clause-title")!.textContent}`);
     expect(heads).toEqual([
       "01 Intent",
       "02 Acceptance & visual criteria",
-      "03 Scope fence & ports",
+      "03 Scope fence & limits",
       "04 Engine, escalation & sandbox",
       "05 Budget & dependencies",
     ]);

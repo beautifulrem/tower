@@ -85,10 +85,11 @@ describe("AcceptPanel", () => {
     expect(screen.queryByText(/viewed 1\/3/)).toBeNull();
   });
 
-  it("blocks accepting until every human criterion is checked, saying so on the criterion's own row", () => {
+  it("blocks accepting until every human criterion is checked, saying so on the criterion's own row and beside the disabled button", () => {
     render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(screen.getByText("Waiting for your check")).toBeTruthy();
-    expect(screen.queryByText(/Human criterion H1 is not checked yet/)).toBeNull();
+    // Not only in a tooltip: the reason stands next to the button it disables, and leads to the box to tick.
+    expect(screen.getByText("Tick H1 first").closest(".panel-actions")).toBeTruthy();
     const accept = screen.getByText("Accept anyway").closest("button")!;
     expect(accept.disabled).toBe(true);
     expect(screen.getByText(/viewed 3\/3/)).toBeTruthy();
@@ -167,9 +168,9 @@ describe("AcceptPanel", () => {
     const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={tampered} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(container.querySelector(".stamp.stamp-tampered")).not.toBeNull();
     expect(screen.queryByText(/All 2 machine criteria passed/)).toBeNull();
-    expect(screen.getByText(/1 of 2 machine criteria count as evidence; 1 passed with a tampered canary/)).toBeTruthy();
+    expect(screen.getByText(/1 of 2 machine criteria count; in 1 a test that must fail passed, so it doesn't/)).toBeTruthy();
     const open = [...container.querySelectorAll(".panel-section .row.meta")].map((el) => el.textContent ?? "");
-    expect(open[0]).toMatch(/C2: a test that must fail passed; this pass is not evidence/);
+    expect(open[0]).toMatch(/C2: a test that must fail passed, so this pass doesn't count/);
     // The same ◆ the pass wears everywhere else; the red ■ is a sentinel's.
     const first = container.querySelector(".panel-section .row.meta")!;
     expect(first.querySelector(".mark-attention")).not.toBeNull();

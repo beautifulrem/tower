@@ -13,7 +13,7 @@ test("with a tampered pass the title's glyph, the sidebar's and the criterion's 
   const head = page.locator(".goal-head");
   await expect(head.locator(".seal-tampered")).toBeVisible();
   await expect(head.locator(".row > svg.glyph").first()).toHaveClass(/mark-attention/);
-  await expect(head.locator(".row > svg.glyph").first()).toHaveAttribute("aria-label", /Passed, not evidence/);
+  await expect(head.locator(".row > svg.glyph").first()).toHaveAttribute("aria-label", /Passed, doesn.t count/);
   const side = page.locator(".side-goal").filter({ hasText: "Fix the cart total" });
   await expect(side.locator(".side-icon svg")).toHaveClass(/mark-attention/);
   // The tampered criterion's row: ◆ in its mark column; "passed" stays, it is a fact.

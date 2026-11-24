@@ -289,14 +289,11 @@
   color: var(--text-1);
   transition-duration: 0ms;
 }
-/* The 2px pen runs straight down the row's edge: that side of the ground is square, so the rule never bends into a
-   bracket round the corner (the board's row and the current hunk are square too). */
+/* Where you are: the selection ground and the label in ink, nothing else. No rule down one edge — a lit stripe on the
+   active item is the template's accent, and the ground already says "here". */
 .side-row.active {
   background: var(--bg-selected);
   color: var(--text-1);
-  box-shadow: inset 2px 0 0 var(--text-3);
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
 }
 .side-icon {
   width: 16px;
@@ -365,7 +362,6 @@
 }
 :root[data-window-active="false"] .side-row.active {
   background: var(--bg-hover);
-  box-shadow: none;
 }
 :root[data-window-active="false"] .btn-primary {
   background: var(--text-2);
@@ -2041,9 +2037,6 @@ input[type="radio"] {
 .run-row-back:focus-visible {
   outline: none;
   background: var(--bg-selected);
-  box-shadow: inset 2px 0 0 var(--text-3);
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
 }
 .run-row-back:focus-visible .run-rollback {
   color: var(--text-1);
@@ -3760,13 +3753,10 @@ input[type="radio"] {
   color: var(--text-1);
   background: var(--bg-hover);
 }
-/* The clause you are in: the selected ground and the 2px pen, the same "here" as the current hunk and the board's row. */
+/* The clause you are in: the selection ground, the same "here" as the sidebar's row and the board's. */
 .settings-index a.current {
   color: var(--text-1);
   background: var(--bg-selected);
-  box-shadow: inset 2px 0 0 var(--text-3);
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
 }
 @media (max-width: 1280px) {
   .settings-page {
@@ -4193,7 +4183,6 @@ input[type="radio"] {
 }
 .g-row.selected {
   background: var(--bg-selected);
-  box-shadow: inset 2px 0 0 var(--text-3);
 }
 .g-row[data-new="true"] {
   animation: arrive var(--dur-base) var(--ease-out) 1;

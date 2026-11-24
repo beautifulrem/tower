@@ -493,7 +493,7 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   const linesBefore = await page.locator(".dl").count();
   // Undo and accept stand together on a hunk's header while the workspace is yours.
   await expect(heads.first().getByRole("button", { name: "Revert hunk" })).toBeVisible();
-  const accept = heads.first().getByRole("button", { name: "Accept this hunk" });
+  const accept = heads.first().getByRole("button", { name: "Mark read" });
   await expect(accept).toHaveAttribute("title", /workspace is unchanged/);
   // The hunk closes rather than vanishes: its place stands at the lines' height and shrinks over 160ms, eased in.
   // (Read the moment the fold row is added: on a busy machine it can be gone before a separate round trip lands.)
@@ -512,18 +512,18 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   await expect(page.locator(".hunk-fold-inner")).toHaveCount(0);
   const marked = page.locator(".hunk-head.hunk-accepted");
   await expect(marked).toHaveCount(1);
-  await expect(marked.getByRole("button", { name: /Accepted, \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(marked.getByRole("button", { name: /^Read, \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
   await expect(marked.getByRole("button", { name: "Revert hunk" })).toHaveCount(0);
   expect(await page.locator(".dl").count()).toBeLessThan(linesBefore);
   // Your register: the solid rule, not green.
   expect(await marked.locator("td").first().evaluate((el) => getComputedStyle(el).boxShadow)).toMatch(/inset/);
   const status = page.locator(".review-accepted");
-  await expect(status).toHaveText(/1\/\d+ hunks accepted/);
+  await expect(status).toHaveText(/1\/\d+ hunks read/);
   await expect(status).toHaveAttribute("title", /reading mark/);
   // Kept with the review, for this diff, never sent to the agent.
   await expect.poll(async () => (await calls(page)).find(([cmd, args]) => cmd === "set_ui_state" && (args as { key: string }).key === "accepted")?.[1]).toMatchObject({ key: "accepted", value: expect.stringMatching(/"range":".+\.\..+"/) });
   // Taken back by its button: the hunk unfolds.
-  await marked.getByRole("button", { name: /Accepted/ }).click();
+  await marked.getByRole("button", { name: /^Read, / }).click();
   await expect(page.locator(".hunk-head.hunk-accepted")).toHaveCount(0);
   expect(await page.locator(".dl").count()).toBe(linesBefore);
   // Every hunk of a file accepted: the file is viewed.
@@ -537,12 +537,12 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
     for (let i = 0; i < (await all.count()); i++) if ((await all.nth(i).getAttribute("aria-pressed")) !== "true") await all.nth(i).click();
   };
   await acceptAll();
-  await expect(status).toHaveText(/All \d+ hunks accepted/);
+  await expect(status).toHaveText(/All \d+ hunks read/);
   await expect(status.locator("kbd")).toHaveText("⌘⇧↩");
   // On a unit with another after it, V and the next unit.
   await page.locator(".review-units .unit").first().click();
   await acceptAll();
-  await expect(status).toHaveText(/All \d+ hunks? accepted/);
+  await expect(status).toHaveText(/All \d+ hunks? read/);
   await expect(status.locator("kbd")).toHaveText("V");
   await expect(status).toContainText("next unit");
 });
@@ -1171,18 +1171,21 @@ test("in review the receipt rises above the status bar, never onto its top line"
   expect(t.y + t.height).toBeLessThanOrEqual(s.y - 4);
 });
 
-test("a review with nothing to review is a poster in the middle of the page, and the status bar stays at the foot", async ({ page }) => {
+test("a review with nothing to review says so on the title's line, with no wordmark, and the status bar stays at the foot", async ({ page }) => {
   await openTower(page, "review/G-0002", {
     enrich: (F) => {
       F["review-G-0002"] = { ...F["review-G-0001"], units: [], files: [], stat: { files: 0, additions: 0, deletions: 0 } };
     },
   });
-  const poster = page.locator(".review .empty-poster");
-  await expect(poster).toBeVisible();
-  await expect(poster).toContainText("No changes");
-  const box = (await poster.boundingBox())!;
-  expect(box.x).toBeGreaterThan(24);
-  expect(box.y).toBeGreaterThan(150);
+  const empty = page.locator(".review .page-loading > .empty");
+  await expect(empty).toBeVisible();
+  await expect(empty).toContainText("No changes");
+  await expect(empty.locator(".wordmark")).toHaveCount(0);
+  // The words start where the title starts: one left edge down the page.
+  const words = (await empty.locator(".empty-title").boundingBox())!;
+  const title = (await page.locator(".review-title").boundingBox())!;
+  expect(Math.abs(words.x - title.x)).toBeLessThanOrEqual(1);
+  expect(words.y).toBeGreaterThan(150);
   const status = (await page.locator(".review-status").boundingBox())!;
   expect(Math.round(status.y + status.height)).toBe(900);
   await expect(page.getByRole("button", { name: "Open the goal page" })).toHaveClass(/btn-default/);

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import { enrichReview, enrichRich } from "./rich";
 import { openReadings, openTower, settled } from "./tauri";
 
 test("the board shows every goal and what needs you", async ({ page }) => {
@@ -23,6 +24,28 @@ for (const scheme of ["light", "dark"] as const) {
         v.nodes.map((n) => `${v.id} ${n.target.join(" ")}: ${n.failureSummary?.split("\n").slice(1).join(" ") ?? ""}`),
       );
       expect(report).toEqual([]);
+    });
+  }
+}
+
+// The states the design work changed, in the rich world: the goal page with its sentinels and every reading open, the
+// inbox queue with its neutral focus, a review opening on a risky unit, and a new contract with its focus.
+for (const scheme of ["light", "dark"] as const) {
+  const rich: Array<[string, (F: Record<string, any>) => void, ((page: import("@playwright/test").Page) => Promise<void>)?]> = [
+    ["goal/G-0001", enrichRich, openReadings],
+    ["inbox", enrichRich],
+    ["review/G-0003", enrichReview],
+    ["new", enrichRich],
+  ];
+  for (const [route, enrich, then] of rich) {
+    test(`${route} in the rich world has no serious accessibility violations (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+      await openTower(page, route, { enrich, theme: scheme });
+      await settled(page, route);
+      if (then) await then(page);
+      const results = await new AxeBuilder({ page }).analyze();
+      const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+      expect(serious.flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(" ")}`))).toEqual([]);
     });
   }
 }

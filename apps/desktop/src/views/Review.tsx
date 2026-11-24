@@ -158,6 +158,7 @@ export function Review(props: { id: string }) {
   const [panel, setPanel] = createSignal<Panel>(null);
   const [pathJump, setPathJump] = createSignal(false);
   const g = () => state.goals[props.id];
+  const proven = () => !!g()?.verified_pin && (g()?.progress.machine ?? 0) > 0 && discountedOf(detail()?.criteria) === 0 && !(detail()?.sentinels ?? []).some((h) => h.severity >= 3);
   // Undo, edit and apply work on the whole change (base → pin): a hunk index or a file's text from a narrower
   // scope, or from a view still loading, would point at different code.
   const editable = () => (g()?.state === "paused" || g()?.state === "in_review") && scope() === "all" && !viewRes.loading;
@@ -565,7 +566,9 @@ export function Review(props: { id: string }) {
           </Button>
         </Show>
         <Show when={g()?.state === "in_review"}>
-          <Button variant="primary" onClick={() => setPanel("accept")} kbd="mod+shift+enter">
+          {/* The button's weight follows the evidence: black only when the verifier's pass counts and no high sentinel
+              stands against it; otherwise it is one choice among the others, and the sheet says why. */}
+          <Button variant={proven() ? "primary" : "default"} onClick={() => setPanel("accept")} kbd="mod+shift+enter">
             {t("review.accept")}
           </Button>
         </Show>

@@ -7,7 +7,7 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
-import { type Group, groupLabel, groupOf, isBlocking } from "../lib/labels";
+import { type Group, groupLabel, groupOf, isBlocking, statusWord } from "../lib/labels";
 import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
@@ -52,7 +52,7 @@ export function Sidebar() {
       aria-current={activeId() === props.g.id ? "page" : undefined}
       onClick={() => go({ name: "goal", id: props.g.id })}
       title={`${props.g.id} ${props.g.title}`}
-      aria-label={`${props.g.title}, ${t(`state.${props.g.state}`)}${props.g.needs_you > 0 ? `, ${t("common.needsYou")}` : ""}`}
+      aria-label={`${props.g.title}, ${statusWord(props.g)}${props.g.needs_you > 0 ? `, ${t("common.needsYou")}` : ""}`}
     >
       <span class="side-icon">
         <LifecycleGlyph goal={props.g} />

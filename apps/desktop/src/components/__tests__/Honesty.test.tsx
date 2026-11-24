@@ -179,7 +179,7 @@ describe("a tampered canary and the totals", () => {
     expect(bar.textContent).toContain("Verified 2/3");
     expect(bar.textContent).toContain("1 doesn't count");
     expect([...bar.querySelectorAll(".seg")].map((s) => s.className)).toEqual(["seg seg-verified", "seg seg-verified", "seg seg-discounted"]);
-    expect(bar.getAttribute("title")).toMatch(/not evidence/);
+    expect(bar.getAttribute("title")).toMatch(/doesn.t count/);
     // Without the criteria at hand (a board row, a card) the count stands alone, its third segment simply empty.
     const { container: plain } = render(() => <CriteriaBar progress={progress} compact />);
     expect(plain.querySelector(".criteria-bar")!.textContent).toContain("Verified 2/3");
@@ -210,7 +210,7 @@ describe("a tampered canary and the totals", () => {
     expect(seal.className).toContain("seal-tampered");
     expect(seal.querySelector("circle")).toBeNull();
     expect(seal.querySelector(".mark-attention")).not.toBeNull();
-    expect(seal.textContent).toContain("Passed, not evidence");
+    expect(seal.textContent).toContain("Passed, doesn't count");
     expect(seal.textContent).toContain("@f20e1bf");
     expect(seal.getAttribute("title")).toMatch(/not sealed as verified/);
     const { container: ok } = render(() => <Seal pin="f20e1bf1234" large />);

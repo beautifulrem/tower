@@ -2307,8 +2307,8 @@ input[type="radio"] {
   align-items: flex-end;
 }
 .decision-note {
-  font-size: var(--fs-hint);
-  line-height: var(--lh-hint);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-3);
   text-wrap: pretty;
 }
@@ -3139,29 +3139,29 @@ input[type="radio"] {
     opacity: 0;
   }
 }
-/* Floating material (tokens.css): the layers over content, never the sheets you read in. Without backdrop blur, or
-   when the system asks for less transparency, they are the opaque overlay surface. */
+/* Floating material (tokens.css) is for small, passing layers only: a toast, the @ completion. The palette and the peek
+   drawer are lists you read word by word — through a 14% veil the board's own lines sat inside their rows wherever the
+   blur was not composited — so they are opaque, like every sheet you read in. Without backdrop blur, or when the system
+   asks for less transparency, the material is the opaque overlay surface too. */
 .palette,
-.toast,
-.steer-at-pop,
 .peek-drawer {
+  background: var(--bg-overlay);
+}
+.toast,
+.steer-at-pop {
   background: var(--material-float);
   -webkit-backdrop-filter: var(--material-filter);
   backdrop-filter: var(--material-filter);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .palette,
   .toast,
-  .steer-at-pop,
-  .peek-drawer {
+  .steer-at-pop {
     background: var(--bg-overlay);
   }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .palette,
   .toast,
-  .steer-at-pop,
-  .peek-drawer {
+  .steer-at-pop {
     background: var(--bg-overlay);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
@@ -3184,7 +3184,7 @@ input[type="radio"] {
   outline: none;
   animation: lift var(--dur-base) var(--ease-out);
 }
-/* The palette floats on the material: its top edge catches the light (a sheet you read in has no such edge). */
+/* The palette floats over the page: its top edge catches the light (a sheet you read in has no such edge). */
 .palette {
   box-shadow: var(--material-edge), var(--shadow-overlay);
 }
@@ -3434,7 +3434,16 @@ input[type="radio"] {
 .panel-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--sp-2);
+}
+/* Why the primary action is disabled, beside it in body ink; a click goes to the first thing to fix. */
+.panel-reason {
+  margin-right: auto;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-1);
+  text-align: left;
 }
 .panel-branch {
   display: grid;
@@ -3564,39 +3573,26 @@ input[type="radio"] {
   min-width: 0;
   padding-bottom: 56px;
 }
-/* The contract reads as a contract: a masthead — what this is, whose, in which state — in the one voice of tracked
-   capitals the app keeps (CJK tracked a little, never upper-cased), then numbered clauses, each head a two-digit
-   number in tabular figures, the title a sentence-case heading, and a hairline to the edge in place of a rule above
-   the block. The schedule on the right numbers on from the clauses. The fields under each head keep the form's own
-   grammar. */
+/* The contract reads as a contract: a masthead — what this is, whose, in which state — in quiet sentence-case meta
+   (the app keeps no tracked capitals: they shout at a glance and read slowly), then numbered clauses, each head a
+   two-digit number in tabular figures, the title a sentence-case heading, and a hairline to the edge in place of a
+   rule above the block. The schedule on the right numbers on from the clauses. The fields under each head keep the
+   form's own grammar. */
 .contract-mast {
   display: flex;
   align-items: center;
   min-height: 20px;
   margin-bottom: var(--sp-5);
-  font-size: 11px;
-  line-height: 16px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-weight: 500;
-  font-variation-settings: var(--opsz-display);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-3);
 }
 .contract-mast .sep {
-  letter-spacing: 0;
-  padding: 0 0.6em;
+  padding: 0 0.5em;
 }
 .contract-mast-project {
   color: var(--text-1);
-}
-:root[lang="zh-CN"] .contract-mast {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: none;
-}
-/* In the Chinese masthead the tracking is for the characters: the project's Latin name (shop-zh) keeps its own. */
-:root[lang="zh-CN"] .contract-mast-project {
-  letter-spacing: 0.02em;
+  font-weight: 500;
 }
 .editor-block {
   padding: var(--sp-6) 0 var(--sp-2);
@@ -4179,6 +4175,13 @@ input[type="radio"] {
 }
 .decision-line-ask .ellipsis {
   min-width: 0;
+}
+/* A selected line is highlighted like a selected goal row and stays a line: the board does not move under j/k. */
+.decision-slot.selected > .decision-line {
+  background: var(--bg-selected);
+}
+.decision-slot.selected > .decision-line .g-title:focus-visible {
+  outline: none;
 }
 .board-queue .decision-slot.open {
   padding: var(--sp-2) 0;

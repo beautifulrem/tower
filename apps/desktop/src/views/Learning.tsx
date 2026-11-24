@@ -180,8 +180,8 @@ export function Learning() {
                 </div>
               </td>
               <td class="col-r">{r.goals_total}</td>
-              <td class="col-r"><MeterCell label={pct(r.first_pass_rate)} width={pct(r.first_pass_rate)} cls="verified" /></td>
-              <td class="col-r"><MeterCell label={pct(r.high_sentinel_rate)} width={pct(r.high_sentinel_rate)} cls="danger" /></td>
+              <td class="col-r"><MeterCell label={pct(r.first_pass_rate)} width={pct(r.first_pass_rate)} /></td>
+              <td class="col-r"><MeterCell label={pct(r.high_sentinel_rate)} width={pct(r.high_sentinel_rate)} /></td>
               <td class="col-r">{r.avg_reworks.toFixed(1)}</td>
               <td class="col-r">{pct(r.blocked_rate)}</td>
               <td class="col-r">{usd(r.avg_cost_usd)}</td>

@@ -1,8 +1,9 @@
 /**
  * Contract Studio: 5-clause editorial contract document:
- *   01 Intent (+ pasted/dropped image attachments)
- *   02 Acceptance & visual criteria (+ lazy Synthetic Holdout Drafts)
- *   03 Scope fence & ports (include/exclude/readonly + network/ports/loopback)
+ *   01 Intent (+ pasted/dropped image attachments, the optional "done when")
+ *   02 Acceptance & visual criteria (+ lazy Synthetic Holdout Drafts) — second, so the clause Tower executes is in the
+ *      first screen, not under three optional text boxes
+ *   03 Scope fence & limits (include/exclude/readonly, stop conditions, constraints)
  *   04 Engine, escalation & sandbox (trust tier, escalation_model, sandbox_tier, autonomy)
  *   05 Budget & dependencies (caps, wall clock, rework limit, depends_on picker)
  */
@@ -258,12 +259,6 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <Field label={t("contract.doneWhen")}>
                 <textarea rows={2} value={c.done_when} onInput={(e) => setC("done_when", e.currentTarget.value)} />
               </Field>
-              <Field label={t("contract.stopConditions")}>
-                <textarea rows={2} value={c.stop_conditions.join("\n")} onInput={(e) => setC("stop_conditions", lines(e.currentTarget.value))} placeholder={t("contract.stopConditionsPlaceholder")} />
-              </Field>
-              <Field label={t("contract.constraints")}>
-                <textarea rows={2} value={c.constraints.join("\n")} onInput={(e) => setC("constraints", lines(e.currentTarget.value))} placeholder={t("contract.constraintsPlaceholder")} />
-              </Field>
             </div>
 
             <div class="editor-block">
@@ -322,6 +317,12 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <Show when={issueFor("scope.include") ?? issueFor("scope.exclude") ?? issueFor("scope.readonly")}>
                 {(err) => <p class="field-error">{err()}</p>}
               </Show>
+              <Field label={t("contract.stopConditions")}>
+                <textarea rows={2} value={c.stop_conditions.join("\n")} onInput={(e) => setC("stop_conditions", lines(e.currentTarget.value))} placeholder={t("contract.stopConditionsPlaceholder")} />
+              </Field>
+              <Field label={t("contract.constraints")}>
+                <textarea rows={2} value={c.constraints.join("\n")} onInput={(e) => setC("constraints", lines(e.currentTarget.value))} placeholder={t("contract.constraintsPlaceholder")} />
+              </Field>
             </div>
 
             <div class="editor-foot">

@@ -11,7 +11,7 @@ import type { GoalSummary } from "../gen/GoalSummary";
 import type { GoalSummaryExt } from "../lib/apiTypes";
 import { ago, count, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
-import { effectiveEngine, engineLabel, stateLabel } from "../lib/labels";
+import { effectiveEngine, engineLabel, statusWord } from "../lib/labels";
 import { go } from "../lib/nav";
 import { state } from "../lib/store";
 import { Icon, LifecycleGlyph, NeedsYouMark, NoticeMark } from "./Glyph";
@@ -53,7 +53,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         <button
           class="g-title"
           title={otherEngine() ? `${g().title}\n${engineLabel(engine()!)}` : g().title}
-          aria-label={`${g().title}, ${stateLabel(g().state)}${g().needs_you > 0 ? `, ${t("common.needsYou")}` : ""}${otherEngine() ? `, ${engineLabel(engine()!)}` : ""}`}
+          aria-label={`${g().title}, ${statusWord(g())}${g().needs_you > 0 ? `, ${t("common.needsYou")}` : ""}${otherEngine() ? `, ${engineLabel(engine()!)}` : ""}`}
           onFocus={() => props.onSelect?.()}
           onKeyDown={(e) => {
             if (e.key === " " && props.onPeek) {

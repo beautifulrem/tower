@@ -10,7 +10,7 @@ import type { CriterionResultExt, GoalDetailExt, GoalSummaryExt } from "../lib/a
 import { ago, duration, short, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
-import { effectiveEngine, engineLabel, engineTrustTier, stateLabel } from "../lib/labels";
+import { effectiveEngine, engineLabel, engineTrustTier, statusWord } from "../lib/labels";
 import { go } from "../lib/nav";
 import { act, state } from "../lib/store";
 import { ProvBox } from "./Console";
@@ -79,7 +79,9 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                 <div class="peek-head-top">
                   <LifecycleGlyph goal={s() as GoalSummary} size={12} />
                   <span class="code-val t2">{s().id}</span>
-                  <span class="meta t3">{stateLabel(s().state)}</span>
+                  <Show when={!(s().state === "in_review" && s().verified_pin)}>
+                    <span class="meta t3">{statusWord(s() as GoalSummary)}</span>
+                  </Show>
                   <Seal pin={s().verified_pin} compact />
                   <span class="grow" />
                   <button class="icon-btn peek-close" aria-label={t("common.close")} onClick={props.onClose}><Icon name="cross" size={12} /></button>

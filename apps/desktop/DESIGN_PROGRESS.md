@@ -50,3 +50,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
 - 2026-11-25 While the review runs (uncommitted): D14 hunk mark renamed "Mark read" in English; D21 empty review on
   the title's line without the wordmark; D16 fractional mono sizes kept by decision (recorded); axe on the rich goal
   page, inbox, risky review and new contract in both themes (8 tests, pass). T18, T19, D22 stay deferred.
+- 2026-11-25 Milestone review of `aa1026b` (independent, own worktree and port): **not accepted, 7.4 / 10**; P1-01 board
+  Space, P1-02 clamped high-sentinel prose, P2-01–P2-04, P3-01–P3-08. Recorded as D08 (reopened), D09, D12, D28–D37.
+- 2026-11-25 Iteration 3 (T20–T26): Space peeks a decision line; high sentinels and their review notes readable whole;
+  one tone per pill meaning; decision lines carry glyph and verdict; fold path beside its own title; R and "Open
+  changes" only with changed files; one "Review n files" action; accept sheet blockers before the stamp, reasons as
+  words; contract masthead, optional title, MicroVM reason; review code paints with its line numbers (colours tint in);
+  zh hunk mark 标为已读. Own audit found CSS `::before` middle dots the text-node check could not see (D38): four
+  replaced by gaps, the e2e check now reads pseudo-elements on nine routes (verified failing on the old CSS).
+  Operations: zone on Next/Last, storage bars as share of the total. Detector on changed files: the same three
+  triaged `side-tab` warnings (`/tmp/tower-design/detect-iter3.json`). Shots in `/tmp/tower-design/iter3/shots`.

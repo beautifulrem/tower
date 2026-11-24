@@ -528,13 +528,9 @@
   align-items: center;
   min-width: 0;
 }
-.meta-inline > :not([hidden]) ~ :not([hidden])::before {
-  content: "·";
-  padding: 0 0.35em;
-  font-family: var(--font-ui);
-  font-size: var(--fs-meta);
-  font-weight: 400;
-  color: var(--text-3);
+/* Groups in a meta line are told apart by a gap, not a dot: the middle dot belongs to the instrument lines (docs/12). */
+.meta-inline > :not([hidden]) ~ :not([hidden]) {
+  margin-left: var(--sp-3);
 }
 .console-tabs {
   display: inline-flex;

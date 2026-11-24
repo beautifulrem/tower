@@ -20,7 +20,7 @@ import type { CriterionView } from "../../gen/CriterionView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
-import { t } from "../../lib/i18n";
+import { locale, t } from "../../lib/i18n";
 import { hasIssue } from "../../lib/labels";
 import { back } from "../../lib/nav";
 import type { Draft } from "../../lib/reviewState";
@@ -224,11 +224,12 @@ export function AcceptPanel(props: AcceptPanelProps) {
     for (const h of props.detail?.sentinels ?? []) items.push({ danger: h.severity >= 3, text: h.title, sentinel: true });
     return items;
   };
-  const OpenList = (p: { items: OpenItem[]; danger: boolean }) => (
+  // "Sentinels" is said once in the sheet, over the first group that has any (the high ones, when there are).
+  const OpenList = (p: { items: OpenItem[]; danger: boolean; named?: boolean }) => (
     <For each={p.items}>
       {(o, i) => (
         <>
-          <Show when={i() === p.items.findIndex((x) => x.sentinel)}>
+          <Show when={!p.named && i() === p.items.findIndex((x) => x.sentinel)}>
             <div class="open-kind">{t("review.sentinels")}</div>
           </Show>
           <div class="row meta t1">
@@ -291,6 +292,27 @@ export function AcceptPanel(props: AcceptPanelProps) {
           </Show>
         </div>
       </Show>
+      {/* Everything that stands between you and Accept comes first, together: git's identity, then the checks only you
+          can tick (with their screenshots); the stamp and what it rests on follow. */}
+      <Show when={humans().length}>
+        <div class="panel-section panel-humans">
+          <For each={humans()}>
+            {(h) => (
+              <>
+                <label class="fact-row">
+                  <input type="checkbox" checked={h.human_checked} onChange={(e) => props.onHumanCheck(h.criterion.id, e.currentTarget.checked)} />
+                  <span class="num t3">{h.criterion.id}</span>
+                  <span class="grow">{h.criterion.title}</span>
+                  <Show when={!h.human_checked}>
+                    <span class="meta t3 panel-awaiting">{t("goal.awaitingCheck")}</span>
+                  </Show>
+                </label>
+                <Show when={h.look}>{(l) => <LookStrip look={l()} title={`${h.criterion.id} ${h.criterion.title}`} />}</Show>
+              </>
+            )}
+          </For>
+        </div>
+      </Show>
       <div class="panel-section">
         <div class="accept-verdict">
           <Show
@@ -332,21 +354,6 @@ export function AcceptPanel(props: AcceptPanelProps) {
             </For>
           </div>
         </div>
-        <For each={humans()}>
-          {(h) => (
-            <>
-              <label class="fact-row">
-                <input type="checkbox" checked={h.human_checked} onChange={(e) => props.onHumanCheck(h.criterion.id, e.currentTarget.checked)} />
-                <span class="num t3">{h.criterion.id}</span>
-                <span class="grow">{h.criterion.title}</span>
-                <Show when={!h.human_checked}>
-                  <span class="meta t3 panel-awaiting">{t("goal.awaitingCheck")}</span>
-                </Show>
-              </label>
-              <Show when={h.look}>{(l) => <LookStrip look={l()} title={`${h.criterion.id} ${h.criterion.title}`} />}</Show>
-            </>
-          )}
-        </For>
       </div>
       <Show when={judgement().length}>
         <div class="panel-section open-judgement">
@@ -357,7 +364,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
       <Show when={notice().length}>
         <div class="panel-section open-notice">
           <div class="meta t3">{judgement().length ? t("review.openNoticeTitle") : t("review.stillOpen")}</div>
-          <OpenList items={notice()} danger={false} />
+          <OpenList items={notice()} danger={false} named={judgement().some((o) => o.sentinel)} />
         </div>
       </Show>
       <div class="panel-section meta">
@@ -387,7 +394,8 @@ export function AcceptPanel(props: AcceptPanelProps) {
       <div class="panel-actions">
         <Show when={blocked()}>
           <button type="button" class="link-quiet text-btn panel-reason" onClick={toBlocker}>
-            {reasons().join(" · ")}
+            {/* Reasons are words, so they are joined as words: the middle dot belongs to the instrument lines (docs/12). */}
+            {reasons().join(locale() === "zh-CN" ? "；" : "; ")}
           </button>
         </Show>
         <Button variant="ghost" onClick={props.onClose}>

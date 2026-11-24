@@ -267,7 +267,7 @@ const screens: Screen[] = [
     enrich: enrichConsole,
     after: async (page) => {
       await reviewReady(page);
-      await page.locator(".code-pending").first().waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
+      await page.locator(".code > span[style*='color']").first().waitFor({ timeout: 3000 }).catch(() => {});
     },
   }),
   ...bothThemes({ name: "learning", route: "learning", enrich: enrichConsole }),

@@ -91,7 +91,7 @@ export function GoalPage(props: { id: string }) {
   useKeys(
     [
       { key: "w", run: () => setWatch((w) => !w), desc: () => t("keys.watch") },
-      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review"), when: () => !!summary()?.diffstat },
+      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review"), when: () => !!summary()?.diffstat?.files },
       { key: "p", run: () => togglePause(), desc: () => t("keys.pauseResume") },
       { key: "shift+e", run: () => go({ name: "new", amendId: props.id }), desc: () => t("goal.amend") },
       { key: "h", run: () => inbox()[0] && void snoozeMenu(inbox()[0]), desc: () => t("keys.snooze"), when: () => inbox().length > 0 },
@@ -138,12 +138,16 @@ export function GoalPage(props: { id: string }) {
                 <Show when={!["accepted", "integrated"].includes(g().state)}>
                   <Seal pin={g().verified_pin} tampered={discountedOf(detailOk()?.criteria) > 0} />
                 </Show>
-                <CriteriaBar progress={g().progress} criteria={detailOk()?.criteria} />
-                <Show when={g().state === "in_review" && !detailOk()?.criteria.some((c) => c.verified?.stale)}>
-                  <Button size="s" class="goal-verdict-act" variant={inbox().length || !g().verified_pin || discountedOf(detailOk()?.criteria) ? "default" : "primary"} kbd="r" onClick={() => go({ name: "review", id: g().id })}>
-                    {t("goal.reviewUnits", { n: g().diffstat?.files ?? 0 })}
-                  </Button>
-                </Show>
+                {/* R is always here and always "Review n files", whatever the state: the changes, after what they rest on. The
+                    bar and its button wrap together, so a narrow window never leaves the button on a line of its own. */}
+                <span class="goal-verdict-track">
+                  <CriteriaBar progress={g().progress} criteria={detailOk()?.criteria} />
+                  <Show when={g().diffstat?.files && !(g().state === "in_review" && detailOk()?.criteria.some((c) => c.verified?.stale))}>
+                    <Button size="s" class="goal-verdict-act" variant={g().state !== "in_review" || inbox().length || !g().verified_pin || discountedOf(detailOk()?.criteria) ? "default" : "primary"} kbd="r" onClick={() => go({ name: "review", id: g().id })}>
+                      {t("goal.reviewUnits", { n: g().diffstat!.files })}
+                    </Button>
+                  </Show>
+                </span>
               </div>
               <div class="goal-sub meta halt">
                 <div class="goal-identity">

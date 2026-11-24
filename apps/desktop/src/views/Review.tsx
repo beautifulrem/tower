@@ -499,7 +499,7 @@ export function Review(props: { id: string }) {
   };
 
   const notes = createMemo<ReviewNote[]>(() => {
-    const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: h.title, sentinel: true }));
+    const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: h.title, sentinel: true, detail: h.severity >= 3 ? h.detail : undefined }));
     for (const r of unit()?.risk_reasons ?? []) out.push({ danger: false, text: r });
     if (detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0)
       out.push({ danger: false, text: t("goal.noHeldOut"), action: { label: t("goal.setHeldOut"), run: () => g() && goProjectSetting(g()!.project_id, "holdout") } });

@@ -1616,18 +1616,17 @@ input[type="radio"] {
   font-size: var(--fs-body);
 }
 /* The goal's one primary action ends the verdict line, right after what it rests on. */
+.goal-verdict-track {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
 .goal-verdict-act {
   margin-left: var(--sp-2);
 }
-/* Above the decisions a high sentinel keeps its evidence (the code lines) whole; its explanation, which restates its
-   title, is one line here and whole on hover and in review. */
-.sentinels-high .sentinel-prose {
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-/* Low sentinels folded to one line: the mark, the most sensitive path one of them touched, then their titles. */
+/* Low sentinels folded to one line: the mark, then each title with the sensitive path it touched just before it (those
+   first), so a path is never read as another sentinel's. */
 .sentinel-fold {
   display: flex;
   align-items: baseline;
@@ -1696,6 +1695,11 @@ input[type="radio"] {
   padding: 0 0 var(--sp-3);
   margin-bottom: var(--sp-3);
   border-bottom: 1px solid var(--border-subtle);
+}
+/* A section under it draws its own top rule: one line between them, never two with nothing between. */
+.annunciator:has(+ .section) {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 /* The card stands in the main column, as wide as the blocks under it (its sentences keep their own 72ch), so the
    page has one right edge for the main column and one for the rail. */
@@ -2970,6 +2974,15 @@ input[type="radio"] {
   min-width: 0;
   color: var(--text-1);
 }
+/* A high sentinel's explanation, whole, under its title: what to check is never only in a tooltip. */
+.review-note-why {
+  display: block;
+  max-width: var(--measure);
+  color: var(--text-2);
+}
+.review-note:has(.review-note-why) {
+  align-items: flex-start;
+}
 .review-notes.open .review-note {
   padding-left: 16px;
 }
@@ -3117,11 +3130,7 @@ input[type="radio"] {
   color: var(--code-foreground);
   user-select: text;
 }
-/* Rows wait, hidden, for their colours (at most 150ms) so code never flashes from grey to coloured. */
-.code-pending .code > * {
-  visibility: hidden;
-}
-/* Colours later than the wait arrive as a 120ms tint from the plain foreground, never a snap (reduced motion: at once). */
+/* Code shows at once in the plain foreground; its colours arrive as a 120ms tint, never a snap (reduced motion: at once). */
 .code-late .code > span:not(.sign) {
   animation: tint-in var(--dur-view) var(--ease-out);
 }
@@ -4200,8 +4209,10 @@ input[type="radio"] {
   min-width: 0;
   white-space: nowrap;
 }
-.decision-line-ask .decision-kind {
+.decision-line-ask > :not(.ellipsis) {
   flex: 0 0 auto;
+}
+.decision-line-ask .decision-kind {
   font-weight: 400;
 }
 .decision-line-ask .ellipsis {

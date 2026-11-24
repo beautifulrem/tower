@@ -56,13 +56,13 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
     return out;
   });
 
-  // Each fact once (the guard gap and an unchecked canary say the same thing), and a pass never wears danger red: what
-  // stands against a pass is a question for you, in the attention ground.
+  // Each fact once (the guard gap and an unchecked canary say the same thing), in the weightier of its tones: a high
+  // sentinel behind it makes it a question for you on every criterion it names, never a grey reading on one and amber
+  // on another. A pass never wears danger red: what stands against a pass is a question for you, in the attention ground.
   const shown = createMemo(() => {
-    const seen = new Set<string>();
-    return pills()
-      .filter(([, label]) => !seen.has(label) && !!seen.add(label))
-      .map(([tone, label, title, line]): [string, string, string?, 1?] => [tone === "danger" && mark() === "pass" ? "attn" : tone, label, title, line]);
+    const rank = ["ok", "fact", "obs", "attn", "danger"], by = new Map<string, [string, string, string?, 1?]>();
+    for (const p of pills()) if (rank.indexOf(p[0]) > rank.indexOf(by.get(p[1])?.[0] ?? "ok") || !by.has(p[1])) by.set(p[1], p);
+    return [...by.values()].map(([tone, label, title, line]): [string, string, string?, 1?] => [tone === "danger" && mark() === "pass" ? "attn" : tone, label, title, line]);
   });
   // Folded, a criterion is its verdict and at most one line of what qualifies it — warnings only; the confirmations,
   // the held-out files, the baseline and canary readings and the output are one click away.
@@ -126,15 +126,15 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
       </Show>
 
       <Show when={open() || !v()}>
+        <BaselineLine c={c()} base={props.base} />
+        <CanaryLine c={c()} />
+        {/* The held-out line names them ("held-out tests, for you only"); the files follow it, unnamed again. */}
+        <HeldOutLine c={c()} />
         <Show when={hoItems().length}>
           <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
-            <span class="meta t2">{t("goal.heldOut")}</span>
             <For each={hoItems()}>{([cls, text]) => <span class={cls}>{text}</span>}</For>
           </div>
         </Show>
-        <BaselineLine c={c()} base={props.base} />
-        <CanaryLine c={c()} />
-        <HeldOutLine c={c()} />
         <LoopbackLine c={c()} />
       </Show>
       <Show when={stepsOpen() && steps().length}>

@@ -13,13 +13,14 @@ import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
 import { DangerMark, Icon, NeedsYouMark, NotEvidenceMark, NoticeMark, ResultMark, Seal, Stamp } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, HeldOutLine, LoopbackLine, ObsChip } from "../../components/Honesty";
-import { CriteriaBar, discountedOf } from "../../components/HonestyCore";
+import { CriteriaBar } from "../../components/HonestyCore";
 import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay, Prose } from "../../components/ui";
 import type { CriterionView } from "../../gen/CriterionView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
+import { notEvidence } from "../../lib/discounted";
 import { locale, t } from "../../lib/i18n";
 import { hasIssue } from "../../lib/labels";
 import { back } from "../../lib/nav";
@@ -70,7 +71,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
-            <Seal pin={g()!.verified_pin} large tampered={discountedOf(criteria()) > 0} />
+            <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} />
           </Show>
           <span class="grow" />
           <Show when={g()}>

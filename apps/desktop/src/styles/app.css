@@ -4212,6 +4212,9 @@ input[type="radio"] {
 .decision-line-ask > :not(.ellipsis) {
   flex: 0 0 auto;
 }
+.decision-line-ask > .decision-line-slot {
+  min-width: 11.5em;
+}
 .decision-line-ask .decision-kind {
   font-weight: 400;
 }

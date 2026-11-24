@@ -29,15 +29,6 @@ function ObsRow(props: { cls?: string; spanCls?: string; spanList?: Record<strin
   );
 }
 
-/** Flaky criterion annotation: failed on first run and passed on automatic rerun (neutral Harness Fact). */
-export function FlakyLine(props: { c: CriterionView }) {
-  return (
-    <Show when={!!(props.c.verified as { flaky?: boolean } | null)?.flaky}>
-      <ObsRow cls="flaky-line" spanCls="t2"><NoticeMark /><span>{t("goal.criterionFlaky")}</span></ObsRow>
-    </Show>
-  );
-}
-
 /** The first line of why a base could not be checked, without its trailing colon or backticks, at most 120 characters. */
 export function baseReason(error: string | null | undefined): string | null {
   const first = (error ?? "").split("\n").find((l) => l.trim())?.trim();
@@ -198,15 +189,15 @@ export function CanaryLine(props: { c: CriterionView }) {
   );
 }
 
-/** A base that could not be checked because the sandbox refused the command something: the words before the colon, and the refused lines after it. */
-export function refusedOnBase(error: string | null | undefined): { why: string; lines: string[] } | null {
-  if (!error || !/refused/i.test(error)) return null;
-  const i = error.indexOf(": ");
-  const lines = (i < 0 ? "" : error.slice(i + 2))
+/** A base that could not be checked because the sandbox refused the command something: the refused lines, after the colon. */
+export function refusedOnBase(error: string | null | undefined): string[] | null {
+  // The supervisor's words (tower-core reasons.rs `BaseError::Refused`): "refused by …: tail" / "…被验证沙箱拒绝（…）：tail".
+  if (!error || !/refused|拒绝/i.test(error)) return null;
+  const m = /: |：/.exec(error);
+  return (m ? error.slice(m.index + m[0].length) : "")
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  return { why: i < 0 ? error : error.slice(0, i), lines };
 }
 
 /**
@@ -218,7 +209,8 @@ export function refusedOnBase(error: string | null | undefined): { why: string; 
  * evidence. A base the sandbox refused is an environment problem, said as
  * one, with the refused lines in view; never red.
  */
-export function BaselineLine(props: { c: CriterionView; base?: string | null }) {
+/** `told`: the goal's open pause card already prints this refusal's output, so the line points there instead of repeating it. */
+export function BaselineLine(props: { c: CriterionView; base?: string | null; told?: boolean }) {
   const c = () => props.c;
   const passed = () => !!c().verified?.passed;
   const dependent = () => c().passes_with_source_only === false;
@@ -247,7 +239,9 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
               <>
                 <ResultMark kind="env" title={t("goal.baseRefused")} />
                 <span class="t2" title={c().base_error ?? undefined}>{t("goal.baseRefused", { base: short(props.base) })}</span>
-                <For each={r().lines}>{(line) => <code class="code-val t1 env-refused">{line}</code>}</For>
+                <Show when={!props.told} fallback={<span class="t3">{t("goal.refusedAbove")}</span>}>
+                  <For each={r()}>{(line) => <code class="code-val t1 env-refused">{line}</code>}</For>
+                </Show>
               </>
             )}
           </Match>

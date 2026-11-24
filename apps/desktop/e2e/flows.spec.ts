@@ -207,7 +207,7 @@ test("the review queue steps through every ready goal", async ({ page }) => {
   });
   const ready = (fixtures.inbox as Array<{ kind: string; goal_id: string }>).filter((i) => i.kind === "review_ready");
   expect(ready.length).toBe(2);
-  await page.getByRole("button", { name: /Review every ready goal/ }).click();
+  await page.getByRole("button", { name: /Review each goal in turn/ }).click();
   await expect(page.getByText("Queue 1 / 2")).toBeVisible();
   await expect(page.locator("table").first()).toBeVisible();
   // Accepting the first opens the second.
@@ -548,11 +548,11 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   await marked.getByRole("button", { name: /^Read, / }).click();
   await expect(page.locator(".hunk-head.hunk-accepted")).toHaveCount(0);
   expect(await page.locator(".dl").count()).toBe(linesBefore);
-  // Every hunk of a file accepted: the file is viewed.
+  // Every hunk of a file read: the file is marked reviewed.
   const file = page.locator(".file").first();
   const fileHunks = await file.locator(".hunk-head[data-hunk-index]").count();
   for (let i = 0; i < fileHunks; i++) await file.locator(".accept-hunk").nth(i).click();
-  await expect(file.getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(file.getByRole("button", { name: /Reviewed/ })).toHaveAttribute("aria-pressed", "true");
   // Every hunk of the unit accepted: the status bar says so, and where to go next. This is the last unit, so the goal's accept.
   const all = page.locator(".review-diff .accept-hunk");
   const acceptAll = async () => {
@@ -865,7 +865,8 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   expect(await highProse.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && getComputedStyle(el).webkitLineClamp !== "1")).toBe(true);
   await expect(highProse).not.toHaveAttribute("title");
   const fold = page.locator(".sentinel-fold");
-  await expect(fold.locator("code")).toHaveText("~/.ssh/config");
+  // Folded, the read at the held-out tests is named before the dotfile: it bears on whether the evidence holds.
+  await expect(fold.locator("code")).toHaveText("test/holdout/rounding.test.js");
   await page.locator(".section").filter({ has: fold }).locator("button[aria-expanded]").click();
   // The sentinels: the high ones are squares, the medium ones hollow diamonds; the probing detail is a sentence over a list of paths.
   const sentinels = page.locator(".sentinel");
@@ -918,7 +919,7 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // The accept sheet: the pass counts for nothing, and the criterion heads what is still open.
   await page.keyboard.press("Meta+Shift+Enter");
   const accept = page.getByRole("dialog");
-  await expect(accept).toContainText("2 of 3 machine criteria count; in 1 a test that must fail passed, so it doesn't");
+  await expect(accept).toContainText("2 of 3 machine criteria count: in one, a test that must fail passed");
   await expect(accept.locator(".panel-section .row.meta").first()).toContainText("C4: a test that must fail passed");
 });
 

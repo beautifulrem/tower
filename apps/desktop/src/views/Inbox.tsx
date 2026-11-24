@@ -18,7 +18,7 @@ import { useKeys } from "../lib/keys";
 import { isBlocking } from "../lib/labels";
 import { type Lingering, linger } from "../lib/linger";
 import { go } from "../lib/nav";
-import { startQueue } from "../lib/reviewQueue";
+import { reviewEach } from "../lib/reviewQueue";
 import { goalList, state } from "../lib/store";
 
 export function Inbox() {
@@ -62,12 +62,6 @@ export function Inbox() {
 
   const running = () => goalList().filter((g) => g.state === "running").length;
 
-  /** Steps through every ready-to-accept goal: accepting or sending one back opens the next. */
-  const reviewAll = () => {
-    const first = startQueue(review().map((i) => i.goal_id));
-    if (first) go({ name: "review", id: first });
-  };
-  useKeys([{ key: "shift+r", run: reviewAll, desc: () => t("inbox.reviewAll") }], () => t("common.needsYou"));
 
   // An answered card folds away over 160ms instead of vanishing on the next update.
   const shownBlocking = linger(blocking, (i) => i.id);
@@ -116,7 +110,7 @@ export function Inbox() {
           offset={blocking().length}
           aside={
             <Show when={review().length > 1}>
-              <Button size="s" variant="ghost" onClick={reviewAll} kbd="shift+r">
+              <Button size="s" variant="ghost" onClick={reviewEach} kbd="shift+r">
                 {t("inbox.reviewAll")}
               </Button>
             </Show>

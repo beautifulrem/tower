@@ -80,9 +80,9 @@ describe("AcceptPanel", () => {
     expect(screen.getByText(/Unconfirmed assumption: quantities are always 1/)).toBeTruthy();
     expect(screen.getByText("Changed what a test expects")).toBeTruthy();
     expect(screen.getByText("Sentinels")).toBeTruthy();
-    expect(screen.getByText(/2 review units not marked viewed/)).toBeTruthy();
+    expect(screen.getByText(/2 review units not marked reviewed/)).toBeTruthy();
     // Said once: the unviewed units are in the open list, not repeated as a count.
-    expect(screen.queryByText(/viewed 1\/3/)).toBeNull();
+    expect(screen.queryByText(/reviewed 1\/3/)).toBeNull();
   });
 
   it("blocks accepting until every human criterion is checked, saying so on the criterion's own row and beside the disabled button", () => {
@@ -92,7 +92,7 @@ describe("AcceptPanel", () => {
     expect(screen.getByText("Tick H1 first").closest(".panel-actions")).toBeTruthy();
     const accept = screen.getByText("Accept anyway").closest("button")!;
     expect(accept.disabled).toBe(true);
-    expect(screen.getByText(/viewed 3\/3/)).toBeTruthy();
+    expect(screen.getByText(/reviewed 3\/3/)).toBeTruthy();
   });
 
   it("does not put a focus ring on a button when it opens", () => {
@@ -168,7 +168,7 @@ describe("AcceptPanel", () => {
     const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={tampered} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(container.querySelector(".stamp.stamp-tampered")).not.toBeNull();
     expect(screen.queryByText(/All 2 machine criteria passed/)).toBeNull();
-    expect(screen.getByText(/1 of 2 machine criteria count; in 1 a test that must fail passed, so it doesn't/)).toBeTruthy();
+    expect(screen.getByText(/1 of 2 machine criteria count: in one, a test that must fail passed/)).toBeTruthy();
     const open = [...container.querySelectorAll(".panel-section .row.meta")].map((el) => el.textContent ?? "");
     expect(open[0]).toMatch(/C2: a test that must fail passed, so this pass doesn't count/);
     // The same ◆ the pass wears everywhere else; the red ■ is a sentinel's.

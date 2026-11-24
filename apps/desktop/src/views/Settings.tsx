@@ -103,7 +103,7 @@ export function Settings() {
   const noModels = () => !!state.env?.pi_version && !models.loading && models() !== null && models()!.length === 0;
   const engine = () => s()?.engine || "pi";
   const engineDesc = () => state.engines.find((d) => d.id === engine());
-  const trustTier = () => engineDesc()?.trust_tier ?? engineTrustTier(engine());
+  const trustTier = () => engineTrustTier(engine());
   const modelOptions = () => [
     { value: "", label: t("common.engineDefault", { engine: engineLabel(engine()) }) },
     ...modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` })),

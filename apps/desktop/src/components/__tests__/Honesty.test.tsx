@@ -226,3 +226,14 @@ describe("an uncheckable base", () => {
     expect(Honesty.baseReason("x".repeat(200))!.length).toBe(120);
   });
 });
+
+describe("refusedOnBase", () => {
+  // The supervisor's two wordings (tower-core reasons.rs `BaseError::Refused`): the Chinese one has no "refused" and a full-width colon.
+  it("reads the refused lines in either language", () => {
+    const tail = "deny(1) file-read-data /x\nsh: 1: node: Operation not permitted";
+    const lines = ["deny(1) file-read-data /x", "sh: 1: node: Operation not permitted"];
+    expect(Honesty.refusedOnBase(`refused by the verification sandbox on the base (exit code 1): ${tail}`)).toEqual(lines);
+    expect(Honesty.refusedOnBase(`在基线上被验证沙箱拒绝（退出码 1）：${tail}`)).toEqual(lines);
+    expect(Honesty.refusedOnBase("the base could not run (exit code 1): npm ERR! missing script")).toBeNull();
+  });
+});

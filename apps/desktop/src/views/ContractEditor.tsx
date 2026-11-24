@@ -62,6 +62,12 @@ export const parsePorts = (s: string): number[] => [
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
+/** A title made from the purpose: its first line, cut at a word (or, in Chinese, any character) near 60, with "…" when cut. */
+export const titleFrom = (intent: string): string => {
+  const line = intent.trim().split("\n")[0];
+  return line.length > 60 ? `${line.slice(0, 60).replace(/^(.{31,})\s.*/, "$1").replace(/[\s,.;:，。；：]+$/, "")}…` : line;
+};
+
 export function ContractEditor(props: { projectId?: string; draftId?: string; amendId?: string }) {
   const editingId = props.draftId ?? props.amendId;
   const [projectId, setProjectId] = createSignal(props.projectId ?? state.projects[0]?.id ?? "");
@@ -116,7 +122,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       setTitle("");
       // Words carried in from the board are yours too: the blank form is the baseline, so leaving with them asks.
       base = now();
-      if (intent) (setC("intent", intent), setTitle(intent.slice(0, 48)));
+      if (intent) (setC("intent", intent), setTitle(titleFrom(intent)));
       // A new contract starts where you write: the intent (the title is optional, made from it), caret after any carried words.
       queueMicrotask(() => intentEl && (intentEl.focus(), intentEl.setSelectionRange(intentEl.value.length, intentEl.value.length)));
     }
@@ -193,7 +199,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         if (ratify) await act(() => api.ratify(props.draftId!), t("contract.ratified"));
         go({ name: "goal", id: props.draftId });
       } else {
-        const g = await act(() => api.createGoal({ project_id: projectId(), title: title().trim() || contract.intent.slice(0, 48), contract, ratify }));
+        const g = await act(() => api.createGoal({ project_id: projectId(), title: title().trim() || titleFrom(contract.intent), contract, ratify }));
         if (g) markSaved(), go({ name: "goal", id: g.id });
       }
     } finally {

@@ -174,10 +174,10 @@ export async function openTower(
               return (
                 F.engines ?? [
                   { id: "pi", label: "Pi", trust_tier: "full_s2", installed: true, available: true, note: "" },
-                  { id: "claude-code", label: "Claude Code", trust_tier: "restricted_s2", installed: true, available: true, note: "" },
+                  { id: "claude-code", label: "Claude Code", trust_tier: "full_s2", installed: true, available: true, note: "" },
                   { id: "codex", label: "Codex", trust_tier: "restricted_s2", installed: false, available: false, note: "" },
                   { id: "gemini-cli", label: "Gemini CLI", trust_tier: "restricted_s2", installed: false, available: false, note: "" },
-                  { id: "opencode", label: "OpenCode", trust_tier: "experimental", installed: false, available: false, note: "" },
+                  { id: "opencode", label: "OpenCode", trust_tier: "restricted_s2", installed: false, available: false, note: "" },
                 ]
               );
             // The console's lists are fresh copies each read too: a refetch hands the view new objects, as over real IPC.

@@ -37,6 +37,13 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T24 Fold, R and Changes agree | D30, D31, D37 | P2–P3 | path beside its own title; R and "Open changes" only with changed files; one "Review n files" action | flows e2e, shots | Done |
 | T25 Accept sheet, contract, page rules | D32, D33, D34, D35 | P3 | blockers before stamp, one sub-head, reasons as words; contract masthead/title/MicroVM; Space listed; no double rule | unit, shots | Done |
 | T26 Middle dot, everywhere | D38 | P3 | four CSS dots → gaps; e2e reads pseudo-elements on 9 routes | e2e fails on old CSS, passes on new | Done |
+| T27 One verdict, everywhere | D41 | P1 | `notEvidence()` behind every seal, status word and glyph; inbox card head and bar; "To review" / "Review each goal in turn" | `verdict.spec.ts` (inbox, board line, peek, live line) | Done |
+| T28 Green only on the verifier | D42 | P1 | neutral ✓ on CI counts and the trace's capture tick; neutral legend chain | `verdict.spec.ts` PR line; accept-sheet green check kept | Done |
+| T29 Criteria inside the first screen | D43 | P2 | the CI card on its own goal page drops the duplicated question | `verdict.spec.ts` AC1 × 4 variants | Done |
+| T30 One queue, one R | D44, D48 | P2–P3 | `reviewEach()` for every entry and a global ⇧R; peek R only with changed files | `verdict.spec.ts`, flows | Done |
+| T31 Words that agree | D45, D46, D50, D51, D56 | P2–P3 | reviewed / read; `titleFrom`; first slot; lowercase hints; accept summary; steer pill in i18n | unit, flows, shots | Done |
+| T32 One source per fact | D47, D49, D52, D53, D55 | P2–P3 | wrapping provenance badge; merged pill mark; one trust-tier lookup; held-out path first; refusal said once (en and zh parser) | unit, `verdict.spec.ts`, flows | Done |
+| T33 Say it once | D57 | P3 | ghost "Open changes" and Cause's failed-row copies removed; dead `FlakyLine` removed (pays for T27–T32 in bytes) | flows, bundle budget | Done |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

@@ -12,6 +12,7 @@ import { useKeys } from "./lib/keys";
 import { activityOpen, openActivity, openPalette, openShortcuts, paletteOpen, shortcutsOpen, toggleActivity, togglePalette, toggleShortcuts } from "./lib/layers";
 import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
+import { reviewEach } from "./lib/reviewQueue";
 import { t, withLater } from "./lib/i18n";
 import { prewarmReviews } from "./lib/prewarm";
 import { act, init, state, toast } from "./lib/store";
@@ -174,6 +175,7 @@ export function App() {
       { key: "escape", run: back, desc: () => t("keys.back"), hint: "escape / mod+[" },
       { key: "mod+[", run: back, inInputs: true },
       { key: "mod+k", run: togglePalette, inInputs: true, desc: () => t("keys.palette") },
+      { key: "shift+r", run: reviewEach, desc: () => t("inbox.reviewAll") },
       { key: "?", run: toggleShortcuts, desc: () => t("keys.shortcuts") },
       { key: "mod+shift+l", run: toggleActivity, inInputs: true, desc: () => t("keys.activity") },
     ],

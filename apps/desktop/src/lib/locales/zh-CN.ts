@@ -176,7 +176,7 @@ export const zh = {
   sidebar: {
     label: "目标",
     ended: "已归档",
-    toReview: "待验收",
+    toReview: "待评审",
   },
   decision: {
     answerPlaceholder: "写下你的回答…",
@@ -287,11 +287,11 @@ export const zh = {
     emptyBody: "问题、审批、假设与暂停会出现在这里",
     emptyRunning: (p: { n: number }) => `${p.n} 个目标正在运行；它们提问、申请审批或停下时会出现在这里。`,
     blocking: "阻塞运行",
-    toReview: "待验收",
+    toReview: "待评审",
     keyMove: "移动",
     keyChoose: "选择",
     keyTwice: "放弃需按两次",
-    reviewAll: "依次评审全部待验收",
+    reviewAll: "依次评审每个目标",
     keySnooze: "稍后",
     snoozedCount: (p: { n: number; time: string }) => `已收起 ${p.n}（${p.time}）`,
     snoozedTitle: "已收起，到点再提醒",

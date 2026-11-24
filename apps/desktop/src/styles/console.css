@@ -24,24 +24,23 @@
   background: transparent;
   min-width: 0;
 }
+/* Who said it is read, not skimmed: the source label is meta size (12px), never the 11px hint register. */
 .prov-head {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  font-size: var(--fs-hint);
+  font-size: var(--fs-meta);
   line-height: var(--lh-body);
   color: var(--text-3);
   min-width: 0;
 }
+/* A long source ("Agent says  Run trace") wraps under itself in the gutter rather than being clipped to a fragment. */
 .prov-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-weight: 400;
   color: var(--text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .prov-badge .icon { color: var(--text-3); }
 .prov-meta {

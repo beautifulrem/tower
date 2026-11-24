@@ -7,7 +7,7 @@ import { Show } from "solid-js";
 
 import type { PrView } from "../gen/PrView";
 import { t } from "../lib/i18n";
-import { DangerMark, Icon, ResultMark } from "./Glyph";
+import { DangerMark, Icon } from "./Glyph";
 
 export function PrLine(props: { pr: PrView; compact?: boolean }) {
   const s = () => props.pr.status;
@@ -21,8 +21,9 @@ export function PrLine(props: { pr: PrView; compact?: boolean }) {
         <span class="sep" />
         <span class="row num" style={{ gap: "6px" }}>
           <Show when={s().passed > 0}>
-            <span class="row" style={{ gap: "3px" }}>
-              <ResultMark kind="pass" /> {s().passed}
+            {/* GitHub's count, not the verifier's: a neutral check, never the green that only Tower's verifier may wear. */}
+            <span class="row t2" style={{ gap: "3px" }}>
+              <Icon name="check" size={10} /> {s().passed}
             </span>
           </Show>
           <Show when={s().failed > 0}>

@@ -2,11 +2,14 @@
  * Sidebar (docs/04 §4.3.2): goals and the Needs-You inbox, nothing else.
  * Sessions are traces inside goals, never a list of their own. Counts are
  * split the way the attention ladder is: "Needs you" is what blocks a run;
- * "To review" is what merely waits for your acceptance.
+ * "To review" is what merely waits for your review. The "Review queue" entry
+ * counts every goal with a review card (some also in Needs you) and steps
+ * through them; one name, one set.
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
+import { notEvidence } from "../lib/discounted";
 import { type Group, groupLabel, groupOf, isBlocking, statusWord } from "../lib/labels";
 import { reviewEach, toReviewIds } from "../lib/reviewQueue";
 import { t } from "../lib/i18n";
@@ -47,7 +50,8 @@ export function Sidebar() {
     return r.name === "goal" || r.name === "review" ? r.id : null;
   };
 
-  // Under "Needs you" the group's title already says it: a row there carries no ◆ of its own (its glyph may be one).
+  // Under "Needs you" the group's title already says it: a row there carries no ◆ of its own (its glyph may be one);
+  // nor does a pass that doesn't count, whose glyph is the ◆. One ◆ to a row.
   const GoalRow = (props: { g: GoalSummary; inNeedsYou?: boolean }) => (
     <button
       class="side-row side-goal"
@@ -61,7 +65,7 @@ export function Sidebar() {
         <LifecycleGlyph goal={props.g} />
       </span>
       <span class="ellipsis grow">{props.g.title}</span>
-      <Show when={props.g.needs_you > 0 && !props.inNeedsYou}>
+      <Show when={props.g.needs_you > 0 && !props.inNeedsYou && !notEvidence(props.g)}>
         <NeedsYouMark />
       </Show>
     </button>

@@ -212,7 +212,8 @@ describe("a tampered canary and the totals", () => {
     expect(seal.querySelector(".mark-attention")).not.toBeNull();
     expect(seal.textContent).toContain("Passed, doesn't count");
     expect(seal.textContent).toContain("@f20e1bf");
-    expect(seal.getAttribute("title")).toMatch(/not sealed as verified/);
+    // One explanation of a pass that doesn't count, the same one the criteria use, after the pin.
+    expect(seal.getAttribute("title")).toMatch(/^@f20e1bf Doesn't count: .*must fail.*tampered with/);
     const { container: ok } = render(() => <Seal pin="f20e1bf1234" large />);
     expect(ok.querySelector("circle")).not.toBeNull();
     expect(ok.textContent).toContain("Verified");

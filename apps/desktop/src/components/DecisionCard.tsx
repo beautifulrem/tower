@@ -328,7 +328,8 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <Show when={goal()} fallback={<p class="decision-question">{it().subject}</p>}>
                 {(g) => (
                   <div class="decision-readout decision-readout-main halt">
-                    <Seal pin={g().verified_pin} large tampered={notEvidence(g())} />
+                    {/* The head already says the verdict: a withheld seal keeps its ◆ and pin, not the words again. */}
+                    <Seal pin={g().verified_pin} large tampered={notEvidence(g())} text={notEvidence(g()) ? "" : undefined} />
                     <Show when={g().diffstat}>
                       <span class="sep" />
                       <span class="num">

@@ -62,9 +62,10 @@ export function TelemetryStrip() {
         </button>
       </Show>
       <Show when={blocking() > 0}>
-        <button class="tel-blocking" onClick={() => go({ name: "inbox" })} title={t("chrome.openInbox")} aria-label={`${t("common.needsYou")} ${blocking()}`}>
+        <button class="tel-blocking" onClick={() => go({ name: "inbox" })} title={t("chrome.openInbox")}>
+          {/* Said in words: the count is what is in Needs you, not every ◆ on the board (a pass that doesn't count wears one too). */}
           <NeedsYouMark />
-          <span>{blocking()}</span>
+          <span>{t("chrome.needYou", { n: blocking() })}</span>
         </button>
       </Show>
       <Show when={running() > 0}>

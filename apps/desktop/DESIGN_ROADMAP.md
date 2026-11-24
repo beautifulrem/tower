@@ -50,6 +50,12 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T37 Green and words, last pass | D62, D63, D65, D68 | P2–P3 | neutral suggestion rule; "Mark reviewed"; unbreakable provenance runs; default Approve | e2e, shots | Done |
 | T38 One qualifier list, one verdict per line | D64, D67, D69, D70 | P2–P3 | shared `qualifiers()`; merge-cell verdict; one ◆ per row; palette in queue order; env phrase once | `verdict.spec.ts` | Done |
 | T39 Back where you were | D66 | P3 | `nav.lastGoal` selects the goal's first board line | `verdict.spec.ts` | Done |
+| T40 The board cell holds at every width | D72 | P2 | 5px segment floor; 16em criteria column from 1400 px in the file that owns that range; human count to the tooltip below 1400 for a pass that doesn't count | `verdict.spec.ts` (10 widths × languages, fail on old CSS) | Done |
+| T41 The speaker beside the statement | D73 | P2 | inline-flex badge; only the words wrap, between speaker and kind | `verdict.spec.ts` (6, fail on old CSS) | Done |
+| T42 One name per set, one ◆ per row | D74, D75 | P3 | "Review queue"; title bar in words; no second ◆ or verdict on sidebar, peek head, card seal row | `verdict.spec.ts` | Done |
+| T43 ⇧R from the peek | D76 | P3 | close and start the queue | `verdict.spec.ts` | Done |
+| T44 Wraps and copy | D79 | P3 | "Ports" + tooltip; zh git line, `text-wrap: pretty` on checks; zh held-out hint; note names no button | `verdict.spec.ts` (fail on old commit) | Done |
+| T45 Bundle headroom | D78 | P3 | one tampered explanation instead of three | bundle budget | Partly (199 B of the 1 KB asked) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

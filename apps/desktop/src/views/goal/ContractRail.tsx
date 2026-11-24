@@ -62,7 +62,7 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
               </>
             )}
           </For>
-          <Show when={g().port_base != null}><dt>{t("contract.ports")}</dt><dd class="code-val t2">{g().port_base}–{g().port_base! + 9}</dd></Show>
+          <Show when={g().port_base != null}><dt title={t("contract.ports")}>{t("goal.portsShort")}</dt><dd class="code-val t2">{g().port_base}–{g().port_base! + 9}</dd></Show>
         </dl>
       </div>
 

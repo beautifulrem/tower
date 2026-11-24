@@ -37,13 +37,18 @@
 /* A long source ("Agent says  Run trace") wraps under itself in the gutter rather than being clipped to a fragment. */
 .prov-badge {
   display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 5px;
+  align-items: baseline;
+  gap: 5px;
   font-weight: 400;
   color: var(--text-3);
 }
 .prov-badge .icon { color: var(--text-3); }
+.prov-words {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: 5px;
+  min-width: 0;
+}
 .prov-badge .nw { white-space: nowrap; }
 .prov-meta {
   font-size: var(--fs-hint);
@@ -254,10 +259,16 @@
 }
 .g-spend-text { line-height: 14px; }
 .g-spend-cell .meter-micro { width: 56px; }
-/* At the low end of this range the fixed columns add up to more than the board: the identity column gives first. */
+/* At the low end of this range the fixed columns add up to more than the board: the identity column gives first.
+   From 1400px the criteria cell widens to 16em, so a pass that doesn't count and the human count stand side by side. */
 @media (min-width: 1241px) and (max-width: 1560px) {
   .g-row {
     grid-template-columns: 14px minmax(12em, 1.2fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(12em, 15.5em);
+  }
+}
+@media (min-width: 1400px) and (max-width: 1560px) {
+  .g-row {
+    grid-template-columns: 14px minmax(12em, 1.2fr) minmax(11em, 1.05fr) 16em 4.5em 7em 6.5em minmax(12em, 15.5em);
   }
 }
 .g-overlap {

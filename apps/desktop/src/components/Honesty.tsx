@@ -180,8 +180,8 @@ export function CanaryLine(props: { c: CriterionView }) {
             <span title={t("goal.canaryNotCheckedLong")}>{t("goal.canaryNotChecked")}<span class="t4">{t("goal.canaryNotCheckedWhy")}</span></span>
           </Match>
           <Match when={state() === "tampered"}>
-            <NeedsYouMark title={t("goal.canaryTamperedLong")} />
-            <span class="attn-word" title={t("goal.canaryTamperedLong")}>{t("goal.canaryTampered")}</span>
+            <NeedsYouMark title={t("honesty.discountedTitle")} />
+            <span class="attn-word" title={t("honesty.discountedTitle")}>{t("goal.canaryTampered")}</span>
           </Match>
         </Switch>
       </ObsRow>

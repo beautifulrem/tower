@@ -409,6 +409,9 @@ export function NotEvidenceMark() {
   );
 }
 
+/** A seal's or stamp's tooltip: the verifier's run, or why that pass doesn't count (the bar's words, one explanation). */
+const sealTitle = (tampered: boolean | undefined, pin: string) => (tampered ? `@${pin} ${t("honesty.discountedTitle")}` : t("honesty.sealTitle", { pin }));
+
 /**
  * The stamp: the seal set as Tower's one signature, where a verdict is the
  * point of the screen — the accept sheet's masthead, and the head of a goal
@@ -425,7 +428,7 @@ export function Stamp(props: { pin: string; tampered?: boolean; press?: boolean;
     <span
       class={`stamp stamp-${props.size ?? "l"}`}
       classList={{ "stamp-tampered": !!props.tampered, "stamp-press": !!props.press }}
-      title={props.tampered ? t("honesty.sealTamperedTitle", { pin: pin() }) : t("honesty.sealTitle", { pin: pin() })}
+      title={sealTitle(props.tampered, pin())}
     >
       <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
       <span class="stamp-verdict">
@@ -464,7 +467,7 @@ export function Seal(props: { pin: string | null | undefined; text?: string; com
       <span
         class="seal"
         classList={{ "seal-compact": !!props.compact, "seal-large": !!props.large, "seal-tampered": !!props.tampered }}
-        title={props.tampered ? t("honesty.sealTamperedTitle", { pin: pin() }) : t("honesty.sealTitle", { pin: pin() })}
+        title={sealTitle(props.tampered, pin())}
       >
         <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
         <Show

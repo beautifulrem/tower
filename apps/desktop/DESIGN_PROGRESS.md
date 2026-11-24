@@ -91,3 +91,22 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   (`/tmp/tower-design/iter5/shots`); line limit; bundle all JS 163,818 / 163,840 B, goal page 11,381 / 12,288 B (the
   DecisionCard read and the virtual badge removed, qualifiers moved out of the goal chunk); detector: the same 15
   findings as at HEAD (13 app.css, 2 unchanged workbenches.css lines), nothing new.
+- 2026-11-25 Review of `d0dc2a1` (independent, own worktree and port 1441): **not accepted, 7.85 / 10**, no P0 or
+  P1; P2-01 the no-CI board criteria cell overlapped and clipped in English at 1440/1800 (my D71 zero segment minimum,
+  and a 1241–1560 grid in console.css the app.css widening never reached), P2-02 the English peek's provenance label
+  fell below its statement (my D65 wrap); P3-01–P3-07. Recorded as D72–D80.
+- 2026-11-25 Iteration 6 (T40–T45): 5px segment floor and a 16em criteria column from 1400 px in the file that owns
+  that range, the human count to the tooltip below 1400 for a pass that doesn't count; an inline-flex provenance badge
+  whose words wrap only between speaker and kind; "Review queue / 评审队列" for the queue (sidebar and Needs you, same
+  count) and the title bar's count in words, "n need you"; no second ◆ or verdict on the sidebar row, peek head or the
+  card's seal row; ⇧R from the peek; "Ports" in the rail; zh git line and `text-wrap: pretty` on checks; zh held-out
+  hint in one line; the assumption note names no button; three tampered-canary explanations made one (seal title,
+  canary line, bar). Each new test was run against `d0dc2a1` and fails there (board cell 10 of 10, peek gutter, ⇧R,
+  title-bar words, said-once, ports, zh note, the welcome orphan at 1440). An iteration-5 test treated the new words
+  wrapper as a word; it now checks each run and the mark whole and lets the wrapper break between runs. The seal-title
+  unit test follows the consolidated wording. Gates: tsc; vitest 41 files / 220 tests; Playwright WebKit 307 passed,
+  0 failed (76 shot tests skip without SHOTS; the same 3 Vite client "Importing a module script failed" logs under
+  parallel load, no test fails on them); shots 69/69 (`/tmp/tower-design/iter6/shots`); line limit; bundle all JS
+  163,641 / 163,840 B (199 B left, up from 22 B; the 1 KB the review asked for is not reached, D78), goal page
+  11,399 / 12,288 B; detector on the changed UI files: 13 findings, all app.css and the same as at HEAD
+  (`/tmp/tower-design/iter6/detect.json`).

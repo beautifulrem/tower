@@ -62,6 +62,8 @@ P3 polish. Status: Open / Fixed (implemented and verified) / Kept (deliberate, w
 | D36 | P3 | Section state repeated per row: "Needs your confirmation" on every high sentinel; "Check during review" under the heading of the same name. | milestone P3-07 | `flows/goal-low-open.png` | — | Fixed (iteration 3): "Needs your confirmation" once at the Sentinels head; rows carry no per-row label; the low fold's state is its section title. e2e asserts rows do not repeat it |
 | D37 | P3 | The goal's R action changes place and name with state ("Review 1 file" in the verdict line, "Changes" top right); at 1100 the button wraps alone. | milestone P3-08 | `flows/goal-G0001-en-light-1100-full.png` | — | Fixed (iteration 3): one review action, in the verdict line ("Review n files R"), wrapping with the criteria bar as one track; "Changes R" removed from the actions; R needs changed files |
 | D38 | P3 | The middle-dot rule (`1d6f58c`: only the criteria scale and budget line) is broken by four CSS `::before` dots: console section heads (Operations "Scheduled goals · 2 · …"), the goal identity line, the evidence strip, the review key bar. The e2e check reads text nodes only, so it passed. | own audit, iteration 3 | `iter3/shots/final-operations-light.png` | Generated content escapes a text-node walk. | Fixed (iteration 3): all four are gaps — `--sp-3` between fields of a meta or identity line, `--sp-4` between key hints like the board's key bar; the e2e check now reads `::before`/`::after` and covers Operations and Learning (verified failing on the old CSS); docs/12 notes how ` · ` in its examples renders |
+| D39 | P1 | Accept sheet checklist: every clear row ("Snapshot fresh", "0 high sentinels", "Human checks clear", "Merge prediction clear") wore a green ✓ drawn by CSS — green on Tower's own and the human's checks, against AC8 and the hard gate "a green … step tick". The overlap row wore amber ◆ while the goal page marks it ◇. Pre-existing (`124d397`), missed by my AC8 pass and by the earlier reviews; found by the DESIGN.md documenter. | documenter, iteration 3 | `workbenches.css:387`, `panels.tsx:347` | Status glyphs drawn as CSS text, outside the glyph components the rules are checked on. | Fixed (after `3faaf0c`): clear rows take a neutral check (text-3), "needs you" rows ◆, the overlap ◇, danger ■ — the SVG glyph components; e2e `accept.spec.ts` resolves `--st-verified` and finds no element or pseudo-element in that colour on a verified goal (fails on the old CSS: three green ticks) |
+| D40 | P3 | Three more visible middle dots the check skipped because they were `aria-hidden`: the review status bar ("n/m hunks read · V next unit"), the goal rail's sandbox line ("S2 Seatbelt · No network"); plus a claim frame's "Agent says · Next" and the merge queue's conflict files. | documenter + own check | `iter3/shots/goal-G-0001-en-light.png` | The check exempted `aria-hidden` content, which is still seen. | Fixed (after `3faaf0c`): gaps (`.sep:empty`), conflict files joined with ", "; the check no longer exempts `aria-hidden` |
 
 Test-data artefacts found while auditing (not product defects, but they mislead screenshots): the rich fixture puts the
 risk-0 unit before the risk-3 unit although the supervisor sorts by risk; `moved_hunks` is set on an *added* file.
@@ -102,6 +104,22 @@ en/light and zh-CN/dark, unless a line says otherwise.
 
 Hard gates (any one fails the work): a green aggregate or step tick; a claim drawn as a fact; a user's existing change
 lost; a test weakened to pass; a budget raised to fit.
+
+## docs/12 drift found while writing DESIGN.md
+
+`DESIGN.md` (written by the impeccable-documenter from the code at `3faaf0c`) records what the code does. The
+documenter listed 17 places where `docs/12-visual-design-system.md` says otherwise; most predate this work. They are not
+reconciled here: which side is canonical is the owner's call, and rewriting docs/12 wholesale is outside a design pass.
+In short: docs/12 still has a violet accent and accent focus ring (code: none, ink ring); a low-chroma running blue
+(code: 0.50/0.78 C 0.13); text-4 values (code: AA-safe 0.525/0.645); a translucent overlay (code: opaque, D07);
+`liga, calt, ss02` (code: `calt, cv01, ss03`, mono without ligatures); section title 14/500 text-2 (code: 13/500
+text-1); weights 400/500 only (code: also 580 stamp, 600 large seal and wordmark); a 2px spacing step and radii
+4/6/8/12 (code: 4px grid, 3/4/6/10); a 132px goal card, 48px rail and 560px drawer (code: 40px rows, 340px rail,
+448px drawer); overlay shadow 0 8 24 /.28 (code: 0 16 48 /.45); easing curves; "no celebration" on accept (code: a
+220ms stamp impression); Lucide icons (code: its own one-pen SVG set); claim, human and fact marks as left borders and
+framed chips (code: the provenance gutter, a 2px text-1 pen, an unframed fact with a harness mark); the 5-line goal
+card (code: the flight-strip row, as docs/19 §19.2 says). Also defined but unused: `--prov-*`, `--bg-strip`,
+`--bg-well`, `--border-instrument`. Some marks are still CSS text glyphs (risk badges `■`), not the SVG set.
 
 ## Reviews of this work
 

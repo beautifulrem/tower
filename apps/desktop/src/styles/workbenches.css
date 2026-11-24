@@ -384,11 +384,9 @@
 .seal-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px var(--sp-4); margin-top: var(--sp-1); }
 @media (max-width: 540px) { .seal-checks { grid-template-columns: 1fr; } }
 .seal-check { display: flex; align-items: center; gap: 6px; min-height: 20px; font-size: var(--fs-meta); color: var(--text-2); }
-.seal-check-ok::before { content: "✓"; color: var(--st-verified); font-weight: 600; }
-.seal-check-warn { color: var(--text-1); }
-.seal-check-warn::before { content: "◆"; color: var(--st-attention); }
+.seal-check-ok .icon { color: var(--text-3); }
+.seal-check-warn,
 .seal-check-danger { color: var(--text-1); }
-.seal-check-danger::before { content: "■"; color: var(--st-danger); }
 
 /* Steering Dispatch Tray */
 .dispatch-head { display: flex; align-items: center; gap: 8px; padding-bottom: var(--sp-2); border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-meta); color: var(--text-2); }

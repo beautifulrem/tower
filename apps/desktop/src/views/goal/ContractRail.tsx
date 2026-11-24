@@ -91,7 +91,7 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
         <dl class="rail-dl">
           <dt>{t("goal.autonomyLevel")}</dt><dd>{t(`contract.${c().autonomy}`)}</dd>
           <dt>{t("goal.oneWayShort")}</dt><dd title={t("goal.oneWayDoors")}>{t("goal.askFirst")}</dd>
-          <dt>{t("goal.sandboxShort")}</dt><dd>{sandboxTag(tier(), hasIssue(state.env, "no_sandbox"))}<span class="sep" aria-hidden="true">·</span>{c().network ? t("goal.networkOn") : t("goal.networkOff")}</dd>
+          <dt>{t("goal.sandboxShort")}</dt><dd>{sandboxTag(tier(), hasIssue(state.env, "no_sandbox"))}<span class="sep" />{c().network ? t("goal.networkOn") : t("goal.networkOff")}</dd>
         </dl>
       </div>
 

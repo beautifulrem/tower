@@ -25,7 +25,7 @@ describe("app.css cascade", () => {
   });
 
   it("spaces an icon from its button's words without a typed space", () => {
-    expect(css).toMatch(/\.btn-label \{[^}]*display:\s*inline-flex[^}]*gap:\s*5px/);
+    expect(css).toMatch(/\.btn-label \{[^}]*display:\s*inline-flex[^}]*gap:\s*6px/);
   });
 
   it("gives the light theme's diff rows enough tint", () => {

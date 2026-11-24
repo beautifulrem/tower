@@ -652,6 +652,12 @@ fn remove_run(inner: &Inner, run: &Run) {
             runs.remove(&run.goal_id);
         }
     }
+    // Every end of a run comes through here (stopped, submitted, blocked,
+    // crashed): a profile rewrite already under way finishes before the end
+    // releases the goal's ports and folders, and none starts after it
+    // (jail::follow_agent_listeners checks the run is still current under
+    // the same lock).
+    drop(run.profile.lock().unwrap_or_else(PoisonError::into_inner));
     inner.update_keep_awake();
     // Nothing the agent started outlives its run (submitted, paused,
     // abandoned or crashed): a server or watcher it left in the background

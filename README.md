@@ -101,7 +101,7 @@ Choose your default engine in Settings or override per contract without lowering
   - **Taint-Gated Memory Ratification Queue**: Mines candidate rules from human review comments and harness failure signatures under a reverse-whitelist taint model — `Taint: none` (pure human quote / harness fact), `Taint: standard` (repo/tool output), `Taint: high` (external content or instruction-like patterns, hard-locked until you edit the rule or type `CONFIRM`; secrets blocked).
   - **Model Calibration Scoreboard**: Pure-Fact historical telemetry per engine and model (first-pass verification rate, average rework rounds, sentinel rate, cost per accepted goal).
 - **Operations Console (`⌘4`)**:
-  - **Scheduled Goals (`Unattended strict`)**: Cron-triggered overnight/recurring goals reusing the exact same contract, sandbox, and six-step verification bench, with durable checkpoint resume across restarts or rate limits — while every one-way door or privilege widening hard-pauses into Needs-You.
+  - **Scheduled Goals (`Unattended strict`)**: Cron-triggered overnight/recurring goals reusing the exact same contract, sandbox, and six-step verification bench, with durable checkpoint resume across restarts or rate limits — while every one-way door or privilege widening hard-pauses into Needs-You. Cron expressions are evaluated in **UTC** (the console labels the field and shows each next run as a local date and time).
   - **Per-Project Merge Queue & `depends_on`**: Order accepted branches sequentially with `git merge-tree` conflict prediction and one-click re-verification after baseline moves, complemented by cross-goal dependencies and 15-second Overlap Radar.
   - **Disk Storage & Sandbox Posture**: Per-goal breakdown of workspace, verification, and cache disk usage with safe reclamation that hard-protects active, unmerged, Needs-You, and dirty workspaces.
 - **Away from the Desk**:
@@ -186,6 +186,17 @@ node tools/security-tests.mjs
 tools/adversarial.sh            # optional real-model anti-cheat regression
 ```
 
+Environment variables you may set (Tower sets the other `TOWER_*` names itself, for the processes it starts):
+
+| Variable | Effect |
+|---|---|
+| `TOWER_HOME` | Tower's data folder, default `~/.tower`. Empty means the default; a relative path is refused at start. |
+| `TOWER_OPEN` | A view to open at launch: `goal/G-0001`, `review/G-0001`, `inbox`, … |
+| `TOWER_LANG` | The language of what the supervisor writes (`zh…` for Chinese, anything else English) before Settings chooses one. |
+| `TOWER_FLAKY_RERUN` | `1`/`true`/`on`/`yes` or `0`/`false`/`off`/`no` override the Settings choice of re-running a failing test once; any other value leaves it to Settings. |
+| `TOWER_ACP_COMMAND_<ENGINE>` | The command line that starts an ACP engine, e.g. `TOWER_ACP_COMMAND_CODEX`, instead of finding its binary on `PATH`. |
+| `TOWER_CDP_DEBUG` | Set (to anything) to log the screenshot browser's DevTools traffic. |
+
 ---
 
 ## Architecture
@@ -209,7 +220,7 @@ docs/                    Product spec (00–17), evolution roadmap (18), anti-ch
 tools/                   Demo engine, security-test gate, bundle/doc/line-limit checks, E2E & adversarial runners
 ```
 
-The supervisor owns all authoritative state in SQLite WAL (single writer plus a concurrent read pool); the interface holds a read-only replica fed by coalesced updates. Start-up JavaScript is about 52 KB gzipped (including the first half of one interface language; the other language loads only if you switch). The goal page and later-view strings follow once the first frame is up, while Review, Settings, Learning, Operations, Contract Studio, Quick Peek, and the Command Palette load on first use, and syntax highlighting runs in a Web Worker. CI enforces budgets for start-up (`64 KB`), the goal page (`12 KB`), and all interface JavaScript combined (`160 KB`; about 157 KB today) via [`tools/bundle-budget.sh`](tools/bundle-budget.sh), so moving code out of start-up cannot hide growth. The desktop bundle is about 11 MB.
+The supervisor owns all authoritative state in SQLite WAL (single writer plus a concurrent read pool); the interface holds a read-only replica fed by coalesced updates. Start-up JavaScript is about 52 KB gzipped (including the first half of one interface language; the other language loads only if you switch). The goal page and later-view strings follow once the first frame is up, while Review, Settings, Learning, Operations, Contract Studio, Quick Peek, and the Command Palette load on first use, and syntax highlighting runs in a Web Worker. CI enforces budgets for start-up (`64 KB`), the goal page (`12 KB`), and all interface JavaScript combined (`160 KB`; about 159 KB today) via [`tools/bundle-budget.sh`](tools/bundle-budget.sh), so moving code out of start-up cannot hide growth. The desktop bundle is about 11 MB.
 
 ---
 

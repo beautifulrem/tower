@@ -3,7 +3,7 @@ import { For, Show, createSignal, onMount } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
 import { Button } from "../../components/ui";
-import { api } from "../../lib/api";
+import { api, errorText } from "../../lib/api";
 import { t } from "../../lib/i18n";
 import { toast } from "../../lib/store";
 import type { HoldoutDraft } from "./ext";
@@ -13,34 +13,44 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
   const [ratified, setRatified] = createSignal<Record<string, boolean>>({});
   const [busy, setBusy] = createSignal<string | null>(null);
 
+  // Only what the supervisor proposed: on failure, no stand-in draft a click could ratify into the held-out tests.
+  // What to say when there is no draft: why (the error), or that none came back.
+  const [none, setNone] = createSignal<string | null>(null);
   const load = async () => {
-    const res = await api.generateHoldoutDrafts?.(props.projectId, props.intent).catch(() => null);
-    setDrafts(res?.length ? res : [{
-      id: "d1",
-      filename: "holdout/boundary.test.js",
-      rationale: `Boundary check for "${props.intent.slice(0, 40) || "intent"}"`,
-      code: `import test from "node:test";\nimport assert from "node:assert/strict";\ntest("boundary case", () => { assert.ok(true); });`,
-    }]);
+    try {
+      const res = await api.generateHoldoutDrafts(props.projectId, props.intent);
+      setDrafts(res ?? []);
+      setNone(res?.length ? null : t("contract.holdoutNone"));
+    } catch (e) {
+      setDrafts([]);
+      setNone(errorText(e));
+    }
   };
   onMount(() => void load());
 
   const patch = (id: string, p: Partial<HoldoutDraft>) => setDrafts((l) => l.map((d) => (d.id === id ? { ...d, ...p } : d)));
   const ratify = async (d: HoldoutDraft) => {
     setBusy(d.id);
-    const out = await api.ratifyHoldoutDraft?.(props.projectId, d.filename, d.code).catch(() => null);
-    setRatified((m) => ({ ...m, [d.id]: true }));
-    toast("success", t("contract.holdoutRatified", { file: out || d.filename }));
-    setBusy(null);
+    try {
+      const out = await api.ratifyHoldoutDraft(props.projectId, d.filename, d.code);
+      setRatified((m) => ({ ...m, [d.id]: true }));
+      toast("success", t("contract.holdoutRatified", { file: out || d.filename }));
+    } catch (e) {
+      toast("error", errorText(e));
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
     <div class="holdout-panel" role="region" aria-label={t("contract.synthHoldout")}>
       <div class="row">
-        <span class="unit-claim-tag">┆ Draft claim · inactive until you ratify</span>
+        <span class="unit-claim-tag">{t("contract.holdoutDraftTag")}</span>
         <span class="grow" />
-        <Button size="s" variant="ghost" onClick={() => void load()}>Regenerate</Button>
+        <Button size="s" variant="ghost" onClick={() => void load()}>{t("contract.regenerate")}</Button>
         <button type="button" class="icon-btn" aria-label={t("common.close")} onClick={props.onClose}>×</button>
       </div>
+      <Show when={none()}>{(why) => <span class="meta t3">{why()}</span>}</Show>
       <For each={drafts()}>
         {(d) => {
           const ok = () => !!ratified()[d.id];
@@ -48,8 +58,8 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
             <div class="holdout-draft" classList={{ ratified: ok() }}>
               <div class="row" style={{ gap: "8px" }}>
                 <input class="mono grow" aria-label={t("contract.holdoutFilename")} value={d.filename} disabled={ok()} onInput={(e) => patch(d.id, { filename: e.currentTarget.value })} />
-                <Show when={!ok()} fallback={<span class="human-stamp meta"><Icon name="check" size={10} />You ratified · hidden</span>}>
-                  <Button size="s" variant="primary" busy={busy() === d.id} onClick={() => void ratify(d)}>Ratify into holdout/</Button>
+                <Show when={!ok()} fallback={<span class="human-stamp meta"><Icon name="check" size={10} />{t("contract.holdoutRatifiedStamp")}</span>}>
+                  <Button size="s" variant="primary" busy={busy() === d.id} onClick={() => void ratify(d)}>{t("contract.holdoutRatify")}</Button>
                   <button type="button" class="icon-btn" aria-label={t("common.remove")} onClick={() => setDrafts((l) => l.filter((x) => x.id !== d.id))}>×</button>
                 </Show>
               </div>

@@ -7,7 +7,7 @@
  *    two-press arming when red items stand open, and local branch seal.
  * 3. `ChangesPanel` (C): structured Steering Dispatch tray with ⌘↩ dispatch.
  */
-import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { For, Show, createSignal, onCleanup } from "solid-js";
 
 import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
@@ -50,19 +50,6 @@ function OutputTail(props: { text: string }) {
   );
 }
 
-function useMoreBelow(): [() => boolean, (el: HTMLDivElement) => void, () => void] {
-  const [more, setMore] = createSignal(false);
-  let el: HTMLDivElement | undefined;
-  const measure = () => el && setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
-  const bind = (panel: HTMLDivElement) => {
-    el = panel;
-    panel.addEventListener("scroll", measure, { passive: true });
-    measure();
-  };
-  onCleanup(() => el?.removeEventListener("scroll", measure));
-  return [more, bind, () => requestAnimationFrame(measure)];
-}
-
 export function readoutOrder(all: CriterionView[], mark: (c: CriterionView) => "pending" | "stale" | "pass" | "fail"): CriterionView[] {
   const rank = (c: CriterionView) => {
     if (c.criterion.kind.type === "look") return 0;
@@ -78,10 +65,8 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
   const g = () => state.goals[props.id];
   const mark = (c: CriterionView) => (!c.verified ? "pending" : c.verified.stale ? "stale" : c.verified.passed ? "pass" : "fail");
   const criteria = () => readoutOrder(props.detail?.criteria ?? [], mark);
-  const [more, bindPanel, remeasure] = useMoreBelow();
-  createEffect(on(() => [props.loading, criteria().length], remeasure, { defer: true }));
   return (
-    <Overlay onClose={props.onClose} closeKey="e" label={t("review.verifyTitle", { id: props.id })} title={t("review.verifyTitle", { id: props.id })} instant initialFocus="panel" class="panel panel-wide" panelRef={bindPanel}>
+    <Overlay onClose={props.onClose} closeKey="e" label={t("review.verifyTitle", { id: props.id })} title={t("review.verifyTitle", { id: props.id })} instant initialFocus="panel" class="panel panel-wide">
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
@@ -172,7 +157,6 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
           </For>
         </div>
       </Show>
-      <div class="panel-more" classList={{ on: more() }} aria-hidden="true" />
       <div class="panel-actions">
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.close")}

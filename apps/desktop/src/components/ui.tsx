@@ -192,8 +192,13 @@ export function Toggle(props: {
  * picks the mark: a hollow ring (nothing here), a dot (waiting), a square
  * (an error, in the danger colour).
  */
-/** A resource's value, or undefined once its load has failed: reading the resource itself would throw the error. */
-export const settled = <T,>(r: Resource<T>): T | undefined => (r.error !== undefined && !r.loading ? undefined : r());
+/**
+ * A resource's value, or undefined once its load has failed: reading the resource itself would throw the error. While
+ * it reloads, the value it had: reading the resource then would hand the nearest Suspense its spinner, blanking the
+ * page (and its scroll and focus) on every refetch.
+ */
+export const settled = <T,>(r: Resource<T>): T | undefined =>
+  r.error !== undefined && !r.loading ? undefined : r.state === "refreshing" ? r.latest : r();
 
 /** What a failed load says, with a way to try again; `pending` shows while there is no error. */
 export function Failed(props: { title?: string; error: unknown; onRetry: () => void; inline?: boolean; pending?: JSX.Element }) {
@@ -305,7 +310,8 @@ export function Select<T extends string>(props: {
   );
 }
 
-const FOCUSABLE = 'input:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([tabindex="-1"]), [href], [tabindex="0"]';
+const FOCUSABLE =
+  'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([tabindex="-1"]), [href], summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * A modal layer: dialog semantics, focus moved in, kept in (Tab wraps) and
@@ -343,30 +349,40 @@ export function Overlay(props: {
   // The key that opened it closes it again (`?`, `e`, ⌘P): under the modal layer the opener's own binding is quiet.
   const toggle: Binding[] = props.closeKey ? [{ key: props.closeKey, run: close, inInputs: props.closeKey.startsWith("mod+") }] : [];
   const layer = useKeys([{ key: "escape", run: close, inInputs: true }, ...toggle, ...(props.keys?.bindings ?? [])], props.keys?.name, { modal: true });
+  // A sheet whose body runs on below its actions says so (`data-more`: a fade over the action band), since overlay
+  // scrollbars show nothing until you scroll. Measured on scroll, on resize and when the content changes.
+  let frame = 0;
+  const measure = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => panel.toggleAttribute("data-more", panel.scrollHeight - panel.scrollTop - panel.clientHeight > 8));
+  };
+  onMount(() => {
+    panel.addEventListener("scroll", measure, { passive: true });
+    const resized = new ResizeObserver(measure);
+    resized.observe(panel);
+    const changed = new MutationObserver(measure);
+    changed.observe(panel, { childList: true, subtree: true, characterData: true });
+    measure();
+    onCleanup(() => (resized.disconnect(), changed.disconnect(), cancelAnimationFrame(frame)));
+  });
   onMount(() => {
     props.panelRef?.(panel);
     const first = props.initialFocus === "panel" ? null : panel.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? panel).focus({ preventScroll: true });
   });
   onCleanup(() => previous?.focus?.({ preventScroll: true }));
+  // Tab walks the sheet's own controls and wraps: WebKit's own walk skips buttons unless macOS Full Keyboard Access
+  // is on, and from the last field it would leave the modal sheet for the board behind it.
   const trap = (e: KeyboardEvent) => {
-    if (e.key !== "Tab") return;
+    // A sheet opened inside another (Look in Verify) is drawn inside it: the innermost one moves focus, once.
+    if (e.key !== "Tab" || e.defaultPrevented) return;
+    e.preventDefault();
+    e.stopPropagation();
     const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
-    if (!items.length) {
-      e.preventDefault();
-      panel.focus();
-      return;
-    }
-    const first = items[0];
-    const last = items[items.length - 1];
-    const active = document.activeElement;
-    if (e.shiftKey && (active === first || active === panel)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    if (!items.length) return panel.focus();
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
+    items[next].focus();
   };
   return (
     <div

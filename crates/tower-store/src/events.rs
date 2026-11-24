@@ -316,19 +316,21 @@ impl Store {
     /// Sentinel findings since the latest verification started. Titles of
     /// known sentinels follow the current language.
     pub fn sentinel_hits(&self, goal_id: &str) -> Result<Vec<tower_core::sentinel::SentinelHit>> {
-        let since: i64 = self.conn.query_row(
-            "SELECT COALESCE(MAX(seq), 0) FROM events INDEXED BY events_goal_kind WHERE goal_id = ?1 AND kind = 'verify_started'",
-            [goal_id],
-            |r| r.get(0),
-        )?;
+        let since: i64 = self
+            .conn
+            .prepare_cached("SELECT COALESCE(MAX(seq), 0) FROM events INDEXED BY events_goal_kind WHERE goal_id = ?1 AND kind = 'verify_started'")?
+            .query_row([goal_id], |r| r.get(0))?;
         let mut stmt = self
             .conn
-            .prepare("SELECT * FROM events INDEXED BY events_goal_kind WHERE goal_id = ?1 AND kind = 'sentinel_hit' AND seq > ?2 ORDER BY seq")?;
+            .prepare_cached("SELECT * FROM events INDEXED BY events_goal_kind WHERE goal_id = ?1 AND kind = 'sentinel_hit' AND seq > ?2 ORDER BY seq")?;
         let rows = stmt.query_map(params![goal_id, since], row_to_trace)?;
-        let lang = self.lang();
+        // Read only when there is a title to word: most goals have no hits,
+        // and every goal summary asks.
+        let mut lang = None;
         let mut out = Vec::new();
         for r in rows {
             if let EventKind::SentinelHit { sentinel, severity, title, detail } = r?.event {
+                let lang = *lang.get_or_insert_with(|| self.lang());
                 let title = tower_core::i18n::sentinel_title(&sentinel, lang).map(String::from).unwrap_or(title);
                 out.push(tower_core::sentinel::SentinelHit { sentinel, severity, title, detail });
             }

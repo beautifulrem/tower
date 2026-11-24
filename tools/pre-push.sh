@@ -24,7 +24,8 @@ cargo test --workspace --quiet >/tmp/tower-pre-push-cargo.log 2>&1 || {
   grep -E -A25 "^---- |^failures:" /tmp/tower-pre-push-cargo.log | head -80
   exit 1
 }
-git diff --quiet -- apps/desktop/src/gen || { echo "pre-push: apps/desktop/src/gen changed when the tests regenerated it; commit it"; exit 1; }
+# Changed, new and deleted bindings alike (`git diff` alone misses a new, untracked one).
+[ -z "$(git status --porcelain -- apps/desktop/src/gen)" ] || { echo "pre-push: apps/desktop/src/gen changed when the tests regenerated it; commit it"; git status --short -- apps/desktop/src/gen; exit 1; }
 node --test extensions/tower-goal/policy.test.ts extensions/tower-goal/sandboxfs.test.ts >/dev/null
 # The interface end to end (WebKit), which no unit test replaces.
 if [ -z "$SKIP_E2E" ]; then

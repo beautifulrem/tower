@@ -45,6 +45,11 @@ export function clock(at: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/** A moment days or weeks off, in this machine's zone: "Nov 24 02:00" / "11月24日 02:00". */
+export function dayClock(at: number): string {
+  return `${new Date(at).toLocaleDateString(locale(), { month: "short", day: "numeric" })} ${clock(at)}`;
+}
+
 /** Two moments the clock would write the same way: a log writes the minute once and leaves the rows under it quiet. */
 export function sameMinute(a: number, b: number): boolean {
   return Math.floor(a / MIN) === Math.floor(b / MIN);
@@ -63,6 +68,11 @@ export function usdLimit(v: number): string {
 
 export function short(sha: string | null | undefined): string {
   return sha ? sha.slice(0, 7) : "—";
+}
+
+/** A size on disk: "512 B", "48 KB", "1.5 MB", "2.25 GB". */
+export function bytes(n: number): string {
+  return n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(2)} GB` : n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`;
 }
 
 /** Grouped digits in the interface locale (1,234 in both, but follows the locale). */

@@ -9,6 +9,7 @@
 //! local branch (`ADR-133`: Tower never pushes in M1).
 
 pub mod diff;
+mod push;
 pub mod timeline;
 
 pub use timeline::MergeQueueCheckItem;
@@ -457,6 +458,11 @@ impl Git {
         Ok(out.split('\0').filter(|p| !p.is_empty()).map(String::from).collect())
     }
 
+    /// Whether the workspace has uncommitted or untracked changes.
+    pub fn has_changes(&self, ws: &Path) -> Result<bool> {
+        Ok(!self.ws_run(ws, &["status", "--porcelain"])?.trim().is_empty())
+    }
+
     /// Files the working tree of `workspace` changes relative to `base`,
     /// including new untracked files. Cheap enough to poll.
     pub fn touched(&self, workspace: &Path, base: &str) -> Result<Vec<String>> {
@@ -630,16 +636,6 @@ impl Git {
     /// The URL of `origin` in the user's repository, if any.
     pub fn origin_url(&self, project_root: &Path) -> Option<String> {
         self.run_trim(project_root, &["remote", "get-url", "origin"]).ok().filter(|u| !u.is_empty())
-    }
-
-    /// Pushes a local branch of the user's repository to `origin`. A
-    /// one-way door: only ever called on an explicit human action.
-    pub fn push_branch(&self, project_root: &Path, branch: &str) -> Result<()> {
-        self.run(
-            project_root,
-            &["push", "--set-upstream", "origin", &format!("refs/heads/{branch}:refs/heads/{branch}")],
-        )?;
-        Ok(())
     }
 
     /// Detects the project's test command from conventional manifests.

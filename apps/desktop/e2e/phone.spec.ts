@@ -70,12 +70,15 @@ test("a decision can be put aside from the phone, with two times and a 44pt bell
 test("every control on the phone page is at least 44pt tall", async ({ page }) => {
   await openPhone(page);
   await expect(page.locator(".btn").first()).toBeVisible();
-  const heights = await page.locator(".btn, textarea").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+  // The put-aside times are measured too: open them on the first card.
+  await page.locator(".strip .bell").first().click();
+  await expect(page.locator(".later .btn").first()).toBeVisible();
+  const heights = await page.locator(".btn, textarea").evaluateAll((els) => els.map((el) => `${el.className} "${el.textContent?.trim().slice(0, 20)}" ${el.getBoundingClientRect().height}`));
   expect(heights.length).toBeGreaterThan(0);
-  for (const h of heights) expect(h).toBeGreaterThanOrEqual(40);
-  // Full-size buttons (the card's choices) are 44; only a row's inline pause is 40.
-  const cardButtons = await page.locator(".opts .btn").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
-  for (const h of cardButtons) expect(h).toBeGreaterThanOrEqual(44);
+  // Every one, the card's choices, a row's inline Pause and the put-aside times alike: a finger, not a cursor.
+  for (const h of heights) expect(Number(h.split(" ").pop()), h).toBeGreaterThanOrEqual(44);
+  // And the page is one column: nothing runs past a 390pt screen.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
 test("decisions that widen what the agent may do are named as desk-only, not offered", async ({ page }) => {
@@ -222,7 +225,12 @@ test("the phone card is drawn with the desk's pen: a 32px strip with an amber ed
   const strip = page.locator(".strip").first();
   const box = await strip.boundingBox();
   expect(Math.round(box!.height)).toBe(32);
-  expect(await strip.evaluate((el) => getComputedStyle(el).borderLeftWidth)).toBe("2px");
+  // The amber edge is a straight 2px rule, clear of the card's rounded corner (a border there bends round it).
+  const edge = await strip.evaluate((el) => {
+    const pen = getComputedStyle(el, "::before");
+    return { width: pen.width, clear: parseFloat(pen.top) >= parseFloat(getComputedStyle(el.closest(".card")!).borderTopLeftRadius), border: getComputedStyle(el).borderLeftWidth };
+  });
+  expect(edge).toEqual({ width: "2px", clear: true, border: "0px" });
   const cards = page.locator(".card");
   const a = await cards.nth(0).boundingBox();
   const b = await cards.nth(1).boundingBox();

@@ -114,6 +114,8 @@ export async function openTower(
             case "snoozed_inbox":
               return F.snoozed ?? [];
             case "goal":
+              // As the store answers for an id it has no row for.
+              if (!F[`goal-${a.id}`]) throw `not found: goal ${a.id}`;
               return F[`goal-${a.id}`];
             case "trace":
               return F[`trace-${a.id}`] ?? [];
@@ -135,6 +137,10 @@ export async function openTower(
               return F.lookImages?.[a.file] ?? null;
             case "remote_info":
               return F.remoteInfo ?? null;
+            case "reset_remote_token":
+              // A new pairing token: the old one stops working, as with the supervisor.
+              F.settings = { ...F.settings, remote_token: `fresh-${Date.now()}` };
+              return null;
             case "push_status":
               return F.pushStatus ?? null;
             case "test_push":
@@ -157,17 +163,21 @@ export async function openTower(
                   { id: "opencode", label: "OpenCode", trust_tier: "experimental", installed: false, available: false, note: "" },
                 ]
               );
+            // The console's lists are fresh copies each read too: a refetch hands the view new objects, as over real IPC.
             case "memory_proposals":
-              return (F.memoryProposals ?? []).filter((p: any) => !a.status || p.status === a.status);
+              return structuredClone((F.memoryProposals ?? []).filter((p: any) => !a.status || p.status === a.status));
             case "calibration_rows":
-              return F.calibrationRows ?? [];
+              return structuredClone(F.calibrationRows ?? []);
             case "scheduled_goals":
-              return F.scheduledGoals ?? [];
+              return structuredClone(F.scheduledGoals ?? []);
+            case "run_scheduled_goal_now":
+              if (F.runNowError) throw F.runNowError;
+              return null;
             case "merge_queue":
               if (F.mergeQueueError) throw F.mergeQueueError;
-              return F.mergeQueue ?? [];
+              return structuredClone(F.mergeQueue ?? []);
             case "storage_inventory":
-              return F.storageInventory ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] };
+              return structuredClone(F.storageInventory ?? { total_bytes: 0, reclaimable_bytes: 0, goals: [] });
             case "list_snapshots":
               return F[`snapshots-${a.id}`] ?? [];
             case "compare_snapshots":

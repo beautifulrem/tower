@@ -35,24 +35,62 @@ pub fn pause_failed_start(inner: &Arc<Inner>, goal: &str, reason: PauseReason, d
 fn record_pause(inner: &Arc<Inner>, goal: &str, reason: PauseReason, detail: &str, again: bool) -> Result<()> {
     let rec = inner.store(|s| s.goal(goal))?;
     let lang = inner.lang();
+    let mut withdraw = Vec::new();
     if rec.state == LifecycleState::Paused {
         if !again {
             return Ok(());
         }
         // A card still open is for the earlier reason.
-        inner.withdraw(goal, &[InboxKind::Paused], &tr!(lang, "又暂停了一次", "Paused again"));
+        withdraw.push((&[InboxKind::Paused][..], tr!(lang, "又暂停了一次", "Paused again")));
     }
-    inner.withdraw(goal, &[InboxKind::Question, InboxKind::Approval], &tr!(lang, "运行已停止", "The run stopped"));
-    inner.set_mode(goal, Mode::Idle)?;
+    withdraw.push((&[InboxKind::Question, InboxKind::Approval][..], tr!(lang, "运行已停止", "The run stopped")));
     // The trace keeps the words of the moment; the card is worded on read.
     let note = tower_core::i18n::PauseNote::render(detail, lang);
     let item = reason.needs_human().then(|| {
         let allow_text = matches!(reason, PauseReason::IdleWithoutSubmit | PauseReason::AgentReportedBlocked);
         paused_item(&rec, reason, detail, lang, allow_text)
     });
-    inner.transition_with_item(goal, Transition::Pause { reason }, None, &note, item)?;
+    settle(inner, goal, &withdraw, Transition::Pause { reason }, &note, item)?;
     if reason == PauseReason::AgentReportedBlocked {
         let _ = crate::learning::record_calibration(inner, goal);
+    }
+    Ok(())
+}
+
+/// Withdraws a goal's cards, idles it, applies the transition and opens
+/// the card it raises, in one store transaction: a transition the
+/// lifecycle refuses leaves the cards and the mode as they were, and no one
+/// (the interface, the phone page) sees half of it.
+pub(crate) fn settle(
+    inner: &Inner,
+    goal: &str,
+    withdraw: &[(&[InboxKind], String)],
+    t: Transition,
+    note: &str,
+    item: Option<NewInboxItem>,
+) -> Result<()> {
+    let (entries, withdrawn, opened) = inner.store(|s| {
+        s.atomically(|s| {
+            let mut withdrawn = 0;
+            for (kinds, why) in withdraw {
+                withdrawn += s.withdraw_inbox(goal, kinds, why)?;
+            }
+            let mut entries = Vec::new();
+            if s.goal(goal)?.mode != Mode::Idle {
+                entries.push(s.append(goal, EventKind::ModeChanged { mode: Mode::Idle })?);
+            }
+            entries.push(s.transition(goal, t, None, note)?);
+            Ok((entries, withdrawn, item.map(|i| s.open_inbox(i)).transpose()?))
+        })
+    })?;
+    inner.traces.lock().unwrap_or_else(PoisonError::into_inner).extend(entries);
+    inner.flush_traces();
+    inner.emit_goal_now(goal);
+    if withdrawn > 0 || opened.is_some() {
+        inner.emit_inbox();
+    }
+    if let Some(opened) = opened {
+        inner.push(&opened);
     }
     Ok(())
 }
@@ -204,13 +242,10 @@ pub async fn abandon(inner: &Arc<Inner>, goal: &str) -> Result<()> {
     if let Some(c) = inner.verifications.lock().unwrap_or_else(PoisonError::into_inner).remove(goal) {
         c.cancel();
     }
-    inner.withdraw(
-        goal,
-        &[InboxKind::Question, InboxKind::Approval, InboxKind::Assumption, InboxKind::Paused, InboxKind::ReviewReady],
-        &tr!(inner.lang(), "目标已放弃", "The goal was abandoned"),
-    );
-    inner.set_mode(goal, Mode::Idle)?;
-    inner.transition(goal, Transition::Abandon, None, "")?;
+    let cards =
+        [InboxKind::Question, InboxKind::Approval, InboxKind::Assumption, InboxKind::Paused, InboxKind::ReviewReady];
+    let why = tr!(inner.lang(), "目标已放弃", "The goal was abandoned");
+    settle(inner, goal, &[(&cards[..], why)], Transition::Abandon, "", None)?;
     // A start that began its run just before the goal was abandoned.
     if let Some(run) = inner.run_of(goal) {
         stop_engine(inner, &run, Stop::Abandon).await;
@@ -279,4 +314,75 @@ pub fn answer_dialog(inner: &Arc<Inner>, goal: &str, ui_id: &str, response: &str
         inner.set_mode(goal, Mode::Thinking)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use tower_core::contract::Contract;
+    use tower_store::NewGoal;
+
+    use super::*;
+    use crate::schedule::tests::supervisor;
+
+    /// A goal with an open question and an agent mode, after `before` moved
+    /// it through the lifecycle.
+    fn thinking_goal_with_a_question(inner: &Inner, project: &str, before: &[Transition]) -> String {
+        inner
+            .store(|s| {
+                let contract = Contract::quick("x", Some("true".into()), Lang::En);
+                let g = s.create_goal(NewGoal { project_id: project.into(), title: "x".into(), contract })?.id;
+                for t in before {
+                    s.transition(&g, *t, None, "")?;
+                }
+                s.append(&g, EventKind::ModeChanged { mode: Mode::Thinking })?;
+                s.open_inbox(NewInboxItem {
+                    goal_id: g.clone(),
+                    kind: InboxKind::Question,
+                    title: "Which id?".into(),
+                    subject: String::new(),
+                    body: String::new(),
+                    options: Vec::new(),
+                    allow_text: true,
+                    urgency: 2,
+                    engine_ref: None,
+                })?;
+                Ok(g)
+            })
+            .unwrap()
+    }
+
+    /// What a refused step must leave as it was.
+    fn state(inner: &Inner, goal: &str) -> (Mode, usize, usize) {
+        inner
+            .read_store(|s| {
+                let open = s.open_inbox_items()?.iter().filter(|i| i.goal_id == goal).count();
+                Ok((s.goal(goal)?.mode, open, s.trace(goal, None, 1000)?.len()))
+            })
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_abandon_the_lifecycle_refuses_changes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        let g = thinking_goal_with_a_question(&sup.inner, &pid, &[Transition::Abandon]);
+        let before = state(&sup.inner, &g);
+
+        assert!(abandon(&sup.inner, &g).await.is_err());
+
+        assert_eq!(state(&sup.inner, &g), before, "(mode, open cards, trace length)");
+    }
+
+    #[tokio::test]
+    async fn a_pause_the_lifecycle_refuses_changes_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sup, pid) = supervisor(&tmp).await;
+        // A draft cannot pause.
+        let g = thinking_goal_with_a_question(&sup.inner, &pid, &[]);
+        let before = state(&sup.inner, &g);
+
+        assert!(pause_failed_start(&sup.inner, &g, PauseReason::EngineCrash, "crashed").is_err());
+
+        assert_eq!(state(&sup.inner, &g), before, "(mode, open cards, trace length)");
+    }
 }

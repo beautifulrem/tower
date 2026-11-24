@@ -171,8 +171,8 @@ fn open_workspace(sup: Sup<'_>, id: String, target: OpenTarget) -> Res<()> {
 }
 
 #[tauri::command]
-fn remove_project(sup: Sup<'_>, id: String) -> Res<()> {
-    sup.remove_project(&id)
+async fn remove_project(sup: Sup<'_>, id: String) -> Res<()> {
+    sup.remove_project(&id).await
 }
 
 #[tauri::command]
@@ -664,5 +664,54 @@ mod tests {
         }
         assert!(missing.is_empty(), "not registered: {missing:?}");
         assert!(registered.len() >= 40, "the list was read: {}", registered.len());
+    }
+
+    /// The window may open Tower's data folder itself and nothing under it:
+    /// the goals' workspaces there are written by agents, and opening an
+    /// agent-written `.command` or `.app` would run it outside the sandbox.
+    #[test]
+    fn the_window_opens_only_the_data_folder_itself() {
+        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        let perms = caps["permissions"].as_array().unwrap();
+        let scoped = |id: &str| perms.iter().find(|p| p["identifier"] == id);
+        let paths: Vec<&str> = scoped("opener:allow-open-path").expect("open-path")["allow"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|a| a["path"].as_str())
+            .collect();
+        assert_eq!(paths, ["$HOME/.tower"]);
+        assert!(scoped("opener:allow-reveal-item-in-dir").is_none(), "nothing is revealed");
+        assert!(!perms.iter().any(|p| p == "opener:default"), "no unscoped opener");
+    }
+
+    /// In a packaged app the extension is installed from the bundle's
+    /// resources, so every file `install_extension` copies must be bundled:
+    /// a missing one (the Claude Code adapter's lockfile, say) works in
+    /// development and fails only in the shipped app.
+    #[test]
+    fn every_extension_file_tower_installs_is_bundled() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let bundled: Vec<&str> = conf["bundle"]["resources"]
+            .as_object()
+            .expect("resources map")
+            .values()
+            .filter_map(|v| v.as_str())
+            .collect();
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../extensions/tower-goal");
+        let mut wanted = vec![
+            "tower-goal/acp-adapter/package.json".to_string(),
+            "tower-goal/acp-adapter/package-lock.json".to_string(),
+        ];
+        for e in std::fs::read_dir(&src).unwrap().flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if e.path().is_file() && ((name.ends_with(".ts") && !name.ends_with(".test.ts")) || name == "package.json")
+            {
+                wanted.push(format!("tower-goal/{name}"));
+            }
+        }
+        assert!(wanted.len() > 5, "the extension folder was read");
+        let missing: Vec<_> = wanted.iter().filter(|w| !bundled.contains(&w.as_str())).collect();
+        assert!(missing.is_empty(), "installed but not bundled: {missing:?}");
     }
 }

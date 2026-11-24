@@ -37,6 +37,33 @@ const RELOAD_DETAIL = new Set(["pinned", "human_edited", "rolled_back", "sentine
 const TREE_FROM = 2;
 type HunkRef = { path: string; index: number };
 
+/**
+ * The pin pair goes first, and only for want of room: shown when, with it, the verification group keeps every part
+ * (nothing wraps onto its hidden second line) and the line does not run over. Measured again when the line or the
+ * group changes size.
+ */
+function fitPins(stats: HTMLDivElement) {
+  const fit = () => {
+    stats.classList.remove("pins-off");
+    const verify = stats.querySelector<HTMLElement>(".review-verify");
+    // A part drops when the group wraps onto its hidden line, or when the criteria bar does inside itself.
+    const wraps = (el: HTMLElement | null | undefined) => !!el && el.scrollHeight > el.clientHeight + 1;
+    const over = stats.scrollWidth > stats.clientWidth + 1 || wraps(verify) || wraps(verify?.querySelector<HTMLElement>(".criteria-bar"));
+    stats.classList.toggle("pins-off", over);
+  };
+  const ro = new ResizeObserver(fit);
+  ro.observe(stats);
+  const watchVerify = new MutationObserver(() => {
+    const verify = stats.querySelector(".review-verify");
+    if (verify) ro.observe(verify);
+    fit();
+  });
+  watchVerify.observe(stats, { childList: true, subtree: true, characterData: true });
+  const verify = stats.querySelector(".review-verify");
+  if (verify) ro.observe(verify);
+  onCleanup(() => (ro.disconnect(), watchVerify.disconnect()));
+}
+
 export function Review(props: { id: string }) {
   const [persisted] = createResource<ReviewState>(() => loadReviewState(props.id));
   const [detailRes, { refetch: refetchDetail }] = createResource(() => props.id, api.goal);
@@ -494,7 +521,7 @@ export function Review(props: { id: string }) {
             <Show when={queue()}>{(q) => <span class="meta t3 num">{t("review.queuePosition", { i: q().i, n: q().n })}</span>}</Show>
           </div>
           <Show when={view()}>
-            <div class="review-stats meta halt">
+            <div class="review-stats meta halt" ref={fitPins}>
               <span class="review-stat-group num">
                 <Show when={units().length > 0}>
                   <span>
@@ -549,7 +576,12 @@ export function Review(props: { id: string }) {
           when={!viewRes.error}
           fallback={
             <div class="page-loading">
-              <Failed title={t("review.loadFailed")} error={viewRes.error} onRetry={() => void refetchView()} />
+              {/* A goal that is gone: Retry can never bring it back, the overview is the way on (as on its goal page). */}
+              <Show when={!g() && detailRes.error} fallback={<Failed title={t("review.loadFailed")} error={viewRes.error} onRetry={() => void refetchView()} />}>
+                <Empty title={t("goal.notFound", { id: props.id })} kind="error" action={<Button size="s" variant="ghost" onClick={() => go({ name: "overview" })}>{t("chrome.openOverview")}</Button>}>
+                  {errorText(detailRes.error)}
+                </Empty>
+              </Show>
             </div>
           }
         >

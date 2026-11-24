@@ -336,8 +336,14 @@ const MIGRATIONS: &[&str] = &[
     "#,
 ];
 
-pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
+/// Brings the schema up to date. A database a newer Tower wrote (a schema
+/// version this Tower does not know) is refused and left untouched: read
+/// with an older schema in mind, it would be misread and then written over.
+pub fn migrate(conn: &mut Connection) -> crate::Result<()> {
     let current: usize = conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? as usize;
+    if current > MIGRATIONS.len() {
+        return Err(crate::StoreError::NewerDatabase { found: current, known: MIGRATIONS.len() });
+    }
     for (i, sql) in MIGRATIONS.iter().enumerate().skip(current) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
@@ -345,4 +351,109 @@ pub fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
         tx.commit()?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::params;
+    use tower_core::view::InboxKind;
+    use tower_core::{EventKind, LifecycleState};
+
+    use super::*;
+    use crate::{Store, StoreError};
+
+    /// A contract as the first Tower stored it (b8882b9): none of the fields
+    /// added since.
+    const V1_CONTRACT: &str = r#"{"version":1,"intent":"Fix the checkout","done_when":"","constraints":[],
+        "criteria":[{"id":"C1","title":"tests pass","kind":{"type":"exec","command":"npm test","timeout_secs":600}},
+                    {"id":"C2","title":"looks right","kind":{"type":"human"}}],
+        "scope":{"include":[],"exclude":[],"readonly":[]},
+        "budget":{"soft_usd":5.0,"hard_usd":8.0,"wall_minutes":90},
+        "autonomy":"standard","max_rework":3,"setup":"","model":"","thinking":""}"#;
+
+    /// A database the first Tower wrote: schema 1, one paused goal with a
+    /// trace and an open Needs-You item.
+    fn v1_database(path: &std::path::Path) {
+        let conn = Connection::open(path).unwrap();
+        conn.execute_batch(MIGRATIONS[0]).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, root, base_branch, test_command, created_at)
+             VALUES ('prj_1', 'web', '/r/web', 'main', 'npm test', 1000)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO goals (id, seq, project_id, title, state, pause_reason, mode, contract, run_no, created_at, updated_at)
+             VALUES ('G-0001', 1, 'prj_1', 'Fix the checkout', 'paused', 'human', 'idle', ?1, 1, 1000, 2000)",
+            [V1_CONTRACT],
+        )
+        .unwrap();
+        let events = [
+            ("goal_created", "human", r#"{"kind":"goal_created","title":"Fix the checkout"}"#.to_string()),
+            ("contract_ratified", "human", format!(r#"{{"kind":"contract_ratified","contract":{V1_CONTRACT}}}"#)),
+            ("state_changed", "system", r#"{"kind":"state_changed","from":"draft","to":"ready"}"#.to_string()),
+            ("run_started", "system", r#"{"kind":"run_started","run_no":1,"purpose":"start"}"#.to_string()),
+            ("steered", "human", r#"{"kind":"steered","text":"use Money"}"#.to_string()),
+            (
+                "state_changed",
+                "human",
+                r#"{"kind":"state_changed","from":"running","to":"paused","reason":"human"}"#.to_string(),
+            ),
+        ];
+        for (i, (kind, source, payload)) in events.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO events (goal_id, at, kind, source, payload) VALUES ('G-0001', ?1, ?2, ?3, ?4)",
+                params![1000 + i as i64, kind, source, payload],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO inbox (id, goal_id, kind, title, body, options, allow_text, urgency, created_at)
+             VALUES ('inb_1', 'G-0001', 'paused', 'Paused: you paused it', '', '[\"Continue\"]', 0, 2, 2000)",
+            [],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_database_from_the_first_tower_opens_and_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tower.db");
+        v1_database(&path);
+
+        let s = Store::open(&path).unwrap();
+
+        let all = s.summaries().unwrap();
+        assert_eq!(all.len(), 1);
+        let g = &all[0];
+        assert_eq!((g.id.as_str(), g.state, g.needs_you), ("G-0001", LifecycleState::Paused, 1));
+        assert_eq!((g.progress.machine, g.progress.human), (1, 1));
+        let detail = s.detail("G-0001").unwrap();
+        assert_eq!(detail.contract.intent, "Fix the checkout");
+        assert_eq!(detail.criteria.len(), 2);
+        let trace = s.trace("G-0001", None, 100).unwrap();
+        assert_eq!(trace.len(), 6);
+        assert!(trace.iter().any(|e| matches!(&e.event, EventKind::Steered { text } if text == "use Money")));
+        let inbox = s.open_inbox_items().unwrap();
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].kind, InboxKind::Paused);
+        let version: usize = s.conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap() as usize;
+        assert_eq!(version, MIGRATIONS.len());
+    }
+
+    #[test]
+    fn a_database_from_a_newer_tower_is_not_opened() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tower.db");
+        Store::open(&path).unwrap();
+        let newer = MIGRATIONS.len() as i64 + 1;
+        Connection::open(&path).unwrap().pragma_update(None, "user_version", newer).unwrap();
+
+        let err = Store::open(&path).unwrap_err();
+
+        assert!(matches!(err, StoreError::NewerDatabase { .. }), "{err:?}");
+        let version: i64 = Connection::open(&path).unwrap().query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, newer, "left as the newer Tower wrote it");
+    }
 }

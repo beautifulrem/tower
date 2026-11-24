@@ -12,9 +12,7 @@ git push -u origin "$branch"
 if ! gh pr view "$branch" >/dev/null 2>&1; then
   title=$(git log -1 --format=%s)
   body=$(git log --reverse --format='- %s' origin/main.."$branch")
-  gh pr create --base main --head "$branch" --title "$title" --body "$body
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+  gh pr create --base main --head "$branch" --title "$title" --body "$body"
 fi
 if [ -n "$TOWER_SHIP_LOCAL" ]; then
   # GitHub's runners unavailable (billing, an outage): the pre-push hook has

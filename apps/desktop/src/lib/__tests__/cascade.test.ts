@@ -10,7 +10,7 @@ const tokens = readFileSync("src/styles/tokens.css", "utf8") as string;
  * jsdom does not evaluate media queries, so the one cascade that bit us is
  * guarded by reading the stylesheet: the ≤1280px rail fold must come after
  * the rail's base rule and outrank it, or `display: flex` wins and the rail
- * never folds (design audit r3 §2.1).
+ * never folds.
  */
 describe("app.css cascade", () => {
   it("folds the goal rail with a rule that follows and outranks the base rule", () => {

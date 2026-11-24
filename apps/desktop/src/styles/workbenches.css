@@ -1,8 +1,8 @@
 /*
- * Anti-AI-Slop Workbench Layer: GoalPage (Supervision Sheet), Review (Editorial Diff Theater),
+ * Workbench layer: GoalPage (Supervision Sheet), Review (Editorial Diff Theater),
  * and ContractEditor (Living Specification).
  *
- * Principles (docs/12, research/ui-aesthetics-2026.md):
+ * Principles (docs/12):
  * - Structure felt, not seen: draw each hairline once, zero box-in-box nesting, zero 2px/3px colored left stripes.
  * - Frame exceptions only (ISA-101 / Airbus lights-out): normal metadata sits as quiet inline text;
  *   amber belongs strictly to actionable human decisions (28px ECAM header strip) and true anomalies;

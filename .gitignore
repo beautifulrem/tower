@@ -1,6 +1,3 @@
-# Research clones (not versioned)
-research/pi-mono/
-
 # OS
 .DS_Store
 
@@ -26,7 +23,6 @@ apps/desktop/dist/
 apps/desktop/test-results/
 apps/desktop/playwright-report/
 __pycache__/
-.claude/worktrees/
 
 # Local runs of the real-model adversarial regression (tools/adversarial.sh)
 .adversarial/
@@ -35,6 +31,3 @@ __pycache__/
 apps/desktop/src-tauri/tauri.updater.json
 *.p8
 *.p12
-
-# Per-machine Claude Code settings
-.claude/settings.local.json

@@ -22,7 +22,7 @@
 # and the palette's words left start-up too (58,334 → 52,661 bytes; the
 # total grew by 228): 8 KB of the start-up budget moved to on demand
 # (72 → 64 KB, 96 → 104 KB), so the win is kept and the sum is unchanged.
-# On 2026-11-23 the audit's failure states (Retry on every load), the error
+# On 2026-11-23 the failure states (Retry on every load), the error
 # boundary, the review editor's snapshot checks and the translated chrome
 # took on demand to 107,434 bytes: its budget rose to 108 KB, the total (160
 # KB) and start-up budgets unchanged, so the sum still bounds the growth.

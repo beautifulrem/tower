@@ -2,16 +2,16 @@
 
 > 本文定义：Tower 记住什么、记在哪里、谁批准、如何在不污染模型上下文的前提下注入、如何让记忆在机器之间迁移；以及如何从人的转向、返工、放弃和覆盖中沉淀出规则、记忆、技能、合同模板和验证档案（R9 学习闭环）；如何度量并展示模型的“历史表现”（校准记分板）；以及可选的反技能萎缩机制与隐私。
 >
-> 依据：`00` P5、R1、R9、R10、§0.5（上下文透明）；`02` §2.10 MemoryItem；`03` §3.4.7（放弃原因）；ADR-009（模型面预算）、ADR-011（记忆按作用域、需批准）、ADR-013（团队预留）、ADR-028（Project 身份）、ADR-030（删除 ETA）、ADR-032（token 估算口径）、ADR-035（仓库约定优先）；`11` §11.5（自适应自主度）、§11.8（记忆污染标记 `taint`）。研究依据：`research/theory-brainstorm.md`（*TB*）A1（Sheridan 的 Learn）、A2（Bainbridge）、A13（Lee & See）、C17、D#20/26/27/28/31；`research/landscape.md`（*LS*）B.11 与 §D.4；`research/pi.md` §9（Pi 没有记忆子系统）。
+> 依据：`00` P5、R1、R9、R10、§0.5（上下文透明）；`02` §2.10 MemoryItem；`03` §3.4.7（放弃原因）；ADR-009（模型面预算）、ADR-011（记忆按作用域、需批准）、ADR-013（团队预留）、ADR-028（Project 身份）、ADR-030（删除 ETA）、ADR-032（token 估算口径）、ADR-035（仓库约定优先）；`11` §11.5（自适应自主度）、§11.8（记忆污染标记 `taint`）。研究依据：Sheridan 的 Learn、Bainbridge、Lee & See；Pi 没有记忆子系统。
 
 ---
 
 ## 9.0 设计立场
 
-1. **Pi 没有记忆**（*pi.md* §9）：持久知识只存在于 AGENTS.md、技能、会话内 `custom` 条目和压缩摘要中，全部绑定路径或会话。Tower 必须自己拥有记忆层。
-2. **市面上的记忆都是机器本地、按路径或仓库键控的**：Claude Code 的 auto memory 位于 `~/.claude/projects/<project>/memory/`，官方说明“machine-local… not shared across machines”；Codex 的 memories 位于 `~/.codex/memories/`，每台机器一份（*LS* Thesis 3、B.11）。Steve Yegge 的 **Beads** 把记忆做成**工作项**（issue 图），因为 Agent “会失忆”（*LS* B.11）。*LS* 的结论是：“work-item memory 是没有人以本地优先方式拥有的一层。” Tower 的定位是：**以仓库身份（而非路径）和 Goal（工作项）为键、可迁移、可审计、由人批准**的记忆（`01` §1.3、§1.4 第 8 条）。
+1. **Pi 没有记忆**：持久知识只存在于 AGENTS.md、技能、会话内 `custom` 条目和压缩摘要中，全部绑定路径或会话。Tower 必须自己拥有记忆层。
+2. **市面上的记忆都是机器本地、按路径或仓库键控的**：Claude Code 的 auto memory 位于 `~/.claude/projects/<project>/memory/`，官方说明“machine-local… not shared across machines”；Codex 的 memories 位于 `~/.codex/memories/`，每台机器一份。Steve Yegge 的 **Beads** 把记忆做成**工作项**（issue 图），因为 Agent “会失忆”。调研的结论是：“work-item memory 是没有人以本地优先方式拥有的一层。” Tower 的定位是：**以仓库身份（而非路径）和 Goal（工作项）为键、可迁移、可审计、由人批准**的记忆（`01` §1.3、§1.4 第 8 条）。
 3. **记忆是会被注入给模型的指令，因此属于攻击面。** Agent 只能提议，人批准后才生效（ADR-011）；提议默认带污染标记，只有完全来自人类原话与 Harness 事实的提议才不带（§9.2.1，`11` §11.8）；每次注入在 Trace 中原样可见（`00` §0.5）。
-4. **学习闭环的输出永远是“提议”。** 人的转向和返工是最宝贵的训练信号（*TB* A1“The Work Behind Delegation”的 *Update Assets* 阶段），但从信号到规则的归纳由机器完成，可能出错，所以必须经过人的批准。
+4. **学习闭环的输出永远是“提议”。** 人的转向和返工是最宝贵的训练信号（“The Work Behind Delegation”的 *Update Assets* 阶段），但从信号到规则的归纳由机器完成，可能出错，所以必须经过人的批准。
 5. **数字要诚实。** 校准记分板展示的是 Harness 统计出的历史（Fact），它出现在 Claim 旁边，但永远不改变 Claim 的状态（R1）。样本不足时就明说样本不足。
 
 ### 9.0.1 M1 范围（ADR-059）
@@ -38,7 +38,7 @@ M1 中的记忆都由人直接写入，因此不存在污染与批准问题；§
 | 作用域 | 键 | 典型内容 | 谁能提议 | 生命周期 |
 |---|---|---|---|---|
 | `user` | 本机用户（v1） | 个人偏好、语言、提交信息风格、“不要自动加 emoji” | 🧑 直接写入；🤖/学习闭环提议（需跨 ≥ 2 个项目观测到） | 默认 180 天复审 |
-| `project` | `ProjectId = hash(canonicalRoot)`（ADR-028：首次绑定时字典序最小的根提交，**之后固定**——仓库后来新增的根（`--allow-unrelated-histories`、`subtree add`）只作为 `rootAliases` 记录，不改变身份，ADR-058；远端 URL 只是别名），**与路径和机器无关**。绑定一个检出时，若已存在相同 `canonicalRoot` 的 Project，但该检出的根集合或远端集合与记录不一致（例如 monorepo 与其成员仓库），不自动并入，而是请人确认“同一项目 / 新项目”（ADR-080；根集合按该检出全部 ref 计算，ADR-087）；选择“新项目”时身份为 `hash(canonicalRoot, disambiguator)`；Tower 自己的卫星与检验检出永不登记为检出（R4-D12-03，`02` §2.3） | 约定、架构要点、陷阱、命令、“支付相关一律用幂等键” | 🧑；🤖 提议；学习闭环提议 | 默认 120 天复审 |
+| `project` | `ProjectId = hash(canonicalRoot)`（ADR-028：首次绑定时字典序最小的根提交，**之后固定**——仓库后来新增的根（`--allow-unrelated-histories`、`subtree add`）只作为 `rootAliases` 记录，不改变身份，ADR-058；远端 URL 只是别名），**与路径和机器无关**。绑定一个检出时，若已存在相同 `canonicalRoot` 的 Project，但该检出的根集合或远端集合与记录不一致（例如 monorepo 与其成员仓库），不自动并入，而是请人确认“同一项目 / 新项目”（ADR-080；根集合按该检出全部 ref 计算，ADR-087）；选择“新项目”时身份为 `hash(canonicalRoot, disambiguator)`；Tower 自己的卫星与检验检出永不登记为检出（`02` §2.3） | 约定、架构要点、陷阱、命令、“支付相关一律用幂等键” | 🧑；🤖 提议；学习闭环提议 | 默认 120 天复审 |
 | `goal` | `GoalId` | 本 Goal 的决策、被否决的方案、澄清后的事实（例如“时间戳按本地时区”） | 🧑；🤖 提议（主要来源是被批准的 assumption/decision） | 随 Goal 存续；Goal 归档后冻结；复活时作为新 Goal 的起草输入 |
 | `team` | （预留）`teamId` | — | — | ADR-013：v1 不实现，`02` §2.10 的 scope 联合类型已预留 |
 
@@ -86,14 +86,14 @@ interface MemoryItemV2 extends MemoryItem {
 
 ---
 
-### 9.2.1 污染（taint）：默认带污染，反向白名单（R1-D12-01）
+### 9.2.1 污染（taint）：默认带污染，反向白名单
 
 初版只列举了少数“不可信来源”，漏掉了 worktree 内的依赖代码、测试夹具、他人在 base 上的提交、测试输出、注册表 GET、用户扩展工具的结果。这些都是记忆投毒的主要入口。改为：**每条提议默认带污染**，只有完全来自白名单来源的提议才是 `level:"none"`。
 
 **白名单（仅这些来源不产生污染）：**
 
 1. **人自己输入的自由文本**：转向评论正文、对问题的自由文本回答、拒绝理由、人直接写入的记忆（§9.6 的 L1、L2、L4 挖掘源）。
-   **不包括**人点选的选项：选项标签、选项后果说明、问题文本都是 Agent 起草的，一律继承**提出该问题的 Run** 的污染类别（R2-D12-01）。人点选选项 A 时，挖掘器只记录“人选择了 Agent 提出的 A”，这条证据的污染与该 Run 相同；只有人在选项之外另行输入的文字才属于白名单。
+   **不包括**人点选的选项：选项标签、选项后果说明、问题文本都是 Agent 起草的，一律继承**提出该问题的 Run** 的污染类别。人点选选项 A 时，挖掘器只记录“人选择了 Agent 提出的 A”，这条证据的污染与该 Run 相同；只有人在选项之外另行输入的文字才属于白名单。
 2. Harness 产生的 Fact（退出码、失败签名、文件路径、计数），以及 Tower 注入的合同与简报文本。
 
 **污染类别（任何一项出现即带污染）：**
@@ -133,7 +133,7 @@ type TaintClass =
 - 待批准的提议在 Needs-You 中**每天、每个作用域聚合为一条** `ratify`（severity 1，进入“稍后”分区，不计入角标，`08` §8.4），同时出现在记忆管理器的“待批准”标签页。
 - 每条提议显示：草拟文本（Claim 语法）、建议作用域、`kind`/`subjectKey`/`appliesTo`、证据链接、支持次数、污染等级与类别（§9.2.1），以及与现有条目的**冲突和重复**（§9.4.3）。
 - 动作：**批准** / **编辑后批准** / **改作用域** / **合并进已有条目**（`support.count++`，可以选择更新文本，从而产生新版本）/ **拒绝**（可选填原因，作为反例写入挖掘器的抑制表，30 天内不再就同一聚类提议）/ **稍后**。
-- **批量批准（R1-D12-04）：** `04` 的多选批量批准只对同时满足以下条件的提议生效：`taint.level = "none"`、无“可疑指令”标记、无冲突或重复提示、未命中密钥扫描。其余提议在多选时自动排除，并提示“N 条需要逐条处理”。
+- **批量批准：** `04` 的多选批量批准只对同时满足以下条件的提议生效：`taint.level = "none"`、无“可疑指令”标记、无冲突或重复提示、未命中密钥扫描。其余提议在多选时自动排除，并提示“N 条需要逐条处理”。
 - 批准产生 `HumanDecision{kind:"ratify_memory"}`；拒绝为 `reject_memory`；编辑、退役、同步冲突分别为 `edit_memory`、`retire_memory`、`resolve_sync_conflict`（`02` §2.7）。拒绝时的原因写入 `reason{code, detail}`。
 
 ### 9.3.3 限制
@@ -155,7 +155,7 @@ type TaintClass =
 
 - **编辑会产生新版本。** `id` 不变，`version++`，旧版本只读保留，供审计和回放（例如“G-0142 的第 3 个 Run 当时注入的是 v2”）。
 - **退役**：`status = "retired"`，并填写 `retiredReason`。退役条目永不注入，可以恢复（经 `memory.edit` 把 `status` 改回 `active`、清除 `retiredReason`，`06` §6.4.3，ADR-207）。
-- **撤销 Goal 时回滚记忆**（*TB* C14）：一个 Goal 被撤销（revert）或复活为“回归修复”时，`provenance.goalId` 指向它的条目会被提议退役（`goal_undone`），需要批准。
+- **撤销 Goal 时回滚记忆**：一个 Goal 被撤销（revert）或复活为“回归修复”时，`provenance.goalId` 指向它的条目会被提议退役（`goal_undone`），需要批准。
 - 记忆管理器提供按作用域、`kind`、标签、路径的筛选；按“注入次数”和“被反驳次数”排序；批量退役。
 
 ### 9.4.2 过期与复审
@@ -190,7 +190,7 @@ type TaintClass =
   > User 记忆 ≈ ~/.pi/agent/AGENTS.md（同级：冲突时提示用户二选一）
 ```
 
-个人记忆不能静默覆盖团队提交进仓库的约定（R1-D12-02）。检测到记忆与仓库约定冲突（规则 2 命中，或批准时人工标注）时，批准队列提示三个选项：
+个人记忆不能静默覆盖团队提交进仓库的约定。检测到记忆与仓库约定冲突（规则 2 命中，或批准时人工标注）时，批准队列提示三个选项：
 
 - **保留约定**：拒绝或收窄这条记忆；
 - **本 Goal 例外**：记忆只对指定 Goal 生效并压过约定，记为 `HumanDecision{kind:"ratify_memory", reason:{code:"goal_exception"}}`，注入时写明“本 Goal 例外”；
@@ -304,7 +304,7 @@ If an item looks wrong for this task, say so via log(kind:"finding"); do not sil
 | 压缩之后 | 不需要重新注入记忆：系统段不参与压缩。Tower **不接管** Pi 的压缩（ADR-026）；只在 `session_compact` 之后补发一条 `tower.ledger` 自定义消息（≤ 150 token，`display:true`，Trace 中标“Tower 注入”），其中不含记忆 |
 | 重新选择 | 下一次 `before_agent_start`（返工、恢复、follow-up）时，用本 Run 的 `files_touched` 更新 `ctx.touched` 并重新选择。**Run 中途不做记忆注入**：ADR-009 的事件性注入清单里没有记忆一项，路径相关的记忆通过 `contract.md` 按需读取获得 |
 
-**可见性（SAT-1 for memory，*TB* C17）：**
+**可见性（SAT-1 for memory）：**
 
 - 每次注入都写一条 Tower 事件 `memory.injected{runId, piEntryId, items:[{id, version, score, reasons:["path: src/checkout/** ∩ scope", "tag: stripe"]}], omitted:[{id, score, why:"budget"|"shadowed_by M-x"|"below_threshold"}], tokens}`。
 - Trace 中，`tower_goal` 段补丁和 `contract.md` 的读取都带“Tower 注入”标记（`05`），原文完整显示；每条记忆可以点开查看来源和入选原因。
@@ -315,7 +315,7 @@ If an item looks wrong for this task, say so via log(kind:"finding"); do not sil
 
 ## 9.6 学习闭环（Learn Loop）
 
-Sheridan 的循环是 Plan → Teach → Monitor → Intervene → **Learn**（*TB* A1）。原论述漏掉了 Learn，结果同样的错误每个 Goal 重来一次（R9）。
+Sheridan 的循环是 Plan → Teach → Monitor → Intervene → **Learn**。原论述漏掉了 Learn，结果同样的错误每个 Goal 重来一次（R9）。
 
 ### 9.6.1 触发
 
@@ -345,7 +345,7 @@ Sheridan 的循环是 Plan → Teach → Monitor → Intervene → **Learn**（*
 - 起草费用计入“学习”预算，默认每天 $0.50 上限。超出或离线时退化为模板：`"In <paths>: <最有代表性的一句人类原话>"`。
 - 产出类型：`MemoryProposal`、`VerifyProfilePatch`、`ContractTemplatePatch`、`SentinelException`、`SkillDraft`、`AutonomySuggestion`（交给 `11` §11.5）、`ModelRoutingSuggestion`。**全部进入批准队列，没有任何一项会被自动应用**（§9.7 中的“仅性能类”档案调整除外）。
 
-### 9.6.4 效果度量与退役阈值（R1-D12-06）
+### 9.6.4 效果度量与退役阈值
 
 对每条由挖掘产生并被批准的记忆，比较**其来源聚类**在批准前后的复发率。“相关 Goal”指路径或标签与该条目 `appliesTo`/`tags` 相交的 Goal；“复发”指该 Goal 中出现了落入同一聚类的转向（§9.6.2 L1 的聚类规则）。
 
@@ -376,7 +376,7 @@ Sheridan 的循环是 Plan → Teach → Monitor → Intervene → **Learn**（*
 
 ## 9.7 每项目验证档案的学习（VerifyProfile）
 
-`VerifyProfile` 的权威类型在 `07` §7.13（R1-D15-10），本节只定义学习规则；学习结果写入其中对应的字段。
+`VerifyProfile` 的权威类型在 `07` §7.13，本节只定义学习规则；学习结果写入其中对应的字段。
 
 | 学习项 | 规则 | 应用方式 |
 |---|---|---|
@@ -396,7 +396,7 @@ Sheridan 的循环是 Plan → Teach → Monitor → Intervene → **Learn**（*
 
 ## 9.8 校准记分板（Calibration Scoreboard）
 
-这是 Lee & See“目的 / 过程 / **表现**”中“表现”这一条腿（*TB* A13、D#26）：对 Agent 的信任要按 模型 × 项目 来校准，而不是笼统地“信任 AI”（*TB* B1）。
+这是 Lee & See“目的 / 过程 / **表现**”中“表现”这一条腿：对 Agent 的信任要按 模型 × 项目 来校准，而不是笼统地“信任 AI”。
 
 ### 9.8.1 指标（键为 `(model, projectId)`，并汇总出 `(model, *)`；滑动 90 天）
 
@@ -437,7 +437,7 @@ Sheridan 的循环是 Plan → Teach → Monitor → Intervene → **Learn**（*
 
 ## 9.10 反技能萎缩（可选，默认关闭）
 
-Bainbridge 指出，监视者会逐渐变成没有经验的操作员（*TB* A2）；Mitchell 等人在 2026 年把这一点重新表述到 Agent 场景，*TB* B3.4 也把它列为长期风险。下面三项机制都需要用户主动开启，都有频率上限，都**不阻塞验收**，以免显得家长式（*TB* D#31）。
+Bainbridge 指出，监视者会逐渐变成没有经验的操作员；Mitchell 等人在 2026 年把这一点重新表述到 Agent 场景，这是一项长期风险。下面三项机制都需要用户主动开启，都有频率上限，都**不阻塞验收**，以免显得家长式。
 
 | 机制 | 规则 | 度量 |
 |---|---|---|
@@ -449,7 +449,7 @@ Bainbridge 指出，监视者会逐渐变成没有经验的操作员（*TB* A2�
 
 ## 9.11 与 AGENTS.md / CLAUDE.md 的关系
 
-**事实：** Pi 自行加载上下文文件（`resource-loader.ts:184-274`）。每个目录按 `16` §16.1.12“上下文文件名与受保护名字”一行的候选顺序（v1.2.0 共五个名字，以 `AGENTS.override.md` 为首）取第一个存在的普通文件，在大小写不敏感的卷上任何大小写变体都算存在；加载范围是 agentDir（`~/.pi/agent/`）中的上下文文件，加上**从文件系统根到 cwd 的每一级目录**；**与信任设置无关**（*pi.md* §9）。M1 中每个 Goal 都以用户 agentDir 运行（清单确认之前与 `riskTier=high` 的 Goal 只是不加载扩展，独立的隔离 agentDir 属 M2，`05` §5.10，ADR-212），所以用户级 `AGENTS.md`（“User 记忆”）、`SYSTEM.md`、技能与提示对每个 Goal 都照常加载；`~/.agents/skills` 与 agentDir 无关，恒按 `$HOME` 加载（`core/package-manager.ts:2464`、`:2555-2567`）。
+**事实：** Pi 自行加载上下文文件（`resource-loader.ts:184-274`）。每个目录按 `16` §16.1.12“上下文文件名与受保护名字”一行的候选顺序（v1.2.0 共五个名字，以 `AGENTS.override.md` 为首）取第一个存在的普通文件，在大小写不敏感的卷上任何大小写变体都算存在；加载范围是 agentDir（`~/.pi/agent/`）中的上下文文件，加上**从文件系统根到 cwd 的每一级目录**；**与信任设置无关**。M1 中每个 Goal 都以用户 agentDir 运行（清单确认之前与 `riskTier=high` 的 Goal 只是不加载扩展，独立的隔离 agentDir 属 M2，`05` §5.10，ADR-212），所以用户级 `AGENTS.md`（“User 记忆”）、`SYSTEM.md`、技能与提示对每个 Goal 都照常加载；`~/.agents/skills` 与 agentDir 无关，恒按 `$HOME` 加载（`core/package-manager.ts:2464`、`:2555-2567`）。
 
 | 原则 | 做法 |
 |---|---|
@@ -517,18 +517,18 @@ Use pnpm; never npm or yarn in this repo.
 
 ### 9.12.3 同步目录（可选）
 
-**目的：** 让记忆跨机器、跨 worktree、跨引擎地跟着人和仓库身份走（*LS* §D.4），而不是像 Claude Code auto memory 和 Codex memories 那样锁在一台机器上（*LS* B.11）。
+**目的：** 让记忆跨机器、跨 worktree、跨引擎地跟着人和仓库身份走，而不是像 Claude Code auto memory 和 Codex memories 那样锁在一台机器上。
 
 | 规则 | 说明 |
 |---|---|
 | **位置** | 用户指定的任意目录：一个专用 git 仓库，或者云盘目录（iCloud Drive、Dropbox 等） |
 | **永不写入用户代码仓库** | 设置时校验：同步目录不能位于任何已知 Project 的 checkout 或 Tower worktree 之内，也不能是某个已知 Project 的仓库（比较根提交）。不满足就拒绝（`01` §1.4 第 8 条） |
 | **布局** | `<sync>/tower-memory/v1/user.md`、`projects/<projectId>--<slug>.md`、`goals/<goalId>.md`（Goal 记忆默认不同步，可以开启） |
-| **项目身份** | 文件名和元数据使用 `ProjectId = hash(canonicalRoot)`，`canonicalRoot` 在首次绑定时固定（ADR-028、ADR-058），并同时写出 `rootAliases` 与 `remotes`。在另一台机器上读入时：**只有 `canonicalRoot` 与 `disambiguator`（ADR-087：首次绑定时名为 `origin` 的远端，没有则字典序最小的远端，无远端则 uuid；存于 `Project.identity.disambiguator` 并写入导出与同步元数据）都相同，才自动视为同一 Project**（ADR-069、ADR-087）；仅根别名相交（本机根集合与文件中的 `canonicalRoot ∪ rootAliases` 有交集，但 `canonicalRoot` 不同）时，**不自动合并**，而是生成一条 `project_identity` 条目（`08` §8.4；不复用 `sync_conflict`，后者只用于记忆条目的并发编辑），进入人确认的“合并 Project”流程（ADR-028），决定类型为 `merge_projects` / `split_project`；确认前该文件的记忆不注入（R4-D12-02）。`canonicalRoot` 相同但根集合或远端不一致时同样走此流程（ADR-080）；一致性检查用该检出**全部 ref** 的根集合（`rev-list --max-parents=0 --all`），不随当前分支变化（ADR-087）。
+| **项目身份** | 文件名和元数据使用 `ProjectId = hash(canonicalRoot)`，`canonicalRoot` 在首次绑定时固定（ADR-028、ADR-058），并同时写出 `rootAliases` 与 `remotes`。在另一台机器上读入时：**只有 `canonicalRoot` 与 `disambiguator`（ADR-087：首次绑定时名为 `origin` 的远端，没有则字典序最小的远端，无远端则 uuid；存于 `Project.identity.disambiguator` 并写入导出与同步元数据）都相同，才自动视为同一 Project**（ADR-069、ADR-087）；仅根别名相交（本机根集合与文件中的 `canonicalRoot ∪ rootAliases` 有交集，但 `canonicalRoot` 不同）时，**不自动合并**，而是生成一条 `project_identity` 条目（`08` §8.4；不复用 `sync_conflict`，后者只用于记忆条目的并发编辑），进入人确认的“合并 Project”流程（ADR-028），决定类型为 `merge_projects` / `split_project`；确认前该文件的记忆不注入。`canonicalRoot` 相同但根集合或远端不一致时同样走此流程（ADR-080）；一致性检查用该检出**全部 ref** 的根集合（`rev-list --max-parents=0 --all`），不随当前分支变化（ADR-087）。
 
-**拆分后的归属（按 ADR-087，R6-D12-01）：** 选择“新项目”拆分时，项目记忆**复制到双方**：新 Project 中的副本记 `origin:"copied_from_project"` 与 `provenance.copiedFrom = <原 ProjectId>`；双方的这些条目都把 `reviewAfter` 设为拆分时刻，在记忆管理器中显示“继承，待复审”，并进入下一次复审批次（§9.4.2），复审前照常注入。新 Project 的信任为 `untrusted`（重新询问）；VerifyProfile 复制后各自演化；已有 Goal 归属其绑定检出的远端与新旧项目相匹配的一方（规则以 `02` §2.3 为准）。全部记录 `audit.project_split`。User 记忆不受影响。无论路径与远端如何。浅克隆的 `provisional:` 身份不参与同步，升级为正式身份后再按此规则处理 |
+**拆分后的归属（按 ADR-087）：** 选择“新项目”拆分时，项目记忆**复制到双方**：新 Project 中的副本记 `origin:"copied_from_project"` 与 `provenance.copiedFrom = <原 ProjectId>`；双方的这些条目都把 `reviewAfter` 设为拆分时刻，在记忆管理器中显示“继承，待复审”，并进入下一次复审批次（§9.4.2），复审前照常注入。新 Project 的信任为 `untrusted`（重新询问）；VerifyProfile 复制后各自演化；已有 Goal 归属其绑定检出的远端与新旧项目相匹配的一方（规则以 `02` §2.3 为准）。全部记录 `audit.project_split`。User 记忆不受影响。无论路径与远端如何。浅克隆的 `provisional:` 身份不参与同步，升级为正式身份后再按此规则处理 |
 | **写出** | 记忆变化后防抖 10 s 写出对应文件。如果同步目录是 git 仓库，Tower 再执行 `git commit -m "tower: memory <scope> <ids>"`；只有用户开启了 `autoPush` 时才 `pull --rebase`/`push`（由 Supervisor 用用户凭据执行，与 `11` §11.6.4 的“被代理的能力”一致） |
-| **读入（并发编辑检测，R1-D12-05）** | 文件监听，加上启动时扫描。每个条目带**版本向量** `vv: {machineId: counter}`（本机每次编辑把自己的计数 +1），见下方算法。云盘的“冲突副本”文件（`* (conflicted copy)*.md`、`*-conflict-*`）中的条目同样按版本向量合并 |
+| **读入（并发编辑检测）** | 文件监听，加上启动时扫描。每个条目带**版本向量** `vv: {machineId: counter}`（本机每次编辑把自己的计数 +1），见下方算法。云盘的“冲突副本”文件（`* (conflicted copy)*.md`、`*-conflict-*`）中的条目同样按版本向量合并 |
 | **防投毒** | 每个条目块带 `hmac = HMAC-SHA256(syncKey, canonical(item))`。`syncKey` 用 Electron `safeStorage` 保存，换新机器时通过一次性配对码迁移。**签名无效或缺失的外部修改**（例如有人改了云盘上的文件）→ 记为 `origin: "sync_import"` 的**提议**，必须经人批准，绝不直接生效 |
 | **删除** | 退役同步为 `status: retired`。彻底清除同步为墓碑 `{"id", "purged": true, "vv", "hmac"}`（ADR-183）：不含文本；`vv` 为被清除条目的版本向量逐项取最大后本机 +1，因而支配此前任何一台机器上的版本；`hmac` 与普通条目同样签名。清除界面注明：同步目录是 git 仓库时，原文仍在其历史中，需要用户自行改写该仓库的历史 |
 | **团队** | ADR-013：v1 的同步目录只服务于单个用户的多台机器。共享给他人属于 `team` 作用域，留待以后 |

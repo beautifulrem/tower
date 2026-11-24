@@ -133,7 +133,7 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
     <div class="live-line halt" classList={{ "live-line-large": !!props.large }}>
       <ModeBadge goal={props.goal} />
       {/* The tooltip carries the whole line, for the narrow window where only the verb stays on screen. */}
-      <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(" · ") || undefined}>
+      <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(", ") || undefined}>
         <Show
           when={d().seal}
           fallback={

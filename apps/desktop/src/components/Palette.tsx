@@ -94,7 +94,11 @@ export function CommandPalette() {
     }
     // Verbs first, from any page: review each ready goal, answer each waiting card, review them all in turn.
     const verbs: Command[] = [];
-    const ready = goalList().filter((g) => g.state === "in_review");
+    // In the queue's order (⇧R starts where the first of these is); a goal the queue doesn't hold comes last (-1 >>> 0 is the largest).
+    const order = toReviewIds();
+    const ready = goalList()
+      .filter((g) => g.state === "in_review")
+      .sort((a, b) => (order.indexOf(a.id) >>> 0) - (order.indexOf(b.id) >>> 0));
     for (const g of ready)
       verbs.push({ id: `review-${g.id}`, title: t("chrome.reviewGoal", { id: g.id, title: g.title }), icon: "ring-check", goalRef: g.id, run: () => go({ name: "review", id: g.id }) });
     if (toReviewIds().length > 1) verbs.push({ id: "review-all", title: t("inbox.reviewAll"), hint: "shift+r", icon: "ring-check", run: reviewEach });

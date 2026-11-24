@@ -9,6 +9,7 @@ import { Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { GoalSummaryExt } from "../lib/apiTypes";
+import { notEvidence } from "../lib/discounted";
 import { ago, count, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { effectiveEngine, engineLabel, statusWord } from "../lib/labels";
@@ -68,7 +69,8 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
           }}
         >
           <span class="ellipsis">{g().title}</span>
-          <Show when={g().needs_you > 0}>
+          {/* One ◆ to a line: a pass that doesn't count already wears it in the glyph column. */}
+          <Show when={g().needs_you > 0 && !notEvidence(g())}>
             <NeedsYouMark />
           </Show>
         </button>
@@ -92,7 +94,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         <LiveLine goal={g()} />
       </div>
       <div class="g-crit">
-        <CriteriaBar progress={g().progress} tiny />
+        <CriteriaBar progress={g().progress} id={g().id} tiny />
       </div>
       {/* No change yet is not a reading: the column stays empty rather than drawing a dash. */}
       <span class="g-diff num meta halt">

@@ -47,7 +47,8 @@ export function ProvenanceFrame(props: {
             <span class="claim-rule" aria-hidden="true">┆</span>
           ) : null}
           {/* A claim's frame names its speaker before its kind ("Agent says  Next", a gap, not a dot), never "Next" alone. */}
-          <span>{props.kind === "claim" && props.label ? <>{t("honesty.agentSaysPlain")}<span class="sep" />{props.label}</> : (props.label ?? t(PROV_LABELS[props.kind]))}</span>
+          {/* Two words that each keep together: a narrow gutter breaks between the speaker and the kind, never inside one. */}
+          {props.kind === "claim" && props.label ? <><span class="nw">{t("honesty.agentSaysPlain")}</span><span class="nw">{props.label}</span></> : <span>{props.label ?? t(PROV_LABELS[props.kind])}</span>}
         </span>
         {props.meta && <span class="prov-meta">{props.meta}</span>}
       </div>

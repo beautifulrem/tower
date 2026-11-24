@@ -78,7 +78,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   return (
     <Switch>
       <Match when={discounted()}>
-        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" role="img" aria-label={props.goal.state === "in_review" ? t("honesty.sealTampered") : `${t(`state.${props.goal.state}`)} · ${t("honesty.sealTampered")}`}>
+        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" role="img" aria-label={props.goal.state === "in_review" ? t("honesty.sealTampered") : `${t(`state.${props.goal.state}`)}, ${t("honesty.sealTampered")}`}>
           <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
         </svg>
       </Match>
@@ -388,8 +388,8 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
       pass: t("common.passed"),
       fail: t("common.failed"),
       stale: t("honesty.stale"),
-      "obs-pass": `${t("honesty.observation")} · ${t("common.passed")}`,
-      "obs-fail": `${t("honesty.observation")} · ${t("common.failed")}`,
+      "obs-pass": `${t("honesty.observation")}, ${t("common.passed")}`,
+      "obs-fail": `${t("honesty.observation")}, ${t("common.failed")}`,
       pending: t("goal.awaitingVerify"),
       env: t("pause.verify_env_error"),
     })[props.kind];

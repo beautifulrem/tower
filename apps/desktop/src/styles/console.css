@@ -37,12 +37,14 @@
 /* A long source ("Agent says  Run trace") wraps under itself in the gutter rather than being clipped to a fragment. */
 .prov-badge {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
+  gap: 0 5px;
   font-weight: 400;
   color: var(--text-3);
 }
 .prov-badge .icon { color: var(--text-3); }
+.prov-badge .nw { white-space: nowrap; }
 .prov-meta {
   font-size: var(--fs-hint);
   line-height: var(--lh-hint);
@@ -714,8 +716,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* One reading per line: the merge, then (when it doesn't count) the verdict. */
 .mq-status {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;

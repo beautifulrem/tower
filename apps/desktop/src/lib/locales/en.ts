@@ -71,7 +71,7 @@ export const en: DictNow = {
   group: {
     needs_you: "Needs you",
     running: "Running",
-    review: "To accept",
+    review: "To review",
     verifying: "Verifying",
     ready: "Ready and drafts",
     paused: "Paused",

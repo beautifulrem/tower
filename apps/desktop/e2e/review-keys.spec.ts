@@ -58,7 +58,7 @@ test("on a diff that fits the pane, ] moves the current hunk in the tree's order
   await page.keyboard.press("a");
   await expect(money).toHaveClass(/hunk-accepted/);
   await expect(page.locator(".review-accepted")).toHaveText(/All 2 hunks read/);
-  await expect(page.locator(".file").first().getByRole("button", { name: /Reviewed/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".file").first().locator(".file-viewed")).toHaveText("Reviewed");
   // Every hunk accepted, "here" is still told from "read": the current header keeps the selection ground.
   const ground = (h: import("@playwright/test").Locator) => h.locator("td").first().evaluate((el) => getComputedStyle(el).backgroundColor);
   const current = (await money.getAttribute("class"))!.includes("hunk-current") ? money : cart;
@@ -73,7 +73,7 @@ test("on a diff that fits the pane, ] moves the current hunk in the tree's order
   await expect(money).not.toHaveClass(/hunk-accepted/);
   const toast = page.locator(".toast").filter({ hasText: "Taken back: src/cart/money.js" });
   await expect(toast).toBeVisible();
-  await expect(page.locator(".file").first().getByRole("button", { name: /Reviewed/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".file").first().locator(".file-viewed")).toHaveText("Mark reviewed");
   await toast.getByRole("button", { name: "Mark read again" }).click();
   await expect(money).toHaveClass(/hunk-accepted/);
 });

@@ -224,10 +224,10 @@ describe("the contract studio", () => {
       expect(btns.length).toBeGreaterThan(0);
       return btns;
     });
-    expect(screen.getByText(/Draft claim · inactive until you approve it/)).toBeTruthy();
+    expect(screen.getByText(/Draft claim, inactive until you approve it/)).toBeTruthy();
     const before = invoked.filter((x) => x.cmd === "ratify_holdout_draft").length;
     fireEvent.click(ratifyBtns[0]);
-    await waitFor(() => expect(screen.getByText(/You approved · hidden/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/You approved, hidden/)).toBeTruthy());
     expect(invoked.filter((x) => x.cmd === "ratify_holdout_draft").length).toBe(before + 1);
   });
 });
@@ -331,7 +331,7 @@ describe("synthetic holdout drafts", () => {
       const btn = await waitFor(() => screen.getByRole("button", { name: /Approve into holdout\// }));
       fireEvent.click(btn);
       await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith("error", expect.stringContaining("read-only")));
-      expect(screen.queryByText(/You approved · hidden/)).toBeNull();
+      expect(screen.queryByText(/You approved, hidden/)).toBeNull();
       expect(vi.mocked(toast)).not.toHaveBeenCalledWith("success", expect.anything());
       expect(screen.getByRole("button", { name: /Approve into holdout\// })).toBeTruthy();
     } finally {

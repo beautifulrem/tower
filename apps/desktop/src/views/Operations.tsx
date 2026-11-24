@@ -10,6 +10,7 @@ import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
 import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
+import { notEvidence } from "../lib/discounted";
 import { bytes, dayClock } from "../lib/format";
 import { t } from "../lib/i18n";
 import { stateLabel, statusWord } from "../lib/labels";
@@ -182,6 +183,15 @@ export function Operations() {
                     {entry.status === "conflict" && <DangerMark />}
                     <span>{t(`ops.mq_${entry.status}` as Parameters<typeof t>[0])}</span>
                   </span>
+                  {/* Merging cleanly is git's word; whether the pass counts is the verifier's, said beside it. */}
+                  <Show when={notEvidence(state.goals[entry.goal_id]) && state.goals[entry.goal_id]}>
+                    {(g) => (
+                      <span class="mq-status meta halt t1">
+                        <LifecycleGlyph goal={g()} />
+                        <span>{statusWord(g())}</span>
+                      </span>
+                    )}
+                  </Show>
                 </td>
                 <td class="col-r">
                   <div class="row row-end">

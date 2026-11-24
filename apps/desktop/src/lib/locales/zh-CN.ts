@@ -78,7 +78,7 @@ export const zh = {
   group: {
     needs_you: "需要你",
     running: "运行中",
-    review: "待验收",
+    review: "待评审",
     verifying: "验证中",
     ready: "就绪与草稿",
     paused: "已暂停",

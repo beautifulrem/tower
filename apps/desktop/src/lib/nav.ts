@@ -42,7 +42,11 @@ function transition(from: Route, to: Route, apply: () => void) {
   void vt?.finished?.finally(() => delete document.documentElement.dataset.transition);
 }
 
+/** The goal whose page or review was opened last: back on the board, its line is the one selected. */
+export let lastGoal: string | null = null;
+
 function place(r: Route) {
+  if ("id" in r) lastGoal = r.id;
   // Top-level destinations reset the stack; detail views push onto it.
   if (r.name === "overview") setStack([r]);
   else if (r.name === "inbox" || r.name === "learning" || r.name === "operations" || r.name === "settings")

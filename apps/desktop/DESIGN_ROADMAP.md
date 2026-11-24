@@ -44,6 +44,12 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T31 Words that agree | D45, D46, D50, D51, D56 | P2–P3 | reviewed / read; `titleFrom`; first slot; lowercase hints; accept summary; steer pill in i18n | unit, flows, shots | Done |
 | T32 One source per fact | D47, D49, D52, D53, D55 | P2–P3 | wrapping provenance badge; merged pill mark; one trust-tier lookup; held-out path first; refusal said once (en and zh parser) | unit, `verdict.spec.ts`, flows | Done |
 | T33 Say it once | D57 | P3 | ghost "Open changes" and Cause's failed-row copies removed; dead `FlakyLine` removed (pays for T27–T32 in bytes) | flows, bundle budget | Done |
+| T34 Peek exits land | D59 | P1 | read the goal id before the drawer closes | `verdict.spec.ts` (r ×2, ↩ ×2, button; fail on old code) | Done |
+| T35 Not filed under acceptance | D60, D71 | P1 | "To review / 待评审"; per-goal discounted count; bars by `id`; tiny bar says it | `verdict.spec.ts` no-CI en + zh | Done |
+| T36 Dot sweep incl. attributes and overlays | D61 | P2 | commas/gaps at 20 sites; e2e reads aria-label, title, placeholder, 14 surfaces × 2 languages | `verdict.spec.ts` (fails on old code) | Done |
+| T37 Green and words, last pass | D62, D63, D65, D68 | P2–P3 | neutral suggestion rule; "Mark reviewed"; unbreakable provenance runs; default Approve | e2e, shots | Done |
+| T38 One qualifier list, one verdict per line | D64, D67, D69, D70 | P2–P3 | shared `qualifiers()`; merge-cell verdict; one ◆ per row; palette in queue order; env phrase once | `verdict.spec.ts` | Done |
+| T39 Back where you were | D66 | P3 | `nav.lastGoal` selects the goal's first board line | `verdict.spec.ts` | Done |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

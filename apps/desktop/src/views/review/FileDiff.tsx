@@ -296,7 +296,6 @@ export function FileDiff(props: FileDiffProps) {
           </Show>
           {props.file.path}
         </span>
-        <Show when={virtualized()}><span class="vdiff-badge mono num">{flatRows().length} · virtual</span></Show>
         <span class="num meta">
           <span class="diff-add">+{props.file.additions}</span> <span class="diff-del">−{props.file.deletions}</span>
         </span>
@@ -309,11 +308,12 @@ export function FileDiff(props: FileDiffProps) {
             {t("review.wholeFile")}
           </Button>
         </Show>
-        <Button size="s" variant="ghost" aria-pressed={props.viewed} disabled={props.editing} onClick={() => props.onViewed(!props.viewed)}>
-          <Show when={props.viewed}>
+        {/* Unmarked, it says what it does; marked, what is so. The words change, so no pressed state says it twice. */}
+        <Button size="s" variant="ghost" class="file-viewed" disabled={props.editing} onClick={() => props.onViewed(!props.viewed)}>
+          <Show when={props.viewed} fallback={t("review.keyViewed")}>
             <Icon name="check" size={10} />
+            {t("review.viewed")}
           </Show>
-          {t("review.viewed")}
         </Button>
         <IconButton icon="ellipsis" size={24} label={t("review.fileMore")} aria-haspopup="menu" onClick={() => void moreMenu()} />
       </header>
@@ -430,7 +430,7 @@ function FoldRow(props: { height: number; cols: number; onDone: () => void }) {
 
 function UndoButton(props: { onClick: () => void }) {
   return (
-    <Button size="s" variant="ghost" class="gap-all undo-hunk" onClick={props.onClick} title={`${t("review.undoHunkTitle")} · U`}>
+    <Button size="s" variant="ghost" class="gap-all undo-hunk" onClick={props.onClick} title={`${t("review.undoHunkTitle")} (U)`}>
       <Icon name="undo" size={10} />
       {t("review.undoHunk")}
     </Button>
@@ -447,7 +447,7 @@ function AcceptButton(props: { accepted: boolean; current: boolean; lines: numbe
       aria-pressed={props.accepted}
       onClick={props.onClick}
       kbd={props.current ? (props.accepted ? "shift+a" : "a") : undefined}
-      title={`${props.accepted ? `${t("review.unacceptHunkTitle")} · ⇧A` : `${t("review.acceptHunkTitle")} · A`} — ${t("review.acceptHunkNote")}`}
+      title={`${props.accepted ? `${t("review.unacceptHunkTitle")} (⇧A)` : `${t("review.acceptHunkTitle")} (A)`} — ${t("review.acceptHunkNote")}`}
     >
       <Icon name="check" size={10} />
       {props.accepted ? t("review.hunkAccepted", { n: props.lines }) : t("review.acceptHunk")}

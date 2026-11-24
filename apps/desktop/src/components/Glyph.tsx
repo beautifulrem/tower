@@ -46,8 +46,7 @@ const color: Record<Tone, string> = {
   faint: "var(--text-4)",
 };
 
-/* Round caps add half the pen at each end: the dash shows 1.7 and the gap 1.45, as with square ends. */
-const DASH = "0.45 2.7";
+const DASH = "1.7 1.45";
 
 export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin"> & { id?: string }; size?: number }) {
   const verified = () => machineVerified(props.goal as GoalSummary);
@@ -73,7 +72,8 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
     </svg>
   );
   const ring = () => <circle cx="5" cy="5" r="4" />;
-  const dashedRing = () => <circle cx="5" cy="5" r="4" stroke-dasharray={DASH} />;
+  // The claim register's dashes keep square ends: round ones would turn the ring into a string of beads.
+  const dashedRing = () => <circle cx="5" cy="5" r="4" stroke-dasharray={DASH} stroke-linecap="butt" />;
   const check = (stroke?: string) => <path d="M3.1 5.2 L4.5 6.6 L7 3.7" stroke={stroke} />;
   return (
     <Switch>
@@ -237,8 +237,9 @@ export type IconName =
   | "operations"
   | "peek";
 
-/* Drawn on a 16-unit grid with a 2.5-unit margin: round caps and joins, corners rounded, 2 units at least between
-   strokes (docs/12 §12.9). The pen's width is set per size in CSS (`.icon`), so a 10px icon is not drawn hairline. */
+/* Drawn on a 16-unit grid with a 2.5-unit margin, in the line style docs/12 §12.9 names: round caps and joins, corners
+   rounded, open space between strokes. The pen's width is set per size in CSS (`.icon`), so a 10px icon is not drawn
+   hairline. */
 const PATHS: Record<IconName, () => JSX.Element> = {
   plus: () => <path d="M8 3.5v9M3.5 8h9" />,
   grid: () => (

@@ -28,6 +28,20 @@ test("every decision card offers to be put aside", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Remind me later" })).toHaveCount((fixtures.inbox as unknown[]).length);
 });
 
+test("R on a board goal with nothing changed yet opens its page, not an empty review", async ({ page }) => {
+  await openTower(page, "overview", { enrich: enrichRich });
+  const row = page.locator('.board-rows [data-goal="G-0002"]');
+  await expect(row).toBeVisible();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect.poll(async () => {
+    if (!/selected/.test((await row.getAttribute("class")) ?? "")) await page.keyboard.press("j");
+    return (await row.getAttribute("class")) ?? "";
+  }, { intervals: [100, 250, 500] }).toMatch(/selected/);
+  await page.keyboard.press("r");
+  await expect(page.locator(".goal-page")).toBeVisible();
+  await expect(page.locator(".review")).toHaveCount(0);
+});
+
 test("in the inbox amber says only 'needs you': the focused card is told by the neutral selection ground, each card keeps one ◆, and a sidebar row under Needs you adds none", async ({ page }) => {
   await openTower(page, "inbox", { enrich: enrichRich });
   const cards = page.locator(".inbox .decision");
@@ -138,6 +152,14 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   await expect(page.locator(".board-queue .decision")).toHaveCount(0);
   expect(await below()).toBe(before);
   await page.keyboard.press("k");
+  await expect(lines.first().locator(".g-title")).toBeFocused();
+  // Space on a selected decision line peeks at its goal, as on every board row: no card opens and nothing moves.
+  await page.keyboard.press("Space");
+  await expect(page.locator(".peek-drawer")).toHaveCount(1);
+  await expect(page.locator(".board-queue .decision")).toHaveCount(0);
+  expect(await below()).toBe(before);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".peek-drawer")).toHaveCount(0);
   await expect(lines.first().locator(".g-title")).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator(".board-queue .decision")).toHaveCount(1);
@@ -837,6 +859,11 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // The high sentinels stand above the decisions, whole; the medium ones fold to one line under the criteria that still
   // names the most sensitive path one of them touched, and open on a click.
   await expect(page.locator(".sentinels-high .sentinel")).toHaveCount(2);
+  // A high sentinel's explanation is whole on the page, not clipped to a line and left to a hover tooltip.
+  const highProse = page.locator(".sentinels-high .sentinel-prose").first();
+  await expect(highProse).toContainText("Check yourself that these tests really test");
+  expect(await highProse.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && getComputedStyle(el).webkitLineClamp !== "1")).toBe(true);
+  await expect(highProse).not.toHaveAttribute("title");
   const fold = page.locator(".sentinel-fold");
   await expect(fold.locator("code")).toHaveText("~/.ssh/config");
   await page.locator(".section").filter({ has: fold }).locator("button[aria-expanded]").click();
@@ -853,13 +880,16 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // Rewriting test machinery (high) beside reaching into it (medium): both details are `path: line` machine lines, whole and unclipped.
   const patches = sentinels.filter({ hasText: "rewrites assertion functions" });
   await expect(patches.locator(".mark-danger")).toBeVisible();
-  await expect(patches).toContainText("Needs your confirmation");
+  // Which register a sentinel stands in is said once, at its section's head, not again on every row.
+  await expect(page.locator(".sentinels-high .section-head")).toContainText("Needs your confirmation");
+  await expect(patches).not.toContainText("Needs your confirmation");
   await expect(patches.locator(".sentinel-machine")).toHaveCount(2);
   await expect(patches.locator(".sentinel-prose")).toHaveCount(0);
   expect(await patches.locator(".sentinel-machine").first().evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   const touches = sentinels.filter({ hasText: "reaches into assertion libraries" });
   await expect(touches.locator(".mark-danger")).toHaveCount(0);
-  await expect(touches).toContainText("Check during review");
+  await expect(page.locator(".section").filter({ has: touches }).last()).toContainText("Check during review");
+  await expect(touches).not.toContainText("Check during review");
   await expect(touches.locator(".sentinel-machine")).toHaveCount(1);
   // Held-out tests ran on this goal, so nothing on the page says there are none.
   await expect(page.locator(".goal-page .held-out-none")).toHaveCount(0);
@@ -868,6 +898,10 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(page.locator("table").first()).toBeVisible();
   await page.locator(".review-notes-head").click();
   await expect(page.locator(".review-notes .review-note").filter({ hasText: "No held-out tests" })).toHaveCount(0);
+  // In the review's notes a high sentinel carries its explanation too, read without hovering; a code line is not it.
+  const highNote = page.locator(".review-notes .review-note").filter({ hasText: "assertions could not be checked" });
+  await expect(highNote.locator(".review-note-why")).toContainText("Check yourself that these tests really test");
+  await expect(page.locator(".review-notes .review-note").filter({ hasText: "rewrites assertion functions" }).locator(".review-note-why")).toHaveCount(0);
   await expect(page.locator(".review-head .seal")).toHaveClass(/seal-tampered/);
   await expect(page.locator(".review-head .criteria-bar")).toContainText("1 doesn't count");
   await page.keyboard.press("e");
@@ -1292,7 +1326,7 @@ test("the goal page's rail starts under the header, level with the main column's
   await expect.poll(async () => Math.abs((await rail.boundingBox())!.y - (await view.boundingBox())!.y)).toBeLessThanOrEqual(21);
 });
 
-for (const route of ["overview", "inbox", "goal/G-0001", "goal/G-0002", "review/G-0003", "settings", "new"]) {
+for (const route of ["overview", "inbox", "goal/G-0001", "goal/G-0002", "review/G-0003", "settings", "new", "operations", "learning"]) {
   test(`the middle dot stands only on the instrument lines, the criteria scale and the budget (${route})`, async ({ page }) => {
     await openTower(page, route, { enrich: enrichRich });
     await settled(page, route);
@@ -1306,6 +1340,11 @@ for (const route of ["overview", "inbox", "goal/G-0001", "goal/G-0002", "review/
         if (el.closest(".criteria-bar, .budget-line, pre, code, .mono, .sentinel-prose, .decision-body, .claim-text, [aria-hidden='true']")) continue;
         if (!el.getClientRects().length) continue;
         out.push(`${el.className}: ${n.textContent.trim().slice(0, 60)}`);
+      }
+      // A dot drawn by CSS between items is the same dot.
+      for (const el of document.body.querySelectorAll("*")) {
+        if (!el.getClientRects().length || el.closest(".criteria-bar, .budget-line, [aria-hidden='true']")) continue;
+        for (const pseudo of ["::before", "::after"]) if (getComputedStyle(el, pseudo).content.includes("·")) out.push(`${el.className}${pseudo}`);
       }
       return out;
     });

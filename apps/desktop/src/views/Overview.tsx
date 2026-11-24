@@ -129,9 +129,10 @@ export function Overview() {
     if (c.kind === "decision" && opened() !== c.id) return openDecision(c.id);
     go({ name: "goal", id: goalOf(c) });
   };
+  // R reviews what changed; a goal with nothing changed yet has nothing to review, so R takes you to its page instead.
   const reviewCurrent = () => {
     const c = current();
-    if (c && state.goals[goalOf(c)]?.diffstat) go({ name: "review", id: goalOf(c) });
+    if (c) go({ name: state.goals[goalOf(c)]?.diffstat?.files ? "review" : "goal", id: goalOf(c) });
   };
   const peekGoal = (id: string) => {
     setSelected(id);
@@ -158,7 +159,7 @@ export function Overview() {
       { key: "k", run: () => move(-1) },
       { key: "arrowdown", run: () => move(1) },
       { key: "arrowup", run: () => move(-1) },
-      { key: "space", run: peekCurrent, desc: () => t("keys.peekSelected"), when: () => !!current() },
+      { key: "space", run: peekCurrent, desc: () => t("keys.peekSelected") },
       { key: "enter", run: openCurrent, desc: () => t("keys.open") },
       { key: "r", run: reviewCurrent, desc: () => t("keys.reviewSelected") },
       { key: "/", run: () => document.querySelector<HTMLInputElement>(".quick-input")?.focus(), desc: () => t("keys.quick") },
@@ -221,7 +222,7 @@ export function Overview() {
                 <For each={shownDecisions.list()}>
                   {(it) => (
                     <div role="listitem" class="decision-slot" classList={{ leaving: shownDecisions.leaving(it.id), open: opened() === it.id, selected: selected() === it.id }} data-decision={it.id}>
-                      <Show when={opened() === it.id} fallback={<DecisionLine item={it} onOpen={() => openDecision(it.id)} />}>
+                      <Show when={opened() === it.id} fallback={<DecisionLine item={it} onOpen={() => openDecision(it.id)} onPeek={() => (setSelected(it.id), peekCurrent())} />}>
                         <DecisionCard item={it} focused />
                       </Show>
                     </div>

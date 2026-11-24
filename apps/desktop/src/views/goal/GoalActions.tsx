@@ -114,11 +114,6 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
           {t("goal.pause")}
         </Button>
       </Show>
-      <Show when={s() !== "in_review" && (props.goal.diffstat !== null || s() === "running")}>
-        <Button size="s" kbd="r" onClick={() => go({ name: "review", id: id() })}>
-          {t("goal.changes")}
-        </Button>
-      </Show>
       <Button size="s" variant="ghost" kbd="w" aria-pressed={props.watching} onClick={props.onWatch}>
         {t("goal.trace")}
       </Button>

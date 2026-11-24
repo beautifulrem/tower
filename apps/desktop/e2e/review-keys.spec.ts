@@ -162,7 +162,7 @@ test("on a long diff, ] brings the next hunk into view, and scrolling the curren
   await expect(short).toHaveClass(/hunk-current/);
 });
 
-test("colours that miss the 150ms wait tint in from the plain foreground instead of snapping in", async ({ page }) => {
+test("code shows with its line numbers at once; colours tint in from the plain foreground later", async ({ page }) => {
   // Hold the highlighting worker back, as a cold start does.
   await page.route("**/highlight.worker*", async (route) => {
     await new Promise((r) => setTimeout(r, 600));
@@ -170,9 +170,12 @@ test("colours that miss the 150ms wait tint in from the plain foreground instead
   });
   await openTower(page, "review/G-0003", { enrich: enrichReview });
   await expect(page.locator("table").first()).toBeVisible();
-  // Past the wait the code is shown plain, and the rows say their colours are late.
+  // Before any colour arrives the code text is already on screen, in the plain foreground.
+  const firstCode = page.locator("tr.dl .code").first();
+  await expect(firstCode).toBeVisible();
+  expect((await firstCode.innerText()).trim().length).toBeGreaterThan(0);
+  expect(await firstCode.locator("> *").first().evaluate((el) => getComputedStyle(el).visibility)).toBe("visible");
   await expect(page.locator(".code-late").first()).toBeAttached();
-  await expect(page.locator(".code-pending")).toHaveCount(0);
   const coloured = page.locator(".code-late .code > span[style*='color']").first();
   await expect(coloured).toBeAttached({ timeout: 15_000 });
   expect(await coloured.evaluate((el) => getComputedStyle(el).animationName)).toBe("tint-in");

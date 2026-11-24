@@ -53,7 +53,6 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
   // Low sentinels fold to one line under the criteria, naming the most sensitive path one of them touched.
   const low = () => d().sentinels.filter((h) => h.severity < 3);
   const [lowOpen, setLowOpen] = createSignal(false);
-  const sensitive = () => low().map((h) => h.detail.match(SENSITIVE)?.[0]).find(Boolean);
   const runs = () => {
     const list = [...d().runs].reverse();
     return allRuns() ? list : list.slice(0, 3);
@@ -122,8 +121,19 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
             fallback={
               <p class="meta sentinel-fold">
                 <NoticeMark />
-                <Show when={sensitive()}>{(path) => <code class="code-val t1">{path()}</code>}</Show>
-                <span class="ellipsis">{low().map((h) => h.title).join("\u2003")}</span>
+                <span class="ellipsis">
+                  <For each={low().map((h) => [h.detail.match(SENSITIVE)?.[0], h.title] as const).sort((a, b) => +!a[0] - +!b[0])}>
+                    {([path, title], i) => (
+                      <>
+                        {i() ? "\u2003" : ""}
+                        <Show when={path}>
+                          <code class="code-val t1">{path} </code>
+                        </Show>
+                        {title}
+                      </>
+                    )}
+                  </For>
+                </span>
               </p>
             }
           >
@@ -135,7 +145,7 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
       <Section
         title={t("goal.changes")}
         aside={
-          <Show when={g().diffstat}>
+          <Show when={g().diffstat?.files}>
             <Button size="s" variant="ghost" onClick={() => go({ name: "review", id: g().id })}>
               {t("goal.openChanges")}
             </Button>
@@ -274,7 +284,7 @@ export function HighSentinels(props: { d: ExtGoalDetail }) {
   const high = () => props.d.sentinels.filter((h) => h.severity >= 3);
   return (
     <Show when={high().length}>
-      <Section title={t("goal.sentinels")} class="sentinels-high">
+      <Section title={t("goal.sentinels")} class="sentinels-high" aside={<span class="meta">{t("goal.needsConfirm")}</span>}>
         <For each={high()}>{(h) => <SentinelItem h={h} />}</For>
       </Section>
     </Show>
@@ -291,9 +301,8 @@ function SentinelItem(props: { h: SentinelHit }) {
             <DangerMark />
           </Show>
         </span>
+        {/* What it asks of you is said once, by its section ("Needs your confirmation", "Check during review"). */}
         <span class="t1">{h().title}</span>
-        <span class="grow" />
-        <span class="meta">{h().severity >= 3 ? t("goal.needsConfirm") : t("goal.noteInReview")}</span>
       </div>
       <SentinelDetail text={h().detail} />
     </div>
@@ -307,7 +316,7 @@ export function SentinelDetail(props: { text: string }) {
   return (
     <div class="sentinel-detail">
       <For each={lines()}>
-        {(line) => (MACHINE_DETAIL.test(line) ? <span class="sentinel-machine code-val">{line}</span> : <span class="sentinel-prose" title={line}>{line ? <Prose text={line} /> : "\u00a0"}</span>)}
+        {(line) => (MACHINE_DETAIL.test(line) ? <span class="sentinel-machine code-val">{line}</span> : <span class="sentinel-prose">{line ? <Prose text={line} /> : "\u00a0"}</span>)}
       </For>
     </div>
   );

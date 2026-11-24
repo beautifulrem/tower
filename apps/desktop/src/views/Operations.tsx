@@ -86,7 +86,8 @@ export function Operations() {
     }
   };
 
-  const maxBytes = createMemo(() => Math.max(1, ...inv().goals.map((g) => g.total_bytes)));
+  // Each bar is the goal's share of everything Tower keeps, so two equal goals are two half bars, not two full ones.
+  const maxBytes = createMemo(() => Math.max(1, inv().total_bytes));
   const reclaimIds = createMemo(() => inv().goals.filter((g) => g.reclaimable).map((g) => g.goal_id));
 
   return (
@@ -99,7 +100,8 @@ export function Operations() {
               <>
                 <span class="meta num t2">{schedList().filter((s) => s.enabled).length}</span>
                 <span class="meta t3">{t("ops.schedulesNote")}</span>
-                <span class="meta t3">{t("ops.cronUtc")}</span>
+                {/* The zone is said once: here only until the table's Cron column is there to say it. */}
+                <span class="meta t3" hidden={schedList().length > 0}>{t("ops.cronUtc")}</span>
               </>
             }
           />

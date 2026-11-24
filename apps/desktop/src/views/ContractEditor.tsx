@@ -211,14 +211,13 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       <Show when={ready()} fallback={<ContractSkeleton />}>
         <div class="editor">
           <div class="editor-main">
+            {/* What this is, then where: "New contract  shop", told apart by a gap and the project's weight (no dot: docs/12). */}
             <div class="contract-mast halt">
-              <span class="contract-mast-word">{t("contract.mast")}</span>
+              <span class="contract-mast-word">{mastState()}</span>
               <Show when={projectName()}>
                 <span class="sep" />
                 <span class="contract-mast-project">{projectName()}</span>
               </Show>
-              <span class="sep" />
-              <span class="contract-mast-state">{mastState()}</span>
             </div>
 
             <div class="editor-block">

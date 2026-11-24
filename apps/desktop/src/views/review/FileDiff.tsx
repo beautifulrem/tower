@@ -28,8 +28,6 @@ import { type ExtDiffFile, type ExtHunk } from "../goal/ext";
 import { type VRow, VirtualBody, flattenBlocks, lineAnchor } from "./VirtualBody";
 import { type Anchor, type Block, type Composing, type Reveals, sameAnchor } from "./types";
 
-const COLOUR_WAIT_MS = 150;
-
 export interface FileDiffProps {
   file: DiffFile;
   split: boolean;
@@ -617,9 +615,9 @@ function LineBtn(p: { l: DiffLine | null; n: number | null; io: LineIo }) {
   );
 }
 
-function UnifiedTr(p: { l: DiffLine; io: LineIo; hunk?: number | null; commented: boolean; pending?: boolean; late?: boolean; vidx?: number; tokens?: Tokens[number]; ranges?: Range[] }) {
+function UnifiedTr(p: { l: DiffLine; io: LineIo; hunk?: number | null; commented: boolean; late?: boolean; vidx?: number; tokens?: Tokens[number]; ranges?: Range[] }) {
   return (
-    <tr class={`dl dl-${p.l.kind}`} classList={{ commented: p.commented, "code-pending": !!p.pending, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
+    <tr class={`dl dl-${p.l.kind}`} classList={{ commented: p.commented, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
       <td class="ln num"><LineBtn l={p.l} n={p.l.old_no} io={p.io} /></td>
       <td class="ln num"><LineBtn l={p.l} n={p.l.new_no} io={p.io} /></td>
       <td class="gutter"><button class="gutter-btn" onClick={() => p.io.onAnchor(lineAnchor(p.io.path(), p.l))} aria-label={t("review.comment")} tabindex="-1"><Icon name="plus" size={10} /></button></td>
@@ -628,9 +626,9 @@ function UnifiedTr(p: { l: DiffLine; io: LineIo; hunk?: number | null; commented
   );
 }
 
-function SplitTr(p: { left: DiffLine | null; right: DiffLine | null; io: LineIo; hunk?: number | null; commented: boolean; pending?: boolean; late?: boolean; vidx?: number; lTokens?: Tokens[number]; lRanges?: Range[]; rTokens?: Tokens[number]; rRanges?: Range[] }) {
+function SplitTr(p: { left: DiffLine | null; right: DiffLine | null; io: LineIo; hunk?: number | null; commented: boolean; late?: boolean; vidx?: number; lTokens?: Tokens[number]; lRanges?: Range[]; rTokens?: Tokens[number]; rRanges?: Range[] }) {
   return (
-    <tr class="dl dl-split" classList={{ commented: p.commented, "code-pending": !!p.pending, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
+    <tr class="dl dl-split" classList={{ commented: p.commented, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
       <td class="ln num" classList={{ "dl-del": p.left?.kind === "del" }}><LineBtn l={p.left} n={p.left?.old_no ?? null} io={p.io} /></td>
       <td class="code mono" classList={{ "dl-del": p.left?.kind === "del", "dl-blank": !p.left }}><Show when={p.left}>{(l) => <Code l={l()} tokens={p.lTokens} ranges={p.lRanges} sign={false} />}</Show></td>
       <td class="ln num" classList={{ "dl-add": p.right?.kind === "add" }}><LineBtn l={p.right} n={p.right?.new_no ?? null} io={p.io} /></td>
@@ -657,11 +655,9 @@ export function HunkRows(props: {
 }) {
   const lang = languageOf(props.path);
   const words = createMemo(() => hunkWordRanges(props.hunk.lines));
-  const [ready, setReady] = createSignal(!lang);
-  const [late, setLate] = createSignal(false);
-  let arrived = false;
-  const wait = lang ? window.setTimeout(() => (setReady(true), !arrived && setLate(true)), COLOUR_WAIT_MS) : undefined;
-  onCleanup(() => clearTimeout(wait));
+  // The code shows at once, in the plain foreground; its colours tint in when the worker sends them (120ms), so the
+  // first frame is never line numbers without their code.
+  const late = () => !!lang;
   const [tokens] = createResource(
     () => props.hunk,
     async (h) => {
@@ -672,9 +668,8 @@ export function HunkRows(props: {
         if (!n || !o) return null;
         let i = 0, j = 0;
         return h.lines.map((l) => (l.kind === "add" ? n[i++] : l.kind === "del" ? o[j++] : (j++, n[i++])));
-      } finally {
-        arrived = true;
-        setReady(true);
+      } catch {
+        return null;
       }
     },
   );
@@ -703,7 +698,7 @@ export function HunkRows(props: {
         <For each={props.hunk.lines}>
           {(l, idx) => (
             <>
-              <UnifiedTr l={l} io={io} hunk={props.index} commented={props.commentsAt(aOf(l)).length > 0} pending={!ready()} late={late()} tokens={tokens()?.[idx()]} ranges={words().get(idx())} />
+              <UnifiedTr l={l} io={io} hunk={props.index} commented={props.commentsAt(aOf(l)).length > 0} late={late()} tokens={tokens()?.[idx()]} ranges={words().get(idx())} />
               <Attached anchors={[aOf(l)]} />
             </>
           )}
@@ -717,7 +712,7 @@ export function HunkRows(props: {
           const anchors = () => [...(left()?.kind === "del" ? [aOf(left()!)] : []), ...(right() ? [aOf(right()!)] : [])];
           return (
             <>
-              <SplitTr left={left()} right={right()} io={io} hunk={props.index} commented={anchors().some((a) => props.commentsAt(a).length > 0)} pending={!ready()} late={late()} lTokens={row.left !== null ? tokens()?.[row.left] : undefined} lRanges={row.left !== null ? words().get(row.left) : undefined} rTokens={row.right !== null ? tokens()?.[row.right] : undefined} rRanges={row.right !== null ? words().get(row.right) : undefined} />
+              <SplitTr left={left()} right={right()} io={io} hunk={props.index} commented={anchors().some((a) => props.commentsAt(a).length > 0)} late={late()} lTokens={row.left !== null ? tokens()?.[row.left] : undefined} lRanges={row.left !== null ? words().get(row.left) : undefined} rTokens={row.right !== null ? tokens()?.[row.right] : undefined} rRanges={row.right !== null ? words().get(row.right) : undefined} />
               <Attached anchors={anchors()} />
             </>
           );

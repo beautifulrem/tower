@@ -22,11 +22,11 @@ import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
 import { ago, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
-import { approves, optionTone } from "../lib/labels";
+import { approves, optionTone, statusWord } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go, goProjectSetting } from "../lib/nav";
 import { act, state, toast } from "../lib/store";
-import { Icon, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
+import { Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { Claim, CriteriaBar } from "./HonestyCore";
 import { PrLine } from "./Pr";
 import { Button, IconButton, Kbd, Prose } from "./ui";
@@ -179,19 +179,26 @@ export function heldOutParts(body: string): { prose: string; failures: HeldOutFa
  * at a glance, not a second inbox: selecting the line (j/k, a click, Tab)
  * opens the card in its place, and Needs you keeps every card open.
  */
-export function DecisionLine(props: { item: InboxItem; onOpen: () => void }) {
+export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPeek?: () => void }) {
   const it = () => props.item;
   const goal = () => state.goals[it().goal_id];
   return (
     <div class="g-row decision-line" data-line={it().id} onClick={() => props.onOpen()}>
+      {/* The goal's own glyph, as in the sidebar beside it; the section's title already says "Needs you". */}
       <span class="g-glyph">
-        <NeedsYouMark />
+        <Show when={goal()} fallback={<NeedsYouMark />}>
+          {(g) => <LifecycleGlyph goal={g()} />}
+        </Show>
       </span>
       <button
         class="g-title"
         aria-expanded="false"
         aria-label={`${kindLabel(it().kind)}: ${it().subject}. ${it().goal_title}`}
         title={it().goal_title}
+        // Space peeks, as on every board row; only Enter or a click opens the card (the button would take Space as a click).
+        onKeyDown={(e) => {
+          if (e.key === " " && props.onPeek) (e.preventDefault(), e.stopPropagation(), props.onPeek());
+        }}
         onClick={(e) => {
           e.stopPropagation();
           props.onOpen();
@@ -200,6 +207,11 @@ export function DecisionLine(props: { item: InboxItem; onOpen: () => void }) {
         <span class="ellipsis">{it().goal_title}</span>
       </button>
       <span class="decision-line-ask">
+        {/* A goal waiting for acceptance says its verdict first, in the goal page's words: what you would be accepting. */}
+        <Show when={goal()?.state === "in_review"}>
+          <span class="t2">{statusWord(goal()!)}</span>
+          <span class="sep" />
+        </Show>
         <span class="decision-kind">{kindLabel(it().kind)}</span>
         <span class="ellipsis t2" classList={{ "code-val": it().kind === "ci_failed" }} title={it().subject}>
           {it().subject}

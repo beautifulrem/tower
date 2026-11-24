@@ -56,3 +56,5 @@ No model credentials? `tools/demo-engine` is a scripted Pi stand-in; the README 
 ## Pull requests
 
 Describe the user-visible change, how you tested it (with screenshots for UI), and anything you were unsure about. CI must be green.
+
+For an interface change, Claude Code's `frontend-design-reviewer` agent (`.claude/agents/frontend-design-reviewer.md`) gives an independent design review: it renders the interface against the demo goals, walks the main flows and reports P0–P3 findings with screenshots and a pass or fail. Ask for it by name, e.g. "use the frontend-design-reviewer agent on this branch".

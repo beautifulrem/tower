@@ -31,3 +31,7 @@ __pycache__/
 apps/desktop/src-tauri/tauri.updater.json
 *.p8
 *.p12
+
+# The frontend design reviewer's scratch specs and their results (.claude/agents/frontend-design-reviewer.md)
+apps/desktop/design-review/*
+!apps/desktop/design-review/playwright.config.ts

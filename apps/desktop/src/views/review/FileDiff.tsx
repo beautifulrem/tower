@@ -111,10 +111,12 @@ export function FileDiff(props: FileDiffProps) {
   let table!: HTMLTableElement;
   // Tabbing into the table lands on its first line, where the arrow keys move. A press of the pointer focuses the table
   // too, and moving focus then would drop the text you are selecting (review 15: no diff line could be selected or
-  // copied), so a focus that a press brought stays on the table.
+  // copied), so a focus that a press brought stays on the table; the arrow keys then start from the line pressed.
   let pressed = false;
-  const press = () => {
+  let pressedRow: Element | null = null;
+  const press = (e: PointerEvent) => {
     pressed = true;
+    pressedRow = (e.target as Element).closest("tr");
     // Released anywhere, even outside the table.
     const done = new AbortController();
     const up = () => ((pressed = false), done.abort());
@@ -127,7 +129,16 @@ export function FileDiff(props: FileDiffProps) {
   };
   const onTableKey = (e: KeyboardEvent) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    const btn = (e.target as HTMLElement).closest(".ln-btn");
+    let btn = (e.target as HTMLElement).closest<HTMLElement>(".ln-btn");
+    if (!btn && e.target === table) {
+      // Focus on the table itself (a press left it there): move from the line pressed, or land on the first line.
+      btn = pressedRow?.isConnected ? pressedRow.querySelector<HTMLElement>(".ln-btn") : null;
+      if (!btn) {
+        const first = table.querySelector<HTMLElement>(".ln-btn");
+        if (first) (e.preventDefault(), first.focus({ preventScroll: true }), first.scrollIntoView({ block: "nearest" }));
+        return;
+      }
+    }
     const td = btn?.closest("td");
     const trEl = td?.closest("tr");
     if (!btn || !td || !trEl) return;

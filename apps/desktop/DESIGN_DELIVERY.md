@@ -214,26 +214,30 @@ outlined i uncoloured), drawn from one set of paths in the components, the style
 work turns a quarter arc on its ring, and the goal in view shimmers its live line while its agent moves. Segments are
 capsules that fill in place, and layers, toasts, new rows and presses settle on springs with no overshoot. All of it
 stands still under reduced motion. DESIGN.md, PRODUCT.md principle 2 and docs/12 §12.6–§12.7 say the new rule:
-only work in motion loops. Not yet independently reviewed.
+only work in motion loops.
+
+Iteration 14 fixes review 13's two (D120–D121) and two of its record-only notes, each with a test that fails on
+`1c9af8a`'s sources. Fixing D121 found an older fault: the review header's key caps step had never run since
+iteration 10. Neither the redesign nor iteration 14 is independently reviewed yet.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (the status marks and motion, D119):
+At the final commit (iteration 14):
 
 - **Type check and unit tests:** tsc clean; vitest 42 files, 241 tests (the runs gauge's wedge and its test are gone).
-- **e2e:** Playwright WebKit 380 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
-  supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs five "Importing a
-  module script failed" lines (also five in iterations 11–13, four in iteration 10): pages left by a test while a view was still loading; no test
+- **e2e:** Playwright WebKit 382 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+  supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs six "Importing a
+  module script failed" lines (five or six in iterations 11–14, at the same tests from run to run; four in iteration 10): pages left by a test while a view was still loading; no test
   fails and the new tests emit none.
-- **Shots:** 69/69 (`/tmp/tower-design/glyph3/allshots`); before/after crops in `design-evidence/marks-*.webp`.
+- **Shots:** 69/69 (`/tmp/tower-design/iter14/allshots`); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 162,671 / 163,840 B (1,169 B left), start-up 56,058 / 65,536 B, goal page
-  11,600 / 12,288 B. The budget was never raised.
-- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 1,057 / 596 / 287 ms against
-  325 / 323 / 254 ms for the seeded board (medians 596 against 323), inside its 750 ms margin (every row measures its
-  identity column, and every running row's mark turns); view switches with 50 goals take 68–147 ms against 38–94 ms,
-  their medians inside 150 ms.
-- **Rust (iteration 9; iterations 10–13 changed no Rust):** the redesign changed the phone page the supervisor
+- **Bundle:** all interface JS 162,773 / 163,840 B (1,067 B left), start-up 56,115 / 65,536 B, goal page
+  11,598 / 12,288 B. The budget was never raised.
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 1,541 / 772 / 435 ms against
+  442 / 451 / 329 ms for the seeded board (medians 772 against 451), inside its 750 ms margin (every row measures its
+  identity column, and every running row's mark turns); view switches with 50 goals take 76–218 ms against 44–119 ms,
+  their medians (149.5 against 79 ms) inside 150 ms.
+- **Rust (iteration 9; iterations 10–14 changed no Rust):** the redesign changed the phone page the supervisor
   embeds (`remote.html`, `include_str!`): the crate builds and its four `remote` tests pass. At iteration 9: rustfmt;
   clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
   e2e suite and the shots ran beside it, `evidence::a_criterion_whose_base_did_not_run_keeps_its_canary` failed its
@@ -243,7 +247,8 @@ At the final commit (the status marks and motion, D119):
   lines not touched since), and the DESIGN.md advisories on the changed stylesheets are on older lines. The redesign
   adds six, each triaged in `DESIGN_REVIEW.md` with no ignore: four `bounce-easing` on the two springs (both now with
   no overshoot; the rule fires on the `linear()` form), one `gradient-text` (the in-view shimmer, a functional state)
-  and one `repeating-stripes-gradient` (the phone's hatched "observed" pip).
+  and one `repeating-stripes-gradient` (the phone's hatched "observed" pip). Iteration 14's 5 changed UI files show the
+  same 19 findings as at `1c9af8a`.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion
   (re-checked for the redesign: the turning marks and the shimmer hold still, `flows.spec.ts`).
@@ -254,7 +259,7 @@ user's `~/.tower`, no model called. Looked at through the accessibility tree, in
 row "runs 1, 2" (D91), the folded engine clause (D92), titles with their ids on the board (D23), a schedule "Weekdays
 02:00" before its cron (D20, the schedule added to the scratch database, disabled), and the native unsaved-contract
 sheet. Screenshots: `design-evidence/packaged-app/`. Not reached there: a pass with caveats (the demo has none) and a
-1040 px window (D58, D96); their evidence is the WebKit tests. Iterations 10–13's fixes were not looked at in the packaged
+1040 px window (D58, D96); their evidence is the WebKit tests. Iterations 10–14's fixes were not looked at in the packaged
 app. Typing into the WebView in the background does not
 reach its fields — keys went to the app's shortcuts once (a stray draft, discarded through the app's own sheet).
 
@@ -265,7 +270,8 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`), the
 iteration-11 commit `2f1d0c5` (review 10's findings), the commit recording review 11 (`4ea4567`), the iteration-12
 commit `886ab38` (review 11's findings), the iteration-13 commit `3ff2ebf` (review 12's findings, with review 12's
-report) and the status-marks-and-motion commit (D119, with review 13's report). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+report), the status-marks-and-motion commit `1c9af8a` (D119, with review 13's report) and the iteration-14 commit (review 13's
+findings). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
@@ -275,7 +281,8 @@ review 9's findings (D98–D106), each with a test that fails on `7a23f45`; revi
 review 10's (D107–D112) and its empty settings test, each with a test that fails on `deef352`; review 11 passed it.
 Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `4ea4567`; review 12 passed it.
 Iteration 13 fixed review 12's (D117–D118), each with a test that fails on `886ab38`; review 13 passed it and found
-D120–D121, open. The status marks and motion (D119) followed the owner's feedback; not yet re-reviewed.
+D120–D121. The status marks and motion (D119) followed the owner's feedback. Iteration 14 fixed D120–D121, each with
+a test that fails on `1c9af8a`'s sources; neither is re-reviewed yet.
 What is left:
 
 - **Three more columns give way by measuring** since iteration 12 (`lib/refit.ts`): the overlap note (three steps),
@@ -283,7 +290,8 @@ What is left:
   word "muted", the project's name, the PR's state, and last the whole identity). Each runs again on its box, its text
   and the fonts; the board of 50 still paints inside its margin. The identity's last step folds it into the title's
   tooltip, as below 1241, so nothing on it is cut however long its readings; what leaves the line is still read by a
-  screen reader. The sweeps hold two crowded boards (open PRs; merged and closed PRs with rework up to 3/3).
+  screen reader. The sweeps hold three crowded boards (open PRs; merged and closed PRs with rework up to 3/3; review 13's stress row,
+  which folds), every 1 px where the column's width moves.
 - **The overlap note gives way by measuring** each overlapping row (a ResizeObserver on the title cell and the title, a
   MutationObserver for its text), decided on the row at rest, so hovering or selecting never changes it. Measured at ten
   widths 1241–1800 for both rows of the pair, a short and a long title, in both languages; at 1241 a long title has
@@ -293,7 +301,9 @@ What is left:
   "Verification", not "Verified", so a pass that does not count is never called verified in the picker.
 - **The review header now fits by measuring** (`review/fitStats.ts`, a ResizeObserver and a MutationObserver) rather than
   by width band. The sweep test covers 1024–1400 for both fixture goals in both languages; a verdict longer than any
-  the fixtures hold would still give way last, but only those widths and verdicts were measured.
+  the fixtures hold would still give way last, but only those widths and verdicts were measured. Its last two steps
+  are real since iteration 14 (the key caps step had never run): the key caps, then a gone end's pin, checked every
+  1 px at en 1040–1064.
 - **Below 1241 px the board's overlap notice is in the title's tooltip only**, as the identity column it replaced was;
   above it the note says as much as leaves the title its room: its words, the other goal's id, or the ◇ alone (what it
   sets aside stays in its tooltip and for a screen reader).

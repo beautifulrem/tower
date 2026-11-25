@@ -26,13 +26,15 @@ export function prSummary(pr: PrView): string {
   return checks.length ? t("goal.prSummary", { state: stateWordOf(s.state), checks: checks.join(t("goal.prChecksSep")) }) : `PR ${stateWordOf(s.state)}`;
 }
 
-export function PrLine(props: { pr: PrView; compact?: boolean }) {
+/** `aside`: the line is set aside for the eye (a folded board identity): still read, but no longer a Tab stop. */
+export function PrLine(props: { pr: PrView; compact?: boolean; aside?: boolean }) {
   const s = () => props.pr.status;
   return (
     <button
       class="pr-line link-quiet row text-btn halt"
       data-state={s().state}
       data-failing={s().failed > 0 ? "true" : undefined}
+      tabIndex={props.aside ? -1 : undefined}
       onClick={() => void openUrl(props.pr.url)}
       title={`${prSummary(props.pr)}\n${props.pr.url}`}
     >

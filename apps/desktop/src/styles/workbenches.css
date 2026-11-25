@@ -365,6 +365,8 @@
 /* Short of room for the verdict, the pickers keep the runs' names and let their pins go whole. */
 .review-stats.short-picks .timeline-pick-pin { display: none; }
 .review-stats.short-picks .timeline-pick-gone .timeline-pick-pin { display: inline; }
+/* Only if the verdict still lacks room: a gone end's pin goes too (its words stay; its tooltip and option keep the pin). */
+.review-stats.gone-pins-off .timeline-pick-gone .timeline-pick-pin { display: none; }
 
 .file {
   content-visibility: auto;

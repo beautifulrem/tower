@@ -2833,7 +2833,8 @@ input[type="radio"] {
 /* The verdict is the last thing the header gives up. Short of room for it, the review (`fitStats`) lets go, in order
    and each only while the verdict still lacks the room: the pin pair (the seal carries the verified pin); comparing
    two runs, the line and file counts (the pickers name the range); the gaps, which close up; comparing, the pickers'
-   pins (their runs' names stay); and last the buttons' key caps (their tooltips and the shortcut sheet keep them). */
+   pins (their runs' names stay); then, only while the seal or a criteria segment is cut, the buttons' key caps (their
+   tooltips and the shortcut sheet keep them) and last a gone end's pin (its words stay; workbenches.css). */
 .review-stats.pins-off .review-stat-pins,
 .review-stats.counts-off > .review-stat-group:first-child {
   display: none;
@@ -4449,6 +4450,9 @@ input[type="radio"] {
   align-items: center;
   gap: var(--sp-2);
   min-width: 0;
+  /* Its line's height whatever it holds: folded, its readings leave the flow, and the box keeps its size (no resize
+     loop for the measure). */
+  min-height: 20px;
   overflow: hidden;
   white-space: nowrap;
 }

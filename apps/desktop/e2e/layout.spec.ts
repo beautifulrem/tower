@@ -37,7 +37,8 @@ for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0003", "setti
 }
 
 // The review header is one line of stats: when they don't fit, a whole stat goes (the least needed first), and no
-// word is cut through its letters ("2 revi") — a clipped word reads as a different word.
+// word is cut through its letters ("2 revi") — a clipped word reads as a different word. Nor is a stat's dot left
+// behind at the line's end when the stat after it goes ("观测 0/3 ·"): it reads as a cut.
 const statModes = [
   { lang: "en", compare: false },
   { lang: "en", compare: true },
@@ -45,7 +46,7 @@ const statModes = [
   { lang: "zh-CN", compare: true },
 ] as const;
 for (const route of ["review/G-0003", "review/G-0001"]) for (const mode of statModes) {
-  test(`${route} (${mode.lang}${mode.compare ? ", comparing runs" : ""}): the header's stats drop whole, never cut a word, at every desktop width`, async ({ page }) => {
+  test(`${route} (${mode.lang}${mode.compare ? ", comparing runs" : ""}): the header's stats drop whole, never cut a word or leave a dot, at every desktop width`, async ({ page }) => {
     await openTower(page, route, { lang: mode.lang, enrich: enrichRich });
     await settled(page, route);
     if (mode.compare) {
@@ -60,6 +61,7 @@ for (const route of ["review/G-0003", "review/G-0001"]) for (const mode of statM
       const cut = await page.evaluate(() => {
         const stats = document.querySelector(".review-stats")!;
         const found: string[] = [];
+        const shown: { text: string; top: number }[] = [];
         const walker = document.createTreeWalker(stats, NodeFilter.SHOW_TEXT);
         for (let n = walker.nextNode(); n; n = walker.nextNode()) {
           if (!n.textContent!.trim() || n.parentElement!.closest(".sr-only")) continue;
@@ -88,7 +90,11 @@ for (const route of ["review/G-0003", "review/G-0001"]) for (const mode of statM
           const outside = r.right <= left + 0.5 || r.left >= right - 0.5 || r.bottom <= top + 0.5 || r.top >= bottom - 0.5;
           const inside = r.left >= left - 0.5 && r.right <= right + 0.5 && r.top >= top - 0.5 && r.bottom <= bottom + 0.5;
           if (!outside && !inside && !ellipsis) found.push(`"${n.textContent!.trim()}" ${Math.round(r.left)}..${Math.round(r.right)} in ${Math.round(left)}..${Math.round(right)}`);
+          if (inside) shown.push({ text: n.textContent!.trim(), top: r.top });
         }
+        shown.forEach((s, i) => {
+          if (s.text === "·" && !(shown[i + 1] && Math.abs(shown[i + 1].top - s.top) < 4)) found.push(`a "·" with nothing after it`);
+        });
         return found;
       });
       if (cut.length) out.push(`${w}: ${cut.join(" | ")}`);
@@ -289,7 +295,8 @@ for (const route of ["inbox", "goal/G-0001", "goal/G-0004", "goal/G-0005"]) {
 // A long goal title gives way, and nothing beside it does: in a card's head, the review's header (under the accept sheet
 // too) and Operations' tables, a kind, a time, a PR reading, an id, a verdict and a size each keep their one line, the
 // tables stay inside their frame, and a title cut short says itself whole in its tooltip. Three lengths: at the quick
-// start's cap (56 columns), mid, and far past it, as a goal written in the new-goal form can be.
+// start's cap (56 columns), mid, and far past it, as a goal written in the new-goal form can be; from the window's minimum
+// width (1040, `tauri.conf.json`), where Operations' schedule table once broke its cron as "1-" over "5".
 const LONG_TITLES = {
   en: [
     "Make checkout totals agree with the ledger for every curr",
@@ -322,7 +329,7 @@ for (const lang of ["en", "zh-CN"] as const)
         await page.setViewportSize({ width: 1100, height: 900 });
         await openTower(page, route, { lang, enrich: retitle });
         await settled(page, route);
-        for (const w of [1100, 1240, 1440, 1800]) {
+        for (const w of [1040, 1100, 1240, 1440, 1800]) {
           await page.setViewportSize({ width: w, height: 900 });
           await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
           const bad = await page.evaluate((title) => {

@@ -9,13 +9,12 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
-import { notEvidence } from "../lib/discounted";
 import { type Group, groupLabel, groupOf, isBlocking, statusWord } from "../lib/labels";
 import { reviewEach, toReviewIds } from "../lib/reviewQueue";
 import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
-import { Icon, LifecycleGlyph, NeedsYouMark } from "./Glyph";
+import { Icon, LifecycleGlyph } from "./Glyph";
 import { Kbd } from "./ui";
 
 const ORDER: Group[] = ["needs_you", "running", "verifying", "review", "ready", "paused", "done"];
@@ -59,15 +58,14 @@ export function Sidebar() {
       aria-current={activeId() === props.g.id ? "page" : undefined}
       onClick={() => go({ name: "goal", id: props.g.id })}
       title={`${props.g.id} ${props.g.title}`}
-      aria-label={`${props.g.title}, ${statusWord(props.g)}${props.g.needs_you > 0 ? `, ${t("common.needsYou")}` : ""}`}
+      aria-label={`${props.g.title}, ${statusWord(props.g)}${props.inNeedsYou ? `, ${t("common.needsYou")}` : ""}`}
     >
       <span class="side-icon">
         <LifecycleGlyph goal={props.g} />
       </span>
+      {/* Needs you is the group's word, as on the board: a goal filed elsewhere (waiting in To review) is not said to
+          need you, in its label or by a ◆ after its title. */}
       <span class="ellipsis grow">{props.g.title}</span>
-      <Show when={props.g.needs_you > 0 && !props.inNeedsYou && !notEvidence(props.g)}>
-        <NeedsYouMark />
-      </Show>
     </button>
   );
 

@@ -697,6 +697,10 @@
 .criteria-bar .sep {
   padding: 0 0.3em;
 }
+/* The human count's dot sits as close to the count before it as the scale's other dots do. */
+.criteria-bar > .crit-human > .sep {
+  margin-left: calc(-1 * var(--sp-2));
+}
 .segs {
   display: inline-flex;
   gap: 2px;

@@ -7,7 +7,8 @@ Branch `design/evolution`, cut from `main` at `bf22cad` (2026-11-25). Nothing is
 | Item | Location |
 |---|---|
 | Product record | `apps/desktop/PRODUCT.md` |
-| Design system (to be written) | `apps/desktop/DESIGN.md` |
+| Design system | `apps/desktop/DESIGN.md` |
+| Final delivery report | `apps/desktop/DESIGN_DELIVERY.md` |
 | Audit consolidation, contract, reviews | `apps/desktop/DESIGN_REVIEW.md` |
 | Roadmap and task status | `apps/desktop/DESIGN_ROADMAP.md` |
 | Curated before/after evidence (committed) | `apps/desktop/design-evidence/` |
@@ -147,4 +148,22 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   script failed" logs under parallel load, no test fails on them); shots 69/69 (`/tmp/tower-design/iter8/shots`); line
   limit; bundle all JS 163,780 / 163,840 B (60 B left, D84), goal page 11,424 / 12,288 B; detector: the same 13 app.css
   findings, none in console.css (`/tmp/tower-design/iter8/detect.json`).
+- 2026-11-25 Review of `d6f07ef` (independent re-check, own worktree and port 1441): **PASS, 8.30 / 10**, no P0, P1 or
+  P2; review 7's P2-01 fixed (600 page states: no short label wrapped, no table past its frame), its P3-02 and the
+  contract numbering fixed, P3-03 deferred. Four new P3s: two from iteration 8's own fixes (the peek head called a
+  silent run that was waiting for your answer "Unresponsive" over "Needs you"; the sidebar still said Needs you, and
+  drew a ◆, for a goal in To review), two older (the schedule table's cron broke at 1040; the review header left a "·"
+  at its end). Recorded as D93–D96. Report saved to `/tmp/tower-design/review8/report.md` from the agent's final
+  message (the agent could not write it itself).
+- 2026-11-25 Review-8 fixes (T54–T56): a running goal's state is said once, by "Now", and the peek head keeps its glyph
+  and id; the sidebar row reads its own group; reading cells in a data table are one token (CSS); the human count's
+  dot travels inside its span. New and extended tests checked against `d6f07ef`: the sidebar/board test fails there on
+  the dumped views and without CI (en, zh), all four peek-head variants fail, the long-title test from 1040 fails on
+  the cron, the stats test fails on the dangling dot (G-0001 zh); CI-card variants pass on both and stay as guards.
+  Gates: tsc; vitest 41 files / 220 tests; Playwright WebKit 331 passed, 0 failed (76 shot tests skip without SHOTS;
+  4 Vite client "Importing a module script failed" logs under parallel load, no test fails on them); shots 69/69
+  (`/tmp/tower-design/iter8b/shots`); line limit; bundle all JS 163,720 / 163,840 B (120 B left), goal page
+  11,437 / 12,288 B; detector: the same 13 app.css findings (`/tmp/tower-design/iter8b/detect.json`). Curated
+  `design-evidence/*.after.webp` re-rendered from these shots. These fixes are verified by tests, not independently
+  re-reviewed; the acceptance stands on `d6f07ef`. `DESIGN_DELIVERY.md` is the final report.
 

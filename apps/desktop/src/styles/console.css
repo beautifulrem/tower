@@ -672,6 +672,12 @@
   text-align: right;
   white-space: nowrap;
 }
+/* A reading cell — a cron expression, an approval mode, a time and its goal — is one token on one line ("0 2 * * 1-5",
+   never "1-" over "5"); a schedule's title is the column that wraps. */
+.data-table td > code,
+.data-table td.meta {
+  white-space: nowrap;
+}
 /* A goal cell (a name that truncates) takes what the other columns leave, and never more: max-width 0 lets the cell
    give way instead of the table growing past its frame. The id and the verdict are one token each on their one line;
    the title, and then a branch, end in an ellipsis (each whole in its tooltip). Storage and the merge queue alike. */

@@ -64,6 +64,9 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T51 Needs you is the queue's word | D89 | P3 | a board row never says it needs you, in its label or by a trailing ◆ | `verdict.spec.ts` × CI / no CI × en / zh | Done |
 | T52 A silent run is unresponsive in the peek head | D90 | P3 | the heartbeat's word in the head | `verdict.spec.ts` en + zh | Done |
 | T53 Clause numbers follow the reading order | D92 (part) | P3 | side column unnumbered beside the form, numbered when folded under it (CSS) | `contract.spec.ts` 1440 / 1100 | Done (advanced section folding deferred) |
+| T54 A running goal's state, once | D93 | P3 | the peek head carries glyph and id for a running goal; "Now" says needs you, unresponsive or what it does | `verdict.spec.ts` silent and silent-and-waiting × en/zh | Done |
+| T55 Needs you in the sidebar too | D94 | P3 | the sidebar row reads its group, not `needs_you`; no trailing ◆ | `verdict.spec.ts` board + sidebar × 3 data sets × en/zh | Done |
+| T56 Minimum width: readings whole, no dot left | D95, D96 (part) | P3 | reading cells one token (CSS); the human count's dot inside its span | `layout.spec.ts` long titles from 1040; stats test checks dangling dots | Done |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

@@ -390,3 +390,46 @@ test("a ready goal's id sits in its second line and the foot says how often the 
   await expect(page.locator("#status")).not.toContainText("每 5 秒");
   await expect(page.locator("#foot")).toContainText("由你电脑上的 Tower 提供");
 });
+
+test("a run's mark turns on the phone only while the run moves, as on the desk; the action and its target are told apart by a space, not a dot", async ({ page }) => {
+  const now = Date.now();
+  const run = (id: string, more: Record<string, unknown>) => ({
+    id,
+    title: id,
+    state: "running",
+    mode: "executing",
+    needs_you: 0,
+    run_started_at: now - 600_000,
+    updated_at: now,
+    live_line: { action: "bash", target: "npm test", at: now },
+    pause_reason: null,
+    verified_pin: null,
+    ...more,
+  });
+  const moving = run("G-1", {});
+  const waiting = run("G-2", { mode: "waiting_on_you", needs_you: 1 });
+  const silent = run("G-3", { updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000 } });
+  await openPhone(page, { state: { goals: [moving, waiting, silent], inbox: [], lang: "en", max_running: 4 } });
+  const marks = page.locator(".row > svg.glyph");
+  await expect(marks).toHaveCount(3);
+  // Review 14: every running row turned, the one waiting on you and the silent one too.
+  expect(await marks.evaluateAll((els) => els.map((e) => e.classList.contains("spin")))).toEqual([true, false, false]);
+  await expect(page.locator("#status .gauge.active svg")).toHaveClass("spin");
+  // The detail: the action, then its target after a space, the target in the code face; no middle dot.
+  const detail = page.locator(".row .meta .detail").first();
+  await expect(detail).toHaveText("bashnpm test");
+  expect(await detail.locator(".target").evaluate((el) => parseFloat(getComputedStyle(el).marginLeft))).toBeGreaterThan(0);
+  expect(await page.locator("#app").innerText()).not.toContain("·");
+  // Nothing moving: the gauge's arc holds still too.
+  await openPhone(page, { state: { goals: [waiting, silent], inbox: [], lang: "en", max_running: 4 } });
+  await expect(page.locator("#status .gauge.active svg")).not.toHaveClass("spin");
+  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+});
+
+test("the phone card's strip carries the desk's 12px ! (review 14: an old rule drew it at 9px)", async ({ page }) => {
+  await openPhone(page);
+  const mark = page.locator(".strip .mark").first();
+  await expect(mark).toBeVisible();
+  const box = (await mark.boundingBox())!;
+  expect([Math.round(box.width), Math.round(box.height)]).toEqual([12, 12]);
+});

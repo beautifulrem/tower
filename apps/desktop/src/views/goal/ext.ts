@@ -182,6 +182,13 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [s
   if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? t("goal.evLoopbackBase") : t("goal.evLoopbackProject"), undefined, 1]);
   const bh = weightiest.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
   if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? t("goal.evBypass") : bh.sentinel.includes("perturb") ? t("goal.evPerturb") : t("goal.evTestExpectation"), bh.detail || bh.title]);
+  // A high finding holds every pass of the goal. When none of this criterion's own pills is that finding (it names
+  // another criterion, or is of a kind with no pill), the row still says why its pass doesn't count, and where.
+  const high = weightiest.filter((h) => h.severity >= 3);
+  if (held && okC && ver.passed && high.length && ![gh, mh, bh].some((h) => h && h.severity >= 3)) {
+    const ids = [...new Set(high.flatMap((h) => h.detail?.match(/\bC\d+\b/g) ?? []))].filter((id) => id !== cur.criterion.id);
+    out.push(["attn", ids.length ? t("goal.evHeldBy", { ids: ids.join(", ") }) : t("goal.evHeld"), high.map((h) => [h.title, h.detail].filter(Boolean).join(": ")).join("\n")]);
+  }
   const errs = ver.console_errors ?? cur.look?.console_errors ?? [];
   if (errs.length) out.push(["danger", t("look.consoleErrors", { n: errs.length }), errs.join("\n")]);
   const by = new Map<string, [string, string, string?, 1?]>();

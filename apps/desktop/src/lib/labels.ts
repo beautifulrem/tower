@@ -11,7 +11,7 @@ import type { PauseReason } from "../gen/PauseReason";
 import type { EngineTrustTier } from "./apiTypes";
 import { caveats, notEvidence } from "./discounted";
 import { t } from "./i18n";
-import { state } from "./store";
+import { livenessOf, state } from "./store";
 
 export const stateLabel = (s: LifecycleState): string => t(`state.${s}`);
 
@@ -153,6 +153,24 @@ export function heartbeatState(sinceMs: number, toolRunning: boolean): "fine" | 
   if (sinceMs <= SILENT_AFTER_MS) return "quiet";
   return "silent";
 }
+
+/**
+ * A running goal whose event stream has been still for two minutes with no tool in flight: the badge says so instead
+ * of "thinking", so the board and the title bar's heartbeat never contradict each other.
+ */
+export function silent(g: GoalSummary, now: number): boolean {
+  if (g.state !== "running") return false;
+  const l = livenessOf(g);
+  return heartbeatState(Math.max(0, now - l.at), l.tool !== null) === "silent";
+}
+
+/**
+ * Work in motion: a goal being verified, or a running one that is neither waiting on you nor silent. Only then does its
+ * mark turn (and, on the goal in view, its words shimmer): a goal that waits on you, or has gone quiet, holds its mark
+ * still, so motion never says "at work" beside "Question" or "Unresponsive".
+ */
+export const moving = (g: GoalSummary, now: number): boolean =>
+  g.state === "verifying" || (g.state === "running" && !modeNeedsYou(g.mode) && !g.needs_you && !silent(g, now));
 
 /**
  * How the supervisor wants an option presented (tower-core `Choice::tone`):

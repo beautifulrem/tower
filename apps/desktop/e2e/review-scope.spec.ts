@@ -177,7 +177,80 @@ test("the run pickers keep the points you picked across a refresh and another sc
     expect(v.cut, `segments cut at ${width}: ${JSON.stringify(v)}`).toBe(0);
     expect(v.seal, `the seal whole at ${width}: ${JSON.stringify(v)}`).toBe(true);
   }
-  // Whatever went, the gone end still says it is gone, and its pin is in its tooltip.
+  // Whatever went, the gone end still says it is gone, on its face (its words, or the short word) and with its pin.
   await expect(picks.nth(1)).toHaveAttribute("title", to);
-  await expect(picks.nth(1).locator(".timeline-pick-face")).toContainText("No longer listed");
+  for (let width = 1040; width <= 1064; width += 4) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await goneFace(picks.nth(1)), `the gone end's face at ${width}`).toMatchObject({ pin: "@15085f2", word: expect.stringMatching(/^(No longer listed|Gone)$/) });
+  }
 });
+
+/** What a gone end's face shows: the word you see (its words, or the short word drawn in their place) and its pin. */
+const goneFace = (pick: import("@playwright/test").Locator) =>
+  pick.evaluate((p) => {
+    const run = p.querySelector<HTMLElement>(".timeline-pick-face > span:first-child")!;
+    const pin = p.querySelector<HTMLElement>(".timeline-pick-pin");
+    const words = (run.firstElementChild as HTMLElement | null) ?? run;
+    const shown = (e: HTMLElement | null) => !!e && getComputedStyle(e).display !== "none" && e.getBoundingClientRect().width > 0;
+    const short = getComputedStyle(run, "::before").content.replace(/^"|"$/g, "");
+    return { word: shown(words) ? words.textContent!.trim() : short === "none" ? "" : short, pin: shown(pin) ? pin!.textContent!.trim() : "" };
+  });
+
+// Review 13 (record only): with both ends of the range gone, the verdict was pushed out at en 1024–1040; dropping a gone
+// end's pin then left two faces that both read "No longer listed". The gone ends shorten their words and keep their
+// pins, the verdict stays whole, and the key caps go only where the verdict would not fit with them.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`with both ends of the range gone, each keeps its pin and the verdict stays whole (${lang})`, async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await openTower(page, "review/G-0003", { lang });
+    await settled(page, "review/G-0003");
+    await page.locator(".review-stats .scope-switch .tab").last().click();
+    const picks = page.locator(".review-stats .timeline-pick");
+    const values = await page.locator(".review-stats select").first().evaluate((s: HTMLSelectElement) => [...s.options].map((o) => o.value));
+    // The pin and the verification: two points a new pin moves off, so both ends of the range leave the list.
+    await page.locator(".review-stats select").nth(0).selectOption(values.find((v) => /pin/.test(v))!);
+    await page.locator(".review-stats select").nth(1).selectOption(values.find((v) => /verified/.test(v))!);
+    await page.evaluate(() => {
+      const snaps = (window as any).__towerFixtures["review-G-0003"].snapshots as { kind: string; rev: string }[];
+      for (const s of snaps) if (s.kind === "verified" || s.kind === "pin") s.rev = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+      (window as any).__towerEmit("tower://update", { type: "traces", entries: [{ seq: 1, goal_id: "G-0003", at: Date.now(), source: "tower", event: { kind: "pinned", pin: "x", files: 1, additions: 1, deletions: 1 } }] });
+    });
+    await expect(picks.nth(0)).toHaveClass(/timeline-pick-gone/);
+    await expect(picks.nth(1)).toHaveClass(/timeline-pick-gone/);
+    const pins = await picks.evaluateAll((ps) => ps.map((p) => p.getAttribute("title")!.slice(-8)));
+    for (let width = 1024; width <= 1120; width++) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const v = await page.locator(".review-stats").evaluate((stats) => {
+        const head = stats.closest(".review-head")!;
+        const verify = stats.querySelector<HTMLElement>(".review-verify")!;
+        const bar = verify.querySelector<HTMLElement>(".criteria-bar")!;
+        const whole = (el: Element | null, clips: Element[]) => {
+          const r = el?.getBoundingClientRect();
+          return !!r && r.width > 0 && clips.every((c) => {
+            const k = c.getBoundingClientRect();
+            return r.right <= k.right + 0.5 && r.bottom <= k.bottom + 0.5;
+          });
+        };
+        const out = () => [...bar.querySelectorAll(".seg")].filter((x) => !whole(x, [stats, verify, bar])).length + (whole(verify.querySelector(".seal"), [stats, verify]) ? 0 : 1);
+        const cut = out();
+        // A step taken only where the verdict needs it: the key caps put back would cut it.
+        let capsBackCut: number | null = null;
+        if (head.classList.contains("keys-off")) {
+          head.classList.remove("keys-off");
+          capsBackCut = out();
+          head.classList.add("keys-off");
+        }
+        return { cut, capsBackCut, steps: `${stats.className} ${head.className}` };
+      });
+      expect(v.cut, `the verdict cut at ${width}: ${JSON.stringify(v)}`).toBe(0);
+      if (v.capsBackCut !== null) expect(v.capsBackCut, `key caps gone where they fit, ${width}: ${JSON.stringify(v)}`).toBeGreaterThan(0);
+      if (width % 8 === 0)
+        for (const [i, pick] of [picks.nth(0), picks.nth(1)].entries()) {
+          const face = await goneFace(pick);
+          expect(face.pin, `end ${i} keeps its pin at ${width}`).toBe(pins[i]);
+          expect(face.word, `end ${i} says it is gone at ${width}`).toMatch(lang === "en" ? /^(No longer listed|Gone)$/ : /^(已不在列表中|已不在)$/);
+        }
+    }
+  });

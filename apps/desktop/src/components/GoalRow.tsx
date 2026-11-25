@@ -39,8 +39,9 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   // The identity gives way by measure, a step at a time, and is never cut: the engine's name leaves first, while the
   // readings would not fit beside it or it would shorten the project's name; then the PR keeps only what it needs you for
   // (a failing check; its state once merged or closed); then the word that you muted the goal (your own setting, not
-  // news); then the project's name, which may shorten to 3.5em first; then the PR's state; and if even that does not fit,
-  // the whole identity folds, as below 1241. What leaves is set aside for the eye only: a screen reader still reads it,
+  // news); then the project's name, which may shorten to 3.5em first (only now: before, every reading is whole); then
+  // the PR keeps one reading, an open PR its failing count and a merged or closed one its state (its checks no longer
+  // ask anything of you); and if even that does not fit, the whole identity folds, as below 1241. What leaves is set aside for the eye only: a screen reader still reads it,
   // and the title's tooltip says all of it.
   const STEPS = ["", "engine", "readings", "quiet", "project", "pr-state", "folded"] as const;
   const [crowd, setCrowd] = createSignal<(typeof STEPS)[number]>("");
@@ -52,10 +53,10 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         // Set aside by a step, the name asks for no room. Shown is decided by the step, never by the name's size: flex may
         // squeeze a shown name to nothing, and that is a name cut, not one set aside.
         if (!p || STEPS.indexOf(step) >= STEPS.indexOf("project") || p.scrollWidth <= p.clientWidth + 0.5) return true;
-        // A shortened project name: never beside the engine's name, and never under its own width or 3.5em, whichever is
-        // less (a name shorter than 3.5em is whole or set aside).
+        // A shortened project name: only once "muted" is set aside (so never beside the engine's name either), and never
+        // under its own width or 3.5em, whichever is less (a name shorter than 3.5em is whole or set aside).
         const em = parseFloat(getComputedStyle(p).fontSize) || 12;
-        return !(step === "" && box.querySelector(".g-engine")) && p.clientWidth >= Math.min(p.scrollWidth, 3.5 * em) - 0.5;
+        return STEPS.indexOf(step) >= STEPS.indexOf("quiet") && p.clientWidth >= Math.min(p.scrollWidth, 3.5 * em) - 0.5;
       };
       for (const step of STEPS) {
         setCrowd(step);
@@ -128,7 +129,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
       onClick={open}
     >
       <span class="g-glyph">
-        <LifecycleGlyph goal={g()} />
+        <LifecycleGlyph goal={g()} turn />
       </span>
       <div class="g-title-cell">
         {/* A row never says it needs you, in words or by a ! mark: what needs you is a decision line in the queue above, and the
@@ -225,8 +226,11 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         </Show>
         <Show when={g().rework_cycles > 0}>
           <span class="t3 num row" style={{ gap: "3px" }} title={t("card.rework", { n: g().rework_cycles, max: g().max_rework })}>
+            {/* Said once: the mark's name says it in words, so the bare count it stands beside is for the eye. */}
             <Icon name="rework" size={10} label={t("card.rework", { n: g().rework_cycles, max: g().max_rework })} />
-            {g().rework_cycles}/{g().max_rework}
+            <span aria-hidden="true">
+              {g().rework_cycles}/{g().max_rework}
+            </span>
           </span>
         </Show>
         <Show when={otherEngine()}>

@@ -95,7 +95,7 @@
   /* The amber rule stands clear of the card's 8px corner, so it stays a straight 2px line instead of following the curve. */
   .strip { position: relative; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
   .strip::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; background: var(--st-attention); }
-  .strip .mark { width: 9px; height: 9px; flex: 0 0 auto; }
+  .strip .mark { width: 12px; height: 12px; flex: 0 0 auto; }
   .strip .kind { color: var(--text-1); font-weight: 600; }
   .strip .goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .strip .age { margin-left: auto; color: var(--text-3); flex: 0 0 auto; }
@@ -161,7 +161,8 @@
   .row .meta { display: flex; gap: 6px; align-items: center; margin-top: 2px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
   .row .meta .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .meta .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .meta .detail.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+  .row .meta .detail .target { margin-left: 0.6em; }
+  .row .meta .detail .code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .meta .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--text-3); flex: 0 0 auto; }
   .row .meta .pill { font-size: 10.5px; padding: 0 5px; border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-3); flex: 0 0 auto; }
   .pips { display: inline-flex; gap: 2px; align-items: center; flex: 0 0 auto; }
@@ -194,7 +195,7 @@ const T = {
         noRuns: "No goal is running.", send: "Send", pause: "Pause", confirm: "Press again", unpaired: "Open the pairing link from Tower's Settings on this phone.",
         offline: "Can't reach Tower on your Mac", offlineWhere: "Is the Mac awake, and is this phone on its Tailscale or Wi-Fi?",
         retry: "Retry", you: "you", atDesk: "At your Mac: ", listSep: ", ", offGauge: "Offline", liveStream: "Live",
-        lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, freshLive: (c) => `Live stream · updated ${c}`, stale: (a) => `updated ${a}`,
+        lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, freshLive: (c) => `Live stream, updated ${c}`, stale: (a) => `updated ${a}`,
         runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, spent: (u) => `Spent ${u}`,
         later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
@@ -211,7 +212,7 @@ const T = {
         noRuns: "没有正在运行的目标。", send: "发送", pause: "暂停", confirm: "再按一次", unpaired: "在这台手机上打开 Tower 设置里的配对链接。",
         offline: "连不上你 Mac 上的 Tower", offlineWhere: "Mac 是否醒着？这台手机是否连着同一个 Tailscale 或 Wi-Fi？",
         retry: "重试", you: "你", atDesk: "在电脑上：", listSep: "、", offGauge: "离线", liveStream: "实时",
-        lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, freshLive: (c) => `实时流 · ${c} 更新`, stale: (a) => `更新于 ${a}`,
+        lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, freshLive: (c) => `实时流，${c} 更新`, stale: (a) => `更新于 ${a}`,
         runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `无响应 ${d}`, spent: (u) => `累计 ${u}`,
         later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
@@ -251,10 +252,11 @@ const G = {
   danger: `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 9.237L9.781 11.019A.875 .875 0 0 0 11.019 9.781L9.237 8L11.019 6.219A.875 .875 0 0 0 9.781 4.981L8 6.763L6.219 4.981A.875 .875 0 0 0 4.981 6.219L6.763 8L4.981 9.781A.875 .875 0 0 0 6.219 11.019z" fill="var(--st-danger)" fill-rule="evenodd"/></svg>`,
   notice: `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0 -11zM7.2 7.3a.8 .8 0 0 1 1.6 0v3.7a.8 .8 0 0 1 -1.6 0zM8 3.95a.95 .95 0 1 1 0 1.9a.95 .95 0 1 1 0 -1.9z" fill="currentColor" fill-rule="evenodd"/></svg>`,
   ring: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>`,
-  // The running mark: a faint ring and its arc, turning.
-  runs: `<svg class="spin" width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="5" r="4" stroke-opacity=".28"/><path d="M5 1a4 4 0 0 1 4 4"/></svg>`,
+  // The running mark: a faint ring and its arc, turning while some run moves (`moves`), held still while none does.
+  runs: (turn) => `<svg${turn ? ' class="spin"' : ""} width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="5" r="4" stroke-opacity=".28"/><path d="M5 1a4 4 0 0 1 4 4"/></svg>`,
   seal: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4.25" fill="var(--st-verified)"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg)" stroke-width="1.25"/></svg>`,
-  state(s) {
+  // `turn`: the arc of a running or verifying goal turns only while the work moves (the desk's labels `moving`).
+  state(s, turn) {
     const c = s === "running" || s === "verifying" ? "var(--st-active)" : s === "in_review" || s === "accepted" ? "var(--st-verified)" : "var(--text-3)";
     const moving = s === "running" || s === "verifying";
     const ring = `<circle cx="5" cy="5" r="4" fill="none" stroke="${c}" stroke-width="1.25"${s === "claimed" || s === "verifying" ? ' stroke-dasharray="1.7 1.45"' : s === "running" ? ' stroke-opacity=".28"' : ""}/>`;
@@ -262,10 +264,14 @@ const G = {
       : s === "paused" ? `<path d="M4 3.6v2.8M6 3.6v2.8" stroke="${c}" stroke-width="1.25" stroke-linecap="round"/>`
       : s === "in_review" ? `<path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="${c}" stroke-width="1.25"/>`
       : s === "ready" ? `<circle cx="5" cy="5" r="1.2" fill="${c}"/>` : "";
-    return `<svg class="glyph${moving ? " spin" : ""}" width="12" height="12" viewBox="0 0 10 10" aria-label="${esc(t("states")[s] ?? s)}" role="img">${ring}${inner}</svg>`;
+    return `<svg class="glyph${moving && turn ? " spin" : ""}" width="12" height="12" viewBox="0 0 10 10" aria-label="${esc(t("states")[s] ?? s)}" role="img">${ring}${inner}</svg>`;
   },
 };
 const machine = (s) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
+// When the page last heard from a run; a run moves (the desk's labels `moving`) unless it waits on you, is flagged for
+// you, or has been silent two minutes (the header's hollow dot). Nothing turns on a run that is not moving.
+const heardAt = (g) => Math.max(g.updated_at || 0, (g.live_line && g.live_line.at) || 0);
+const moves = (g) => g.state === "running" && g.mode !== "waiting_on_you" && !g.needs_you && !(heardAt(g) > 0 && Date.now() - heardAt(g) > 120_000);
 const ghost = (rows) => `<div class="ghost" aria-hidden="true">${rows.map(([a, b]) => `<div class="row">${G.ring}<div><i class="bar" style="width:${a}%"></i><i class="bar" style="width:${b}%"></i></div><span></span></div>`).join("")}</div>`;
 const MACHINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
 function parts(i) {
@@ -352,8 +358,8 @@ function gaugesHtml(s) {
   const running = s.goals.filter((g) => g.state === "running");
   const max = s.max_running || 0;
   let h = "";
-  if (running.length) h += `<span class="gauge active num">${G.runs}${esc(t("runs")(running.length, max))}</span>`;
-  const heard = Math.max(0, ...running.map((g) => Math.max(g.updated_at || 0, (g.live_line && g.live_line.at) || 0)));
+  if (running.length) h += `<span class="gauge active num">${G.runs(running.some(moves))}${esc(t("runs")(running.length, max))}</span>`;
+  const heard = Math.max(0, ...running.map(heardAt));
   const since = Date.now() - heard;
   if (running.length && heard > 0 && since > 30_000) h += `<span class="gauge stale num">${since > 120_000 ? `<span class="dot hollow"></span>` : ""}${esc(t("silentFor")(dur(since)))}</span>`;
   const spent = usd(s.goals.reduce((a, g) => a + (g.cost_usd || 0), 0));
@@ -456,12 +462,13 @@ function render(s) {
   for (const g of running) {
     const l = g.live_line;
     const badge = t("modes")[g.mode] ?? g.mode;
-    const detail = l ? `${l.action}${l.target ? " · " + l.target : ""}` : "";
+    // The action, then its target after a space, as the desk's live line says it: no dot between them.
+    const detail = l ? `${esc(l.action)}${l.target ? `<span class="target${machine(l.target) ? " code" : ""}">${esc(l.target)}</span>` : ""}` : "";
     const ran = g.run_started_at ? dur(Math.max(0, Date.now() - g.run_started_at)) : "";
     const elapsed = ran ? `<span class="elapsed num" title="${esc(t("runningFor")(ran))}"><span class="sr">${esc(t("runningFor")(""))}</span>${esc(ran)}</span>` : "";
     const eng = g.engine ? `<span class="pill">${esc(g.engine)}</span>` : "";
     const isArmed = armed === "pause" + g.id;
-    h += `<div class="row">${G.state("running")}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge">${esc(badge)}</span>${eng}<span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span></div></div>
+    h += `<div class="row">${G.state("running", moves(g))}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge">${esc(badge)}</span>${eng}<span class="detail">${detail}</span></div></div>
       <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
   }
   app.innerHTML = h;

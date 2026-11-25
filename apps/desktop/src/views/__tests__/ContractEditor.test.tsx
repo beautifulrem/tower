@@ -246,6 +246,8 @@ describe("attachments of a draft", () => {
         expect(b).toBeTruthy();
         return b!;
       });
+      // The cross icon, named for what it does; never the text "×" (review 14, record only).
+      expect([remove.textContent, !!remove.querySelector("svg"), remove.getAttribute("aria-label")]).toEqual(["", true, "Remove"]);
       fireEvent.click(remove);
       await waitFor(() => expect(container.querySelector(".att-chip")).toBeNull());
       unmount();

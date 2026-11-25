@@ -8,15 +8,17 @@ import { Show } from "solid-js";
 
 import { clock, usd } from "../lib/format";
 import { t } from "../lib/i18n";
-import { engineLabel, hasIssue, isBlocking } from "../lib/labels";
+import { engineLabel, hasIssue, isBlocking, moving } from "../lib/labels";
 import { openActivity } from "../lib/layers";
 import { go } from "../lib/nav";
 import { goalList, quietNow, quietUntil, state } from "../lib/store";
 import { Heartbeat, pickQuiet } from "./Chrome";
-import { Icon, NeedsYouMark, Spinner } from "./Glyph";
+import { DangerMark, Icon, NeedsYouMark, Spinner } from "./Glyph";
 
 export function TelemetryStrip() {
   const running = () => goalList().filter((g) => g.state === "running").length;
+  // The gauge's arc turns while some running goal moves; when every one waits on you or has gone quiet it holds still.
+  const moves = () => goalList().some((g) => g.state === "running" && moving(g, state.now));
   const spent = () => goalList().reduce((s, g) => s + g.cost_usd, 0);
   const max = () => state.settings?.max_concurrent ?? 3;
   const blocking = () => state.inbox.filter(isBlocking).length;
@@ -57,7 +59,7 @@ export function TelemetryStrip() {
           aria-label={t("chrome.unseenErrors", { n: state.unseenActivity })}
           title={t("chrome.unseenErrors", { n: state.unseenActivity })}
         >
-          <span class="gauge-dot down" />
+          <DangerMark />
           {t("chrome.errorsShort", { n: state.unseenActivity })}
         </button>
       </Show>
@@ -70,7 +72,7 @@ export function TelemetryStrip() {
       </Show>
       <Show when={running() > 0}>
         <span class="gauge gauge-active" title={t("chrome.running", { n: running(), max: max() })}>
-          <Spinner class="gauge-runs" />
+          <Spinner class="gauge-runs" still={!moves()} />
           {t("chrome.runningShort", { n: running(), max: max() })}
         </span>
       </Show>
@@ -114,7 +116,7 @@ export function TelemetryStrip() {
         when={engineOk()}
         fallback={
           <button class="gauge gauge-down link-plain" onClick={() => go({ name: "settings" })}>
-            <span class="gauge-dot down" />
+            <DangerMark />
             {engine() === "claude-code" ? t("chrome.claudeNotReady") : t("chrome.piNotReady")}
           </button>
         }

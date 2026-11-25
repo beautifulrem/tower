@@ -307,3 +307,25 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   162,773 / 163,840 B, start-up 56,115 B, goal page 11,598 B; doc numbers; detector the same 19 findings as `1c9af8a`.
   The sweeps now take the 120 s budget the layout sweeps had (one timed out at 30 s under five workers). No Rust
   changed. Not yet independently re-reviewed.
+- 2026-11-26 Review 14 (independent, `1ad1439`): PASS 8.35 / 10; R14-P2-01 (the running mark turned on runs waiting
+  on you or silent, in the sidebar and the gauge), R14-P3-01 (a segment's `::after` filled under reduced motion),
+  -02 (the shimmer cost a quarter of a core), -03 (✓ ✕ ○ in the held-out file list), -04 (the phone strip's 9 px !),
+  and seven record-only notes. Saved as `design-evidence/reports/review14.md`.
+- 2026-11-26 Iteration 15 — review 14's five (T91–T95) and every note left open from reviews 12–14 (T96–T110). One
+  `moving(goal, now)` in `lib/labels.ts` decides every loop: the mark turns only where you watch work (board row, goal
+  page, peek; the runs gauge while some run moves; the phone the same) and holds still in lists and on runs waiting on
+  you or silent. The shimmer is a band of the line's own ground over the words, clipped to them and moved by transform
+  (CPU at rest 9–11 % of a core against 33–38 %). Reduced motion reaches `::before`/`::after`. The held-out list names
+  only the files that ran; the phone strip's ! is 12 px; the title bar's errors and engine-down wear the red × disc;
+  the phone's middle dots and the text × buttons are gone. From older notes: a gone end shortens to "Gone" and its pin
+  before the key caps go; the app selects only text worth copying (WebKit needed the prefix); a closed or merged PR
+  keeps its state at the pr-state step; rework is read once; a project's name shortens only after "muted" goes (review
+  13's no-PR row added to the sweeps, whose step-back check now holds that rule); a decision line with no project to
+  name gives its question the identity column; a held pass names the high finding on another criterion that holds
+  it; a merged human-only goal has a hatched core. Kept by decision: the × at DPR 1 (D128), caveats on a seal that
+  does not count (D139), a held pass's amber caveat (D140). Each fix's test fails on `1ad1439`'s sources (checked by
+  swapping the sources back, one set at a time). Gates: tsc; vitest 42 files / 245 tests; e2e 395/0; shots 69/69
+  (`/tmp/tower-design/iter15/allshots`); perf (board of 50: 1664 / 512 / 399 ms against 340 / 313 / 216 ms; switch
+  medians 117 against 45 ms); line limit; bundle 163,064 / 163,840 B, start-up 56,292 B, goal page 11,523 B; doc
+  numbers; `cargo test -p tower-supervisor remote` 4/4; detector 20 findings against 21 (the shimmer's
+  `gradient-text` gone). Not yet independently re-reviewed.

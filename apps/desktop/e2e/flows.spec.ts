@@ -271,6 +271,44 @@ function secondProject(F: Record<string, any>) {
   F.projects = [...F.projects, { ...structuredClone(F.projects[0]), id: "p-lib", name: "lib", root: "/tmp/lib" }];
 }
 
+test("a decision line with no project to name gives its question the identity column and ends on its age; naming one, it keeps the board's columns", async ({ page }) => {
+  // Review 12 (record only): from 1561 the identity column widens for an engine's name, and an English question was cut
+  // beside its empty room (1241–1900 on the rich board). The question now takes that room.
+  const lines = async () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".board-queue .decision-line")].map((l) => {
+        const q = l.querySelector<HTMLElement>(".decision-line-ask .ellipsis")!;
+        const [ask, age, row] = [l.querySelector(".decision-line-ask")!, l.querySelector(".g-age")!, l].map((e) => e.getBoundingClientRect());
+        return { cut: q.scrollWidth > q.clientWidth, clear: ask.right <= age.left + 0.5, ageRight: Math.round(age.right), rowRight: Math.round(row.right), project: !!l.querySelector(".g-project") };
+      }),
+    );
+  for (const lang of ["en", "zh-CN"] as const) {
+    await openTower(page, "overview", { lang, enrich: enrichRich });
+    await settled(page, "overview");
+    const goalAge = page.locator(".board-rows [data-goal] .g-age").first();
+    for (const w of [1440, 1561, 1800]) {
+      await page.setViewportSize({ width: w, height: 1000 });
+      await expect.poll(async () => (await lines()).some((l) => l.cut), `a question cut at ${w} (${lang})`).toBe(false);
+      for (const l of await lines()) {
+        expect(l.clear, `the question clear of its age at ${w} (${lang})`).toBe(true);
+        // The age ends the line, flush with the board's right edge less the row's own padding, past a goal row's age.
+        expect(l.rowRight - l.ageRight).toBe(8);
+        expect(l.ageRight).toBeGreaterThan(Math.round((await goalAge.boundingBox())!.x + (await goalAge.boundingBox())!.width));
+        expect(l.project).toBe(false);
+      }
+    }
+  }
+  // Two projects: the line names its goal's project in the identity column, and its age stands in the board's age column.
+  await openTower(page, "overview", { enrich: (F) => (enrichRich(F), secondProject(F)) });
+  await settled(page, "overview");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const named = page.locator(".board-queue .decision-line").first();
+  await expect(named.locator(".g-id .g-project")).toBeVisible();
+  const goalAge = (await page.locator(".board-rows [data-goal] .g-age").first().boundingBox())!;
+  const lineAge = (await named.locator(".g-age").boundingBox())!;
+  expect(Math.round(lineAge.x + lineAge.width)).toBe(Math.round(goalAge.x + goalAge.width));
+});
+
 test("the board's identity says the engine in words, leaves the only project unsaid, every id stands right after its title, and no line runs past the board's edge", async ({ page }) => {
   await openTower(page, "overview", { enrich: enrichEngines });
   const row = page.locator('.g-row[data-goal="G-0002"]');
@@ -419,6 +457,10 @@ test("on a crowded row the engine's name is whole or gone, never clipped; the ag
   await expect(project).toHaveText("shop");
   expect(await project.evaluate((el) => el.getBoundingClientRect().width >= el.scrollWidth - 1)).toBe(true);
   await expect(row.locator(".g-title")).toHaveAttribute("title", /Claude Code/);
+  // Review 13 (record only): the rework was read twice, its mark's name and then the bare count. Said once, in words.
+  const said = await row.locator(".g-id").ariaSnapshot();
+  expect(said.match(/1\s*\/\s*3/g) ?? [], `rework said once: ${said}`).toHaveLength(1);
+  expect(said).toContain("Rework 1 / 3");
   const age = page.locator('.g-row[data-goal="G-0001"] .g-age');
   await expect(age).toHaveText("1h 40m ago");
   expect(await age.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -456,6 +498,11 @@ const CROWDS: Record<string, Record<string, { pr?: PrState; rework?: number; max
     "G-0001": { pr: { state: "merged", passed: 0, failed: 2, pending: 0 }, rework: 2, muted: true },
     "G-0002": { pr: { state: "merged", passed: 4, failed: 0, pending: 0 }, rework: 1, project: { en: "lib", "zh-CN": "lib" } },
     "G-0003": { pr: { state: "closed", passed: 0, failed: 1, pending: 0 }, rework: 3, engine: true, muted: true, project: { en: "storefront-payments", "zh-CN": "店面支付服务" } },
+  },
+  // Review 13's no-PR row (its G-0015): rework, muted, an engine and a long name; the old code shortened the name while
+  // "muted" stayed ("Muted ⟳3/3 storef…" at en 1440).
+  nopr: {
+    "G-0003": { rework: 3, engine: true, muted: true, project: { en: "storefront-payments", "zh-CN": "店面支付服务" } },
   },
   // Review 13's stress row: every reading at its longest, so the identity folds into the tooltip above 1241 too.
   stress: {
@@ -517,11 +564,12 @@ for (const lang of ["en", "zh-CN"] as const)
             const asideAt = (step: string | null) => ["project", "pr-state", "folded"].includes(step ?? "");
             const illegible = (step: string | null) => !!project && !asideAt(step) && cut(project) && project.clientWidth < Math.min(project.scrollWidth, 3.5 * em) - 0.5;
             const crowd = r.getAttribute("data-crowded");
-            // What a step more would have cost: the step before put back, measured, and set aside again.
+            // What a step more would have cost: the step before put back, measured, and set aside again. Before "muted"
+            // goes (the quiet step), a shortened name is one that did not fit.
             const back = (to: string | null) => {
               if (to === null) r.removeAttribute("data-crowded");
               else r.setAttribute("data-crowded", to);
-              const over = id.scrollWidth > id.clientWidth + 0.5 || illegible(to) || (!!engine && shown(engine) && cut(project));
+              const over = id.scrollWidth > id.clientWidth + 0.5 || illegible(to) || (["", "engine", "readings"].includes(to ?? "") && cut(project));
               if (crowd === null) r.removeAttribute("data-crowded");
               else r.setAttribute("data-crowded", crowd);
               return over;
@@ -546,6 +594,8 @@ for (const lang of ["en", "zh-CN"] as const)
               idOver: id.scrollWidth > id.clientWidth + 0.5,
               children: [...id.children].filter((c) => shown(c) && !c.classList.contains("g-project")).map((c) => [c.textContent, cut(c)] as const),
               prFailedShown: [...id.querySelectorAll(".pr-line .mark-danger")].every((m) => shown(m.parentElement)),
+              prState: id.querySelector(".pr-line")?.getAttribute("data-state") ?? null,
+              prStateShown: shown(id.querySelector(".pr-line .pr-state")),
               prTab: id.querySelector<HTMLElement>(".pr-line")?.tabIndex ?? null,
               rework: id.querySelector("[title]:not(.pr-line):not(.g-project)")?.getAttribute("title") ?? null,
               projectName: project?.textContent ?? null,
@@ -599,8 +649,14 @@ for (const lang of ["en", "zh-CN"] as const)
           const step = ORDER.indexOf(r.crowd);
           if (r.goal in lastStep) expect(step, `a later step on a wider window, ${at}`).toBeLessThanOrEqual(lastStep[r.goal]);
           lastStep[r.goal] = step;
-          // A failing check stays on the line until the whole identity folds.
-          if (r.crowd !== "folded") expect(r.prFailedShown, `the PR's failing check, ${at}`).toBe(true);
+          // A failing check stays on the line until the PR keeps one reading; then an open PR keeps its failing count and a
+          // merged or closed one its state (review 13: "PR ×1" read as an open PR), until the whole identity folds.
+          if (r.crowd !== "folded" && r.crowd !== "pr-state") expect(r.prFailedShown, `the PR's failing check, ${at}`).toBe(true);
+          if (r.crowd === "pr-state" && r.prState === "open") expect(r.prFailedShown, `an open PR's failing check, ${at}`).toBe(true);
+          if (r.crowd !== "folded" && r.prState && r.prState !== "open") expect(r.prStateShown, `a merged or closed PR's state, ${at}`).toBe(true);
+          // Review 13 (record only): the project's name shortened while "muted" and the PR's readings stayed ("Muted ⟳3/3
+          // storef…"). It shortens only once "muted" is set aside: before that, every reading is whole.
+          if (r.project?.shortened) expect(step, `the project's name shortened before "muted" went, ${at}`).toBeGreaterThanOrEqual(ORDER.indexOf("quiet"));
           // Review 13 (record only): folded, the PR's button leaves the eye and the Tab order, not a screen reader.
           if (r.prTab !== null) expect(r.prTab, `the PR a Tab stop only while on the line, ${at}`).toBe(r.crowd === "folded" ? -1 : 0);
           if (c && r.crowd !== "folded") seen.unfolded = (seen.unfolded ?? 0) + 1;
@@ -610,7 +666,7 @@ for (const lang of ["en", "zh-CN"] as const)
       }
       // The sweep saw both sides of the give-ways it is about, so the checks above checked something.
       const want =
-        name === "open" ? ["engineGone", "engineShown", "wordShown", "wordGone", "readings", "quiet"] : name === "settled" ? ["engineGone", "wordShown", "wordGone", "project"] : ["folded", "unfolded"];
+        name === "open" ? ["engineGone", "engineShown", "wordShown", "wordGone", "readings", "quiet"] : name === "settled" ? ["engineGone", "wordShown", "wordGone", "project"] : name === "nopr" ? ["engine", "quiet"] : ["folded", "unfolded", "pr-state"];
       for (const k of want) expect(seen[k] ?? 0, `${k} seen: ${JSON.stringify(seen)}`).toBeGreaterThan(0);
       expect(await page.evaluate(() => (window as any).__roLoops), "ResizeObserver loop notices over the sweep").toBe(0);
     });
@@ -638,20 +694,26 @@ test("with a decision card on a ready-to-accept goal, the card's first option is
   await expect(primaries).toHaveText(/Send the failures to the agent/);
 });
 
-test("the title bar's runs gauge is the running mark, turning, and silence beats once", async ({ page }) => {
-  await openTower(page, "overview", {
-    enrich: (F) => {
-      F.settings = { ...F.settings, max_concurrent: 4 };
-      // One goal has been silent for twenty minutes: the hollow dot shows, and beats once as it appears.
-      for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now() - 20 * 60_000;
-    },
-  });
+test("the title bar's runs gauge is the running mark, turning while a run moves, and silence beats once", async ({ page }) => {
+  const heard = (ago: number) => (F: Record<string, any>) => {
+    F.settings = { ...F.settings, max_concurrent: 4 };
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now() - ago;
+  };
+  // A run heard from just now: work in motion, the faint ring and its arc, the whole mark turning without end — never a
+  // filled wedge.
+  await openTower(page, "overview", { enrich: heard(0) });
   const gauge = page.locator(".gauge-runs");
   await expect(gauge).toBeVisible();
-  // Work in motion: the faint ring and its arc, the whole mark turning without end — never a filled wedge.
   await expect(gauge).toHaveClass(/glyph-spin/);
   expect(await gauge.locator("[fill]:not([fill='none'])").count()).toBe(0);
   expect(await gauge.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).animationIterationCount])).toEqual(["spin", "infinite"]);
+  // The one run has been silent for twenty minutes: nothing is moving, so the arc holds still (review 14); the hollow
+  // dot shows, and beats once as it appears.
+  await openTower(page, "overview", { enrich: heard(20 * 60_000) });
+  await expect(gauge).toBeVisible();
+  await expect(gauge).not.toHaveClass(/glyph-spin/);
+  expect(await gauge.evaluate((el) => el.getAnimations().length)).toBe(0);
+  await expect(gauge.locator("path")).toHaveAttribute("d", "M5 1a4 4 0 0 1 4 4");
   await expect(page.locator(".gauge-active")).toContainText("1/4");
   const hollow = page.locator(".gauge-dot.hollow");
   await expect(hollow).toBeVisible();
@@ -674,17 +736,75 @@ test("the goal in view that is moving shimmers its words; on the board its row k
   await expect(page.locator(".board-rows .live-moving")).toHaveCount(0);
   const row = page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first();
   expect(await row.locator(".live-action").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
-  // The goal in view: its live line shimmers. The light is the page's own ground over the words' own ink.
+  // The goal in view: its live line shimmers. The light is a band of the page's own ground laid over the words' own ink,
+  // clipped to the words, and it moves by transform alone (review 14: a background-clip text shimmer repainted the words
+  // every frame and cost a quarter of a core).
   const id = await row.getAttribute("data-goal");
   await openTower(page, `goal/${id}`, { enrich: fresh });
   const words = page.locator(".annunciator .live-moving .live-action");
   await expect(words).toBeVisible();
-  expect(await words.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).color])).toEqual(["shimmer", "rgba(0, 0, 0, 0)"]);
-  expect(await words.evaluate((el) => getComputedStyle(el).backgroundImage)).toMatch(/^linear-gradient\(90deg.*\), linear-gradient\(/);
+  const light = await words.evaluate((el) => {
+    const band = getComputedStyle(el, "::after");
+    let ground = el.parentElement!;
+    while (getComputedStyle(ground).backgroundColor === "rgba(0, 0, 0, 0)" && ground.parentElement) ground = ground.parentElement;
+    const keys = [...document.styleSheets].flatMap((s) => [...s.cssRules]).find((r): r is CSSKeyframesRule => r instanceof CSSKeyframesRule && r.name === band.animationName);
+    const props = new Set(keys ? [...keys.cssRules].flatMap((k) => [...(k as CSSKeyframeRule).style]) : []);
+    return {
+      animation: [band.animationName, band.animationIterationCount],
+      animates: [...props].sort(),
+      ink: getComputedStyle(el).color === "rgba(0, 0, 0, 0)" ? "transparent" : "ink",
+      clipped: getComputedStyle(el).clipPath,
+      band: band.backgroundImage.includes(getComputedStyle(ground).backgroundColor),
+    };
+  });
+  expect(light).toEqual({ animation: ["shimmer", "infinite"], animates: ["transform"], ink: "ink", clipped: "inset(0px)", band: true });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  expect(await words.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).color === "rgba(0, 0, 0, 0)"])).toEqual(["none", false]);
+  expect(await words.evaluate((el) => [getComputedStyle(el, "::after").animationName, getComputedStyle(el).color === "rgba(0, 0, 0, 0)"])).toEqual(["none", false]);
   await openTower(page, "overview", { enrich: fresh });
   expect(await page.locator(".board-rows .g-glyph svg.glyph-spin").first().evaluate((el) => getComputedStyle(el).animationDuration)).toBe("0s");
+});
+
+test("with motion reduced, a criteria segment takes its new count at once: its fill (an ::after) does not grow along the bar", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openTower(page, "goal/G-0002");
+  await settled(page, "goal/G-0002");
+  // Review 14: the global rule reached every box but not its ::after, so the fill still grew for 465 ms. The component
+  // keeps a segment's element when a count changes and swaps its class, so the test does the same.
+  const fill = await page.evaluate(async () => {
+    const s = [...document.querySelectorAll<HTMLElement>(".seg")].find((x) => x.classList.contains("seg-empty"))!;
+    const at = () => getComputedStyle(s, "::after").transform;
+    s.className = "seg seg-verified";
+    await new Promise((r) => setTimeout(r, 60));
+    const early = at();
+    await new Promise((r) => setTimeout(r, 600));
+    return { early, settled: at(), duration: getComputedStyle(s, "::after").transitionDuration };
+  });
+  expect(fill.early, JSON.stringify(fill)).toBe(fill.settled);
+  expect(fill.duration.split(",").every((d) => parseFloat(d) === 0), fill.duration).toBe(true);
+});
+
+test("on the board only a run that moves turns its mark; one waiting on you or gone quiet, and every list you move through, holds it still", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      const base = F.goals.find((g: any) => g.id === "G-0002");
+      base.updated_at = Date.now();
+      // Review 14's rows: a run waiting on your answer, and one silent for twenty minutes.
+      F.goals.push({ ...structuredClone(base), id: "G-0005", title: "Ask before dropping the legacy coupon table", mode: "waiting_on_you", needs_you: 1 });
+      F.goals.push({ ...structuredClone(base), id: "G-0006", title: "Rebuild the search index", updated_at: Date.now() - 20 * 60_000 });
+    },
+  });
+  await settled(page, "overview");
+  const mark = (id: string) => page.locator(`.board-rows .g-row[data-goal="${id}"] .g-glyph svg`);
+  await expect(mark("G-0002")).toHaveClass(/glyph-spin/);
+  expect(await mark("G-0002").evaluate((el) => el.getAnimations().length)).toBe(1);
+  for (const id of ["G-0005", "G-0006"]) {
+    await expect(mark(id)).not.toHaveClass(/glyph-spin/);
+    expect(await mark(id).evaluate((el) => el.getAnimations().length), `${id}'s mark`).toBe(0);
+  }
+  // The sidebar is a list you move through: each running mark is there, and none of them turns.
+  const side = page.locator(".sidebar .side-goal svg.glyph");
+  await expect(side.first()).toBeVisible();
+  expect(await side.evaluateAll((els) => els.filter((e) => e.getAnimations().length > 0).length)).toBe(0);
 });
 
 test("the title bar's bell is a 22pt target, and a half-screen window drops a healthy engine's label rather than hanging it empty", async ({ page }) => {

@@ -218,26 +218,34 @@ only work in motion loops.
 
 Iteration 14 fixes review 13's two (D120–D121) and two of its record-only notes, each with a test that fails on
 `1c9af8a`'s sources. Fixing D121 found an older fault: the review header's key caps step had never run since
-iteration 10. Neither the redesign nor iteration 14 is independently reviewed yet.
+iteration 10.
+
+Review 14 (`1ad1439`, the redesign and iteration 14 together) passed at 8.35 / 10 with one P2 and four P3s
+(`design-evidence/reports/review14.md`). Iteration 15 fixes all five (D122–D126) and closes every note left open
+from reviews 12–14 (D127–D141): fixed with a test that fails on `1ad1439`'s sources, or kept by a stated decision
+(D128, D139, D140). The running mark now turns only where you watch work and only while it moves; the shimmer moves
+by transform alone (a quarter of a core down to about one point); nothing moves under reduced motion, pseudo-elements
+included. Not yet independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 14):
+At the final commit (iteration 15):
 
-- **Type check and unit tests:** tsc clean; vitest 42 files, 241 tests (the runs gauge's wedge and its test are gone).
-- **e2e:** Playwright WebKit 382 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
-  supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs six "Importing a
+- **Type check and unit tests:** tsc clean; vitest 42 files, 245 tests.
+- **e2e:** Playwright WebKit 395 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+  supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs seven "Importing a
   module script failed" lines (five or six in iterations 11–14, at the same tests from run to run; four in iteration 10): pages left by a test while a view was still loading; no test
-  fails and the new tests emit none.
-- **Shots:** 69/69 (`/tmp/tower-design/iter14/allshots`); before/after crops in `design-evidence/marks-*.webp`.
+  fails. Run alone, iteration 15's new tests emit none; the rewritten runs-gauge test emits one as it did before.
+- **Shots:** 69/69 (`/tmp/tower-design/iter15/allshots`); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 162,773 / 163,840 B (1,067 B left), start-up 56,115 / 65,536 B, goal page
-  11,598 / 12,288 B. The budget was never raised.
-- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 1,541 / 772 / 435 ms against
-  442 / 451 / 329 ms for the seeded board (medians 772 against 451), inside its 750 ms margin (every row measures its
-  identity column, and every running row's mark turns); view switches with 50 goals take 76–218 ms against 44–119 ms,
-  their medians (149.5 against 79 ms) inside 150 ms.
-- **Rust (iteration 9; iterations 10–14 changed no Rust):** the redesign changed the phone page the supervisor
+- **Bundle:** all interface JS 163,064 / 163,840 B (776 B left), start-up 56,292 / 65,536 B, goal page
+  11,523 / 12,288 B. The budget was never raised.
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 1,664 / 512 / 399 ms against
+  340 / 313 / 216 ms for the seeded board (medians 512 against 313), inside its 750 ms margin (every row measures its
+  identity column); view switches with 50 goals take 40–146 ms against 32–61 ms, their medians (117 against 45 ms)
+  inside 150 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
+  it off (`design-evidence/reports/iter15-shimmer-cpu.md`; the old shimmer cost 33–38 %).
+- **Rust (iteration 9; iterations 10–15 changed no Rust):** iterations 14–15 changed the phone page the supervisor
   embeds (`remote.html`, `include_str!`): the crate builds and its four `remote` tests pass. At iteration 9: rustfmt;
   clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
   e2e suite and the shots ran beside it, `evidence::a_criterion_whose_base_did_not_run_keeps_its_canary` failed its
@@ -248,7 +256,8 @@ At the final commit (iteration 14):
   adds six, each triaged in `DESIGN_REVIEW.md` with no ignore: four `bounce-easing` on the two springs (both now with
   no overshoot; the rule fires on the `linear()` form), one `gradient-text` (the in-view shimmer, a functional state)
   and one `repeating-stripes-gradient` (the phone's hatched "observed" pip). Iteration 14's 5 changed UI files show the
-  same 19 findings as at `1c9af8a`.
+  same 19 findings as at `1c9af8a`. Iteration 15's 17 changed UI files: 20 findings against 21 at `1ad1439`, the
+  shimmer's `gradient-text` gone with its `background-clip`, nothing new.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion
   (re-checked for the redesign: the turning marks and the shimmer hold still, `flows.spec.ts`).
@@ -259,7 +268,7 @@ user's `~/.tower`, no model called. Looked at through the accessibility tree, in
 row "runs 1, 2" (D91), the folded engine clause (D92), titles with their ids on the board (D23), a schedule "Weekdays
 02:00" before its cron (D20, the schedule added to the scratch database, disabled), and the native unsaved-contract
 sheet. Screenshots: `design-evidence/packaged-app/`. Not reached there: a pass with caveats (the demo has none) and a
-1040 px window (D58, D96); their evidence is the WebKit tests. Iterations 10–14's fixes were not looked at in the packaged
+1040 px window (D58, D96); their evidence is the WebKit tests. Iterations 10–15's fixes were not looked at in the packaged
 app. Typing into the WebView in the background does not
 reach its fields — keys went to the app's shortcuts once (a stray draft, discarded through the app's own sheet).
 
@@ -270,8 +279,8 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`), the
 iteration-11 commit `2f1d0c5` (review 10's findings), the commit recording review 11 (`4ea4567`), the iteration-12
 commit `886ab38` (review 11's findings), the iteration-13 commit `3ff2ebf` (review 12's findings, with review 12's
-report), the status-marks-and-motion commit `1c9af8a` (D119, with review 13's report) and the iteration-14 commit (review 13's
-findings). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+report), the status-marks-and-motion commit `1c9af8a` (D119, with review 13's report), the iteration-14 commit `1ad1439`
+(review 13's findings) and the iteration-15 commit (review 14's findings and every open note, with review 14's report). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
@@ -282,7 +291,9 @@ review 10's (D107–D112) and its empty settings test, each with a test that fai
 Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `4ea4567`; review 12 passed it.
 Iteration 13 fixed review 12's (D117–D118), each with a test that fails on `886ab38`; review 13 passed it and found
 D120–D121. The status marks and motion (D119) followed the owner's feedback. Iteration 14 fixed D120–D121, each with
-a test that fails on `1c9af8a`'s sources; neither is re-reviewed yet.
+a test that fails on `1c9af8a`'s sources; review 14 passed both and found D122–D126. Iteration 15 fixed those and every
+note left open (D127–D141), each with a test that fails on `1ad1439`'s sources or kept by a stated decision; not yet
+re-reviewed.
 What is left:
 
 - **Three more columns give way by measuring** since iteration 12 (`lib/refit.ts`): the overlap note (three steps),
@@ -312,8 +323,8 @@ What is left:
   checked and a flaky pass; docs/07's other qualifiers (S0, a Node version unlike the profile, an unsupported ecosystem,
   opportunistic verification) are not computed yet. A caveat is confirmed by two presses, not a written reason.
 - **docs/12 still specifies five things the code does not render** (the revert badge, the dependency notice, the review
-  backlog head and bar, the hunk author's line style): future specs, left as written, the last now said so in §12.4.4. An integrated goal tells verified from human-only by colour
-  alone — written down in docs/12 as a known limit.
+  backlog head and bar, the hunk author's line style): future specs, left as written, the last now said so in §12.4.4.
+  (An integrated goal merged without the verifier's pass now has a hatched core, D141: no longer colour alone.)
 - **Supervisor text is written in the language of the moment.** A goal's findings and pauses keep the words they were
   written in; switching the interface language does not rewrite stored events. Test output and the prompts Tower sends
   the agent stay as they are, by design.

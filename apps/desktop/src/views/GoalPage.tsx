@@ -130,7 +130,7 @@ export function GoalPage(props: { id: string }) {
           <header class="goal-head">
             <div class="goal-head-main">
               <div class="row">
-                <LifecycleGlyph goal={g()} size={14} />
+                <LifecycleGlyph goal={g()} size={14} turn />
                 <h1 class="goal-title ellipsis" title={g().title}>{g().title}</h1>
               </div>
               {/* The verdict and what it stands on, on the title's own reading path: the seal (or its withholding) and the

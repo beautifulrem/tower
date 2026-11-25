@@ -6,6 +6,7 @@ import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
 import { TitleBar, Toasts } from "./components/Chrome";
 import { Sidebar } from "./components/Sidebar";
+import { DangerMark } from "./components/Glyph";
 import { Button, Empty, Failed, IconButton, Loading } from "./components/ui";
 import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
@@ -89,7 +90,7 @@ function BootFailed() {
       <div class="boot-failed">
         <div class="boot-gauges num halt" aria-hidden="true">
           <span class="gauge gauge-errors">
-            <span class="gauge-dot down" />
+            <DangerMark />
             {t("chrome.errorsShort", { n: 1 })}
           </span>
           <span class="gauge gauge-dead">{t("chrome.runningShort", { n: "—", max: "—" })}</span>

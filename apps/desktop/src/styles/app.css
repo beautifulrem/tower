@@ -144,12 +144,8 @@
   border-radius: 50%;
   background: var(--text-3);
 }
-/* A status dot (Geist's): down is a red dot with a soft halo of its own colour. */
-.gauge-dot.down {
-  background: var(--st-danger);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--st-danger) 22%, transparent);
-}
-/* Silence is worth a look, not a failure: the dot drawn as a ring, so the strip never shows two red dots. The moment
+/* Silence is worth a look, not a failure: the dot drawn as a red ring, never the red disc with a × that says errors or
+   an engine down. The moment
    it appears it beats once — 700ms, like a new card's amber — and then holds still; a heartbeat that stopped. */
 .gauge-dot.hollow {
   background: transparent;
@@ -426,25 +422,39 @@
   }
 }
 /* The agent's own words while it works: a light passes over them (AI Elements' Shimmer), so a line that is moving
-   reads as moving. Only for a running goal that is not silent, and only where motion is welcome: elsewhere the words
-   are plain. The light is the page's ground, so the words fade toward it and back, never to a colour. */
+   reads as moving. Only for a running goal that is moving, and only where motion is welcome: elsewhere the words are
+   plain. The light is a band of the line's own ground laid over the words, so they fade toward the ground and back,
+   never to a colour; the words keep their ink and the band moves by transform alone, so it stays on the compositor.
+   The words clip the band: it never passes over the target beside them. */
+.live-line {
+  --live-ground: var(--bg-app);
+}
+.peek-drawer .live-line {
+  --live-ground: var(--bg-overlay);
+}
 @media (prefers-reduced-motion: no-preference) {
   .live-moving .live-action {
-    color: transparent;
-    background-image: linear-gradient(90deg, #0000 calc(50% - 2.5em), var(--bg-app) 50%, #0000 calc(50% + 2.5em)), linear-gradient(var(--text-2), var(--text-2));
-    background-size: 250% 100%, auto;
-    background-repeat: no-repeat, padding-box;
-    -webkit-background-clip: text;
-    background-clip: text;
+    position: relative;
+    clip-path: inset(0);
+  }
+  .live-moving .live-action::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -75%;
+    width: 250%;
+    background: linear-gradient(90deg, #0000 calc(50% - 2.5em), var(--live-ground) 50%, #0000 calc(50% + 2.5em));
+    pointer-events: none;
     animation: shimmer 2.4s linear infinite;
   }
 }
 @keyframes shimmer {
   from {
-    background-position: 100% center, 0 0;
+    transform: translateX(-30%);
   }
   to {
-    background-position: 0% center, 0 0;
+    transform: translateX(30%);
   }
 }
 
@@ -667,6 +677,7 @@
 }
 .claim-text {
   color: var(--text-2);
+  -webkit-user-select: text;
   user-select: text;
   min-width: 0;
 }
@@ -1999,6 +2010,7 @@ input[type="radio"] {
   color: var(--text-2);
   white-space: pre-wrap;
   word-break: break-word;
+  -webkit-user-select: text;
   user-select: text;
 }
 
@@ -2014,6 +2026,7 @@ input[type="radio"] {
   font-size: 12px;
   line-height: 18px;
   color: var(--text-2);
+  -webkit-user-select: text;
   user-select: text;
 }
 .sentinel-prose {
@@ -2341,10 +2354,12 @@ input[type="radio"] {
   line-height: var(--lh-question);
   letter-spacing: var(--tr-16);
   font-weight: 500;
+  -webkit-user-select: text;
   user-select: text;
 }
 .decision-body {
   color: var(--text-2);
+  -webkit-user-select: text;
   user-select: text;
   white-space: pre-wrap;
   word-break: break-word;
@@ -2455,6 +2470,7 @@ input[type="radio"] {
   line-height: 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
+  -webkit-user-select: text;
   user-select: text;
 }
 /* The note reads at the card's own width (the card is already a reading width; a 60ch cap left one word on a
@@ -2833,8 +2849,9 @@ input[type="radio"] {
 /* The verdict is the last thing the header gives up. Short of room for it, the review (`fitStats`) lets go, in order
    and each only while the verdict still lacks the room: the pin pair (the seal carries the verified pin); comparing
    two runs, the line and file counts (the pickers name the range); the gaps, which close up; comparing, the pickers'
-   pins (their runs' names stay); then, only while the seal or a criteria segment is cut, the buttons' key caps (their
-   tooltips and the shortcut sheet keep them) and last a gone end's pin (its words stay; workbenches.css). */
+   pins (their runs' names stay); then, only while the seal or a criteria segment is cut, a gone end's words, for a
+   short word before its pin (workbenches.css), and last the buttons' key caps (their tooltips and the shortcut sheet
+   keep them). */
 .review-stats.pins-off .review-stat-pins,
 .review-stats.counts-off > .review-stat-group:first-child {
   display: none;
@@ -3128,6 +3145,7 @@ input[type="radio"] {
   text-align: right;
   color: var(--text-3);
   font-size: 11.5px;
+  -webkit-user-select: none;
   user-select: none;
 }
 /* The comment affordance: a "+" that appears on hover of the row. The glyph stays 16px (the row is 20); what
@@ -3136,6 +3154,7 @@ input[type="radio"] {
   position: relative;
   padding: 0 !important;
   text-align: center;
+  -webkit-user-select: none;
   user-select: none;
 }
 .gutter-btn::before {
@@ -3168,6 +3187,7 @@ input[type="radio"] {
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--code-foreground);
+  -webkit-user-select: text;
   user-select: text;
 }
 /* Code shows at once in the plain foreground; its colours arrive as a 120ms tint, never a snap (reduced motion: at once). */
@@ -3183,6 +3203,7 @@ input[type="radio"] {
   display: inline-block;
   width: 14px;
   color: var(--text-3);
+  -webkit-user-select: none;
   user-select: none;
 }
 .dl-add {
@@ -3212,6 +3233,7 @@ input[type="radio"] {
   background: var(--attention-bg);
   font-family: var(--font-ui);
   color: var(--text-1);
+  -webkit-user-select: text;
   user-select: text;
 }
 .inline-comment-text {
@@ -3608,6 +3630,7 @@ input[type="radio"] {
   color: var(--text-1);
   animation: rise var(--spring-snappy);
   transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
+  -webkit-user-select: text;
   user-select: text;
 }
 .toast::before {
@@ -4055,6 +4078,7 @@ input[type="radio"] {
   align-items: baseline;
   gap: 2px 6px;
   margin-bottom: var(--sp-3);
+  -webkit-user-select: text;
   user-select: text;
 }
 .env-paths .code-val + .t3 {
@@ -4319,6 +4343,17 @@ input[type="radio"] {
 .decision-line-ask .ellipsis {
   min-width: 0;
 }
+/* With one project there is nothing to name in the identity column: the question takes it, and the age ends the line
+   where the hairline does, as an identity would. (From 1561 that column widens for an engine's name, which a decision
+   line never has; the question was cut there beside the empty room.) Below 1241 the column is gone anyway. */
+@media (min-width: 1241px) {
+  .decision-line-unnamed .decision-line-ask {
+    grid-column: 3 / 8;
+  }
+  .decision-line-unnamed .g-age {
+    grid-column: 8;
+  }
+}
 /* A selected line is highlighted like a selected goal row and stays a line: the board does not move under j/k. */
 .decision-slot.selected > .decision-line {
   background: var(--bg-selected);
@@ -4441,8 +4476,9 @@ input[type="radio"] {
    so the last word on every line ends on the board's edge (the id is read with the title, beside it). Nothing in it is
    squeezed by the browser's own proportions or cut: measured (GoalRow `fitId`), the engine's name leaves first, whole,
    before the project's name would shorten; then the PR keeps what it needs you for (a failing check, a state other than
-   open); then the word "muted"; then the project's name, which may shorten but stays legible (3.5em), leaves whole;
-   then the PR's state; and last the whole identity folds, as below 1241. What leaves is still read by a screen reader,
+   open); then the word "muted"; then the project's name, which may shorten (only now) but stays legible (3.5em),
+   leaves whole; then the PR keeps one reading, an open PR its failing count and a merged or closed one its state; and
+   last the whole identity folds, as below 1241. What leaves is still read by a screen reader,
    and the title's tooltip says the whole identity. The leading pseudo-element takes the free room, so anything left
    over would run off the end rather than cut the first reading. */
 .g-id {
@@ -4475,7 +4511,7 @@ input[type="radio"] {
 .g-row:not([data-crowded="engine"])[data-crowded] .g-id :is(.pr-passed, .pr-pending, .pr-line[data-state="open"] :is(.pr-state, .pr-state + .sep), .pr-line:not([data-failing]) :is(.pr-state + .sep, .pr-counts)),
 .g-row:is([data-crowded="quiet"], [data-crowded="project"], [data-crowded="pr-state"], [data-crowded="folded"]) .g-muted,
 .g-row:is([data-crowded="project"], [data-crowded="pr-state"], [data-crowded="folded"]) .g-project,
-.g-row:is([data-crowded="pr-state"], [data-crowded="folded"]) .g-id .pr-line :is(.pr-state, .pr-state + .sep),
+.g-row:is([data-crowded="pr-state"], [data-crowded="folded"]) .g-id .pr-line:not([data-state="open"]) :is(.pr-state + .sep, .pr-counts),
 .g-row[data-crowded="folded"] .g-id > * {
   position: absolute;
   width: 1px;
@@ -4794,6 +4830,7 @@ input[type="radio"] {
   padding-top: 5px;
 }
 .activity-text {
+  -webkit-user-select: text;
   user-select: text;
   white-space: pre-wrap;
   word-break: break-word;

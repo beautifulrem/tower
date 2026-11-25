@@ -183,8 +183,11 @@ export function heldOutParts(body: string): { prose: string; failures: HeldOutFa
 export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPeek?: () => void }) {
   const it = () => props.item;
   const goal = () => state.goals[it().goal_id];
+  // The identity column names the goal's project only when there is more than one; with nothing to name, the question
+  // takes the column (styles: `.decision-line-unnamed`).
+  const named = () => !!goal() && state.projects.length > 1;
   return (
-    <div class="g-row decision-line" data-line={it().id} onClick={() => props.onOpen()}>
+    <div class="g-row decision-line" classList={{ "decision-line-unnamed": !named() }} data-line={it().id} onClick={() => props.onOpen()}>
       {/* The goal's own glyph, as in the sidebar beside it; the section's title already says "Needs you". */}
       <span class="g-glyph">
         <Show when={goal()} fallback={<NeedsYouMark />}>
@@ -223,11 +226,11 @@ export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPee
       </span>
       {/* The board's one age format and its one identity grammar, as on every goal row under it. */}
       <span class="g-age num meta halt">{ago(it().created_at, state.now)}</span>
-      <span class="g-id meta halt">
-        <Show when={goal() && state.projects.length > 1}>
+      <Show when={named()}>
+        <span class="g-id meta halt">
           <span class="t3 ellipsis g-project">{goal()!.project_name}</span>
-        </Show>
-      </span>
+        </span>
+      </Show>
     </div>
   );
 }

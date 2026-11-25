@@ -333,7 +333,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 const c = x() as Extract<TraceEntry["event"], { kind: "look_captured" }>;
                 return (
                   <div class="trace-cols">
-                    {/* A picture taken is a step, not the verifier's pass: a neutral check, the red ■ only when it failed. */}
+                    {/* A picture taken is a step, not the verifier's pass: a neutral check, the red × only when it failed. */}
                     {c.error ? <ResultMark kind="fail" title={c.error} /> : <span class="result"><Icon name="check" size={10} /></span>}
                     <span class="ellipsis">
                       {t("trace.lookCaptured", { criterion: c.criterion, side: c.side === "base" ? t("look.before") : t("look.after") })}

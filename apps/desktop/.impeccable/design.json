@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-24T19:40:07+00:00",
+  "generatedAt": "2026-11-25T16:13:25+00:00",
   "title": "Design System: Tower",
   "extensions": {
     "colorMeta": {
@@ -608,12 +608,12 @@
       {
         "name": "dur-fast",
         "value": "100ms",
-        "purpose": "Glyph crossfade, mode-badge swap, press nudge."
+        "purpose": "Glyph crossfade, mode-badge swap, the switch's thumb, a toast leaving."
       },
       {
         "name": "dur-base",
         "value": "160ms",
-        "purpose": "Pointer-opened layers, card leaving, row arrival."
+        "purpose": "A card leaving and its slot folding; a segment's ground changing."
       },
       {
         "name": "dur-view",
@@ -634,6 +634,26 @@
         "name": "dur-arm",
         "value": "2000ms",
         "purpose": "Armed destructive button's second-press window (draining rule)."
+      },
+      {
+        "name": "spring-snappy",
+        "value": "465ms linear(…) — Motion spring(0.25, 0)",
+        "purpose": "Something small arriving or giving: a pointer-opened layer lifting, a toast rising, a new board row, a segment filling, a button coming back from a press. Never overshoots."
+      },
+      {
+        "name": "spring-soft",
+        "value": "699ms linear(…) — Motion spring(0.4, 0)",
+        "purpose": "A panel moving in: the peek drawer. Never overshoots."
+      },
+      {
+        "name": "dur-spin",
+        "value": "1100ms linear, infinite",
+        "purpose": "A running or verifying mark turning (and the runs gauge, the same mark). Held still under reduced motion."
+      },
+      {
+        "name": "shimmer",
+        "value": "2400ms linear, infinite",
+        "purpose": "The live line of the goal in view while its agent is moving; never on the board. Plain ink under reduced motion."
       }
     ],
     "breakpoints": [
@@ -727,24 +747,24 @@
       "kind": "custom",
       "description": "Two-track instrument line: segments, then Verified V/M · Observed O/M · Human.",
       "html": "<span class=\"ds-cs\"><span class=\"ds-segs\"><i class=\"ds-seg ds-v\"></i><i class=\"ds-seg ds-v\"></i><i class=\"ds-seg ds-d\"></i><i class=\"ds-seg ds-o\"></i><i class=\"ds-seg\"></i></span>Verified 2/3 · 1 doesn't count · Observed 1/3 · Human 0/2</span>",
-      "css": ".ds-cs{display:inline-flex;align-items:center;gap:8px;font:400 12px/16px 'Inter Variable',-apple-system,sans-serif;font-variant-numeric:tabular-nums;color:var(--text-2,oklch(0.430 0.006 70))}.ds-segs{display:inline-flex;gap:2px}.ds-seg{width:12px;height:4px;border-radius:1px;box-sizing:border-box;border:1px solid var(--text-4,oklch(0.525 0.005 70))}.ds-v{border:0;background:var(--st-verified,oklch(0.550 0.130 155))}.ds-d{border:0;background:var(--st-attention,oklch(0.600 0.150 65))}.ds-o{border:1px dashed var(--text-2,oklch(0.430 0.006 70))}"
+      "css": ".ds-cs{display:inline-flex;align-items:center;gap:8px;font:400 12px/16px 'Inter Variable',-apple-system,sans-serif;font-variant-numeric:tabular-nums;color:var(--text-2,oklch(0.430 0.006 70))}.ds-segs{display:inline-flex;gap:2px}.ds-seg{width:12px;height:4px;border-radius:999px;background:color-mix(in oklch,var(--text-4,oklch(0.525 0.005 70)) 55%,transparent)}.ds-v{border:0;background:var(--st-verified,oklch(0.550 0.130 155))}.ds-d{border:0;background:var(--st-attention,oklch(0.600 0.150 65))}.ds-o{background:repeating-linear-gradient(-45deg,var(--text-3,oklch(0.48 0.006 70)) 0 1.5px,transparent 1.5px 3px)}"
     }
   ],
   "narrative": {
     "northStar": "The Control Tower at Night",
-    "overview": "Tower is a supervision desk, not a chat. One engineer watches several coding agents the way a tower controller watches traffic: a board of flight strips, a row of instrument readouts along the title bar, and a logbook where every line says whose it is. Normal work is still and grey. Colour and motion turn up only when a decision is waiting for you, a verifier has ruled, or something has gone wrong. That is a product rule as much as a style. The long-form doctrine lives in `docs/12-visual-design-system.md` (§12.1 direction, §12.5 honesty grammar, §12.6 glyphs, §12.7 motion) and `docs/19-anti-chat-console-design.md`. This file records what the shipped code does; `tokens.css` is the source of truth for values.\n\nThe density is Operate-mode macOS: 13px body, 28px sidebar rows, 40px board rows, hairlines in place of boxes, and very few cards. The decision card is the one recurring card. Hierarchy comes from size, weight and four steps of warm grey ink, not from frames or icons. Two themes share one hue family (h≈70–80): **Warm Parchment** (light) and **Warm Carbon** (dark). Each surface step is a lightness step, so the eye finds the layer before it finds the hairline.\n\nThe signature devices are the **provenance gutter**, a hanging left column that names the source of every statement (Measured / Observation / Agent says / You), and the **stamp**, a 1px die-cut frame that carries the acceptance verdict and the commit pin in the interface's largest type. The agent is never personified: no avatar, no name, no face.",
+    "overview": "Tower is a supervision desk, not a chat. One engineer watches several coding agents the way a tower controller watches traffic: a board of flight strips, a row of instrument readouts along the title bar, and a logbook where every line says whose it is. Normal work is grey, and it moves only in its own small mark: a running goal's mark turns slowly, like a status light on a rack. Colour turns up only when a decision is waiting for you, a verifier has ruled, or something has gone wrong. That is a product rule as much as a style. The long-form doctrine lives in `docs/12-visual-design-system.md` (§12.1 direction, §12.5 honesty grammar, §12.6 glyphs, §12.7 motion) and `docs/19-anti-chat-console-design.md`. This file records what the shipped code does; `tokens.css` is the source of truth for values.\n\nThe density is Operate-mode macOS: 13px body, 28px sidebar rows, 40px board rows, hairlines in place of boxes, and very few cards. The decision card is the one recurring card. Hierarchy comes from size, weight and four steps of warm grey ink, not from frames or icons. Two themes share one hue family (h≈70–80): **Warm Parchment** (light) and **Warm Carbon** (dark). Each surface step is a lightness step, so the eye finds the layer before it finds the hairline.\n\nThe signature devices are the **provenance gutter**, a hanging left column that names the source of every statement (Measured / Observation / Agent says / You), and the **stamp**, a 1px die-cut frame that carries the acceptance verdict and the commit pin in the interface's largest type. The agent is never personified: no avatar, no name, no face.",
     "keyCharacteristics": [
       "Warm near-neutral ramp; no accent hue. Primary actions are inverted ink, and selection and focus are carried by lightness.",
       "Five status colours with exclusive meanings: amber = needs your decision, green = verifier pass, red = danger, blue = running, grey = everything else.",
-      "Glyph shape carries state before colour does: lifecycle rings, ◆ needs you, ◇ notice, ■ danger.",
+      "Glyph shape carries state before colour does: lifecycle rings (a turning arc while running), the ! disc for needs you, the outlined i for a notice, the × disc for danger.",
       "Mono only for machine text (ids, commands, paths, hashes, figures), set with ligatures off and a slashed zero.",
       "Opaque reading sheets (palette, peek drawer, accept sheet); blur only on small passing layers (toasts, the @ completion).",
-      "Keyboard-opened layers appear instantly; nothing loops, pulses or spins."
+      "Keyboard-opened layers appear instantly. Only work in motion loops: a running mark turns, and the live line of the goal in view shimmers. Everything else moves once, on a spring that never overshoots, and all of it stands still under reduced motion."
     ],
     "rules": [
       {
         "name": "The Amber Is a Question Rule",
-        "body": "Amber means one thing: a human decision is waiting. Something worth noticing that needs no decision gets the hollow ◇ and ink-1 text, with no colour. Amber is never a selection colour. In a queue of decision cards the heads go neutral, and the focused card takes `--bg-selected`.",
+        "body": "Amber means one thing: a human decision is waiting. Something worth noticing that needs no decision gets the outlined i and ink-1 text, with no colour. Amber is never a selection colour. In a queue of decision cards the heads go neutral, and the focused card takes `--bg-selected`.",
         "section": "colors"
       },
       {
@@ -790,10 +810,10 @@
     ],
     "dos": [
       "Do use the semantic tokens only (`--bg-*`, `--text-*`, `--st-*`, `--sp-*`, `--radius-*`); values live in `src/styles/tokens.css`.",
-      "Do carry state in glyph shape first (ring, half disc, ◆, ◇, ■), so status reads in greyscale.",
+      "Do carry state in glyph shape first (ring, turning arc, the ! disc, the outlined i, the × disc), so status reads in greyscale.",
       "Do put the source of every statement in the provenance gutter: Measured, Observation, Agent says, You.",
       "Do keep one filled primary per surface. In a decision queue, only the focused card's primary is filled.",
-      "Do make hover arrive instantly (0ms) and leave over 150ms. Entering layers ease out, and leaving ones ease in.",
+      "Do make hover arrive instantly (0ms) and leave over 150ms. Entering layers settle on a spring that never overshoots (`--spring-snappy` for small things, `--spring-soft` for panels), and leaving ones ease in.",
       "Do open keyboard-triggered layers (palette, panels) with no animation.",
       "Do set ids, commands, paths, hashes and figures in mono or tabular figures.",
       "Do hold reading text to 840px and 72ch (40em in Chinese), and let instruments run full width.",
@@ -801,13 +821,15 @@
     ],
     "donts": [
       "Don't add an accent or brand hue; selection, focus and the primary action are ink and lightness.",
-      "Don't use amber for warnings, staleness or \"might be a problem\". Use ◇ with ink-1 text.",
+      "Don't use amber for warnings, staleness or \"might be a problem\". Use the outlined i with ink-1 text.",
       "Don't colour a statistic, aggregate, plan step, claim, observation or human check green.",
       "Don't colour small text with a status colour; status colours belong to glyphs, segments and grounds.",
       "Don't use \" · \" outside the criteria scale and the budget line.",
       "Don't use uppercase or tracked labels, KPI stat-card rows, pill soup, or boxes nested inside boxes.",
       "Don't put a coloured stripe down the edge of a card or an active nav item. The 2px ink pen is reserved for your own register, the current hunk and commented diff lines.",
-      "Don't add spinners, pulses, breathing lights, shimmer or celebration; the only repeating-looking motion is the one-shot amber decay.",
+      "Don't loop anything that is not work in motion: no pulses, breathing lights, celebration or decorative shimmer. The turning running mark and the in-view live line's shimmer are the only loops, and the one-shot amber decay is the only flash.",
+      "Don't bounce. Springs here settle without overshoot.",
+      "Don't draw a status with a text character (■ ◆ ◇) or an emoji; status is the mark family.",
       "Don't personify the agent (no avatar, name or face), and don't set claims in italics.",
       "Don't use a hand cursor on controls; this is a desktop app."
     ]

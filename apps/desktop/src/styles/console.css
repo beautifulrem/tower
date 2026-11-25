@@ -245,11 +245,6 @@
   justify-content: flex-end;
   text-align: right;
 }
-.seg-observed {
-  border-style: dashed;
-  border-color: var(--text-2);
-  background: transparent;
-}
 .g-spend-cell {
   display: grid;
   gap: 2px;
@@ -261,7 +256,7 @@
 .g-spend-cell .meter-micro { width: 56px; }
 /* At the low end of this range the fixed columns add up to more than the board: the identity column gives first. The id
    is beside the title, so the title's column carries it (a larger share, and a floor of 12em of title beside the id and
-   an overlap's ◇) and the identity is the readings, the engine and the project (less room than with the id). */
+   an overlap's i mark) and the identity is the readings, the engine and the project (less room than with the id). */
 @media (min-width: 1241px) and (max-width: 1560px) {
   .g-row {
     grid-template-columns: 14px minmax(16em, 1.4fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(8em, 10em);
@@ -337,7 +332,7 @@
   border-left: 1px solid var(--border);
   box-shadow: var(--shadow-drawer);
   outline: none;
-  animation: peek-in var(--dur-base) var(--ease-out);
+  animation: peek-in var(--spring-soft);
 }
 .peek-backdrop.instant .peek-drawer { animation: none; }
 @keyframes peek-in {

@@ -216,7 +216,7 @@ test("back from a goal's review with Esc, the board selects that goal again", as
   await expect(page.locator(".overview .selected")).toContainText("Clean up cart edge cases");
 });
 
-test("a board line wears at most one ◆", async ({ page }) => {
+test("a board line wears at most one ! mark", async ({ page }) => {
   await openTower(page, "overview", { enrich: enrichRich });
   await settled(page, "overview");
   const rows = page.locator(".overview .g-row");
@@ -481,7 +481,7 @@ const visibleMarks = (rows: Locator) =>
     rows.map((r) => [r.textContent!.trim().slice(0, 30), [...r.querySelectorAll(".mark-attention")].filter((m) => m.getClientRects().length && getComputedStyle(m).display !== "none").length] as const),
   );
 
-test("the title bar says in words how many need you, the Needs you count; a sidebar row wears at most one ◆", async ({ page }) => {
+test("the title bar says in words how many need you, the Needs you count; a sidebar row wears at most one ! mark", async ({ page }) => {
   await openTower(page, "overview", { enrich: enrichRich });
   await settled(page, "overview");
   const tel = page.locator(".tel-blocking");
@@ -650,7 +650,7 @@ for (const [w, lang, theme] of [[1440, "en", "light"], [1440, "zh-CN", "dark"], 
 
 // Review 7 P3-01, review 8 R8-P3-02: what needs you is a decision line in the board's queue, and the title bar counts
 // those. A goal filed anywhere else (G-0001 in To review, verified or not) is not said to need you, on the board or in the
-// sidebar, in its label or by a ◆ after its title: the ◆ a row may wear is its glyph's, a pass that doesn't count. The
+// sidebar, in its label or by a ! mark after its title: the ! a row may wear is its glyph's, a pass that doesn't count. The
 // sidebar's own Needs you group says so of each of its rows. Three data sets: the supervisor's own dump, with and
 // without G-0001's CI card.
 for (const [lang, word, review] of [["en", "Needs you", "To review"], ["zh-CN", "需要你", "待评审"]] as const)
@@ -675,7 +675,7 @@ for (const [lang, word, review] of [["en", "Needs you", "To review"], ["zh-CN", 
       for (const r of rows) {
         const says = r.label.includes(`, ${word}`);
         expect(says, `${r.where} "${r.label}" under ${r.head}`).toBe(r.where === "sidebar" && r.head === word);
-        expect(r.mark, `${r.where} "${r.label}" under ${r.head} wears no ◆ after its title`).toBe(false);
+        expect(r.mark, `${r.where} "${r.label}" under ${r.head} wears no ! mark after its title`).toBe(false);
       }
     });
 

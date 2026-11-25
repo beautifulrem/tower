@@ -39,7 +39,7 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
     return [
       ...p.ran.map((f): [string, string] => ["ev-hf ev-hf-ran", `✓ ${f}`]),
       ...p.not_ran.map((f): [string, string] => ["ev-hf ev-hf-miss", `✕ ${f}`]),
-      ...p.unprovable.map((f): [string, string] => ["ev-hf", `◇ ${f}`]),
+      ...p.unprovable.map((f): [string, string] => ["ev-hf", `○ ${f}`]),
     ];
   });
 

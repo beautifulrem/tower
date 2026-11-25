@@ -105,6 +105,7 @@ rounded:
   s: "4px"
   m: "6px"
   l: "10px"
+  full: "999px"
 spacing:
   sp-1: "4px"
   sp-2: "8px"
@@ -215,7 +216,7 @@ components:
 
 **Creative North Star: "The Control Tower at Night"**
 
-Tower is a supervision desk, not a chat. One engineer watches several coding agents the way a tower controller watches traffic: a board of flight strips, a row of instrument readouts along the title bar, and a logbook where every line says whose it is. Normal work is still and grey. Colour and motion turn up only when a decision is waiting for you, a verifier has ruled, or something has gone wrong. That is a product rule as much as a style. The long-form doctrine lives in `docs/12-visual-design-system.md` (§12.1 direction, §12.5 honesty grammar, §12.6 glyphs, §12.7 motion) and `docs/19-anti-chat-console-design.md`. This file records what the shipped code does; `tokens.css` is the source of truth for values.
+Tower is a supervision desk, not a chat. One engineer watches several coding agents the way a tower controller watches traffic: a board of flight strips, a row of instrument readouts along the title bar, and a logbook where every line says whose it is. Normal work is grey, and it moves only in its own small mark: a running goal's mark turns slowly, like a status light on a rack. Colour turns up only when a decision is waiting for you, a verifier has ruled, or something has gone wrong. That is a product rule as much as a style. The long-form doctrine lives in `docs/12-visual-design-system.md` (§12.1 direction, §12.5 honesty grammar, §12.6 glyphs, §12.7 motion) and `docs/19-anti-chat-console-design.md`. This file records what the shipped code does; `tokens.css` is the source of truth for values.
 
 The density is Operate-mode macOS: 13px body, 28px sidebar rows, 40px board rows, hairlines in place of boxes, and very few cards. The decision card is the one recurring card. Hierarchy comes from size, weight and four steps of warm grey ink, not from frames or icons. Two themes share one hue family (h≈70–80): **Warm Parchment** (light) and **Warm Carbon** (dark). Each surface step is a lightness step, so the eye finds the layer before it finds the hairline.
 
@@ -224,10 +225,10 @@ The signature devices are the **provenance gutter**, a hanging left column that 
 **Key Characteristics:**
 - Warm near-neutral ramp; no accent hue. Primary actions are inverted ink, and selection and focus are carried by lightness.
 - Five status colours with exclusive meanings: amber = needs your decision, green = verifier pass, red = danger, blue = running, grey = everything else.
-- Glyph shape carries state before colour does: lifecycle rings, ◆ needs you, ◇ notice, ■ danger.
+- Glyph shape carries state before colour does: lifecycle rings (a turning arc while running), the ! disc for needs you, the outlined i for a notice, the × disc for danger.
 - Mono only for machine text (ids, commands, paths, hashes, figures), set with ligatures off and a slashed zero.
 - Opaque reading sheets (palette, peek drawer, accept sheet); blur only on small passing layers (toasts, the @ completion).
-- Keyboard-opened layers appear instantly; nothing loops, pulses or spins.
+- Keyboard-opened layers appear instantly. Only work in motion loops: a running mark turns, and the live line of the goal in view shimmers. Everything else moves once, on a spring that never overshoots, and all of it stands still under reduced motion.
 
 ## Colors
 
@@ -237,10 +238,10 @@ A warm grey instrument panel in which colour shows up only as a signal, and each
 - **Ink** (`ink-1` light / `carbon-ink-1` dark): body text, facts and the primary button. A primary action is ink-filled with page-coloured words. It is inverted, not coloured, because colour is reserved for status. Hover steps the fill to `ink-2`. Disabled keeps the filled form at 0.45 opacity.
 
 ### Status (the five signal colours, `--st-*`)
-- **Decision Amber** (`decision-amber`, ground `decision-amber-ground`): only means *needs you to decide*. It appears on ◆, the decision card's 28px header strip, the "Needs you" sidebar icon and count, the attention mode badge's tint, commented diff lines (2px inset gutter rule), and the tampered-canary criteria segment. Its arrival is a single flash (`--attention-flash`, 700ms) that decays to the ground and never repeats.
+- **Decision Amber** (`decision-amber`, ground `decision-amber-ground`): only means *needs you to decide*. It appears on the ! disc, the decision card's 28px header strip, the "Needs you" sidebar icon and count, the attention mode badge's tint, commented diff lines (2px inset gutter rule), and the tampered-canary criteria segment. Its arrival is a single flash (`--attention-flash`, 700ms) that decays to the ground and never repeats.
 - **Verifier Green** (`verifier-green`): only a fresh verifier pass. It appears on the verified criteria segment, the pass result mark, the verified lifecycle glyph on goals in review, accepted or integrated with a machine verdict, the seal's pin, and diff-add tints. It is never used on a statistic, aggregate, step, claim, observation or human check.
-- **Danger Red** (`danger-red`, ground `danger-red-ground`): verifier failures, sentinel hits (■), scope violations, hard contradictions, unresponsive agents, and diff-delete tints. A danger button's resting words are ink, not red.
-- **Running Blue** (`running-blue`): the running/verifying lifecycle glyph (half disc) and the runs gauge. It has enough chroma to be told from grey at 10px.
+- **Danger Red** (`danger-red`, ground `danger-red-ground`): verifier failures, sentinel hits (the × disc), scope violations, hard contradictions, unresponsive agents, and diff-delete tints. A danger button's resting words are ink, not red.
+- **Running Blue** (`running-blue`): the running/verifying lifecycle glyph (a faint ring with a turning quarter arc) and the runs gauge, which is the same mark. It has enough chroma to be told from grey at 10px.
 - **Neutral** (`--st-neutral` = `ink-3`): every other state, observations included.
 
 Status colours colour glyphs, segments and tinted grounds. They never colour small text: text in a status context is ink-1 or ink-2.
@@ -256,7 +257,7 @@ Status colours colour glyphs, segments and tinted grounds. They never colour sma
 Diff and syntax colours (`--diff-*`, `--code-token-*`) are low-chroma tints whose hues stay away from the five status colours.
 
 ### Named Rules
-**The Amber Is a Question Rule.** Amber means one thing: a human decision is waiting. Something worth noticing that needs no decision gets the hollow ◇ and ink-1 text, with no colour. Amber is never a selection colour. In a queue of decision cards the heads go neutral, and the focused card takes `--bg-selected`.
+**The Amber Is a Question Rule.** Amber means one thing: a human decision is waiting. Something worth noticing that needs no decision gets the outlined i and ink-1 text, with no colour. Amber is never a selection colour. In a queue of decision cards the heads go neutral, and the focused card takes `--bg-selected`.
 
 **The Green Is the Verifier's Word Rule.** Green appears only beside a verifier result or a verified goal glyph. A count, a percentage, a plan step, an agent's claim or your own tick is never green. A pass that does not count (tampered canary) is drawn solid amber, never green.
 
@@ -294,7 +295,7 @@ Latin tracking tightens with size (−0.003em at 13px down to −0.012em on titl
 
 A fixed macOS frame: 52px title bar, a sidebar of 232px (204px at ≤1200px window width), and content on a 4px spacing grid (`sp-1`–`sp-10`). Two widths govern content. Anything you **read** (decision cards, forms, long text) sits within an 840px reading width, with sentences held at a 72ch measure. **Instruments** (board rows, criteria, diffs) run full width.
 
-The title bar is an instrument strip: a breadcrumb on the left and a borderless row of `tnum` gauges on the right (◆ count, runs, heartbeat, spend, sandbox, quiet hours, engine, search). A gauge gets a frame only when it is an exception, for example the sandbox gauge on an amber ground when unsandboxed.
+The title bar is an instrument strip: a breadcrumb on the left and a borderless row of `tnum` gauges on the right (Needs-you count, runs, heartbeat, spend, sandbox, quiet hours, engine, search). A gauge gets a frame only when it is an exception, for example the sandbox gauge on an amber ground when unsandboxed.
 
 The board is a **flight-strip table**. "Needs you" decision lines come first, then running goals in 40px rows on one fixed column grid (glyph · goal · live · criteria · change · spend · updated · identity). A 22px header row sits inside the first group and shares one hairline with the strips. Columns compress between 1241–1560px, and the identity column gives way first. Group headings are scale titles: 12/500 ink-3, then a tabular count, then a hairline running to the right edge.
 
@@ -321,7 +322,7 @@ Depth comes from lightness, not shadow: sidebar < page < raised < hover < select
 
 ## Shapes
 
-Small, quiet corners at four steps: 3px for keycaps and the stamp's die-cut frame, 4px for chips, tabs and tinted readouts, 6px for buttons, inputs, rows, cards and diff frames, and 10px only for floating layers (palette, menus, toasts). Corners are concentric: a 10px layer holds its 6px rows at a 4px inset. Criteria segments are 12×4px bars with a 1px radius. An empty segment is drawn as an outline in ink-4, a verified one is filled green, an observed one is a dashed hollow, and a discounted one is filled amber. Line style carries provenance: a solid line means measured or yours, a dashed line means observed or said. The stamp's frame is solid when the seal holds and dashed when it is withheld. Hairlines are drawn once and never nested; boxes never sit inside boxes.
+Small, quiet corners at four steps: 3px for keycaps and the stamp's die-cut frame, 4px for chips, tabs and tinted readouts, 6px for buttons, inputs, rows, cards and diff frames, and 10px only for floating layers (palette, menus, toasts). One capsule (`--radius-full`) is kept for shapes that hold no words: the criteria segments and the status dots. Anything that holds words keeps a corner, never a capsule. Corners are concentric: a 10px layer holds its 6px rows at a 4px inset. Criteria segments are 12×4px capsules on an ink-4 track. A verified one fills green, an observed one is hatched in ink-3 (1.5px diagonals at a 3px pitch: said, not measured), and a discounted one fills amber. When a count moves, the segment keeps its element and fills along its length on the snappy spring. Line style carries provenance: a solid line means measured or yours; a dashed line, or a hatch inside a segment, means observed or said. The stamp's frame is solid when the seal holds and dashed when it is withheld. Hairlines are drawn once and never nested; boxes never sit inside boxes.
 
 ## Components
 
@@ -329,7 +330,7 @@ Small, quiet corners at four steps: 3px for keycaps and the stamp's die-cut fram
 Compact AppKit-like controls that are clear without needing colour.
 - **Shape:** gently rounded (6px), 26px tall (24px small), 0 10px padding, 13/500.
 - **Primary:** filled ink with page-coloured words, and its keycap hint rides inside at 0.8 opacity. Hover moves to ink-2. There is one per surface.
-- **Default:** raised surface, 1px hairline, ink-1 words. Hover is instant: hover ground and stronger hairline. Leaving fades over 150ms. Active nudges down 0.5px.
+- **Default:** raised surface, 1px hairline, ink-1 words. Hover is instant: hover ground and stronger hairline. Leaving fades over 150ms. A press gives to 98% over 90ms and comes back on the snappy spring.
 - **Ghost:** transparent, ink-2 words, keycap hint in ink-3. Disabled keeps a hairline so it still reads as a button.
 - **Disabled:** the frame stays and the words step back to ink-3 (AppKit). A disabled primary keeps its filled form at 0.45 opacity.
 - **Armed (destructive, second press):** selected ground with an ink-1 frame. A 2px ink rule drains along the foot over 2s (`--dur-arm`) and stands still under reduced motion.
@@ -350,15 +351,17 @@ Compact AppKit-like controls that are clear without needing colour.
 ### Inputs / Fields
 - **Style:** 28px, 6px radius, 1px hairline, on `--bg-field` (white / near-page). Inside a raised card, a field uses the page colour so it never reads as a hole.
 - **Focus:** a 1.5px focus-ring outline offset into the border (it replaces the edge rather than adding a second one), and the border steps to ink-3.
-- **Error / Warning:** the message is in ink-1 with a leading mark: ■ red for an error, ◇ uncoloured for a warning. Placeholders are ink-4 and examples say "e.g.".
+- **Error / Warning:** the message is in ink-1 with a leading 12px mark: the red × disc for an error, the uncoloured outlined i for a warning. Placeholders are ink-4 and examples say "e.g.".
 
 ### Navigation
 - **Sidebar:** 28px rows, 6px radius, ink-2 words, and 16px one-pen icons in ink-3. Hover is an instant ground with ink-1 words. Active shows the selected ground and ink-1 words, with no edge stripe. The Needs-you icon stays amber, and danger stays red. Group titles are 12px ink-3 with a count. Keycap hints appear on hover only. In an inactive window the chrome steps back to ink-3, and status colours stay.
 - **Tabs:** 22px text tabs at 12px with a 4px radius. Active takes the selected ground. In steering and review sub-modes, active is a 1.5px ink underline (`inset 0 -1.5px 0`).
-- **Command palette:** 600px wide, 10px radius, opaque, overlay shadow with a material edge. The field is the panel's own top line (40px, mono `›` prompt). Items are 32px rows at a 6px radius; the selected item takes the selected ground. Opened from the keyboard, it appears instantly. Otherwise it lifts over 160ms.
+- **Command palette:** 600px wide, 10px radius, opaque, overlay shadow with a material edge. The field is the panel's own top line (40px, mono `›` prompt). Items are 32px rows at a 6px radius; the selected item takes the selected ground. Opened from the keyboard, it appears instantly. Otherwise it lifts 4px on the snappy spring.
 
 ### Glyphs and icons
-One pen throughout: a custom SVG set (`components/Glyph.tsx`) with round caps and joins, stroked around 1.3px at every size (2 / 1.75 / 1.6 / 1.5 for 10 / 12 / 14 / 16px). Lifecycle rings: a ring is a goal, a half disc is running, a check in a ring is verified, a solid disc is sealed, and dashes mean "said, not proven". The marks are ◆ needs you (amber, filled, 9px), ◇ notice (hollow, uncoloured), and ■ danger (red square). There are no warning triangles. A state glyph crossfades over 100ms.
+One pen throughout: a custom SVG set (`components/Glyph.tsx`) with round caps and joins, stroked around 1.3px at every size (2 / 1.75 / 1.6 / 1.5 for 10 / 12 / 14 / 16px). Lifecycle rings: a ring is a goal. Running is a faint ring with a quarter arc, and the whole mark turns once every 1.1s (verifying turns the same arc on a dashed ring). Paused is the ring with two bars, a check in a ring is verified, a solid disc is sealed, and dashes mean "said, not proven". The turn is a transform on the whole svg, so it stays on the compositor, and under reduced motion it stands with its arc at the top right.
+
+The status marks are one family on the icons' 16-unit grid, drawn 12px and sitting 2px under the baseline: a disc with its symbol cut out. **Needs you** is the ! on amber, **danger** is the × on red, and a **notice** is the same disc drawn as a 1.5 line with an i, never coloured. Each is a single even-odd path, so the symbol is a true hole and shows whatever ground the mark sits on (a selected row, a raised sheet). Where a stylesheet places a mark before words (field messages, toasts, a failed trace step, risk badges), it draws the same paths as a mask (`--mark-*` in `tokens.css`; a unit test holds them equal to `MARK_PATH` in `Glyph.tsx` and to the phone page's copies). There are no warning triangles, diamonds or squares, and no status is ever drawn with a text character or an emoji. A state glyph crossfades over 100ms.
 
 ### Provenance gutter (signature)
 Every statement on the goal page, review, peek and proposals is a three-column grid: a hanging source column (minmax(6.5em, 8.5em), 11px ink-3), the body (13px), and an aside. The source column names the speaker: **Measured** (harness mark, which turns green only when the verifier passed), **Observation**, **Agent says** (body in ink-2, never green), and **You** (500, ink-2 label). A measured failure is the one framed exception: a 4px-radius danger ground with 6px 10px padding. The register comes from the column and the ink, with no box around each line.
@@ -368,16 +371,16 @@ Every statement on the goal page, review, peek and proposals is a three-column g
 - **Stamp:** a 1px frame of ink at 82%, 3px radius, holding two cells divided by its own rule. On the left, the verdict (glyph plus word, 28px/580 or 20px). On the right, the pin (mono, ink-2). When the seal is withheld, the frame and divider are dashed and the ink drops to ink-3. When the accept sheet opens, the frame lands half a pixel heavy and settles while the ink rises 60ms behind it, over 220ms with no bounce. Under reduced motion it simply stands.
 
 ### Live line (flight strip)
-A three-column line: mode badge, detail (action and target in ink-2), and age in ink-3. 12/16 on the board and 13/20 on the goal page. Agent activity replaces the text instantly and never animates.
+A three-column line: mode badge, detail (action and target in ink-2), and age in ink-3. 12/16 on the board and 13/20 on the goal page. Agent activity replaces the text instantly. On the goal in view (the goal page and the peek), while the agent is moving (running, not waiting on you, not silent) its words shimmer: a band of the page's own ground sweeps across the ink-2 words every 2.4s, the way AI Elements' Shimmer marks an agent at work. It stops the moment the goal waits on you or falls silent. Board rows never shimmer; there the turning mark says it. Under reduced motion the words are plain ink-2.
 
 ## Do's and Don'ts
 
 ### Do:
 - **Do** use the semantic tokens only (`--bg-*`, `--text-*`, `--st-*`, `--sp-*`, `--radius-*`); values live in `src/styles/tokens.css`.
-- **Do** carry state in glyph shape first (ring, half disc, ◆, ◇, ■), so status reads in greyscale.
+- **Do** carry state in glyph shape first (ring, turning arc, the ! disc, the outlined i, the × disc), so status reads in greyscale.
 - **Do** put the source of every statement in the provenance gutter: Measured, Observation, Agent says, You.
 - **Do** keep one filled primary per surface. In a decision queue, only the focused card's primary is filled.
-- **Do** make hover arrive instantly (0ms) and leave over 150ms. Entering layers ease out, and leaving ones ease in.
+- **Do** make hover arrive instantly (0ms) and leave over 150ms. Entering layers settle on a spring that never overshoots (`--spring-snappy` for small things, `--spring-soft` for panels), and leaving ones ease in.
 - **Do** open keyboard-triggered layers (palette, panels) with no animation.
 - **Do** set ids, commands, paths, hashes and figures in mono or tabular figures.
 - **Do** hold reading text to 840px and 72ch (40em in Chinese), and let instruments run full width.
@@ -385,12 +388,14 @@ A three-column line: mode badge, detail (action and target in ink-2), and age in
 
 ### Don't:
 - **Don't** add an accent or brand hue; selection, focus and the primary action are ink and lightness.
-- **Don't** use amber for warnings, staleness or "might be a problem". Use ◇ with ink-1 text.
+- **Don't** use amber for warnings, staleness or "might be a problem". Use the outlined i with ink-1 text.
 - **Don't** colour a statistic, aggregate, plan step, claim, observation or human check green.
 - **Don't** colour small text with a status colour; status colours belong to glyphs, segments and grounds.
 - **Don't** use " · " outside the criteria scale and the budget line.
 - **Don't** use uppercase or tracked labels, KPI stat-card rows, pill soup, or boxes nested inside boxes.
 - **Don't** put a coloured stripe down the edge of a card or an active nav item. The 2px ink pen is reserved for your own register, the current hunk and commented diff lines.
-- **Don't** add spinners, pulses, breathing lights, shimmer or celebration; the only repeating-looking motion is the one-shot amber decay.
+- **Don't** loop anything that is not work in motion: no pulses, breathing lights, celebration or decorative shimmer. The turning running mark and the in-view live line's shimmer are the only loops, and the one-shot amber decay is the only flash.
+- **Don't** bounce. Springs here settle without overshoot.
+- **Don't** draw a status with a text character (■ ◆ ◇) or an emoji; status is the mark family.
 - **Don't** personify the agent (no avatar, name or face), and don't set claims in italics.
 - **Don't** use a hand cursor on controls; this is a desktop app.

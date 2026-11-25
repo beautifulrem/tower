@@ -201,7 +201,7 @@ describe("AcceptPanel", () => {
     expect(screen.getByText(/1 of 2 machine criteria count: in one, a test that must fail passed/)).toBeTruthy();
     const open = [...container.querySelectorAll(".panel-section .row.meta")].map((el) => el.textContent ?? "");
     expect(open[0]).toMatch(/C2: a test that must fail passed, so this pass doesn't count/);
-    // The same ◆ the pass wears everywhere else; the red ■ is a sentinel's.
+    // The same ! the pass wears everywhere else; the red × is a sentinel's.
     const first = container.querySelector(".panel-section .row.meta")!;
     expect(first.querySelector(".mark-attention")).not.toBeNull();
     expect(first.querySelector(".mark-danger")).toBeNull();

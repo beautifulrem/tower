@@ -267,3 +267,26 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   start-up 56,037 / 65,536 B, goal page 11,597 / 12,288 B; doc numbers, once the two READMEs and docs/17 quote the
   build's 55 KB start-up and 159 KB total (they said 54 and 157; the check allows 1 KB); detector: the three triaged
   `side-tab` findings and 12 advisories, none on a changed line. No Rust changed. Not yet independently re-reviewed.
+- 2026-11-26 Independent review of `3ff2ebf` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
+  **PASS 8.47 / 10**, no P0, P1 or P2. Iteration 13's fixes confirmed: the identity's last step always fits, the PR is
+  said in the tooltip and the button's name, short names take their own width. 5 of its 6 new e2e fail on `886ab38` for
+  the right reasons. Two P3s, recorded as D120–D121: a project name squeezed to ≤ 1 px counted as set aside (a sliver,
+  a reversed order, steps going back, in 1–2 px bands), and a gone end's kept pin cut the criteria bar at en 1040–1052
+  (`design-evidence/reports/review13.md`). Reviewer worktree removed.
+- 2026-11-26 Status marks and motion (D119, T88), on the owner's word: the red square, the amber diamond and the blue
+  half disc, and crude UI like them, were to go, with good agent front ends, design systems and motion libraries as
+  the reference. Researched through context7 (Primer Octicons and colour roles, Geist StatusDot and Badge, Lucide,
+  Vercel AI Elements' Shimmer, Motion's springs in CSS, Animate UI, Magic UI). One mark family: a disc with its symbol
+  as a hole (! amber, × red, an outlined i), each one even-odd path, so the symbol shows the ground it sits on; the
+  stylesheets' text marks (■ ◆ ◇) became masks of the same paths, and the phone page shares them (a unit test holds
+  the three equal; one mutated path fails it). Running and verifying turn a quarter arc on a faint ring, the runs
+  gauge is that mark, paused keeps its ring. Segments are capsules on a track, observed hatched, filling in place.
+  Springs from Motion's formula, generated with no overshoot after the detector named the first one's 1.4% bounce.
+  The shimmer runs only on the goal in view (a board of running goals keeps still words beside turning marks), and
+  everything stands still under reduced motion. Evidence pills went back to the 4 px chip corner (they hold words).
+  DESIGN.md, its sidecar, PRODUCT.md principle 2 and docs/12 §12.6–§12.7 rewritten to say so. Gates: tsc; vitest 42
+  files, 241 tests; e2e 380/0; shots 69/69; perf (50-goal board medians 596 against 323 ms, switches within 150 ms);
+  line limit; bundle 162,671 / 163,840 B, start-up 56,058 B, goal page 11,600 B; doc numbers; detector triaged in
+  `DESIGN_REVIEW.md`. On `3ff2ebf`'s sources (a separate worktree, the new tests copied in) 5 unit and 2 e2e tests
+  fail for the right reasons; the switch test, only taught to ignore endless animations, passes there. Before/after:
+  `design-evidence/marks-*.webp`.

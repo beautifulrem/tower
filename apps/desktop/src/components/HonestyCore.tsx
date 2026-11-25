@@ -5,7 +5,7 @@
  * your stamp — is in `Honesty.tsx`, which only on-demand views load (and
  * which re-exports these, so either import works there).
  */
-import { type JSX, Show, createEffect } from "solid-js";
+import { Index, type JSX, Show, createEffect } from "solid-js";
 
 import type { CriterionView } from "../gen/CriterionView";
 import type { Progress } from "../gen/Progress";
@@ -81,9 +81,8 @@ export function CriteriaBar(props: { progress: Progress; criteria?: readonly Cri
       <span class="sr-only">{full()}</span>
       <Show when={p().machine > 0} fallback={<span class="meta" aria-hidden="true">{props.tiny ? t("honesty.noMachineShort") : t("honesty.notMachineVerified")}</span>}>
         <span class="segs" aria-hidden="true">
-          {segs().map((s) => (
-            <span class={`seg seg-${s}`} />
-          ))}
+          {/* By position, so a segment that changes keeps its element and fills on its transition. */}
+          <Index each={segs()}>{(s) => <span class={`seg seg-${s()}`} />}</Index>
         </span>
         <span class="meta num halt" aria-hidden="true">
           <Show

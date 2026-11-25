@@ -49,8 +49,8 @@ export function Sidebar() {
     return r.name === "goal" || r.name === "review" ? r.id : null;
   };
 
-  // Under "Needs you" the group's title already says it: a row there carries no ◆ of its own (its glyph may be one);
-  // nor does a pass that doesn't count, whose glyph is the ◆. One ◆ to a row.
+  // Under "Needs you" the group's title already says it: a row there carries no ! mark of its own (its glyph may be one);
+  // nor does a pass that doesn't count, whose glyph is the ! mark. One ! to a row.
   const GoalRow = (props: { g: GoalSummary; inNeedsYou?: boolean }) => (
     <button
       class="side-row side-goal"
@@ -64,7 +64,7 @@ export function Sidebar() {
         <LifecycleGlyph goal={props.g} />
       </span>
       {/* Needs you is the group's word, as on the board: a goal filed elsewhere (waiting in To review) is not said to
-          need you, in its label or by a ◆ after its title. */}
+          need you, in its label or by a ! mark after its title. */}
       <span class="ellipsis grow">{props.g.title}</span>
     </button>
   );

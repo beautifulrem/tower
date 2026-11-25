@@ -112,7 +112,7 @@ test("offline, the page says so once, says where to look and offers one retry; t
   const [b, col] = await Promise.all([retry.boundingBox(), off.boundingBox()]);
   expect(b!.height).toBeGreaterThanOrEqual(44);
   expect(Math.abs(b!.width - col!.width)).toBeLessThan(1);
-  // The header: every reading a dash in the quietest grey, and the one lit square saying why.
+  // The header: every reading a dash in the quietest grey, and the one lit reading saying why.
   await expect(page.locator("#conn")).toHaveClass(/off/);
   await expect(page.locator("#conn")).toHaveText("Offline");
   await expect(page.locator("#status .gauge.dead").first()).toHaveText("—/— running");

@@ -131,6 +131,38 @@ async fn sentinels_hold_a_passing_but_suspicious_snapshot() {
     wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
 }
 
+/// Review 16 (record only): when one of two tools in flight ended, the run went back to "thinking" while the other
+/// still ran, so the desk and the phone stopped reading it as busy. It stays at work until the last one ends.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tool_still_in_flight_keeps_the_run_at_work_when_another_ends() {
+    let h = harness("parallel").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+    let mut trace = h.sup.trace(&id, None, 500).unwrap();
+    trace.sort_by_key(|e| e.seq);
+    let at = |call: &str| {
+        trace
+            .iter()
+            .position(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == call))
+            .unwrap_or_else(|| panic!("{call} ended"))
+    };
+    let (read_end, bash_end) = (at("pa"), at("pb"));
+    assert!(read_end < bash_end);
+    let between: Vec<_> = trace[read_end..bash_end]
+        .iter()
+        .filter_map(|e| match &e.event {
+            EventKind::ModeChanged { mode } => Some(*mode),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(between, vec![], "the command still runs: no mode change, least of all to thinking");
+    let after = trace[bash_end..].iter().find_map(|e| match &e.event {
+        EventKind::ModeChanged { mode } => Some(*mode),
+        _ => None,
+    });
+    assert_eq!(after, Some(tower_core::Mode::Thinking), "the last call ended: thinking");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn repeated_failures_raise_a_stall_without_stopping_the_run() {
     let h = harness("flaky").await;

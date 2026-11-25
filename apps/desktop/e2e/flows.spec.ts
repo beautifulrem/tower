@@ -750,7 +750,7 @@ test("the goal in view that is moving shimmers its words; on the board its row k
   expect(await row.locator(".live-action").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
   // The goal in view: its live line shimmers. The light is a band of the page's own ground laid over the words' own ink,
   // clipped to the words, and it moves by transform alone (review 14: a background-clip text shimmer repainted the words
-  // every frame and cost a quarter of a core).
+  // every frame and cost a quarter of a core). Its peak is that ground at 60% (review 16).
   const id = await row.getAttribute("data-goal");
   await openTower(page, `goal/${id}`, { enrich: fresh });
   const words = page.locator(".annunciator .live-moving .live-action");
@@ -761,12 +761,20 @@ test("the goal in view that is moving shimmers its words; on the board its row k
     while (getComputedStyle(ground).backgroundColor === "rgba(0, 0, 0, 0)" && ground.parentElement) ground = ground.parentElement;
     const keys = [...document.styleSheets].flatMap((s) => [...s.cssRules]).find((r): r is CSSKeyframesRule => r instanceof CSSKeyframesRule && r.name === band.animationName);
     const props = new Set(keys ? [...keys.cssRules].flatMap((k) => [...(k as CSSKeyframeRule).style]) : []);
+    const rgba = (c: string) => {
+      const x = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d")!;
+      x.fillStyle = c;
+      x.fillRect(0, 0, 1, 1);
+      return [...x.getImageData(0, 0, 1, 1).data];
+    };
+    const peak = rgba(band.backgroundImage.match(/,\s*([a-z]+\([^()]*\))\s+50%/)?.[1] ?? "#f00");
+    const floor = rgba(getComputedStyle(ground).backgroundColor);
     return {
       animation: [band.animationName, band.animationIterationCount],
       animates: [...props].sort(),
       ink: getComputedStyle(el).color === "rgba(0, 0, 0, 0)" ? "transparent" : "ink",
       clipped: getComputedStyle(el).clipPath,
-      band: band.backgroundImage.includes(getComputedStyle(ground).backgroundColor),
+      band: peak.slice(0, 3).every((v, i) => Math.abs(v - floor[i]) <= 3) && Math.abs(peak[3] - 153) <= 4,
     };
   });
   expect(light).toEqual({ animation: ["shimmer", "infinite"], animates: ["transform"], ink: "ink", clipped: "inset(0px)", band: true });
@@ -779,7 +787,7 @@ test("the goal in view that is moving shimmers its words; on the board its row k
 // Review 15 (record only): the light was 5em across whatever the words, so a short action word ("bash") sat inside it
 // whole and the line read as dimming, not as a light passing. Frozen at its midpoint the light covers the middle of the
 // word, not all of it; over one pass it still crosses every column.
-test("the shimmer's light passes over a short action word, it does not dim the word whole", async ({ page }) => {
+test("the shimmer's light passes over a short action word, it does not dim the word whole, and no letter goes out under it", async ({ page }) => {
   const fresh = (F: Record<string, any>) => {
     for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
   };
@@ -821,17 +829,24 @@ test("the shimmer's light passes over a short action word, it does not dim the w
       const dist = (p: number[], q: number[]) => p.reduce((s, v, i) => s + Math.abs(v - q[i]), 0);
       const ink = [...Array(B.width).keys()].filter((x) => [...Array(B.height).keys()].some((y) => dist(px(B, x, y), px(B, 0, 0)) > 90));
       const out: number[][] = [];
+      // How much of a column's ink stands off the ground under the light, against without it: its least, over the word.
+      const ground = px(B, 0, 0);
+      const stand = (D: ImageData, x: number) => Math.max(...[...Array(D.height).keys()].map((y) => dist(px(D, x, y), ground)));
+      let least = 1;
       for (const s of shots) {
         const A = await load(s);
         out.push(ink.filter((x) => [...Array(B.height).keys()].some((y) => dist(px(A, x, y), px(B, x, y)) > 30)));
+        for (const x of ink) least = Math.min(least, stand(A, x) / stand(B, x));
       }
-      return { ink: ink.length, lit: out };
+      return { ink: ink.length, lit: out, least };
     },
     [plain, shots] as const,
   );
   expect(cols.ink, "the word has ink").toBeGreaterThan(10);
   expect(cols.lit[0].length / cols.ink, `at its midpoint the light covers ${cols.lit[0].length} of ${cols.ink} columns`).toBeLessThanOrEqual(0.6);
   expect(new Set(cols.lit.flat()).size / cols.ink, "over one pass the light crosses the whole word").toBeGreaterThanOrEqual(0.95);
+  // Review 16 (record only): at its peak the light was the ground itself, and the letters under it went out.
+  expect(cols.least, `under the light a letter keeps ${Math.round(cols.least * 100)}% of its ink`).toBeGreaterThanOrEqual(0.3);
 });
 
 test("with motion reduced, a criteria segment takes its new count at once: its fill (an ::after) does not grow along the bar", async ({ page }) => {
@@ -970,6 +985,31 @@ test("a look thumbnail is as tall as its frame and no wider than its page; the v
   await expect(dialog).toHaveAttribute("data-more", "");
   await dialog.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
   await expect(dialog).not.toHaveAttribute("data-more");
+});
+
+// Review 16 (record only): before an image decoded it had no width of its own, and the two thumbnails sat as two 2px
+// lines; until then each holds a page's 3:4 frame.
+test("a look thumbnail that has not decoded yet holds a page's frame, not a sliver", async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  await page.route("**/tmp-held/*.png", async (route) => {
+    await held;
+    await route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAD0lEQVR4nGP4z8DAwMAAAA0AAf9mBXcAAAAASUVORK5CYII=", "base64") });
+  });
+  await openTower(page, "goal/G-0001", {
+    enrich: (F) => {
+      enrichLook(F);
+      for (const k of Object.keys(F.lookImages)) F.lookImages[k] = `/tmp-held/${k.split("/").pop()}`;
+    },
+  });
+  const imgs = page.locator(".criterion .look-img");
+  await expect(imgs).toHaveCount(2);
+  const widths = async () => (await imgs.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width))));
+  for (const w of await widths()) expect(w, "a waiting thumbnail is a page's frame").toBeGreaterThanOrEqual(70);
+  release();
+  await expect(imgs).toHaveClass([/look-img-in/, /look-img-in/]);
+  // Decoded, a tall page (1×2) is its own proportion: 96 tall, 48 wide.
+  for (const w of await widths()) expect(w).toBeLessThan(60);
 });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
@@ -1206,6 +1246,21 @@ test("the phone page switched on but not served says why, with its way out, and 
   const gauge = page.locator(".gauge-phone");
   await expect(gauge).toHaveText(/Phone page off/);
   await expect(gauge).toHaveAttribute("title", /Tailscale is not connected/);
+  // Review 16 (record only): it read in text-2 (a button's inherited ink), a step quieter than the error count; a gauge
+  // with a mark reads in text-1, and so does the engine's when it is not ready.
+  const ink = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).color);
+  const t1 = await page.evaluate(() => {
+    const p = document.createElement("i");
+    p.style.color = "var(--text-1)";
+    document.body.append(p);
+    const c = getComputedStyle(p).color;
+    p.remove();
+    return c;
+  });
+  expect(await ink(".gauge-phone")).toBe(t1);
+  await openTower(page, "settings", { enrich: (F) => (F.environment = { ...F.environment, pi_version: null }) });
+  await expect(page.locator(".gauge-down")).toHaveText(/not ready/);
+  expect(await ink(".gauge-down")).toBe(t1);
 });
 
 test("quiet hours are a daily window with two edges, and the last push's failure is a line with its time and reason", async ({ page }) => {
@@ -1900,4 +1955,19 @@ test("a card's text field grows with its lines and stops at six, then scrolls", 
   const six = (await area.boundingBox())!.height;
   expect(six).toBeLessThan(one * 7);
   expect(await area.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+});
+
+// Review 16 (found in passing): the goal rail made room for the steer box under a class the box no longer had
+// (`.steer`, now `.steer-console`), so the rail ran under the box. The rail is shorter while the box is there.
+test("the goal rail leaves the steer box its room", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 560 });
+  const { fixtures } = await openTower(page, "overview");
+  const running = (fixtures.goals as Array<{ id: string; state: string }>).find((g) => g.state === "running")!;
+  await openTower(page, `goal/${running.id}`);
+  await expect(page.locator(".steer-console textarea")).toBeVisible();
+  const rail = page.locator(".goal-rail");
+  const max = () => rail.evaluate((el) => parseFloat(getComputedStyle(el).maxHeight));
+  const withBox = await max();
+  await page.evaluate(() => document.querySelector(".steer-console")!.remove());
+  expect((await max()) - withBox, "the rail gives the box its height").toBeGreaterThanOrEqual(80);
 });

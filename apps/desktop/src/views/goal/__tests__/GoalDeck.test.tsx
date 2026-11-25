@@ -138,6 +138,24 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
     fireEvent.click(screen.getByText("passed"));
     expect(document.querySelector(".criterion")!.textContent).not.toMatch(/C9/);
     expect(screen.queryByText("assertions untouched")).toBeNull();
+    cleanup();
+    // Review 16 (record only): nor is a path through a criterion the goal does have. tests/C2/… on C1's row is the goal's
+    // finding, C1's own pill; "a high finding on C2" would send you to a criterion the finding never named.
+    for (const detail of ["tests/C2/cart.test.js asserts nothing now", "C2.test.js asserts nothing now"]) {
+      render(() => (
+        <CriterionRow goalId="G-0001" c={criterion} state="in_review" base="1111111" ids={["C1", "C2"]} sentinels={[{ sentinel: "assertions_removed", severity: 3, title: "Assertions removed", detail }]} />
+      ));
+      fireEvent.click(screen.getByText("passed"));
+      expect(screen.queryByText("doesn't count: a high finding on C2"), detail).toBeNull();
+      expect(screen.queryByText("assertions untouched")).toBeNull();
+      cleanup();
+    }
+    // A finding that does name C2 in words still points there.
+    render(() => (
+      <CriterionRow goalId="G-0001" c={criterion} state="in_review" base="1111111" ids={["C1", "C2"]} sentinels={[{ sentinel: "assertions_removed", severity: 3, title: "Assertions removed", detail: "C2: tests/cart.test.js asserts nothing now" }]} />
+    ));
+    fireEvent.click(screen.getByText("passed"));
+    expect(screen.getByText("doesn't count: a high finding on C2")).toBeTruthy();
   });
 
   // Review 9, R9-P3-04: the supervisor qualifies a pass when code reaches into the test runner (source_touches_tests,

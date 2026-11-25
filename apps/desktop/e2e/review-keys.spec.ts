@@ -202,15 +202,74 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   const part = await selected();
   expect(part.length, "a drag takes part of the line").toBeGreaterThan(3);
   expect(text).toContain(part);
-  // After a press the arrow keys still move by line, from the line pressed: ↓ lands on the next line's number.
-  await page.mouse.click(b.x + 40, b.y + b.height / 2);
-  await page.keyboard.press("ArrowDown");
-  const moved = await page.evaluate(() => {
-    const el = document.activeElement as HTMLElement;
-    const rows = [...document.querySelectorAll("table.diff tr.dl")];
-    return { lnBtn: el.classList.contains("ln-btn"), row: rows.indexOf(el.closest("tr")!) };
+  // After a press the arrow keys still move by line, from the line pressed (a middle one, so "from the first line"
+  // would not pass): ↓↓↑ walk 3, 4, 3. ↩ comments on the line pressed; past the last line, ↓ lands on its own number.
+  // A file of seven lines, its unit opened first; the index is the line's within its own table.
+  await openTower(page, "review/G-0003", {
+    enrich: (F) => {
+      enrichReview(F);
+      const r = F["review-G-0003"];
+      r.units = [...r.units].reverse();
+    },
   });
-  expect(moved, "↓ after a press moves to the next line").toEqual({ lnBtn: true, row: 1 });
+  const long = page.locator("table.diff").filter({ hasText: "Money in whole cents" });
+  const rows = long.locator("tr.dl");
+  await expect(rows.first()).toBeVisible();
+  expect(await rows.count()).toBeGreaterThan(4);
+  const at = () =>
+    page.evaluate(() => {
+      const el = document.activeElement as HTMLElement;
+      const all = [...(el.closest("table.diff")?.querySelectorAll("tr.dl") ?? [])];
+      return el.classList.contains("ln-btn") ? all.indexOf(el.closest("tr")!) : -1;
+    });
+  const pressRow = async (i: number) => {
+    const c = (await rows.nth(i).locator(".code").boundingBox())!;
+    await page.mouse.click(c.x + 40, c.y + c.height / 2);
+  };
+  await pressRow(2);
+  const walked: number[] = [];
+  for (const k of ["ArrowDown", "ArrowDown", "ArrowUp"]) (await page.keyboard.press(k), walked.push(await at()));
+  expect(walked, "↓↓↑ after a press walk from the line pressed").toEqual([3, 4, 3]);
+  await pressRow(2);
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".composer textarea")).toBeFocused();
+  expect(
+    await rows.nth(2).evaluate((pressed) => document.querySelector(".composer")!.closest("tr")!.previousElementSibling === pressed),
+    "↩ after a press comments on the line pressed",
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".composer")).toHaveCount(0);
+  // Review 16 (record only): a triple-click on the sign column took nothing, one on a blank line took the next line, and
+  // a copy across a blank line dropped it. A triple-click takes the line it lands on; a copy keeps the lines as in the file.
+  const sel = () => page.evaluate(() => getSelection()!.toString());
+  const first = (await rows.nth(0).locator(".code").boundingBox())!;
+  await page.mouse.click(first.x + 8, first.y + first.height / 2, { clickCount: 3 });
+  expect(await sel(), "a triple-click on the sign takes the line").toBe("// Money in whole cents: no float ever reaches a total.");
+  const blank = (await rows.nth(3).locator(".code").boundingBox())!;
+  await page.mouse.click(blank.x + 60, blank.y + blank.height / 2, { clickCount: 3 });
+  expect(await sel(), "a triple-click on a blank line takes nothing").toBe("");
+  const [from, to] = [(await rows.nth(2).locator(".code").boundingBox())!, (await rows.nth(4).locator(".code").boundingBox())!];
+  await page.mouse.move(from.x + 20, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 200, to.y + to.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const copied = await page.evaluate(() => {
+    const dt = new DataTransfer();
+    getSelection()!.anchorNode!.parentElement!.dispatchEvent(new ClipboardEvent("copy", { clipboardData: dt, bubbles: true, cancelable: true }));
+    return dt.getData("text/plain");
+  });
+  const lines = copied.split("\n");
+  expect(lines, "three lines, the blank one kept").toHaveLength(3);
+  expect(lines[1]).toBe("");
+  expect("export const fromCents = (c) => c / 100;").toContain(lines[0]);
+  expect(lines[2].length).toBeGreaterThan(3);
+  expect("export function line(price, qty) {").toContain(lines[2]);
+  expect(copied, "no sign in a copy").not.toMatch(/^[+−]/m);
+  const last = (await rows.count()) - 1;
+  await rows.nth(last).scrollIntoViewIfNeeded();
+  await pressRow(last);
+  await page.keyboard.press("ArrowDown");
+  expect(await at(), "↓ past the last line lands on its number").toBe(last);
   // The keyboard's way in is unchanged: from the file's last header control, Tab reaches the table and lands on the
   // first line's number, where ↑↓ move.
   const table = page.locator("table.diff").first();

@@ -135,6 +135,20 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T122 A light over short words | D153 | — | the band a quarter of a short word | `flows.spec.ts`; fails on `2408609` | Done (iteration 16) |
 | T123 Diff lines select | D154 | P3 | a pointer's focus stays on the table | `review-keys.spec.ts`; fails on `2408609` | Done (iteration 16) |
 | T124 Stale words | D155 | — | comment, docs/12's PR step and red list, references | — | Done (iteration 16) |
+| T125 Phone: a quiet Silent | D157 | P3 | the row's badge text-2, 400, no glyph; the hint mark in the header only | `phone.spec.ts`; fails on `2d3eeb8` | Done (iteration 17) |
+| T126 The right section | D158 | P3 | docs/12 cites §12.4.3 | — | Done (iteration 17) |
+| T127 An empty list is a sentence | D159 | P3 | no stand-in rows on the phone; skeleton bars mean loading only | `phone.spec.ts`; fails on `2d3eeb8` | Done (iteration 17) |
+| T128 Copies say what they show | D160 | P3 | held-out names keep their separators; each pin copies whole | `select.spec.ts`; fails on `2d3eeb8` | Done (iteration 17) |
+| T129 Phone: a pass with caveats | D161 | P3 | the cut ring and seal, "Verified, with caveats", the caveats after the ! | `phone.spec.ts`; fails on `2d3eeb8` | Done (iteration 17) |
+| T130 Phone at 320 | D162 | — | a ready row's meta line wraps | `phone.spec.ts` | Done (iteration 17) |
+| T131 Diff keys and selection | D163 | — | ↩ after a press; ↓ on the last line; triple-click and copy keep lines whole | `review-keys.spec.ts`; fails on `2d3eeb8` | Done (iteration 17) |
+| T132 Letters keep ink under the light | D164 | — | the band's peak the ground at 60% | `flows.spec.ts`; fails on `2d3eeb8` | Done (iteration 17) |
+| T133 No bare dot in the title bar | D165 | — | the engine gauge its name alone; a down gauge text-1 | `Console.test.tsx`, `flows.spec.ts`; fails on `2d3eeb8` | Done (iteration 17) |
+| T134 A thumbnail holds its frame | D166 | — | 3:4 until the image decodes | `flows.spec.ts`; fails on `2d3eeb8` | Done (iteration 17) |
+| T135 A steer box that fails says so | D167 | — | an error boundary with Retry; the rail's rule on `.steer-console` | `resilience.spec.ts`, `flows.spec.ts`; fail on `2d3eeb8` | Done (iteration 17) |
+| T136 No criterion inside a path | D168 | — | an id in a path or before an extension names nothing | `GoalDeck.test.tsx`; fails on `2d3eeb8` | Done (iteration 17) |
+| T137 Busy while any call runs | D169 | — | the oldest call in flight sets the mode, supervisor and desk | `flow.rs`, `pulse.test.ts`; fail on the old logic | Done (iteration 17) |
+| T138 Stale marks in words | D170 | — | the signature and the overlap note name the marks | — | Done (iteration 17) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

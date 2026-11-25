@@ -343,11 +343,15 @@ test("every reply box on the phone says what it asks for", async ({ page }) => {
   await expect(page.locator("#t-p")).toHaveAttribute("placeholder", "A note for the agent (optional)…");
 });
 
-test("the empty phone page is the list's own shape: hollow rows under each title, the titles in sentence case", async ({ page }) => {
+// Review 16 (R16-P3-03): grey bars under an empty list drew rows that were not there, the shape the desk keeps for a
+// view still loading (the contract editor's skeleton); the desk's empty states are a line and nothing under it.
+test("the empty phone page says so in a line under each title and draws no stand-in rows; the titles in sentence case", async ({ page }) => {
   await openPhone(page, { state: { goals: [], inbox: [], lang: "en" } });
   await expect(page.locator(".empty").first()).toContainText("Nothing needs you");
-  await expect(page.locator(".ghost .row")).toHaveCount(3);
-  expect(await page.locator(".ghost").first().innerText()).toBe("");
+  await expect(page.locator(".empty")).toHaveCount(2);
+  await expect(page.locator("#app .row, #app .ghost, #app .bar")).toHaveCount(0);
+  // Under each line comes the next title, or the end of the list.
+  expect(await page.locator(".empty").evaluateAll((ps) => ps.map((p) => p.nextElementSibling?.tagName ?? "END"))).toEqual(["H2", "END"]);
   // Tracked capitals belong to the contract's masthead alone; a list title is a word, not a label.
   const h2 = page.locator("h2").first();
   expect(await h2.evaluate((el) => getComputedStyle(el).textTransform)).toBe("none");
@@ -460,15 +464,24 @@ test("a run's mark turns on the phone only while the run moves, as on the desk; 
   // Review 14: every running row turned, the one waiting on you and the silent one too.
   expect(await marks.evaluateAll((els) => els.map((e) => e.classList.contains("spin")))).toEqual([true, false, false, true, false]);
   // The badge says what the desk's live line says (review 15, record only): the amber ! and "Needs you" for a run that
-  // waits on you, whatever its mode; "Silent" with the hint mark, never "Working" beside a still mark.
+  // waits on you, whatever its mode; "Silent", never "Working" beside a still mark. Silent steps back as the desk's
+  // badge does (review 16, R16-P3-01): text-2, regular, no mark (the hint mark is the header's).
   const badges = page.locator(".row .meta .badge");
   await expect(badges).toHaveText(["Working", "Needs you", "Silent", "Working", "Needs you"]);
   const drawn = await badges.evaluateAll((bs) => bs.map((b) => b.querySelector("path")?.getAttribute("d")?.slice(0, 40) ?? ""));
   expect(drawn[0]).toBe("");
   expect(drawn[1], "the amber ! before Needs you").toContain("M8 1a7 7 0 1 1 0 14");
   expect(await badges.nth(1).locator("path").getAttribute("fill")).toBe("var(--st-attention)");
-  expect(await badges.nth(2).locator("path").getAttribute("d"), "the hint mark before Silent").toContain("M8 2.5a5.5 5.5");
-  expect(await badges.nth(2).locator("path").getAttribute("fill")).toBe("currentColor");
+  expect(drawn[2], "no mark before Silent").toBe("");
+  const ink = await badges.evaluateAll((bs) => {
+    const probe = document.createElement("i");
+    document.body.append(probe);
+    const paint = (v: string) => ((probe.style.color = v), getComputedStyle(probe).color);
+    const [t1, t2] = [paint("var(--text-1)"), paint("var(--text-2)")];
+    probe.remove();
+    return bs.map((b) => `${getComputedStyle(b).color === t1 ? "t1" : getComputedStyle(b).color === t2 ? "t2" : "?"}/${getComputedStyle(b).fontWeight}`);
+  });
+  expect(ink).toEqual(["t1/500", "t1/500", "t2/400", "t1/500", "t1/500"]);
   expect(drawn[3]).toBe("");
   expect(drawn[4], "the amber ! before Needs you, flagged in any mode").toBe(drawn[1]);
   await expect(page.locator("#status .gauge.active svg")).toHaveClass("spin");
@@ -504,10 +517,14 @@ for (const lang of ["en", "zh-CN"] as const)
       goal("G-1", { verified: 2, observed: 0, machine: 2, human_done: 0, human: 0 }),
       goal("G-2", { verified: 2, observed: 0, machine: 2, human_done: 0, human: 0, not_evidence: true }),
       goal("G-3", { verified: 0, observed: 0, machine: 0, human_done: 0, human: 1 }),
+      // Review 16 (R16-P3-05): a counted pass with caveats was drawn as a clean one.
+      goal("G-4", { verified: 2, observed: 0, machine: 2, human_done: 0, human: 0, qualified: { test_machinery: true, assertions_unchecked: false, flaky: true } }),
+      // Machine criteria with no pin yet, and a card whose goal the page has no summary of: neutral, never green.
+      { ...goal("G-5", { verified: 2, observed: 0, machine: 2, human_done: 0, human: 0 }), verified_pin: null },
     ];
-    await openPhone(page, { state: { goals, inbox: goals.map((g) => card(g.id)), lang, max_running: 3 } });
+    await openPhone(page, { state: { goals, inbox: [...goals.map((g) => card(g.id)), card("G-6")], lang, max_running: 3 } });
     const rows = page.locator(".row").filter({ hasText: /Goal G-/ });
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(6);
     const read = (i: number) =>
       rows.nth(i).evaluate((row) => {
         const probe = document.createElement("i");
@@ -517,10 +534,39 @@ for (const lang of ["en", "zh-CN"] as const)
         const amber = paint("var(--st-attention)");
         const inks = [...row.querySelectorAll("*")].flatMap((el) => [getComputedStyle(el).color, el.getAttribute("stroke") ? paint(el.getAttribute("stroke")!) : "", el.getAttribute("fill") ? paint(el.getAttribute("fill")!) : ""]);
         probe.remove();
-        return { green: inks.includes(green), amber: inks.includes(amber), seal: row.querySelector(".seal")?.textContent ?? "", mark: row.querySelector("svg")?.getAttribute("aria-label") ?? "" };
+        const mark = row.querySelector("svg");
+        return {
+          green: inks.includes(green),
+          amber: inks.includes(amber),
+          seal: row.querySelector(".seal")?.textContent ?? "",
+          mark: mark?.getAttribute("aria-label") ?? "",
+          gap: mark?.querySelector("circle")?.getAttribute("stroke-dasharray") ?? "",
+          cut: !!row.querySelector(".seal path[d^='M9.25 5.15']"),
+          why: row.querySelector(".why")?.textContent ?? "",
+        };
       });
-    const words = lang === "en" ? { held: "Passed, doesn't count", human: "Not machine-verified" } : { held: "通过但不作数", human: "未经机器验证" };
-    expect(await read(0)).toEqual(expect.objectContaining({ green: true, amber: false, seal: "@15085f2" }));
-    expect(await read(1)).toEqual({ green: false, amber: true, seal: `${words.held}@15085f2`, mark: words.held });
+    const words =
+      lang === "en"
+        ? { held: "Passed, doesn't count", human: "Not machine-verified", q: "Verified, with caveats", why: "With caveats: code reaches into the test runner, flaky: passed on rerun" }
+        : { held: "通过但不作数", human: "未经机器验证", q: "已验证（有保留）", why: "有保留：代码触及测试运行器、不稳定：重跑后通过" };
+    expect(await read(0)).toEqual(expect.objectContaining({ green: true, amber: false, seal: "@15085f2", gap: "", cut: false, why: "" }));
+    expect(await read(1)).toEqual(expect.objectContaining({ green: false, amber: true, seal: `${words.held}@15085f2`, mark: words.held, why: "" }));
     expect(await read(2)).toEqual(expect.objectContaining({ green: false, amber: false, seal: words.human }));
+    // With caveats: still green with its pin, the ring keeps the desk's gap, the seal is cut, the caveats under the line
+    // beside the amber !.
+    expect(await read(3)).toEqual({ green: true, amber: true, seal: "@15085f2", mark: words.q, gap: "21.53 3.6", cut: true, why: words.why });
+    expect(await read(4)).toEqual(expect.objectContaining({ green: false, amber: false, seal: words.human, why: "" }));
+    expect(await read(5)).toEqual(expect.objectContaining({ green: false, amber: false, seal: "", why: "" }));
+    // 320 wide, the narrowest phone: no line of a goal to accept is cut or spills; a line that has no room wraps.
+    await page.setViewportSize({ width: 320, height: 800 });
+    const fit = await rows.evaluateAll((rs) =>
+      rs.map((r) => {
+        const meta = r.querySelector<HTMLElement>(".meta")!;
+        const box = meta.getBoundingClientRect();
+        const kids = [...meta.children].map((k) => k.getBoundingClientRect());
+        const d = meta.querySelector<HTMLElement>(".detail")!;
+        return kids.every((k) => k.width > 0 && k.right <= box.right + 0.5) && d.scrollWidth <= d.clientWidth + 0.5;
+      }),
+    );
+    expect(fit).toEqual([true, true, true, true, true, true]);
   });

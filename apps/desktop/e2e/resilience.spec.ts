@@ -19,6 +19,23 @@ test("a view whose code fails to load says so, and the rest of the app still wor
   await expect(page.locator(".content").getByText(first, { exact: false }).first()).toBeVisible();
 });
 
+// Review 16 (record only): the steer box's code comes on demand; a load that failed left the goal page without it, and
+// nothing said so. It says so in its place now, the page around it stays, and Retry loads it again.
+test("a steer box whose code fails to load says so in its place; the goal page stays, and Retry brings it", async ({ page }) => {
+  let refuse = true;
+  await page.route(/\/src\/views\/Learning\.tsx/, (r) => (refuse ? r.abort() : r.continue()));
+  const { fixtures } = await openTower(page, "overview");
+  const running = (fixtures.goals as Array<{ id: string; state: string; title: string }>).find((g) => g.state === "running")!;
+  await openTower(page, `goal/${running.id}`);
+  const failed = page.locator(".steer-failed");
+  await expect(failed).toContainText("Couldn't load this");
+  await expect(page.locator(".goal-title")).toBeVisible();
+  refuse = false;
+  await failed.getByRole("button", { name: "Retry" }).click();
+  await expect(page.locator(".steer-console textarea")).toBeVisible();
+  await expect(failed).toHaveCount(0);
+});
+
 test("a section whose list could not be read says so instead of saying it is empty, and Retry reads it again", async ({ page }) => {
   await openTower(page, "operations", { enrich: (F) => (F.mergeQueueError = "the store is locked") });
   await expect(page.getByText("the store is locked")).toBeVisible();

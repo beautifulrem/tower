@@ -153,8 +153,10 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = [], ids
   if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk"), undefined, 1]);
   else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered"), undefined, 1]);
   else if (cur.canary === "not_checked") out.push([cav, t("honesty.cavAsserts"), undefined, 1]);
-  // The criteria a finding names: the goal's own ids, whole (review 15: a path such as tests/C9/… names none).
-  const named = (h: SentinelHit) => (h.detail?.match(/\bC\d+\b/g) ?? []).filter((x) => !ids || ids.includes(x));
+  // The criteria a finding names: the goal's own ids, whole, and never a piece of a path (review 15: tests/C9/… names
+  // none; review 16: nor tests/C1/… on a goal that has a C1, nor C1.test.js).
+  const named = (h: SentinelHit) =>
+    [...(h.detail ?? "").matchAll(/(^|[^\w/])(C\d+)(?![\w/]|\.\w)/g)].map((m) => m[2]).filter((x) => !ids || ids.includes(x));
   const forCur = (h: SentinelHit) => !named(h).length || named(h).includes(cur.criterion.id);
   // The assertions' guard and the test machinery, each said once, by its weightiest finding; "assertions untouched" only
   // when neither finding stands, so the row never says it beside the caveat "code reaches into the test runner".

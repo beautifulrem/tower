@@ -123,8 +123,8 @@ export function TelemetryStrip() {
           </button>
         }
       >
+        {/* The engine's name alone: a grey dot before it said nothing (review 16); a problem is the red × above. */}
         <span class="gauge gauge-engine" title={engineMeta().title}>
-          <span class="gauge-dot" />
           <span>{engineMeta().label}</span>
         </span>
       </Show>

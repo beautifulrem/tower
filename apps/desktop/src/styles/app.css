@@ -138,12 +138,6 @@
 .gauge .glyph {
   vertical-align: 0;
 }
-.gauge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-3);
-}
 /* The runs gauge is the running goals' own mark, turning while some run moves. */
 .gauge-runs {
   vertical-align: -1px;
@@ -152,7 +146,10 @@
 .gauge-busy {
   color: var(--text-2);
 }
-.gauge-down {
+/* A gauge that carries a mark reads in text-1, the error count's ink; doubled, so a button's `.link-plain` (which
+   inherits the strip's text-2 and comes later) does not undo it (review 16: "Pi not ready" and "Phone page off" read
+   a step quieter than the error count beside them). */
+.gauge.gauge-down {
   color: var(--text-1);
 }
 /* The engine heartbeat: quiet while recent, text-1 past 30 s, and past 2 min the hint mark, drawn in the reading's own
@@ -404,7 +401,8 @@
    never to a colour; the words keep their ink and the band moves by transform alone, so it stays on the compositor.
    The words clip the band: it never passes over the target beside them. The band is 5em across, or a fifth of the
    ::after (half the words) when that is narrower, so a short word ("bash") sees a light pass over it rather than
-   dimming whole (review 15). */
+   dimming whole (review 15). At its peak the band is the ground at 60%, so a letter under it dims and never goes out
+   (review 16: a full-ground peak erased a short word's letters one by one). */
 .live-line {
   --live-ground: var(--bg-app);
 }
@@ -423,7 +421,12 @@
     bottom: 0;
     left: -75%;
     width: 250%;
-    background: linear-gradient(90deg, #0000 calc(50% - min(2.5em, 10%)), var(--live-ground) 50%, #0000 calc(50% + min(2.5em, 10%)));
+    background: linear-gradient(
+      90deg,
+      #0000 calc(50% - min(2.5em, 10%)),
+      color-mix(in oklab, var(--live-ground) 60%, transparent) 50%,
+      #0000 calc(50% + min(2.5em, 10%))
+    );
     pointer-events: none;
     animation: shimmer 2.4s linear infinite;
   }
@@ -1743,7 +1746,7 @@ input[type="radio"] {
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-.goal-page:has(.steer) .goal-rail {
+.goal-page:has(.steer-console) .goal-rail {
   max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - 112px);
 }
 /* A half-screen window: the rail folds under the main column (its own rule follows the rail's base rule below). */
@@ -1753,7 +1756,7 @@ input[type="radio"] {
     gap: 0;
   }
   .goal-rail,
-  .goal-page:has(.steer) .goal-rail {
+  .goal-page:has(.steer-console) .goal-rail {
     position: static;
     max-height: none;
     overflow: visible;
@@ -2208,17 +2211,6 @@ input[type="radio"] {
   word-break: break-all;
 }
 
-.steer {
-  position: sticky;
-  bottom: calc(-1 * var(--sp-10));
-  display: flex;
-  align-items: flex-end;
-  gap: var(--sp-2);
-  margin-top: var(--sp-6);
-  padding: var(--sp-3) 0 var(--sp-4);
-  background: var(--bg-app);
-  border-top: 1px solid var(--border-subtle);
-}
 
 /* ======================================================================
    Decision cards — amber only in the header strip, and it decays once
@@ -4667,14 +4659,8 @@ input[type="radio"] {
   color: var(--text-2);
   white-space: nowrap;
 }
-.gauge-dead,
-.gauge-dead .gauge-dot {
+.gauge-dead {
   color: var(--text-4);
-  background-color: transparent;
-}
-.gauge-dead .gauge-dot {
-  border: 1px solid var(--text-4);
-  box-sizing: border-box;
 }
 .boot-error-wrap {
   position: relative;
@@ -5215,6 +5201,10 @@ input[type="radio"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
   background: var(--bg-inset);
+}
+/* Until it has decoded (no `look-img-in` yet), an image has no width of its own: it holds a page's frame. */
+.look-img:not(.look-img-in) {
+  aspect-ratio: 3 / 4;
 }
 /* Inside the verification sheet the strip is a reading among readings: shorter. */
 .verify-item .look-img,

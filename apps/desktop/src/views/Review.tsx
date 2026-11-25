@@ -518,7 +518,7 @@ export function Review(props: { id: string }) {
         <IconButton icon="chevron-left" label={t("common.back")} onClick={back} />
         <div class="review-head-text" data-tauri-drag-region>
           <div class="row">
-            <h1 class="review-title ellipsis">{g()?.title}</h1>
+            <h1 class="review-title ellipsis" title={g()?.title}>{g()?.title}</h1>
             <span class="code-val t2">{props.id}</span>
             <Show when={queue()}>{(q) => <span class="meta t3 num">{t("review.queuePosition", { i: q().i, n: q().n })}</span>}</Show>
           </div>

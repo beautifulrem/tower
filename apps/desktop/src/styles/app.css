@@ -2297,6 +2297,14 @@ input[type="radio"] {
 .decision-head .sep {
   padding: 0;
 }
+/* The kind, the PR reading and the time keep one line; the goal's name is the one that gives way. */
+.decision-head > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.decision-head > .ellipsis {
+  flex-shrink: 1;
+}
 .decision-kind {
   color: var(--text-1);
   font-weight: 500;
@@ -2735,6 +2743,11 @@ input[type="radio"] {
   line-height: 20px;
   letter-spacing: var(--tr-14);
   font-weight: 500;
+}
+/* A long title gives way, never the id or the queue place beside it. */
+.review-head-text > .row > :not(.ellipsis) {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 /* The header is always two lines: the stats never wrap; short of room they drop whole, the pin pair first. */
 .review-stats {
@@ -3712,6 +3725,13 @@ input[type="radio"] {
   font-size: 11px;
   line-height: 16px;
   color: var(--text-4);
+}
+/* Beside the form the schedule is read alongside 01, before 03: a number there would contradict the reading order.
+   Folded under the form (≤1280) it reads after 03, and numbers on. */
+@media (min-width: 1281px) {
+  .editor-side .clause-no {
+    display: none;
+  }
 }
 .clause-title {
   font-size: var(--fs-section);

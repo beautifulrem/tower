@@ -170,7 +170,7 @@ export function Operations() {
                   <div class="col">
                     <div class="row">
                       <button type="button" class="link-quiet code-val t2" onClick={() => go({ name: "goal", id: entry.goal_id })}>{entry.goal_id}</button>
-                      <span class="t1 ellipsis">{entry.goal_title}</span>
+                      <span class="t1 ellipsis" title={entry.goal_title}>{entry.goal_title}</span>
                       <code class="code-val meta t3" hidden={!entry.branch} title={entry.branch ?? undefined}>{entry.branch}</code>
                     </div>
                     <div class="mq-conflicts meta t3" hidden={!entry.conflict_files.length}>
@@ -237,7 +237,7 @@ export function Operations() {
                   <div class="row">
                     <LifecycleGlyph goal={state.goals[g.goal_id] ?? { state: g.state, progress: ZERO_P, verified_pin: null }} />
                     <code class="code-val t2">{g.goal_id}</code>
-                    <span class="ellipsis t1">{g.title}</span>
+                    <span class="ellipsis t1" title={g.title}>{g.title}</span>
                     <span class="meta t3">{state.goals[g.goal_id] ? statusWord(state.goals[g.goal_id]) : stateLabel(g.state)}</span>
                   </div>
                 </td>

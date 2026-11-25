@@ -4,7 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { enrichRich } from "./rich";
+import { enrichConsole, enrichRich } from "./rich";
 import { openTower, settled } from "./tauri";
 
 for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0003", "settings", "learning", "operations", "new"]) {
@@ -285,3 +285,68 @@ for (const route of ["inbox", "goal/G-0001", "goal/G-0004", "goal/G-0005"]) {
     expect(same).toEqual([]);
   });
 }
+
+// A long goal title gives way, and nothing beside it does: in a card's head, the review's header (under the accept sheet
+// too) and Operations' tables, a kind, a time, a PR reading, an id, a verdict and a size each keep their one line, the
+// tables stay inside their frame, and a title cut short says itself whole in its tooltip. Three lengths: at the quick
+// start's cap (56 columns), mid, and far past it, as a goal written in the new-goal form can be.
+const LONG_TITLES = {
+  en: [
+    "Make checkout totals agree with the ledger for every curr",
+    "Make checkout totals and tax rounding agree with the ledger export",
+    "Make checkout totals, discounts and tax rounding agree with the finance team's ledger export for every currency and every retry path",
+  ],
+  "zh-CN": [
+    "让结账总额与财务导出的账本在每种货币下一致并补测",
+    "让结账总额和税额的四舍五入与财务导出的账本一致",
+    "让结账总额、折扣和税额的四舍五入在每种货币和每条重试路径下都与财务团队导出的账本完全一致，并补上缺失的边界测试",
+  ],
+};
+for (const lang of ["en", "zh-CN"] as const)
+  for (const [n, title] of LONG_TITLES[lang].entries())
+    test(`a ${["capped", "mid", "long"][n]} goal title (${lang}) is the only thing cut short, at every desktop width`, async ({ page }) => {
+      test.setTimeout(120_000);
+      const retitle = (F: Record<string, any>) => {
+        enrichRich(F);
+        enrichConsole(F);
+        const ids = ["G-0001", "G-0003"];
+        for (const g of F.goals) if (ids.includes(g.id)) g.title = title;
+        for (const id of ids) if (F[`goal-${id}`]) F[`goal-${id}`].summary.title = title;
+        for (const i of F.inbox) if (ids.includes(i.goal_id)) i.goal_title = title;
+        for (const q of F.mergeQueue ?? []) if (ids.includes(q.goal_id)) q.goal_title = title;
+        for (const s of F.storageInventory?.goals ?? []) if (ids.includes(s.goal_id)) s.title = title;
+      };
+      const out: string[] = [];
+      for (const route of ["inbox", "review/G-0001", "review/G-0003", "operations"]) {
+        await page.goto("about:blank");
+        await page.setViewportSize({ width: 1100, height: 900 });
+        await openTower(page, route, { lang, enrich: retitle });
+        await settled(page, route);
+        for (const w of [1100, 1240, 1440, 1800]) {
+          await page.setViewportSize({ width: w, height: 900 });
+          await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+          const bad = await page.evaluate((title) => {
+            const found: string[] = [];
+            const range = document.createRange();
+            for (const el of document.querySelectorAll<HTMLElement>(".content *")) {
+              if (!el.getClientRects().length || el.closest(".sr-only")) continue;
+              const texts = [...el.childNodes].filter((c) => c.nodeType === 3 && c.textContent?.trim());
+              const own = texts.map((c) => c.textContent).join("").trim();
+              // A short label (a kind, a time, an id, a size, a verdict): one line, however long the title beside it.
+              if (own && own.length <= 14 && !/^[\s\d,.]+$/.test(own)) {
+                const tops = texts.flatMap((c) => (range.selectNodeContents(c), [...range.getClientRects()])).filter((r) => r.width > 0).map((r) => r.top).sort((a, b) => a - b);
+                if (tops.some((t, i) => i > 0 && t - tops[i - 1] > 6)) found.push(`"${own}" (${el.className}) on ${new Set(tops.map(Math.round)).size} lines`);
+              }
+              // A title cut short says itself whole on hover.
+              if (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).textOverflow === "ellipsis" && el.textContent!.includes(title.slice(0, 12)) && el.closest("[title]")?.getAttribute("title") !== title)
+                found.push(`cut title in ${el.tagName.toLowerCase()}.${el.classList[0]} has no tooltip`);
+            }
+            for (const wrap of document.querySelectorAll<HTMLElement>(".data-table-wrap"))
+              if (wrap.scrollWidth > wrap.clientWidth + 1) found.push(`table runs past its frame (${wrap.scrollWidth} > ${wrap.clientWidth})`);
+            return found;
+          }, title);
+          out.push(...bad.map((b) => `${route} @${w}: ${b}`));
+        }
+      }
+      expect([...new Set(out)]).toEqual([]);
+    });

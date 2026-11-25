@@ -645,3 +645,40 @@ for (const [w, lang, theme] of [[1440, "en", "light"], [1440, "zh-CN", "dark"], 
     for (const prose of await page.locator(".sentinels-high .sentinel-prose").all()) expect(await prose.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
   });
 }
+
+// Review 7, P3-01: what needs you is a decision line in the queue above the groups, and the title bar counts those. A row
+// filed in a group (G-0001 in To review when there is no CI card) is not said to need you, in its label or by a ◆ after
+// its title: the ◆ a row may wear is its glyph's, a pass that doesn't count.
+for (const [lang, word] of [["en", "Needs you"], ["zh-CN", "需要你"]] as const)
+  for (const [name, enrich] of [["no CI card", noCi], ["a CI card", enrichRich]] as const)
+    test(`no board row in a group says it needs you, with ${name} (${lang})`, async ({ page }) => {
+      await openTower(page, "overview", { enrich, lang });
+      await settled(page, "overview");
+      const rows = await page.locator(".overview .board-group").evaluateAll((groups) =>
+        groups.flatMap((s) => {
+          const head = s.querySelector("h2")!.firstChild!.textContent!.trim();
+          return [...s.querySelectorAll<HTMLElement>(".g-row .g-title")].map((b) => ({ head, label: b.getAttribute("aria-label") ?? "", mark: !!b.querySelector(".mark-attention") }));
+        }),
+      );
+      expect(rows.length).toBeGreaterThan(2);
+      if (name === "no CI card") expect(rows.find((r) => r.label.startsWith("Fix the cart total"))?.head).toBe(lang === "en" ? "To review" : "待评审");
+      for (const r of rows) {
+        expect(r.label, `under ${r.head}`).not.toContain(word);
+        expect(r.mark, `"${r.label}" under ${r.head} wears no ◆ after its title`).toBe(false);
+      }
+    });
+
+// Review 7, P3-02: a run whose heartbeat has stopped is not called "Running" in the peek's head while "Now" under it, and the
+// title bar, say it is unresponsive.
+for (const [lang, word, running] of [["en", "Unresponsive", "Running"], ["zh-CN", "无响应", "运行中"]] as const)
+  test(`the peek's head names a silent run unresponsive, as Now does (${lang})`, async ({ page }) => {
+    await openTower(page, "overview", { enrich: enrichRich, lang });
+    await settled(page, "overview");
+    await selectLine(page, "Align discount rules");
+    await page.keyboard.press("Space");
+    const head = page.locator(".peek-drawer .peek-head-top");
+    await expect(head).toContainText("G-0002");
+    await expect(head.locator(".meta.t3")).toHaveText(word);
+    await expect(head).not.toContainText(running);
+    await expect(page.locator(".peek-drawer")).toContainText(word);
+  });

@@ -126,3 +126,25 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   module script failed" logs under parallel load, no test fails on them); shots 69/69 (`/tmp/tower-design/iter7/shots`);
   line limit; bundle all JS 163,743 / 163,840 B (97 B left, D84 deferred), goal page 11,437 / 12,288 B; detector: the
   same 13 app.css findings (`/tmp/tower-design/iter7/detect.json`).
+- 2026-11-25 Review of `3145645` (independent, own worktree and port 1441, final acceptance): **PASS, 8.18 / 10**, no P0
+  or P1, AC1–AC11 met; review 6's P1 and P3s confirmed fixed. New: P2-01 a long goal title crushed the short labels
+  beside it (Needs you card heads, the review header's id, Operations' storage table, which also ran past its frame at
+  1100 with a title at the quick start's cap), which my iteration-7 probe missed because it measured edges, not line
+  counts; P3-01 a To review row said "Needs you"; P3-02 the peek head said "Running" over "Unresponsive"; P3-03 the same
+  claim from two runs read as a duplicate row; P3-04 the contract's side column numbered ahead of the form. Recorded as
+  D88–D92.
+- 2026-11-25 Iteration 8 (T50–T53), the last of the eight: only the title gives way. The card head and the review header
+  keep every item but the title on one line and unshrinkable; a data-table cell holding a truncating name takes what the
+  other columns leave (`max-width: 0`), its id and verdict whole, the size columns never wrapping (the merge queue's own
+  rules folded into the general one); the four truncating titles carry their whole text as a tooltip. A board row no
+  longer says it needs you, in words or by a trailing ◆: what needs you is a decision line in the queue above, and the
+  title bar counts those. A silent run is "Unresponsive / 无响应" in the peek head. The contract's side column goes
+  unnumbered beside the form and numbers on when folded under it (CSS). P3-03 and folding the contract's advanced
+  section are deferred (JS, and 60 B left). New e2e checked against `3145645`: the long-title tests fail in all six
+  variants (inbox, both reviews, Operations), the no-CI row tests, both peek-head tests and the contract numbering at
+  1440 fail there; the two CI-card row variants pass on both commits and stay as guards. Gates: tsc; vitest 41 files /
+  220 tests; Playwright WebKit 327 passed, 0 failed (76 shot tests skip without SHOTS; 3 Vite client "Importing a module
+  script failed" logs under parallel load, no test fails on them); shots 69/69 (`/tmp/tower-design/iter8/shots`); line
+  limit; bundle all JS 163,780 / 163,840 B (60 B left, D84), goal page 11,424 / 12,288 B; detector: the same 13 app.css
+  findings, none in console.css (`/tmp/tower-design/iter8/detect.json`).
+

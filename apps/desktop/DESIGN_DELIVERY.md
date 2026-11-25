@@ -1,6 +1,6 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, fourteen local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, fifteen local commits, nothing pushed, merged or deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -152,6 +152,7 @@ available in that session. The reviewers never edited code. Reports are committe
 | `3145645` | **PASS, 8.18**, no P0/P1, AC1–AC11 met |
 | `d6f07ef` | **PASS, 8.30**, no P0/P1/P2 (re-check after review 7's P2) |
 | `7a23f45` | **PASS, 8.28**, no P0/P1; one P2 (review 9, after the owner's remaining list) |
+| `deef352` | **PASS, 8.20**, no P0/P1; one new P2 (review 10, after review 9's fixes) |
 
 Review 8 raised four P3s. Two were introduced by iteration 8's own fixes: the peek head called a waiting run
 "Unresponsive", and the sidebar still said "Needs you" for a goal in To review. Two were older: the cron broke at
@@ -165,8 +166,15 @@ on its stamp — six P3s mostly from iteration 9's own fixes (the comparing verd
 caps hidden at ≤1240, the ledger's runs note in the claim's colour, the evidence strip saying "assertions untouched"
 beside a test-machinery caveat, the folded engine clause hiding non-default settings, a bare other goal's id in the
 identity column), one older P3 (the budget's "$" on its digits) and three docs/12 places still off. Iteration 10 fixes
-all of them (D98–D106), each with a test that fails on `7a23f45`. Those fixes are **Verified, not independently
-re-reviewed**: the last acceptance stands on `7a23f45`.
+all of them (D98–D106), each with a test that fails on `7a23f45`.
+
+Review 10 read `deef352` (iteration 10) and passed it at 8.20: the comparing verdict now holds at every width from
+1024 to 1600 (swept every 4 px, both directions, no flicker), and the key caps, the test-machinery strip, the folded
+engine settings and the field units are confirmed fixed. It found one new P2 that iteration 10 introduced: moving the
+overlap note into the title cell squeezed an overlapping row's title to "Fi…" at 1241 (D107). Five P3s: the done-state
+tooltips and the integrated glyph (D108), the compare picker's select value (D109), the light-theme ledger note
+(D110), a docs/12 "neutral pill" that is amber (D111), English run names in Chinese (D112). All open. The last
+acceptance stands on `deef352`.
 
 ## 13. Function, performance, accessibility — Verified
 
@@ -204,21 +212,25 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 ## 14. Commits — Implemented
 
 `bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
-(review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run) the iteration-9 commit `7a23f45` (the owner's
-remaining list) and the iteration-10 commit (review 9's findings). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+(review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run), the iteration-9 commit `7a23f45` (the owner's
+remaining list), the iteration-10 commit `deef352` (review 9's findings) and the commit recording review 10. All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
 Iteration 9 fixed the owner's remaining list: D84 (bundle), D91, D92, D96, D51/D86, the docs/12 drift, D20, D22, D23,
 D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. Iteration 10 fixed
-review 9's findings (D98–D106), each with a test that fails on `7a23f45`. What is left:
+review 9's findings (D98–D106), each with a test that fails on `7a23f45`; review 10 passed it. What is left:
 
-- **Iteration 10 is not independently re-reviewed.** Its fixes are verified by tests and the gates; the last independent
-  acceptance is review 9's, of `7a23f45`.
+- **Review 10's findings are open (D107–D112).** One P2: an overlapping board row's title is squeezed by the overlap
+  note at 1241–1800 (introduced by iteration 10). Five P3s: done-state seal tooltips and the integrated glyph, the
+  compare picker's select value for screen readers, the light-theme ledger note, the evidence strip's amber caveat
+  against docs/12's "neutral", English run names in the Chinese interface. Review 10 also found the new settings unit
+  test empty (the English settings page has no unit field).
 - **The review header now fits by measuring** (`review/fitStats.ts`, a ResizeObserver and a MutationObserver) rather than
   by width band. The sweep test covers 1024–1400 for both fixture goals in both languages; a verdict longer than any
   the fixtures hold would still give way last, but only those widths and verdicts were measured.
-- **Below 1241 px the board's overlap notice is in the title's tooltip only**, as the identity column it replaced was.
+- **Below 1241 px the board's overlap notice is in the title's tooltip only**, as the identity column it replaced was;
+  above it, see D107.
 
 - **D58 covers three caveats.** "Verified, with caveats" is computed for test machinery reached into, assertions not
   checked and a flaky pass; docs/07's other qualifiers (S0, a Node version unlike the profile, an unsupported ecosystem,

@@ -113,8 +113,9 @@ export function CriteriaBar(props: { progress: Progress; criteria?: readonly Cri
         </span>
       </Show>
       <Show when={p().human > 0}>
-        <span class="sep crit-human" aria-hidden="true">·</span>
+        {/* The dot travels with its count: short of room they drop together, never leaving a "·" at the line's end. */}
         <span class="meta num crit-human" aria-hidden="true">
+          <span class="sep">·</span>
           {props.tiny ? t("honesty.humanShort", { d: p().human_done, n: p().human }) : t("honesty.human", { d: p().human_done, n: p().human })}
         </span>
       </Show>

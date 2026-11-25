@@ -19,7 +19,7 @@ import { ProvBox } from "./Console";
 import { DangerMark, Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { ConsistencyBadge } from "./Honesty";
 import { CriteriaBar } from "./HonestyCore";
-import { LiveLine, liveDetail, silent } from "./Live";
+import { LiveLine, liveDetail } from "./Live";
 import { TrustPill } from "./ProvenanceFrame";
 import { Button, trapTab } from "./ui";
 
@@ -88,9 +88,10 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                 <div class="peek-head-top">
                   <LifecycleGlyph goal={s() as GoalSummary} size={12} />
                   <span class="code-val t2">{s().id}</span>
-                  {/* A run whose heartbeat has stopped is not said to be running: the head reads as "Now" and the title bar do. */}
-                  <Show when={!(s().state === "in_review" && s().verified_pin)}>
-                    <span class="meta t3">{silent(s() as GoalSummary, state.now) ? t("chrome.unresponsive") : statusWord(s() as GoalSummary)}</span>
+                  {/* A running goal's state is said once, by "Now" under the head (needs you, unresponsive, or what it is doing):
+                      a second word here could only lag it or contradict it. */}
+                  <Show when={!(s().state === "in_review" && s().verified_pin) && s().state !== "running"}>
+                    <span class="meta t3">{statusWord(s() as GoalSummary)}</span>
                   </Show>
                   {/* The verdict and its pin, once: when "Now" draws the seal (in review), the head leaves it to it; a pass
                       that doesn't count is marked here by the glyph alone. */}

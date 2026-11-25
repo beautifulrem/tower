@@ -646,39 +646,57 @@ for (const [w, lang, theme] of [[1440, "en", "light"], [1440, "zh-CN", "dark"], 
   });
 }
 
-// Review 7, P3-01: what needs you is a decision line in the queue above the groups, and the title bar counts those. A row
-// filed in a group (G-0001 in To review when there is no CI card) is not said to need you, in its label or by a ◆ after
-// its title: the ◆ a row may wear is its glyph's, a pass that doesn't count.
-for (const [lang, word] of [["en", "Needs you"], ["zh-CN", "需要你"]] as const)
-  for (const [name, enrich] of [["no CI card", noCi], ["a CI card", enrichRich]] as const)
-    test(`no board row in a group says it needs you, with ${name} (${lang})`, async ({ page }) => {
+// Review 7 P3-01, review 8 R8-P3-02: what needs you is a decision line in the board's queue, and the title bar counts
+// those. A goal filed anywhere else (G-0001 in To review, verified or not) is not said to need you, on the board or in the
+// sidebar, in its label or by a ◆ after its title: the ◆ a row may wear is its glyph's, a pass that doesn't count. The
+// sidebar's own Needs you group says so of each of its rows. Three data sets: the supervisor's own dump, with and
+// without G-0001's CI card.
+for (const [lang, word, review] of [["en", "Needs you", "To review"], ["zh-CN", "需要你", "待评审"]] as const)
+  for (const [name, enrich] of [["the dumped views", undefined], ["no CI card", noCi], ["a CI card", enrichRich]] as const)
+    test(`no row filed outside Needs you says it needs you, on the board or in the sidebar, with ${name} (${lang})`, async ({ page }) => {
       await openTower(page, "overview", { enrich, lang });
       await settled(page, "overview");
-      const rows = await page.locator(".overview .board-group").evaluateAll((groups) =>
-        groups.flatMap((s) => {
+      const rows = await page.evaluate(() => {
+        const board = [...document.querySelectorAll(".overview .board-group")].flatMap((s) => {
           const head = s.querySelector("h2")!.firstChild!.textContent!.trim();
-          return [...s.querySelectorAll<HTMLElement>(".g-row .g-title")].map((b) => ({ head, label: b.getAttribute("aria-label") ?? "", mark: !!b.querySelector(".mark-attention") }));
-        }),
-      );
-      expect(rows.length).toBeGreaterThan(2);
-      if (name === "no CI card") expect(rows.find((r) => r.label.startsWith("Fix the cart total"))?.head).toBe(lang === "en" ? "To review" : "待评审");
+          return [...s.querySelectorAll<HTMLElement>(".g-row .g-title")].map((b) => ({ where: "board", head, label: b.getAttribute("aria-label") ?? "", mark: !!b.querySelector(".mark-attention") }));
+        });
+        const side = [...document.querySelectorAll(".sidebar .side-group")].flatMap((s) => {
+          const head = s.querySelector(".side-group-title")!.textContent!.replace(/\d+\s*$/, "").trim();
+          return [...s.querySelectorAll<HTMLElement>(".side-goal")].map((b) => ({ where: "sidebar", head, label: b.getAttribute("aria-label") ?? "", mark: [...b.querySelectorAll(".mark-attention")].some((m) => !m.closest(".side-icon")) }));
+        });
+        return [...board, ...side];
+      });
+      expect(rows.filter((r) => r.where === "board").length).toBeGreaterThan(0);
+      expect(rows.filter((r) => r.where === "sidebar" && r.head !== word).length).toBeGreaterThan(0);
+      if (name === "no CI card") expect(rows.find((r) => r.where === "board" && r.label.startsWith("Fix the cart total"))?.head).toBe(review);
       for (const r of rows) {
-        expect(r.label, `under ${r.head}`).not.toContain(word);
-        expect(r.mark, `"${r.label}" under ${r.head} wears no ◆ after its title`).toBe(false);
+        const says = r.label.includes(`, ${word}`);
+        expect(says, `${r.where} "${r.label}" under ${r.head}`).toBe(r.where === "sidebar" && r.head === word);
+        expect(r.mark, `${r.where} "${r.label}" under ${r.head} wears no ◆ after its title`).toBe(false);
       }
     });
 
-// Review 7, P3-02: a run whose heartbeat has stopped is not called "Running" in the peek's head while "Now" under it, and the
-// title bar, say it is unresponsive.
-for (const [lang, word, running] of [["en", "Unresponsive", "Running"], ["zh-CN", "无响应", "运行中"]] as const)
-  test(`the peek's head names a silent run unresponsive, as Now does (${lang})`, async ({ page }) => {
-    await openTower(page, "overview", { enrich: enrichRich, lang });
-    await settled(page, "overview");
-    await selectLine(page, "Align discount rules");
-    await page.keyboard.press("Space");
-    const head = page.locator(".peek-drawer .peek-head-top");
-    await expect(head).toContainText("G-0002");
-    await expect(head.locator(".meta.t3")).toHaveText(word);
-    await expect(head).not.toContainText(running);
-    await expect(page.locator(".peek-drawer")).toContainText(word);
-  });
+// Review 7 P3-02, review 8 R8-P3-01: a running goal's state is said once, by "Now" under the peek's head, so the head never
+// lags or contradicts it: not "Running" over "Unresponsive", and not "Unresponsive" over "Needs you" when a silent run is
+// waiting for your answer (the supervisor sets waiting_on_you on a question; no tool runs until you answer).
+const g2Waiting = (F: Record<string, any>) => {
+  enrichRich(F);
+  const q = F.inbox.find((i: any) => i.kind === "assumption");
+  F.inbox.push({ ...structuredClone(q), id: "ib-g2-question", goal_id: "G-0002", goal_title: "Align discount rules", kind: "question", subject: "Which rounding does the ledger use?" });
+  for (const g of [F.goals.find((x: any) => x.id === "G-0002"), F["goal-G-0002"]?.summary]) if (g) Object.assign(g, { needs_you: 1, mode: "waiting_on_you" });
+};
+for (const [lang, words] of [["en", { running: "Running", silent: "Unresponsive", waiting: "Needs you" }], ["zh-CN", { running: "运行中", silent: "无响应", waiting: "等你" }]] as const)
+  for (const [name, enrich, now] of [["silent", enrichRich, "silent"], ["silent and waiting for your answer", g2Waiting, "waiting"]] as const)
+    test(`the peek's head of a ${name} run leaves its state to Now (${lang})`, async ({ page }) => {
+      await openTower(page, "overview", { enrich, lang });
+      await settled(page, "overview");
+      await selectLine(page, "Align discount rules");
+      await page.keyboard.press("Space");
+      const head = page.locator(".peek-drawer .peek-head-top");
+      await expect(head).toContainText("G-0002");
+      for (const w of Object.values(words)) await expect(head).not.toContainText(w);
+      const live = page.locator(".peek-drawer .live-line").first();
+      await expect(live).toContainText(words[now]);
+      if (now === "waiting") await expect(live).not.toContainText(words.silent);
+    });

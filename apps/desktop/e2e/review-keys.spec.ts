@@ -239,6 +239,35 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   ).toBe(true);
   await page.keyboard.press("Escape");
   await expect(page.locator(".composer")).toHaveCount(0);
+  // Review 17 (R17-P2-01): ↩ with a modifier is the page's shortcut, not a comment: ⌘⇧↩ after a press opens the accept
+  // sheet alone, with focus in it, and no comment box behind it.
+  await pressRow(2);
+  await page.keyboard.press("Meta+Shift+Enter");
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toBeVisible();
+  await expect(page.locator(".composer")).toHaveCount(0);
+  expect(await sheet.evaluate((d) => d.contains(document.activeElement)), "focus is in the sheet").toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  // What a real ⌘C puts on the clipboard: the page's own text when it writes one, else the browser's (the selection).
+  await page.evaluate(() => {
+    const w = window as unknown as { copied: string | null; set: string | null };
+    addEventListener("copy", (e) => {
+      const dt = e.clipboardData!;
+      const set = dt.setData.bind(dt);
+      w.set = null;
+      dt.setData = (t, v) => ((w.set = v), set(t, v));
+    }, true);
+    addEventListener("copy", (e) => (w.copied = e.defaultPrevented ? w.set : getSelection()!.toString()));
+  });
+  const copy = async () => (await page.keyboard.press("Meta+c"), page.evaluate(() => (window as unknown as { copied: string }).copied));
+  const drag = async (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 8 });
+    await page.mouse.up();
+  };
+  const mid = (r: { x: number; y: number; height: number }, dx: number) => ({ x: r.x + dx, y: r.y + r.height / 2 });
   // Review 16 (record only): a triple-click on the sign column took nothing, one on a blank line took the next line, and
   // a copy across a blank line dropped it. A triple-click takes the line it lands on; a copy keeps the lines as in the file.
   const sel = () => page.evaluate(() => getSelection()!.toString());
@@ -249,15 +278,8 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   await page.mouse.click(blank.x + 60, blank.y + blank.height / 2, { clickCount: 3 });
   expect(await sel(), "a triple-click on a blank line takes nothing").toBe("");
   const [from, to] = [(await rows.nth(2).locator(".code").boundingBox())!, (await rows.nth(4).locator(".code").boundingBox())!];
-  await page.mouse.move(from.x + 20, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(to.x + 200, to.y + to.height / 2, { steps: 8 });
-  await page.mouse.up();
-  const copied = await page.evaluate(() => {
-    const dt = new DataTransfer();
-    getSelection()!.anchorNode!.parentElement!.dispatchEvent(new ClipboardEvent("copy", { clipboardData: dt, bubbles: true, cancelable: true }));
-    return dt.getData("text/plain");
-  });
+  await drag(mid(from, 20), mid(to, 200));
+  const copied = await copy();
   const lines = copied.split("\n");
   expect(lines, "three lines, the blank one kept").toHaveLength(3);
   expect(lines[1]).toBe("");
@@ -265,6 +287,25 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   expect(lines[2].length).toBeGreaterThan(3);
   expect("export function line(price, qty) {").toContain(lines[2]);
   expect(copied, "no sign in a copy").not.toMatch(/^[+−]/m);
+  // Review 17 (R17-P3-01): a drag from one file into the next keeps both files' lines (the page's copy kept only the
+  // first file's); in the split view, a drag that starts on an added file's empty side takes the side with the code.
+  const next = page.locator("table.diff").filter({ hasText: "function total(" }).locator("tr.dl .code");
+  await drag(mid((await rows.nth(5).locator(".code").boundingBox())!, 20), mid((await next.first().boundingBox())!, 160));
+  const across = await copy();
+  expect(across, "the first file's line").toContain("fromCents(");
+  expect(across, "and the next file's").toContain("function total(");
+  await page.evaluate(() => getSelection()!.removeAllRanges());
+  await page.keyboard.press("Alt+v");
+  const side = long.locator("tr.dl").nth(2).locator("td.code");
+  await expect(side).toHaveCount(2);
+  await drag(mid((await side.first().boundingBox())!, 40), mid((await long.locator("tr.dl").nth(4).locator("td.code").last().boundingBox())!, 200));
+  const split = (await copy()).split("\n");
+  expect(split, "three lines of the added file, the blank one kept").toHaveLength(3);
+  expect(split[0]).toBe("export const fromCents = (c) => c / 100;");
+  expect(split[1]).toBe("");
+  expect("export function line(price, qty) {").toContain(split[2]);
+  await page.keyboard.press("Alt+v");
+  await expect(side).toHaveCount(1);
   const last = (await rows.count()) - 1;
   await rows.nth(last).scrollIntoViewIfNeeded();
   await pressRow(last);

@@ -389,3 +389,26 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   medians about 65 against 24 ms); line limit; doc numbers; `cargo test -p tower-supervisor` 212 passed, 2 ignored, rustfmt;
   bundle 163,810 / 163,840 B; detector 17 against 17 on the touched files, the same findings. Visual check at DPR
   2, light and dark, en and zh, 390 and 320: `/tmp/tower-design/iter17/visual/`. Not yet independently re-reviewed.
+- 2026-11-26 Review 17 — independent (`f9dd353`): PASS — 8.45 / 10, no P0 or P1; one P2 (after a press on a diff line,
+  ⌘⇧↩ opened the line's comment box behind the accept dialog, focus in it, from D163), three P3s (two drags dropped
+  lines from a copy, from D163; the goal rail still under the steer box at 560 and 640 high; answering a question set
+  the run to thinking while another call ran), the phone's Pause found fixed by the way and unrecorded, and ten
+  record-only notes. Saved as `design-evidence/reports/review17.md`.
+- 2026-11-26 Iteration 18 — review 17's four (D171–D174, T139–T142), the Pause test (D175, T143) and every record-only
+  note (D176–D183, T144–T151), with the bundle (D184, T152) and the reviews table (D185, T153). The diff table takes ↩
+  alone; a copy across files is the browser's own, and in the split view takes the side that holds lines. From 1281
+  wide the steer box stops at the rail's column, so the two never overlap at any height or scroll. The supervisor has
+  one rule at a call's start, its end and an answer: the run is at work on the newest call still in flight (not log,
+  submit or an answered question), and the live line names that call (`Store::set_live_line`); the desk's pulse keeps
+  the same calls (engine_error keeps them, run_ended clears them). On the phone the caveat line reads "With caveats,
+  look first: …", keeps CJK words whole, and its mark stands on the title; docs/12 §12.5.3 rule 8 says where the amber
+  ! goes. A look thumbnail waits in the frame of Tower's capture (the desktop's 16:10, the phone's 390×844 on the Mobile
+  tab); a load failure is said in the interface's language; the Chinese held-out list has no space after "："; in the
+  dark theme the shimmer is a gap in a veil of the ground, so the words brighten as the light passes (142 to 209 grey
+  on the action words, about 5.7:1 at rest). Each fix's test fails on `f9dd353`'s sources, one file set at a time
+  (`/tmp/tower-design/iter18/oldsrc/`; the Pause test on `2d3eeb8`; the phone's keep-all and mark rules by taking each
+  out). The first gate run went over budget (164,051 B): Vite's modulepreload polyfill is off and the unused
+  `LookStepsRead` is gone, no budget changed. The first full e2e run failed two look tests: the shared fixture image had
+  been made 16:10, which their tall page needs; the fixture is back and the phone's frame was added instead. Gates
+  (run alone, second run): tsc; vitest 43 / 249; e2e 410/0 (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter18/allshots`); perf alone (board of 50: 615 / 240 / 187 ms against 175 / 149 / 106 ms; switch medians about 61 against 27 ms); line limit; doc numbers; `cargo test -p tower-supervisor -p tower-store -p tower-core` 384 passed, 2 ignored, rustfmt; bundle 163,829 / 163,840 B; detector 19 against 19 on the touched files, the same findings. Visual check at DPR 2, light and dark: `/tmp/tower-design/iter18/visual/`. Not
+  yet independently re-reviewed.

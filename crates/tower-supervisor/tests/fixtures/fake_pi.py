@@ -144,6 +144,23 @@ def run(message):
         out({"type": "tool_execution_end", "toolCallId": "pb", "toolName": "bash",
              "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
         tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
+    elif scenario == "parallel_ask":
+        # Three calls in flight (a read, a command, a listing), the newest ends first; a question while two still
+        # run; then the command, then the read. Each end, and the answer, leaves the run on the newest call left.
+        def start(cid, name, args):
+            out({"type": "tool_execution_start", "toolCallId": cid, "toolName": name, "args": args})
+        def end(cid, name):
+            out({"type": "tool_execution_end", "toolCallId": cid, "toolName": name,
+                 "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
+        start("pr", "read", {"path": "README.md"})
+        start("pb", "bash", {"command": "touch done.txt"})
+        start("pl", "ls", {"path": "."})
+        end("pl", "ls")
+        dialog('tower:' + json.dumps({"tower": "question", "question": "继续吗？", "options": ["a", "b"], "why": ""}))
+        open("done.txt", "w").write("ok\n")
+        end("pb", "bash")
+        end("pr", "read")
+        tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
     elif scenario == "pass_touch":
         # As "pass", and touches a module a test loads (so the perturbation
         # step has something to probe).

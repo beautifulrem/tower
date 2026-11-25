@@ -849,6 +849,78 @@ test("the shimmer's light passes over a short action word, it does not dim the w
   expect(cols.least, `under the light a letter keeps ${Math.round(cols.least * 100)}% of its ink`).toBeGreaterThanOrEqual(0.3);
 });
 
+// Review 17 (record only): in the dark theme the ground is darker than the words, so a band of it passing read as the
+// words dimming. There the light is the gap in a veil of the ground: the words rest a little under it, and where the
+// light passes they stand at their full ink, so the line brightens as it is lit.
+test("in the dark theme the shimmer's light brightens the words it passes: they rest under a veil and stand whole in the light", async ({ page }) => {
+  const fresh = (F: Record<string, any>) => {
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
+  };
+  await page.emulateMedia({ colorScheme: "dark" });
+  await openTower(page, "overview", { enrich: fresh });
+  const id = await page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first().getAttribute("data-goal");
+  await openTower(page, `goal/${id}`, { enrich: fresh });
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
+  const words = page.locator(".annunciator .live-moving .live-action");
+  await expect(words).toBeVisible();
+  const shot = async (t: number | null) => {
+    await words.evaluate((el, t) => {
+      el.textContent = "bash";
+      const band = document.getAnimations().find((a) => (a.effect as KeyframeEffect)?.pseudoElement === "::after" && (a.effect as KeyframeEffect).target === el)!;
+      band.pause();
+      band.currentTime = t ?? 0;
+      el.classList.toggle("tmp-no-band", t === null);
+    }, t);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return (await words.screenshot()).toString("base64");
+  };
+  await page.addStyleTag({ content: ".tmp-no-band::after { visibility: hidden !important; }" });
+  const plain = await shot(null);
+  const times = Array.from({ length: 16 }, (_, i) => i * 150);
+  const shots = [];
+  for (const t of times) shots.push(await shot(t));
+  // For each frozen moment, each ink column's ink against without the band: 1 is its full ink.
+  const inkOf = await page.evaluate(
+    async ([plain, shots]) => {
+      const load = async (s: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${s}`;
+        await img.decode();
+        const c = document.createElement("canvas");
+        [c.width, c.height] = [img.width, img.height];
+        const x = c.getContext("2d")!;
+        x.drawImage(img, 0, 0);
+        return x.getImageData(0, 0, c.width, c.height);
+      };
+      const B = await load(plain);
+      const px = (D: ImageData, x: number, y: number) => [0, 1, 2].map((k) => D.data[(y * D.width + x) * 4 + k]);
+      const dist = (p: number[], q: number[]) => p.reduce((s, v, i) => s + Math.abs(v - q[i]), 0);
+      const ground = px(B, 0, 0);
+      const stand = (D: ImageData, x: number) => Math.max(...[...Array(D.height).keys()].map((y) => dist(px(D, x, y), ground)));
+      const ink = [...Array(B.width).keys()].filter((x) => stand(B, x) > 90);
+      const out: number[][] = [];
+      for (const s of shots) {
+        const A = await load(s);
+        out.push(ink.map((x) => stand(A, x) / stand(B, x)));
+      }
+      return out;
+    },
+    [plain, shots] as const,
+  );
+  const cols = inkOf[0].length;
+  expect(cols, "the word has ink").toBeGreaterThan(10);
+  // With the light off the word, every letter rests under the veil, dimmed and never out.
+  expect(Math.max(...inkOf[0]), "at rest the word is under the veil").toBeLessThan(0.85);
+  expect(Math.min(...inkOf.flat()), "no letter goes below half its ink").toBeGreaterThanOrEqual(0.5);
+  // At its midpoint the light is a band: some columns stand whole, others still rest.
+  const mid = inkOf[times.indexOf(1200)];
+  expect(mid.filter((r) => r >= 0.95).length, "the light stands some columns whole").toBeGreaterThan(0);
+  expect(mid.filter((r) => r < 0.85).length, "the light does not take the whole word").toBeGreaterThan(0);
+  // Over one pass the light crosses the whole word: every column stands whole at some moment.
+  const reached = [...Array(cols).keys()].filter((x) => Math.max(...inkOf.map((s) => s[x])) >= 0.95).length;
+  expect(reached / cols, "over one pass the light crosses the whole word").toBeGreaterThanOrEqual(0.95);
+});
+
 test("with motion reduced, a criteria segment takes its new count at once: its fill (an ::after) does not grow along the bar", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openTower(page, "goal/G-0002");
@@ -988,28 +1060,41 @@ test("a look thumbnail is as tall as its frame and no wider than its page; the v
 });
 
 // Review 16 (record only): before an image decoded it had no width of its own, and the two thumbnails sat as two 2px
-// lines; until then each holds a page's 3:4 frame.
+// lines; until then each holds a page's frame. Review 17 (record only): a 3:4 frame jumped to the image's own width
+// when it came. The frame is Tower's capture's own (the desktop's 1280×800, the phone's 390×844), so a capture lands in
+// the box it waited in.
 test("a look thumbnail that has not decoded yet holds a page's frame, not a sliver", async ({ page }) => {
   let release!: () => void;
   const held = new Promise<void>((r) => (release = r));
-  await page.route("**/tmp-held/*.png", async (route) => {
+  await page.route("**/tmp-held/*", async (route) => {
     await held;
-    await route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAD0lEQVR4nGP4z8DAwMAAAA0AAf9mBXcAAAAASUVORK5CYII=", "base64") });
+    // Captures in Tower's proportions: the desktop's 16:10, the phone's 390×844.
+    if (route.request().url().includes("-m-")) return route.fulfill({ status: 200, contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844"><rect width="390" height="844" fill="#ccc"/></svg>' });
+    await route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAABAAAAAKCAIAAAAy3EnLAAAAFElEQVR42mP49uU9SYhhVMPQ1AAAK/bHsKIeVYgAAAAASUVORK5CYII=", "base64") });
   });
   await openTower(page, "goal/G-0001", {
     enrich: (F) => {
       enrichLook(F);
+      const look = F["goal-G-0001"].criteria.at(-1).look;
+      Object.assign(look, { mobile_base: "looks/G-0001/C4-m-base.svg", mobile_pin: "looks/G-0001/C4-m-pin.svg" });
+      F.lookImages["looks/G-0001/C4-m-base.svg"] = F.lookImages["looks/G-0001/C4-m-pin.svg"] = "";
       for (const k of Object.keys(F.lookImages)) F.lookImages[k] = `/tmp-held/${k.split("/").pop()}`;
     },
   });
   const imgs = page.locator(".criterion .look-img");
   await expect(imgs).toHaveCount(2);
   const widths = async () => (await imgs.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width))));
-  for (const w of await widths()) expect(w, "a waiting thumbnail is a page's frame").toBeGreaterThanOrEqual(70);
+  const waiting = await widths();
+  for (const w of waiting) expect(w, "a waiting thumbnail is a page's frame, 96 tall and 16:10").toBe(152);
+  // The phone's captures wait in the phone's frame: 96 tall, 390:844 inside the 1px border.
+  await page.locator(".criterion .look-viewports").getByRole("tab").nth(1).click();
+  await expect.poll(() => widths()).toEqual([45, 45]);
   release();
-  await expect(imgs).toHaveClass([/look-img-in/, /look-img-in/]);
-  // Decoded, a tall page (1×2) is its own proportion: 96 tall, 48 wide.
-  for (const w of await widths()) expect(w).toBeLessThan(60);
+  await expect.poll(() => imgs.evaluateAll((els) => els.every((e) => (e as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  expect(await widths(), "the phone's capture lands in the box it waited in").toEqual([45, 45]);
+  await page.locator(".criterion .look-viewports").getByRole("tab").nth(0).click();
+  await expect.poll(() => imgs.evaluateAll((els) => els.every((e) => (e as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  expect(await widths(), "the desktop's capture lands in the box it waited in").toEqual(waiting);
 });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
@@ -1370,6 +1455,12 @@ test("the held-out mark follows the proof: m of n with the rest named, and a res
   const [a, b] = [(await files.nth(0).boundingBox())!, (await files.nth(1).boundingBox())!];
   if (Math.abs(a.y - b.y) < 2) expect(b.x - (a.x + a.width)).toBeLessThan(10);
   expect(await c1.locator(".held-out-text").textContent()).toMatch(/\.js, \S/);
+  // In Chinese the full-width colon carries its own space: none after it, and "、" between the names.
+  await openTower(page, "goal/G-0001", { lang: "zh-CN", enrich: enrichHeldOutPartly });
+  await openReadings(page);
+  const zh = (await criterion(page, "C1").locator(".held-out-text").textContent())!;
+  expect(zh).toMatch(/：test\//);
+  expect(zh).toMatch(/\.js、\S/);
 });
 
 test("what the canary saw stands under each criterion, quietly or in the attention register, on the goal page and in the readout; the two newer sentinels read as sentence and list", async ({ page }) => {
@@ -1957,17 +2048,35 @@ test("a card's text field grows with its lines and stops at six, then scrolls", 
   expect(await area.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
 });
 
-// Review 16 (found in passing): the goal rail made room for the steer box under a class the box no longer had
-// (`.steer`, now `.steer-console`), so the rail ran under the box. The rail is shorter while the box is there.
-test("the goal rail leaves the steer box its room", async ({ page }) => {
+// Review 16 (found in passing): the goal rail made room for the steer box under a class the box no longer had. Review
+// 17: a rail sized to stop short of the box still ran 58px under it before the page scrolled (it starts below the
+// goal's head). The box keeps to the main column beside the rail; measured, they never meet, before and after a
+// scroll, in a short window and a tall one; and the rail stays in the window.
+test("the goal rail and the steer box never cover each other", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 560 });
   const { fixtures } = await openTower(page, "overview");
   const running = (fixtures.goals as Array<{ id: string; state: string }>).find((g) => g.state === "running")!;
   await openTower(page, `goal/${running.id}`);
   await expect(page.locator(".steer-console textarea")).toBeVisible();
-  const rail = page.locator(".goal-rail");
-  const max = () => rail.evaluate((el) => parseFloat(getComputedStyle(el).maxHeight));
-  const withBox = await max();
-  await page.evaluate(() => document.querySelector(".steer-console")!.remove());
-  expect((await max()) - withBox, "the rail gives the box its height").toBeGreaterThanOrEqual(80);
+  await expect(page.locator(".goal-rail .rail")).toBeVisible();
+  for (const height of [560, 640, 900]) {
+    await page.setViewportSize({ width: 1440, height });
+    for (const end of [false, true]) {
+      await page.evaluate((end) => {
+        let pane = document.querySelector<HTMLElement>(".goal-page")!;
+        while (pane.parentElement && !/auto|scroll/.test(getComputedStyle(pane).overflowY)) pane = pane.parentElement;
+        pane.scrollTop = end ? pane.scrollHeight : 0;
+      }, end);
+      await page.waitForTimeout(50);
+      const m = await page.evaluate(() => {
+        const [r, b] = [".goal-rail", ".steer-console"].map((q) => document.querySelector(q)!.getBoundingClientRect());
+        const w = Math.min(r.right, b.right) - Math.max(r.left, b.left);
+        const h = Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top);
+        const pane = document.querySelector(".goal-page")!.closest("main")!.getBoundingClientRect();
+        return { overlap: w > 0 && h > 0 ? Math.round(w * h) : 0, railBottom: Math.round(r.bottom), box: Math.round(b.top), window: innerHeight, scrolled: Math.round(pane.top) };
+      });
+      expect(m.overlap, `${height}, ${end ? "scrolled to the end" : "at the top"}: ${JSON.stringify(m)}`).toBe(0);
+      if (end) expect(m.railBottom, "the rail stays in the window").toBeLessThanOrEqual(m.window);
+    }
+  }
 });

@@ -48,7 +48,7 @@ export const ACTIVITY_MAX = 200;
 export interface Pulse {
   /** When the goal's event stream last moved (ms since the epoch). */
   at: number;
-  /** The tool call in flight longest, if one started and has not ended. */
+  /** The newest tool call still in flight, if any: the one the run is at work on. */
   tool: { name: string; since: number } | null;
   /** Every call in flight, by its id: an engine may run tools side by side, and one ending leaves the others running
    *  (review 16: a single slot read the run as idle while its command still ran). */
@@ -345,11 +345,13 @@ export function beat(goalId: string, event: TraceEntry["event"] | null, now = Da
       const p = s.pulse[goalId] ?? { at: 0, tool: null };
       p.at = now;
       const calls = (p.calls ??= {});
-      if (event?.kind === "tool_started") calls[event.call_id] = { name: event.tool, since: now };
+      // Work, as the supervisor counts it: not a note (log), the hand-in (submit) or a question to you.
+      if (event?.kind === "tool_started" && !/^(log|submit|ask_user)$/.test(event.tool)) calls[event.call_id] = { name: event.tool, since: now };
       else if (event?.kind === "tool_ended") delete calls[event.call_id];
-      else if (event?.kind === "run_ended" || event?.kind === "engine_error") p.calls = {};
-      const oldest = Object.values(p.calls).sort((a, b) => a.since - b.since)[0];
-      p.tool = oldest ? { ...oldest } : null;
+      else if (event?.kind === "run_ended") p.calls = {};
+      // At work on the newest call still in flight, as the supervisor's mode and live line say (review 17).
+      const work = Object.values(p.calls).sort((a, b) => b.since - a.since)[0];
+      p.tool = work ? { ...work } : null;
       s.pulse[goalId] = p;
     }),
   );

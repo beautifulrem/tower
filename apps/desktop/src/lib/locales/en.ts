@@ -19,6 +19,7 @@ export const en: DictNow = {
     open: "Open",
     retry: "Retry",
     loadFailed: "Couldn't load this",
+    codeMissing: "This part of Tower didn't load. Retry; if it keeps failing, restart Tower.",
     notice: "Notice",
     problem: "Problem",
     copied: "Copied",

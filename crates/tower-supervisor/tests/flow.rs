@@ -163,6 +163,55 @@ async fn a_tool_still_in_flight_keeps_the_run_at_work_when_another_ends() {
     assert_eq!(after, Some(tower_core::Mode::Thinking), "the last call ended: thinking");
 }
 
+/// Review 17: the rule is one, at a start, an end and an answer: the run is at work on the newest call still in
+/// flight, and its live line says that call. Three calls tell the newest from the oldest; a question answered while
+/// two still run goes back to the command, not to thinking.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_end_and_an_answer_leave_the_run_on_the_newest_call_still_in_flight() {
+    use tower_core::Mode::*;
+    let h = harness("parallel_ask").await;
+    let id = create(&h).await;
+    let mut item = None;
+    for _ in 0..100 {
+        item = h.sup.inbox().unwrap().into_iter().find(|i| i.kind == InboxKind::Question);
+        if item.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let item = item.expect("question in inbox");
+    // The listing ended while the read and the command run: the line names the command, the newest left.
+    let line = h.sup.goal(&id).unwrap().summary.live_line.expect("a live line");
+    assert_eq!(line.action, "bash", "the live line follows the call at work");
+    h.sup.answer(&item.id, "a").await.unwrap();
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+    let mut trace = h.sup.trace(&id, None, 500).unwrap();
+    trace.sort_by_key(|e| e.seq);
+    let first = trace
+        .iter()
+        .position(|e| matches!(&e.event, EventKind::ToolStarted { call_id, .. } if call_id == "pr"))
+        .expect("the read started");
+    let last = trace
+        .iter()
+        .position(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == "pr"))
+        .expect("the read ended");
+    let modes: Vec<_> = trace[first..]
+        .iter()
+        .filter_map(|e| match &e.event {
+            EventKind::ModeChanged { mode } => Some((e.seq, *mode)),
+            _ => None,
+        })
+        .take_while(|(seq, _)| *seq <= trace[last].seq + 1)
+        .map(|(_, m)| m)
+        .collect();
+    assert_eq!(
+        modes,
+        vec![Reading, Executing, Reading, Executing, WaitingOnYou, Executing, Reading, Thinking],
+        "start read, bash, ls; ls ends (the command, newest left); a question; answered (the command again); \
+         the command ends (the read); the read ends (thinking)"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn repeated_failures_raise_a_stall_without_stopping_the_run() {
     let h = harness("flaky").await;

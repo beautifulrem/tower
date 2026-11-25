@@ -135,7 +135,8 @@ export function FileDiff(props: FileDiffProps) {
     // Focus on the table itself: a press left it there, on the line pressed (if any).
     const onTable = e.target === table;
     const btn = onTable ? (pressedRow?.isConnected ? pressedRow.querySelector<HTMLElement>(".ln-btn") : null) : (e.target as HTMLElement).closest<HTMLElement>(".ln-btn");
-    if (e.key === "Enter") return void (onTable && btn && (go(btn), btn.click()));
+    // ↩ alone: with a modifier it is a shortcut of the page's (⌘⇧↩ accepts), never a comment (review 17).
+    if (e.key === "Enter") return void (onTable && btn && !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) && (go(btn), btn.click()));
     if (!down && e.key !== "ArrowUp") return;
     if (!btn) {
       // No line pressed: land on the first line.

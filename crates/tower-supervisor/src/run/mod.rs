@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tower_core::i18n::Choice;
 use tower_core::lifecycle::Transition;
-use tower_core::view::InboxKind;
-use tower_core::{EventKind, LifecycleState, Mode, PauseReason, tr};
+use tower_core::view::{InboxKind, LiveLine};
+use tower_core::{EventKind, LifecycleState, Millis, Mode, PauseReason, tr};
 use tower_pi::{Engine, EngineConfig, ImageAttachment};
 use tower_store::NewInboxItem;
 
@@ -123,6 +123,8 @@ struct ToolCall {
     tool: String,
     args: Value,
     started: Instant,
+    /// When its start was recorded (the live line's time).
+    at: Millis,
 }
 
 #[derive(Debug, Default)]
@@ -147,6 +149,35 @@ pub struct Flags {
     last_stream: Option<Instant>,
     /// Engine dialog id -> (inbox id, dialog method).
     pub dialogs: HashMap<String, (String, String)>,
+}
+
+impl Flags {
+    /// The call the run is at work on: the newest still in flight, as a start sets the mode and the live line to the
+    /// call that starts. `log` and `submit` are never work; an `ask_user` whose question is answered no longer waits.
+    fn at_work(&self) -> Option<&ToolCall> {
+        self.tools
+            .values()
+            .filter(|c| c.tool != "log" && c.tool != "submit" && (c.tool != "ask_user" || !self.dialogs.is_empty()))
+            .max_by_key(|c| c.started)
+    }
+}
+
+/// After a call ends or a question is answered: the mode of the call still at work, and the live line back on it,
+/// or thinking when none is (review 16 and 17: a call ending, or an answer, while another runs set the run to
+/// thinking, and the desk and the phone then read a running command as silence).
+pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
+    let g = &run.goal_id;
+    let work = run.flags().at_work().map(|c| LiveLine {
+        mode: Mode::for_tool(&c.tool),
+        action: c.tool.clone(),
+        target: crate::summarize::tool_call(&c.tool, &c.args, &run.workspace),
+        at: c.at,
+    });
+    if let Some(line) = &work {
+        inner.store(|s| s.set_live_line(g, line))?;
+        inner.mark_dirty(g);
+    }
+    inner.set_mode(g, work.map_or(Mode::Thinking, |l| l.mode))
 }
 
 #[derive(Debug)]

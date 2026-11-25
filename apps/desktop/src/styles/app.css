@@ -430,6 +430,19 @@
     pointer-events: none;
     animation: shimmer 2.4s linear infinite;
   }
+  /* Dark: the ground is darker than the words, so a band of it read as the words dimming (review 17). There the light
+     is a gap in a veil of the ground: under the veil the words keep 65% of their ink, and in the light (up to 2em
+     across) they stand whole, so the line brightens as it is lit. The same band of the ground, moved by transform alone. */
+  :root[data-theme="dark"] .live-moving .live-action::after {
+    --veil: color-mix(in oklab, var(--live-ground) 35%, transparent);
+    background: linear-gradient(
+      90deg,
+      var(--veil) calc(50% - min(2.5em, 10%)),
+      #0000 calc(50% - min(1em, 4%)),
+      #0000 calc(50% + min(1em, 4%)),
+      var(--veil) calc(50% + min(2.5em, 10%))
+    );
+  }
 }
 @keyframes shimmer {
   from {
@@ -1737,7 +1750,8 @@ input[type="radio"] {
   grid-template-columns: minmax(0, 1fr);
 }
 /* The rail starts on the main column's first line and stays in sight as the page scrolls: the contract is what every
-   block on the left is measured against. Taller than the window, it scrolls itself; it stops short of the steer box. */
+   block on the left is measured against. Taller than the window, it scrolls itself. The steer box keeps to the main
+   column beside it (workbenches.css), so the rail runs its full height and nothing covers it. */
 .goal-rail {
   position: sticky;
   top: 0;
@@ -1746,17 +1760,13 @@ input[type="radio"] {
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-.goal-page:has(.steer-console) .goal-rail {
-  max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - 112px);
-}
 /* A half-screen window: the rail folds under the main column (its own rule follows the rail's base rule below). */
 @media (max-width: 1280px) {
   .goal-body {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
   }
-  .goal-rail,
-  .goal-page:has(.steer-console) .goal-rail {
+  .goal-rail {
     position: static;
     max-height: none;
     overflow: visible;
@@ -5196,16 +5206,20 @@ input[type="radio"] {
   height: 96px;
   width: auto;
   max-width: 160px;
+  /* Until it has decoded an image has no width of its own: it holds the frame of Tower's capture (the desktop's
+     1280×800, the phone's 390×844), so the capture lands in the box it waited in; decoded, its own proportion. */
+  aspect-ratio: auto 16 / 10;
   object-fit: contain;
   object-position: top center;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
   background: var(--bg-inset);
 }
-/* Until it has decoded (no `look-img-in` yet), an image has no width of its own: it holds a page's frame. */
-.look-img:not(.look-img-in) {
-  aspect-ratio: 3 / 4;
+
+.look-phone .look-img {
+  aspect-ratio: auto 390 / 844;
 }
+
 /* Inside the verification sheet the strip is a reading among readings: shorter. */
 .verify-item .look-img,
 .verify-item .look-missing {

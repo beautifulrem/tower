@@ -166,4 +166,5 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   11,437 / 12,288 B; detector: the same 13 app.css findings (`/tmp/tower-design/iter8b/detect.json`). Curated
   `design-evidence/*.after.webp` re-rendered from these shots. These fixes are verified by tests, not independently
   re-reviewed; the acceptance stands on `d6f07ef`. `DESIGN_DELIVERY.md` is the final report.
-
+- 2026-11-25 Perf project on `3b11e8e` (not part of the default gate command): passes. Board of 50 goals 549 / 265 / 185 ms
+  against the seeded board's 179 / 167 / 116 ms; view switches with 50 goals 31–67 ms (`/tmp/tower-design/iter8b/checks/perf.log`).

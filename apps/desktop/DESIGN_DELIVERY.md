@@ -1,6 +1,6 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, eleven local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, twelve local commits, nothing pushed, merged or deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`. Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
 accepted it), **Unverified**, **Deferred** (with reason), **Blocked**.
@@ -167,6 +167,9 @@ At the final commit:
 - **Shots:** 69/69.
 - **Line limit:** passes.
 - **Bundle:** all interface JS 163,720 / 163,840 B, goal page 11,437 / 12,288 B. The budget was never raised.
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 549 / 265 / 185 ms against 179 / 167 /
+  116 ms for the seeded board, inside its 750 ms margin. View switches with 50 goals take 31–67 ms
+  (`/tmp/tower-design/iter8b/checks/perf.log`).
 - **Hardening probe:**
   - no element runs past the edge at 1040 and 1440 with long en and zh titles;
   - text contrast at least 5.26:1 light and 5.70:1 dark;
@@ -179,8 +182,8 @@ views, not in the packaged app.
 
 ## 14. Commits — Implemented
 
-`bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, and the
-commit that carries this report (review-8 fixes, refreshed evidence). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+`bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
+(review-8 fixes, refreshed evidence, this report) and the last commit on the branch, which records the perf run here. All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 

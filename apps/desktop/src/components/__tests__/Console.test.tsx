@@ -224,6 +224,22 @@ describe("TelemetryStrip", () => {
     expect(container.querySelector(".gauge-phone-ok")).not.toBeNull();
   });
 
+  it("says the sandbox is off in ink with the uncoloured hint mark, never the amber ! (review 15: S0 is no decision of yours)", async () => {
+    const set = ((await import("../../lib/store")) as unknown as { __setState: (k: string, v: unknown) => void }).__setState;
+    set("env", { pi_version: "1.0.0", pi_path: "/opt/bin/pi", issues: [{ kind: "no_sandbox", blocking: false, text: "", fix: null }] });
+    set("sandboxPosture", null);
+    try {
+      const { container } = render(() => <TelemetryStrip />);
+      const gauge = container.querySelector(".gauge-sandbox.warn")!;
+      expect(gauge.textContent).toContain("No sandbox");
+      expect(gauge.querySelector("svg.mark-notice")).not.toBeNull();
+      expect(gauge.querySelector(".mark-attention")).toBeNull();
+    } finally {
+      set("env", { pi_version: "1.0.0", pi_path: "/opt/bin/pi", issues: [] });
+      set("sandboxPosture", { backend: "seatbelt", backend_name: "S2 Seatbelt", available: true, microvm_available: true, warnings: [] });
+    }
+  });
+
   it("says unseen errors with the mark family's red ×, not a red dot (review 14: the title bar mixed the two)", async () => {
     const set = ((await import("../../lib/store")) as unknown as { __setState: (k: string, v: number) => void }).__setState;
     set("unseenActivity", 2);

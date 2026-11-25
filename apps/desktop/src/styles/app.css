@@ -156,7 +156,7 @@
   color: var(--text-1);
 }
 /* The engine heartbeat: quiet while recent, text-1 past 30 s, and past 2 min the hint mark, drawn in the reading's own
-   ink (docs/12 §12.2, docs/08 §8.6.3): silence is worth a look, not a failure, so it wears no status colour. */
+   ink (docs/12 §12.4.3, docs/08 §8.6.3): silence is worth a look, not a failure, so it wears no status colour. */
 .gauge-stale {
   color: var(--text-1);
 }
@@ -402,7 +402,9 @@
    reads as moving. Only for a running goal that is moving, and only where motion is welcome: elsewhere the words are
    plain. The light is a band of the line's own ground laid over the words, so they fade toward the ground and back,
    never to a colour; the words keep their ink and the band moves by transform alone, so it stays on the compositor.
-   The words clip the band: it never passes over the target beside them. */
+   The words clip the band: it never passes over the target beside them. The band is 5em across, or a fifth of the
+   ::after (half the words) when that is narrower, so a short word ("bash") sees a light pass over it rather than
+   dimming whole (review 15). */
 .live-line {
   --live-ground: var(--bg-app);
 }
@@ -421,7 +423,7 @@
     bottom: 0;
     left: -75%;
     width: 250%;
-    background: linear-gradient(90deg, #0000 calc(50% - 2.5em), var(--live-ground) 50%, #0000 calc(50% + 2.5em));
+    background: linear-gradient(90deg, #0000 calc(50% - min(2.5em, 10%)), var(--live-ground) 50%, #0000 calc(50% + min(2.5em, 10%)));
     pointer-events: none;
     animation: shimmer 2.4s linear infinite;
   }
@@ -525,6 +527,13 @@
 }
 .live-age {
   color: var(--text-3);
+}
+/* A silent engine's last movement is the reading to look at: text-1 and the hint mark, no status colour. */
+.live-age-silent {
+  color: var(--text-1);
+}
+.live-age-silent .mark-notice {
+  margin-right: 4px;
 }
 
 /* ======================================================================

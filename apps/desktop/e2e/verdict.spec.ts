@@ -680,7 +680,7 @@ for (const [lang, word, review] of [["en", "Needs you", "To review"], ["zh-CN", 
     });
 
 // Review 7 P3-02, review 8 R8-P3-01: a running goal's state is said once, by "Now" under the peek's head, so the head never
-// lags or contradicts it: not "Running" over "Unresponsive", and not "Unresponsive" over "Needs you" when a silent run is
+// lags or contradicts it: not "Running" over "Silent", and not "Silent" over "Needs you" when a silent run is
 // waiting for your answer (the supervisor sets waiting_on_you on a question; no tool runs until you answer).
 const g2Waiting = (F: Record<string, any>) => {
   enrichRich(F);
@@ -689,7 +689,9 @@ const g2Waiting = (F: Record<string, any>) => {
   F.inbox.push({ ...structuredClone(q), id: "ib-g2-question", goal_id: "G-0002", goal_title: title, kind: "question", subject: "Which rounding does the ledger use?" });
   for (const g of [F.goals.find((x: any) => x.id === "G-0002"), F["goal-G-0002"]?.summary]) if (g) Object.assign(g, { needs_you: 1, mode: "waiting_on_you" });
 };
-for (const [lang, words] of [["en", { running: "Running", silent: "Unresponsive", waiting: "Needs you" }], ["zh-CN", { running: "运行中", silent: "无响应", waiting: "等你" }]] as const)
+// Silence is what the desk knows (no event for two minutes), never "Unresponsive", the supervisor's word for a host it
+// cannot hear (iteration 15 follow-up, D144).
+for (const [lang, words] of [["en", { running: "Running", silent: "Silent", waiting: "Needs you" }], ["zh-CN", { running: "运行中", silent: "已沉默", waiting: "等你" }]] as const)
   for (const [name, enrich, now] of [["silent", enrichRich, "silent"], ["silent and waiting for your answer", g2Waiting, "waiting"]] as const)
     test(`the peek's head of a ${name} run leaves its state to Now (${lang})`, async ({ page }) => {
       await openTower(page, "overview", { enrich, lang });
@@ -701,5 +703,21 @@ for (const [lang, words] of [["en", { running: "Running", silent: "Unresponsive"
       for (const w of Object.values(words)) await expect(head).not.toContainText(w);
       const live = page.locator(".peek-drawer .live-line").first();
       await expect(live).toContainText(words[now]);
+      await expect(live).not.toContainText(lang === "en" ? "Unresponsive" : "无响应");
       if (now === "waiting") await expect(live).not.toContainText(words.silent);
+      // The last movement, the reading to look at when silent: text-1 beside the hint mark, no status colour.
+      if (now === "silent") {
+        const age = live.locator(".live-age");
+        await expect(age.locator("svg.mark-notice")).toHaveCount(1);
+        expect(await age.evaluate((el) => [getComputedStyle(el).color, getComputedStyle(el.querySelector("svg")!).color, getComputedStyle(document.documentElement).getPropertyValue("--text-1").trim()])).toEqual(
+          await age.evaluate((el) => {
+            const probe = document.createElement("i");
+            document.body.append(probe);
+            probe.style.color = "var(--text-1)";
+            const c = getComputedStyle(probe).color;
+            probe.remove();
+            return [c, c, getComputedStyle(document.documentElement).getPropertyValue("--text-1").trim()];
+          }),
+        );
+      }
     });

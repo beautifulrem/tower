@@ -72,7 +72,7 @@ interface State {
    * The engine's pulse per goal: when its event stream last moved (a trace
    * entry or streamed text) and the tool call still in flight, if any. The
    * heartbeat reads this, so a long tool run is "a tool running for 3m",
-   * not "unresponsive".
+   * not "silent".
    */
   pulse: Record<string, Pulse>;
   toasts: Toast[];

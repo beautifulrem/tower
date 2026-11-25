@@ -109,8 +109,20 @@ export function FileDiff(props: FileDiffProps) {
   });
 
   let table!: HTMLTableElement;
+  // Tabbing into the table lands on its first line, where the arrow keys move. A press of the pointer focuses the table
+  // too, and moving focus then would drop the text you are selecting (review 15: no diff line could be selected or
+  // copied), so a focus that a press brought stays on the table.
+  let pressed = false;
+  const press = () => {
+    pressed = true;
+    // Released anywhere, even outside the table.
+    const done = new AbortController();
+    const up = () => ((pressed = false), done.abort());
+    window.addEventListener("pointerup", up, { capture: true, signal: done.signal });
+    window.addEventListener("pointercancel", up, { capture: true, signal: done.signal });
+  };
   const onTableFocus = (e: FocusEvent) => {
-    if (e.target !== table) return;
+    if (e.target !== table || pressed) return;
     table.querySelector<HTMLElement>(".ln-btn")?.focus({ preventScroll: true });
   };
   const onTableKey = (e: KeyboardEvent) => {
@@ -287,7 +299,7 @@ export function FileDiff(props: FileDiffProps) {
     <section class="file" aria-label={props.file.path} data-file-path={props.file.path}>
       <header class="file-head">
         <span class="file-status meta">{statusLabel(props.file.status)}</span>
-        <span class="mono ellipsis grow" title={props.file.path}>
+        <span class="file-path mono ellipsis grow" title={props.file.path}>
           <Show when={props.file.old_path}>
             <span class="t3">
               {props.file.old_path}
@@ -337,6 +349,7 @@ export function FileDiff(props: FileDiffProps) {
           tabindex="0"
           aria-label={t("review.diffLabel", { path: props.file.path })}
           aria-describedby={helpId}
+          onPointerDown={press}
           onFocus={onTableFocus}
           onKeyDown={onTableKey}
         >

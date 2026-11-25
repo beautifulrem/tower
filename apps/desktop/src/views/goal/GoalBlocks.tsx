@@ -84,7 +84,7 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
 
       <Section title={t("goal.criteria")}>
         <For each={d().criteria}>
-          {(c) => <CriterionRow goalId={g().id} c={c as ExtCriterionView} state={g().state} base={d().base_commit} sentinels={d().sentinels} told={props.hasDecision && g().pause_reason === "criteria_cannot_run"} />}
+          {(c) => <CriterionRow goalId={g().id} c={c as ExtCriterionView} state={g().state} base={d().base_commit} sentinels={d().sentinels} ids={d().criteria.map((x) => x.criterion.id)} told={props.hasDecision && g().pause_reason === "criteria_cannot_run"} />}
         </For>
         <Show when={!d().has_held_out_tests && g().progress.machine > 0}>
           <p class="meta held-out-none">

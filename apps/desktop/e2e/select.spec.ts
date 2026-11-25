@@ -38,3 +38,31 @@ for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0003"])
     expect(r.selectable, "hidden words a copy would take").toEqual([]);
     for (const v of r.text) expect(v, "text you may copy selects").toBe("text");
   });
+
+// Review 15, P3-03 (D146): the machine values you take elsewhere select — a goal's title, its id, a pin for `git show`,
+// a command to rerun, a path — a triple-click takes the whole value (a double-click a hash in a range of two) without
+// moving you. Before, none of them did.
+for (const [route, view, sels] of [
+  ["goal/G-0001", ".goal-page", [[".goal-title", 3], [".goal-head .code-val", 3], [".seal-pin", 3], [".criterion-cmd", 3]]],
+  ["review/G-0003", ".review", [[".review-title", 3], [".review-head .row > .code-val", 3], [".review-stat-pins", 2], [".file-path", 3]]],
+] as const)
+  test(`on ${route} a title, an id, a pin, a command and a path select whole`, async ({ page }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openTower(page, route, { enrich: enrichRich });
+    await settled(page, route);
+    for (const [sel, clickCount] of sels) {
+      const el = page.locator(sel).first();
+      await expect(el, sel).toBeVisible();
+      const b = (await el.boundingBox())!;
+      await page.evaluate(() => getSelection()!.removeAllRanges());
+      await page.mouse.click(b.x + Math.min(12, b.width / 2), b.y + b.height / 2, { clickCount });
+      const got = await page.evaluate(() => getSelection()!.toString().replace(/\s+/g, " ").trim());
+      const text = await el.evaluate((e) => e.textContent!.replace(/\s+/g, " ").trim());
+      if (clickCount === 3) expect(got, `${sel} selects`).toContain(text);
+      else {
+        expect(got, `${sel}: a double-click takes a hash`).toMatch(/^[0-9a-f]{7}$/);
+        expect(text).toContain(`@${got}`);
+      }
+      await expect(page.locator(view), `${sel}: the click keeps you on ${route}`).toBeVisible();
+    }
+  });

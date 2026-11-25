@@ -333,9 +333,31 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   confirmed the shimmer band changes no ground pixel on the goal page or in the peek and only the words' own, the
   hatched merged core reads at 12 px, the chip and panel buttons sit at their sizes, and found two older faults: the
   phone's "Live" wore the verifier's green (D142, T111) and silence was a red ring in the title bar and on the phone
-  where docs/12 §12.2 and docs/08 §8.6.3 draw the uncoloured hint mark (D143, T112). Both fixed, each with a test that
+  where docs/12 §12.4.3 and docs/08 §8.6.3 draw the uncoloured hint mark (D143, T112). Both fixed, each with a test that
   fails on `ae1c049`. Also: the phone's action and target are two words (a real space); the D rows' evidence paths and
   D137, D139, D140's wording corrected; docs/12's two "differ only by colour" leftovers gone. Gates: tsc; vitest 42 /
   245; e2e 394 + the phone test made deterministic (10/10 under five workers, phone suite 17/17); shots 69/69; perf
   alone (board of 50: 672 / 394 / 215 ms against 280 / 183 / 148 ms; switch medians 72 against 29 ms); line limit; doc
   numbers; cargo remote 4/4; bundle 163,047 / 163,840 B; detector unchanged on the touched files (17 against 17).
+- 2026-11-26 Review 15 — independent (`2408609`): PASS 8.285 / 10 with one P1 (the phone drew the verifier's green on
+  every goal to accept), one P2 (held-out files under the wrong line), five P3s (a path's "C9" read as a criterion; a
+  wrapped evidence strip 18px off; titles, ids, pins, commands and paths not copyable; "Unresponsive" for the desk's
+  own reading of silence; "No sandbox" in amber) and record-only notes. Saved as `design-evidence/reports/review15.md`.
+- 2026-11-26 Iteration 16 — review 15's seven (D144–D150, T113–T119) and every record-only note (D151–D156,
+  T120–T124). The phone's goals to accept are green only when the verifier's pass counts, with its pin; otherwise the
+  amber ! and "Passed, doesn't count", or the dashed neutral ring and "Not machine-verified". On the phone a run inside
+  a tool call (mode reading, editing or executing) is busy, never silent, and the header says the tool and how long it
+  has run; a run that waits on you says Needs you with the !, a silent one Silent with the hint mark. The held-out files
+  that ran sit right under their count; a finding names only the goal's own criteria; the evidence strip spaces by gap
+  and gives a tag's 6px hang back on the trailing side, so every wrapped line keeps the title's edge; titles, ids,
+  pins, commands, paths and diff lines select (a pointer's focus stays on the diff table, Tab still lands on its first
+  line); "No sandbox" is ink with the hint mark; the title bar's running mark is 12px on the desk and the phone; the
+  shimmer's band is a quarter of a short word. docs/12: the PR step without ■, Tower's own failures on the red list, the
+  title bar's sandbox and phone-off gauges; references to §12.2 corrected to §12.4.3. Kept: D136, D137, the phone's
+  hollow rows, D128, `┆` (D156). Each fix's test fails on `2408609`'s sources (one file set at a time; the phone badges
+  also with only the old badge code). Gates (run alone): tsc; vitest 42 / 246; e2e 403/0 on the first full run, then
+  the phone suite 19/19 after matching its badge order to the desk; shots 69/69 (`/tmp/tower-design/iter16/allshots`);
+  perf (board of 50: 608 / 242 / 196 ms against 190 / 146 / 114 ms; switch medians about 60 against 25 ms); line limit;
+  doc numbers; cargo remote 4/4; bundle 163,205 / 163,840 B; detector 20 against 20 on the touched files, the same
+  findings. Visual check at DPR 2, light and dark, en and zh: `/tmp/tower-design/iter16/visual/`. Not yet independently
+  re-reviewed.

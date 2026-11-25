@@ -138,7 +138,7 @@ const RANK = ["ok", "fact", "obs", "attn", "danger"];
  * say the same thing), in the weightier of its tones: a high sentinel behind it makes it a question for you on every
  * criterion it names. A pass never wears danger red: what stands against a pass is a question for you, in the attention ground.
  */
-export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [string, string, string?, 1?][] {
+export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = [], ids?: string[]): [string, string, string?, 1?][] {
   const ver = cur.verified;
   if (cur.criterion.kind.type !== "exec" || !ver) return [];
   const out: [string, string, string?, 1?][] = [];
@@ -153,7 +153,9 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [s
   if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk"), undefined, 1]);
   else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered"), undefined, 1]);
   else if (cur.canary === "not_checked") out.push([cav, t("honesty.cavAsserts"), undefined, 1]);
-  const forCur = (h: SentinelHit) => !h.detail || h.detail.includes(cur.criterion.id) || !/\bC\d+\b/.test(h.detail);
+  // The criteria a finding names: the goal's own ids, whole (review 15: a path such as tests/C9/… names none).
+  const named = (h: SentinelHit) => (h.detail?.match(/\bC\d+\b/g) ?? []).filter((x) => !ids || ids.includes(x));
+  const forCur = (h: SentinelHit) => !named(h).length || named(h).includes(cur.criterion.id);
   // The assertions' guard and the test machinery, each said once, by its weightiest finding; "assertions untouched" only
   // when neither finding stands, so the row never says it beside the caveat "code reaches into the test runner".
   const weightiest = [...sents].sort((a, b) => b.severity - a.severity);
@@ -186,8 +188,8 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [s
   // another criterion, or is of a kind with no pill), the row still says why its pass doesn't count, and where.
   const high = weightiest.filter((h) => h.severity >= 3);
   if (held && okC && ver.passed && high.length && ![gh, mh, bh].some((h) => h && h.severity >= 3)) {
-    const ids = [...new Set(high.flatMap((h) => h.detail?.match(/\bC\d+\b/g) ?? []))].filter((id) => id !== cur.criterion.id);
-    out.push(["attn", ids.length ? t("goal.evHeldBy", { ids: ids.join(", ") }) : t("goal.evHeld"), high.map((h) => [h.title, h.detail].filter(Boolean).join(": ")).join("\n")]);
+    const who = [...new Set(high.flatMap(named))].filter((id) => id !== cur.criterion.id);
+    out.push(["attn", who.length ? t("goal.evHeldBy", { ids: who.join(", ") }) : t("goal.evHeld"), high.map((h) => [h.title, h.detail].filter(Boolean).join(": ")).join("\n")]);
   }
   const errs = ver.console_errors ?? cur.look?.console_errors ?? [];
   if (errs.length) out.push(["danger", t("look.consoleErrors", { n: errs.length }), errs.join("\n")]);

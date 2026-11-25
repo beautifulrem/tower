@@ -155,7 +155,8 @@
   .row .head { display: flex; gap: 7px; align-items: baseline; min-width: 0; }
   .row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .row .meta { display: flex; gap: 6px; align-items: center; margin-top: 2px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
-  .row .meta .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
+  .row .meta .badge { display: inline-flex; align-items: center; gap: 4px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
+  .row .meta .badge svg { display: block; flex: 0 0 auto; }
   .row .meta .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .meta .detail .target { margin-left: 0.3em; }
   .row .meta .detail .code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
@@ -192,14 +193,14 @@ const T = {
         offline: "Can't reach Tower on your Mac", offlineWhere: "Is the Mac awake, and is this phone on its Tailscale or Wi-Fi?",
         retry: "Retry", you: "you", atDesk: "At your Mac: ", listSep: ", ", offGauge: "Offline", liveStream: "Live",
         lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, freshLive: (c) => `Live stream, updated ${c}`, stale: (a) => `updated ${a}`,
-        runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, spent: (u) => `Spent ${u}`,
+        runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, toolFor: (tool, d) => `${tool} running for ${d}`, silent: "Silent", spent: (u) => `Spent ${u}`,
         later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
         runningFor: (d) => `running ${d}`,
         answerPlaceholder: "Write your answer…", notePlaceholder: "A note for the agent (optional)…",
         forYou: "For you only", failing: "failing", hintPlaceholder: "A hint for the agent, in your words…", sendHint: "Send the hint and resume",
         heldOutNote: "A hint, or only the names of what failed, keeps the tests hidden; showing the failure does not.",
-        acceptOnDesk: "Review and accept on your Mac", claim: "Agent claim", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
+        acceptOnDesk: "Review and accept on your Mac", notEvidence: "Passed, doesn't count", notMachine: "Not machine-verified", claim: "Agent claim", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
         foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
         states: { draft: "Draft", ready: "Ready", running: "Running", paused: "Paused", claimed: "Claimed done", verifying: "Verifying", in_review: "Ready to accept", accepted: "Accepted", integrated: "Merged", archived: "Archived", abandoned: "Abandoned" },
         modes: { idle: "Idle", starting: "Starting", thinking: "Thinking", reading: "Working", editing: "Working", executing: "Working", waiting_on_you: "Needs you", retrying: "Retrying", compacting: "Compacting", verifying: "Verifying", settled: "Stopped" },
@@ -209,14 +210,14 @@ const T = {
         offline: "连不上你 Mac 上的 Tower", offlineWhere: "Mac 是否醒着？这台手机是否连着同一个 Tailscale 或 Wi-Fi？",
         retry: "重试", you: "你", atDesk: "在电脑上：", listSep: "、", offGauge: "离线", liveStream: "实时",
         lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, freshLive: (c) => `实时流，${c} 更新`, stale: (a) => `更新于 ${a}`,
-        runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `无响应 ${d}`, spent: (u) => `累计 ${u}`,
+        runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `已沉默 ${d}`, toolFor: (tool, d) => `${tool} 已运行 ${d}`, silent: "已沉默", spent: (u) => `累计 ${u}`,
         later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
         runningFor: (d) => `已运行 ${d}`,
         answerPlaceholder: "写下你的回答…", notePlaceholder: "写给 Agent 的话（可选）…",
         forYou: "只给你看", failing: "失败", hintPlaceholder: "用你的话给 Agent 一句提示…", sendHint: "发送提示并继续",
         heldOutNote: "给提示，或只告诉它哪些测试失败，这些测试仍对它隐藏；把失败给它看则不再隐藏。",
-        acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 声明", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
+        acceptOnDesk: "回到电脑上评审并验收", notEvidence: "通过但不作数", notMachine: "未经机器验证", claim: "Agent 声明", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
         foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
         states: { draft: "草稿", ready: "就绪", running: "运行中", paused: "已暂停", claimed: "自称完成", verifying: "验证中", in_review: "待验收", accepted: "已验收", integrated: "已合入", archived: "已归档", abandoned: "已放弃" },
         modes: { idle: "空闲", starting: "准备中", thinking: "思考", reading: "执行", editing: "执行", executing: "执行", waiting_on_you: "等你", retrying: "重试", compacting: "压缩中", verifying: "验证", settled: "已停" },
@@ -248,14 +249,17 @@ const G = {
   danger: `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 9.237L9.781 11.019A.875 .875 0 0 0 11.019 9.781L9.237 8L11.019 6.219A.875 .875 0 0 0 9.781 4.981L8 6.763L6.219 4.981A.875 .875 0 0 0 4.981 6.219L6.763 8L4.981 9.781A.875 .875 0 0 0 6.219 11.019z" fill="var(--st-danger)" fill-rule="evenodd"/></svg>`,
   notice: `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0 -11zM7.2 7.3a.8 .8 0 0 1 1.6 0v3.7a.8 .8 0 0 1 -1.6 0zM8 3.95a.95 .95 0 1 1 0 1.9a.95 .95 0 1 1 0 -1.9z" fill="currentColor" fill-rule="evenodd"/></svg>`,
   ring: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>`,
-  // The running mark: a faint ring and its arc, turning while some run moves (`moves`), held still while none does.
-  runs: (turn) => `<svg${turn ? ' class="spin"' : ""} width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="5" r="4" stroke-opacity=".28"/><path d="M5 1a4 4 0 0 1 4 4"/></svg>`,
+  // The running mark: a faint ring and its arc, turning while some run moves (`moves`), held still while none does. 12px,
+  // the size of the marks beside it.
+  runs: (turn) => `<svg${turn ? ' class="spin"' : ""} width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="5" r="4" stroke-opacity=".28"/><path d="M5 1a4 4 0 0 1 4 4"/></svg>`,
   seal: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4.25" fill="var(--st-verified)"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg)" stroke-width="1.25"/></svg>`,
   // `turn`: the arc of a running or verifying goal turns only while the work moves (the desk's labels `moving`).
-  state(s, turn) {
-    const c = s === "running" || s === "verifying" ? "var(--st-active)" : s === "in_review" || s === "accepted" ? "var(--st-verified)" : "var(--text-3)";
+  // `v`: the verifier's pass, with its pin, that counts (the desk's labels `machineVerified` and not `notEvidence`); only
+  // then is a goal to accept green. Without it the check sits in a dashed, neutral ring, as at the desk.
+  state(s, turn, v) {
+    const c = s === "running" || s === "verifying" ? "var(--st-active)" : (s === "in_review" || s === "accepted") && v ? "var(--st-verified)" : "var(--text-3)";
     const moving = s === "running" || s === "verifying";
-    const ring = `<circle cx="5" cy="5" r="4" fill="none" stroke="${c}" stroke-width="1.25"${s === "claimed" || s === "verifying" ? ' stroke-dasharray="1.7 1.45"' : s === "running" ? ' stroke-opacity=".28"' : ""}/>`;
+    const ring = `<circle cx="5" cy="5" r="4" fill="none" stroke="${c}" stroke-width="1.25"${s === "claimed" || s === "verifying" || (s === "in_review" && !v) ? ' stroke-dasharray="1.7 1.45"' : s === "running" ? ' stroke-opacity=".28"' : ""}/>`;
     const inner = moving ? `<path d="M5 1a4 4 0 0 1 4 4" fill="none" stroke="${c}" stroke-width="1.25" stroke-linecap="round"/>`
       : s === "paused" ? `<path d="M4 3.6v2.8M6 3.6v2.8" stroke="${c}" stroke-width="1.25" stroke-linecap="round"/>`
       : s === "in_review" ? `<path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="${c}" stroke-width="1.25"/>`
@@ -265,9 +269,15 @@ const G = {
 };
 const machine = (s) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
 // When the page last heard from a run; a run moves (the desk's labels `moving`) unless it waits on you, is flagged for
-// you, or has been silent two minutes (the header's hollow dot). Nothing turns on a run that is not moving.
+// you, or is silent (the header's hint mark). Nothing turns on a run that is not moving.
 const heardAt = (g) => Math.max(g.updated_at || 0, (g.live_line && g.live_line.at) || 0);
-const moves = (g) => g.state === "running" && g.mode !== "waiting_on_you" && !g.needs_you && !(heardAt(g) > 0 && Date.now() - heardAt(g) > 120_000);
+// A tool in flight keeps a run busy, never silent: the supervisor's mode while one runs is reading, editing or executing
+// (it goes back to thinking when the tool ends), and a full test suite can take minutes without a word (the desk's
+// labels `heartbeatState`). Silent: two minutes with no word and no tool in flight.
+const busy = (g) => g.mode === "reading" || g.mode === "editing" || g.mode === "executing";
+const silentRun = (g) => g.state === "running" && !busy(g) && heardAt(g) > 0 && Date.now() - heardAt(g) > 120_000;
+const waits = (g) => g.mode === "waiting_on_you" || !!g.needs_you;
+const moves = (g) => g.state === "running" && !waits(g) && !silentRun(g);
 const ghost = (rows) => `<div class="ghost" aria-hidden="true">${rows.map(([a, b]) => `<div class="row">${G.ring}<div><i class="bar" style="width:${a}%"></i><i class="bar" style="width:${b}%"></i></div><span></span></div>`).join("")}</div>`;
 const MACHINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
 function parts(i) {
@@ -357,7 +367,13 @@ function gaugesHtml(s) {
   if (running.length) h += `<span class="gauge active num">${G.runs(running.some(moves))}${esc(t("runs")(running.length, max))}</span>`;
   const heard = Math.max(0, ...running.map(heardAt));
   const since = Date.now() - heard;
-  if (running.length && heard > 0 && since > 30_000) h += `<span class="gauge stale num">${since > 120_000 ? G.notice : ""}${esc(t("silentFor")(dur(since)))}</span>`;
+  // As the desk's heartbeat reads: past 30 s with a tool in flight, the oldest tool and how long it has run (busy, no
+  // mark); with none, how long the runs have been quiet, and past two minutes the hint mark.
+  const tool = running.filter((g) => busy(g) && g.live_line).sort((a, b) => a.live_line.at - b.live_line.at)[0];
+  if (running.length && heard > 0 && since > 30_000)
+    h += tool
+      ? `<span class="gauge busy num">${esc(t("toolFor")(tool.live_line.action, dur(Math.max(0, Date.now() - tool.live_line.at))))}</span>`
+      : `<span class="gauge stale num">${since > 120_000 ? G.notice : ""}${esc(t("silentFor")(dur(since)))}</span>`;
   const spent = usd(s.goals.reduce((a, g) => a + (g.cost_usd || 0), 0));
   return h + `<span class="gauge num" title="${esc(t("spent")(spent))}"><span class="sr">${esc(t("spent")(""))}</span>${spent}</span>`;
 }
@@ -448,9 +464,16 @@ function render(s) {
   if (ready.length) {
     h += `<h2>${t("toAccept")}<span class="num">${ready.length}</span></h2>`;
     for (const i of ready) {
-      const g = goals.get(i.goal_id);
-      const seal = g && g.verified_pin ? `<span class="seal">${G.seal}<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span></span>` : "";
-      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="meta live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
+      const known = goals.get(i.goal_id), g = known || {};
+      const p = g.progress || {};
+      // The desk's verdict, never green by default: the verifier's pass that counts is the green check and seal with its
+      // pin; a pass that does not count is the amber ! and says so; with no machine criterion the neutral check says
+      // "Not machine-verified".
+      const v = !p.not_evidence && p.machine > 0 && !!g.verified_pin;
+      const pin = g.verified_pin ? `<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span>` : "";
+      const mark = p.not_evidence ? G.attn.replace('class="mark"', 'class="glyph"').replace('aria-hidden="true"', `role="img" aria-label="${esc(t("notEvidence"))}"`) : G.state("in_review", 0, v);
+      const seal = v ? `<span class="seal">${G.seal}${pin}</span>` : !known ? "" : `<span class="seal verdict">${esc(t(p.not_evidence ? "notEvidence" : "notMachine"))}${p.not_evidence ? pin : ""}</span>`;
+      h += `<div class="row">${mark}<div><div class="title">${esc(i.goal_title)}</div><div class="meta live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
     }
   }
   const running = s.goals.filter((g) => g.state === "running");
@@ -458,14 +481,17 @@ function render(s) {
   if (!running.length) h += `<p class="empty">${G.ring}<span>${t("noRuns")}</span></p>${ghost([[54, 36]])}`;
   for (const g of running) {
     const l = g.live_line;
-    const badge = t("modes")[g.mode] ?? g.mode;
+    // The badge says what the desk's live line says: a run that waits on you, whatever its mode, is the amber ! and
+    // "Needs you"; otherwise "Silent" with the hint mark when no word has come for two minutes and no tool is in flight
+    // (never "Working" beside a still mark); otherwise the mode's word.
+    const badge = waits(g) ? `${G.attn}${esc(t("modes").waiting_on_you)}` : silentRun(g) ? `${G.notice}${esc(t("silent"))}` : esc(t("modes")[g.mode] ?? g.mode);
     // The action, then its target after a real space (copied and read aloud as two words), as the desk's live line says it: no dot between them.
     const detail = l ? `${esc(l.action)}${l.target ? ` <span class="target${machine(l.target) ? " code" : ""}">${esc(l.target)}</span>` : ""}` : "";
     const ran = g.run_started_at ? dur(Math.max(0, Date.now() - g.run_started_at)) : "";
     const elapsed = ran ? `<span class="elapsed num" title="${esc(t("runningFor")(ran))}"><span class="sr">${esc(t("runningFor")(""))}</span>${esc(ran)}</span>` : "";
     const eng = g.engine ? `<span class="pill">${esc(g.engine)}</span>` : "";
     const isArmed = armed === "pause" + g.id;
-    h += `<div class="row">${G.state("running", moves(g))}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge">${esc(badge)}</span>${eng}<span class="detail">${detail}</span></div></div>
+    h += `<div class="row">${G.state("running", moves(g))}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge">${badge}</span>${eng}<span class="detail">${detail}</span></div></div>
       <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
   }
   app.innerHTML = h;
@@ -479,7 +505,8 @@ function showOffline(err) {
   app.innerHTML = `<section class="offline" title="${esc(err.message)}"><p class="error">${G.danger}${t("offline")}</p><p class="sub">${t("offlineWhere")}</p>${lastOk ? `<p class="when num">${esc(t("lastRead")(clock(lastOk)))}</p>` : ""}<button class="btn primary" data-retry>${t("retry")}</button></section>`;
   gauges.innerHTML = `<span class="gauge dead num">${esc(t("runs")("—", "—"))}</span><span class="gauge dead">—</span>`;
   conn.className = "gauge off";
-  conn.innerHTML = `${G.danger}${t("offGauge")}`;
+  // The one lit reading, in ink: the error line below says it with the red mark, once.
+  conn.textContent = t("offGauge");
   fresh.textContent = "";
   document.getElementById("foot").textContent = t("foot");
 }

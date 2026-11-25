@@ -179,3 +179,60 @@ for (const [lang, word, past, before, names] of [
       await openTower(page, "goal/G-0003", { lang, enrich });
       await said(page.locator(".goal-head .stamp").first(), "goal head stamp");
     });
+
+// Review 15, P3-02 (D145): C1 with six readings — five tags (a canary not checked, code reaching into the test runner, a
+// flaky result, a high finding that names C2, a console error) and one plain (the loopback) — wraps its strip somewhere
+// between the window's minimum and 1800. Every line it wraps to starts on the criterion title's edge — the first
+// reading's words there, a tag's ground hanging into the gutter by its own padding — never a reading's margin carried
+// onto the new line (before: the second line started 18px right of the first). Neighbouring tags keep 12px of ground.
+const sixReadings = (F: Record<string, any>) => {
+  const d = F["goal-G-0003"];
+  const c1 = d.criteria.find((x: { criterion: { id: string } }) => x.criterion.id === "C1");
+  c1.canary = "not_checked";
+  c1.verified.flaky = true;
+  c1.loopback_opened = "base";
+  c1.verified.console_errors = ["TypeError: total is undefined"];
+  for (const p of [d.summary.progress, ...F.goals.filter((g: { id: string }) => g.id === "G-0003").map((g: { progress: unknown }) => g.progress)])
+    (p.not_evidence = true), (p.verified = 0), delete p.qualified;
+  d.sentinels.push({ sentinel: "source_touches_tests", severity: 2, title: "Sentinel source_touches_tests", detail: "src/cart.js: const { strictEqual } = require('node:assert');" });
+  d.sentinels.push({ sentinel: "assertions_removed", severity: 3, title: "Sentinel assertions_removed", detail: "C2: tests/cart.test.js asserts nothing now" });
+};
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a wrapped evidence strip starts every line on the criterion title's edge, 1040–1800 (${lang})`, async ({ page }) => {
+    await page.setViewportSize({ width: 1040, height: 900 });
+    await openTower(page, "goal/G-0003", { lang, enrich: sixReadings });
+    await settled(page, "goal/G-0003");
+    const c1 = page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C1$/ }) }).first();
+    await expect(c1.locator(".ev-strip .ev-pill")).toHaveCount(6);
+    let wrapped = 0;
+    for (let w = 1040; w <= 1800; w += 8) {
+      await page.setViewportSize({ width: w, height: 900 });
+      const r = await c1.evaluate(
+        (row) =>
+          new Promise<{ edge: number; starts: { words: number; text: string }[]; grounds: number[] }>((done) =>
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => {
+                const edge = row.querySelector(".criterion-title")!.getBoundingClientRect().left;
+                const pills = [...row.querySelectorAll<HTMLElement>(".ev-strip .ev-pill")];
+                const lines = new Map<number, HTMLElement[]>();
+                for (const p of pills) {
+                  const y = Math.round(p.getBoundingClientRect().top);
+                  lines.set(y, [...(lines.get(y) ?? []), p]);
+                }
+                const tag = (p: HTMLElement) => /ev-pill-(attn|danger)/.test(p.className);
+                done({
+                  edge,
+                  starts: [...lines.values()].map(([p]) => ({ words: p.getBoundingClientRect().left + parseFloat(getComputedStyle(p).paddingLeft), text: p.textContent! })),
+                  // The ground between two tags side by side on one line.
+                  grounds: [...lines.values()].flatMap((ps) => ps.slice(1).flatMap((p, i) => (tag(p) && tag(ps[i]) ? [p.getBoundingClientRect().left - ps[i].getBoundingClientRect().right] : []))),
+                });
+              }),
+            ),
+          ),
+      );
+      if (r.starts.length > 1) wrapped++;
+      for (const s of r.starts) expect(Math.abs(s.words - r.edge), `at ${w}, "${s.text}" starts its line ${s.words - r.edge}px off the title's edge`).toBeLessThanOrEqual(0.5);
+      for (const g of r.grounds) expect(Math.abs(g - 12), `at ${w}, two tags ${g}px apart`).toBeLessThanOrEqual(0.5);
+    }
+    expect(wrapped, "the six readings wrap at some width").toBeGreaterThan(0);
+  });

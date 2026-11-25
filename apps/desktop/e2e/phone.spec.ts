@@ -115,6 +115,9 @@ test("offline, the page says so once, says where to look and offers one retry; t
   // The header: every reading a dash in the quietest grey, and the one lit reading saying why.
   await expect(page.locator("#conn")).toHaveClass(/off/);
   await expect(page.locator("#conn")).toHaveText("Offline");
+  // Said once with the red mark, on the error line; the header's reading is the word in ink.
+  expect(await page.locator("#conn svg").count()).toBe(0);
+  await expect(page.locator(".offline .error svg")).toHaveCount(1);
   await expect(page.locator("#status .gauge.dead").first()).toHaveText("—/— running");
   const shown = (await page.locator("header").innerText()) + (await page.locator("main").innerText());
   expect(shown.match(/Can't reach Tower/g)?.length).toBe(1);
@@ -139,11 +142,11 @@ test("offline, the page keeps the language it last spoke: a Chinese desk's phone
 
 test("the header is the desk's title bar: runs of slots, the silence once it is worth a look, the spend; freshness is a footnote", async ({ page }) => {
   const now = Date.now();
-  const goal = (id: string, state: string, cost: number, heard: number) => ({
+  const goal = (id: string, state: string, cost: number, heard: number, mode = "thinking") => ({
     id,
     title: id,
     state,
-    mode: "executing",
+    mode,
     run_started_at: now - 600_000,
     updated_at: heard,
     live_line: { action: "bash", target: "npm test", at: heard },
@@ -156,7 +159,7 @@ test("the header is the desk's title bar: runs of slots, the silence once it is 
   await expect(gauges.nth(0)).toHaveText("1/4 running");
   await expect(gauges.nth(0).locator("svg path")).toHaveCount(1);
   await expect(gauges.nth(1)).toHaveText("silent for 3m");
-  // Silence is worth a look, not a failure (docs/12 §12.2, docs/08 §8.6.3): the hint mark in the reading's own ink, as
+  // Silence is worth a look, not a failure (docs/12 §12.4.3, docs/08 §8.6.3): the hint mark in the reading's own ink, as
   // at the desk, never a red ring.
   const hint = gauges.nth(1).locator("svg");
   await expect(hint).toHaveCount(1);
@@ -164,13 +167,20 @@ test("the header is the desk's title bar: runs of slots, the silence once it is 
   const ink = await gauges.nth(1).evaluate((g) => [getComputedStyle(g.querySelector("svg")!).color, getComputedStyle(g).color, g.querySelector("path")!.getAttribute("fill")]);
   expect(ink).toEqual([ink[1], ink[1], "currentColor"]);
   await expect(gauges.nth(2)).toHaveText("Spent $0.09");
-  // "Spent" is for the screen reader; the eye reads the sum alone, as on the desk.
+  // The runs mark is the size of the marks beside it (review 15: it was 10px beside the 12px hint mark).
+  expect(await gauges.nth(0).locator("svg").evaluate((s) => [s.getAttribute("width"), s.getAttribute("height")])).toEqual(["12", "12"]);
   // Polled: the box is read once the page's styles are in, not in the frame the text first lands.
   await expect.poll(async () => (await gauges.nth(2).locator(".sr").boundingBox())?.width ?? Infinity).toBeLessThanOrEqual(1);
   // No dot joins the readings; the refresh is said once, at the foot, while it is fresh.
   expect(await page.locator("header").innerText()).not.toMatch(/·|every 5 s/);
   await expect(page.locator("#fresh")).toContainText("again every 5 s");
   await expect(page.locator("#conn")).toBeEmpty();
+  // Review 15 (record only): a tool in flight keeps the run busy, as the desk's heartbeat reads it — the tool and how long
+  // it has run, no hint mark — never silent (a full test suite can take minutes without a word).
+  await openPhone(page, { state: { goals: [goal("G-1", "running", 0.05, now - 185_000, "executing")], inbox: [], lang: "en", max_running: 4 } });
+  await expect(gauges.nth(1)).toHaveText("bash running for 3m");
+  await expect(gauges.nth(1).locator("svg")).toHaveCount(0);
+  await expect(gauges.nth(0).locator("svg")).toHaveClass("spin");
   // A run heard from just now has no silence reading: the page reads every 5 s and does not count seconds.
   await openPhone(page, { state: { goals: [goal("G-1", "running", 0, Date.now())], inbox: [], lang: "zh-CN", max_running: 4 } });
   await expect(page.locator("#status .gauge:not(#conn)")).toHaveText(["1/4 运行", "累计 $0"]);
@@ -439,12 +449,28 @@ test("a run's mark turns on the phone only while the run moves, as on the desk; 
   });
   const moving = run("G-1", {});
   const waiting = run("G-2", { mode: "waiting_on_you", needs_you: 1 });
-  const silent = run("G-3", { updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000 } });
-  await openPhone(page, { state: { goals: [moving, waiting, silent], inbox: [], lang: "en", max_running: 4 } });
+  const silent = run("G-3", { mode: "thinking", updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000 } });
+  // Five minutes inside one tool call: busy, not silent (review 15, record only — the desk's `heartbeatState`).
+  const busy = run("G-4", { updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000 } });
+  // Flagged for you while its mode still says thinking, and quiet for five minutes: it waits on you, as the desk reads it.
+  const flagged = run("G-5", { mode: "thinking", needs_you: 1, updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000 } });
+  await openPhone(page, { state: { goals: [moving, waiting, silent, busy, flagged], inbox: [], lang: "en", max_running: 4 } });
   const marks = page.locator(".row > svg.glyph");
-  await expect(marks).toHaveCount(3);
+  await expect(marks).toHaveCount(5);
   // Review 14: every running row turned, the one waiting on you and the silent one too.
-  expect(await marks.evaluateAll((els) => els.map((e) => e.classList.contains("spin")))).toEqual([true, false, false]);
+  expect(await marks.evaluateAll((els) => els.map((e) => e.classList.contains("spin")))).toEqual([true, false, false, true, false]);
+  // The badge says what the desk's live line says (review 15, record only): the amber ! and "Needs you" for a run that
+  // waits on you, whatever its mode; "Silent" with the hint mark, never "Working" beside a still mark.
+  const badges = page.locator(".row .meta .badge");
+  await expect(badges).toHaveText(["Working", "Needs you", "Silent", "Working", "Needs you"]);
+  const drawn = await badges.evaluateAll((bs) => bs.map((b) => b.querySelector("path")?.getAttribute("d")?.slice(0, 40) ?? ""));
+  expect(drawn[0]).toBe("");
+  expect(drawn[1], "the amber ! before Needs you").toContain("M8 1a7 7 0 1 1 0 14");
+  expect(await badges.nth(1).locator("path").getAttribute("fill")).toBe("var(--st-attention)");
+  expect(await badges.nth(2).locator("path").getAttribute("d"), "the hint mark before Silent").toContain("M8 2.5a5.5 5.5");
+  expect(await badges.nth(2).locator("path").getAttribute("fill")).toBe("currentColor");
+  expect(drawn[3]).toBe("");
+  expect(drawn[4], "the amber ! before Needs you, flagged in any mode").toBe(drawn[1]);
   await expect(page.locator("#status .gauge.active svg")).toHaveClass("spin");
   // The detail: the action, then its target after a space, the target in the code face; no middle dot.
   const detail = page.locator(".row .meta .detail").first();
@@ -464,3 +490,37 @@ test("the phone card's strip carries the desk's 12px ! (review 14: an old rule d
   const box = (await mark.boundingBox())!;
   expect([Math.round(box.width), Math.round(box.height)]).toEqual([12, 12]);
 });
+
+// Review 15 (R15-P1-01): the phone drew every goal to accept with the verifier's green check, and the green seal with a
+// pin, whether or not the verifier's pass counted. It follows the desk's rule now: green only for a pass with its pin
+// that counts; a pass that does not count is the amber ! and says so; with no machine criterion the check is neutral
+// and says "Not machine-verified".
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a goal to accept on the phone is green only when the verifier's pass counts (${lang})`, async ({ page }) => {
+    const now = Date.now();
+    const goal = (id: string, progress: object) => ({ id, title: id, state: "in_review", mode: "idle", updated_at: now, live_line: null, pause_reason: null, verified_pin: "15085f29324c438b7cd1bbe7ba4933c7592caede", cost_usd: 0.04, progress });
+    const card = (id: string) => ({ id: `rr-${id}`, goal_id: id, goal_title: `Goal ${id}`, kind: "review_ready", title: "", subject: "", body: "", options: [], tones: [], allow_text: false, created_at: now });
+    const goals = [
+      goal("G-1", { verified: 2, observed: 0, machine: 2, human_done: 0, human: 0 }),
+      goal("G-2", { verified: 2, observed: 0, machine: 2, human_done: 0, human: 0, not_evidence: true }),
+      goal("G-3", { verified: 0, observed: 0, machine: 0, human_done: 0, human: 1 }),
+    ];
+    await openPhone(page, { state: { goals, inbox: goals.map((g) => card(g.id)), lang, max_running: 3 } });
+    const rows = page.locator(".row").filter({ hasText: /Goal G-/ });
+    await expect(rows).toHaveCount(3);
+    const read = (i: number) =>
+      rows.nth(i).evaluate((row) => {
+        const probe = document.createElement("i");
+        document.body.append(probe);
+        const paint = (v: string) => ((probe.style.color = v), getComputedStyle(probe).color);
+        const green = paint("var(--st-verified)");
+        const amber = paint("var(--st-attention)");
+        const inks = [...row.querySelectorAll("*")].flatMap((el) => [getComputedStyle(el).color, el.getAttribute("stroke") ? paint(el.getAttribute("stroke")!) : "", el.getAttribute("fill") ? paint(el.getAttribute("fill")!) : ""]);
+        probe.remove();
+        return { green: inks.includes(green), amber: inks.includes(amber), seal: row.querySelector(".seal")?.textContent ?? "", mark: row.querySelector("svg")?.getAttribute("aria-label") ?? "" };
+      });
+    const words = lang === "en" ? { held: "Passed, doesn't count", human: "Not machine-verified" } : { held: "通过但不作数", human: "未经机器验证" };
+    expect(await read(0)).toEqual(expect.objectContaining({ green: true, amber: false, seal: "@15085f2" }));
+    expect(await read(1)).toEqual({ green: false, amber: true, seal: `${words.held}@15085f2`, mark: words.held });
+    expect(await read(2)).toEqual(expect.objectContaining({ green: false, amber: false, seal: words.human }));
+  });

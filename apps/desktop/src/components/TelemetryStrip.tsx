@@ -13,7 +13,7 @@ import { openActivity } from "../lib/layers";
 import { go } from "../lib/nav";
 import { goalList, quietNow, quietUntil, state } from "../lib/store";
 import { Heartbeat, pickQuiet } from "./Chrome";
-import { DangerMark, Icon, NeedsYouMark, Spinner } from "./Glyph";
+import { DangerMark, Icon, NeedsYouMark, NoticeMark, Spinner } from "./Glyph";
 
 export function TelemetryStrip() {
   const running = () => goalList().filter((g) => g.state === "running").length;
@@ -72,7 +72,7 @@ export function TelemetryStrip() {
       </Show>
       <Show when={running() > 0}>
         <span class="gauge gauge-active" title={t("chrome.running", { n: running(), max: max() })}>
-          <Spinner class="gauge-runs" still={!moves()} />
+          <Spinner class="gauge-runs" size={12} still={!moves()} />
           {t("chrome.runningShort", { n: running(), max: max() })}
         </span>
       </Show>
@@ -84,8 +84,10 @@ export function TelemetryStrip() {
         onClick={() => go({ name: "operations" })}
         title={t("chrome.sandboxTitle")}
       >
+        {/* S0 is a real risk but no decision of yours (docs/12 §12.6.6): ink words and the uncoloured hint mark. The amber
+            ! is for the S0 grant card, the one place it asks you (review 15). */}
         <Show when={sandboxWarn()}>
-          <NeedsYouMark />
+          <NoticeMark />
         </Show>
         <span>{sandboxLabel()}</span>
       </button>

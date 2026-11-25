@@ -17,14 +17,14 @@ import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
 import { isEngineTool, modeLabel, modeNeedsYou, moving, pauseLabel, silent, stateLabel, statusWord, toolLabel } from "../lib/labels";
 import { refit } from "../lib/refit";
 import { livenessOf, state } from "../lib/store";
-import { NeedsYouMark, Seal } from "./Glyph";
+import { NeedsYouMark, NoticeMark, Seal } from "./Glyph";
 
 export function ModeBadge(props: { goal: GoalSummary }) {
   const attention = () => modeNeedsYou(props.goal.mode) || (props.goal.needs_you > 0 && props.goal.state === "running");
   const isSilent = () => !attention() && silent(props.goal, state.now);
   const text = () => {
     const g = props.goal;
-    if (g.state === "running") return attention() ? modeLabel("waiting_on_you") : isSilent() ? t("chrome.unresponsive") : modeLabel(g.mode);
+    if (g.state === "running") return attention() ? modeLabel("waiting_on_you") : isSilent() ? t("chrome.silent") : modeLabel(g.mode);
     if (g.state === "verifying") return modeLabel("verifying");
     if (g.state === "paused") return stateLabel("paused");
     return statusWord(g);
@@ -168,11 +168,12 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
           <Seal pin={d().seal} compact tampered={notEvidence(props.goal)} qualified={caveats(props.goal)} accepted={wasAccepted(props.goal)} text={notEvidence(props.goal) || caveats(props.goal).length ? "" : undefined} />
         </Show>
       </span>
-      {/* The right slot is the time of the last movement; when the engine has gone silent that is exactly the reading you need, so it stays and says so. */}
+      {/* The right slot is the time of the last movement; when the engine has gone silent that is exactly the reading you need, so it stays and says so,
+          lifted to text-1 beside the hint mark: worth a look, not a failure (docs/08 §8.6.3). */}
       <Show when={props.large && props.goal.state === "running"}>
         <Show
           when={!silent(props.goal, state.now)}
-          fallback={<span class="live-age meta num">{t("live.lastMove", { d: ago(livenessOf(props.goal).at, state.now) })}</span>}
+          fallback={<span class="live-age live-age-silent meta num"><NoticeMark />{t("live.lastMove", { d: ago(livenessOf(props.goal).at, state.now) })}</span>}
         >
           <Show when={props.goal.live_line}>
             <span class="live-age meta num">{ago(props.goal.live_line!.at, state.now)}</span>

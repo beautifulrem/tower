@@ -85,7 +85,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
           <For each={criteria()} fallback={<Empty title={t("goal.noCriteria")} inline />}>
             {(raw) => {
               const c = raw as ExtCriterionView;
-              const pills = () => qualifiers(c, props.detail?.sentinels).filter((p) => !p[3]);
+              const pills = () => qualifiers(c, props.detail?.sentinels, criteria().map((x) => x.criterion.id)).filter((p) => !p[3]);
               return (
                 <div class="verify-item">
                   <div class="criterion-row">

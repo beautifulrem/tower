@@ -127,7 +127,8 @@ function HeldOutFiles(props: { files: string[] }) {
  * all did), then the files that did not run and those Tower cannot prove,
  * by name. None ran: no chip, only that line — never both.
  */
-export function HeldOutLine(props: { c: CriterionView }) {
+/** `children`: the files that ran, set right under the line that counts them, before the ones that did not run. */
+export function HeldOutLine(props: { c: CriterionView; children?: JSX.Element }) {
   const v = () => props.c.verified;
   const proof = () => v()?.held_out_proof ?? null;
   const total = () => {
@@ -142,6 +143,7 @@ export function HeldOutLine(props: { c: CriterionView }) {
   return (
     <>
       <Show when={v()?.held_out}><ObsRow><HeldOutChip ran={proof()?.ran.length} total={total()} /></ObsRow></Show>
+      {props.children}
       <Show when={proof()?.not_ran.length}>
         {note("held-out-missing", t("goal.heldOutNotRunLong"), v()?.held_out ? t("goal.heldOutNotRun") : t("goal.heldOutNoneRan"), proof()!.not_ran)}
       </Show>

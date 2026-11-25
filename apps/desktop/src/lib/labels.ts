@@ -167,7 +167,7 @@ export function silent(g: GoalSummary, now: number): boolean {
 /**
  * Work in motion: a goal being verified, or a running one that is neither waiting on you nor silent. Only then does its
  * mark turn (and, on the goal in view, its words shimmer): a goal that waits on you, or has gone quiet, holds its mark
- * still, so motion never says "at work" beside "Question" or "Unresponsive".
+ * still, so motion never says "at work" beside "Question" or "Silent".
  */
 export const moving = (g: GoalSummary, now: number): boolean =>
   g.state === "verifying" || (g.state === "running" && !modeNeedsYou(g.mode) && !g.needs_you && !silent(g, now));

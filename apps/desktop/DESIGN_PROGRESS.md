@@ -110,3 +110,19 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   163,641 / 163,840 B (199 B left, up from 22 B; the 1 KB the review asked for is not reached, D78), goal page
   11,399 / 12,288 B; detector on the changed UI files: 13 findings, all app.css and the same as at HEAD
   (`/tmp/tower-design/iter6/detect.json`).
+- 2026-11-25 Review of `16ac40c` (independent, own worktree and port 1441): **not accepted, 8.03 / 10**, over the bar
+  but with one P1: the peek did not keep focus, so Tab then r or ↩ typed into the quick-start field behind it and asked
+  for a quick goal out of sight. No P2. P3: the 16em criteria column cost running rows their titles; G-0003's peek said
+  "Verified @pin" twice; bundle headroom; 11px labels (kept); zh supervisor data (deferred). Recorded as D81–D86.
+- 2026-11-25 Iteration 7 (T46–T49): one `trapTab` for the sheets and the peek; the criteria column back to 11em at every
+  width, the human count of a pass that doesn't count in the cell's tooltip; the peek's head seal only when "Now" has
+  none. Hardening probe (`/tmp/tower-design/harden/`, not committed): long en/zh titles, long branches and 30 more goals
+  at 1040 and 1440 run past no edge; text contrast on 8 routes is at least 5.26:1 light and 5.70:1 dark (the first
+  probe read nothing, as WebKit's canvas did not parse oklch — it now paints the colour and reads the pixel, checking
+  63–154 texts a page); every Tab stop on 4 routes has a ring; nothing animates under reduced motion. It found money
+  without grouping and a goal title cut with no tooltip (D87), both fixed. New e2e checked against `16ac40c`: the
+  focus tests, the running-row title test (32 < 37) and the one-seal test fail there. Gates: tsc; vitest 41 files /
+  220 tests; Playwright WebKit 314 passed, 0 failed (76 shot tests skip without SHOTS; 4 Vite client "Importing a
+  module script failed" logs under parallel load, no test fails on them); shots 69/69 (`/tmp/tower-design/iter7/shots`);
+  line limit; bundle all JS 163,743 / 163,840 B (97 B left, D84 deferred), goal page 11,437 / 12,288 B; detector: the
+  same 13 app.css findings (`/tmp/tower-design/iter7/detect.json`).

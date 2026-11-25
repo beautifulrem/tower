@@ -296,7 +296,7 @@ test("in Chinese, a claim's gutter label breaks between speaker and kind, never 
 });
 
 // The board cell of a pass that doesn't count, measured as the reviewer measured it: nothing spills or is cut, no words
-// lie over a segment, a segment is never under 5px, and from 1400px the human count stands whole beside the words.
+// lie over a segment, a segment is never under 5px; the human count is in the cell's tooltip, so the column stays 11em.
 for (const lang of ["en", "zh-CN"] as const)
   for (const w of [1100, 1280, 1399, 1440, 1800]) {
     test(`the board cell of a pass that doesn't count holds its words and segments whole (${lang}, ${w})`, async ({ page }) => {
@@ -315,17 +315,54 @@ for (const lang of ["en", "zh-CN"] as const)
           overlaps: words.filter((t) => segs.some((s) => meets(t, s))).length,
           outside: words.filter((t) => t.right > box.right + 0.5).length,
           human: human && getComputedStyle(human).display !== "none" ? human.getBoundingClientRect().right <= box.right + 0.5 : null,
+          tooltip: cell.querySelector(".criteria-bar")?.getAttribute("title") ?? "",
         };
       });
       expect(out.spill).toBeLessThanOrEqual(0);
       expect(out.narrowest).toBeGreaterThanOrEqual(5);
       expect(out.overlaps).toBe(0);
       expect(out.outside).toBe(0);
-      // From 1400px the human count is there and whole; below, it is in the cell's tooltip.
-      if (w >= 1400) expect(out.human).toBe(true);
-      else expect(out.human).toBeNull();
+      // The human count is not drawn in the cell at any width; the cell's tooltip says it.
+      expect(out.human).toBeNull();
+      expect(out.tooltip).toMatch(lang === "en" ? /Human 0\/2/i : /人工 0\/2/);
     });
   }
+
+// What the board cell of one goal needs must not cost every other row its title: at the reference widths a running
+// row shows at least as much of its title and live line as before the criteria column was widened (d0dc2a1).
+for (const w of [1440, 1800])
+  test(`a running row keeps its title and live line beside a pass that doesn't count (${w})`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 800 });
+    await openTower(page, "overview", { enrich: noCi });
+    await settled(page, "overview");
+    /** Characters of an element's text drawn inside its box (the rest is under the ellipsis). */
+    const shown = (sel: string) =>
+      page.locator(`[data-goal="G-0002"] ${sel}`).first().evaluate((el) => {
+        // A character is shown when it ends inside every box that clips it, up to the row.
+        const edge = (node: Node) => {
+          let right = Infinity;
+          for (let e = node.parentElement; e && !e.classList.contains("g-row"); e = e.parentElement)
+            if (getComputedStyle(e).overflowX !== "visible") right = Math.min(right, e.getBoundingClientRect().right);
+          return right;
+        };
+        const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let n = 0;
+        const r = document.createRange();
+        for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+          const right = edge(t);
+          for (let i = 0; i < t.textContent!.length; i++) {
+            r.setStart(t, i);
+            r.setEnd(t, i + 1);
+            const box = r.getBoundingClientRect();
+            if (box.width && box.right <= right + 0.5) n++;
+          }
+        }
+        return n;
+      });
+    // "Align discount rules with the product" and "Getting started run" were whole at d0dc2a1 (1440, en).
+    expect(await shown(".g-title")).toBeGreaterThanOrEqual(37);
+    expect(await shown(".g-live")).toBeGreaterThanOrEqual(19);
+  });
 
 // A claim's gutter in the peek: the mark and the speaker share the first line, level with the statement's first line;
 // the kind follows on the next line, never starting left of the mark.
@@ -378,6 +415,62 @@ test("⇧R from inside a peek closes it and starts the review queue, as on the b
   await expect(page.locator(".review-head")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+// The peek is modal: Tab walks its own controls and wraps, never reaching the quick-start field behind it, where the
+// next key (r, ↩) would be typed and a goal started out of sight.
+const BOARD = ["Find out why checkout is slow", "Clean up cart edge cases", "Fix the cart total", "Speed up the product list", "Align discount rules"];
+for (const lang of ["en", "zh-CN"] as const)
+  test(`Tab stays inside the peek on every goal, and Tab then r or ↩ starts nothing behind it (${lang})`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await openTower(page, "overview", { enrich: enrichRich, lang });
+    await settled(page, "overview");
+    for (const title of BOARD) {
+      await selectLine(page, title);
+      await page.keyboard.press("Space");
+      await expect(page.locator(".peek-drawer")).toHaveCount(1);
+      for (const key of ["Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab"]) {
+        await page.keyboard.press(key);
+        expect(await page.evaluate(() => !!document.activeElement?.closest(".peek-drawer")), `${title} ${key}`).toBe(true);
+      }
+      await page.keyboard.press("Escape");
+      await expect(page.locator(".peek-drawer")).toHaveCount(0);
+    }
+    // Tab, then the keys the peek's own bar names: they act in the peek (or on the focused button), never in the field.
+    await openTower(page, "overview", { enrich: enrichRich, lang });
+    await settled(page, "overview");
+    await selectLine(page, "Speed up the product list");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("r");
+    await page.keyboard.press("Enter");
+    expect(await page.evaluate(() => ((window as any).__towerCalls as [string, unknown][]).filter(([c]) => c === "quick_goal").length)).toBe(0);
+    await expect(page.locator(".quick-input")).toHaveValue("");
+    expect(errors).toEqual([]);
+  });
+
+test("every peek draws its verdict and pin once: one seal at most, whatever the goal's state", async ({ page }) => {
+  await openTower(page, "overview", { enrich: enrichRich });
+  await settled(page, "overview");
+  for (const title of BOARD) {
+    await selectLine(page, title);
+    await page.keyboard.press("Space");
+    await expect(page.locator(".peek-drawer .live-line").first()).toBeVisible();
+    expect(await page.locator(".peek-drawer .seal").count(), title).toBeLessThanOrEqual(1);
+    await page.keyboard.press("Escape");
+  }
+});
+
+for (const title of ["Fix the cart total", "Clean up cart edge cases"])
+  test(`after Tab in the peek, r still opens the review of "${title}"`, async ({ page }) => {
+    await openTower(page, "overview", { enrich: enrichRich });
+    await settled(page, "overview");
+    await selectLine(page, title);
+    await page.keyboard.press("Space");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("r");
+    await expect(page.locator(".review-head")).toBeVisible();
+  });
 
 /** How many times `re` is said in the drawn text of `root`. */
 const said = (root: Locator, re: RegExp) => root.innerText().then((s) => (s.match(new RegExp(re.source, "g")) ?? []).length);

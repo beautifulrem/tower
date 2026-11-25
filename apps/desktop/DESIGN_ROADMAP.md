@@ -56,6 +56,10 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T43 ⇧R from the peek | D76 | P3 | close and start the queue | `verdict.spec.ts` | Done |
 | T44 Wraps and copy | D79 | P3 | "Ports" + tooltip; zh git line, `text-wrap: pretty` on checks; zh held-out hint; note names no button | `verdict.spec.ts` (fail on old commit) | Done |
 | T45 Bundle headroom | D78 | P3 | one tampered explanation instead of three | bundle budget | Partly (199 B of the 1 KB asked) |
+| T46 The peek keeps focus | D81 | P1 | one shared `trapTab` for the sheets and the peek | `verdict.spec.ts` (Tab ×6, ⇧Tab ×2 on every goal, en and zh; no `quick_goal`; r after Tab; fail on 16ac40c) | Done |
+| T47 One column for every row | D82 | P3 | criteria column 11em at every width; the human count of a pass that doesn't count in the tooltip | `verdict.spec.ts` (title and live characters ≥ d0dc2a1; fails on 16ac40c) | Done |
+| T48 The verdict once in every peek | D83 | P3 | head seal only when "Now" has none | `verdict.spec.ts` (fails on 16ac40c) | Done |
+| T49 Hardening | D87 | P3 | probe: long en/zh text at 1040/1440, contrast on 8 routes × 2 themes, focus rings, reduced motion; grouped money, goal-title tooltip | probe output, unit test | Done |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

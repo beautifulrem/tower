@@ -19,9 +19,9 @@ import { ProvBox } from "./Console";
 import { DangerMark, Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { ConsistencyBadge } from "./Honesty";
 import { CriteriaBar } from "./HonestyCore";
-import { LiveLine } from "./Live";
+import { LiveLine, liveDetail } from "./Live";
 import { TrustPill } from "./ProvenanceFrame";
-import { Button } from "./ui";
+import { Button, trapTab } from "./ui";
 
 const pct = (v: number, m: number) => (m > 0 ? Math.min(100, (v / m) * 100) : 0);
 
@@ -79,7 +79,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
   };
 
   return (
-    <div class="peek-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
+    <div class="peek-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()} onKeyDown={trapTab(() => panel)}>
       <aside ref={panel} class="peek-drawer" role="dialog" aria-modal="true" aria-label={g() ? `${g()!.id} ${g()!.title}` : props.goalId} tabindex="-1">
         <Show when={g()}>
           {(s) => (
@@ -91,8 +91,9 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                   <Show when={!(s().state === "in_review" && s().verified_pin)}>
                     <span class="meta t3">{statusWord(s() as GoalSummary)}</span>
                   </Show>
-                  {/* A pass that doesn't count: the glyph marks it here, and "Now" says the verdict once, with its pin. */}
-                  <Show when={!notEvidence(s())}>
+                  {/* The verdict and its pin, once: when "Now" draws the seal (in review), the head leaves it to it; a pass
+                      that doesn't count is marked here by the glyph alone. */}
+                  <Show when={!notEvidence(s()) && !liveDetail(s() as GoalSummary).seal}>
                     <Seal pin={s().verified_pin} compact />
                   </Show>
                   <span class="grow" />

@@ -58,12 +58,12 @@ export function sameMinute(a: number, b: number): boolean {
 export function usd(v: number): string {
   if (v === 0) return "$0";
   if (v < 0.01) return "<$0.01";
-  return `$${v.toFixed(2)}`;
+  return "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-/** Budget limit without trailing zeros: $5, $7.5. */
+/** Budget limit without trailing zeros: $5, $7.5, $1,500 (thousands grouped, like every sum). */
 export function usdLimit(v: number): string {
-  return `$${Number.isInteger(v) ? v : v.toFixed(1)}`;
+  return "$" + v.toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
 export function short(sha: string | null | undefined): string {

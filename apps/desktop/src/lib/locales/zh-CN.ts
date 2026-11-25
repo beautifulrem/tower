@@ -26,6 +26,7 @@ export const zh = {
     open: "打开",
     retry: "重试",
     loadFailed: "没能加载",
+    codeMissing: "Tower 的这部分界面没有加载出来。请重试；一直失败的话，重启 Tower。",
     notice: "提示",
     problem: "问题",
     copied: "已复制",

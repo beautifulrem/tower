@@ -30,9 +30,8 @@ function Shot(props: { file: string | null; error: string | null; label: string;
       <Show when={props.file && !props.error} fallback={<div class="look-missing meta t3">{props.error ?? t("look.notCaptured")}</div>}>
         <Show when={src() && broken() !== src()} fallback={<div class="look-missing meta t3">{src.loading ? t("common.loading") : t("look.gone")}</div>}>
           <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label}, ${t("look.enlarge")}`}>
-            {/* Until it has decoded, the image has no width of its own: it holds a page's 3:4 frame, so the two never sit as
-                two 2px lines side by side (review 16). */}
-            <img class="look-img" src={src()!} alt={props.label} onLoad={(e) => e.currentTarget.classList.add("look-img-in")} onError={() => setBroken(src() ?? null)} />
+            {/* Until it has decoded, it holds the frame of Tower's capture, desktop or phone (`.look-img`), never a 2px line (review 16). */}
+            <img class="look-img" src={src()!} alt={props.label} onError={() => setBroken(src() ?? null)} />
           </button>
         </Show>
       </Show>
@@ -104,7 +103,7 @@ export function LookStrip(props: { look: LookView; title: string }) {
       <Show when={hasMobile()}>
         <div class="look-viewports"><ViewportTabs value={vp()} onChange={setVp} /></div>
       </Show>
-      <div class="look-strip">
+      <div class="look-strip" classList={{ "look-phone": vp() === "mobile" }}>
         <Shot file={activeBase()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} onOpen={openFrom} />
         <Shot file={activePin()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} onOpen={openFrom} />
       </div>
@@ -208,7 +207,7 @@ function LookCompare(props: { look: LookViewExt; title: string; initialViewport?
           </div>
         }
       >
-        <div class="look-side">
+        <div class="look-side" classList={{ "look-phone": vp() === "mobile" }}>
           <Shot file={baseFile()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} />
           <Shot file={pinFile()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} />
         </div>

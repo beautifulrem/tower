@@ -41,6 +41,7 @@ async function openPhone(
     return r.fulfill({ status: 200, contentType: "application/json", body: "{\"ok\":true}" });
   });
   await page.route("http://phone.test/api/snooze", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{\"ok\":true}" }));
+  await page.route("http://phone.test/api/pause", (r) => r.fulfill({ status: 200, contentType: "application/json", body: "{\"ok\":true}" }));
   await page.goto("http://phone.test/#token");
   return F;
 }
@@ -328,6 +329,22 @@ test("a held-out failure on the phone is the desk's card: the output for you onl
   expect((await sent).postDataJSON()).toEqual({ inbox_id: "h", response: "Half-cents round up" });
 });
 
+// Review 17 (found by the reviewer): a running goal's Pause on the phone took no press from ba94b1b to 2d3eeb8 — the
+// stand-in rows' `.ghost { pointer-events: none }` also caught the `btn ghost` button — and no test pressed it. It is
+// pressed here as a finger would: once to arm it, once more to send the pause.
+test("a running goal pauses from the phone: Pause, then Press again, sends it", async ({ page }) => {
+  const F = await openPhone(page);
+  const pause = page.locator("[data-pause]").first();
+  await expect(pause).toHaveText("Pause");
+  const goal = await pause.getAttribute("data-pause");
+  expect((F.goals as Array<{ id: string; state: string }>).find((g) => g.id === goal)?.state).toBe("running");
+  await pause.click({ timeout: 3000 });
+  await expect(pause).toHaveText("Press again");
+  const sent = page.waitForRequest((r) => r.url().endsWith("/api/pause") && r.method() === "POST");
+  await pause.click({ timeout: 3000 });
+  expect((await sent).postDataJSON()).toEqual({ goal });
+});
+
 test("every reply box on the phone says what it asks for", async ({ page }) => {
   await openPhone(page, {
     state: {
@@ -547,8 +564,8 @@ for (const lang of ["en", "zh-CN"] as const)
       });
     const words =
       lang === "en"
-        ? { held: "Passed, doesn't count", human: "Not machine-verified", q: "Verified, with caveats", why: "With caveats: code reaches into the test runner, flaky: passed on rerun" }
-        : { held: "通过但不作数", human: "未经机器验证", q: "已验证（有保留）", why: "有保留：代码触及测试运行器、不稳定：重跑后通过" };
+        ? { held: "Passed, doesn't count", human: "Not machine-verified", q: "Verified, with caveats", why: "With caveats, look first: code reaches into the test runner, flaky: passed on rerun", cav: ["code reaches into the test runner", "flaky: passed on rerun"] }
+        : { held: "通过但不作数", human: "未经机器验证", q: "已验证（有保留）", why: "有保留，验收前先看：代码触及测试运行器、不稳定：重跑后通过", cav: ["代码触及测试运行器", "不稳定：重跑后通过"] };
     expect(await read(0)).toEqual(expect.objectContaining({ green: true, amber: false, seal: "@15085f2", gap: "", cut: false, why: "" }));
     expect(await read(1)).toEqual(expect.objectContaining({ green: false, amber: true, seal: `${words.held}@15085f2`, mark: words.held, why: "" }));
     expect(await read(2)).toEqual(expect.objectContaining({ green: false, amber: false, seal: words.human }));
@@ -569,4 +586,25 @@ for (const lang of ["en", "zh-CN"] as const)
       }),
     );
     expect(fit).toEqual([true, true, true, true, true, true]);
+    // Review 17 (record only): each Chinese caveat keeps its words on one line ("测试运／行器" broke inside a word), and every
+    // row's mark stands on its title's line, the tall row with caveats too.
+    const held = await rows.nth(3).evaluate((r, cav) => {
+      const text = r.querySelector(".why span")!.firstChild!;
+      return cav.map((c) => {
+        const range = document.createRange();
+        const at = text.textContent!.indexOf(c);
+        range.setStart(text, at);
+        range.setEnd(text, at + c.length);
+        return new Set([...range.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size;
+      });
+    }, words.cav);
+    // English breaks between words anyway; Chinese, between any two characters unless told otherwise.
+    if (lang === "zh-CN") expect(held, "each caveat on one line").toEqual([1, 1]);
+    const marks = await rows.evaluateAll((rs) =>
+      rs.map((r) => {
+        const [m, t] = [r.querySelector(":scope > svg")!.getBoundingClientRect(), r.querySelector(".title")!.getBoundingClientRect()];
+        return Math.abs(m.top + m.height / 2 - (t.top + t.height / 2)) <= 1.5;
+      }),
+    );
+    expect(marks, "each mark on its title's line").toEqual([true, true, true, true, true, true]);
   });

@@ -17,5 +17,8 @@ export default defineConfig({
     // Loaded from disk: the launch path is one chunk; views reached by an
     // action (review, settings, contract editor) load on first use.
     chunkSizeWarningLimit: 900,
+    // WebKit preloads modules itself from Safari 17; on an older one the start-up chunks load when the entry imports
+    // them, from disk, as they would anyway. The polyfill was 238 bytes of the start-up for that.
+    modulePreload: { polyfill: false },
   },
 });

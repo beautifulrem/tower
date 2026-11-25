@@ -149,6 +149,21 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T136 No criterion inside a path | D168 | — | an id in a path or before an extension names nothing | `GoalDeck.test.tsx`; fails on `2d3eeb8` | Done (iteration 17) |
 | T137 Busy while any call runs | D169 | — | the oldest call in flight sets the mode, supervisor and desk | `flow.rs`, `pulse.test.ts`; fail on the old logic | Done (iteration 17) |
 | T138 Stale marks in words | D170 | — | the signature and the overlap note name the marks | — | Done (iteration 17) |
+| T139 ↩ on a diff line alone | D171 | P2 | with a modifier ↩ is the page's shortcut, never a comment | `review-keys.spec.ts`; fails on `f9dd353` | Done (iteration 18) |
+| T140 A copy keeps what it held | D172 | P3 | across files the browser's copy; the side where the selection holds lines | `review-keys.spec.ts`; fails on `f9dd353` | Done (iteration 18) |
+| T141 The rail off the steer box | D173 | P3 | from 1281 the box stops at the rail's column | `flows.spec.ts`; fails on `f9dd353` | Done (iteration 18) |
+| T142 One rule for the call at work | D174 | P3 | the newest call in flight at a start, an end and an answer; the live line follows it | `flow.rs`; fails on `f9dd353` | Done (iteration 18) |
+| T143 Pause on the phone, tested | D175 | — | Pause, Press again, the request | `phone.spec.ts`; fails on `2d3eeb8` | Done (iteration 18) |
+| T144 The caveat line says look first | D176 | — | the words; docs/12 rule 8 on where the amber ! goes | `phone.spec.ts` | Done (iteration 18) |
+| T145 CJK caveats whole | D177 | — | `keep-all` on the caveat line | `phone.spec.ts` | Done (iteration 18) |
+| T146 The phone's mark on the title | D178 | — | the mark at the row's top | `phone.spec.ts` | Done (iteration 18) |
+| T147 Live line and mode agree | D179 | — | the desk's calls as the supervisor's | `pulse.test.ts`; fails on `f9dd353` | Done (iteration 18) |
+| T148 A thumbnail the width it will be | D180 | — | the capture's frame until it decodes: 16:10, or 390×844 on the Mobile tab | `flows.spec.ts`; fails on `f9dd353` | Done (iteration 18) |
+| T149 A load failure in your words | D181 | — | code that did not load said in the interface's language | `resilience.spec.ts`; fails on `f9dd353` | Done (iteration 18) |
+| T150 No space after "：" | D182 | — | the space English only | `flows.spec.ts`; fails on `f9dd353` | Done (iteration 18) |
+| T151 The dark shimmer brightens | D183 | — | a gap in a veil of the ground | `flows.spec.ts`; fails on `f9dd353` | Done (iteration 18) |
+| T152 Inside the budget | D184 | — | the polyfill off, a dead component gone | `bundle-budget.sh` | Done (iteration 18) |
+| T153 Every review in the table | D185 | — | reviews 15–17 in DESIGN_REVIEW | — | Done (iteration 18) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

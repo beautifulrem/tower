@@ -266,6 +266,14 @@ fn row_to_trace(r: &rusqlite::Row<'_>) -> rusqlite::Result<TraceEntry> {
 }
 
 impl Store {
+    /// Sets what a goal's live line says without an event: the supervisor's own reading of which call is at work,
+    /// when the one it named has ended and another still runs (the trace already holds both calls).
+    pub fn set_live_line(&mut self, goal_id: &str, line: &LiveLine) -> Result<()> {
+        self.conn
+            .execute("UPDATE goals SET live_line = ?2 WHERE id = ?1", params![goal_id, serde_json::to_string(line)?])?;
+        Ok(())
+    }
+
     /// Appends an event and updates projections atomically.
     pub fn append(&mut self, goal_id: &str, event: EventKind) -> Result<TraceEntry> {
         let at = self.now();

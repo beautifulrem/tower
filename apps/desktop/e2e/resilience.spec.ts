@@ -11,6 +11,7 @@ test("a view whose code fails to load says so, and the rest of the app still wor
   await page.route(/\/src\/views\/Learning\.tsx/, (r) => r.abort());
   const { fixtures } = await openTower(page, "settings");
   await expect(page.getByText("Couldn't load this")).toBeVisible();
+  await expect(page.getByText("This part of Tower didn't load.", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   // The board does not need that chunk: moving there clears the failure.
   await page.keyboard.press("Meta+1");
@@ -29,11 +30,22 @@ test("a steer box whose code fails to load says so in its place; the goal page s
   await openTower(page, `goal/${running.id}`);
   const failed = page.locator(".steer-failed");
   await expect(failed).toContainText("Couldn't load this");
+  // What failed, in your words: never the engine's own ("Importing a module script failed.").
+  await expect(failed).toContainText("This part of Tower didn't load. Retry; if it keeps failing, restart Tower.");
+  await expect(failed).not.toContainText(/module/i);
   await expect(page.locator(".goal-title")).toBeVisible();
   refuse = false;
   await failed.getByRole("button", { name: "Retry" }).click();
   await expect(page.locator(".steer-console textarea")).toBeVisible();
   await expect(failed).toHaveCount(0);
+});
+
+test("in Chinese the failure is said in Chinese too", async ({ page }) => {
+  await page.route(/\/src\/views\/Learning\.tsx/, (r) => r.abort());
+  await openTower(page, "settings", { lang: "zh-CN" });
+  await expect(page.getByText("没能加载")).toBeVisible();
+  await expect(page.getByText("Tower 的这部分界面没有加载出来。请重试；一直失败的话，重启 Tower。")).toBeVisible();
+  await expect(page.locator(".view")).not.toContainText(/module/i);
 });
 
 test("a section whose list could not be read says so instead of saying it is empty, and Retry reads it again", async ({ page }) => {

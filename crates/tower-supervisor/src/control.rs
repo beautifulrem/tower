@@ -311,7 +311,8 @@ pub fn answer_dialog(inner: &Arc<Inner>, goal: &str, ui_id: &str, response: &str
     };
     run.engine.answer(ui_id, &answer)?;
     if run.flags().dialogs.is_empty() {
-        inner.set_mode(goal, Mode::Thinking)?;
+        // Answered: back to the call still at work, if one runs beside the question (review 17), else thinking.
+        crate::run::settle_mode(inner, &run)?;
     }
     Ok(())
 }

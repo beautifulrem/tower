@@ -213,11 +213,14 @@ export const settled = <T,>(r: Resource<T>): T | undefined =>
   r.error !== undefined && !r.loading ? undefined : r.state === "refreshing" ? r.latest : r();
 
 /** What a failed load says, with a way to try again; `pending` shows while there is no error. */
+/** Code that did not load (each engine words it its own way, in English): said in your language, not the engine's. */
+const codeMissing = (e: unknown) => e instanceof Error && /imported module|module script|Unable to preload/i.test(e.message);
+
 export function Failed(props: { title?: string; error: unknown; onRetry: () => void; inline?: boolean; pending?: JSX.Element }) {
   return (
     <Show when={props.error} fallback={props.pending}>
       <Empty title={props.title ?? t("common.loadFailed")} kind="error" inline={props.inline} action={<Button size="s" onClick={props.onRetry}>{t("common.retry")}</Button>}>
-        {errorText(props.error)}
+        {codeMissing(props.error) ? t("common.codeMissing") : errorText(props.error)}
       </Empty>
     </Show>
   );

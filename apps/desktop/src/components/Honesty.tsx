@@ -127,9 +127,10 @@ export function HeldOutLine(props: { c: CriterionView; children?: JSX.Element })
     const p = proof();
     return p ? p.ran.length + p.not_ran.length + p.unprovable.length : undefined;
   };
+  // The words end on a colon; English sets a space after it, Chinese's full-width colon carries its own.
   const note = (cls: string, title: string, words: string, files: string[]) => (
     <ObsRow cls={cls} spanCls="t3" title={title}>
-      <span class="held-out-text">{words} <HeldOutFiles files={files} /></span>
+      <span class="held-out-text">{words}{locale() === "zh-CN" ? "" : " "}<HeldOutFiles files={files} /></span>
     </ObsRow>
   );
   return (

@@ -103,21 +103,3 @@ export function LookStepsEdit(props: { id: string; steps: string[]; issues: stri
     </div>
   );
 }
-
-/** The steps as the goal page reads them: the same numbered lines, nothing to type into. */
-export function LookStepsRead(props: { steps: string[] }) {
-  return (
-    <ol class="look-step-list look-step-list-read">
-      <For each={props.steps}>
-        {(s, i) => (
-          <li class="look-step">
-            <span class="look-step-no num" aria-hidden="true">
-              {no(i())}
-            </span>
-            <code class="code-val">{s}</code>
-          </li>
-        )}
-      </For>
-    </ol>
-  );
-}

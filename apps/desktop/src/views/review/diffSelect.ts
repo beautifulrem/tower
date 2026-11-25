@@ -12,11 +12,16 @@ export function copyLines(table: HTMLElement, e: ClipboardEvent) {
   if (!sel?.rangeCount || sel.isCollapsed || !e.clipboardData) return;
   const range = sel.getRangeAt(0);
   const { startContainer: a, endContainer: b } = range;
-  const col = ((a instanceof Element ? a : a.parentElement)?.closest("td.code") as HTMLTableCellElement | null)?.cellIndex ?? -1;
+  // Across files, the browser's own copy keeps every file's lines (review 17).
+  if (!table.contains(a) || !table.contains(b)) return;
+  // The side the selection holds: where it starts, or where it ends when it starts on the split view's empty side.
+  const line = "td.code:not(.dl-blank)";
+  const cell = (n: Node) => (n instanceof Element ? n : n.parentElement)?.closest<HTMLTableCellElement>(line);
+  const col = (cell(a) ?? cell(b))?.cellIndex ?? -1;
   const lines: string[] = [];
   for (const tr of table.querySelectorAll("tr.dl")) {
-    const td = col < 0 ? tr.querySelector("td.code") : tr.children[col];
-    if (!td?.matches("td.code") || !range.intersectsNode(td)) continue;
+    const td = col < 0 ? tr.querySelector(line) : tr.children[col];
+    if (!td?.matches(line) || !range.intersectsNode(td)) continue;
     // The part of this line the selection holds, without its sign.
     const r = document.createRange();
     r.selectNodeContents(td);
@@ -26,7 +31,8 @@ export function copyLines(table: HTMLElement, e: ClipboardEvent) {
     f.querySelectorAll(".sign").forEach((n) => n.remove());
     lines.push(f.textContent!);
   }
-  if (lines.length < 2) return;
+  // Nothing of it in the lines (a selection of numbers or headers): the browser's own copy.
+  if (lines.length < 2 || !lines.join("").trim()) return;
   e.preventDefault();
   e.clipboardData.setData("text/plain", lines.join("\n"));
 }

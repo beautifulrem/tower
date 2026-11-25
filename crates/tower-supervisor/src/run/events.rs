@@ -132,16 +132,8 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                 observe(inner, g, &call.args, !is_error)?;
             }
             if !matches!(tool.as_str(), "ask_user") {
-                // A call still in flight (the engine ran tools in parallel) keeps the run at work with the oldest of
-                // them, never "thinking" beside a running command (review 16: the desk and the phone read busy by it).
-                let still = run
-                    .flags()
-                    .tools
-                    .values()
-                    .filter(|c| c.tool != "log" && c.tool != "submit")
-                    .min_by_key(|c| c.started)
-                    .map(|c| Mode::for_tool(&c.tool));
-                inner.set_mode(g, still.unwrap_or(Mode::Thinking))?;
+                // A call still in flight (the engine ran tools in parallel) keeps the run at work on it.
+                settle_mode(inner, run)?;
             }
         }
         PiEvent::TrustGateDenied { engine, trust_level, tool, reason, attempts } => {
@@ -212,7 +204,9 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             inner.append(g, EventKind::EngineError { message })?;
         }
         PiEvent::AgentSettled { .. } => on_settled(inner, run).await?,
-        PiEvent::AgentEnd { .. } | PiEvent::Other { .. } => {}
+        // The agent's turn is over: a call it never ended is not running any more.
+        PiEvent::AgentEnd { .. } => run.flags().tools.clear(),
+        PiEvent::Other { .. } => {}
     }
     Ok(())
 }
@@ -381,18 +375,20 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
         }
         _ => {}
     }
-    inner.append(
-        g,
-        EventKind::ToolStarted {
-            call_id: call_id.clone(),
-            tool: tool.clone(),
-            summary: summarize::tool_call(&tool, &args, &run.workspace),
-        },
-    )?;
+    let at = inner
+        .append(
+            g,
+            EventKind::ToolStarted {
+                call_id: call_id.clone(),
+                tool: tool.clone(),
+                summary: summarize::tool_call(&tool, &args, &run.workspace),
+            },
+        )?
+        .at;
     if tool != "log" && tool != "submit" {
         inner.set_mode(g, Mode::for_tool(&tool))?;
     }
-    run.flags().tools.insert(call_id, ToolCall { tool, args, started: Instant::now() });
+    run.flags().tools.insert(call_id, ToolCall { tool, args, started: Instant::now(), at });
     Ok(())
 }
 

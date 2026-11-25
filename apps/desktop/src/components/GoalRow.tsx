@@ -5,7 +5,7 @@
  * board, and one goal reads the same way, just shorter. The last reading,
  * the id, ends on the board's right edge, where its hairlines end.
  */
-import { Show } from "solid-js";
+import { onCleanup, Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { GoalSummaryExt } from "../lib/apiTypes";
@@ -41,6 +41,38 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   const overlapsWith = (id: string) => t("goal.overlaps", { id: "\u0001" }).split("\u0001").flatMap((part, i) => (i ? [<span class="code-val">{id}</span>, part] : [part]));
   const overlapTitle = () => (g().overlaps ?? []).map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n");
   const titleTip = () => [g().title, otherEngine() ? engineLabel(engine()!) : "", overlapTitle()].filter(Boolean).join("\n");
+  // The note gives way before the title does: when the title would show less than it needs (all of a short one, 12em of a
+  // longer one), the note keeps its ◇ alone, and its words stay in the tooltip and for a screen reader.
+  const fitOverlap = (note: HTMLElement) => {
+    const fit = () => {
+      const cell = note.parentElement;
+      const title = cell?.querySelector<HTMLElement>(".g-title .ellipsis");
+      const words = note.querySelector<HTMLElement>(".g-overlap-words");
+      if (!title || !words) return;
+      words.classList.remove("sr-only");
+      const need = Math.min(title.scrollWidth, 12 * (parseFloat(getComputedStyle(title).fontSize) || 13));
+      // Decided as if the peek button were shown (it comes with the pointer and the selection), so moving over the rows
+      // never turns the words into the ◇ and back; the button takes the cell's free room first, then the title's.
+      const peek = cell!.querySelector<HTMLElement>(".g-peek-btn");
+      const reserve = peek && getComputedStyle(peek).display === "none" ? parseFloat(getComputedStyle(peek).width) + parseFloat(getComputedStyle(cell!).columnGap) || 0 : 0;
+      const free = cell!.getBoundingClientRect().right - note.getBoundingClientRect().right;
+      words.classList.toggle("sr-only", title.clientWidth - Math.max(0, reserve - free) < need - 0.5);
+    };
+    // The cell for the window's width, the title for its own (a rename, a font), the cell's text for the language. Set up
+    // once the note is in its cell.
+    const ro = new ResizeObserver(fit);
+    const mo = new MutationObserver(fit);
+    queueMicrotask(() => {
+      const cell = note.parentElement;
+      if (!cell) return;
+      ro.observe(cell);
+      const title = cell.querySelector(".g-title .ellipsis");
+      if (title) ro.observe(title);
+      mo.observe(cell, { subtree: true, characterData: true, childList: true });
+    });
+    void document.fonts?.ready.then(fit);
+    onCleanup(() => (ro.disconnect(), mo.disconnect()));
+  };
   return (
     <div
       class="g-row"
@@ -79,14 +111,19 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
             ended a screen's width away from the words it names. */}
         <span class="code-val t2 g-goal-id">{g().id}</span>
         {/* An overlap is said with the row it belongs to, after its id: in the identity column a bare "◇ G-0003" read as
-            this row's own id. Below 1241 it leaves with the identity column and lives on in the title's tooltip. */}
+            this row's own id. Short of the title's room it keeps its ◇ alone; below 1241 it leaves with the identity
+            column. Its words live on in the tooltips either way. */}
         <Show when={g().overlaps?.length}>
-          <span class="g-overlap" title={overlapTitle()}>
-            <NoticeMark title={t("goal.overlaps", { id: g().overlaps[0].goal_id })} />
-            <span>{overlapsWith(g().overlaps[0].goal_id)}</span>
-            <Show when={g().overlaps.length > 1}>
-              <span class="num">+{g().overlaps.length - 1}</span>
-            </Show>
+          <span class="g-overlap" title={overlapTitle()} ref={fitOverlap}>
+            <span class="g-overlap-mark" aria-hidden="true">
+              <NoticeMark />
+            </span>
+            <span class="g-overlap-words">
+              <span>{overlapsWith(g().overlaps[0].goal_id)}</span>
+              <Show when={g().overlaps.length > 1}>
+                <span class="num">+{g().overlaps.length - 1}</span>
+              </Show>
+            </span>
           </span>
         </Show>
         <Show when={props.onPeek}>

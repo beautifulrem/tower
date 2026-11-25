@@ -206,3 +206,19 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   iteration 10 (the overlap note squeezes the title, D107) and five P3s, recorded as D107–D112, open
   (`design-evidence/reports/review10.md`). Its e2e run was 362/4 by the plain command (fonts 403 through the symlinked
   node_modules) and 366/0 with fonts served. Reviewer worktree removed.
+- 2026-11-25 Iteration 11 — every review 10 finding (T76–T81) and the empty settings test. The board's overlap note
+  gives way before the title: measured per row, it keeps its ◇ alone when the title would show less than all of a short
+  title or 12em of a long one (the peek button's room kept, so hovering never flips it), and the title column's floor is
+  16em at 1241–1560. Every seal of a goal accepted or merged with caveats says they were taken with it; the merged ring
+  keeps the gap (◉*). The run pickers: one option per point, the select holding what its face says, names worded in
+  the interface language from kind, run and time ("Verification", not "Verified", for the verifier's point). The
+  ledger's runs note is 11px and worded as a note ("said in runs 1 and 2"). A caveat on the evidence strip is a
+  neutral pill in the seal's words; a high finding is named for what was done; the weakened-assertion sentinels, which
+  the strip called "runner patched", say "assertions weakened". The unit test checks Chinese settings and must find a
+  unit. Checked against `deef352` by restoring its sources under the new tests: 12 e2e and 5 unit tests fail there,
+  pass here (the picker also by a name-free variant); the three unit-clearance cases pass there too, as guards.
+  Gates: tsc; vitest 43 files / 236 tests; Playwright WebKit 374 passed, 0 failed (76 shot tests skip without
+  SHOTS); shots 69/69 (`/tmp/tower-design/iter11/shots`); perf passes (board of 50: 664 / 282 / 198 ms against
+  247 / 167 / 109 ms; switches 30–82 ms against 15–46 ms); line limit; bundle all JS 161,693 / 163,840 B, start-up
+  55,478 / 65,536 B, goal page 11,596 / 12,288 B; doc numbers; detector: 0 anti-patterns, 2 advisories on older
+  lines. No Rust changed. Not yet independently re-reviewed.

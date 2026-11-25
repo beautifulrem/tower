@@ -194,10 +194,14 @@ test("a new contract at its defaults names no thinking level, escalation, ports 
 
 // Review 9, R9-P3-07: the budget's "$" stood on its digits. The field's unit borrowed the review sidebar's `.unit` row
 // class, whose 8px padding pushed every unit inward. A unit sits in the field's padding, clear of the text, on either side.
-for (const [route, lang] of [["new", "en"], ["new", "zh-CN"], ["settings", "en"]] as const)
+// (Review 10: the English settings page has no field with a unit, so that case checked nothing; the Chinese one has "个".
+// Each case now has to find a unit to check.)
+for (const [route, lang] of [["new", "en"], ["new", "zh-CN"], ["settings", "zh-CN"]] as const)
   test(`a field's unit stays clear of the value it measures (${route}, ${lang})`, async ({ page }) => {
     await openTower(page, route, { lang });
     await settled(page, route);
+    const shown = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".unit-wrap")].filter((w) => w.offsetParent).length);
+    expect(shown, "fields with a unit on the page").toBeGreaterThan(0);
     const clash = await page.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>(".unit-wrap")]
         .filter((w) => w.offsetParent)

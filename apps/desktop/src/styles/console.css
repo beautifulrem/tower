@@ -260,11 +260,11 @@
 .g-spend-text { line-height: 14px; }
 .g-spend-cell .meter-micro { width: 56px; }
 /* At the low end of this range the fixed columns add up to more than the board: the identity column gives first. The id
-   is beside the title, so the title's column carries it (a larger share) and the identity is the readings, the engine
-   and the project (less room than with the id). */
+   is beside the title, so the title's column carries it (a larger share, and a floor of 12em of title beside the id and
+   an overlap's ◇) and the identity is the readings, the engine and the project (less room than with the id). */
 @media (min-width: 1241px) and (max-width: 1560px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.4fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(8em, 10em);
+    grid-template-columns: 14px minmax(16em, 1.4fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(8em, 10em);
   }
 }
 .g-overlap {
@@ -275,6 +275,12 @@
   color: var(--text-2);
   font-size: var(--fs-hint);
   white-space: nowrap;
+}
+.g-overlap-mark,
+.g-overlap-words {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .g-title-cell {
   display: flex;

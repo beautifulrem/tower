@@ -110,12 +110,18 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
 
   // Review 9, R9-P3-04: the supervisor qualifies a pass when code reaches into the test runner (source_touches_tests,
   // runner_patched, source_patches_tests); the row says that caveat, and never "assertions untouched" beside it.
-  for (const [sentinel, severity, said] of [
-    ["source_touches_tests", 2, "code reaches into the test runner"],
-    ["runner_patched", 2, "runner patched"],
-    ["source_patches_tests", 3, "runner patched"],
+  // Review 10, R10-P3-04: a caveat is one pill, in the seal's words and the neutral tone, whichever finding raised it; a
+  // high finding holds the pass (named for what was done; amber on a passing row, as every danger there); another finding
+  // is amber, in its own words.
+  for (const [sentinel, severity, said, tone] of [
+    ["source_touches_tests", 2, "code reaches into the test runner", "obs"],
+    ["runner_patched", 2, "code reaches into the test runner", "obs"],
+    ["source_patches_tests", 2, "code reaches into the test runner", "obs"],
+    ["source_patches_tests", 3, "runner patched", "attn"],
+    ["assertion_identity_unchecked", 2, "assertions not checked", "obs"],
+    ["assertions_removed", 2, "assertions weakened", "attn"],
   ] as const)
-    it(`says ${sentinel} as the caveat it is, never "assertions untouched"`, () => {
+    it(`says ${sentinel} (severity ${severity}) as the ${tone} pill it is, never "assertions untouched"`, () => {
       const criterion = {
         criterion: { id: "C1", title: "Checkout tests", kind: { type: "exec" as const, command: "pnpm test", timeout_secs: 60 } },
         verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 420, output_tail: "ok", at: Date.now() - 5000, stale: false, held_out: false, held_out_proof: null, console_errors: [] },
@@ -132,7 +138,9 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
         <CriterionRow goalId="G-0001" c={criterion} state="in_review" base="1111111" sentinels={[{ sentinel, severity, title: "Test machinery", detail: "src/cart.js: require('node:assert')" }]} />
       ));
       fireEvent.click(screen.getByText("passed"));
-      expect(screen.getAllByText(said).length).toBeGreaterThan(0);
+      const pills = screen.getAllByText(said).filter((e) => e.classList.contains("ev-pill"));
+      expect(pills).toHaveLength(1);
+      expect(pills[0].dataset.mark).toBe(tone);
       expect(screen.queryByText("assertions untouched")).toBeNull();
     });
 });

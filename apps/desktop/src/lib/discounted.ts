@@ -55,6 +55,9 @@ export const caveats = (g: { id?: string; progress?: { not_evidence?: boolean; q
   return q ? (Object.keys(CAVEATS) as (keyof Qualified)[]).filter((k) => q[k]).map((k) => t(CAVEATS[k])) : [];
 };
 
+/** Accepted, or merged since: a seal on it says the caveats were taken with it, not that they are to be looked at first. */
+export const wasAccepted = (g: { state?: string } | null | undefined): boolean => g?.state === "accepted" || g?.state === "integrated";
+
 /** Caveats as one phrase, joined as the interface language joins a list. */
 export const caveatList = (why: string[]): string => why.join(locale() === "zh-CN" ? "、" : ", ");
 

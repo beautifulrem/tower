@@ -299,30 +299,70 @@ test("the board's identity says the engine in words, leaves the only project uns
 // Review 9, R9-P3-06: with the id moved beside the title, the identity column held only "◇ G-0003" on G-0001's row —
 // another goal's id where this row's own used to stand. The overlap is said in words, after the row's own id; below
 // 1241 it leaves with the identity column, and the title's tooltip keeps it.
+// Review 10, R10-P2-01: the words took the title's room — "Fi…" at 1241, 143px of a 252px title at 1440 — while the
+// window 1px narrower gave the title 251px. The note gives way first: the title keeps all of a short title and 12em of
+// a long one at every width, the note keeps its ◇ alone when it must, and its words stay in its text and tooltips.
+const LONG_TITLE = { en: "Fix the cart total rounding when a discount and the tax apply together", "zh-CN": "修复折扣和税同时生效时购物车总价的舍入错误" };
 for (const [lang, words] of [
   ["en", "Overlaps G-0003"],
   ["zh-CN", "与 G-0003 改动重叠"],
 ] as const)
-  test(`a goal row says an overlap in words beside its own id, never as a bare other id (${lang})`, async ({ page }) => {
-    await openTower(page, "overview", { lang });
-    await settled(page, "overview");
-    const row = page.locator('.board-rows .g-row[data-goal="G-0001"]');
-    for (const width of [1241, 1440, 1800]) {
-      await page.setViewportSize({ width, height: 900 });
+  for (const long of [false, true])
+    test(`a goal row says an overlap in words beside its own id, and the title keeps its room (${lang}${long ? ", long title" : ""})`, async ({ page }) => {
+      await openTower(page, "overview", {
+        lang,
+        enrich: long
+          ? (F) => {
+              for (const g of F.goals) if (g.id === "G-0001") g.title = LONG_TITLE[lang];
+            }
+          : undefined,
+      });
+      await settled(page, "overview");
+      const row = page.locator('.board-rows .g-row[data-goal="G-0001"]');
       const overlap = row.locator(".g-title-cell .g-overlap");
-      await expect(overlap, `at ${width}`).toBeVisible();
-      await expect(overlap).toHaveText(words);
-      expect(await overlap.evaluate((e) => e.getClientRects().length), `whole at ${width}`).toBe(1);
-      const [cell, o, id] = await Promise.all([row.locator(".g-title-cell"), overlap, row.locator(".g-goal-id")].map((l) => l.boundingBox()));
-      expect(o!.x, `after the row's own id at ${width}`).toBeGreaterThanOrEqual(id!.x + id!.width);
-      expect(o!.x + o!.width, `inside the title cell at ${width}`).toBeLessThanOrEqual(cell!.x + cell!.width + 0.5);
-      // The identity column names no other goal.
-      await expect(row.locator(".g-id")).not.toContainText("G-0003");
-    }
-    await page.setViewportSize({ width: 1100, height: 900 });
-    await expect(row.locator(".g-overlap")).toBeHidden();
-    await expect(row.locator(".g-title")).toHaveAttribute("title", new RegExp(words));
-  });
+      const shown: Record<number, boolean> = {};
+      for (const width of [1241, 1280, 1366, 1440, 1560, 1800]) {
+        await page.setViewportSize({ width, height: 900 });
+        await expect(overlap, `at ${width}`).toBeVisible();
+        await expect(overlap).toHaveText(words);
+        expect(await overlap.evaluate((e) => e.getClientRects().length), `whole at ${width}`).toBe(1);
+        const [cell, o, id] = await Promise.all([row.locator(".g-title-cell"), overlap, row.locator(".g-goal-id")].map((l) => l.boundingBox()));
+        expect(o!.x, `after the row's own id at ${width}`).toBeGreaterThanOrEqual(id!.x + id!.width);
+        expect(o!.x + o!.width, `inside the title cell at ${width}`).toBeLessThanOrEqual(cell!.x + cell!.width + 0.5);
+        // The title shows all of itself, or 12em of a longer one, whatever the note does; where the column itself is
+        // narrower than that, the note costs it no more than its ◇ (measured with everything but the mark set aside).
+        const room = await row.evaluate((r) => {
+          const title = r.querySelector<HTMLElement>(".g-title .ellipsis")!;
+          const note = r.querySelector<HTMLElement>(".g-overlap")!;
+          const visible = title.clientWidth;
+          const rest = [...note.children].slice(1) as HTMLElement[];
+          const was = rest.map((c) => c.style.display);
+          for (const c of rest) c.style.display = "none";
+          const markOnly = title.clientWidth;
+          rest.forEach((c, i) => (c.style.display = was[i]));
+          return { visible, markOnly, whole: title.scrollWidth, em: parseFloat(getComputedStyle(title).fontSize), note: note.getBoundingClientRect().width };
+        });
+        const need = Math.min(room.whole, 12 * room.em, room.markOnly);
+        expect(room.visible, `title's room at ${width} (${JSON.stringify(room)})`).toBeGreaterThanOrEqual(need - 1);
+        // The words are either whole on the line or kept for a screen reader, never cut.
+        const w = await overlap.evaluate((e) => ({ width: e.getBoundingClientRect().width, scroll: e.scrollWidth }));
+        expect(w.scroll, `note whole at ${width}`).toBeLessThanOrEqual(w.width + 0.5);
+        shown[width] = room.note > 30;
+        // The pointer brings the peek button; the note is decided with its room kept, so hovering never changes it.
+        await row.hover();
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        expect((await overlap.boundingBox())!.width > 30, `note unchanged on hover at ${width}`).toBe(shown[width]);
+        await page.mouse.move(0, 0);
+        // The identity column names no other goal.
+        await expect(row.locator(".g-id")).not.toContainText("G-0003");
+      }
+      // A wide board has the room for the words beside a short title (a long one may need it for its 12em).
+      if (!long) expect(shown[1800], "words shown at 1800").toBe(true);
+      await expect(overlap).toHaveAttribute("title", new RegExp(`${words}: src/`));
+      await page.setViewportSize({ width: 1100, height: 900 });
+      await expect(row.locator(".g-overlap")).toBeHidden();
+      await expect(row.locator(".g-title")).toHaveAttribute("title", new RegExp(words));
+    });
 
 test("the board writes one age format, decisions and goals alike", async ({ page }) => {
   await openTower(page, "overview", {

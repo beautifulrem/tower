@@ -22,7 +22,7 @@ import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
 import { ago, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
-import { caveats, notEvidence } from "../lib/discounted";
+import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
 import { approves, optionTone, statusWord } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go, goProjectSetting } from "../lib/nav";
@@ -331,7 +331,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                 {(g) => (
                   <div class="decision-readout decision-readout-main halt">
                     {/* The head already says the verdict: a withheld seal keeps its ◆ and pin, not the words again. */}
-                    <Seal pin={g().verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} text={notEvidence(g()) || caveats(g()).length ? "" : undefined} />
+                    <Seal pin={g().verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} text={notEvidence(g()) || caveats(g()).length ? "" : undefined} />
                     <Show when={g().diffstat}>
                       <span class="sep" />
                       <span class="num">

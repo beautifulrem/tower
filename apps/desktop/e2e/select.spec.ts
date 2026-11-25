@@ -4,8 +4,8 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { enrichRich } from "./rich";
-import { openTower, settled } from "./tauri";
+import { enrichHeldOutPartly, enrichRich } from "./rich";
+import { criterion, openReadings, openTower, settled } from "./tauri";
 
 // Review 13 (record only): copying a board row or a PR line took the readings a step had set aside and the screen
 // reader's summary with it. Selection is the stylesheet's to grant: the dev server adds no prefix, and WebKit reads
@@ -44,7 +44,7 @@ for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0003"])
 // moving you. Before, none of them did.
 for (const [route, view, sels] of [
   ["goal/G-0001", ".goal-page", [[".goal-title", 3], [".goal-head .code-val", 3], [".seal-pin", 3], [".criterion-cmd", 3]]],
-  ["review/G-0003", ".review", [[".review-title", 3], [".review-head .row > .code-val", 3], [".review-stat-pins", 2], [".file-path", 3]]],
+  ["review/G-0003", ".review", [[".review-title", 3], [".review-head .row > .code-val", 3], [".review-stat-pins .code-val", 2], [".review-stat-pins .code-val", 3], [".review-stat-pins .code-val >> nth=1", 3], [".file-path", 3]]],
 ] as const)
   test(`on ${route} a title, an id, a pin, a command and a path select whole`, async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 });
@@ -66,3 +66,34 @@ for (const [route, view, sels] of [
       await expect(page.locator(view), `${sel}: the click keeps you on ${route}`).toBeVisible();
     }
   });
+
+// Review 16 (R16-P3-04): what a copy takes is the value as you would type it. The held-out names copied run together
+// ("a.jsb.js": their separators did not select), and the review's pin pair, one value around its arrow, copied as
+// "@69a9769@". Each pin is a value of its own now, and the list selects with its separators, not its words.
+test("a copy of the held-out names keeps their separators, and each of the review's pins copies whole", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await openTower(page, "goal/G-0001", { enrich: enrichHeldOutPartly });
+  await openReadings(page);
+  const files = criterion(page, "C1").locator(".held-out-missing code");
+  const file = files.first();
+  await expect(file).toBeVisible();
+  // The names as you would write them: apart, in the interface's own separator.
+  const list = (await files.allTextContents()).join(", ");
+  expect(list).toMatch(/^\S+\.js, \S+\.js/);
+  const b = (await file.boundingBox())!;
+  await page.mouse.click(b.x + 6, b.y + b.height / 2, { clickCount: 3 });
+  expect(await page.evaluate(() => getSelection()!.toString().trim())).toBe(list);
+  await openTower(page, "review/G-0003", { enrich: enrichRich });
+  await settled(page, "review/G-0003");
+  const pair = page.locator(".review-stat-pins");
+  await expect(pair).toBeVisible();
+  // "@from → @to": a triple-click at either end takes that pin, whole.
+  const hashes = (await pair.textContent())!.match(/@[0-9a-f]{7}/g)!;
+  expect(hashes).toHaveLength(2);
+  const p = (await pair.boundingBox())!;
+  for (const [i, x] of [[0, p.x + 6], [1, p.x + p.width - 6]] as const) {
+    await page.evaluate(() => getSelection()!.removeAllRanges());
+    await page.mouse.click(x, p.y + p.height / 2, { clickCount: 3 });
+    expect(await page.evaluate(() => getSelection()!.toString().trim()), `pin ${i}`).toBe(hashes[i]);
+  }
+});

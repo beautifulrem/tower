@@ -48,8 +48,11 @@ export const ACTIVITY_MAX = 200;
 export interface Pulse {
   /** When the goal's event stream last moved (ms since the epoch). */
   at: number;
-  /** The tool call in flight, if one started and has not ended. */
+  /** The tool call in flight longest, if one started and has not ended. */
   tool: { name: string; since: number } | null;
+  /** Every call in flight, by its id: an engine may run tools side by side, and one ending leaves the others running
+   *  (review 16: a single slot read the run as idle while its command still ran). */
+  calls?: Record<string, { name: string; since: number }>;
 }
 
 interface State {
@@ -341,8 +344,12 @@ export function beat(goalId: string, event: TraceEntry["event"] | null, now = Da
     produce((s) => {
       const p = s.pulse[goalId] ?? { at: 0, tool: null };
       p.at = now;
-      if (event?.kind === "tool_started") p.tool = { name: event.tool, since: now };
-      else if (event?.kind === "tool_ended" || event?.kind === "run_ended" || event?.kind === "engine_error") p.tool = null;
+      const calls = (p.calls ??= {});
+      if (event?.kind === "tool_started") calls[event.call_id] = { name: event.tool, since: now };
+      else if (event?.kind === "tool_ended") delete calls[event.call_id];
+      else if (event?.kind === "run_ended" || event?.kind === "engine_error") p.calls = {};
+      const oldest = Object.values(p.calls).sort((a, b) => a.since - b.since)[0];
+      p.tool = oldest ? { ...oldest } : null;
       s.pulse[goalId] = p;
     }),
   );

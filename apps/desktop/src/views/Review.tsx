@@ -509,9 +509,11 @@ export function Review(props: { id: string }) {
                     <span>{t("review.units", { n: units().length })}</span>
                   </Show>
                 </Show>
-                <span class="review-stat-pins code-val">
-                  @{short(view()!.from)}
-                  <Icon name="arrow-right" size={10} class="t3" />@{short(view()!.pin)}
+                {/* Two values, each selecting whole (review 16: one value around the arrow copied as "@69a9769@"). */}
+                <span class="review-stat-pins">
+                  <span class="code-val">{`@${short(view()!.from)}`}</span>
+                  <Icon name="arrow-right" size={10} class="t3" />
+                  <span class="code-val">{`@${short(view()!.pin)}`}</span>
                 </span>
               </span>
               <TimelineSwitcher scope={scope()} onScope={(sc) => (setScope(sc), setPick(null), resetTexts())} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => (setCmp([f, to]), resetTexts())} picks={cmpPicks()} onPicks={setCmpPicks} />

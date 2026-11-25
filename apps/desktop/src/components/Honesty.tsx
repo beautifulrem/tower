@@ -102,20 +102,12 @@ export function HeldOutChip(props: { ran?: number; total?: number }) {
 
 /**
  * Held-out files, one by one, as code — names only you see — read as the end of a sentence: the separator ("," in
- * English, "、" in Chinese) sits against the name before it, inside the same run of text.
+ * English, "、" in Chinese) sits against the name before it, inside the same run of text. The list selects as one, its
+ * separators with it, so a copy of it is the names apart (review 16), not the words before it.
  */
 function HeldOutFiles(props: { files: string[] }) {
   const sep = () => (locale() === "zh-CN" ? "、" : ", ");
-  return (
-    <For each={props.files}>
-      {(f, i) => (
-        <>
-          {i() > 0 ? sep() : " "}
-          <code class="code-val held-out-file">{f}</code>
-        </>
-      )}
-    </For>
-  );
+  return <span class="held-out-files">{props.files.map((f, i) => [i ? sep() : "", <code class="code-val held-out-file">{f}</code>])}</span>;
 }
 
 /**
@@ -137,7 +129,7 @@ export function HeldOutLine(props: { c: CriterionView; children?: JSX.Element })
   };
   const note = (cls: string, title: string, words: string, files: string[]) => (
     <ObsRow cls={cls} spanCls="t3" title={title}>
-      <span class="held-out-text">{words}<HeldOutFiles files={files} /></span>
+      <span class="held-out-text">{words} <HeldOutFiles files={files} /></span>
     </ObsRow>
   );
   return (

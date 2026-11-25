@@ -367,3 +367,25 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   has no upper bound. Gates rerun alone, all pass: vitest 42 / 246; e2e 403/0; shots 69/69; perf (board of 50:
   604 / 243 / 186 against 177 / 152 / 107 ms; switch medians about 60 against 25 ms); line limit; doc numbers; cargo
   remote 4/4; bundle 163,258 / 163,840 B.
+- 2026-11-26 Review 16 — independent (`2d3eeb8`): PASS — 8.46 / 10, no P0, P1 or P2; five P3s (the phone's silent badge
+  a step louder than the desk's; a docs/12 reference to §12.2; grey stand-in rows on the empty phone page, overturning
+  D156's keep; the held-out names and the review's pin pair copying the wrong text; a pass with caveats looking clean
+  on the phone) and nine record-only notes. Saved as `design-evidence/reports/review16.md`.
+- 2026-11-26 Iteration 17 — review 16's five (D157–D161, T125–T129) and every record-only note (D162–D169,
+  T130–T137), with stale ◆ and ◇ words found on the way (D170, T138). On the phone a silent row's badge is text-2 at
+  400 with no glyph, the hint mark the header's alone; an empty list is one sentence, no stand-in rows; a pass with
+  caveats keeps the cut ring and seal, reads "Verified, with caveats" and names its caveats after the amber !; a ready
+  row's meta line wraps at 320. Copies say what they show: the held-out names with their separators, each review pin
+  whole, diff lines as code (↩ after a press comments; a triple-click anywhere on a line takes its code; a copy keeps
+  blank lines; `review/diffSelect.ts`). The shimmer's peak is the ground at 60%, so a letter keeps at least 30% of its
+  ink; the title bar's engine gauge has no dot and a down gauge is text-1; a look thumbnail holds a 3:4 frame until it
+  decodes; a steer box whose code fails to load says so with Retry, and the goal rail's rule now finds it
+  (`:has(.steer)` had never matched); an id inside a path names no criterion; and a second tool call in flight keeps
+  the run busy on the supervisor and the desk (the oldest call's mode). Each fix's test fails on `2d3eeb8`'s sources
+  (one file set at a time; the Rust test on the old ToolEnd logic). The first gate run went over: all interface JS
+  163,953 B against 163,840 and `FileDiff.tsx` at 836 lines against 800; the selection code moved to its own module
+  and this iteration's own additions were written tighter (no budget changed). Gates (run alone): tsc; vitest
+  43 / 248; e2e 407/0 on the first full run; shots 69/69 (`/tmp/tower-design/iter17/allshots`); perf alone (board of 50: 712 / 247 / 187 ms against 190 / 164 / 128 ms; switch
+  medians about 65 against 24 ms); line limit; doc numbers; `cargo test -p tower-supervisor` 212 passed, 2 ignored, rustfmt;
+  bundle 163,810 / 163,840 B; detector 17 against 17 on the touched files, the same findings. Visual check at DPR
+  2, light and dark, en and zh, 390 and 320: `/tmp/tower-design/iter17/visual/`. Not yet independently re-reviewed.

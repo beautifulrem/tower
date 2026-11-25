@@ -74,11 +74,6 @@
   h2 .num { color: var(--text-3); order: 3; font-size: 12px; }
   .empty { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; color: var(--text-2); font-size: 14px; }
   .empty svg { flex: 0 0 auto; margin-top: 6px; color: var(--text-3); }
-  .ghost { margin-top: 4px; pointer-events: none; }
-  .ghost .row { min-height: 44px; background: transparent; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; padding: 6px 0; }
-  .ghost svg { color: var(--text-4); }
-  .ghost .bar { display: block; height: 6px; border-radius: 3px; background: var(--bg-selected); }
-  .ghost .bar + .bar { margin-top: 8px; }
   .offline { display: grid; gap: 4px; padding: 18px 0 0; }
   .error { display: flex; align-items: baseline; gap: 10px; color: var(--text-1); font-size: 16px; line-height: 24px; font-weight: 500; }
   .error svg { flex: 0 0 auto; align-self: center; }
@@ -157,6 +152,8 @@
   .row .meta { display: flex; gap: 6px; align-items: center; margin-top: 2px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
   .row .meta .badge { display: inline-flex; align-items: center; gap: 4px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .meta .badge svg { display: block; flex: 0 0 auto; }
+  /* Silent: the badge steps back, as the desk's (`.mode-silent`): text-2, regular, no mark; the hint mark is the header's. */
+  .row .meta .badge.silent { color: var(--text-2); font-weight: 400; }
   .row .meta .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .meta .detail .target { margin-left: 0.3em; }
   .row .meta .detail .code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
@@ -168,6 +165,11 @@
   .pip.v { background: var(--st-verified); }
   .pip.o { background: repeating-linear-gradient(-45deg, var(--text-3) 0 1.5px, transparent 1.5px 3px); }
   .row .seal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
+  /* A goal to accept: its line wraps before its id or its words are cut (320 wide, "Passed, doesn't count" and a pin). */
+  .row .meta.ready { flex-wrap: wrap; row-gap: 2px; }
+  /* A counted pass's caveats, under its line: the amber ! and the words, as the desk's accept sheet lists them. */
+  .row .why { display: flex; gap: 6px; align-items: flex-start; margin: 3px 0 0; font-size: 12px; line-height: 16px; color: var(--text-1); text-wrap: pretty; }
+  .row .why svg { flex: 0 0 auto; margin-top: 2px; }
   .row .seal .pin { color: var(--text-2); font-weight: 400; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .btn { min-height: 44px; padding: 0 12px; font-size: 13.5px; }
   .row .head .elapsed { margin-left: auto; font-size: 11.5px; color: var(--text-3); flex: 0 0 auto; }
@@ -200,7 +202,8 @@ const T = {
         answerPlaceholder: "Write your answer…", notePlaceholder: "A note for the agent (optional)…",
         forYou: "For you only", failing: "failing", hintPlaceholder: "A hint for the agent, in your words…", sendHint: "Send the hint and resume",
         heldOutNote: "A hint, or only the names of what failed, keeps the tests hidden; showing the failure does not.",
-        acceptOnDesk: "Review and accept on your Mac", notEvidence: "Passed, doesn't count", notMachine: "Not machine-verified", claim: "Agent claim", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
+        acceptOnDesk: "Review and accept on your Mac", notEvidence: "Passed, doesn't count", notMachine: "Not machine-verified", qualified: "Verified, with caveats", withCaveats: (why) => `With caveats: ${why}`,
+        cav: { test_machinery: "code reaches into the test runner", assertions_unchecked: "assertions not checked", flaky: "flaky: passed on rerun" }, claim: "Agent claim", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
         foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
         states: { draft: "Draft", ready: "Ready", running: "Running", paused: "Paused", claimed: "Claimed done", verifying: "Verifying", in_review: "Ready to accept", accepted: "Accepted", integrated: "Merged", archived: "Archived", abandoned: "Abandoned" },
         modes: { idle: "Idle", starting: "Starting", thinking: "Thinking", reading: "Working", editing: "Working", executing: "Working", waiting_on_you: "Needs you", retrying: "Retrying", compacting: "Compacting", verifying: "Verifying", settled: "Stopped" },
@@ -217,7 +220,8 @@ const T = {
         answerPlaceholder: "写下你的回答…", notePlaceholder: "写给 Agent 的话（可选）…",
         forYou: "只给你看", failing: "失败", hintPlaceholder: "用你的话给 Agent 一句提示…", sendHint: "发送提示并继续",
         heldOutNote: "给提示，或只告诉它哪些测试失败，这些测试仍对它隐藏；把失败给它看则不再隐藏。",
-        acceptOnDesk: "回到电脑上评审并验收", notEvidence: "通过但不作数", notMachine: "未经机器验证", claim: "Agent 声明", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
+        acceptOnDesk: "回到电脑上评审并验收", notEvidence: "通过但不作数", notMachine: "未经机器验证", qualified: "已验证（有保留）", withCaveats: (why) => `有保留：${why}`,
+        cav: { test_machinery: "代码触及测试运行器", assertions_unchecked: "断言未检查", flaky: "不稳定：重跑后通过" }, claim: "Agent 声明", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
         foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
         states: { draft: "草稿", ready: "就绪", running: "运行中", paused: "已暂停", claimed: "自称完成", verifying: "验证中", in_review: "待验收", accepted: "已验收", integrated: "已合入", archived: "已归档", abandoned: "已放弃" },
         modes: { idle: "空闲", starting: "准备中", thinking: "思考", reading: "执行", editing: "执行", executing: "执行", waiting_on_you: "等你", retrying: "重试", compacting: "压缩中", verifying: "验证", settled: "已停" },
@@ -252,22 +256,26 @@ const G = {
   // The running mark: a faint ring and its arc, turning while some run moves (`moves`), held still while none does. 12px,
   // the size of the marks beside it.
   runs: (turn) => `<svg${turn ? ' class="spin"' : ""} width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="5" r="4" stroke-opacity=".28"/><path d="M5 1a4 4 0 0 1 4 4"/></svg>`,
-  seal: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4.25" fill="var(--st-verified)"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg)" stroke-width="1.25"/></svg>`,
+  // The seal; with caveats its disc is cut at the lower right, as at the desk (Glyph.tsx `Disc`).
+  seal: (cut) => `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">${cut ? '<path d="M9.25 5.15A4.25 4.25 0 1 0 5.15 9.25Z" fill="var(--st-verified)"/>' : '<circle cx="5" cy="5" r="4.25" fill="var(--st-verified)"/>'}<path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg)" stroke-width="1.25"/></svg>`,
   // `turn`: the arc of a running or verifying goal turns only while the work moves (the desk's labels `moving`).
   // `v`: the verifier's pass, with its pin, that counts (the desk's labels `machineVerified` and not `notEvidence`); only
-  // then is a goal to accept green. Without it the check sits in a dashed, neutral ring, as at the desk.
-  state(s, turn, v) {
+  // then is a goal to accept green. Without it the check sits in a dashed, neutral ring, as at the desk. `q`: that pass
+  // has caveats; the ring keeps the desk's gap at its lower right (docs/12 §12.5.2's notch).
+  state(s, turn, v, q) {
     const c = s === "running" || s === "verifying" ? "var(--st-active)" : (s === "in_review" || s === "accepted") && v ? "var(--st-verified)" : "var(--text-3)";
     const moving = s === "running" || s === "verifying";
-    const ring = `<circle cx="5" cy="5" r="4" fill="none" stroke="${c}" stroke-width="1.25"${s === "claimed" || s === "verifying" || (s === "in_review" && !v) ? ' stroke-dasharray="1.7 1.45"' : s === "running" ? ' stroke-opacity=".28"' : ""}/>`;
+    const ring = `<circle cx="5" cy="5" r="4" fill="none" stroke="${c}" stroke-width="1.25"${s === "claimed" || s === "verifying" || (s === "in_review" && !v) ? ' stroke-dasharray="1.7 1.45"' : s === "running" ? ' stroke-opacity=".28"' : s === "in_review" && q ? ' stroke-dasharray="21.53 3.6" stroke-dashoffset="-4.94"' : ""}/>`;
     const inner = moving ? `<path d="M5 1a4 4 0 0 1 4 4" fill="none" stroke="${c}" stroke-width="1.25" stroke-linecap="round"/>`
       : s === "paused" ? `<path d="M4 3.6v2.8M6 3.6v2.8" stroke="${c}" stroke-width="1.25" stroke-linecap="round"/>`
       : s === "in_review" ? `<path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="${c}" stroke-width="1.25"/>`
       : s === "ready" ? `<circle cx="5" cy="5" r="1.2" fill="${c}"/>` : "";
-    return `<svg class="glyph${moving && turn ? " spin" : ""}" width="12" height="12" viewBox="0 0 10 10" aria-label="${esc(t("states")[s] ?? s)}" role="img">${ring}${inner}</svg>`;
+    return `<svg class="glyph${moving && turn ? " spin" : ""}" width="12" height="12" viewBox="0 0 10 10" aria-label="${esc(s === "in_review" && v && q ? t("qualified") : t("states")[s] ?? s)}" role="img">${ring}${inner}</svg>`;
   },
 };
 const machine = (s) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
+// The caveats a counted pass can carry, in the desk's order (discounted.ts `CAVEATS`).
+const CAVEATS = ["test_machinery", "assertions_unchecked", "flaky"];
 // When the page last heard from a run; a run moves (the desk's labels `moving`) unless it waits on you, is flagged for
 // you, or is silent (the header's hint mark). Nothing turns on a run that is not moving.
 const heardAt = (g) => Math.max(g.updated_at || 0, (g.live_line && g.live_line.at) || 0);
@@ -278,7 +286,6 @@ const busy = (g) => g.mode === "reading" || g.mode === "editing" || g.mode === "
 const silentRun = (g) => g.state === "running" && !busy(g) && heardAt(g) > 0 && Date.now() - heardAt(g) > 120_000;
 const waits = (g) => g.mode === "waiting_on_you" || !!g.needs_you;
 const moves = (g) => g.state === "running" && !waits(g) && !silentRun(g);
-const ghost = (rows) => `<div class="ghost" aria-hidden="true">${rows.map(([a, b]) => `<div class="row">${G.ring}<div><i class="bar" style="width:${a}%"></i><i class="bar" style="width:${b}%"></i></div><span></span></div>`).join("")}</div>`;
 const MACHINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
 function parts(i) {
   const body = (i.body || "").trim();
@@ -428,7 +435,7 @@ function render(s) {
   const items = s.inbox.filter((i) => i.kind !== "review_ready");
   const ready = s.inbox.filter((i) => i.kind === "review_ready");
   let h = `<h2>${t("needs")}<span class="num">${items.length}</span></h2>`;
-  if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>${ghost([[62, 40], [44, 58]])}`;
+  if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>`;
   for (const [at, i] of items.entries()) {
     const g = goals.get(i.goal_id);
     const held = i.kind === "paused" && g && g.pause_reason === "held_out_failed" ? heldOut(i.body) : null;
@@ -470,28 +477,33 @@ function render(s) {
       // pin; a pass that does not count is the amber ! and says so; with no machine criterion the neutral check says
       // "Not machine-verified".
       const v = !p.not_evidence && p.machine > 0 && !!g.verified_pin;
+      // A counted pass with caveats (the supervisor's `progress.qualified`, the desk's `caveats`): still green, its seal
+      // cut, and the caveats said under it beside the amber !, as the desk's accept sheet lists them: look before you accept.
+      const why = v && p.qualified ? CAVEATS.filter((k) => p.qualified[k]).map((k) => t("cav")[k]) : [];
       const pin = g.verified_pin ? `<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span>` : "";
-      const mark = p.not_evidence ? G.attn.replace('class="mark"', 'class="glyph"').replace('aria-hidden="true"', `role="img" aria-label="${esc(t("notEvidence"))}"`) : G.state("in_review", 0, v);
-      const seal = v ? `<span class="seal">${G.seal}${pin}</span>` : !known ? "" : `<span class="seal verdict">${esc(t(p.not_evidence ? "notEvidence" : "notMachine"))}${p.not_evidence ? pin : ""}</span>`;
-      h += `<div class="row">${mark}<div><div class="title">${esc(i.goal_title)}</div><div class="meta live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
+      const mark = p.not_evidence ? G.attn.replace('class="mark"', 'class="glyph"').replace('aria-hidden="true"', `role="img" aria-label="${esc(t("notEvidence"))}"`) : G.state("in_review", 0, v, why.length > 0);
+      const seal = v ? `<span class="seal">${G.seal(why.length > 0)}${pin}</span>` : !known ? "" : `<span class="seal verdict">${esc(t(p.not_evidence ? "notEvidence" : "notMachine"))}${p.not_evidence ? pin : ""}</span>`;
+      const caveats = why.length ? `<p class="why">${G.attn}<span>${esc(t("withCaveats")(why.join(t("listSep"))))}</span></p>` : "";
+      h += `<div class="row">${mark}<div><div class="title">${esc(i.goal_title)}</div><div class="meta live ready">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div>${caveats}</div><span></span></div>`;
     }
   }
   const running = s.goals.filter((g) => g.state === "running");
   h += `<h2>${t("running")}<span class="num">${running.length}</span></h2>`;
-  if (!running.length) h += `<p class="empty">${G.ring}<span>${t("noRuns")}</span></p>${ghost([[54, 36]])}`;
+  if (!running.length) h += `<p class="empty">${G.ring}<span>${t("noRuns")}</span></p>`;
   for (const g of running) {
     const l = g.live_line;
     // The badge says what the desk's live line says: a run that waits on you, whatever its mode, is the amber ! and
-    // "Needs you"; otherwise "Silent" with the hint mark when no word has come for two minutes and no tool is in flight
-    // (never "Working" beside a still mark); otherwise the mode's word.
-    const badge = waits(g) ? `${G.attn}${esc(t("modes").waiting_on_you)}` : silentRun(g) ? `${G.notice}${esc(t("silent"))}` : esc(t("modes")[g.mode] ?? g.mode);
+    // "Needs you"; otherwise "Silent", stepped back and with no mark, when no word has come for two minutes and no tool is
+    // in flight (never "Working" beside a still mark); otherwise the mode's word.
+    const quiet = !waits(g) && silentRun(g);
+    const badge = waits(g) ? `${G.attn}${esc(t("modes").waiting_on_you)}` : quiet ? esc(t("silent")) : esc(t("modes")[g.mode] ?? g.mode);
     // The action, then its target after a real space (copied and read aloud as two words), as the desk's live line says it: no dot between them.
     const detail = l ? `${esc(l.action)}${l.target ? ` <span class="target${machine(l.target) ? " code" : ""}">${esc(l.target)}</span>` : ""}` : "";
     const ran = g.run_started_at ? dur(Math.max(0, Date.now() - g.run_started_at)) : "";
     const elapsed = ran ? `<span class="elapsed num" title="${esc(t("runningFor")(ran))}"><span class="sr">${esc(t("runningFor")(""))}</span>${esc(ran)}</span>` : "";
     const eng = g.engine ? `<span class="pill">${esc(g.engine)}</span>` : "";
     const isArmed = armed === "pause" + g.id;
-    h += `<div class="row">${G.state("running", moves(g))}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge">${badge}</span>${eng}<span class="detail">${detail}</span></div></div>
+    h += `<div class="row">${G.state("running", moves(g))}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge${quiet ? " silent" : ""}">${badge}</span>${eng}<span class="detail">${detail}</span></div></div>
       <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
   }
   app.innerHTML = h;

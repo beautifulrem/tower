@@ -30,7 +30,9 @@ function Shot(props: { file: string | null; error: string | null; label: string;
       <Show when={props.file && !props.error} fallback={<div class="look-missing meta t3">{props.error ?? t("look.notCaptured")}</div>}>
         <Show when={src() && broken() !== src()} fallback={<div class="look-missing meta t3">{src.loading ? t("common.loading") : t("look.gone")}</div>}>
           <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label}, ${t("look.enlarge")}`}>
-            <img class="look-img" src={src()!} alt={props.label} onError={() => setBroken(src() ?? null)} />
+            {/* Until it has decoded, the image has no width of its own: it holds a page's 3:4 frame, so the two never sit as
+                two 2px lines side by side (review 16). */}
+            <img class="look-img" src={src()!} alt={props.label} onLoad={(e) => e.currentTarget.classList.add("look-img-in")} onError={() => setBroken(src() ?? null)} />
           </button>
         </Show>
       </Show>

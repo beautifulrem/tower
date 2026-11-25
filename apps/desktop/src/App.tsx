@@ -96,7 +96,6 @@ function BootFailed() {
           <span class="gauge gauge-dead">{t("chrome.runningShort", { n: "—", max: "—" })}</span>
           <span class="gauge gauge-dead">—</span>
           <span class="gauge gauge-dead">
-            <span class="gauge-dot" />
             {t("chrome.engine")} <span class="t3">—</span>
           </span>
         </div>

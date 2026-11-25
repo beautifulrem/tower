@@ -4,7 +4,7 @@
  * Honesty Ledger, precision Contract Rail, lazy-loaded Multimodal Steering
  * Console, and Flight Recorder escape hatch (W).
  */
-import { For, Show, Suspense, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
+import { ErrorBoundary, For, Show, Suspense, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
 
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
@@ -238,7 +238,11 @@ export function GoalPage(props: { id: string }) {
           </div>
 
           <Show when={g().state === "running" || (g().state === "paused" && inbox().length === 0)}>
-            <Suspense><SteerBox id={props.id} running={g().state === "running"} files={knownFiles()} /></Suspense>
+            {/* Its code comes on demand: a load that fails says so in its place, with Retry (which loads it again), and
+                never takes the goal page down with it (review 16, record only). */}
+            <ErrorBoundary fallback={(err, reset) => <div class="steer-console steer-failed"><Failed inline error={err} onRetry={reset} /></div>}>
+              <Suspense><SteerBox id={props.id} running={g().state === "running"} files={knownFiles()} /></Suspense>
+            </ErrorBoundary>
           </Show>
         </div>
       )}

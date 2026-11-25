@@ -120,6 +120,7 @@ pub enum Stop {
 
 #[derive(Debug)]
 struct ToolCall {
+    tool: String,
     args: Value,
     started: Instant,
 }

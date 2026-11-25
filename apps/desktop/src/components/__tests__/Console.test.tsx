@@ -247,6 +247,9 @@ describe("TelemetryStrip", () => {
       const { container } = render(() => <TelemetryStrip />);
       expect(container.querySelector(".gauge-errors svg.mark-danger")).not.toBeNull();
       expect(container.querySelector(".gauge-errors .gauge-dot")).toBeNull();
+      // Review 16 (record only): the engine's name stood behind a 6px grey dot that said nothing; the name stands alone.
+      expect(container.querySelector(".gauge-engine")?.textContent).toBe("Pi");
+      expect(container.querySelector(".gauge-dot")).toBeNull();
     } finally {
       set("unseenActivity", 0);
     }

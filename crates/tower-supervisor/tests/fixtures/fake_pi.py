@@ -134,6 +134,16 @@ def run(message):
         tool("bash", {"command": "touch done.txt"})
         open("done.txt", "w").write("ok\n")
         tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
+    elif scenario == "parallel":
+        # Two tools in flight at once; the read ends first, while the command still runs.
+        out({"type": "tool_execution_start", "toolCallId": "pa", "toolName": "read", "args": {"path": "README.md"}})
+        out({"type": "tool_execution_start", "toolCallId": "pb", "toolName": "bash", "args": {"command": "touch done.txt"}})
+        out({"type": "tool_execution_end", "toolCallId": "pa", "toolName": "read",
+             "result": {"content": [{"type": "text", "text": "hello"}]}, "isError": False})
+        open("done.txt", "w").write("ok\n")
+        out({"type": "tool_execution_end", "toolCallId": "pb", "toolName": "bash",
+             "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
+        tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
     elif scenario == "pass_touch":
         # As "pass", and touches a module a test loads (so the perturbation
         # step has something to probe).

@@ -26,6 +26,7 @@ import { VIRTUAL_THRESHOLD } from "../../lib/virtualDiff";
 import { type Range, hunkWordRanges, segment } from "../../lib/worddiff";
 import { type ExtDiffFile, type ExtHunk } from "../goal/ext";
 import { type VRow, VirtualBody, flattenBlocks, lineAnchor } from "./VirtualBody";
+import { copyLines, selectLine } from "./diffSelect";
 import { type Anchor, type Block, type Composing, type Reveals, sameAnchor } from "./types";
 
 export interface FileDiffProps {
@@ -111,7 +112,8 @@ export function FileDiff(props: FileDiffProps) {
   let table!: HTMLTableElement;
   // Tabbing into the table lands on its first line, where the arrow keys move. A press of the pointer focuses the table
   // too, and moving focus then would drop the text you are selecting (review 15: no diff line could be selected or
-  // copied), so a focus that a press brought stays on the table; the arrow keys then start from the line pressed.
+  // copied), so a focus that a press brought stays on the table; the arrow keys then start from the line pressed, and ↩
+  // comments on it, as ↩ on its number does (review 16).
   let pressed = false;
   let pressedRow: Element | null = null;
   const press = (e: PointerEvent) => {
@@ -128,34 +130,31 @@ export function FileDiff(props: FileDiffProps) {
     table.querySelector<HTMLElement>(".ln-btn")?.focus({ preventScroll: true });
   };
   const onTableKey = (e: KeyboardEvent) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    let btn = (e.target as HTMLElement).closest<HTMLElement>(".ln-btn");
-    if (!btn && e.target === table) {
-      // Focus on the table itself (a press left it there): move from the line pressed, or land on the first line.
-      btn = pressedRow?.isConnected ? pressedRow.querySelector<HTMLElement>(".ln-btn") : null;
-      if (!btn) {
-        const first = table.querySelector<HTMLElement>(".ln-btn");
-        if (first) (e.preventDefault(), first.focus({ preventScroll: true }), first.scrollIntoView({ block: "nearest" }));
-        return;
-      }
+    const down = e.key === "ArrowDown";
+    const go = (b: HTMLElement) => (e.preventDefault(), b.focus({ preventScroll: true }), b.scrollIntoView({ block: "nearest" }));
+    // Focus on the table itself: a press left it there, on the line pressed (if any).
+    const onTable = e.target === table;
+    const btn = onTable ? (pressedRow?.isConnected ? pressedRow.querySelector<HTMLElement>(".ln-btn") : null) : (e.target as HTMLElement).closest<HTMLElement>(".ln-btn");
+    if (e.key === "Enter") return void (onTable && btn && (go(btn), btn.click()));
+    if (!down && e.key !== "ArrowUp") return;
+    if (!btn) {
+      // No line pressed: land on the first line.
+      const first = onTable && table.querySelector<HTMLElement>(".ln-btn");
+      return void (first && go(first));
     }
-    const td = btn?.closest("td");
-    const trEl = td?.closest("tr");
-    if (!btn || !td || !trEl) return;
-    const col = [...trEl.children].indexOf(td);
-    let row = e.key === "ArrowDown" ? trEl.nextElementSibling : trEl.previousElementSibling;
-    while (row && !row.children[col]?.querySelector(".ln-btn")) row = e.key === "ArrowDown" ? row.nextElementSibling : row.previousElementSibling;
+    const td = btn.closest("td")!;
+    const col = td.cellIndex;
+    const step = (r: Element) => (down ? r.nextElementSibling : r.previousElementSibling);
+    let row = step(td.parentElement!);
+    while (row && !row.children[col]?.querySelector(".ln-btn")) row = step(row);
     const target = row?.children[col]?.querySelector<HTMLElement>(".ln-btn");
-    if (!target) {
-      if (virtualized()) {
-        const pane = table.closest<HTMLElement>(".review-diff");
-        if (pane) (e.preventDefault(), pane.scrollBy({ top: e.key === "ArrowDown" ? 120 : -120 }));
-      }
-      return;
+    if (target) go(target);
+    // No line past the one pressed (the file's first or last): the keys land on its own number, never leave you nowhere.
+    else if (onTable) go(btn);
+    else if (virtualized()) {
+      const pane = table.closest<HTMLElement>(".review-diff");
+      if (pane) (e.preventDefault(), pane.scrollBy({ top: down ? 120 : -120 }));
     }
-    e.preventDefault();
-    target.focus({ preventScroll: true });
-    target.scrollIntoView({ block: "nearest" });
   };
 
   const moreMenu = () =>
@@ -363,6 +362,8 @@ export function FileDiff(props: FileDiffProps) {
           onPointerDown={press}
           onFocus={onTableFocus}
           onKeyDown={onTableKey}
+          onCopy={(e) => copyLines(table, e)}
+          onClick={selectLine}
         >
           <colgroup>
             <Show

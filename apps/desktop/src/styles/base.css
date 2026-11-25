@@ -85,6 +85,7 @@ textarea,
 .goal-title,
 .review-title,
 .code-val,
+.held-out-files,
 .file-path,
 .ev-hf {
   -webkit-user-select: text;

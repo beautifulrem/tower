@@ -20,7 +20,7 @@ import type { CriterionView } from "../../gen/CriterionView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
-import { caveatList, caveats, heldOrTampered, notEvidence } from "../../lib/discounted";
+import { caveatList, caveats, heldOrTampered, notEvidence, wasAccepted } from "../../lib/discounted";
 import { locale, t } from "../../lib/i18n";
 import { hasIssue } from "../../lib/labels";
 import { back } from "../../lib/nav";
@@ -71,7 +71,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
-            <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} />
+            <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} />
           </Show>
           <span class="grow" />
           <Show when={g()}>

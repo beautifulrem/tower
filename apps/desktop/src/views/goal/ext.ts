@@ -125,6 +125,8 @@ export const sandboxTag = (tier: SandboxTier, noSb: boolean) =>
 const GUARD_RE = /assertion|guard/;
 /** The findings on the test machinery that qualify a pass, the supervisor's own list (summaries.rs `progress()`). */
 const MACHINERY_RE = /^(source_patches_tests|source_touches_tests|runner_patched)$/;
+/** The findings on the assertions that qualify a pass, from the same list. */
+const UNCHECKED_RE = /^(assertions_unchecked|assertion_identity_unchecked)$/;
 const BYPASS_RE = /bypass|perturb|rust_test_branch|expectations_changed/;
 const RANK = ["ok", "fact", "obs", "attn", "danger"];
 
@@ -152,12 +154,21 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [s
   const gh = sents.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
   const mh = sents.find((h) => MACHINERY_RE.test(h.sentinel) && forCur(h));
   for (const h of [gh, mh])
-    if (h)
-      out.push([
-        h.severity >= 3 ? "danger" : "attn",
-        /guard|unchecked/.test(h.sentinel) ? t("honesty.cavAsserts") : h.sentinel === "source_touches_tests" ? t("honesty.cavMachinery") : t("goal.evAssertTamper"),
-        h.detail || h.title,
-      ]);
+    if (h) {
+      // A finding the supervisor counts the pass with is a caveat: in the seal's words and the strip's neutral tone
+      // (docs/12 §12.5.2), whichever finding raised it. A high one holds the pass, named for what was done; any other
+      // finding is one to look at first.
+      const machinery = MACHINERY_RE.test(h.sentinel);
+      const caveat = h.severity < 3 && (machinery || UNCHECKED_RE.test(h.sentinel));
+      const words = caveat
+        ? t(machinery ? "honesty.cavMachinery" : "honesty.cavAsserts")
+        : machinery
+          ? t(h.sentinel === "source_touches_tests" ? "honesty.cavMachinery" : "goal.evAssertTamper")
+          : /removed|disabled|replaced/.test(h.sentinel)
+            ? t("goal.evAssertsWeakened")
+            : t("honesty.cavAsserts");
+      out.push([h.severity >= 3 ? "danger" : caveat ? "obs" : "attn", words, h.detail || h.title]);
+    }
   if (!gh && !mh && ver.passed && cur.canary === "intact") out.push(["fact", t("goal.evGuardOk")]);
   const ho = ver.held_out_proof;
   if (ho?.not_ran.length) out.push(["attn", t("goal.heldOutSome", { m: ho.ran.length, n: ho.ran.length + ho.not_ran.length }), undefined, 1]);

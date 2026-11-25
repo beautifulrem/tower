@@ -9,7 +9,7 @@ import { For, Show, Suspense, createEffect, createMemo, createResource, createSi
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
 import { Claim, CriteriaBar } from "../components/HonestyCore";
-import { caveats, notEvidence } from "../lib/discounted";
+import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
 import { Button, Empty, Failed, Loading, Section, settled } from "../components/ui";
@@ -137,7 +137,7 @@ export function GoalPage(props: { id: string }) {
                   two tracks — how far from done, and on what evidence — before who, where and which run. */}
               <div class="goal-verdict halt">
                 <Show when={!["accepted", "integrated"].includes(g().state)}>
-                  <Seal pin={g().verified_pin} tampered={notEvidence(g())} qualified={caveats(g())} />
+                  <Seal pin={g().verified_pin} tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} />
                 </Show>
                 {/* R is always here and always "Review n files", whatever the state: the changes, after what they rest on. The
                     bar and its button wrap together, so a narrow window never leaves the button on a line of its own. */}

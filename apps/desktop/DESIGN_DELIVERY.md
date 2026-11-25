@@ -1,6 +1,6 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, fifteen local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, sixteen local commits, nothing pushed, merged or deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -173,29 +173,35 @@ Review 10 read `deef352` (iteration 10) and passed it at 8.20: the comparing ver
 engine settings and the field units are confirmed fixed. It found one new P2 that iteration 10 introduced: moving the
 overlap note into the title cell squeezed an overlapping row's title to "Fi…" at 1241 (D107). Five P3s: the done-state
 tooltips and the integrated glyph (D108), the compare picker's select value (D109), the light-theme ledger note
-(D110), a docs/12 "neutral pill" that is amber (D111), English run names in Chinese (D112). All open. The last
-acceptance stands on `deef352`.
+(D110), a docs/12 "neutral pill" that is amber (D111), English run names in Chinese (D112).
+
+Iteration 11 fixes all six, and the empty settings test, each with a test that fails on `deef352` (the picker's
+face-against-select check also as a name-free variant). Those fixes are **Verified, not independently re-reviewed**:
+the last acceptance stands on `deef352`.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 10):
+At the final commit (iteration 11):
 
-- **Type check and unit tests:** tsc clean; vitest 43 files, 233 tests.
-- **e2e:** Playwright WebKit 366 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
-  supervisor's views. The suite includes axe on the rich states in both themes.
-- **Shots:** 69/69 (`/tmp/tower-design/iter10/shots`).
+- **Type check and unit tests:** tsc clean; vitest 43 files, 236 tests.
+- **e2e:** Playwright WebKit 374 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+  supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs five "Importing a
+  module script failed" lines (four in iteration 10): pages left by a test while a view was still loading; no test
+  fails and the new tests emit none.
+- **Shots:** 69/69 (`/tmp/tower-design/iter11/shots`).
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 160,896 / 163,840 B (2,944 B left), start-up 55,129 / 65,536 B, goal page
-  11,588 / 12,288 B. The budget was never raised.
-- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 564 / 230 / 176 ms against
-  170 / 161 / 107 ms for the seeded board, inside its 750 ms margin; view switches with 50 goals take 35–64 ms against
-  19–39 ms, inside 150 ms.
-- **Rust (iteration 9; iteration 10 changed no Rust):** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
+- **Bundle:** all interface JS 161,693 / 163,840 B (2,147 B left), start-up 55,478 / 65,536 B, goal page
+  11,596 / 12,288 B. The budget was never raised.
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 664 / 282 / 198 ms against
+  247 / 167 / 109 ms for the seeded board, inside its 750 ms margin; view switches with 50 goals take 30–82 ms against
+  15–46 ms, inside 150 ms.
+- **Rust (iteration 9; iterations 10 and 11 changed no Rust):** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
   e2e suite and the shots ran beside it, `evidence::a_criterion_whose_base_did_not_run_keeps_its_canary` failed its
   canary assertion; it passed alone, three times more, and in the full rerun. It drives a real sandboxed `node --test`
   and this work does not touch the verifier or the canary: recorded as load-sensitive, not hidden or retried away.
-- **Detector:** no new finding; the 3 `side-tab` findings are the review pen on hunk headers, kept since the baseline;
-  the DESIGN.md advisories on the changed stylesheets are all on lines older than this iteration.
+- **Detector:** no new finding; the 3 `side-tab` findings are the review pen on hunk headers, kept since the baseline
+  (`app.css`, not changed in iteration 11); the DESIGN.md advisories on the changed stylesheets are all on lines older
+  than this iteration.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion.
 
@@ -205,7 +211,7 @@ user's `~/.tower`, no model called. Looked at through the accessibility tree, in
 row "runs 1, 2" (D91), the folded engine clause (D92), titles with their ids on the board (D23), a schedule "Weekdays
 02:00" before its cron (D20, the schedule added to the scratch database, disabled), and the native unsaved-contract
 sheet. Screenshots: `design-evidence/packaged-app/`. Not reached there: a pass with caveats (the demo has none) and a
-1040 px window (D58, D96); their evidence is the WebKit tests. Iteration 10's fixes were not looked at in the packaged
+1040 px window (D58, D96); their evidence is the WebKit tests. Iteration 10's and 11's fixes were not looked at in the packaged
 app. Typing into the WebView in the background does not
 reach its fields — keys went to the app's shortcuts once (a stray draft, discarded through the app's own sheet).
 
@@ -213,24 +219,30 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 
 `bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
 (review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run), the iteration-9 commit `7a23f45` (the owner's
-remaining list), the iteration-10 commit `deef352` (review 9's findings) and the commit recording review 10. All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`) and the
+iteration-11 commit (review 10's findings). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
 Iteration 9 fixed the owner's remaining list: D84 (bundle), D91, D92, D96, D51/D86, the docs/12 drift, D20, D22, D23,
 D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. Iteration 10 fixed
-review 9's findings (D98–D106), each with a test that fails on `7a23f45`; review 10 passed it. What is left:
+review 9's findings (D98–D106), each with a test that fails on `7a23f45`; review 10 passed it. Iteration 11 fixed
+review 10's (D107–D112) and its empty settings test, each with a test that fails on `deef352`. What is left:
 
-- **Review 10's findings are open (D107–D112).** One P2: an overlapping board row's title is squeezed by the overlap
-  note at 1241–1800 (introduced by iteration 10). Five P3s: done-state seal tooltips and the integrated glyph, the
-  compare picker's select value for screen readers, the light-theme ledger note, the evidence strip's amber caveat
-  against docs/12's "neutral", English run names in the Chinese interface. Review 10 also found the new settings unit
-  test empty (the English settings page has no unit field).
+- **Iteration 11's fixes (D107–D112) are not independently re-reviewed.** Each has a test that fails on `deef352`
+  and passes here; no reviewer has read them yet.
+- **The overlap note gives way by measuring** each overlapping row (a ResizeObserver on the title cell and the title, a
+  MutationObserver for its text), with the room of the row's peek button kept so hovering never changes it. Measured at 1241/1280/1366/1440/1560/1800 for a short and a long title in both
+  languages; at 1241 a long title has about 12em with the note at its ◇, the column itself allowing no more.
+- **Run names are worded by the frontend.** The supervisor still writes English labels (`edits.rs`, `timeline.rs`);
+  the interface no longer shows them except for a snapshot kind it does not know. The verifier's point is named
+  "Verification", not "Verified", so a pass that does not count is never called verified in the picker.
 - **The review header now fits by measuring** (`review/fitStats.ts`, a ResizeObserver and a MutationObserver) rather than
   by width band. The sweep test covers 1024–1400 for both fixture goals in both languages; a verdict longer than any
   the fixtures hold would still give way last, but only those widths and verdicts were measured.
 - **Below 1241 px the board's overlap notice is in the title's tooltip only**, as the identity column it replaced was;
-  above it, see D107.
+  above it the note's words stay while the title has its room, and the ◇ alone (words in its tooltip and for a screen
+  reader) when it has not.
 
 - **D58 covers three caveats.** "Verified, with caveats" is computed for test machinery reached into, assertions not
   checked and a flaky pass; docs/07's other qualifiers (S0, a Node version unlike the profile, an unsupported ecosystem,
@@ -241,7 +253,8 @@ review 9's findings (D98–D106), each with a test that fails on `7a23f45`; revi
 - **Supervisor text is written in the language of the moment.** A goal's findings and pauses keep the words they were
   written in; switching the interface language does not rewrite stored events. Test output and the prompts Tower sends
   the agent stay as they are, by design.
-- **11px labels and 10px keycaps (D54/D85), Kept by decision.** No sentence is below 12px.
+- **11px labels and 10px keycaps (D54/D85), Kept by decision.** No sentence is below 12px; the ledger's runs note
+  ("said in runs 1 and 2") is 11px by design (D110), a note about the claim set apart by size as well as grey.
 - **Packaged-app evidence is a debug build on a seeded demo**, looked at, not driven by an automated suite; D58 and D96
   were not reachable there.
 - **One Rust integration test is load-sensitive** (§13).

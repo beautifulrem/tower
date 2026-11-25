@@ -189,7 +189,7 @@
 }
 .ledger-claim-cell { font-size: var(--fs-meta); line-height: 18px; color: var(--text-2); min-width: 0; }
 .ledger-claim-cell.dim { color: var(--text-3); }
-.ledger-runs { display: block; }
+.ledger-runs { display: block; font-size: var(--fs-hint); line-height: var(--lh-hint); }
 .ledger-link { text-align: center; color: var(--text-4); font-family: var(--font-mono); font-size: 11px; }
 .ledger-fact-cell {
   display: flex;

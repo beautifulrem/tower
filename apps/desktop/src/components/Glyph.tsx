@@ -56,8 +56,9 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
     (props.goal.state === "in_review" || props.goal.state === "accepted") && notEvidence(props.goal);
   const c = () => color[toneOf(props.goal.state, verified())];
   const s = () => props.size ?? 10;
-  // Verified, with caveats: the ring keeps a gap at its lower right (docs/12 §12.5.2's notch), the check still green.
-  const qualified = () => (props.goal.state === "in_review" || props.goal.state === "accepted") && verified() && caveats(props.goal).length > 0;
+  // Verified, with caveats: the ring keeps a gap at its lower right (docs/12 §12.5.2's notch), the check still green; the
+  // accepted disc and the merged ring keep the same cut, so a goal's caveats stay on its mark after you took it.
+  const qualified = () => ["in_review", "accepted", "integrated"].includes(props.goal.state) && verified() && caveats(props.goal).length > 0;
   const svg = (children: JSX.Element) => (
     <svg
       class="glyph"
@@ -68,7 +69,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
       stroke={c()}
       stroke-width="1.25"
       role="img"
-      aria-label={qualified() ? (props.goal.state === "accepted" ? `${t("state.accepted")}, ${t("honesty.qualified")}` : t("honesty.qualified")) : t(`state.${props.goal.state}`)}
+      aria-label={qualified() ? (props.goal.state === "in_review" ? t("honesty.qualified") : `${t(`state.${props.goal.state}`)}, ${t("honesty.qualified")}`) : t(`state.${props.goal.state}`)}
     >
       {children}
     </svg>
@@ -157,10 +158,11 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
           </>,
         )}
       </Match>
+      {/* Merged: the ring around the sealed core; with caveats the ring keeps the in-review gap (◉*), scaled to its radius. */}
       <Match when={props.goal.state === "integrated"}>
         {svg(
           <>
-            <circle cx="5" cy="5" r="4.2" stroke-width="1" />
+            <circle cx="5" cy="5" r="4.2" stroke-width="1" stroke-dasharray={qualified() ? "22.61 3.78" : undefined} stroke-dashoffset={qualified() ? "-5.19" : undefined} />
             <circle cx="5" cy="5" r="2.4" fill={c()} stroke="none" />
           </>,
         )}
@@ -473,7 +475,7 @@ export function Stamp(props: { pin: string; tampered?: boolean; qualified?: stri
  * must-fail canary passed too, so the pass is not evidence — the attention
  * register's ◆ stands where the green disc would, and the words say so.
  */
-export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean; tampered?: boolean; qualified?: string[] }) {
+export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean; tampered?: boolean; qualified?: string[]; accepted?: boolean }) {
   const s = () => (props.large ? 12 : 10);
   const pin = () => props.pin!.slice(0, 7);
   return (
@@ -481,7 +483,7 @@ export function Seal(props: { pin: string | null | undefined; text?: string; com
       <span
         class="seal"
         classList={{ "seal-compact": !!props.compact, "seal-large": !!props.large, "seal-tampered": !!props.tampered }}
-        title={sealTitle(props.tampered, pin(), props.qualified)}
+        title={sealTitle(props.tampered, pin(), props.qualified, props.accepted)}
       >
         <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
         <Show

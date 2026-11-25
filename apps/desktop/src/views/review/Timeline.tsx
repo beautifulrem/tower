@@ -1,26 +1,53 @@
 /** Snapshot Timeline Scope Switcher (`All Changes` · `Since Last Review` · `Last Turn` · `Compare Runs…`). */
-import { For, Show, createMemo } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
 import type { GoalDetail } from "../../gen/GoalDetail";
-import { short } from "../../lib/format";
+import { dayClock, short } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { type ExtReviewView, type SnapshotPoint } from "../goal/ext";
 
 export type ReviewScope = "all" | "since_last" | "last_turn" | "compare";
 
 export function buildSnapshots(view: ExtReviewView | undefined, detail: GoalDetail | undefined, previous: string | null): SnapshotPoint[] {
-  if (view?.snapshots?.length) return view.snapshots;
+  // The latest pin ends the list (the supervisor lists the verifier's after it), so a range's default end is "Latest".
+  if (view?.snapshots?.length) return [...view.snapshots.filter((p) => p.kind !== "pin"), ...view.snapshots.filter((p) => p.kind === "pin")];
   const out: SnapshotPoint[] = [], seen = new Set<string>();
   const add = (rev: string | null | undefined, kind: SnapshotPoint["kind"], label: string, run_no: number | null = null, at: number | null = null) => {
     if (rev && !seen.has(rev)) (seen.add(rev), out.push({ rev, kind, label, run_no, at }));
   };
-  add(view?.base_commit, "base", `base @${short(view?.base_commit)}`);
-  for (const r of detail?.runs ?? []) add(r.start_pin, "run_start", `R-${String(r.run_no).padStart(2, "0")} @${short(r.start_pin)}`, r.run_no, r.started_at);
-  add(previous, "saved", `Last review @${short(previous)}`);
-  add(view?.pin, "pin", `Current @${short(view?.pin)}`);
+  add(view?.base_commit, "base", "");
+  for (const r of detail?.runs ?? []) add(r.start_pin, "run_start", "", r.run_no, r.started_at);
+  // The last review's pin, with no time of its own: named as the review it was, not as a save.
+  add(previous, "saved", "");
+  add(view?.pin, "pin", "");
   return out;
 }
+
+/**
+ * A snapshot's name in the interface language, worded here from what it is (its kind, its run, its time) and then its
+ * pin: the supervisor's own label is English. A kind this build does not know keeps that label.
+ */
+export function snapName(s: SnapshotPoint): string {
+  const name =
+    s.kind === "base"
+      ? t("review.snapBase")
+      : s.kind === "run_start" && s.run_no != null
+        ? t("review.snapRun", { n: s.run_no })
+        : s.kind === "saved"
+          ? s.at
+            ? t("review.snapSaved", { when: dayClock(s.at) })
+            : t("review.snapReviewed")
+          : s.kind === "verified"
+            ? t("review.snapVerified")
+            : s.kind === "pin"
+              ? t("review.snapLatest")
+              : null;
+  return name ? `${name} @${short(s.rev)}` : s.label;
+}
+
+/** One point on the timeline, told apart from another at the same rev ("Latest" and "Verified", two runs' starts). */
+const keyOf = (s: SnapshotPoint) => `${s.kind}:${s.run_no ?? ""}:${s.at ?? ""}:${s.rev}`;
 
 export function lastTurnRev(snapshots: SnapshotPoint[], pin: string | undefined): string | null {
   if (!pin) return null;
@@ -68,9 +95,9 @@ export function TimelineSwitcher(props: {
       </span>
       <Show when={props.scope === "compare" && props.snapshots.length >= 2}>
         <span class="timeline-compare">
-          <RunPick label={t("review.compareFrom")} value={props.fromRev} snapshots={props.snapshots} onPick={(rev) => props.onCompare(rev, props.toRev)} />
+          <RunPick label={t("review.compareFrom")} value={props.fromRev} prefer="first" snapshots={props.snapshots} onPick={(rev) => props.onCompare(rev, props.toRev)} />
           <span class="t3">→</span>
-          <RunPick label={t("review.compareTo")} value={props.toRev} snapshots={props.snapshots} onPick={(rev) => props.onCompare(props.fromRev, rev)} />
+          <RunPick label={t("review.compareTo")} value={props.toRev} prefer="last" snapshots={props.snapshots} onPick={(rev) => props.onCompare(props.fromRev, rev)} />
         </span>
       </Show>
     </Show>
@@ -80,9 +107,17 @@ export function TimelineSwitcher(props: {
 /**
  * A run picker: the native select, unseen, over a face that names the run and then its pin. Short of room the header
  * lets the pins go whole (`short-picks`): the run's name stays, and the open list and the tooltip keep every label whole.
+ * The select chooses what the face says: each point is its own option (two can share a rev), and the one chosen is the
+ * one you picked while the range still ends there, else the range's own end (its first point from, its last point to).
  */
-function RunPick(props: { label: string; value: string; snapshots: SnapshotPoint[]; onPick: (rev: string) => void }) {
-  const cur = () => props.snapshots.find((s) => s.rev === props.value)?.label ?? "";
+function RunPick(props: { label: string; value: string; prefer: "first" | "last"; snapshots: SnapshotPoint[]; onPick: (rev: string) => void }) {
+  const [picked, setPicked] = createSignal<string | null>(null);
+  const point = createMemo(() => {
+    const here = props.snapshots.filter((s) => s.rev === props.value);
+    return here.find((s) => keyOf(s) === picked()) ?? (props.prefer === "first" ? here[0] : here.at(-1));
+  });
+  const curKey = () => (point() ? keyOf(point()!) : "");
+  const cur = () => (point() ? snapName(point()!) : "");
   const at = () => cur().lastIndexOf(" @");
   return (
     <span class="timeline-pick" title={cur()}>
@@ -93,8 +128,23 @@ function RunPick(props: { label: string; value: string; snapshots: SnapshotPoint
         </Show>
         <Icon name="caret-down" size={10} />
       </span>
-      <select class="timeline-select" aria-label={props.label} value={props.value} onChange={(e) => props.onPick(e.currentTarget.value)}>
-        <For each={props.snapshots}>{(s) => <option value={s.rev}>{s.label}</option>}</For>
+      <select
+        class="timeline-select"
+        aria-label={props.label}
+        onChange={(e) => {
+          const s = props.snapshots.find((x) => keyOf(x) === e.currentTarget.value);
+          if (!s) return;
+          setPicked(keyOf(s));
+          props.onPick(s.rev);
+        }}
+      >
+        <For each={props.snapshots}>
+          {(s) => (
+            <option value={keyOf(s)} selected={keyOf(s) === curKey()}>
+              {snapName(s)}
+            </option>
+          )}
+        </For>
       </select>
     </span>
   );

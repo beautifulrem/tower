@@ -40,7 +40,7 @@ test("while a high finding of this verification stands, no pass keeps the verifi
 
 // Review 7, P3-03 (D91): the same claim from two runs was two identical rows. It is one row now, naming its runs, and a
 // run that said it twice counts once.
-for (const [lang, runs] of [["en", "runs 1, 2"], ["zh-CN", "第 1、2 次运行"]] as const)
+for (const [lang, runs] of [["en", "said in runs 1 and 2"], ["zh-CN", "第 1、2 次运行都这样说"]] as const)
   test(`the same claim in two runs is one ledger row that names both runs (${lang})`, async ({ page }) => {
     await openTower(page, "goal/G-0003", {
       lang,
@@ -56,14 +56,16 @@ for (const [lang, runs] of [["en", "runs 1, 2"], ["zh-CN", "第 1、2 次运行"
     await expect(rows).toHaveCount(2);
     const c1 = rows.filter({ has: page.locator(".num", { hasText: /^C1\s*$/ }) });
     await expect(c1.locator(".ledger-claim-cell .ledger-runs")).toHaveText(runs);
-    // Provenance, not the agent's words (R9-P3-03): under the claim, in the grey of the criterion's number.
+    // Provenance, not the agent's words (R9-P3-03): under the claim, in the grey of the criterion's number. In the light
+    // theme those greys are 0.04 apart (R10-P3-03), so the note differs by form too: a size smaller, worded as a note.
     const [note, num, said] = await Promise.all(
       [".ledger-claim-cell .ledger-runs", ".ledger-claim-cell .num", ".ledger-claim-cell > span:not(.sr-only):not(.num):not(.ledger-runs)"].map((sel) =>
-        c1.locator(sel).first().evaluate((e) => ({ color: getComputedStyle(e).color, top: e.getBoundingClientRect().top, bottom: e.getBoundingClientRect().bottom })),
+        c1.locator(sel).first().evaluate((e) => ({ color: getComputedStyle(e).color, size: parseFloat(getComputedStyle(e).fontSize), top: e.getBoundingClientRect().top, bottom: e.getBoundingClientRect().bottom })),
       ),
     );
     expect(note.color).toBe(num.color);
     expect(note.color).not.toBe(said.color);
+    expect(note.size, "a size under the claim's").toBeLessThanOrEqual(said.size - 1);
     expect(note.top).toBeGreaterThanOrEqual(said.bottom - 1);
     // Said once, a claim names no runs.
     await expect(rows.filter({ has: page.locator(".num", { hasText: /^C2\s*$/ }) }).locator(".ledger-claim-cell .ledger-runs")).toHaveCount(0);
@@ -133,3 +135,47 @@ for (const [lang, word, state, why, past] of [
     await expect(page.locator(`.sidebar svg.glyph[aria-label="${state}, ${word}"]`)).toHaveCount(1);
     await expect(page.locator(`.sidebar svg.glyph[aria-label="${state}, ${word}"] path`).first()).toHaveAttribute("d", /^M9\.25/);
   });
+
+// Review 10, R10-P3-01: the goal page's stamp said "You accepted it with them" while the peek, the review's head and its
+// verification readout still said to look at them before you accept, and a merged goal's ◉ dropped the cut. Every seal of
+// a goal accepted or merged with caveats says they were taken with it, and the merged ring keeps the gap (◉*).
+for (const [lang, word, past, before, names] of [
+  ["en", "Verified, with caveats", "You accepted it with them", "before you accept", { accepted: "Accepted", integrated: "Merged" }],
+  ["zh-CN", "已验证（有保留）", "你是带着这些保留验收的", "验收前先看", { accepted: "已验收", integrated: "已合入" }],
+] as const)
+  for (const done of ["accepted", "integrated"] as const)
+    test(`every seal of a goal ${done} with caveats says they were taken with it (${lang})`, async ({ page }) => {
+      const enrich = (F: Record<string, any>) => {
+        qualified(F);
+        for (const g of F.goals) if (g.id === "G-0003") g.state = done;
+        F["goal-G-0003"].summary.state = done;
+        F.inbox = F.inbox.filter((i: { goal_id: string }) => i.goal_id !== "G-0003");
+      };
+      const said = async (seal: import("@playwright/test").Locator, where: string) => {
+        await expect(seal, where).toHaveAttribute("title", new RegExp(past));
+        expect(await seal.getAttribute("title"), where).not.toContain(before);
+      };
+      await openTower(page, "overview", { lang, enrich });
+      await settled(page, "overview");
+      const row = page.locator('.board-rows .g-row[data-goal="G-0003"]');
+      const glyph = row.locator(".g-glyph svg.glyph");
+      await expect(glyph).toHaveAttribute("aria-label", `${names[done]}, ${word}`);
+      if (done === "integrated") {
+        // The ring's gap, as the in-review ring's, centred on the lower right; the core stays whole.
+        await expect(glyph.locator("circle").first()).toHaveAttribute("stroke-dasharray", "22.61 3.78");
+        await expect(glyph.locator("circle").nth(1)).not.toHaveAttribute("stroke-dasharray", /./);
+      }
+      await row.locator(".g-title").focus();
+      await page.keyboard.press("Space");
+      await said(page.locator(".peek-drawer .seal"), "peek");
+      await page.keyboard.press("Escape");
+
+      await openTower(page, "review/G-0003", { lang, enrich });
+      await settled(page, "review/G-0003");
+      await said(page.locator(".review-verify .seal"), "review head");
+      await page.keyboard.press("e");
+      await said(page.getByRole("dialog").locator(".verify-head .seal"), "verification readout");
+
+      await openTower(page, "goal/G-0003", { lang, enrich });
+      await said(page.locator(".goal-head .stamp").first(), "goal head stamp");
+    });

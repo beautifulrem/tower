@@ -339,7 +339,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   245; e2e 394 + the phone test made deterministic (10/10 under five workers, phone suite 17/17); shots 69/69; perf
   alone (board of 50: 672 / 394 / 215 ms against 280 / 183 / 148 ms; switch medians 72 against 29 ms); line limit; doc
   numbers; cargo remote 4/4; bundle 163,047 / 163,840 B; detector unchanged on the touched files (17 against 17).
-- 2026-11-26 Review 15 — independent (`2408609`): PASS 8.285 / 10 with one P1 (the phone drew the verifier's green on
+- 2026-11-26 Review 15 — independent (`2408609`): FAIL — 8.285 / 10, above 8.0, but one open P1 (the phone drew the verifier's green on
   every goal to accept), one P2 (held-out files under the wrong line), five P3s (a path's "C9" read as a criterion; a
   wrapped evidence strip 18px off; titles, ids, pins, commands and paths not copyable; "Unresponsive" for the desk's
   own reading of silence; "No sandbox" in amber) and record-only notes. Saved as `design-evidence/reports/review15.md`.
@@ -361,3 +361,9 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   doc numbers; cargo remote 4/4; bundle 163,205 / 163,840 B; detector 20 against 20 on the touched files, the same
   findings. Visual check at DPR 2, light and dark, en and zh: `/tmp/tower-design/iter16/visual/`. Not yet independently
   re-reviewed.
+- Iteration 16 follow-up: after a press kept focus on the diff table, ↑↓ did nothing; they now move from the line
+  pressed (or land on the first line), and the review-keys test checks it (fails on `2cd8b3d`'s `FileDiff.tsx`).
+  Review 15's verdict corrected to FAIL in these documents (8.285 with R15-P1-01 open). DELIVERY §15 records that busy
+  has no upper bound. Gates rerun alone, all pass: vitest 42 / 246; e2e 403/0; shots 69/69; perf (board of 50:
+  604 / 243 / 186 against 177 / 152 / 107 ms; switch medians about 60 against 25 ms); line limit; doc numbers; cargo
+  remote 4/4; bundle 163,258 / 163,840 B.

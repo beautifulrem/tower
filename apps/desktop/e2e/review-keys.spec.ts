@@ -202,6 +202,15 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   const part = await selected();
   expect(part.length, "a drag takes part of the line").toBeGreaterThan(3);
   expect(text).toContain(part);
+  // After a press the arrow keys still move by line, from the line pressed: ↓ lands on the next line's number.
+  await page.mouse.click(b.x + 40, b.y + b.height / 2);
+  await page.keyboard.press("ArrowDown");
+  const moved = await page.evaluate(() => {
+    const el = document.activeElement as HTMLElement;
+    const rows = [...document.querySelectorAll("table.diff tr.dl")];
+    return { lnBtn: el.classList.contains("ln-btn"), row: rows.indexOf(el.closest("tr")!) };
+  });
+  expect(moved, "↓ after a press moves to the next line").toEqual({ lnBtn: true, row: 1 });
   // The keyboard's way in is unchanged: from the file's last header control, Tab reaches the table and lands on the
   // first line's number, where ↑↓ move.
   const table = page.locator("table.diff").first();

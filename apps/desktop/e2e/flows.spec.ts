@@ -694,7 +694,7 @@ test("with a decision card on a ready-to-accept goal, the card's first option is
   await expect(primaries).toHaveText(/Send the failures to the agent/);
 });
 
-test("the title bar's runs gauge is the running mark, turning while a run moves, and silence beats once", async ({ page }) => {
+test("the title bar's runs gauge is the running mark, turning while a run moves; silence is the hint mark in the reading's ink", async ({ page }) => {
   const heard = (ago: number) => (F: Record<string, any>) => {
     F.settings = { ...F.settings, max_concurrent: 4 };
     for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now() - ago;
@@ -707,20 +707,29 @@ test("the title bar's runs gauge is the running mark, turning while a run moves,
   await expect(gauge).toHaveClass(/glyph-spin/);
   expect(await gauge.locator("[fill]:not([fill='none'])").count()).toBe(0);
   expect(await gauge.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).animationIterationCount])).toEqual(["spin", "infinite"]);
-  // The one run has been silent for twenty minutes: nothing is moving, so the arc holds still (review 14); the hollow
-  // dot shows, and beats once as it appears.
+  // The one run has been silent for twenty minutes: nothing is moving, so the arc holds still (review 14).
   await openTower(page, "overview", { enrich: heard(20 * 60_000) });
   await expect(gauge).toBeVisible();
   await expect(gauge).not.toHaveClass(/glyph-spin/);
   expect(await gauge.evaluate((el) => el.getAnimations().length)).toBe(0);
   await expect(gauge.locator("path")).toHaveAttribute("d", "M5 1a4 4 0 0 1 4 4");
   await expect(page.locator(".gauge-active")).toContainText("1/4");
-  const hollow = page.locator(".gauge-dot.hollow");
-  await expect(hollow).toBeVisible();
-  // A status dot, round, drawn as a ring.
-  expect(await hollow.evaluate((el) => getComputedStyle(el).borderRadius)).toBe("50%");
-  expect(await hollow.evaluate((el) => getComputedStyle(el).animationName)).toBe("beat");
-  expect(await hollow.evaluate((el) => getComputedStyle(el).animationIterationCount)).toBe("1");
+  // Silence is worth a look, not a failure (docs/12 §12.2, docs/08 §8.6.3): the hint mark in the reading's own ink, never
+  // the red ring it was (iteration 15), and it does not move.
+  const beat = page.locator(".gauge-stale");
+  await expect(beat).toContainText(/silent for/);
+  const hint = beat.locator("svg.mark-notice");
+  await expect(hint).toBeVisible();
+  expect(await beat.evaluate((g) => [getComputedStyle(g.querySelector("svg")!).color === getComputedStyle(g).color, g.querySelectorAll("svg").length, g.getAnimations({ subtree: true }).length])).toEqual([true, 1, 0]);
+  const danger = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--st-danger").trim());
+  expect(await beat.evaluate((g, d) => {
+    const probe = document.createElement("i");
+    document.body.append(probe);
+    probe.style.color = d;
+    const red = getComputedStyle(probe).color;
+    probe.remove();
+    return [...g.querySelectorAll("*")].some((el) => [getComputedStyle(el).color, getComputedStyle(el).borderTopColor, getComputedStyle(el).backgroundColor].includes(red));
+  }, danger), "a red in the heartbeat").toBe(false);
   // The silent goal's own words do not shimmer: nothing is moving.
   await expect(page.locator(".live-moving")).toHaveCount(0);
 });

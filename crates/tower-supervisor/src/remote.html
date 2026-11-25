@@ -63,10 +63,6 @@
   .gauge.active, .gauge.stale, .gauge.off { color: var(--text-1); }
   .gauge.live { color: var(--text-2); font-size: 11px; padding: 1px 6px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--bg-strip); }
   .gauge.dead { color: var(--text-4); }
-  /* Status dots, as on the desk: down a red dot, fine a green one, silence the red dot drawn as a ring. */
-  .gauge .dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; background: var(--st-danger); }
-  .gauge .dot.ok { background: var(--st-verified); }
-  .gauge .dot.hollow { box-sizing: border-box; width: 7px; height: 7px; background: transparent; border: 1.5px solid var(--st-danger); }
   /* Work in motion turns, steadily; it holds still where motion is reduced. */
   .spin { animation: spin 1.1s linear infinite; }
   @keyframes spin { to { transform: rotate(1turn); } }
@@ -161,7 +157,7 @@
   .row .meta { display: flex; gap: 6px; align-items: center; margin-top: 2px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
   .row .meta .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
   .row .meta .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .meta .detail .target { margin-left: 0.6em; }
+  .row .meta .detail .target { margin-left: 0.3em; }
   .row .meta .detail .code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .meta .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--text-3); flex: 0 0 auto; }
   .row .meta .pill { font-size: 10.5px; padding: 0 5px; border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-3); flex: 0 0 auto; }
@@ -361,7 +357,7 @@ function gaugesHtml(s) {
   if (running.length) h += `<span class="gauge active num">${G.runs(running.some(moves))}${esc(t("runs")(running.length, max))}</span>`;
   const heard = Math.max(0, ...running.map(heardAt));
   const since = Date.now() - heard;
-  if (running.length && heard > 0 && since > 30_000) h += `<span class="gauge stale num">${since > 120_000 ? `<span class="dot hollow"></span>` : ""}${esc(t("silentFor")(dur(since)))}</span>`;
+  if (running.length && heard > 0 && since > 30_000) h += `<span class="gauge stale num">${since > 120_000 ? G.notice : ""}${esc(t("silentFor")(dur(since)))}</span>`;
   const spent = usd(s.goals.reduce((a, g) => a + (g.cost_usd || 0), 0));
   return h + `<span class="gauge num" title="${esc(t("spent")(spent))}"><span class="sr">${esc(t("spent")(""))}</span>${spent}</span>`;
 }
@@ -373,7 +369,8 @@ function showStatus() {
     conn.textContent = t("stale")(ago(lastOk));
   } else if (sseLive) {
     conn.className = "gauge live";
-    conn.innerHTML = `<span class="dot ok"></span>${esc(t("liveStream"))}`;
+    // Said in words: green is the verifier's alone, never a connection's.
+    conn.textContent = t("liveStream");
   } else {
     conn.className = "gauge";
     conn.textContent = "";
@@ -462,8 +459,8 @@ function render(s) {
   for (const g of running) {
     const l = g.live_line;
     const badge = t("modes")[g.mode] ?? g.mode;
-    // The action, then its target after a space, as the desk's live line says it: no dot between them.
-    const detail = l ? `${esc(l.action)}${l.target ? `<span class="target${machine(l.target) ? " code" : ""}">${esc(l.target)}</span>` : ""}` : "";
+    // The action, then its target after a real space (copied and read aloud as two words), as the desk's live line says it: no dot between them.
+    const detail = l ? `${esc(l.action)}${l.target ? ` <span class="target${machine(l.target) ? " code" : ""}">${esc(l.target)}</span>` : ""}` : "";
     const ran = g.run_started_at ? dur(Math.max(0, Date.now() - g.run_started_at)) : "";
     const elapsed = ran ? `<span class="elapsed num" title="${esc(t("runningFor")(ran))}"><span class="sr">${esc(t("runningFor")(""))}</span>${esc(ran)}</span>` : "";
     const eng = g.engine ? `<span class="pill">${esc(g.engine)}</span>` : "";
@@ -482,7 +479,7 @@ function showOffline(err) {
   app.innerHTML = `<section class="offline" title="${esc(err.message)}"><p class="error">${G.danger}${t("offline")}</p><p class="sub">${t("offlineWhere")}</p>${lastOk ? `<p class="when num">${esc(t("lastRead")(clock(lastOk)))}</p>` : ""}<button class="btn primary" data-retry>${t("retry")}</button></section>`;
   gauges.innerHTML = `<span class="gauge dead num">${esc(t("runs")("—", "—"))}</span><span class="gauge dead">—</span>`;
   conn.className = "gauge off";
-  conn.innerHTML = `<span class="dot"></span>${t("offGauge")}`;
+  conn.innerHTML = `${G.danger}${t("offGauge")}`;
   fresh.textContent = "";
   document.getElementById("foot").textContent = t("foot");
 }

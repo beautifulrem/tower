@@ -121,6 +121,8 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T108 Caveats on a seal that does not count | D139 | — | the verdict outranks them; they stay on the criterion's row | — | Kept |
 | T109 A held pass's caveat in amber | D140 | — | held, every caveat is a question for you | — | Kept |
 | T110 Merged human-only by shape | D141 | P3 | a hatched core | `Glyph.test.tsx`; fails on `1ad1439` | Done (iteration 15) |
+| T111 No green on a connection | D142 | P2 | the phone's live stream said in words; offline the red × disc | `phone.spec.ts`; fails on `ae1c049` | Done (iteration 15 follow-up) |
+| T112 Silence is a hint, not a failure | D143 | P3 | the hint mark in the reading's ink, desk and phone | `flows.spec.ts`, `phone.spec.ts`; fails on `ae1c049` | Done (iteration 15 follow-up) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

@@ -156,7 +156,13 @@ test("the header is the desk's title bar: runs of slots, the silence once it is 
   await expect(gauges.nth(0)).toHaveText("1/4 running");
   await expect(gauges.nth(0).locator("svg path")).toHaveCount(1);
   await expect(gauges.nth(1)).toHaveText("silent for 3m");
-  await expect(gauges.nth(1).locator(".dot.hollow")).toHaveCount(1);
+  // Silence is worth a look, not a failure (docs/12 §12.2, docs/08 §8.6.3): the hint mark in the reading's own ink, as
+  // at the desk, never a red ring.
+  const hint = gauges.nth(1).locator("svg");
+  await expect(hint).toHaveCount(1);
+  expect(await hint.locator("path").getAttribute("d")).toContain("M8 2.5a5.5 5.5");
+  const ink = await gauges.nth(1).evaluate((g) => [getComputedStyle(g.querySelector("svg")!).color, getComputedStyle(g).color, g.querySelector("path")!.getAttribute("fill")]);
+  expect(ink).toEqual([ink[1], ink[1], "currentColor"]);
   await expect(gauges.nth(2)).toHaveText("Spent $0.09");
   // "Spent" is for the screen reader; the eye reads the sum alone, as on the desk.
   // Polled: the box is read once the page's styles are in, not in the frame the text first lands.
@@ -168,6 +174,31 @@ test("the header is the desk's title bar: runs of slots, the silence once it is 
   // A run heard from just now has no silence reading: the page reads every 5 s and does not count seconds.
   await openPhone(page, { state: { goals: [goal("G-1", "running", 0, Date.now())], inbox: [], lang: "zh-CN", max_running: 4 } });
   await expect(page.locator("#status .gauge:not(#conn)")).toHaveText(["1/4 运行", "累计 $0"]);
+  // The live stream is said in words: green is the verifier's alone, never a connection's. The test has no stream to
+  // serve, so it stops the page's own attempt (and its retry) before saying the stream is live, in one step.
+  await page.evaluate(() => { (0, eval)("clearTimeout(sseRetryTimer); if (sseAbort) { sseAbort.abort(); sseAbort = null; } sseLive = true; showStatus()"); });
+  await expect(page.locator("#conn")).toHaveText("实时");
+  const green = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--st-verified").trim());
+  const header = await page.locator("header").evaluate((h) => {
+    const probe = document.createElement("i");
+    document.body.append(probe);
+    const paint = (v: string) => ((probe.style.color = v), getComputedStyle(probe).color);
+    const marks = [...h.querySelectorAll("*")].flatMap((el) => {
+      const s = getComputedStyle(el);
+      return [s.color, s.backgroundColor, s.borderTopColor, el.getAttribute("fill") ? paint(el.getAttribute("fill")!) : ""];
+    });
+    probe.remove();
+    return marks;
+  });
+  const greenPaint = await page.evaluate((v) => {
+    const probe = document.createElement("i");
+    document.body.append(probe);
+    probe.style.color = v;
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  }, green);
+  expect(header.filter((c) => c === greenPaint), "a green in the header").toEqual([]);
 });
 
 test("a card's choices have one width rule: the primary across, the others equal on the next line, or each across when one would not fit", async ({ page }) => {
@@ -417,7 +448,7 @@ test("a run's mark turns on the phone only while the run moves, as on the desk; 
   await expect(page.locator("#status .gauge.active svg")).toHaveClass("spin");
   // The detail: the action, then its target after a space, the target in the code face; no middle dot.
   const detail = page.locator(".row .meta .detail").first();
-  await expect(detail).toHaveText("bashnpm test");
+  await expect(detail).toHaveText("bash npm test");
   expect(await detail.locator(".target").evaluate((el) => parseFloat(getComputedStyle(el).marginLeft))).toBeGreaterThan(0);
   expect(await page.locator("#app").innerText()).not.toContain("·");
   // Nothing moving: the gauge's arc holds still too.

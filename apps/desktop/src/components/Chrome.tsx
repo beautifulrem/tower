@@ -8,7 +8,7 @@ import { back, canGoBack, go, route } from "../lib/nav";
 import { popupActions } from "../lib/native";
 import { dismissToast, goalList, livenessOf, patchSettings, quietNow, state } from "../lib/store";
 import { heartbeatState } from "../lib/labels";
-import { Icon } from "./Glyph";
+import { Icon, NoticeMark } from "./Glyph";
 import { TelemetryStrip } from "./TelemetryStrip";
 import { IconButton } from "./ui";
 
@@ -62,7 +62,7 @@ export function Heartbeat(props: { running: number }) {
     <Show when={props.running > 0 && last() > 0}>
       <span class="gauge num" classList={{ "gauge-stale": hb() === "quiet" || hb() === "silent", "gauge-busy": hb() === "busy" }} title={t("chrome.heartbeatTitle")}>
         <Show when={hb() === "silent"}>
-          <span class="gauge-dot hollow" />
+          <NoticeMark />
         </Show>
         {text()}
       </span>

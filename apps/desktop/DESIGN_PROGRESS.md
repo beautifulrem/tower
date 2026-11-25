@@ -329,3 +329,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   medians 117 against 45 ms); line limit; bundle 163,064 / 163,840 B, start-up 56,292 B, goal page 11,523 B; doc
   numbers; `cargo test -p tower-supervisor remote` 4/4; detector 20 findings against 21 (the shimmer's
   `gradient-text` gone). Not yet independently re-reviewed.
+- 2026-11-26 Iteration 15 follow-up — its own pixel checks (DPR 2, light and dark; `/tmp/tower-design/iter15/visual`)
+  confirmed the shimmer band changes no ground pixel on the goal page or in the peek and only the words' own, the
+  hatched merged core reads at 12 px, the chip and panel buttons sit at their sizes, and found two older faults: the
+  phone's "Live" wore the verifier's green (D142, T111) and silence was a red ring in the title bar and on the phone
+  where docs/12 §12.2 and docs/08 §8.6.3 draw the uncoloured hint mark (D143, T112). Both fixed, each with a test that
+  fails on `ae1c049`. Also: the phone's action and target are two words (a real space); the D rows' evidence paths and
+  D137, D139, D140's wording corrected; docs/12's two "differ only by colour" leftovers gone. Gates: tsc; vitest 42 /
+  245; e2e 394 + the phone test made deterministic (10/10 under five workers, phone suite 17/17); shots 69/69; perf
+  alone (board of 50: 672 / 394 / 215 ms against 280 / 183 / 148 ms; switch medians 72 against 29 ms); line limit; doc
+  numbers; cargo remote 4/4; bundle 163,047 / 163,840 B; detector unchanged on the touched files (17 against 17).

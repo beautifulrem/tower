@@ -225,7 +225,9 @@ Review 14 (`1ad1439`, the redesign and iteration 14 together) passed at 8.35 / 1
 from reviews 12–14 (D127–D141): fixed with a test that fails on `1ad1439`'s sources, or kept by a stated decision
 (D128, D139, D140). The running mark now turns only where you watch work and only while it moves; the shimmer moves
 by transform alone (a quarter of a core down to about one point); nothing moves under reduced motion, pseudo-elements
-included. Not yet independently re-reviewed.
+included. Its own pixel checks then found two older faults on the phone and in the title bar (D142: the phone's
+"Live" wore the verifier's green; D143: silence was a red ring where the spec draws the hint mark), fixed in a
+follow-up commit with tests that fail on `ae1c049`. Not yet independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
@@ -233,13 +235,17 @@ At the final commit (iteration 15):
 
 - **Type check and unit tests:** tsc clean; vitest 42 files, 245 tests.
 - **e2e:** Playwright WebKit 395 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
-  supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs seven "Importing a
-  module script failed" lines (five or six in iterations 11–14, at the same tests from run to run; four in iteration 10): pages left by a test while a view was still loading; no test
-  fails. Run alone, iteration 15's new tests emit none; the rewritten runs-gauge test emits one as it did before.
+  supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs seven to nine
+  "Importing a module script failed" lines (seven at `ae1c049`, nine at its follow-up; five or six in iterations 11–14;
+  four in iteration 10): pages left by a test while a view was still loading, one of them on purpose (the resilience
+  test of a view that fails to load); no test fails. Run alone, iteration 15's new tests emit none; the rewritten
+  runs-gauge test emits one as it did before. At the follow-up the first full run failed one test, the phone's new
+  live-stream check (it raced the page's own stream attempt); it was made deterministic and passed 10 of 10 under five
+  workers, and the phone suite passed 17 of 17.
 - **Shots:** 69/69 (`/tmp/tower-design/iter15/allshots`); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 163,064 / 163,840 B (776 B left), start-up 56,292 / 65,536 B, goal page
-  11,523 / 12,288 B. The budget was never raised.
+- **Bundle:** all interface JS 163,047 / 163,840 B (793 B left), start-up 56,276 / 65,536 B, goal page
+  11,524 / 12,288 B. The budget was never raised.
 - **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 1,664 / 512 / 399 ms against
   340 / 313 / 216 ms for the seeded board (medians 512 against 313), inside its 750 ms margin (every row measures its
   identity column); view switches with 50 goals take 40–146 ms against 32–61 ms, their medians (117 against 45 ms)
@@ -292,8 +298,8 @@ Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `4e
 Iteration 13 fixed review 12's (D117–D118), each with a test that fails on `886ab38`; review 13 passed it and found
 D120–D121. The status marks and motion (D119) followed the owner's feedback. Iteration 14 fixed D120–D121, each with
 a test that fails on `1c9af8a`'s sources; review 14 passed both and found D122–D126. Iteration 15 fixed those and every
-note left open (D127–D141), each with a test that fails on `1ad1439`'s sources or kept by a stated decision; not yet
-re-reviewed.
+note left open (D127–D141), each with a test that fails on `1ad1439`'s sources or kept by a stated decision; its
+follow-up fixed D142–D143, found by its own pixel checks, each with a test that fails on `ae1c049`; not yet re-reviewed.
 What is left:
 
 - **Three more columns give way by measuring** since iteration 12 (`lib/refit.ts`): the overlap note (three steps),

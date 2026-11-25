@@ -144,31 +144,7 @@
   border-radius: 50%;
   background: var(--text-3);
 }
-/* Silence is worth a look, not a failure: the dot drawn as a red ring, never the red disc with a × that says errors or
-   an engine down. The moment
-   it appears it beats once — 700ms, like a new card's amber — and then holds still; a heartbeat that stopped. */
-.gauge-dot.hollow {
-  background: transparent;
-  box-sizing: border-box;
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--st-danger);
-  animation: beat var(--dur-attn) var(--ease-out) 1;
-}
-@keyframes beat {
-  0% {
-    transform: scale(1);
-    opacity: 0.4;
-  }
-  35% {
-    transform: scale(1.5);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-/* The runs gauge is the running goals' own mark, turning while anything runs. */
+/* The runs gauge is the running goals' own mark, turning while some run moves. */
 .gauge-runs {
   vertical-align: -1px;
   color: var(--st-active);
@@ -179,7 +155,8 @@
 .gauge-down {
   color: var(--text-1);
 }
-/* The engine heartbeat: quiet while recent, text-1 past 30 s, a hollow ring past 2 min. */
+/* The engine heartbeat: quiet while recent, text-1 past 30 s, and past 2 min the hint mark, drawn in the reading's own
+   ink (docs/12 §12.2, docs/08 §8.6.3): silence is worth a look, not a failure, so it wears no status colour. */
 .gauge-stale {
   color: var(--text-1);
 }

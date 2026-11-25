@@ -100,8 +100,11 @@ describe("the marks", () => {
   });
 
   it("keep the phone's running mark to the desk's rule: it turns only while the run moves", () => {
-    // The phone page's own copy of `moving`: waiting on you, flagged, or silent two minutes holds the arc still.
-    expect(phoneHtml).toMatch(/const moves = \(g\) => g\.state === "running" && g\.mode !== "waiting_on_you" && !g\.needs_you && !\(heardAt\(g\) > 0 && Date\.now\(\) - heardAt\(g\) > 120_000\);/);
+    // The phone page's own copy of `moving`: waiting on you, flagged, or silent two minutes with no tool in flight holds
+    // the arc still (a tool in flight is busy, as the desk's `heartbeatState` reads it).
+    expect(phoneHtml).toContain('const busy = (g) => g.mode === "reading" || g.mode === "editing" || g.mode === "executing";');
+    expect(phoneHtml).toContain("const silentRun = (g) => g.state === \"running\" && !busy(g) && heardAt(g) > 0 && Date.now() - heardAt(g) > 120_000;");
+    expect(phoneHtml).toContain('const moves = (g) => g.state === "running" && !waits(g) && !silentRun(g);');
     expect(phoneHtml).toContain('G.state("running", moves(g))');
     expect(phoneHtml).toContain("G.runs(running.some(moves))");
   });

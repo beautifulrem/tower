@@ -33,9 +33,9 @@ export async function pickQuiet() {
  * Engine heartbeat: how long since any running goal's event stream moved
  * (trace entries, streamed text, the summary). The title bar ticks once a
  * second only while something runs. A tool call still in flight is "a tool
- * running for 3m", never silence; silence past two minutes wears a hollow
- * ring — worth a look, not a failure — so it is not a second red × beside the
- * error count.
+ * running for 3m", never silence; silence past two minutes wears the
+ * uncoloured hint mark in the reading's ink — worth a look, not a failure — so
+ * it is not a second red × beside the error count.
  */
 export function Heartbeat(props: { running: number }) {
   const [now, setNow] = createSignal(Date.now());

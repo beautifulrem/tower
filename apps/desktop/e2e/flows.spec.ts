@@ -714,12 +714,15 @@ test("the title bar's runs gauge is the running mark, turning while a run moves;
   expect(await gauge.evaluate((el) => el.getAnimations().length)).toBe(0);
   await expect(gauge.locator("path")).toHaveAttribute("d", "M5 1a4 4 0 0 1 4 4");
   await expect(page.locator(".gauge-active")).toContainText("1/4");
-  // Silence is worth a look, not a failure (docs/12 §12.2, docs/08 §8.6.3): the hint mark in the reading's own ink, never
+  // Silence is worth a look, not a failure (docs/12 §12.4.3, docs/08 §8.6.3): the hint mark in the reading's own ink, never
   // the red ring it was (iteration 15), and it does not move.
   const beat = page.locator(".gauge-stale");
   await expect(beat).toContainText(/silent for/);
   const hint = beat.locator("svg.mark-notice");
   await expect(hint).toBeVisible();
+  // The runs mark is the size of the hint mark beside it (review 15: 10px beside 12px).
+  expect(await gauge.evaluate((s) => [s.getAttribute("width"), s.getAttribute("height")])).toEqual(["12", "12"]);
+  expect(await hint.getAttribute("width")).toBe("12");
   expect(await beat.evaluate((g) => [getComputedStyle(g.querySelector("svg")!).color === getComputedStyle(g).color, g.querySelectorAll("svg").length, g.getAnimations({ subtree: true }).length])).toEqual([true, 1, 0]);
   const danger = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--st-danger").trim());
   expect(await beat.evaluate((g, d) => {
@@ -771,6 +774,64 @@ test("the goal in view that is moving shimmers its words; on the board its row k
   expect(await words.evaluate((el) => [getComputedStyle(el, "::after").animationName, getComputedStyle(el).color === "rgba(0, 0, 0, 0)"])).toEqual(["none", false]);
   await openTower(page, "overview", { enrich: fresh });
   expect(await page.locator(".board-rows .g-glyph svg.glyph-spin").first().evaluate((el) => getComputedStyle(el).animationDuration)).toBe("0s");
+});
+
+// Review 15 (record only): the light was 5em across whatever the words, so a short action word ("bash") sat inside it
+// whole and the line read as dimming, not as a light passing. Frozen at its midpoint the light covers the middle of the
+// word, not all of it; over one pass it still crosses every column.
+test("the shimmer's light passes over a short action word, it does not dim the word whole", async ({ page }) => {
+  const fresh = (F: Record<string, any>) => {
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
+  };
+  await openTower(page, "overview", { enrich: fresh });
+  const id = await page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first().getAttribute("data-goal");
+  await openTower(page, `goal/${id}`, { enrich: fresh });
+  const words = page.locator(".annunciator .live-moving .live-action");
+  await expect(words).toBeVisible();
+  // The word's columns that hold ink, and of those the ones the light changes, with the light frozen at `t` ms of 2400.
+  const lit = async (t: number | null) => {
+    await words.evaluate((el, t) => {
+      el.textContent = "bash";
+      const band = document.getAnimations().find((a) => (a.effect as KeyframeEffect)?.pseudoElement === "::after" && (a.effect as KeyframeEffect).target === el)!;
+      band.pause();
+      band.currentTime = t ?? 0;
+      el.classList.toggle("tmp-no-band", t === null);
+    }, t);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return (await words.screenshot()).toString("base64");
+  };
+  await page.addStyleTag({ content: ".tmp-no-band::after { visibility: hidden !important; }" });
+  const plain = await lit(null);
+  const shots = [];
+  for (const t of [1200, 0, 300, 600, 900, 1500, 1800, 2100]) shots.push(await lit(t));
+  const cols = await page.evaluate(
+    async ([plain, shots]) => {
+      const load = async (s: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${s}`;
+        await img.decode();
+        const c = document.createElement("canvas");
+        [c.width, c.height] = [img.width, img.height];
+        const x = c.getContext("2d")!;
+        x.drawImage(img, 0, 0);
+        return x.getImageData(0, 0, c.width, c.height);
+      };
+      const B = await load(plain);
+      const px = (D: ImageData, x: number, y: number) => [0, 1, 2].map((k) => D.data[(y * D.width + x) * 4 + k]);
+      const dist = (p: number[], q: number[]) => p.reduce((s, v, i) => s + Math.abs(v - q[i]), 0);
+      const ink = [...Array(B.width).keys()].filter((x) => [...Array(B.height).keys()].some((y) => dist(px(B, x, y), px(B, 0, 0)) > 90));
+      const out: number[][] = [];
+      for (const s of shots) {
+        const A = await load(s);
+        out.push(ink.filter((x) => [...Array(B.height).keys()].some((y) => dist(px(A, x, y), px(B, x, y)) > 30)));
+      }
+      return { ink: ink.length, lit: out };
+    },
+    [plain, shots] as const,
+  );
+  expect(cols.ink, "the word has ink").toBeGreaterThan(10);
+  expect(cols.lit[0].length / cols.ink, `at its midpoint the light covers ${cols.lit[0].length} of ${cols.ink} columns`).toBeLessThanOrEqual(0.6);
+  expect(new Set(cols.lit.flat()).size / cols.ink, "over one pass the light crosses the whole word").toBeGreaterThanOrEqual(0.95);
 });
 
 test("with motion reduced, a criteria segment takes its new count at once: its fill (an ::after) does not grow along the bar", async ({ page }) => {

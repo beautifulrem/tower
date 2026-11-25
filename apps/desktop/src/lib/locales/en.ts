@@ -135,7 +135,7 @@ export const en: DictNow = {
     openSettings: "Open settings",
     toolRunning: "{tool} running for {d}",
     claudeNotReady: "Claude Code not ready",
-    unresponsive: "Unresponsive",
+    silent: "Silent",
     phoneOff: "Phone page off",
     phoneOn: "Phone page active",
     sandboxOn: "S2 Seatbelt",

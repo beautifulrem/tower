@@ -121,8 +121,20 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T108 Caveats on a seal that does not count | D139 | — | the verdict outranks them; they stay on the criterion's row | — | Kept |
 | T109 A held pass's caveat in amber | D140 | — | held, every caveat is a question for you | — | Kept |
 | T110 Merged human-only by shape | D141 | P3 | a hatched core | `Glyph.test.tsx`; fails on `1ad1439` | Done (iteration 15) |
-| T111 No green on a connection | D142 | P2 | the phone's live stream said in words; offline the red × disc | `phone.spec.ts`; fails on `ae1c049` | Done (iteration 15 follow-up) |
+| T111 No green on a connection | D142 | P2 | the phone's live stream said in words; offline the word in ink, the red × once on the error line | `phone.spec.ts`; fails on `ae1c049` | Done (iteration 15 follow-up) |
 | T112 Silence is a hint, not a failure | D143 | P3 | the hint mark in the reading's ink, desk and phone | `flows.spec.ts`, `phone.spec.ts`; fails on `ae1c049` | Done (iteration 15 follow-up) |
+| T113 Silent, not "Unresponsive" | D144 | P3 | the word the desk can stand behind; the last movement beside the hint mark | `verdict.spec.ts`; fails on `2408609` | Done (iteration 15 follow-up) |
+| T114 Phone green only when the pass counts | D145 | P1 | the desk's two gates on the phone's goals to accept; amber !, or the dashed neutral ring, otherwise | `phone.spec.ts`; fails on `2408609` | Done (iteration 16) |
+| T115 Held-out files under their count | D146 | P2 | the files that ran right under the line that counts them | `GoalDeck.test.tsx`; fails on `2408609` | Done (iteration 16) |
+| T116 A path names no criterion | D147 | P3 | findings name only the goal's own criteria | `GoalDeck.test.tsx`; fails on `2408609` | Done (iteration 16) |
+| T117 Evidence strip wraps on one edge | D148 | P3 | gap spacing; a tag's hang given back on the trailing side | `honesty.spec.ts`; fails on `2408609` | Done (iteration 16) |
+| T118 Machine values copy | D149 | P3 | titles, ids, pins, commands and paths select; not on moves | `select.spec.ts`; fails on `2408609` | Done (iteration 16) |
+| T119 Sandbox off is a hint | D150 | P3 | ink and the hint mark in the title bar | `Console.test.tsx`; fails on `2408609` | Done (iteration 16) |
+| T120 Phone: busy, silent, needs you | D151 | P3 | a tool in flight is busy; the badges say Silent and wear the ! | `phone.spec.ts`; fails on `2408609` | Done (iteration 16) |
+| T121 One mark size in the title bar | D152 | — | the running mark at 12px, desk and phone | `flows.spec.ts`, `phone.spec.ts`; fails on `2408609` | Done (iteration 16) |
+| T122 A light over short words | D153 | — | the band a quarter of a short word | `flows.spec.ts`; fails on `2408609` | Done (iteration 16) |
+| T123 Diff lines select | D154 | P3 | a pointer's focus stays on the table | `review-keys.spec.ts`; fails on `2408609` | Done (iteration 16) |
+| T124 Stale words | D155 | — | comment, docs/12's PR step and red list, references | — | Done (iteration 16) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

@@ -94,7 +94,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 0;
+  gap: 2px var(--sp-3);
   margin: 1px 0 3px calc(14px + 2.5 * var(--fs-body) + var(--sp-2) * 2);
   font-size: var(--fs-meta);
   line-height: var(--lh-meta);
@@ -108,19 +108,19 @@
   color: var(--text-3);
   white-space: nowrap;
 }
-.ev-strip > .ev-pill + .ev-pill {
-  margin-left: var(--sp-3);
-}
 /* A held or flagged reading is a status tag (Geist's subtle badge, Primer's label): its tone's ground, a hairline of
-   its tone, ink words, and a chip's 4px corners (it holds words, so it is no capsule). */
+   its tone, ink words, and a chip's 4px corners (it holds words, so it is no capsule). Its ground hangs 6px left of its
+   words, so on every line the strip wraps to its words keep the shared edge. Readings are a gap apart (Primer's label
+   group); the reading before a tag gives the hang back on its trailing side, which never rides a wrap (review 15: a
+   leading margin did, and the second line started 18px right of the first). */
 .ev-pill-attn,
 .ev-pill-danger {
   padding: 0 6px;
-  margin-left: 6px;
+  margin-left: -6px;
   border-radius: var(--radius-s);
   color: var(--text-1);
 }
-.ev-strip > :is(.ev-pill-attn, .ev-pill-danger):first-child { margin-left: -6px; }
+.ev-strip > :has(+ :is(.ev-pill-attn, .ev-pill-danger)) { margin-right: 6px; }
 .ev-pill-attn { background: var(--attention-bg); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--st-attention) 32%, transparent); }
 .ev-pill-danger { background: var(--danger-bg); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--st-danger) 32%, transparent); }
 

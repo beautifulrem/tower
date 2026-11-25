@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../lib/store", async () => {
@@ -83,6 +83,13 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
     expect(screen.getAllByText("holdout/tax.test.js")).toHaveLength(1);
     expect(screen.getByText("holdout/tax.test.js").closest(".held-out-missing")).not.toBeNull();
     expect(document.querySelector(".criterion")!.textContent).not.toMatch(/[✓✔✕✖✗○◇◆■□●◐◑▲△⬛]/);
+    // In that order: the count, the files that ran right under it, then the line of the ones that did not (review 15:
+    // after it, a ran file read as one more that did not run).
+    const count = screen.getByText("held-out tests: 1 of 2 ran, for you only");
+    const ranFile = screen.getByText("holdout/rounding.test.js");
+    const missing = screen.getByText("holdout/tax.test.js").closest(".held-out-missing")!;
+    const after = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect([after(count, ranFile), after(ranFile, missing)]).toEqual([true, true]);
   });
 
   it("does not attribute another criterion's sentinel to an unrelated criterion", () => {
@@ -115,6 +122,22 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
     const held = screen.getByText("doesn't count: a high finding on C2");
     expect(held.classList.contains("ev-pill-attn")).toBe(true);
     expect(held.getAttribute("title")).toBe("Guard gap: C2: worker exited early");
+    cleanup();
+    // Review 15 (R15-P3-01): a C9 in a path is not a criterion the goal has. With only C1 and C2, the finding names none,
+    // so it is the goal's: C1's own pill says it, and no row points at a C9.
+    render(() => (
+      <CriterionRow
+        goalId="G-0001"
+        c={criterion}
+        state="in_review"
+        base="1111111"
+        ids={["C1", "C2"]}
+        sentinels={[{ sentinel: "assertions_removed", severity: 3, title: "Assertions removed", detail: "tests/C9/cart.test.js asserts nothing now" }]}
+      />
+    ));
+    fireEvent.click(screen.getByText("passed"));
+    expect(document.querySelector(".criterion")!.textContent).not.toMatch(/C9/);
+    expect(screen.queryByText("assertions untouched")).toBeNull();
   });
 
   // Review 9, R9-P3-04: the supervisor qualifies a pass when code reaches into the test runner (source_touches_tests,

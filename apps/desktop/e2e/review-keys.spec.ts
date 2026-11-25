@@ -180,3 +180,32 @@ test("code shows with its line numbers at once; colours tint in from the plain f
   await expect(coloured).toBeAttached({ timeout: 15_000 });
   expect(await coloured.evaluate((el) => getComputedStyle(el).animationName)).toBe("tint-in");
 });
+
+// Review 15 (record only): a diff line could not be selected or copied — pressing it focused the table, which handed
+// focus to its first line number and dropped the selection. A press now keeps focus on the table: a triple-click takes
+// the line's code (not its +/− sign), a drag takes part of it. Tabbing in still lands on the first line number.
+test("a diff line selects and copies; Tab into the diff still lands on its first line", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await openTower(page, "review/G-0003", { enrich: enrichReview });
+  const code = page.locator("tr.dl .code").first();
+  await expect(code).toBeVisible();
+  const text = (await code.innerText()).trim();
+  const b = (await code.boundingBox())!;
+  const selected = () => page.evaluate(() => getSelection()!.toString().trim());
+  await page.mouse.click(b.x + 40, b.y + b.height / 2, { clickCount: 3 });
+  expect(await selected(), "a triple-click takes the line's code").toBe(text.replace(/^[+−-]/, ""));
+  await page.evaluate(() => getSelection()!.removeAllRanges());
+  await page.mouse.move(b.x + 20, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 160, b.y + b.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const part = await selected();
+  expect(part.length, "a drag takes part of the line").toBeGreaterThan(3);
+  expect(text).toContain(part);
+  // The keyboard's way in is unchanged: from the file's last header control, Tab reaches the table and lands on the
+  // first line's number, where ↑↓ move.
+  const table = page.locator("table.diff").first();
+  await table.locator("xpath=ancestor::section[1]").locator(".file-head button").last().focus();
+  await page.keyboard.press("Tab");
+  await expect(table.locator(".ln-btn").first()).toBeFocused();
+});

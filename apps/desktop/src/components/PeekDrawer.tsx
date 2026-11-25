@@ -88,7 +88,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                 <div class="peek-head-top">
                   <LifecycleGlyph goal={s() as GoalSummary} size={12} turn />
                   <span class="code-val t2">{s().id}</span>
-                  {/* A running goal's state is said once, by "Now" under the head (needs you, unresponsive, or what it is doing):
+                  {/* A running goal's state is said once, by "Now" under the head (needs you, silent, or what it is doing):
                       a second word here could only lag it or contradict it. */}
                   <Show when={!(s().state === "in_review" && s().verified_pin) && s().state !== "running"}>
                     <span class="meta t3">{statusWord(s() as GoalSummary)}</span>

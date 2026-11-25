@@ -16,7 +16,7 @@ import { type ExtCriterionView, qualifiers } from "./ext";
 
 const LookStrip = lazy(withLater(() => import("../Learning").then((m) => ({ default: m.LookStrip }))));
 
-export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state: string; base?: string | null; sentinels?: SentinelHit[]; told?: boolean }) {
+export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state: string; base?: string | null; sentinels?: SentinelHit[]; ids?: string[]; told?: boolean }) {
   const c = () => props.c;
   const v = () => c().verified;
   const [open, setOpen] = createSignal(false);
@@ -28,7 +28,7 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
   const proof = () => v()?.held_out_proof ?? null;
 
   // What qualifies the reading, each fact once: the same list the verification readout draws.
-  const shown = createMemo(() => qualifiers(c(), props.sentinels));
+  const shown = createMemo(() => qualifiers(c(), props.sentinels, props.ids));
   // Folded, a criterion is its verdict and at most one line of what qualifies it — warnings only; the confirmations,
   // the held-out files, the baseline and canary readings and the output are one click away.
   const strip = () => (open() ? shown().filter((p) => !p[3]) : shown().filter(([tone]) => tone !== "ok" && tone !== "fact"));
@@ -88,13 +88,15 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
       <Show when={open() || !v()}>
         <BaselineLine c={c()} base={props.base} told={props.told} />
         <CanaryLine c={c()} />
-        {/* The held-out line names them ("held-out tests, for you only"); the files that ran follow it, unnamed again. */}
-        <HeldOutLine c={c()} />
-        <Show when={ran().length}>
-          <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
-            <For each={ran()}>{(f) => <span class="ev-hf">{f}</span>}</For>
-          </div>
-        </Show>
+        {/* The held-out line counts them ("held-out tests: 1 of 2 ran"); the files that ran sit right under it, before the
+            line that names the ones that did not run (review 15: after it, a ran file read as one more that did not). */}
+        <HeldOutLine c={c()}>
+          <Show when={ran().length}>
+            <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
+              <For each={ran()}>{(f) => <span class="ev-hf">{f}</span>}</For>
+            </div>
+          </Show>
+        </HeldOutLine>
         <LoopbackLine c={c()} />
       </Show>
       <Show when={stepsOpen() && steps().length}>

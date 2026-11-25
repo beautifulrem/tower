@@ -1066,7 +1066,7 @@ input[type="radio"] {
   display: block;
 }
 /* The unit stands where the field's text does: its padding plus the 1px border. */
-.unit-wrap .unit {
+.unit-wrap .field-unit {
   position: absolute;
   right: calc(var(--sp-2) + 1px);
   top: 0;
@@ -1077,15 +1077,16 @@ input[type="radio"] {
   color: var(--text-3);
   pointer-events: none;
 }
+/* The text stops a gap short of the unit, however wide its word is (`fitUnit` measures it into --unit-w). */
 .unit-wrap input {
-  padding-right: 28px !important;
+  padding-right: calc(var(--unit-w, 16px) + var(--sp-2) + var(--sp-1)) !important;
 }
-.unit-wrap.unit-left .unit {
+.unit-wrap.unit-left .field-unit {
   right: auto;
   left: calc(var(--sp-2) + 1px);
 }
 .unit-wrap.unit-left input {
-  padding-left: var(--sp-5) !important;
+  padding-left: calc(var(--unit-w, 8px) + var(--sp-2) + var(--sp-1)) !important;
   padding-right: var(--sp-2) !important;
 }
 
@@ -2782,33 +2783,27 @@ input[type="radio"] {
   align-items: center;
   gap: 6px;
 }
-/* The pin pair goes first, and only for want of room (the seal carries the verified pin): the review hides it
-   (`pins-off`) when, with it, the verification group would drop a part. */
-.review-stats.pins-off .review-stat-pins {
+/* The verdict is the last thing the header gives up. Short of room for it, the review (`fitStats`) lets go, in order
+   and each only while the verdict still lacks the room: the pin pair (the seal carries the verified pin); comparing
+   two runs, the line and file counts (the pickers name the range); the gaps, which close up; comparing, the pickers'
+   pins (their runs' names stay); and last the buttons' key caps (their tooltips and the shortcut sheet keep them). */
+.review-stats.pins-off .review-stat-pins,
+.review-stats.counts-off > .review-stat-group:first-child {
   display: none;
 }
-/* In the narrow band the pins and the file and unit counts go outright: the file tree heads with its count and the
-   status line says "Unit 1 / 2". */
+.review-stats.tight {
+  gap: var(--sp-3);
+}
+.review-stats.tight .scope-switch {
+  gap: var(--sp-2);
+}
+.review-head.keys-off > .btn .kbd {
+  display: none;
+}
+/* In the narrow band the file and unit counts go outright: the file tree heads with its count and the status line
+   says "Unit 1 / 2". */
 @media (max-width: 1240px) {
   .review-stats > .review-stat-group:first-child > :not(:first-child) {
-    display: none;
-  }
-  /* The verdict is the last thing the header gives up. Comparing two runs, the pickers name the range, so the line
-     and file counts go; the groups close up; and the buttons keep their words but not their key caps (the shortcut
-     sheet and the tooltips still say them). */
-  .review-stats {
-    gap: var(--sp-3);
-  }
-  .review-head .review-stats .scope-switch {
-    gap: var(--sp-2);
-  }
-  .review-head .review-stats .timeline-select {
-    max-width: 128px;
-  }
-  .review-stats.comparing > .review-stat-group:first-child {
-    display: none;
-  }
-  .review-head > .btn .kbd {
     display: none;
   }
 }
@@ -3803,9 +3798,6 @@ input[type="radio"] {
 .criterion-edit .timeout-look {
   width: 15ch;
 }
-.criterion-edit .timeout-look input {
-  padding-right: 9ch !important;
-}
 .editor-grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3960,9 +3952,6 @@ input[type="radio"] {
 /* A count with its unit: the unit wrap shrinks to the narrow field. */
 .settings-form .field-narrow .unit-wrap {
   width: max-content;
-}
-.settings-form .field-narrow .unit-wrap input {
-  padding-right: 24px !important;
 }
 .settings-form .form-row.check {
   margin-bottom: 0;
@@ -4385,7 +4374,7 @@ input[type="radio"] {
 /* Identity: words grouped by space and weight — the readings, the engine and the project by name in text-3 — flush right,
    so the last word on every line ends on the board's edge (the id is read with the title, beside it). Nothing in it is
    squeezed by the browser's own proportions: the project name may shorten but stays legible (3.5em); the engine's name is whole or
-   gone — on a crowded row (a second project, rework, a mute, an overlap, a PR) it leaves first, below 1560, and lives on
+   gone — on a crowded row (a second project, rework, a mute, a PR) it leaves first, below 1560, and lives on
    in the title's tooltip. */
 .g-id {
   display: flex;
@@ -4438,8 +4427,10 @@ input[type="radio"] {
   .g-row {
     grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 6.5em;
   }
-  /* The identity column is gone, the engine's name with it: it lives in the title's tooltip, never somewhere else on the line. */
+  /* The identity column is gone, the engine's name and the overlap with it: they live in the title's tooltip, never somewhere
+     else on the line. */
   .g-id,
+  .g-title-cell .g-overlap,
   .g-crit .crit-human,
   .g-live .live-target,
   .g-live .live-target-sep,

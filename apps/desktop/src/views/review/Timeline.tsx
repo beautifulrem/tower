@@ -1,6 +1,7 @@
 /** Snapshot Timeline Scope Switcher (`All Changes` · `Since Last Review` · `Last Turn` · `Compare Runs…`). */
 import { For, Show, createMemo } from "solid-js";
 
+import { Icon } from "../../components/Glyph";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import { short } from "../../lib/format";
 import { t } from "../../lib/i18n";
@@ -67,15 +68,34 @@ export function TimelineSwitcher(props: {
       </span>
       <Show when={props.scope === "compare" && props.snapshots.length >= 2}>
         <span class="timeline-compare">
-          <select class="timeline-select" aria-label={t("review.compareFrom")} value={props.fromRev} onChange={(e) => props.onCompare(e.currentTarget.value, props.toRev)}>
-            <For each={props.snapshots}>{(s) => <option value={s.rev}>{s.label}</option>}</For>
-          </select>
+          <RunPick label={t("review.compareFrom")} value={props.fromRev} snapshots={props.snapshots} onPick={(rev) => props.onCompare(rev, props.toRev)} />
           <span class="t3">→</span>
-          <select class="timeline-select" aria-label={t("review.compareTo")} value={props.toRev} onChange={(e) => props.onCompare(props.fromRev, e.currentTarget.value)}>
-            <For each={props.snapshots}>{(s) => <option value={s.rev}>{s.label}</option>}</For>
-          </select>
+          <RunPick label={t("review.compareTo")} value={props.toRev} snapshots={props.snapshots} onPick={(rev) => props.onCompare(props.fromRev, rev)} />
         </span>
       </Show>
     </Show>
+  );
+}
+
+/**
+ * A run picker: the native select, unseen, over a face that names the run and then its pin. Short of room the header
+ * lets the pins go whole (`short-picks`): the run's name stays, and the open list and the tooltip keep every label whole.
+ */
+function RunPick(props: { label: string; value: string; snapshots: SnapshotPoint[]; onPick: (rev: string) => void }) {
+  const cur = () => props.snapshots.find((s) => s.rev === props.value)?.label ?? "";
+  const at = () => cur().lastIndexOf(" @");
+  return (
+    <span class="timeline-pick" title={cur()}>
+      <span class="timeline-pick-face" aria-hidden="true">
+        <span>{at() < 0 ? cur() : cur().slice(0, at())}</span>
+        <Show when={at() >= 0}>
+          <span class="timeline-pick-pin">{cur().slice(at() + 1)}</span>
+        </Show>
+        <Icon name="caret-down" size={10} />
+      </span>
+      <select class="timeline-select" aria-label={props.label} value={props.value} onChange={(e) => props.onPick(e.currentTarget.value)}>
+        <For each={props.snapshots}>{(s) => <option value={s.rev}>{s.label}</option>}</For>
+      </select>
+    </span>
   );
 }

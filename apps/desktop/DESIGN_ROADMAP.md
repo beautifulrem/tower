@@ -78,6 +78,14 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T65 Verified, with caveats | D58 | P2 | supervisor `progress.qualified` and the high-finding hold; notched glyph, seal word and tooltip, accept-sheet judgement (two presses) | `honesty.spec.ts` en/zh, `Glyph.test.tsx`, `panels.test.tsx`, Rust unit test, fails on `4d0b9c4` | Done (iteration 9) |
 | T66 docs/12 says what the code does | docs/12 drift | P3 | code canonical: 17 + 12 + 10 places, file:line cited | read-through | Done (iteration 9) |
 | T67 Durable evidence, packaged app | D97 | P3 | reports in `design-evidence/reports/`; debug `Tower.app` on a seeded `TOWER_HOME` | `design-evidence/packaged-app/` | Done (iteration 9) |
+| T68 Accepted with caveats stays qualified | D98 | P2 | accepted stamp gets `qualified` and an "accepted" tooltip; the accepted glyph's disc keeps the cut (●*) | `honesty.spec.ts` en/zh, fails on `7a23f45` | Done (iteration 10) |
+| T69 The verdict is the last to go | D99, D100 | P3 | `review/fitStats.ts` fits by measuring: pins, counts, gaps, the pickers' pins (run-name faces over the native select), key caps last; buttons say their shortcut in a tooltip | `layout.spec.ts` 1024–1400 × G-0001/G-0003 × en/zh, key caps; fails on `7a23f45` | Done (iteration 10) |
+| T70 Ledger provenance in its own grey | D101 | P3 | runs note under the claim, text-3 | `honesty.spec.ts`, fails on `7a23f45` | Done (iteration 10) |
+| T71 The strip reads the supervisor's machinery list | D102 | P3 | `MACHINERY_RE` = summaries.rs's three; "assertions untouched" only when no finding stands | `GoalDeck.test.tsx`, fails on `7a23f45` | Done (iteration 10) |
+| T72 Non-default engine settings on the fold | D103 | P3 | thinking, escalation, ports, loopback named when set | `contract.spec.ts` en/zh + defaults, fails on `7a23f45` | Done (iteration 10) |
+| T73 Overlap in words beside the id | D104 | P3 | "◇ Overlaps G-0003" after the row's own id; tooltip below 1241 | `flows.spec.ts` en/zh, fails on `7a23f45` | Done (iteration 10) |
+| T74 Units clear of their values | D105 | P3 | `.field-unit` (no clash with the review's `.unit`), padding measured from the unit (`fitUnit`) | `contract.spec.ts` contract en/zh + settings, fails on `7a23f45` | Done (iteration 10) |
+| T75 docs/12's last three places | D106 | P3 | `●*` placed, caveats as words not badges, only the diff tokens that exist; overlap position | read-through, doc numbers | Done (iteration 10) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

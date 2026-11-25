@@ -269,10 +269,12 @@
 }
 .g-overlap {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 3px;
   color: var(--text-2);
   font-size: var(--fs-hint);
+  white-space: nowrap;
 }
 .g-title-cell {
   display: flex;

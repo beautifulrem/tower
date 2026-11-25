@@ -368,8 +368,9 @@ function LedgerRow(props: { c: ClaimView & { runs: number[] }; testDependent?: b
           <span class="num t3">{props.c.criterion} </span>
         </Show>
         <span>{props.c.text}</span>
+        {/* Which runs said it: the claim's provenance, under it in the quiet grey its criterion's number wears. */}
         <Show when={props.c.runs.length > 1}>
-          <span class="meta"> {t("goal.claimRuns", { r: props.c.runs })}</span>
+          <span class="t3 num ledger-runs">{t("goal.claimRuns", { r: props.c.runs })}</span>
         </Show>
       </div>
       <span class="ledger-link" aria-hidden="true">

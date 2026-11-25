@@ -107,6 +107,34 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
     expect(screen.getByText("assertions untouched")).toBeTruthy();
     expect(screen.queryByText("assertions not checked")).toBeNull();
   });
+
+  // Review 9, R9-P3-04: the supervisor qualifies a pass when code reaches into the test runner (source_touches_tests,
+  // runner_patched, source_patches_tests); the row says that caveat, and never "assertions untouched" beside it.
+  for (const [sentinel, severity, said] of [
+    ["source_touches_tests", 2, "code reaches into the test runner"],
+    ["runner_patched", 2, "runner patched"],
+    ["source_patches_tests", 3, "runner patched"],
+  ] as const)
+    it(`says ${sentinel} as the caveat it is, never "assertions untouched"`, () => {
+      const criterion = {
+        criterion: { id: "C1", title: "Checkout tests", kind: { type: "exec" as const, command: "pnpm test", timeout_secs: 60 } },
+        verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 420, output_tail: "ok", at: Date.now() - 5000, stale: false, held_out: false, held_out_proof: null, console_errors: [] },
+        passed_on_base: false,
+        base_error: null,
+        look: null,
+        passes_with_source_only: true,
+        canary: "intact" as const,
+        loopback_opened: undefined,
+        observed: null,
+        human_checked: false,
+      };
+      render(() => (
+        <CriterionRow goalId="G-0001" c={criterion} state="in_review" base="1111111" sentinels={[{ sentinel, severity, title: "Test machinery", detail: "src/cart.js: require('node:assert')" }]} />
+      ));
+      fireEvent.click(screen.getByText("passed"));
+      expect(screen.getAllByText(said).length).toBeGreaterThan(0);
+      expect(screen.queryByText("assertions untouched")).toBeNull();
+    });
 });
 
 describe("SteerBox Multimodal Steering Console", () => {

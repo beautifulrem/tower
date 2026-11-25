@@ -225,6 +225,7 @@ export const zh = {
     discountedTitle: "不作数：Tower 加入的必然失败的测试仍然通过（断言或运行器被改动过），或这次验证有高严重度的发现。",
     qualified: "已验证（有保留）",
     qualifiedTitle: "在 @{pin} 上计入已验证，但有保留：{why}。验收前先看过它们。",
+    qualifiedDoneTitle: "在 @{pin} 上计入已验证，但有保留：{why}。你是带着这些保留验收的。",
     cavMachinery: "代码触及测试运行器",
     cavAsserts: "断言未检查",
     cavFlaky: "不稳定：重跑后通过",

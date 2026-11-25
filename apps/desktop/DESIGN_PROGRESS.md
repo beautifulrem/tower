@@ -185,3 +185,19 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   160,049 / 163,840 B, start-up 54,859 / 65,536 B, goal page 11,573 / 12,288 B; doc numbers; rustfmt, clippy
   `-D warnings`; cargo test (see the delivery report for one test that failed once under parallel load); detector:
   no new finding (the 3 `side-tab` hunk-pen findings are the baseline's, kept by decision).
+- 2026-11-25 Independent review of `7a23f45` (general-purpose agent as reviewer, read-only worktree, own ports): **PASS
+  8.28 / 10**, no P0 or P1; R9-P2-01, R9-P3-01–07 and three docs/12 places, recorded as D98–D106
+  (`design-evidence/reports/review9.md`). Reviewer worktree removed.
+- 2026-11-25 Iteration 10 — every review 9 finding (T68–T75). An accepted goal keeps its caveats on the stamp and the
+  glyph (●*). The review header fits by measuring (`review/fitStats.ts`) so the verdict goes last at every width; the
+  run pickers became run-name faces over the native select, whose pins go before the criteria words; key caps go
+  only for the seal, and the buttons' tooltips say the shortcut. The ledger's runs note is text-3, under the claim.
+  The evidence strip reads the supervisor's own test-machinery list. The folded engine clause names non-default
+  settings. The board says an overlap in words after the row's own id. The "$" bug was a class collision (`.unit`);
+  the field's unit is now `.field-unit` and its padding measured. docs/12's last three places said as built.
+  `fitStats` moved out of `Review.tsx` (line limit). Checked against `7a23f45` by restoring its sources under the new
+  tests: 13 e2e and 2 unit tests fail there, pass here. Gates: tsc; vitest 43 files / 233 tests; Playwright WebKit
+  366 passed, 0 failed (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter10/shots`); perf
+  passes (board of 50: 564 / 230 / 176 ms against 170 / 161 / 107 ms; switches 35–64 ms against 19–39 ms); line
+  limit; bundle all JS 160,896 / 163,840 B, start-up 55,129 / 65,536 B, goal page 11,588 / 12,288 B; doc numbers;
+  detector: nothing new. No Rust changed. Not yet independently re-reviewed.

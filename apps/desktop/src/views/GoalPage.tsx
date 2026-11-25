@@ -197,7 +197,7 @@ export function GoalPage(props: { id: string }) {
                 <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
               </div>
               <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin}>
-                {(pin) => <Stamp pin={pin()} size="m" tampered={notEvidence(g())} />}
+                {(pin) => <Stamp pin={pin()} size="m" tampered={notEvidence(g())} qualified={caveats(g())} accepted />}
               </Show>
             </div>
           </header>

@@ -55,9 +55,18 @@ for (const [lang, runs] of [["en", "runs 1, 2"], ["zh-CN", "第 1、2 次运行"
     const rows = page.locator(".honesty-ledger .ledger-pair");
     await expect(rows).toHaveCount(2);
     const c1 = rows.filter({ has: page.locator(".num", { hasText: /^C1\s*$/ }) });
-    await expect(c1.locator(".ledger-claim-cell .meta")).toHaveText(runs);
+    await expect(c1.locator(".ledger-claim-cell .ledger-runs")).toHaveText(runs);
+    // Provenance, not the agent's words (R9-P3-03): under the claim, in the grey of the criterion's number.
+    const [note, num, said] = await Promise.all(
+      [".ledger-claim-cell .ledger-runs", ".ledger-claim-cell .num", ".ledger-claim-cell > span:not(.sr-only):not(.num):not(.ledger-runs)"].map((sel) =>
+        c1.locator(sel).first().evaluate((e) => ({ color: getComputedStyle(e).color, top: e.getBoundingClientRect().top, bottom: e.getBoundingClientRect().bottom })),
+      ),
+    );
+    expect(note.color).toBe(num.color);
+    expect(note.color).not.toBe(said.color);
+    expect(note.top).toBeGreaterThanOrEqual(said.bottom - 1);
     // Said once, a claim names no runs.
-    await expect(rows.filter({ has: page.locator(".num", { hasText: /^C2\s*$/ }) }).locator(".ledger-claim-cell .meta")).toHaveCount(0);
+    await expect(rows.filter({ has: page.locator(".num", { hasText: /^C2\s*$/ }) }).locator(".ledger-claim-cell .ledger-runs")).toHaveCount(0);
   });
 
 /** G-0003's two passes counted, with caveats: the runner reached into and a pass on rerun (`progress.qualified`). */
@@ -99,4 +108,28 @@ for (const [lang, word, why] of [
     expect(await calls(page, "accept")).toBe(0);
     await dialog.locator(".panel-actions .btn.armed").click();
     await expect.poll(() => calls(page, "accept")).toBe(1);
+  });
+
+// Accepted with them, the caveats stay on the goal: the stamp at its head says the qualified word, its title names them as
+// what you accepted, and the solid seal of the lifecycle glyph keeps its cut (●*) on the board and in the sidebar.
+for (const [lang, word, state, why, past] of [
+  ["en", "Verified, with caveats", "Accepted", "code reaches into the test runner, flaky: passed on rerun", "You accepted it with them"],
+  ["zh-CN", "已验证（有保留）", "已验收", "代码触及测试运行器、不稳定：重跑后通过", "你是带着这些保留验收的"],
+] as const)
+  test(`a goal accepted with caveats keeps them on its stamp and its glyph (${lang})`, async ({ page }) => {
+    const accepted = (F: Record<string, any>) => {
+      qualified(F);
+      for (const g of F.goals) if (g.id === "G-0003") g.state = "accepted";
+      F["goal-G-0003"].summary.state = "accepted";
+      F.inbox = F.inbox.filter((i: { goal_id: string }) => i.goal_id !== "G-0003");
+    };
+    await openTower(page, "goal/G-0003", { lang, enrich: accepted });
+    const stamp = page.locator(".goal-head .stamp.stamp-m");
+    await expect(stamp.locator(".stamp-word")).toHaveText(word);
+    await expect(stamp).toHaveAttribute("title", new RegExp(`${why}.*${past}`));
+    // The stamp's disc is cut, not whole; the head glyph says both the state and the caveats.
+    await expect(stamp.locator("svg.stamp-glyph path").first()).toHaveAttribute("d", /^M9\.25/);
+    await expect(page.locator(".goal-head .row > svg.glyph").first()).toHaveAttribute("aria-label", `${state}, ${word}`);
+    await expect(page.locator(`.sidebar svg.glyph[aria-label="${state}, ${word}"]`)).toHaveCount(1);
+    await expect(page.locator(`.sidebar svg.glyph[aria-label="${state}, ${word}"] path`).first()).toHaveAttribute("d", /^M9\.25/);
   });

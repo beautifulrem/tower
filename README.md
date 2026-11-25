@@ -199,7 +199,7 @@ extensions/tower-goal/   Pi and ACP bridge: tool policy, shell parser, sandboxed
 tools/                   Demo engine, CI gates, end-to-end and adversarial runners
 ```
 
-The supervisor owns all state, and the interface holds a read-only copy. It is light: start-up JavaScript is about 54 KB gzipped, and most views load the first time you open them. CI holds three budgets with [`tools/bundle-budget.sh`](tools/bundle-budget.sh): start-up 64 KB, the goal page 12 KB, and all interface JavaScript 160 KB (about 156 KB today).
+The supervisor owns all state, and the interface holds a read-only copy. It is light: start-up JavaScript is about 54 KB gzipped, and most views load the first time you open them. CI holds three budgets with [`tools/bundle-budget.sh`](tools/bundle-budget.sh): start-up 64 KB, the goal page 12 KB, and all interface JavaScript 160 KB (about 157 KB today).
 
 <details>
 <summary><b>Development commands and environment variables</b></summary>

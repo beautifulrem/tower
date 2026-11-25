@@ -69,7 +69,7 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
     expect(screen.getByText("flaky: passed on rerun")).toBeTruthy();
     expect(strip().querySelector(".ev-pill-danger")).toBeNull();
     expect(screen.queryByText("passes from the code alone")).toBeNull();
-    expect(screen.queryByText(/✓ holdout\/rounding\.test\.js/)).toBeNull();
+    expect(screen.queryByText("holdout/rounding.test.js")).toBeNull();
     // Open: every reading, each once — a fact a sentence line says in full is not also a pill.
     fireEvent.click(screen.getByText("passed"));
     expect(screen.getByText("passes from the code alone")).toBeTruthy();
@@ -77,8 +77,12 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
     expect(screen.getByText("red → green")).toBeTruthy();
     expect(screen.getByText("must-fail tests failed, as they must")).toBeTruthy();
     expect(screen.queryByText("must-fail tests failed")).toBeNull();
-    expect(screen.getByText(/✓ holdout\/rounding\.test\.js/)).toBeTruthy();
-    expect(screen.getByText(/✕ holdout\/tax\.test\.js/)).toBeTruthy();
+    // The file that ran follows the line that counts it; the one that did not run is named once, on its own line in
+    // words. No file wears a character for its state (review 14: ✓ ✕ ○ were text, and an amber ✕ meant "did not run").
+    expect(screen.getAllByText("holdout/rounding.test.js")).toHaveLength(1);
+    expect(screen.getAllByText("holdout/tax.test.js")).toHaveLength(1);
+    expect(screen.getByText("holdout/tax.test.js").closest(".held-out-missing")).not.toBeNull();
+    expect(document.querySelector(".criterion")!.textContent).not.toMatch(/[✓✔✕✖✗○◇◆■□●◐◑▲△⬛]/);
   });
 
   it("does not attribute another criterion's sentinel to an unrelated criterion", () => {
@@ -106,6 +110,11 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
     fireEvent.click(screen.getByText("passed"));
     expect(screen.getByText("assertions untouched")).toBeTruthy();
     expect(screen.queryByText("assertions not checked")).toBeNull();
+    // Review 12 (record only): the high finding on C2 holds C1's pass too, and C1's row said nothing of it. It says why,
+    // in amber, and where; the finding's own words are its tooltip.
+    const held = screen.getByText("doesn't count: a high finding on C2");
+    expect(held.classList.contains("ev-pill-attn")).toBe(true);
+    expect(held.getAttribute("title")).toBe("Guard gap: C2: worker exited early");
   });
 
   // Review 9, R9-P3-04: the supervisor qualifies a pass when code reaches into the test runner (source_touches_tests,

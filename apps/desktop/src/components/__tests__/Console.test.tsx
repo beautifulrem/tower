@@ -132,7 +132,7 @@ vi.mock("../../lib/store", async () => {
     state: "paused",
     pause_reason: "agent_reported_blocked" as GoalSummary["pause_reason"],
   };
-  const [state] = createStore({
+  const [state, setState] = createStore({
     settings: { language: "en", max_concurrent: 4, engine: "pi", remote_enabled: true, muted_goals: [] as string[], quiet_until: null },
     env: { pi_version: "1.0.0", pi_path: "/opt/bin/pi", issues: [] },
     goals: { "G-0001": g1, "G-0009": gBlocked } as Record<string, GoalSummary>,
@@ -162,6 +162,7 @@ vi.mock("../../lib/store", async () => {
   });
   return {
     state,
+    __setState: setState,
     toast: vi.fn(),
     act: async <T,>(fn: () => Promise<T>) => fn(),
     goalList: () => Object.values(state.goals),
@@ -221,6 +222,18 @@ describe("TelemetryStrip", () => {
     expect(container.querySelector(".gauge-sandbox")?.textContent).toContain("S2 Seatbelt");
     expect(container.querySelector(".gauge-sandbox.warn")).toBeNull();
     expect(container.querySelector(".gauge-phone-ok")).not.toBeNull();
+  });
+
+  it("says unseen errors with the mark family's red ×, not a red dot (review 14: the title bar mixed the two)", async () => {
+    const set = ((await import("../../lib/store")) as unknown as { __setState: (k: string, v: number) => void }).__setState;
+    set("unseenActivity", 2);
+    try {
+      const { container } = render(() => <TelemetryStrip />);
+      expect(container.querySelector(".gauge-errors svg.mark-danger")).not.toBeNull();
+      expect(container.querySelector(".gauge-errors .gauge-dot")).toBeNull();
+    } finally {
+      set("unseenActivity", 0);
+    }
   });
 });
 

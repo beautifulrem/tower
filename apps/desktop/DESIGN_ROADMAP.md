@@ -101,6 +101,26 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T88 One family of marks, and motion where work moves | D119 | P2 | a 16-unit disc with its symbol as a hole (! amber, × red, i outlined); the running mark's arc turning; masks of the same paths in stylesheets and on the phone; capsule segments filling on a spring; springs with no overshoot; the in-view live line's shimmer; reduced motion holds all still; DESIGN.md, PRODUCT.md, docs/12 | `Glyph.test.tsx` the marks (one even-odd path each, no painted ground; CSS and phone paths equal), the turning arc; `Honesty.test.tsx` a segment keeps its element; `flows.spec.ts` the runs gauge and the in-view shimmer, board rows still; fail on `3ff2ebf` | Done |
 | T89 A squeezed name is not a collapsed one | D120 | P3 | judge "set aside" by the step, not the size; a shortened name keeps min(its width, 3.5em) or the next step is taken | `flows.spec.ts` steps defined by state, every 1 px at each step's edge, the name's width when shown; fails with `1c9af8a`'s `GoalRow.tsx` | Done (iteration 14) |
 | T90 The verdict outlasts a gone end's pin | D121 | P3 | the key caps step made to run (it never had), judged by the seal and the segments; then a gone end's pin, so the seal and its bar stay whole at 1040 | `review-scope.spec.ts` every segment and the seal whole at en 1040–1064; fails with `1c9af8a`'s `fitStats.ts` | Done (iteration 14) |
+| T91 Only moving work turns, and only where watched | D122 | P2 | one `moving(goal, now)` for the shimmer, the mark (`turn` on board row, goal page, peek), the runs gauge and the phone; lists and waiting or silent runs hold still | `Glyph.test.tsx`; `flows.spec.ts` board rows, sidebar, gauge; `phone.spec.ts`; fail on `1ad1439` | Done (iteration 15) |
+| T92 Reduced motion reaches pseudo-elements | D123 | P3 | `*, *::before, *::after` | `flows.spec.ts` a segment's fill settled at 60 ms; fails on `1ad1439` | Done (iteration 15) |
+| T93 A shimmer on the compositor | D124 | P3 | a ground-coloured band over the words, clipped to them, moved by transform | `flows.spec.ts` keyframes animate transform only, the words keep their ink; CPU at rest measured before and after | Done (iteration 15) |
+| T94 No state characters in the held-out list | D125 | P3 | only the files that ran, after the line that counts them; the others named once in words | `GoalDeck.test.tsx`; fails on `1ad1439` | Done (iteration 15) |
+| T95 The phone strip's ! at 12 px | D126 | P3 | the desk's size | `phone.spec.ts` the rendered box; fails on `1ad1439` | Done (iteration 15) |
+| T96 A gone end shortens before the caps go | D127 | P3 | "Gone" with its pin, then the key caps | `review-scope.spec.ts` both ends gone, en/zh, 1024–1120; fails on `1ad1439` | Done (iteration 15) |
+| T97 The × at DPR 1 | D128 | — | Retina is the target | — | Kept |
+| T98 One grammar in the title bar | D129 | P3 | errors and engine-down wear the red × disc | `Console.test.tsx`; fails on `1ad1439` | Done (iteration 15) |
+| T99 Glyph sizes in docs/12 | D130 | P3 | the default, the grid and the stroke as drawn | docs | Done (iteration 15) |
+| T100 No middle dots on the phone | D131 | P3 | a comma; action and target apart by a space | `phone.spec.ts`; fails on `1ad1439` | Done (iteration 15) |
+| T101 Icon buttons for close and remove | D132 | P3 | `IconButton` cross | `ContractEditor.test.tsx`; fails on `1ad1439` | Done (iteration 15) |
+| T102 Copy takes only text worth copying | D133 | P3 | the app selects nothing by default; prefixed rules | `select.spec.ts`; fails on `1ad1439` | Done (iteration 15) |
+| T103 A closed PR keeps its state | D134 | P3 | open keeps its failing count, merged or closed its state | `flows.spec.ts` identity sweeps; fail on `1ad1439` | Done (iteration 15) |
+| T104 Rework read once | D135 | P3 | the bare count `aria-hidden` | `flows.spec.ts` accessible tree; fails on `1ad1439` | Done (iteration 15) |
+| T105 A name shortens only after "muted" | D136 | P3 | from the quiet step on | `flows.spec.ts` no-PR crowd and the step-back rule; fails with `1ad1439`'s `GoalRow.tsx` | Done (iteration 15) |
+| T106 A decision's question gets the empty column | D137 | P3 | with one project, the question takes the identity column and the age ends the line | `flows.spec.ts` 1440/1561/1800 en/zh and two projects; fails on `1ad1439` | Done (iteration 15) |
+| T107 A held pass says what holds it | D138 | P3 | "doesn't count: a high finding on C2" | `GoalDeck.test.tsx`; fails on `1ad1439` | Done (iteration 15) |
+| T108 Caveats on a seal that does not count | D139 | — | the verdict outranks them; they stay on the criterion's row | — | Kept |
+| T109 A held pass's caveat in amber | D140 | — | held, every caveat is a question for you | — | Kept |
+| T110 Merged human-only by shape | D141 | P3 | a hatched core | `Glyph.test.tsx`; fails on `1ad1439` | Done (iteration 15) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

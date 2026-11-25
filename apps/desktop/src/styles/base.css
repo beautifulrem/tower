@@ -26,6 +26,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  /* An app, not a page: only text you may want to copy selects (claims, findings, code, questions). Written with the
+     prefix too: WebKit reads only `-webkit-user-select`, and the dev server, unlike the build, adds no prefix. */
+  -webkit-user-select: none;
   user-select: none;
   cursor: default;
 }
@@ -72,6 +75,7 @@ textarea {
 input,
 textarea,
 [contenteditable] {
+  -webkit-user-select: text;
   user-select: text;
 }
 
@@ -198,8 +202,11 @@ kbd,
   border-top: 1px solid var(--border-grid);
 }
 
+/* Every box, its ::before and ::after too (a criteria segment's fill, a shimmer's band): nothing moves. */
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0ms !important;
     transition-duration: 0ms !important;
   }

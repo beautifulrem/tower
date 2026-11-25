@@ -126,7 +126,8 @@ export function TimelineSwitcher(props: {
  * one you picked while the range still ends there, else the range's own end (its first point from, its last point to).
  * An end no point stands at any more (a new pin moved every point off it) is still the range's end: it is named so, as
  * its own option, chosen, rather than left blank over a select that falls back to its first point; its pin is its only
- * name, so it keeps it in a narrow header too.
+ * name, so it keeps it in a narrow header too. Shortest of all, it says the short word ("Gone") before its pin, never
+ * the pin alone or the words alone: two gone ends always read apart.
  */
 function RunPick(props: {
   label: string;
@@ -149,7 +150,9 @@ function RunPick(props: {
   return (
     <span class="timeline-pick" classList={{ "timeline-pick-gone": !point() && !!gone() }} title={cur()}>
       <span class="timeline-pick-face" aria-hidden="true">
-        <span>{at() < 0 ? cur() : cur().slice(0, at())}</span>
+        <span class="timeline-pick-run" data-short={gone() && !point() ? t("review.snapGoneShort") : undefined}>
+          <span>{at() < 0 ? cur() : cur().slice(0, at())}</span>
+        </span>
         <Show when={at() >= 0}>
           <span class="timeline-pick-pin">{cur().slice(at() + 1)}</span>
         </Show>

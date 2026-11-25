@@ -50,10 +50,11 @@ describe("a goal's glyph", () => {
 });
 
 describe("the marks", () => {
-  const goal = (state: "running" | "verifying" | "paused" | "draft") => ({ state, progress: { verified: 0, observed: 0, machine: 1, human: 0, human_done: 0 }, verified_pin: null });
+  const goal = (state: "running" | "verifying" | "paused" | "draft", more: Record<string, unknown> = {}) =>
+    ({ id: "G-0100", state, mode: "executing", needs_you: 0, updated_at: Date.now(), progress: { verified: 0, observed: 0, machine: 1, human: 0, human_done: 0 }, verified_pin: null, ...more }) as never;
   it("draw work in motion as an arc that turns on its ring, never a half-filled disc", () => {
     for (const state of ["running", "verifying"] as const) {
-      const { container } = render(() => <LifecycleGlyph goal={goal(state)} />);
+      const { container } = render(() => <LifecycleGlyph goal={goal(state)} turn />);
       const svg = container.querySelector("svg")!;
       expect(svg.classList.contains("glyph-spin")).toBe(true);
       expect(svg.querySelector("[fill]:not([fill='none'])")).toBeNull();
@@ -65,6 +66,44 @@ describe("the marks", () => {
       // Every goal's glyph keeps the goal's ring: paused is the ring held, with two bars inside it.
       expect(container.querySelector("svg circle")).not.toBeNull();
     }
+  });
+
+  it("turn only while the work moves, and only where you watch it (review 14: the arc turned on goals waiting on you)", () => {
+    const spins = (g: never, turn = true) => {
+      const { container } = render(() => <LifecycleGlyph goal={g} turn={turn} />);
+      const svg = container.querySelector("svg")!;
+      // Still or turning, the arc is drawn: held still it rests at the top right, as under reduced motion.
+      expect(svg.querySelector("path")!.getAttribute("d")).toBe("M5 1a4 4 0 0 1 4 4");
+      return svg.classList.contains("glyph-spin");
+    };
+    expect(spins(goal("running"))).toBe(true);
+    // Waiting on you, flagged for you, or silent two minutes with no tool in flight: nothing is moving.
+    expect(spins(goal("running", { mode: "waiting_on_you" }))).toBe(false);
+    expect(spins(goal("running", { needs_you: 1 }))).toBe(false);
+    expect(spins(goal("running", { id: "G-0101", updated_at: Date.now() - 10 * 60_000 }))).toBe(false);
+    // Lists you move through (the sidebar, the palette, a history) hold the mark still, whatever the work does.
+    expect(spins(goal("running"), false)).toBe(false);
+    expect(spins(goal("verifying"), false)).toBe(false);
+  });
+
+  it("tell a merged goal the verifier passed from one merged without it by shape, not colour alone", () => {
+    const merged = (pin: string | null) => {
+      const { container } = render(() => <LifecycleGlyph goal={{ ...ready, id: "G-0102", state: "integrated", verified_pin: pin }} />);
+      return container.querySelector("svg")!;
+    };
+    // Verified: the sealed core is a filled disc. Merged unverified: the core is hatched, as an unverified seal is.
+    expect(merged("ca8ab12aa").querySelector("circle[fill]:not([fill='none'])")).not.toBeNull();
+    const hatched = merged(null);
+    expect(hatched.querySelector("circle[fill]:not([fill='none'])")).toBeNull();
+    expect(hatched.querySelectorAll("path")).toHaveLength(1);
+    expect(hatched.querySelector("path")!.getAttribute("d")!.match(/M/g)).toHaveLength(3);
+  });
+
+  it("keep the phone's running mark to the desk's rule: it turns only while the run moves", () => {
+    // The phone page's own copy of `moving`: waiting on you, flagged, or silent two minutes holds the arc still.
+    expect(phoneHtml).toMatch(/const moves = \(g\) => g\.state === "running" && g\.mode !== "waiting_on_you" && !g\.needs_you && !\(heardAt\(g\) > 0 && Date\.now\(\) - heardAt\(g\) > 120_000\);/);
+    expect(phoneHtml).toContain('G.state("running", moves(g))');
+    expect(phoneHtml).toContain("G.runs(running.some(moves))");
   });
 
   it("are one disc told apart by the symbol cut out of it: needs you amber with a !, wrong red with a ×, a notice uncoloured", () => {

@@ -5,15 +5,16 @@ import { onCleanup, onMount } from "solid-js";
  * Fits the stat line to its room, measured again when the line or the verification group changes size. Short of room,
  * in order and each only while the verdict still lacks it: the pin pair goes (the seal carries the verified pin);
  * comparing runs, the line and file counts (the pickers name the range); the gaps close up; comparing, the pickers'
- * pins (the runs' names stay); and, only if the verdict itself (the seal or its criteria bar) has no room, the
- * buttons' key caps (their tooltips keep the shortcuts), then a gone end's pin (its name and tooltip keep it). A part
- * drops when the group wraps onto its hidden second line or the line runs over.
+ * pins (the runs' names stay); and, only if the verdict itself (the seal or a criteria segment) has no room, a gone
+ * end's words, for a short word before its pin (its tooltip keeps the whole name), and last the buttons' key caps
+ * (their tooltips keep the shortcuts). A part drops when the group wraps onto its hidden second line or the line runs
+ * over.
  */
 export function fitStats(stats: HTMLDivElement) {
   const fit = () => {
     // Found on every fit, never once up front: the ref runs while the line is not yet in the header.
     const head = stats.closest<HTMLElement>(".review-head");
-    stats.classList.remove("pins-off", "counts-off", "tight", "short-picks", "gone-pins-off");
+    stats.classList.remove("pins-off", "counts-off", "tight", "short-picks", "gone-short");
     head?.classList.remove("keys-off");
     const verify = stats.querySelector<HTMLElement>(".review-verify");
     const seal = verify?.querySelector<HTMLElement>(".seal");
@@ -41,8 +42,8 @@ export function fitStats(stats: HTMLDivElement) {
       ...(comparing ? [[stats, "counts-off", drops] as Step] : []),
       [stats, "tight", drops],
       ...(comparing ? [[stats, "short-picks", drops] as Step] : []),
+      ...(comparing ? [[stats, "gone-short", verdictOut] as Step] : []),
       [head, "keys-off", verdictOut],
-      ...(comparing ? [[stats, "gone-pins-off", verdictOut] as Step] : []),
     ];
     for (const [el, cls, short] of steps) {
       if (!short()) break;

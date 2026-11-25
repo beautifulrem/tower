@@ -14,21 +14,10 @@ import type { GoalSummary } from "../gen/GoalSummary";
 import { ago, duration } from "../lib/format";
 import { t } from "../lib/i18n";
 import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
-import { heartbeatState, isEngineTool, modeLabel, modeNeedsYou, pauseLabel, stateLabel, statusWord, toolLabel } from "../lib/labels";
+import { isEngineTool, modeLabel, modeNeedsYou, moving, pauseLabel, silent, stateLabel, statusWord, toolLabel } from "../lib/labels";
 import { refit } from "../lib/refit";
 import { livenessOf, state } from "../lib/store";
 import { NeedsYouMark, Seal } from "./Glyph";
-
-/**
- * A running goal whose event stream has been still for two minutes with no
- * tool in flight: the badge says so instead of "thinking", so the board and
- * the title bar's heartbeat never contradict each other.
- */
-export function silent(g: GoalSummary, now: number): boolean {
-  if (g.state !== "running") return false;
-  const l = livenessOf(g);
-  return heartbeatState(Math.max(0, now - l.at), l.tool !== null) === "silent";
-}
 
 export function ModeBadge(props: { goal: GoalSummary }) {
   const attention = () => modeNeedsYou(props.goal.mode) || (props.goal.needs_you > 0 && props.goal.state === "running");
@@ -146,12 +135,12 @@ const fitSeal = (detail: HTMLElement) =>
 
 export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget?: boolean }) {
   const d = () => liveDetail(props.goal);
-  // The agent is at work and moving: not waiting on you, not silent. On the goal in view (the goal page, the peek) its
+  // The agent at work and moving (labels `moving`, as its mark turns): on the goal in view (the goal page, the peek) its
   // words shimmer (app.css `.live-moving`); a board row keeps still words beside its turning mark, so a board of
   // running goals stays quiet.
-  const moving = () => props.goal.state === "running" && !modeNeedsYou(props.goal.mode) && !props.goal.needs_you && !silent(props.goal, state.now);
+  const shimmer = () => props.goal.state === "running" && moving(props.goal, state.now);
   return (
-    <div class="live-line halt" classList={{ "live-line-large": !!props.large, "live-moving": !!props.large && moving() }}>
+    <div class="live-line halt" classList={{ "live-line-large": !!props.large, "live-moving": !!props.large && shimmer() }}>
       <ModeBadge goal={props.goal} />
       {/* The tooltip carries the whole line, for the narrow window where only the verb stays on screen. */}
       <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(", ") || undefined} ref={fitSeal}>

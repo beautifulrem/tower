@@ -22,7 +22,8 @@ import type { GoalSummary } from "../gen/GoalSummary";
 import type { LifecycleState } from "../gen/LifecycleState";
 import { t } from "../lib/i18n";
 import { caveatList, caveats, notEvidence } from "../lib/discounted";
-import { machineVerified } from "../lib/labels";
+import { machineVerified, moving } from "../lib/labels";
+import { state } from "../lib/store";
 
 type Tone = "neutral" | "active" | "verified" | "faint";
 
@@ -51,7 +52,7 @@ const color: Record<Tone, string> = {
 
 const DASH = "1.7 1.45";
 
-export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin"> & { id?: string }; size?: number }) {
+export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin"> & { id?: string }; size?: number; turn?: boolean }) {
   const verified = () => machineVerified(props.goal as GoalSummary);
   // Ready or accepted with a pass that is not evidence: the seal's amber ! stands where the green check would, so the
   // title, the sidebar and the board never draw green on a goal whose header says "Passed, not evidence".
@@ -81,8 +82,12 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   // The claim register's dashes keep square ends: round ones would turn the ring into a string of beads.
   const dashedRing = () => <circle cx="5" cy="5" r="4" stroke-dasharray={DASH} stroke-linecap="butt" />;
   const check = (stroke?: string) => <path d="M3.1 5.2 L4.5 6.6 L7 3.7" stroke={stroke} />;
-  // In motion: a quarter arc turning on the ring (the whole mark turns, so it stays on the compositor).
+  // In motion: a quarter arc turning on the ring (the whole mark turns, so it stays on the compositor). It turns only
+  // where you watch the work (`turn`: a board row, the goal's page, its peek) and only while the work moves (labels
+  // `moving`); elsewhere (the sidebar, a list, a history), and while it waits on you or has gone quiet, the arc holds
+  // still at the top right, as under reduced motion.
   const arc = () => <path d="M5 1a4 4 0 0 1 4 4" />;
+  const turns = () => !!props.turn && "mode" in props.goal && moving(props.goal as GoalSummary, state.now);
   return (
     <Switch>
       <Match when={discounted()}>
@@ -105,7 +110,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
             <circle cx="5" cy="5" r="4" stroke-opacity=".28" />
             {arc()}
           </>,
-          true,
+          turns(),
         )}
       </Match>
       {/* Paused: the goal's ring held, two bars inside it. */}
@@ -126,7 +131,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
             {dashedRing()}
             {arc()}
           </>,
-          true,
+          turns(),
         )}
       </Match>
       {/* Ready to accept: the verifier's check inside the ring — green only with a pin. */}
@@ -166,12 +171,15 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
           </>,
         )}
       </Match>
-      {/* Merged: the ring around the sealed core; with caveats the ring keeps the in-review gap (◉*), scaled to its radius. */}
+      {/* Merged: the ring around the sealed core; with caveats the ring keeps the in-review gap (◉*), scaled to its radius.
+          Merged unverified, the core is hatched as an unverified seal is: told apart by shape, not by colour alone. */}
       <Match when={props.goal.state === "integrated"}>
         {svg(
           <>
             <circle cx="5" cy="5" r="4.2" stroke-width="1" stroke-dasharray={qualified() ? "22.61 3.78" : undefined} stroke-dashoffset={qualified() ? "-5.19" : undefined} />
-            <circle cx="5" cy="5" r="2.4" fill={c()} stroke="none" />
+            <Show when={verified()} fallback={<path d="M3.3 6.7L6.7 3.3M4.4 7.3L7.3 4.4M2.7 5.6L5.6 2.7" stroke-width="0.8" />}>
+              <circle cx="5" cy="5" r="2.4" fill={c()} stroke="none" />
+            </Show>
           </>,
         )}
       </Match>
@@ -233,10 +241,11 @@ export function DangerMark(props: { title?: string }) {
   );
 }
 
-/** Work in motion with no glyph of its own (a load, the runs gauge): a faint ring and the turning arc. */
-export function Spinner(props: { size?: number; class?: string }) {
+/** Work in motion with no glyph of its own (a load, the runs gauge): a faint ring and the turning arc; `still` holds the
+ *  arc where it is (the runs gauge while nothing running moves: each goal waits on you or has gone quiet). */
+export function Spinner(props: { size?: number; class?: string; still?: boolean }) {
   return (
-    <svg class={`glyph glyph-spin ${props.class ?? ""}`} width={props.size ?? 10} height={props.size ?? 10} viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true">
+    <svg class={`glyph${props.still ? "" : " glyph-spin"} ${props.class ?? ""}`} width={props.size ?? 10} height={props.size ?? 10} viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true">
       <circle cx="5" cy="5" r="4" stroke-opacity=".28" />
       <path d="M5 1a4 4 0 0 1 4 4" />
     </svg>

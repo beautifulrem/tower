@@ -33,15 +33,10 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
   // the held-out files, the baseline and canary readings and the output are one click away.
   const strip = () => (open() ? shown().filter((p) => !p[3]) : shown().filter(([tone]) => tone !== "ok" && tone !== "fact"));
 
-  const hoItems = createMemo<[string, string][]>(() => {
-    const p = proof();
-    if (!p?.ran.length) return [];
-    return [
-      ...p.ran.map((f): [string, string] => ["ev-hf ev-hf-ran", `✓ ${f}`]),
-      ...p.not_ran.map((f): [string, string] => ["ev-hf ev-hf-miss", `✕ ${f}`]),
-      ...p.unprovable.map((f): [string, string] => ["ev-hf", `○ ${f}`]),
-    ];
-  });
+  // The files that ran, after the line that counts them ("held-out tests: 1 of 2 ran"). The ones that did not run and
+  // the ones nothing can prove are named in words on their own lines above, so no file is said twice and none wears a
+  // character for its state.
+  const ran = () => proof()?.ran ?? [];
 
   return (
     <div class="criterion" classList={{ stale: !!v()?.stale }}>
@@ -93,11 +88,11 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
       <Show when={open() || !v()}>
         <BaselineLine c={c()} base={props.base} told={props.told} />
         <CanaryLine c={c()} />
-        {/* The held-out line names them ("held-out tests, for you only"); the files follow it, unnamed again. */}
+        {/* The held-out line names them ("held-out tests, for you only"); the files that ran follow it, unnamed again. */}
         <HeldOutLine c={c()} />
-        <Show when={hoItems().length}>
+        <Show when={ran().length}>
           <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
-            <For each={hoItems()}>{([cls, text]) => <span class={cls}>{text}</span>}</For>
+            <For each={ran()}>{(f) => <span class="ev-hf">{f}</span>}</For>
           </div>
         </Show>
         <LoopbackLine c={c()} />

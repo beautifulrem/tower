@@ -42,8 +42,6 @@
   max-width: 240px;
 }
 .att-thumb { width: 22px; height: 22px; object-fit: cover; border-radius: 2px; flex: 0 0 auto; }
-.att-chip .icon-btn,
-.holdout-panel .icon-btn { width: 20px; height: 20px; font-size: 13px; line-height: 1; }
 
 :is(.goal-page, .review, .verify-item) .prov-frame {
   padding: 2px 0;
@@ -141,13 +139,6 @@
   font-feature-settings: var(--font-features-mono);
   font-size: var(--fs-meta);
   color: var(--text-2);
-}
-.ev-hf-miss {
-  padding: 0 6px;
-  border-radius: var(--radius-s);
-  background: var(--attention-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--st-attention) 32%, transparent);
-  color: var(--text-1);
 }
 
 /* Look console errors: crisp flat list inside criterion detail */
@@ -365,8 +356,10 @@
 /* Short of room for the verdict, the pickers keep the runs' names and let their pins go whole. */
 .review-stats.short-picks .timeline-pick-pin { display: none; }
 .review-stats.short-picks .timeline-pick-gone .timeline-pick-pin { display: inline; }
-/* Only if the verdict still lacks room: a gone end's pin goes too (its words stay; its tooltip and option keep the pin). */
-.review-stats.gone-pins-off .timeline-pick-gone .timeline-pick-pin { display: none; }
+/* Only if the verdict still lacks room: a gone end says its short word before its pin ("Gone @15085f2"), never its
+   words without the pin, so two gone ends still read apart (the tooltip and the option keep the whole name). */
+.review-stats.gone-short .timeline-pick-gone .timeline-pick-run > span { display: none; }
+.review-stats.gone-short .timeline-pick-gone .timeline-pick-run::before { content: attr(data-short); }
 
 .file {
   content-visibility: auto;

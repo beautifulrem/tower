@@ -86,7 +86,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
             <>
               <header class="peek-head">
                 <div class="peek-head-top">
-                  <LifecycleGlyph goal={s() as GoalSummary} size={12} />
+                  <LifecycleGlyph goal={s() as GoalSummary} size={12} turn />
                   <span class="code-val t2">{s().id}</span>
                   {/* A running goal's state is said once, by "Now" under the head (needs you, unresponsive, or what it is doing):
                       a second word here could only lag it or contradict it. */}

@@ -616,6 +616,7 @@
   line-height: var(--lh-reading);
   color: var(--text-1);
   max-width: var(--measure);
+  -webkit-user-select: text;
   user-select: text;
 }
 .proposal-copy .prov-frame {

@@ -412,3 +412,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   been made 16:10, which their tall page needs; the fixture is back and the phone's frame was added instead. Gates
   (run alone, second run): tsc; vitest 43 / 249; e2e 410/0 (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter18/allshots`); perf alone (board of 50: 615 / 240 / 187 ms against 175 / 149 / 106 ms; switch medians about 61 against 27 ms); line limit; doc numbers; `cargo test -p tower-supervisor -p tower-store -p tower-core` 384 passed, 2 ignored, rustfmt; bundle 163,829 / 163,840 B; detector 19 against 19 on the touched files, the same findings. Visual check at DPR 2, light and dark: `/tmp/tower-design/iter18/visual/`. Not
   yet independently re-reviewed.
+- Iteration 18 follow-up — own checks before review 18 (D186–D188, T154–T156). With a question open, a call starting
+  or ending beside it took the run out of "waiting on you": the start and the settle now keep it waiting while a
+  question is open, the live line still on the call at work (`flow.rs`, fake Pi "ask_while_running"; fails with either
+  path's old code). Two calls starting in the same millisecond: the desk takes the later, as the supervisor does
+  (`pulse.test.ts`; fails on the sort). The rail and steer box test also runs at 1281 and 1280 wide. The look fixture's
+  desktop captures are 1280×800 as Tower takes them; two tests about a tall page have their own. The diff's ↩ check
+  uses `normalizeCombo` (10 B). Gates (run alone): tsc; vitest 43 / 250; e2e 410/0; shots 69/69; perf alone (board
+  of 50: 660 / 296 / 188 ms against 188 / 161 / 107 ms; switch medians about 66 against 24 ms); line limit; doc numbers;
+  `cargo test -p tower-supervisor -p tower-store -p tower-core` 385 passed, 2 ignored, rustfmt; bundle 163,830 /
+  163,840 B; detector 19 against 19 on the touched files. Not yet independently re-reviewed.

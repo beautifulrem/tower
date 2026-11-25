@@ -385,7 +385,8 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
             },
         )?
         .at;
-    if tool != "log" && tool != "submit" {
+    // A note and the hand-in are not work; a call that starts while a question is open leaves the run waiting on you.
+    if tool != "log" && tool != "submit" && run.flags().dialogs.is_empty() {
         inner.set_mode(g, Mode::for_tool(&tool))?;
     }
     run.flags().tools.insert(call_id, ToolCall { tool, args, started: Instant::now(), at });

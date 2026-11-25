@@ -161,6 +161,31 @@ def run(message):
         end("pb", "bash")
         end("pr", "read")
         tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
+    elif scenario == "ask_while_running":
+        # A command runs; the agent asks (an ask_user call and its dialog); a read starts while the question is open;
+        # the command and a note end while it is open; then the answer, the end of the ask, and the read.
+        def start(cid, name, args):
+            out({"type": "tool_execution_start", "toolCallId": cid, "toolName": name, "args": args})
+        def end(cid, name):
+            out({"type": "tool_execution_end", "toolCallId": cid, "toolName": name,
+                 "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
+        start("wb", "bash", {"command": "touch done.txt"})
+        start("wa", "ask_user", {"question": "继续吗？"})
+        ev = threading.Event()
+        rid = f"ui{prompts[0]}"
+        pending[rid] = {"event": ev}
+        out({"type": "extension_ui_request", "id": rid, "method": "input",
+             "title": 'tower:' + json.dumps({"tower": "question", "question": "继续吗？", "options": ["a", "b"], "why": ""})})
+        start("wr", "read", {"path": "README.md"})
+        open("done.txt", "w").write("ok\n")
+        end("wb", "bash")
+        start("wl", "log", {"cause": "the read is still going"})
+        end("wl", "log")
+        ev.wait(10)
+        pending.pop(rid, None)
+        end("wa", "ask_user")
+        end("wr", "read")
+        tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
     elif scenario == "pass_touch":
         # As "pass", and touches a module a test loads (so the perturbation
         # step has something to probe).

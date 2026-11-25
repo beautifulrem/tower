@@ -18,6 +18,7 @@ import { type Gap, STEP, contextLines, gapsOf, revealOf, splitRows } from "../..
 import { highlight, hunkSides, languageOf } from "../../lib/highlight";
 import type { Tokens } from "../../lib/highlight.worker";
 import { t } from "../../lib/i18n";
+import { normalizeCombo } from "../../lib/keys";
 import { baseMs } from "../../lib/motion";
 import { popupActions } from "../../lib/native";
 import type { Draft } from "../../lib/reviewState";
@@ -136,7 +137,7 @@ export function FileDiff(props: FileDiffProps) {
     const onTable = e.target === table;
     const btn = onTable ? (pressedRow?.isConnected ? pressedRow.querySelector<HTMLElement>(".ln-btn") : null) : (e.target as HTMLElement).closest<HTMLElement>(".ln-btn");
     // ↩ alone: with a modifier it is a shortcut of the page's (⌘⇧↩ accepts), never a comment (review 17).
-    if (e.key === "Enter") return void (onTable && btn && !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) && (go(btn), btn.click()));
+    if (e.key === "Enter") return void (onTable && btn && normalizeCombo(e) === "enter" && (go(btn), btn.click()));
     if (!down && e.key !== "ArrowUp") return;
     if (!btn) {
       // No line pressed: land on the first line.

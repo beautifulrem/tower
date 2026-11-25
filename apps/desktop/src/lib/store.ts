@@ -349,9 +349,10 @@ export function beat(goalId: string, event: TraceEntry["event"] | null, now = Da
       if (event?.kind === "tool_started" && !/^(log|submit|ask_user)$/.test(event.tool)) calls[event.call_id] = { name: event.tool, since: now };
       else if (event?.kind === "tool_ended") delete calls[event.call_id];
       else if (event?.kind === "run_ended") p.calls = {};
-      // At work on the newest call still in flight, as the supervisor's mode and live line say (review 17).
-      const work = Object.values(p.calls).sort((a, b) => b.since - a.since)[0];
-      p.tool = work ? { ...work } : null;
+      // At work on the newest call still in flight, as the supervisor's mode and live line say (review 17); of two
+      // started in the same millisecond, the later (the calls keep their order: an engine's ids are not numbers).
+      const work = Object.values(p.calls).reduce<Pulse["tool"]>((w, c) => (w && w.since > c.since ? w : c), null);
+      p.tool = work && { ...work };
       s.pulse[goalId] = p;
     }),
   );

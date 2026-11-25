@@ -19,17 +19,35 @@ function need<T>(value: T | undefined | null | false, premise: string): T {
   return value;
 }
 
-/** A page-shaped SVG as a data URL: a header bar and a few lines, shifted a little for the "after" side. */
-export function pageImage(after: boolean): string {
-  const shift = after ? 14 : 0;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="390" height="640" viewBox="0 0 390 640">
+/**
+ * A page as a data URL, shifted a little for the "after" side: by default a desktop page as Tower photographs it
+ * (1280×800: a header, a title, two lines, a card, a button); `tall`, a page taller than it is wide (390×640), for the
+ * tests that a tall page keeps its proportions.
+ */
+export function pageImage(after: boolean, tall = false): string {
+  const svg = tall
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="390" height="640" viewBox="0 0 390 640">
 <rect width="390" height="640" fill="#f6f4ef"/><rect width="390" height="56" fill="#2b2a28"/>
-<rect x="20" y="88" width="${210 + shift}" height="14" rx="3" fill="#3a3835"/>
+<rect x="20" y="88" width="${210 + (after ? 14 : 0)}" height="14" rx="3" fill="#3a3835"/>
 <rect x="20" y="118" width="300" height="8" rx="2" fill="#a9a59e"/><rect x="20" y="136" width="260" height="8" rx="2" fill="#a9a59e"/>
-<rect x="20" y="${180 + shift}" width="350" height="120" rx="6" fill="#ffffff" stroke="#d9d5cd"/>
-<rect x="36" y="${200 + shift}" width="120" height="10" rx="2" fill="#3a3835"/><rect x="36" y="${222 + shift}" width="80" height="10" rx="2" fill="#a9a59e"/>
-<rect x="20" y="560" width="350" height="44" rx="6" fill="${after ? "#2b2a28" : "#6b6761"}"/></svg>`;
+<rect x="20" y="${180 + (after ? 14 : 0)}" width="350" height="120" rx="6" fill="#ffffff" stroke="#d9d5cd"/>
+<rect x="36" y="${200 + (after ? 14 : 0)}" width="120" height="10" rx="2" fill="#3a3835"/><rect x="36" y="${222 + (after ? 14 : 0)}" width="80" height="10" rx="2" fill="#a9a59e"/>
+<rect x="20" y="560" width="350" height="44" rx="6" fill="${after ? "#2b2a28" : "#6b6761"}"/></svg>`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+<rect width="1280" height="800" fill="#f6f4ef"/><rect width="1280" height="72" fill="#2b2a28"/>
+<rect x="160" y="128" width="${420 + (after ? 40 : 0)}" height="28" rx="5" fill="#3a3835"/>
+<rect x="160" y="184" width="640" height="14" rx="3" fill="#a9a59e"/><rect x="160" y="212" width="540" height="14" rx="3" fill="#a9a59e"/>
+<rect x="160" y="${276 + (after ? 40 : 0)}" width="960" height="220" rx="10" fill="#ffffff" stroke="#d9d5cd" stroke-width="2"/>
+<rect x="196" y="${316 + (after ? 40 : 0)}" width="260" height="20" rx="4" fill="#3a3835"/><rect x="196" y="${356 + (after ? 40 : 0)}" width="180" height="20" rx="4" fill="#a9a59e"/>
+<rect x="160" y="640" width="240" height="64" rx="10" fill="${after ? "#2b2a28" : "#6b6761"}"/></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+/** As `enrichLook`, with a page taller than it is wide on both sides. */
+export function enrichTallLook(F: F) {
+  enrichLook(F);
+  F.lookImages["looks/G-0001/C4-base.png"] = pageImage(false, true);
+  F.lookImages["looks/G-0001/C4-pin.png"] = pageImage(true, true);
 }
 
 /** The seed's interface language: the supervisor words its cards in it, so the enrichments must too. */

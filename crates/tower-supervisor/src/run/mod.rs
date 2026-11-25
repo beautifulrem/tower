@@ -164,7 +164,8 @@ impl Flags {
 
 /// After a call ends or a question is answered: the mode of the call still at work, and the live line back on it,
 /// or thinking when none is (review 16 and 17: a call ending, or an answer, while another runs set the run to
-/// thinking, and the desk and the phone then read a running command as silence).
+/// thinking, and the desk and the phone then read a running command as silence). While a question is open the run
+/// waits on you, whatever starts or ends beside it; the live line still follows the call at work.
 pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
     let g = &run.goal_id;
     let work = run.flags().at_work().map(|c| LiveLine {
@@ -177,7 +178,8 @@ pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
         inner.store(|s| s.set_live_line(g, line))?;
         inner.mark_dirty(g);
     }
-    inner.set_mode(g, work.map_or(Mode::Thinking, |l| l.mode))
+    let asked = !run.flags().dialogs.is_empty();
+    inner.set_mode(g, if asked { Mode::WaitingOnYou } else { work.map_or(Mode::Thinking, |l| l.mode) })
 }
 
 #[derive(Debug)]

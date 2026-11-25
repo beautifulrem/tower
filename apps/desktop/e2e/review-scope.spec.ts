@@ -154,4 +154,30 @@ test("the run pickers keep the points you picked across a refresh and another sc
   await expect(picks.nth(0).locator(".timeline-pick-pin")).toBeHidden();
   await expect(picks.nth(1).locator(".timeline-pick-pin")).toBeVisible();
   expect((await both())[1]).toBe(to);
+  // Review 13, R13-P3-02: at the narrowest windows that pin cost the verdict its criteria bar (en 1040–1052). The verdict
+  // gives way last: the seal and every segment of its bar stay whole on the line you see, whatever goes before them.
+  for (let width = 1040; width <= 1064; width++) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const v = await page.locator(".review-stats").evaluate((stats) => {
+      const verify = stats.querySelector<HTMLElement>(".review-verify")!;
+      const bar = verify.querySelector<HTMLElement>(".criteria-bar")!;
+      // Whole inside every box that clips it: the line, the group, and for a segment its bar (which shrinks to its room).
+      const whole = (el: Element | null, clips: Element[]) => {
+        const r = el?.getBoundingClientRect();
+        return !!r && r.width > 0 && clips.every((c) => {
+          const k = c.getBoundingClientRect();
+          return r.right <= k.right + 0.5 && r.bottom <= k.bottom + 0.5;
+        });
+      };
+      const segs = [...bar.querySelectorAll(".seg")];
+      return { segs: segs.length, cut: segs.filter((x) => !whole(x, [stats, verify, bar])).length, seal: whole(verify.querySelector(".seal"), [stats, verify]), steps: stats.className };
+    });
+    expect(v.segs, `the bar's segments at ${width}`).toBeGreaterThan(0);
+    expect(v.cut, `segments cut at ${width}: ${JSON.stringify(v)}`).toBe(0);
+    expect(v.seal, `the seal whole at ${width}: ${JSON.stringify(v)}`).toBe(true);
+  }
+  // Whatever went, the gone end still says it is gone, and its pin is in its tooltip.
+  await expect(picks.nth(1)).toHaveAttribute("title", to);
+  await expect(picks.nth(1).locator(".timeline-pick-face")).toContainText("No longer listed");
 });

@@ -446,7 +446,7 @@ const prSaid = (lang: "en" | "zh-CN", st: { state: "open" | "merged" | "closed";
   return `PR ${w[st.state]}${checks.length ? w.head + checks.join(w.sep) : ""}`;
 };
 type PrState = { state: "open" | "merged" | "closed"; passed: number; failed: number; pending: number };
-const CROWDS: Record<string, Record<string, { pr?: PrState; rework?: number; engine?: boolean; muted?: boolean; project?: Record<"en" | "zh-CN", string> }>> = {
+const CROWDS: Record<string, Record<string, { pr?: PrState; rework?: number; max?: number; engine?: boolean; muted?: boolean; project?: Record<"en" | "zh-CN", string> }>> = {
   open: {
     "G-0001": { pr: { state: "open", passed: 3, failed: 1, pending: 0 }, rework: 2, muted: true },
     "G-0002": { project: { en: "lib", "zh-CN": "lib" } },
@@ -457,10 +457,16 @@ const CROWDS: Record<string, Record<string, { pr?: PrState; rework?: number; eng
     "G-0002": { pr: { state: "merged", passed: 4, failed: 0, pending: 0 }, rework: 1, project: { en: "lib", "zh-CN": "lib" } },
     "G-0003": { pr: { state: "closed", passed: 0, failed: 1, pending: 0 }, rework: 3, engine: true, muted: true, project: { en: "storefront-payments", "zh-CN": "店面支付服务" } },
   },
+  // Review 13's stress row: every reading at its longest, so the identity folds into the tooltip above 1241 too.
+  stress: {
+    "G-0003": { pr: { state: "closed", passed: 0, failed: 1234, pending: 0 }, rework: 99, max: 99, engine: true, muted: true, project: { en: "storefront-payments", "zh-CN": "店面支付服务" } },
+  },
 };
 for (const lang of ["en", "zh-CN"] as const)
   for (const [name, crowd] of Object.entries(CROWDS))
     test(`the live and identity columns give way by measure and cut nothing (${lang}, PRs ${name})`, async ({ page }) => {
+      // Some 330 widths, each measured: the time of the other sweeps (layout.spec.ts), not of one view.
+      test.setTimeout(120_000);
       await openTower(page, "overview", {
         lang,
         enrich: (F) => {
@@ -473,6 +479,7 @@ for (const lang of ["en", "zh-CN"] as const)
             if (!c) continue;
             if (c.pr) g.pr = { url: "https://github.com/acme/shop/pull/42", status: { ...c.pr, failing: c.pr.failed ? ["test"] : [] } };
             if (c.rework) g.rework_cycles = c.rework;
+            if (c.max) g.max_rework = c.max;
             if (c.engine) g.engine = "claude-code";
             if (c.muted) F.settings.muted_goals.push(g.id);
             if (c.project) g.project_name = c.project[lang];
@@ -480,8 +487,20 @@ for (const lang of ["en", "zh-CN"] as const)
         },
       });
       await settled(page, "overview");
+      // Review 13 (record only): entering or leaving the folded step reported a ResizeObserver loop. Counted over the sweep.
+      await page.evaluate(() => {
+        (window as any).__roLoops = 0;
+        addEventListener("error", (e) => {
+          if (/ResizeObserver loop/.test(e.message)) (window as any).__roLoops++;
+        });
+      });
       const seen: Record<string, number> = { engineGone: 0, engineShown: 0, wordGone: 0, wordShown: 0 };
-      for (const width of [1241, 1260, 1277, 1320, 1366, 1417, 1440, 1500, 1560, 1561, 1600, 1728, 1800]) {
+      // Review 13, R13-P3-01: a step's edge can be a 1–2 px band, so every pixel where the column's width moves (1241–1561;
+      // above it the column is a fixed 12.5em), and the screen-reader names at the earlier thirteen widths.
+      const NAMED = new Set([1241, 1260, 1277, 1320, 1366, 1417, 1440, 1500, 1560, 1561, 1600, 1728, 1800]);
+      const ORDER = [null, "engine", "readings", "quiet", "project", "pr-state", "folded"];
+      const lastStep: Record<string, number> = {};
+      for (const width of [...Array.from({ length: 1561 - 1241 + 1 }, (_, i) => 1241 + i), 1600, 1728, 1800]) {
         await page.setViewportSize({ width, height: 900 });
         await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
         const rows = await page.locator(".board-rows .g-row[data-goal]").evaluateAll((rows) =>
@@ -493,13 +512,16 @@ for (const lang of ["en", "zh-CN"] as const)
             const shown = (e: Element | null) => !!e && getComputedStyle(e).display !== "none" && e.getBoundingClientRect().width > 1 && !e.closest(".sr-only");
             const engine = id.querySelector(".g-engine"), project = id.querySelector<HTMLElement>(".g-project");
             const em = project ? parseFloat(getComputedStyle(project).fontSize) : 12;
-            const illegible = () => !!project && shown(project) && cut(project) && project.clientWidth < 3.5 * em - 0.5;
+            // The project's name is set aside by a step, and shown at every step before: shown is the step's word, not a
+            // width, since flex can squeeze a shown name to nothing (and that is a cut).
+            const asideAt = (step: string | null) => ["project", "pr-state", "folded"].includes(step ?? "");
+            const illegible = (step: string | null) => !!project && !asideAt(step) && cut(project) && project.clientWidth < Math.min(project.scrollWidth, 3.5 * em) - 0.5;
             const crowd = r.getAttribute("data-crowded");
             // What a step more would have cost: the step before put back, measured, and set aside again.
             const back = (to: string | null) => {
               if (to === null) r.removeAttribute("data-crowded");
               else r.setAttribute("data-crowded", to);
-              const over = id.scrollWidth > id.clientWidth + 0.5 || illegible() || (!!engine && shown(engine) && cut(project));
+              const over = id.scrollWidth > id.clientWidth + 0.5 || illegible(to) || (!!engine && shown(engine) && cut(project));
               if (crowd === null) r.removeAttribute("data-crowded");
               else r.setAttribute("data-crowded", crowd);
               return over;
@@ -524,9 +546,10 @@ for (const lang of ["en", "zh-CN"] as const)
               idOver: id.scrollWidth > id.clientWidth + 0.5,
               children: [...id.children].filter((c) => shown(c) && !c.classList.contains("g-project")).map((c) => [c.textContent, cut(c)] as const),
               prFailedShown: [...id.querySelectorAll(".pr-line .mark-danger")].every((m) => shown(m.parentElement)),
+              prTab: id.querySelector<HTMLElement>(".pr-line")?.tabIndex ?? null,
               rework: id.querySelector("[title]:not(.pr-line):not(.g-project)")?.getAttribute("title") ?? null,
               projectName: project?.textContent ?? null,
-              project: project && shown(project) ? { width: project.getBoundingClientRect().width, text: text!.getBoundingClientRect().width, em, shortened: cut(project) } : null,
+              project: project && !asideAt(crowd) ? { width: project.getBoundingClientRect().width, text: text!.getBoundingClientRect().width, em, shortened: cut(project) } : null,
               engineShown: shown(engine),
               hasEngine: !!engine,
               mutedWord: id.querySelector(".g-muted")?.textContent ?? null,
@@ -551,7 +574,7 @@ for (const lang of ["en", "zh-CN"] as const)
           }
           // The title's tooltip says the whole identity at every width, and the PR's button its every reading.
           const c = crowd[r.goal];
-          if (c?.pr) {
+          if (c?.pr && NAMED.has(width)) {
             // Its name is its own text (no label laid over what it shows, axe's label-content-name-mismatch), every reading.
             const button = page.locator(`.board-rows .g-row[data-goal="${r.goal}"] .g-id .pr-line`);
             await expect(button, `the PR's name, ${at}`).toHaveAccessibleName(prSaid(lang, c.pr));
@@ -567,19 +590,29 @@ for (const lang of ["en", "zh-CN"] as const)
           // 3.5em and never beside the engine's name; each step taken only where the one before did not fit.
           expect(r.idOver, `identity cut, ${at}`).toBe(false);
           for (const [text, cut] of r.children) expect(cut, `"${text}" cut, ${at}`).toBe(false);
-          if (r.project && r.project.shortened) expect(r.project.width, `project legible, ${at}`).toBeGreaterThanOrEqual(3.5 * r.project.em - 1);
+          // Shown, the name is whole, or shortened to no less than 3.5em; a name shorter than that is never shortened.
+          if (r.project) expect(r.project.width, `project shown and legible, ${at}`).toBeGreaterThanOrEqual(Math.min(r.project.text, 3.5 * r.project.em) - 0.5);
           if (r.project && !r.project.shortened) expect(r.project.width, `project as wide as its name, ${at}`).toBeLessThanOrEqual(r.project.text + 1);
           if (r.engineShown && r.project) expect(r.project.shortened, `the engine stays while the project's name shortens, ${at}`).toBe(false);
           if (r.stepBackOver !== null) expect(r.stepBackOver, `a step taken where the one before fit, ${at}`).toBe(true);
+          // A wider window never takes a later step.
+          const step = ORDER.indexOf(r.crowd);
+          if (r.goal in lastStep) expect(step, `a later step on a wider window, ${at}`).toBeLessThanOrEqual(lastStep[r.goal]);
+          lastStep[r.goal] = step;
           // A failing check stays on the line until the whole identity folds.
           if (r.crowd !== "folded") expect(r.prFailedShown, `the PR's failing check, ${at}`).toBe(true);
+          // Review 13 (record only): folded, the PR's button leaves the eye and the Tab order, not a screen reader.
+          if (r.prTab !== null) expect(r.prTab, `the PR a Tab stop only while on the line, ${at}`).toBe(r.crowd === "folded" ? -1 : 0);
+          if (c && r.crowd !== "folded") seen.unfolded = (seen.unfolded ?? 0) + 1;
           if (r.crowd) seen[r.crowd] = (seen[r.crowd] ?? 0) + 1;
           if (r.hasEngine) r.engineShown ? seen.engineShown++ : seen.engineGone++;
         }
       }
       // The sweep saw both sides of the give-ways it is about, so the checks above checked something.
-      const want = name === "open" ? ["engineGone", "engineShown", "wordShown", "wordGone", "readings", "quiet"] : ["engineGone", "wordShown", "wordGone", "project"];
+      const want =
+        name === "open" ? ["engineGone", "engineShown", "wordShown", "wordGone", "readings", "quiet"] : name === "settled" ? ["engineGone", "wordShown", "wordGone", "project"] : ["folded", "unfolded"];
       for (const k of want) expect(seen[k] ?? 0, `${k} seen: ${JSON.stringify(seen)}`).toBeGreaterThan(0);
+      expect(await page.evaluate(() => (window as any).__roLoops), "ResizeObserver loop notices over the sweep").toBe(0);
     });
 
 test("in a half-screen window the live line keeps its verb and lets the elapsed time go, with no two words touching", async ({ page }) => {

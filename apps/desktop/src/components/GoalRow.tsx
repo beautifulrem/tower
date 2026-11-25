@@ -49,9 +49,13 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
       const fits = (step: (typeof STEPS)[number]) => {
         if (box.scrollWidth > box.clientWidth + 0.5) return false;
         const p = box.querySelector<HTMLElement>(".g-project");
-        if (!p || p.offsetWidth <= 1 || p.scrollWidth <= p.clientWidth + 0.5) return true;
-        // A shortened project name: never beside the engine's name, never under 3.5em.
-        return !(step === "" && box.querySelector(".g-engine")) && p.clientWidth >= 3.5 * (parseFloat(getComputedStyle(p).fontSize) || 12) - 0.5;
+        // Set aside by a step, the name asks for no room. Shown is decided by the step, never by the name's size: flex may
+        // squeeze a shown name to nothing, and that is a name cut, not one set aside.
+        if (!p || STEPS.indexOf(step) >= STEPS.indexOf("project") || p.scrollWidth <= p.clientWidth + 0.5) return true;
+        // A shortened project name: never beside the engine's name, and never under its own width or 3.5em, whichever is
+        // less (a name shorter than 3.5em is whole or set aside).
+        const em = parseFloat(getComputedStyle(p).fontSize) || 12;
+        return !(step === "" && box.querySelector(".g-engine")) && p.clientWidth >= Math.min(p.scrollWidth, 3.5 * em) - 0.5;
       };
       for (const step of STEPS) {
         setCrowd(step);
@@ -212,7 +216,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         <Show when={g().pr}>
           {(pr) => (
             <span onClick={(e) => e.stopPropagation()}>
-              <PrLine pr={pr()} compact />
+              <PrLine pr={pr()} compact aside={crowd() === "folded"} />
             </span>
           )}
         </Show>

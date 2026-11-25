@@ -290,3 +290,20 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   `DESIGN_REVIEW.md`. On `3ff2ebf`'s sources (a separate worktree, the new tests copied in) 5 unit and 2 e2e tests
   fail for the right reasons; the switch test, only taught to ignore endless animations, passes there. Before/after:
   `design-evidence/marks-*.webp`.
+- 2026-11-26 Iteration 14 — review 13's two P3s (T89–T90) and two of its record-only notes. The board identity's
+  project name is set aside by its step, never by its width: a name flex squeezes to nothing is a cut one, so before the
+  project step a shortened name keeps min(its own width, 3.5em) or the next step is taken (the sweep is now every 1 px
+  from 1241 to 1561, plus 1600, 1728, 1800). The review header's verdict outlasts a gone end's pin: fixing it showed
+  the key caps step had never run since iteration 10 (`fitStats` looked the header up when Solid called the ref,
+  before the line was in it), and that a criteria bar's box always fits while its segments are clipped inside it. Now
+  the header is found on each fit and observed (the caps' going re-fits in the same frame), the verdict is the seal and
+  the segments, each against every box that clips it, and after the caps a gone end's pin goes. `.g-id` keeps its
+  line's height when folded (no ResizeObserver loop), and a folded PR button leaves the Tab order. A third sweep,
+  review 13's stress row, reaches the fold. Checked on `1c9af8a`'s sources, one file set at a time: the sweep fails
+  (G-0002's name 0.297 px at en 1246), the picker fails (both segments cut, the seal gone, at en 1040), the stress
+  sweep fails on 2 loop notices with the old stylesheet and on a Tab stop with the old row and PR line; all pass here.
+  Gates: tsc; vitest 42 files / 241 tests; e2e 382/0; shots 69/69 (`/tmp/tower-design/iter14/allshots`); perf (board
+  of 50: 1541 / 772 / 435 ms against 442 / 451 / 329 ms; switch medians 149.5 against 79 ms); line limit; bundle
+  162,773 / 163,840 B, start-up 56,115 B, goal page 11,598 B; doc numbers; detector the same 19 findings as `1c9af8a`.
+  The sweeps now take the 120 s budget the layout sweeps had (one timed out at 30 s under five workers). No Rust
+  changed. Not yet independently re-reviewed.

@@ -310,7 +310,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
         <NeedsYouMark />
         <span class="decision-kind">{head()}</span>
         <Show when={props.showGoal !== false}>
-          <button class="link-quiet ellipsis" onClick={() => go({ name: "goal", id: it().goal_id })}>
+          <button class="link-quiet ellipsis" title={it().goal_title} onClick={() => go({ name: "goal", id: it().goal_id })}>
             <span class="code-val t2">{it().goal_id}</span> {it().goal_title}
           </button>
         </Show>

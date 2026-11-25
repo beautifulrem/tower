@@ -6,7 +6,7 @@
 import { expect, test } from "@playwright/test";
 
 import { enrichLook } from "./rich";
-import { criterion, openTower } from "./tauri";
+import { criterion, openTower, settled } from "./tauri";
 
 test("in the editor a look criterion takes steps line by line: Enter opens the next, ⌫ on an empty one closes it, a refused line is marked", async ({ page }) => {
   await openTower(page, "new");
@@ -118,4 +118,17 @@ test("a contract left as it opened leaves without a question", async ({ page }) 
   await page.keyboard.press("Meta+1");
   await expect(page.locator(".view .overview")).toBeVisible();
   expect(await page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "plugin:dialog|message").length)).toBe(0);
+});
+
+// Review 7, P3-04: the clause numbers follow the reading order. Beside the form the schedule (engine, budget) is read
+// alongside 01, so it goes unnumbered there; folded under the form it reads after 03 and numbers on, 04 and 05.
+test("the contract's clauses are numbered in the order they are read, at both layouts", async ({ page }) => {
+  for (const [w, nums] of [[1440, ["01", "02", "03"]], [1100, ["01", "02", "03", "04", "05"]]] as const) {
+    await page.goto("about:blank");
+    await page.setViewportSize({ width: w, height: 900 });
+    await openTower(page, "new");
+    await settled(page, "new");
+    const shown = await page.locator(".editor .clause-no").evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => e.textContent!.trim()));
+    expect(shown, `at ${w}`).toEqual(nums);
+  }
 });

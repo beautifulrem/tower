@@ -9,13 +9,12 @@ import { Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { GoalSummaryExt } from "../lib/apiTypes";
-import { notEvidence } from "../lib/discounted";
 import { ago, count, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { effectiveEngine, engineLabel, statusWord } from "../lib/labels";
 import { go } from "../lib/nav";
 import { state } from "../lib/store";
-import { Icon, LifecycleGlyph, NeedsYouMark, NoticeMark } from "./Glyph";
+import { Icon, LifecycleGlyph, NoticeMark } from "./Glyph";
 import { CriteriaBar } from "./HonestyCore";
 import { LiveLine } from "./Live";
 import { PrLine } from "./Pr";
@@ -51,10 +50,12 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         <LifecycleGlyph goal={g()} />
       </span>
       <div class="g-title-cell">
+        {/* A row never says it needs you, in words or by a ◆: what needs you is a decision line in the queue above, and the
+            title bar counts those. A goal waiting in To review is filed there, not counted, and not said to need you. */}
         <button
           class="g-title"
           title={otherEngine() ? `${g().title}\n${engineLabel(engine()!)}` : g().title}
-          aria-label={`${g().title}, ${statusWord(g())}${g().needs_you > 0 ? `, ${t("common.needsYou")}` : ""}${otherEngine() ? `, ${engineLabel(engine()!)}` : ""}`}
+          aria-label={`${g().title}, ${statusWord(g())}${otherEngine() ? `, ${engineLabel(engine()!)}` : ""}`}
           onFocus={() => props.onSelect?.()}
           onKeyDown={(e) => {
             if (e.key === " " && props.onPeek) {
@@ -69,10 +70,6 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
           }}
         >
           <span class="ellipsis">{g().title}</span>
-          {/* One ◆ to a line: a pass that doesn't count already wears it in the glyph column. */}
-          <Show when={g().needs_you > 0 && !notEvidence(g())}>
-            <NeedsYouMark />
-          </Show>
         </button>
         <Show when={props.onPeek}>
           <button

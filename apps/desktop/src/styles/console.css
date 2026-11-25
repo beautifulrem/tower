@@ -668,7 +668,27 @@
   background: var(--bg-hover);
   transition-duration: 0ms;
 }
-.data-table .col-r { text-align: right; }
+.data-table .col-r {
+  text-align: right;
+  white-space: nowrap;
+}
+/* A goal cell (a name that truncates) takes what the other columns leave, and never more: max-width 0 lets the cell
+   give way instead of the table growing past its frame. The id and the verdict are one token each on their one line;
+   the title, and then a branch, end in an ellipsis (each whole in its tooltip). Storage and the merge queue alike. */
+.data-table td:has(.ellipsis) {
+  width: 100%;
+  max-width: 0;
+}
+.data-table td:has(.ellipsis) .row > :not(.ellipsis) {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.data-table td:has(.ellipsis) .row > code.meta {
+  flex: 0 3 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .data-table .toggle-row {
   margin-bottom: 0;
   align-items: center;
@@ -702,24 +722,6 @@
   font-family: var(--font-mono);
   font-feature-settings: var(--font-features-num);
   color: var(--text-3);
-}
-/* The goal column takes what the others leave (max-width 0 lets the cell give way instead of the table growing): the
-   id is one token, the title and then the branch end in an ellipsis on their one line (the branch whole in its title). */
-.mq-row > td:nth-child(2) {
-  width: 100%;
-  max-width: 0;
-}
-.mq-row > td:nth-child(2) .row > * {
-  white-space: nowrap;
-}
-.mq-row > td:nth-child(2) .row > button {
-  flex: none;
-}
-.mq-row > td:nth-child(2) .row > code {
-  flex: 0 3 auto;
-  min-width: 4em;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 /* One reading per line: the merge, then (when it doesn't count) the verdict. */
 .mq-status {

@@ -60,6 +60,10 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T47 One column for every row | D82 | P3 | criteria column 11em at every width; the human count of a pass that doesn't count in the tooltip | `verdict.spec.ts` (title and live characters ≥ d0dc2a1; fails on 16ac40c) | Done |
 | T48 The verdict once in every peek | D83 | P3 | head seal only when "Now" has none | `verdict.spec.ts` (fails on 16ac40c) | Done |
 | T49 Hardening | D87 | P3 | probe: long en/zh text at 1040/1440, contrast on 8 routes × 2 themes, focus rings, reduced motion; grouped money, goal-title tooltip | probe output, unit test | Done |
+| T50 Only the title gives way | D88 | P2 | card head and review header: every item but the title one line, unshrinkable; data-table goal cells take what the others leave (`max-width: 0`), id, verdict and sizes whole, merge-queue rules folded in; tooltips on four cut titles | `layout.spec.ts` 6 tests (3 lengths × en/zh, 4 widths, 4 routes; fail on 3145645) | Done |
+| T51 Needs you is the queue's word | D89 | P3 | a board row never says it needs you, in its label or by a trailing ◆ | `verdict.spec.ts` × CI / no CI × en / zh | Done |
+| T52 A silent run is unresponsive in the peek head | D90 | P3 | the heartbeat's word in the head | `verdict.spec.ts` en + zh | Done |
+| T53 Clause numbers follow the reading order | D92 (part) | P3 | side column unnumbered beside the form, numbered when folded under it (CSS) | `contract.spec.ts` 1440 / 1100 | Done (advanced section folding deferred) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

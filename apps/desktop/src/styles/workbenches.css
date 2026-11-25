@@ -361,6 +361,7 @@
 }
 /* Short of room for the verdict, the pickers keep the runs' names and let their pins go whole. */
 .review-stats.short-picks .timeline-pick-pin { display: none; }
+.review-stats.short-picks .timeline-pick-gone .timeline-pick-pin { display: inline; }
 
 .file {
   content-visibility: auto;

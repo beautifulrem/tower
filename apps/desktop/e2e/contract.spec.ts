@@ -132,3 +132,31 @@ test("the contract's clauses are numbered in the order they are read, at both la
     expect(shown, `at ${w}`).toEqual(nums);
   }
 });
+
+// Review 7, P3-04 residue (D92): the engine clause was open on every new goal. It is folded to one line that still says
+// what is set — the engine, the sandbox, the network and the autonomy — and opens on a click.
+for (const w of [1440, 1100])
+  test(`the engine clause opens folded to what is set, each setting whole, and unfolds on a click (${w})`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 900 });
+    await openTower(page, "new");
+    await settled(page, "new");
+    const fold = page.locator(".editor details.clause-fold");
+    await expect(fold).not.toHaveAttribute("open");
+    const summary = fold.locator("summary.clause-summary");
+    await expect(summary).toBeVisible();
+    const line = await summary.innerText();
+    for (const said of ["Pi", "Default OS Sandbox", "No network", "Autonomy"]) expect(line).toContain(said);
+    // Each setting whole, never broken inside itself; the side column (under 300 px) takes them on two lines at most,
+    // a wrapped line starting under the first setting, not under the chevron.
+    const items = await summary.locator(".clause-summary-items > span").evaluateAll((els) =>
+      els.map((e) => ({ text: e.textContent, lines: e.getClientRects().length, left: Math.round(e.getBoundingClientRect().left), top: Math.round(e.getBoundingClientRect().top) })),
+    );
+    for (const i of items) expect(i.lines, `"${i.text}" whole`).toBe(1);
+    expect(new Set(items.map((i) => i.top)).size).toBeLessThanOrEqual(2);
+    const firstOfLines = items.filter((i, n) => n === 0 || i.top !== items[n - 1].top);
+    for (const i of firstOfLines) expect(i.left, `"${i.text}" hangs under the first setting`).toBe(items[0].left);
+    await expect(fold.getByText("Engine", { exact: true })).toBeHidden();
+    await summary.click();
+    await expect(fold).toHaveAttribute("open", "");
+    await expect(fold.getByText("Engine", { exact: true })).toBeVisible();
+  });

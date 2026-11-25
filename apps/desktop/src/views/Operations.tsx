@@ -12,6 +12,7 @@ import { api } from "../lib/api";
 import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
 import { notEvidence } from "../lib/discounted";
 import { bytes, dayClock } from "../lib/format";
+import { cronWords } from "../lib/cron";
 import { t } from "../lib/i18n";
 import { stateLabel, statusWord } from "../lib/labels";
 import { ask } from "../lib/native";
@@ -115,7 +116,7 @@ export function Operations() {
             </form>
           </Show>
           <DataTable
-            headers={[[t("ops.schedulesTitle")], [t("ops.cronUtc")], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
+            headers={[[t("ops.schedulesTitle")], [t("ops.colWhen")], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
             empty={t("ops.schedulesEmpty")}
             items={schedList()}
             error={schedules.error}
@@ -128,7 +129,11 @@ export function Operations() {
                     <span class="meta t3" hidden={state.projects.length <= 1}>{projName(s.project_id)}</span>
                   </div>
                 </td>
-                <td><code class="code-val">{s.cron_expr}</code></td>
+                <td class="ops-when">
+                  {/* The words for a common shape, and always the expression as written (it is what you type and edit). */}
+                  <Show when={cronWords(s.cron_expr)}>{(w) => <><span class="t1">{w()}</span>{" "}</>}</Show>
+                  <code class="code-val" classList={{ t3: !!cronWords(s.cron_expr) }}>{s.cron_expr}</code>
+                </td>
                 <td class="meta t2">{t(s.unattended_strict ? "ops.unattendedStrict" : "contract.standard")}</td>
                 <td class="meta t2">
                   {s.next_run_at ? dayClock(s.next_run_at) : "—"}

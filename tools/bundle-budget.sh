@@ -26,6 +26,11 @@
 # boundary, the review editor's snapshot checks and the translated chrome
 # took on demand to 107,434 bytes: its budget rose to 108 KB, the total (160
 # KB) and start-up budgets unchanged, so the sum still bounds the growth.
+# On 2026-11-25 the dictionaries started shipping their keys once
+# (apps/desktop/plugins/localeKeys.ts): each language chunk holds its values
+# and one key chunk per half holds the keys. The first half's key chunk is
+# needed by the first paint in either language, so it counts with the
+# start-up; the second half's counts on demand. No budget changed.
 # Run after `pnpm --dir apps/desktop build`.
 set -e
 start_budget="${1:-65536}"
@@ -36,12 +41,13 @@ goal_budget="${5:-12288}"
 dist="$(cd "$(dirname "$0")/.." && pwd)/apps/desktop/dist"
 gz() { gzip -9c "$1" | wc -c | tr -d ' '; }
 startup_files=$(grep -o '"/assets/[^"]*\.js"' "$dist/index.html" | tr -d '"' | sort -u)
-start=0; lazy=0; worker=0; locale_max=0; locale_sum=0; goal=""
+start=0; lazy=0; worker=0; locale_max=0; locale_sum=0; goal=""; keys_now=""
 for f in "$dist"/assets/*.js; do
   name="/assets/$(basename "$f")"
   n=$(gz "$f")
   case "$name" in
     *worker*) worker=$((worker + n)) ;;
+    /assets/_locale-keys-now-*.js) start=$((start + n)); keys_now=$n ;;
     /assets/en-*.js|/assets/zh-CN-*.js)
       locale_sum=$((locale_sum + n))
       [ "$n" -gt "$locale_max" ] && locale_max=$n ;;
@@ -56,6 +62,8 @@ echo "on-demand views:     $lazy bytes gzipped (budget $lazy_budget)"
 echo "all interface JS:    $total bytes gzipped (budget $total_budget; start-up and on demand together)"
 echo "goal page chunk:     ${goal:-none} bytes gzipped (budget $goal_budget)"
 echo "highlighting worker: $worker bytes gzipped (budget $worker_budget)"
+# A renamed key chunk would otherwise be counted on demand, not at start-up.
+[ -n "$keys_now" ] || { echo "no _locale-keys-now-*.js chunk in the build: name the first half's key chunk or update this script"; exit 1; }
 # A renamed goal page would otherwise pass unmeasured.
 [ -n "$goal" ] || { echo "no GoalPage-*.js chunk in the build: name the goal page's chunk or update this script"; exit 1; }
 [ "$start" -le "$start_budget" ] && [ "$lazy" -le "$lazy_budget" ] && [ "$worker" -le "$worker_budget" ] \

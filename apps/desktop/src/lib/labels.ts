@@ -9,7 +9,7 @@ import type { Mode } from "../gen/Mode";
 import type { OptionTone } from "../gen/OptionTone";
 import type { PauseReason } from "../gen/PauseReason";
 import type { EngineTrustTier } from "./apiTypes";
-import { notEvidence } from "./discounted";
+import { caveats, notEvidence } from "./discounted";
 import { t } from "./i18n";
 import { state } from "./store";
 
@@ -24,6 +24,7 @@ export function statusWord(g: Pick<GoalSummary, "id" | "state" | "progress" | "v
   if (g.state === "in_review") {
     if (notEvidence(g)) return t("honesty.sealTampered");
     if (!g.verified_pin || !g.progress?.machine) return t("honesty.notMachineVerified");
+    if (caveats(g).length) return t("honesty.qualified");
   }
   return stateLabel(g.state);
 }

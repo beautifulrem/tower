@@ -39,7 +39,13 @@ fn premises(
             broken.push(premise.to_string());
         }
     };
-    check(settings.language == "en", "the interface language is English (the tests read English words)");
+    // English unless the seed ran in another language (TOWER_LANG, as `tools/e2e.sh` dumps the Chinese views): the
+    // tests read the words of the language they open in.
+    let lang = std::env::var("TOWER_LANG").unwrap_or_else(|_| "en".into());
+    check(
+        settings.language == lang,
+        "the interface language is the one the demo was seeded in (TOWER_LANG, English by default)",
+    );
     let mut ids: Vec<&str> = goals.iter().map(|g| g.id.as_str()).collect();
     ids.sort_unstable();
     check(ids == ["G-0001", "G-0002", "G-0003", "G-0004"], "the four demo goals G-0001…G-0004 exist");

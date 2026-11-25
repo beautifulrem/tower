@@ -261,10 +261,11 @@ export function enrichPhoneProblem(F: F) {
 /**
  * What the canary saw on G-0001: C1's assertions were checked (intact), C2's could not be (a test style Tower does not
  * know), and one more executable criterion's canary passed when it must have failed (C4, or C5 after a look criterion):
- * that pass is not evidence, so the goal's progress says so (`not_evidence`) for the board and the sidebar. The goal page
- * then carries the newer sentinels: program code reaching into the tests with assertions unchecked (high), rewriting
- * test machinery (high) beside reaching into it (medium), and repeated sandbox refusals (medium). Worded in the seed's
- * language, as the supervisor would.
+ * that pass is not evidence. The goal page then carries the newer sentinels: program code reaching into the tests with
+ * assertions unchecked (high), rewriting test machinery (high) beside reaching into it (medium), and repeated sandbox
+ * refusals (medium). As the supervisor counts (summaries.rs `progress`), a high finding of the latest verification holds
+ * every pass, so no pass counts (`verified` 0) and the progress says so (`not_evidence`) for the board and the sidebar.
+ * Worded in the seed's language, as the supervisor would.
  */
 export function enrichCanary(F: F) {
   const d = need(F["goal-G-0001"], "goal G-0001 was dumped");
@@ -279,10 +280,7 @@ export function enrichCanary(F: F) {
     d.contract.criteria.push(criterion);
     // It passed, red → green on the base — and its canary passed too, so the supervisor leaves it out of `verified`.
     d.criteria.push({ ...structuredClone(c2), criterion, canary: "tampered", passed_on_base: false, base_error: null });
-    for (const p of [d.summary.progress, ...F.goals.filter((g: any) => g.id === "G-0001").map((g: any) => g.progress)]) {
-      p.machine += 1;
-      p.not_evidence = true;
-    }
+    for (const p of progresses(F, d)) p.machine += 1;
   }
   d.sentinels.push(
     {
@@ -313,7 +311,26 @@ export function enrichCanary(F: F) {
       detail: `${cn ? "沙箱拒绝了 7 次越界访问，最近几次：" : "The sandbox refused 7 accesses outside the workspace; the latest:"}\n/Users/you/shop/test/holdout/rounding.test.js\n~/.ssh/config\n../other-project/src/index.ts\n/etc/hosts\n/Users/you/shop/.env`,
     },
   );
+  for (const p of progresses(F, d)) {
+    p.verified = 0;
+    p.not_evidence = true;
+    delete p.qualified;
+  }
 }
+
+/**
+ * G-0001 after enrichCanary with its high findings dealt with: only the medium sentinels stand, so the passes count again
+ * except the tampered one, as the supervisor counts (still not evidence: that pass is in the goal).
+ */
+export function withoutHighFindings(F: F) {
+  const d = need(F["goal-G-0001"], "goal G-0001 was dumped");
+  d.sentinels = d.sentinels.filter((h: any) => h.severity < 3);
+  const counted = d.criteria.filter((c: any) => c.criterion.kind.type === "exec" && c.verified?.passed && !c.verified.stale && c.canary !== "tampered").length;
+  for (const p of progresses(F, d)) p.verified = counted;
+}
+
+/** A goal's progress wherever the views carry it: its detail's summary and its row in the goal list. */
+const progresses = (F: F, d: any): any[] => [d.summary.progress, ...F.goals.filter((g: any) => g.id === d.summary.id).map((g: any) => g.progress)];
 
 /** The project has held-out tests (the demo repository has none). */
 export function enrichHeldOutTests(F: F) {

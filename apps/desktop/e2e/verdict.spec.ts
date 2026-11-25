@@ -7,7 +7,7 @@
 import { type Locator, type Page, expect, test } from "@playwright/test";
 
 import { enrichConsole, enrichRich } from "./rich";
-import { openReadings, openTower, settled } from "./tauri";
+import { openReadings, openTower, settled, titleIn } from "./tauri";
 
 /** Elements under `root` (and their drawn ::before/::after) whose colour, fill, stroke or ground is the verifier's green. */
 const greens = (root: Locator) =>
@@ -54,7 +54,8 @@ test("a pass that doesn't count reads so on the inbox card: not Ready to accept,
   await expect(card.locator(".decision-head")).not.toContainText("Ready to accept");
   await expect(card.locator(".decision-head")).toContainText("doesn't count");
   await expect(card.locator(".seal")).toHaveClass(/seal-tampered/);
-  await expect(card.locator(".criteria-bar")).toContainText("doesn't count");
+  // Its high findings hold every pass, as the supervisor counts: none of the three counts.
+  await expect(card.locator(".criteria-bar")).toContainText("3 don't count");
   expect(await greens(card.locator(".seal"))).toEqual([]);
 });
 
@@ -158,19 +159,20 @@ for (const lang of ["en", "zh-CN"] as const) {
     await page.setViewportSize({ width: 1100, height: 800 });
     await openTower(page, "overview", { enrich: noCi, lang });
     await settled(page, "overview");
-    const [accept, review, dc] = lang === "en" ? ["To accept", "To review", "1 doesn't count"] : ["待验收", "待评审", "1 项不作数"];
+    // G-0001's high findings hold every pass (summaries.rs `progress`): its three passes take the amber segments.
+    const [accept, review, dc] = lang === "en" ? ["To accept", "To review", "3 don't count"] : ["待验收", "待评审", "3 项不作数"];
     // Neither the board nor the sidebar files anything under acceptance.
     for (const head of await page.locator(".board-group .scale-title, .sidebar .side-group-title").allInnerTexts()) expect(head).not.toContain(accept);
     const group = page.locator(".board-group").filter({ has: page.locator(".scale-title", { hasText: review }) }).first();
-    const row = group.locator(".board-rows [role=listitem]").filter({ hasText: "Fix the cart total" }).first();
+    const row = group.locator(".board-rows [role=listitem]").filter({ hasText: titleIn(lang, "Fix the cart total") }).first();
     await expect(row).toBeVisible();
-    await expect(row.locator(".criteria-bar .seg-discounted")).toHaveCount(1);
+    await expect(row.locator(".criteria-bar .seg-discounted")).toHaveCount(3);
     await expect(row.locator(".criteria-bar")).toContainText(dc);
     await expect(row.locator(".criteria-bar .discounted")).toBeVisible();
     // Whole inside its 11em cell at the narrow window, not cut at the cell's edge.
     const [words, cell] = [await row.locator(".criteria-bar .discounted").boundingBox(), await row.locator(".g-crit").boundingBox()];
     expect(words!.x + words!.width).toBeLessThanOrEqual(cell!.x + cell!.width + 0.5);
-    expect(await greens(row.locator(".criteria-bar .seg-discounted"))).toEqual([]);
+    for (const seg of await row.locator(".criteria-bar .seg-discounted").all()) expect(await greens(seg)).toEqual([]);
   });
 }
 
@@ -271,7 +273,7 @@ test("in Operations, a queued goal whose pass doesn't count says so beside Merge
 test("in Chinese, a claim's gutter label breaks between speaker and kind, never inside a word; Learning says Agent once", async ({ page }) => {
   await openTower(page, "overview", { enrich: enrichRich, lang: "zh-CN" });
   await settled(page, "overview");
-  await selectLine(page, "Fix the cart total");
+  await selectLine(page, titleIn("zh-CN", "Fix the cart total"));
   await page.keyboard.press("Space");
   await expect(page.locator(".peek-drawer")).toHaveCount(1);
   await settled(page);
@@ -372,7 +374,7 @@ for (const lang of ["en", "zh-CN"] as const)
       await page.setViewportSize({ width: w, height: 900 });
       await openTower(page, "overview", { enrich: enrichRich, lang });
       await settled(page, "overview");
-      await selectLine(page, "Fix the cart total");
+      await selectLine(page, titleIn(lang, "Fix the cart total"));
       await page.keyboard.press("Space");
       await expect(page.locator(".peek-drawer .prov-claim").first()).toBeVisible();
       await settled(page);
@@ -425,7 +427,7 @@ for (const lang of ["en", "zh-CN"] as const)
     page.on("pageerror", (e) => errors.push(e.message));
     await openTower(page, "overview", { enrich: enrichRich, lang });
     await settled(page, "overview");
-    for (const title of BOARD) {
+    for (const title of BOARD.map((b) => titleIn(lang, b))) {
       await selectLine(page, title);
       await page.keyboard.press("Space");
       await expect(page.locator(".peek-drawer")).toHaveCount(1);
@@ -669,7 +671,7 @@ for (const [lang, word, review] of [["en", "Needs you", "To review"], ["zh-CN", 
       });
       expect(rows.filter((r) => r.where === "board").length).toBeGreaterThan(0);
       expect(rows.filter((r) => r.where === "sidebar" && r.head !== word).length).toBeGreaterThan(0);
-      if (name === "no CI card") expect(rows.find((r) => r.where === "board" && r.label.startsWith("Fix the cart total"))?.head).toBe(review);
+      if (name === "no CI card") expect(rows.find((r) => r.where === "board" && r.label.startsWith(titleIn(lang, "Fix the cart total")))?.head).toBe(review);
       for (const r of rows) {
         const says = r.label.includes(`, ${word}`);
         expect(says, `${r.where} "${r.label}" under ${r.head}`).toBe(r.where === "sidebar" && r.head === word);
@@ -683,7 +685,8 @@ for (const [lang, word, review] of [["en", "Needs you", "To review"], ["zh-CN", 
 const g2Waiting = (F: Record<string, any>) => {
   enrichRich(F);
   const q = F.inbox.find((i: any) => i.kind === "assumption");
-  F.inbox.push({ ...structuredClone(q), id: "ib-g2-question", goal_id: "G-0002", goal_title: "Align discount rules", kind: "question", subject: "Which rounding does the ledger use?" });
+  const title = F.goals.find((x: any) => x.id === "G-0002").title;
+  F.inbox.push({ ...structuredClone(q), id: "ib-g2-question", goal_id: "G-0002", goal_title: title, kind: "question", subject: "Which rounding does the ledger use?" });
   for (const g of [F.goals.find((x: any) => x.id === "G-0002"), F["goal-G-0002"]?.summary]) if (g) Object.assign(g, { needs_you: 1, mode: "waiting_on_you" });
 };
 for (const [lang, words] of [["en", { running: "Running", silent: "Unresponsive", waiting: "Needs you" }], ["zh-CN", { running: "运行中", silent: "无响应", waiting: "等你" }]] as const)
@@ -691,7 +694,7 @@ for (const [lang, words] of [["en", { running: "Running", silent: "Unresponsive"
     test(`the peek's head of a ${name} run leaves its state to Now (${lang})`, async ({ page }) => {
       await openTower(page, "overview", { enrich, lang });
       await settled(page, "overview");
-      await selectLine(page, "Align discount rules");
+      await selectLine(page, titleIn(lang, "Align discount rules"));
       await page.keyboard.press("Space");
       const head = page.locator(".peek-drawer .peek-head-top");
       await expect(head).toContainText("G-0002");

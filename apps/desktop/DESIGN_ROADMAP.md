@@ -24,7 +24,7 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T16 Docs consistency | — | P3 | T01, T02 | docs/19 §19.6 (reading sheets opaque), docs/12 §12.5.2 (the "doesn't count" form), tokens.css and shots comments | docs | — | read-through | Done |
 | T17 Contract focus | D13 | P2 | — | title field focused on open; new criterion focuses its title | TSX | — | unit | Done (intent, not title — see D13) |
 | T18 Review first paint | D09 | P2 | — | render plain code with the table, highlight in place | TSX | — | e2e timing | Done (iteration 3: no hidden wait; code in the plain foreground, colours tint in) |
-| T19 Operations readability | D20 | P3 | — | cron in words, time zone on Next | TSX, i18n | — | screenshot | Partly done (iteration 3: zone on Next, storage share bars, no dots; cron kept as typed) |
+| T19 Operations readability | D20 | P3 | — | cron in words, time zone on Next | TSX, i18n | — | screenshot | Done (iteration 3: zone on Next, storage share bars, no dots; iteration 9: cron in words, T62) |
 
 ## Iteration 3 — milestone review fixes (D08 reopened, D09, D12, D28–D38)
 
@@ -63,10 +63,21 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T50 Only the title gives way | D88 | P2 | card head and review header: every item but the title one line, unshrinkable; data-table goal cells take what the others leave (`max-width: 0`), id, verdict and sizes whole, merge-queue rules folded in; tooltips on four cut titles | `layout.spec.ts` 6 tests (3 lengths × en/zh, 4 widths, 4 routes; fail on 3145645) | Done |
 | T51 Needs you is the queue's word | D89 | P3 | a board row never says it needs you, in its label or by a trailing ◆ | `verdict.spec.ts` × CI / no CI × en / zh | Done |
 | T52 A silent run is unresponsive in the peek head | D90 | P3 | the heartbeat's word in the head | `verdict.spec.ts` en + zh | Done |
-| T53 Clause numbers follow the reading order | D92 (part) | P3 | side column unnumbered beside the form, numbered when folded under it (CSS) | `contract.spec.ts` 1440 / 1100 | Done (advanced section folding deferred) |
+| T53 Clause numbers follow the reading order | D92 (part) | P3 | side column unnumbered beside the form, numbered when folded under it (CSS) | `contract.spec.ts` 1440 / 1100 | Done (folding: T59) |
 | T54 A running goal's state, once | D93 | P3 | the peek head carries glyph and id for a running goal; "Now" says needs you, unresponsive or what it does | `verdict.spec.ts` silent and silent-and-waiting × en/zh | Done |
 | T55 Needs you in the sidebar too | D94 | P3 | the sidebar row reads its group, not `needs_you`; no trailing ◆ | `verdict.spec.ts` board + sidebar × 3 data sets × en/zh | Done |
 | T56 Minimum width: readings whole, no dot left | D95, D96 (part) | P3 | reading cells one token (CSS); the human count's dot inside its span | `layout.spec.ts` long titles from 1040; stats test checks dangling dots | Done |
+| T57 Dictionaries ship their keys once | D84 | P3 | build plugin `plugins/localeKeys.ts` (dev, vitest, build); key chunk counted with the start-up | `localeKeys.test.ts`; `bundle-budget.sh` 160,049 / 163,840 B | Done (iteration 9) |
+| T58 One ledger row per claim, its runs named | D91 | P3 | dedupe by criterion + words; runs listed once each | `honesty.spec.ts` en/zh, fails on `4d0b9c4` | Done (iteration 9) |
+| T59 Engine clause folded | D92 | P3 | native `<details>`, summary of what is set, settings whole, hanging wrap | `contract.spec.ts` 1440/1100, fails on `4d0b9c4` | Done (iteration 9) |
+| T60 The verdict stays while comparing | D96 | P3 | comparing drops the change counts first, narrower run pickers | `layout.spec.ts` en/zh 1024–1240, fails on `4d0b9c4` | Done (iteration 9) |
+| T61 Chinese supervisor views for Chinese tests | D51, D86 | P3 | `tools/e2e.sh` dumps en and zh; `fixtures(lang)`, `titleIn`; `dump_views` premise follows TOWER_LANG | `language.spec.ts` 8 routes + control | Done (iteration 9) |
+| T62 Schedules in words | D20 | P3 | `lib/cron.ts`: words first, cron after | `language.spec.ts`, `cron.test.ts`, `ConsoleViews.test.tsx`, fails on `4d0b9c4` | Done (iteration 9) |
+| T63 Welcome is setup | D22 | P3 | one 600 px column: title, checks, actions, how a goal ends | `flows.spec.ts` en/zh, fails on `4d0b9c4` | Done (iteration 9) |
+| T64 Id with its title | D23 | P3 | the id right after the title at every width | `flows.spec.ts` identity, fails on `4d0b9c4` | Done (iteration 9) |
+| T65 Verified, with caveats | D58 | P2 | supervisor `progress.qualified` and the high-finding hold; notched glyph, seal word and tooltip, accept-sheet judgement (two presses) | `honesty.spec.ts` en/zh, `Glyph.test.tsx`, `panels.test.tsx`, Rust unit test, fails on `4d0b9c4` | Done (iteration 9) |
+| T66 docs/12 says what the code does | docs/12 drift | P3 | code canonical: 17 + 12 + 10 places, file:line cited | read-through | Done (iteration 9) |
+| T67 Durable evidence, packaged app | D97 | P3 | reports in `design-evidence/reports/`; debug `Tower.app` on a seeded `TOWER_HOME` | `design-evidence/packaged-app/` | Done (iteration 9) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

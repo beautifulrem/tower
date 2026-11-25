@@ -271,23 +271,28 @@ function secondProject(F: Record<string, any>) {
   F.projects = [...F.projects, { ...structuredClone(F.projects[0]), id: "p-lib", name: "lib", root: "/tmp/lib" }];
 }
 
-test("the board's identity says the engine in words, leaves the only project unsaid, and every line's last word ends on the board's edge", async ({ page }) => {
+test("the board's identity says the engine in words, leaves the only project unsaid, every id stands right after its title, and no line runs past the board's edge", async ({ page }) => {
   await openTower(page, "overview", { enrich: enrichEngines });
   const row = page.locator('.g-row[data-goal="G-0002"]');
   await expect(row.locator(".g-engine")).toHaveText("Claude Code");
   await expect(row.locator(".g-project")).toHaveCount(0);
   await expect(row.locator(".g-id .sep")).toHaveCount(0);
-  // One right edge: the ids of the decision lines and the goal rows end together, a row's padding in from the hairlines.
+  // A goal's id is read with its title (D23): it stands one gap after the title, on decision lines and goal rows alike,
+  // at every width, rather than across the row at the board's edge (300 px away at 1800).
   for (const width of [1040, 1440, 1800]) {
     await page.setViewportSize({ width, height: 900 });
     const edges = await page.locator(".overview").evaluate((board) => {
       const right = board.querySelector(".board-rows")!.getBoundingClientRect().right;
       const rows = [...board.querySelectorAll<HTMLElement>(".board-rows .g-row")].map((r) => r.getBoundingClientRect().right);
-      const ids = [...board.querySelectorAll<HTMLElement>(".board-rows .g-goal-id")].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right);
-      return { right, rows, ids };
+      const gaps = [...board.querySelectorAll<HTMLElement>(".board-rows .g-goal-id")]
+        .filter((e) => e.offsetParent)
+        .map((e) => e.getBoundingClientRect().left - e.parentElement!.querySelector(".g-title")!.getBoundingClientRect().right);
+      return { right, rows, gaps };
     });
     for (const r of edges.rows) expect(r, `row at ${width}`).toBeLessThanOrEqual(edges.right + 0.5);
-    for (const id of edges.ids) expect(edges.right - id, `id at ${width}`).toBeLessThanOrEqual(9);
+    expect(edges.gaps.length, `ids at ${width}`).toBeGreaterThan(0);
+    for (const g of edges.gaps) expect(g, `id beside its title at ${width}`).toBeGreaterThanOrEqual(0);
+    for (const g of edges.gaps) expect(g, `id beside its title at ${width}`).toBeLessThanOrEqual(12);
   }
 });
 
@@ -846,11 +851,12 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   expect(await c4.innerText()).not.toMatch(/red → green/);
   // C2 failed on the base and passed with an unchecked canary: it still says red → green (C1's base could not run in this fixture).
   await expect(page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C2$/ }) }).first()).toContainText("red → green");
-  // The totals say the same thing as the line: the pass leaves the verified count, takes an amber segment, and the header's seal is withheld.
+  // The totals say what the supervisor counts: the two high sentinels of this verification hold every pass, so none is
+  // verified, the three passes take the amber segment, and the header's seal is withheld (summaries.rs `progress`).
   const bar = page.locator(".goal-page .goal-verdict .criteria-bar").first();
-  await expect(bar).toContainText("Verified 2/3");
-  await expect(bar).toContainText("1 doesn't count");
-  await expect(bar.locator(".seg-discounted")).toHaveCount(1);
+  await expect(bar).toContainText("Verified 0/3");
+  await expect(bar).toContainText("3 don't count");
+  await expect(bar.locator(".seg-discounted")).toHaveCount(3);
   const seal = page.locator(".goal-head .seal");
   await expect(seal).toHaveClass(/seal-tampered/);
   await expect(seal).toContainText("Passed, doesn't count");
@@ -904,7 +910,7 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(highNote.locator(".review-note-why")).toContainText("Check yourself that these tests really test");
   await expect(page.locator(".review-notes .review-note").filter({ hasText: "rewrites assertion functions" }).locator(".review-note-why")).toHaveCount(0);
   await expect(page.locator(".review-head .seal")).toHaveClass(/seal-tampered/);
-  await expect(page.locator(".review-head .criteria-bar")).toContainText("1 doesn't count");
+  await expect(page.locator(".review-head .criteria-bar")).toContainText("3 don't count");
   await page.keyboard.press("e");
   const readout = page.getByRole("dialog");
   await expect(readout.locator(".canary-line")).toHaveCount(3);
@@ -916,10 +922,11 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const sheet = (await readout.boundingBox())!;
   expect(strip.y + strip.height).toBeLessThan(sheet.y + sheet.height);
   await page.keyboard.press("Escape");
-  // The accept sheet: the pass counts for nothing, and the criterion heads what is still open.
+  // The accept sheet counts as the supervisor does: while the high findings stand no pass counts (not "2 of 3 count"
+  // over two red sentinels), and the tampered criterion heads what is still open.
   await page.keyboard.press("Meta+Shift+Enter");
   const accept = page.getByRole("dialog");
-  await expect(accept).toContainText("2 of 3 machine criteria count: in one, a test that must fail passed");
+  await expect(accept).toContainText("3 machine criteria passed; none counts while a high-severity finding stands");
   await expect(accept.locator(".panel-section .row.meta").first()).toContainText("C4: a test that must fail passed");
 });
 
@@ -1033,6 +1040,27 @@ test("on the welcome screen a red check's fix is the one primary action, then Ch
   });
   await expect(page.locator(".welcome-actions .btn-primary")).toHaveText("Add a git repository");
 });
+
+// Review baseline, R-P3-06 (D22): the welcome page read as a landing page (a slogan, a lede, two columns). It is a setup
+// page now: one column, titled for what it does, the checks first, their actions, and then how a goal ends.
+for (const [lang, title, how] of [["en", "Set up Tower", "How a goal ends"], ["zh-CN", "开始使用 Tower", "一个目标怎样结束"]] as const)
+  test(`the welcome page is one column of setup: the title, the checks, their actions, then how a goal ends (${lang})`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openTower(page, "overview", { lang, enrich: (F) => ((F.projects = []), (F.goals = []), (F.inbox = [])) });
+    const welcome = page.locator(".welcome");
+    await expect(welcome.locator("h1")).toHaveText(title);
+    await expect(welcome.locator(".welcome-how .section-title")).toHaveText(how);
+    expect((await welcome.boundingBox())!.width).toBeLessThanOrEqual(600);
+    const order = [".welcome-title", ".checks", ".welcome-actions", ".welcome-how"];
+    const boxes = await Promise.all(order.map((sel) => welcome.locator(sel).first().boundingBox()));
+    // One column: each part starts below the one before it, at the same left edge.
+    for (let i = 1; i < boxes.length; i++) {
+      expect(boxes[i]!.y, `${order[i]} below ${order[i - 1]}`).toBeGreaterThanOrEqual(boxes[i - 1]!.y + boxes[i - 1]!.height - 0.5);
+      expect(Math.abs(boxes[i]!.x - boxes[0]!.x), order[i]).toBeLessThan(1);
+    }
+    // No slogan or lede over the checks: the page says what to do.
+    expect(await welcome.locator(".welcome-lede, .lede").count()).toBe(0);
+  });
 
 test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {
   const identity = (F: Record<string, any>) => {
@@ -1266,6 +1294,8 @@ test("in Settings the phone's problem stands under its switch and above the port
 
 test("the contract editor's switch is 28×18 with a 32×24 target", async ({ page }) => {
   await openTower(page, "new");
+  // The switch is in the folded clause 04 (D92): opened by its summary first.
+  await page.locator(".clause-summary").click();
   const toggle = page.getByRole("switch", { name: /Allow network/ });
   await expect(toggle).toBeVisible();
   const box = (await toggle.boundingBox())!;

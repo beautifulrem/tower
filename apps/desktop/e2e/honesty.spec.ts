@@ -3,13 +3,16 @@
  * not evidence is never drawn as the verifier's green check — not in the
  * title, not in the sidebar, not at the head of its criterion row.
  */
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
-import { enrichCanary } from "./rich";
-import { openTower } from "./tauri";
+import { enrichCanary, withoutHighFindings } from "./rich";
+import { openTower, settled } from "./tauri";
+
+const calls = (page: Page, cmd: string) => page.evaluate((cmd) => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls.filter(([c]) => c === cmd).length, cmd);
 
 test("with a tampered pass the title's glyph, the sidebar's and the criterion's mark are the seal's amber ◆, never a green check", async ({ page }) => {
-  await openTower(page, "goal/G-0001", { enrich: enrichCanary });
+  // The high findings dealt with, so the other passes count beside the tampered one.
+  await openTower(page, "goal/G-0001", { enrich: (F) => (enrichCanary(F), withoutHighFindings(F)) });
   const head = page.locator(".goal-head");
   await expect(head.locator(".seal-tampered")).toBeVisible();
   await expect(head.locator(".row > svg.glyph").first()).toHaveClass(/mark-attention/);
@@ -24,3 +27,76 @@ test("with a tampered pass the title's glyph, the sidebar's and the criterion's 
   // The criteria that do count keep the verifier's check.
   await expect(page.locator(".goal-page .criterion .criterion-row .result-pass").first()).toBeVisible();
 });
+
+test("while a high finding of this verification stands, no pass keeps the verifier's check: each is the amber ◆, as the supervisor holds them", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCanary });
+  await expect(page.locator(".goal-head .seal-tampered")).toBeVisible();
+  const marks = page.locator(".goal-page .criterion .criterion-row > .result-tampered");
+  await expect(page.locator(".goal-page .criterion .criterion-row .result-pass")).toHaveCount(0);
+  expect(await marks.count()).toBeGreaterThanOrEqual(2);
+  // "passed" stays on each row: it is a fact; only its standing as evidence is withheld.
+  await expect(page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C1$/ }) }).first().locator(".col-result").first()).toHaveText(/passed/);
+});
+
+// Review 7, P3-03 (D91): the same claim from two runs was two identical rows. It is one row now, naming its runs, and a
+// run that said it twice counts once.
+for (const [lang, runs] of [["en", "runs 1, 2"], ["zh-CN", "第 1、2 次运行"]] as const)
+  test(`the same claim in two runs is one ledger row that names both runs (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0003", {
+      lang,
+      enrich: (F) => {
+        const claims = F["goal-G-0003"].claims;
+        const again = claims.filter((c: { kind: string; criterion: string; run_no: number }) => c.kind === "criterion_met" && c.criterion === "C1" && c.run_no === 2);
+        // The demo's premise: C1's claim was made in runs 1 and 2, in the same words.
+        expect(again).toHaveLength(1);
+        claims.push(structuredClone(again[0]));
+      },
+    });
+    const rows = page.locator(".honesty-ledger .ledger-pair");
+    await expect(rows).toHaveCount(2);
+    const c1 = rows.filter({ has: page.locator(".num", { hasText: /^C1\s*$/ }) });
+    await expect(c1.locator(".ledger-claim-cell .meta")).toHaveText(runs);
+    // Said once, a claim names no runs.
+    await expect(rows.filter({ has: page.locator(".num", { hasText: /^C2\s*$/ }) }).locator(".ledger-claim-cell .meta")).toHaveCount(0);
+  });
+
+/** G-0003's two passes counted, with caveats: the runner reached into and a pass on rerun (`progress.qualified`). */
+const qualified = (F: Record<string, any>) => {
+  for (const p of [F["goal-G-0003"].summary.progress, ...F.goals.filter((g: { id: string }) => g.id === "G-0003").map((g: { progress: unknown }) => g.progress)]) {
+    expect(p.verified).toBeGreaterThan(0);
+    p.qualified = { test_machinery: true, assertions_unchecked: false, flaky: true };
+  }
+  for (const c of F["goal-G-0003"].criteria) c.human_checked = true;
+  F.environment.issues = F.environment.issues.filter((i: { kind: string }) => i.kind !== "git_identity_missing");
+};
+
+// D58, the owner's rule (docs/07 §7.10.3): a counted pass with caveats is "Verified, with caveats" wherever its seal is —
+// the notched glyph, the seal's word, the review's verdict — and accepting it is a judgement: named, and two presses.
+for (const [lang, word, why] of [
+  ["en", "Verified, with caveats", "code reaches into the test runner, flaky: passed on rerun"],
+  ["zh-CN", "已验证（有保留）", "代码触及测试运行器、不稳定：重跑后通过"],
+] as const)
+  test(`a counted pass with caveats says so on every seal, and accepting it takes two presses (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0003", { lang, enrich: qualified });
+    const head = page.locator(".goal-head");
+    await expect(head.locator(".row > svg.glyph").first()).toHaveAttribute("aria-label", word);
+    await expect(head.locator(".seal .seal-word")).toHaveText(word);
+    await expect(head.locator(".seal")).toHaveAttribute("title", new RegExp(why));
+    // Green stays the verifier's: the pass counts, the check is the verified one, never the amber ◆.
+    await expect(head.locator(".seal-tampered")).toHaveCount(0);
+
+    await openTower(page, "review/G-0003", { lang, enrich: qualified });
+    await settled(page, "review/G-0003");
+    await expect(page.locator(".review-verify .seal .seal-word")).toHaveText(word);
+    await page.keyboard.press("Meta+Shift+Enter");
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator(".stamp")).toContainText(word);
+    await expect(dialog.locator(".open-judgement")).toContainText(why);
+    const button = dialog.locator(".panel-actions .btn-primary");
+    await expect(button).toHaveText(lang === "en" ? "Accept anyway" : "仍然验收");
+    await button.click();
+    await expect(dialog.locator(".panel-actions .btn.armed")).toBeVisible();
+    expect(await calls(page, "accept")).toBe(0);
+    await dialog.locator(".panel-actions .btn.armed").click();
+    await expect.poll(() => calls(page, "accept")).toBe(1);
+  });

@@ -8,6 +8,7 @@ import { Icon, NotEvidenceMark, ResultMark } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, HeldOutLine, LoopbackLine, ObsChip } from "../../components/Honesty";
 import type { SentinelHit } from "../../gen/SentinelHit";
 import { api } from "../../lib/api";
+import { heldOrTampered } from "../../lib/discounted";
 import { ago, duration, short } from "../../lib/format";
 import { t, withLater } from "../../lib/i18n";
 import { act, state } from "../../lib/store";
@@ -53,7 +54,7 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
             </label>
           }
         >
-          <Show when={c().canary === "tampered" && mark() === "pass"} fallback={<ResultMark kind={mark()} />}>
+          <Show when={heldOrTampered(c(), props.sentinels) && mark() === "pass"} fallback={<ResultMark kind={mark()} />}>
             <NotEvidenceMark />
           </Show>
         </Show>

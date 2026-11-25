@@ -177,7 +177,7 @@ export function CanaryLine(props: { c: CriterionView }) {
             <span title={t("goal.canaryIntactLong")}>{t("goal.canaryIntact")}</span>
           </Match>
           <Match when={state() === "not_checked"}>
-            <span title={t("goal.canaryNotCheckedLong")}>{t("goal.canaryNotChecked")}<span class="t4">{t("goal.canaryNotCheckedWhy")}</span></span>
+            <span title={t("goal.canaryNotCheckedLong")}>{t("honesty.cavAsserts")}<span class="t4">{t("goal.canaryNotCheckedWhy")}</span></span>
           </Match>
           <Match when={state() === "tampered"}>
             <NeedsYouMark title={t("honesty.discountedTitle")} />

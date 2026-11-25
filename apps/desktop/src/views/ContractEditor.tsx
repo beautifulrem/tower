@@ -363,69 +363,88 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <aside class="editor-side">
             <div class="editor-block">
               <ClauseHead n={4} title={t("contract.engineBlock")} />
-              <Field label={t("contract.engine")} hint={t(`trust.${trustTierOf(engine())}`)}>
-                <Select value={c.engine} options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]} onChange={(v) => (setC("engine", v), setC("model", ""), setC("escalation_model", ""))} />
-              </Field>
-              <Field label={t("contract.model")}>
-                <Suspense fallback={<Select value={c.model} options={modelOptions.base()} onChange={(v) => setC("model", v)} />}>
-                  <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
-                </Suspense>
-              </Field>
-              <Show when={engine() !== "claude-code"}>
-                <Field label={t("contract.thinking")}><Select value={c.thinking} options={thinkingOptions()} onChange={(v) => setC("thinking", v)} /></Field>
-              </Show>
-              <Field label={t("settings.escalationModel")}>
-                <Suspense fallback={<Select value={c.escalation_model ?? ""} options={[{ value: "", label: t("settings.escalationOff") }]} onChange={(v) => setC("escalation_model", v)} />}>
-                  <Select value={c.escalation_model ?? ""} options={escOptions()} onChange={(v) => setC("escalation_model", v)} />
-                </Suspense>
-              </Field>
-              <Show when={c.escalation_model}>
-                <Field label={t("contract.escalateAfter")} unit={t("contract.times")}>
-                  <input class="num" type="number" min="1" max="10" value={c.escalation_after_reworks ?? 2} onInput={(e) => setC("escalation_after_reworks", Number(e.currentTarget.value) || 1)} />
+              {/* Folded to one line of what is set, the security-relevant settings (sandbox, network, autonomy) among them:
+                  a new goal rarely changes these, and the line still says them. */}
+              <details class="clause-fold">
+                <summary class="clause-summary">
+                  <Icon name="chevron-right" size={10} />
+                  {/* Each setting whole; in the side column's width they wrap as settings, under the first. */}
+                  <span class="clause-summary-items">
+                    <span>{engineLabel(engine())}</span>
+                    <Show when={c.model}>
+                      <span class="mono">{c.model}</span>
+                    </Show>
+                    <span>{c.sandbox_tier === "micro_vm" ? "MicroVM" : t("contract.sandboxDefault")}</span>
+                    <span>{t(c.network ? "goal.networkOn" : "goal.networkOff")}</span>
+                    <span>
+                      {t("contract.autonomy")} {t(`contract.${c.autonomy}`)}
+                    </span>
+                  </span>
+                </summary>
+                <Field label={t("contract.engine")} hint={t(`trust.${trustTierOf(engine())}`)}>
+                  <Select value={c.engine} options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]} onChange={(v) => (setC("engine", v), setC("model", ""), setC("escalation_model", ""))} />
                 </Field>
-              </Show>
-              <div class="field">
-                <span class="field-label">{t("settings.sandboxBackend")}</span>
-                <div class="sandbox-choices" role="radiogroup" aria-label={t("settings.sandboxBackend")}>
-                  <For
-                    each={[
-                      ["default", t("contract.sandboxDefault"), "Seatbelt / Landlock", false],
-                      ["micro_vm", "MicroVM", microVmReady() ? "Apple Containerization" : t("contract.microvmReq"), !microVmReady()],
-                    ] as ["default" | "micro_vm", string, string, boolean][]}
-                  >
-                    {([id, name, desc, dis]) => (
-                      <label class="radio" classList={{ disabled: dis }}>
-                        <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === id} disabled={dis} onChange={() => setC("sandbox_tier", id)} />
-                        <b>{name}</b>
-                        <span class="radio-desc">{desc}</span>
-                      </label>
-                    )}
-                  </For>
-                </div>
-              </div>
-              <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
-              <Show when={!c.network}>
-                <Field label={t("contract.ports")}>
-                  <input class="mono" inputmode="numeric" placeholder={t("common.eg", { x: "5432, 6379" })} value={(c.ports ?? []).join(", ")} onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))} />
+                <Field label={t("contract.model")}>
+                  <Suspense fallback={<Select value={c.model} options={modelOptions.base()} onChange={(v) => setC("model", v)} />}>
+                    <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
+                  </Suspense>
                 </Field>
-                <Toggle checked={c.loopback_open ?? false} onChange={(v) => setC("loopback_open", v)} label={t("contract.loopbackOpen")} hint={t("contract.loopbackOpenHint")} />
-              </Show>
-              <div class="field">
-                <span class="field-label">{t("contract.autonomy")}</span>
-                <div class="autonomy-choices" role="radiogroup" aria-label={t("contract.autonomy")}>
-                  <For each={["cautious", "standard", "autonomous"] as const}>
-                    {(v) => (
-                      <label class="radio" title={t(`contract.${v}Desc`)}>
-                        <input type="radio" name="autonomy" checked={c.autonomy === v} onChange={() => setC("autonomy", v)} />
-                        <b>{t(`contract.${v}`)}</b>
-                        <span class="radio-desc">{t(`contract.${v}Desc`)}</span>
-                      </label>
-                    )}
-                  </For>
+                <Show when={engine() !== "claude-code"}>
+                  <Field label={t("contract.thinking")}><Select value={c.thinking} options={thinkingOptions()} onChange={(v) => setC("thinking", v)} /></Field>
+                </Show>
+                <Field label={t("settings.escalationModel")}>
+                  <Suspense fallback={<Select value={c.escalation_model ?? ""} options={[{ value: "", label: t("settings.escalationOff") }]} onChange={(v) => setC("escalation_model", v)} />}>
+                    <Select value={c.escalation_model ?? ""} options={escOptions()} onChange={(v) => setC("escalation_model", v)} />
+                  </Suspense>
+                </Field>
+                <Show when={c.escalation_model}>
+                  <Field label={t("contract.escalateAfter")} unit={t("contract.times")}>
+                    <input class="num" type="number" min="1" max="10" value={c.escalation_after_reworks ?? 2} onInput={(e) => setC("escalation_after_reworks", Number(e.currentTarget.value) || 1)} />
+                  </Field>
+                </Show>
+                <div class="field">
+                  <span class="field-label">{t("settings.sandboxBackend")}</span>
+                  <div class="sandbox-choices" role="radiogroup" aria-label={t("settings.sandboxBackend")}>
+                    <For
+                      each={[
+                        ["default", t("contract.sandboxDefault"), "Seatbelt / Landlock", false],
+                        ["micro_vm", "MicroVM", microVmReady() ? "Apple Containerization" : t("contract.microvmReq"), !microVmReady()],
+                      ] as ["default" | "micro_vm", string, string, boolean][]}
+                    >
+                      {([id, name, desc, dis]) => (
+                        <label class="radio" classList={{ disabled: dis }}>
+                          <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === id} disabled={dis} onChange={() => setC("sandbox_tier", id)} />
+                          <b>{name}</b>
+                          <span class="radio-desc">{desc}</span>
+                        </label>
+                      )}
+                    </For>
+                  </div>
                 </div>
-                <p class="field-hint autonomy-current">{t(`contract.${c.autonomy}Desc`)}</p>
-                <p class="field-hint">{t("contract.oneWayNote")}</p>
-              </div>
+                <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
+                <Show when={!c.network}>
+                  <Field label={t("contract.ports")}>
+                    <input class="mono" inputmode="numeric" placeholder={t("common.eg", { x: "5432, 6379" })} value={(c.ports ?? []).join(", ")} onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))} />
+                  </Field>
+                  <Toggle checked={c.loopback_open ?? false} onChange={(v) => setC("loopback_open", v)} label={t("contract.loopbackOpen")} hint={t("contract.loopbackOpenHint")} />
+                </Show>
+                <div class="field">
+                  <span class="field-label">{t("contract.autonomy")}</span>
+                  <div class="autonomy-choices" role="radiogroup" aria-label={t("contract.autonomy")}>
+                    <For each={["cautious", "standard", "autonomous"] as const}>
+                      {(v) => (
+                        <label class="radio" title={t(`contract.${v}Desc`)}>
+                          <input type="radio" name="autonomy" checked={c.autonomy === v} onChange={() => setC("autonomy", v)} />
+                          <b>{t(`contract.${v}`)}</b>
+                          <span class="radio-desc">{t(`contract.${v}Desc`)}</span>
+                        </label>
+                      )}
+                    </For>
+                  </div>
+                  <p class="field-hint autonomy-current">{t(`contract.${c.autonomy}Desc`)}</p>
+                  <p class="field-hint">{t("contract.oneWayNote")}</p>
+                </div>
+              </details>
             </div>
 
             <div class="editor-block">

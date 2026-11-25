@@ -188,7 +188,7 @@ extensions/tower-goal/   Pi 与 ACP 桥：工具策略、shell 解析器、沙�
 tools/                   演示引擎、CI 门禁、端到端与对抗测试的运行脚本
 ```
 
-所有状态由监督进程持有，界面拿的是只读副本。它很轻：启动时的 JavaScript 约 53 KB（gzip 后），大部分视图在第一次打开时才加载。CI 用 [`tools/bundle-budget.sh`](tools/bundle-budget.sh) 卡住三项预算：启动 64 KB、Goal 页 12 KB、全部界面 JavaScript 160 KB（目前合计 159 KB）。
+所有状态由监督进程持有，界面拿的是只读副本。它很轻：启动时的 JavaScript 约 54 KB（gzip 后），大部分视图在第一次打开时才加载。CI 用 [`tools/bundle-budget.sh`](tools/bundle-budget.sh) 卡住三项预算：启动 64 KB、Goal 页 12 KB、全部界面 JavaScript 160 KB（目前合计 156 KB）。
 
 <details>
 <summary><b>开发命令与环境变量</b></summary>

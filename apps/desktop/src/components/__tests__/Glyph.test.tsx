@@ -25,4 +25,19 @@ describe("a goal's glyph", () => {
     const { container } = render(() => <LifecycleGlyph goal={{ ...ready, id: "G-0010", state: "running" }} />);
     expect(container.querySelector(".mark-attention")).toBeNull();
   });
+
+  it("is the verifier's ring with a notch for a counted pass with caveats, and says so", () => {
+    const g = { ...ready, id: "G-0011", progress: { ...ready.progress, qualified: { test_machinery: false, assertions_unchecked: true, flaky: false } } };
+    const { container } = render(() => <LifecycleGlyph goal={g} />);
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("stroke")).toBe("var(--st-verified)");
+    expect(svg.getAttribute("aria-label")).toBe("Verified, with caveats");
+    expect(svg.querySelector("circle")!.getAttribute("stroke-dasharray")).not.toBeNull();
+  });
+
+  it("drops the caveats once the pass doesn't count: that verdict says more", () => {
+    const g = { ...ready, id: "G-0012", progress: { ...ready.progress, not_evidence: true, qualified: { test_machinery: true, assertions_unchecked: false, flaky: false } } };
+    const { container } = render(() => <LifecycleGlyph goal={g} />);
+    expect(container.querySelector("svg")!.getAttribute("aria-label")).toBe("Passed, doesn't count");
+  });
 });

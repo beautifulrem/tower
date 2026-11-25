@@ -153,7 +153,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   contract numbering fixed, P3-03 deferred. Four new P3s: two from iteration 8's own fixes (the peek head called a
   silent run that was waiting for your answer "Unresponsive" over "Needs you"; the sidebar still said Needs you, and
   drew a ◆, for a goal in To review), two older (the schedule table's cron broke at 1040; the review header left a "·"
-  at its end). Recorded as D93–D96. Report saved to `/tmp/tower-design/review8/report.md` from the agent's final
+  at its end). Recorded as D93–D96. Report saved to `design-evidence/reports/review8.md` from the agent's final
   message (the agent could not write it itself).
 - 2026-11-25 Review-8 fixes (T54–T56): a running goal's state is said once, by "Now", and the peek head keeps its glyph
   and id; the sidebar row reads its own group; reading cells in a data table are one token (CSS); the human count's
@@ -168,3 +168,20 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   re-reviewed; the acceptance stands on `d6f07ef`. `DESIGN_DELIVERY.md` is the final report.
 - 2026-11-25 Perf project on `3b11e8e` (not part of the default gate command): passes. Board of 50 goals 549 / 265 / 185 ms
   against the seeded board's 179 / 167 / 116 ms; view switches with 50 goals 31–67 ms (`/tmp/tower-design/iter8b/checks/perf.log`).
+- 2026-11-25 Iteration 9 — the owner's remaining list, all of it (T57–T67, D20, D22, D23, D51, D58, D84, D86, D91,
+  D92, D96, D97, docs/12). Bundle headroom first: the dictionaries ship their keys once (`plugins/localeKeys.ts`),
+  165,126 → 160,049 B of 163,840, no budget raised. Then the deferred P3s, each with an e2e test run against
+  `4d0b9c4` in a separate worktree: 14 new UI tests fail there and pass here (the D22, D91, D92, D96, D20, D58 tests,
+  the D23 identity test and the held-pass test); the language tests pass on both, as they should: D51/D86 was the test
+  data (Chinese tests read English supervisor views), fixed in `tools/e2e.sh`. The new D92 test caught its own first
+  version breaking a setting under the chevron in the 280 px side column; fixed before the gates. D58: the supervisor's
+  `progress.qualified` and the high-finding hold (Rust), "Verified, with caveats" on every seal, two presses to
+  accept. docs/12 reconciled to the code by a docs-only agent, checked here; four specs of unbuilt components left as
+  specs. Packaged app: debug `Tower.app` on a seeded `TOWER_HOME`, demo engine only, looked at through the
+  accessibility tree (`design-evidence/packaged-app/`); review, research and critique reports committed in
+  `design-evidence/reports/`. Gates: tsc; vitest 43 files / 230 tests; Playwright WebKit 353 passed, 0 failed (76
+  shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter9/shots`); perf passes (board of 50:
+  468 / 253 / 184 ms against 196 / 221 / 111 ms; switches 34–89 ms against 16–29 ms); line limit; bundle all JS
+  160,049 / 163,840 B, start-up 54,859 / 65,536 B, goal page 11,573 / 12,288 B; doc numbers; rustfmt, clippy
+  `-D warnings`; cargo test (see the delivery report for one test that failed once under parallel load); detector:
+  no new finding (the 3 `side-tab` hunk-pen findings are the baseline's, kept by decision).

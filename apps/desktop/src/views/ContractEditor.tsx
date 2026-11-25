@@ -14,7 +14,7 @@ import { Icon, LifecycleGlyph } from "../components/Glyph";
 import { LookStepsEdit as LookSteps } from "../components/LookSteps";
 import { ContractSkeleton } from "../components/ContractSkeleton";
 import { BaseTestsNotice } from "../components/TestCheck";
-import { Button, ClauseHead, Failed, Field, IconButton, Select, Toggle } from "../components/ui";
+import { Button, ClauseHead, Failed, Field, IconButton, Select, Toggle, fitUnit } from "../components/ui";
 import type { ContractIssue } from "../gen/ContractIssue";
 import type { Criterion } from "../gen/Criterion";
 import { api } from "../lib/api";
@@ -292,9 +292,9 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                       onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)}
                     />
                     <Show when={cr.kind.type !== "human"} fallback={<span class="meta">{t("contract.humanCheck")}</span>}>
-                      <span class="unit-wrap timeout" classList={{ "timeout-look": cr.kind.type === "look" }}>
+                      <span class="unit-wrap timeout" classList={{ "timeout-look": cr.kind.type === "look" }} ref={fitUnit}>
                         <input class="num" type="number" min="1" value={(cr.kind as { timeout_secs: number }).timeout_secs} title={t("contract.timeout")} aria-label={`${cr.id} ${t("contract.timeout")}`} onInput={(e) => setKind(i(), (k) => k.type !== "human" && (k.timeout_secs = Number(e.currentTarget.value) || 1))} />
-                        <span class="unit">{cr.kind.type === "look" ? t("contract.secondsReachable") : t("contract.seconds")}</span>
+                        <span class="field-unit">{cr.kind.type === "look" ? t("contract.secondsReachable") : t("contract.seconds")}</span>
                       </span>
                     </Show>
                     <IconButton icon="cross" size={24} label={t("common.delete")} onClick={() => setC("criteria", (l) => l.filter((_, j) => j !== i()))} />
@@ -364,7 +364,8 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
             <div class="editor-block">
               <ClauseHead n={4} title={t("contract.engineBlock")} />
               {/* Folded to one line of what is set, the security-relevant settings (sandbox, network, autonomy) among them:
-                  a new goal rarely changes these, and the line still says them. */}
+                  a new goal rarely changes these, and the line still says them, with every setting that is not the default
+                  (a thinking level, an escalation model, ports on this Mac, an open loopback): an amendment folds nothing away. */}
               <details class="clause-fold">
                 <summary class="clause-summary">
                   <Icon name="chevron-right" size={10} />
@@ -375,7 +376,25 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                       <span class="mono">{c.model}</span>
                     </Show>
                     <span>{c.sandbox_tier === "micro_vm" ? "MicroVM" : t("contract.sandboxDefault")}</span>
+                    <Show when={engine() !== "claude-code" && c.thinking && c.thinking !== (state.settings?.default_thinking ?? "")}>
+                      <span>
+                        {t("contract.thinking")} {thinkingOptions().find((o) => o.value === c.thinking)?.label ?? c.thinking}
+                      </span>
+                    </Show>
+                    <Show when={c.escalation_model}>
+                      <span>
+                        {t("contract.escalatesTo")} <span class="mono">{c.escalation_model}</span>
+                      </span>
+                    </Show>
                     <span>{t(c.network ? "goal.networkOn" : "goal.networkOff")}</span>
+                    <Show when={!c.network && c.ports?.length}>
+                      <span>
+                        {t("contract.portsShort")} <span class="mono">{c.ports!.join(", ")}</span>
+                      </span>
+                    </Show>
+                    <Show when={!c.network && c.loopback_open}>
+                      <span>{t("contract.loopbackShort")}</span>
+                    </Show>
                     <span>
                       {t("contract.autonomy")} {t(`contract.${c.autonomy}`)}
                     </span>

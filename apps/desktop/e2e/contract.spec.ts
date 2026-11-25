@@ -160,3 +160,61 @@ for (const w of [1440, 1100])
     await expect(fold).toHaveAttribute("open", "");
     await expect(fold.getByText("Engine", { exact: true })).toBeVisible();
   });
+
+// Review 9, R9-P3-05: amending a contract, the folded clause hid what had been set away from the defaults — a thinking
+// level, an escalation model, ports on this Mac, an open loopback. The line names each of them, whole, as it names the
+// engine; a setting at its default stays off it.
+for (const [lang, said] of [
+  ["en", ["Thinking level high", "Escalates to anthropic/claude-opus-4", "Ports 5432, 6379", "Loopback open"]],
+  ["zh-CN", ["思考强度 high", "升级到 anthropic/claude-opus-4", "端口 5432, 6379", "本机回环已放开"]],
+] as const)
+  test(`amending a contract, the folded engine clause names every setting that is not the default (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        Object.assign(F["goal-G-0001"].contract, { thinking: "high", escalation_model: "anthropic/claude-opus-4", network: false, ports: [5432, 6379], loopback_open: true });
+      },
+    });
+    await settled(page, "goal/G-0001");
+    await page.keyboard.press("Shift+E");
+    const summary = page.locator(".editor details.clause-fold summary.clause-summary");
+    await expect(summary).toBeVisible();
+    await expect(page.locator(".editor details.clause-fold")).not.toHaveAttribute("open");
+    const items = await summary.locator(".clause-summary-items > span").evaluateAll((els) => els.map((e) => ({ text: e.textContent!.replace(/\s+/g, " ").trim(), lines: e.getClientRects().length })));
+    for (const s of said) expect(items.map((i) => i.text)).toContain(s);
+    for (const i of items) expect(i.lines, `"${i.text}" whole`).toBe(1);
+  });
+
+test("a new contract at its defaults names no thinking level, escalation, ports or loopback on its folded line", async ({ page }) => {
+  await openTower(page, "new");
+  await settled(page, "new");
+  const line = await page.locator(".editor summary.clause-summary").innerText();
+  for (const s of ["Thinking", "Escalates", "Ports", "Loopback"]) expect(line).not.toContain(s);
+});
+
+// Review 9, R9-P3-07: the budget's "$" stood on its digits. The field's unit borrowed the review sidebar's `.unit` row
+// class, whose 8px padding pushed every unit inward. A unit sits in the field's padding, clear of the text, on either side.
+for (const [route, lang] of [["new", "en"], ["new", "zh-CN"], ["settings", "en"]] as const)
+  test(`a field's unit stays clear of the value it measures (${route}, ${lang})`, async ({ page }) => {
+    await openTower(page, route, { lang });
+    await settled(page, route);
+    const clash = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".unit-wrap")]
+        .filter((w) => w.offsetParent)
+        .flatMap((w) => {
+          const input = w.querySelector("input")!;
+          const unit = w.querySelector<HTMLElement>(".field-unit");
+          if (!unit) return [`${w.className}: no unit`];
+          const cs = getComputedStyle(input);
+          const r = input.getBoundingClientRect();
+          // Where the text may run: inside the border and the padding.
+          const textL = r.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
+          const textR = r.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight);
+          const range = document.createRange();
+          range.selectNodeContents(unit);
+          const u = range.getBoundingClientRect();
+          return u.right <= textL + 0.5 || u.left >= textR - 0.5 ? [] : [`"${unit.textContent}" ${Math.round(u.left)}..${Math.round(u.right)} over text ${Math.round(textL)}..${Math.round(textR)}`];
+        }),
+    );
+    expect(clash).toEqual([]);
+  });

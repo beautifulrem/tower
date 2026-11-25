@@ -1,6 +1,6 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, thirteen local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, fourteen local commits, nothing pushed, merged or deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -137,8 +137,9 @@ that is enforced by e2e on 14 surfaces.
 
 ## 12. Independent reviews — Accepted
 
-Every review used the user's `frontend-reviewer` agent, in a fresh read-only worktree on its own port. The reviewers
-never edited code. Reports are committed in `design-evidence/reports/review*.md`.
+Reviews 1–8 used the user's `frontend-reviewer` agent, in a fresh read-only worktree on its own port; review 9 used a
+general-purpose agent as the independent reviewer under the same rules, because the `frontend-reviewer` type was not
+available in that session. The reviewers never edited code. Reports are committed in `design-evidence/reports/review*.md`.
 
 | Commit | Verdict |
 |---|---|
@@ -150,6 +151,7 @@ never edited code. Reports are committed in `design-evidence/reports/review*.md`
 | `16ac40c` | 8.03, one P1 |
 | `3145645` | **PASS, 8.18**, no P0/P1, AC1–AC11 met |
 | `d6f07ef` | **PASS, 8.30**, no P0/P1/P2 (re-check after review 7's P2) |
+| `7a23f45` | **PASS, 8.28**, no P0/P1; one P2 (review 9, after the owner's remaining list) |
 
 Review 8 raised four P3s. Two were introduced by iteration 8's own fixes: the peek head called a waiting run
 "Unresponsive", and the sidebar still said "Needs you" for a goal in To review. Two were older: the cron broke at
@@ -158,25 +160,34 @@ Review 8 raised four P3s. Two were introduced by iteration 8's own fixes: the pe
 The last commit fixes the first two and the cron, and the dot half of the fourth, each with a test that fails on
 `d6f07ef`. Those fixes are **Verified, not independently re-reviewed**: the acceptance stands on `d6f07ef`.
 
+Review 9 read `7a23f45` (iteration 9) and passed it at 8.28. It found one P2 — a goal accepted with caveats lost them
+on its stamp — six P3s mostly from iteration 9's own fixes (the comparing verdict still lost in two width bands, key
+caps hidden at ≤1240, the ledger's runs note in the claim's colour, the evidence strip saying "assertions untouched"
+beside a test-machinery caveat, the folded engine clause hiding non-default settings, a bare other goal's id in the
+identity column), one older P3 (the budget's "$" on its digits) and three docs/12 places still off. Iteration 10 fixes
+all of them (D98–D106), each with a test that fails on `7a23f45`. Those fixes are **Verified, not independently
+re-reviewed**: the last acceptance stands on `7a23f45`.
+
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 9):
+At the final commit (iteration 10):
 
-- **Type check and unit tests:** tsc clean; vitest 43 files, 230 tests.
-- **e2e:** Playwright WebKit 353 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+- **Type check and unit tests:** tsc clean; vitest 43 files, 233 tests.
+- **e2e:** Playwright WebKit 366 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
   supervisor's views. The suite includes axe on the rich states in both themes.
-- **Shots:** 69/69 (`/tmp/tower-design/iter9/shots`).
+- **Shots:** 69/69 (`/tmp/tower-design/iter10/shots`).
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 160,049 / 163,840 B (3,791 B left), start-up 54,859 / 65,536 B, goal page
-  11,573 / 12,288 B. The budget was never raised.
-- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 468 / 253 / 184 ms against
-  196 / 221 / 111 ms for the seeded board, inside its 750 ms margin; view switches with 50 goals take 34–89 ms against
-  16–29 ms, inside 150 ms.
-- **Rust:** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
+- **Bundle:** all interface JS 160,896 / 163,840 B (2,944 B left), start-up 55,129 / 65,536 B, goal page
+  11,588 / 12,288 B. The budget was never raised.
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 564 / 230 / 176 ms against
+  170 / 161 / 107 ms for the seeded board, inside its 750 ms margin; view switches with 50 goals take 35–64 ms against
+  19–39 ms, inside 150 ms.
+- **Rust (iteration 9; iteration 10 changed no Rust):** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
   e2e suite and the shots ran beside it, `evidence::a_criterion_whose_base_did_not_run_keeps_its_canary` failed its
   canary assertion; it passed alone, three times more, and in the full rerun. It drives a real sandboxed `node --test`
   and this work does not touch the verifier or the canary: recorded as load-sensitive, not hidden or retried away.
-- **Detector:** no new finding; the 3 `side-tab` findings are the review pen on hunk headers, kept since the baseline.
+- **Detector:** no new finding; the 3 `side-tab` findings are the review pen on hunk headers, kept since the baseline;
+  the DESIGN.md advisories on the changed stylesheets are all on lines older than this iteration.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion.
 
@@ -186,25 +197,34 @@ user's `~/.tower`, no model called. Looked at through the accessibility tree, in
 row "runs 1, 2" (D91), the folded engine clause (D92), titles with their ids on the board (D23), a schedule "Weekdays
 02:00" before its cron (D20, the schedule added to the scratch database, disabled), and the native unsaved-contract
 sheet. Screenshots: `design-evidence/packaged-app/`. Not reached there: a pass with caveats (the demo has none) and a
-1040 px window (D58, D96); their evidence is the WebKit tests. Typing into the WebView in the background does not
+1040 px window (D58, D96); their evidence is the WebKit tests. Iteration 10's fixes were not looked at in the packaged
+app. Typing into the WebView in the background does not
 reach its fields — keys went to the app's shortcuts once (a stray draft, discarded through the app's own sheet).
 
 ## 14. Commits — Implemented
 
 `bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
-(review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run) and the iteration-9 commit (the owner's
-remaining list). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+(review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run) the iteration-9 commit `7a23f45` (the owner's
+remaining list) and the iteration-10 commit (review 9's findings). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
 Iteration 9 fixed the owner's remaining list: D84 (bundle), D91, D92, D96, D51/D86, the docs/12 drift, D20, D22, D23,
-D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. What is left:
+D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. Iteration 10 fixed
+review 9's findings (D98–D106), each with a test that fails on `7a23f45`. What is left:
+
+- **Iteration 10 is not independently re-reviewed.** Its fixes are verified by tests and the gates; the last independent
+  acceptance is review 9's, of `7a23f45`.
+- **The review header now fits by measuring** (`review/fitStats.ts`, a ResizeObserver and a MutationObserver) rather than
+  by width band. The sweep test covers 1024–1400 for both fixture goals in both languages; a verdict longer than any
+  the fixtures hold would still give way last, but only those widths and verdicts were measured.
+- **Below 1241 px the board's overlap notice is in the title's tooltip only**, as the identity column it replaced was.
 
 - **D58 covers three caveats.** "Verified, with caveats" is computed for test machinery reached into, assertions not
   checked and a flaky pass; docs/07's other qualifiers (S0, a Node version unlike the profile, an unsupported ecosystem,
   opportunistic verification) are not computed yet. A caveat is confirmed by two presses, not a written reason.
-- **docs/12 still specifies four things the code does not render** (the revert badge, the dependency notice, the review
-  backlog head and bar): future specs, left as written. An integrated goal tells verified from human-only by colour
+- **docs/12 still specifies five things the code does not render** (the revert badge, the dependency notice, the review
+  backlog head and bar, the hunk author's line style): future specs, left as written, the last now said so in §12.4.4. An integrated goal tells verified from human-only by colour
   alone — written down in docs/12 as a known limit.
 - **Supervisor text is written in the language of the moment.** A goal's findings and pauses keep the words they were
   written in; switching the interface language does not rewrite stored events. Test output and the prompts Tower sends

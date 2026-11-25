@@ -219,6 +219,7 @@ export const en: DictNow = {
     discountedTitle: "Doesn't count: a test Tower added that must fail still passed (the assertions or the runner were tampered with), or a high-severity finding of this verification stands.",
     qualified: "Verified, with caveats",
     qualifiedTitle: "Counts as verified on @{pin}, with caveats: {why}. Look at them before you accept.",
+    qualifiedDoneTitle: "Counted as verified on @{pin}, with caveats: {why}. You accepted it with them.",
     cavMachinery: "code reaches into the test runner",
     cavAsserts: "assertions not checked",
     cavFlaky: "flaky: passed on rerun",

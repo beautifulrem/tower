@@ -36,7 +36,11 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   // Arrived in the last few seconds: one short settle, so the eye finds it.
   const fresh = Date.now() - props.goal.created_at < 5000;
   // Identity with more than the id and one name in it: the engine's name leaves first in a narrower window (whole, never clipped).
-  const crowded = () => otherEngine() && (showProject() || g().rework_cycles > 0 || !!g().overlaps?.length || !!g().pr || !!state.settings?.muted_goals.includes(g().id));
+  const crowded = () => otherEngine() && (showProject() || g().rework_cycles > 0 || !!g().pr || !!state.settings?.muted_goals.includes(g().id));
+  // Another goal changing the same files, in words: "Overlaps G-0003" beside this row's own id, never a bare id that reads as it.
+  const overlapsWith = (id: string) => t("goal.overlaps", { id: "\u0001" }).split("\u0001").flatMap((part, i) => (i ? [<span class="code-val">{id}</span>, part] : [part]));
+  const overlapTitle = () => (g().overlaps ?? []).map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n");
+  const titleTip = () => [g().title, otherEngine() ? engineLabel(engine()!) : "", overlapTitle()].filter(Boolean).join("\n");
   return (
     <div
       class="g-row"
@@ -54,7 +58,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
             title bar counts those. A goal waiting in To review is filed there, not counted, and not said to need you. */}
         <button
           class="g-title"
-          title={otherEngine() ? `${g().title}\n${engineLabel(engine()!)}` : g().title}
+          title={titleTip()}
           aria-label={`${g().title}, ${statusWord(g())}${otherEngine() ? `, ${engineLabel(engine()!)}` : ""}`}
           onFocus={() => props.onSelect?.()}
           onKeyDown={(e) => {
@@ -74,6 +78,17 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         {/* The id stays beside its title at every width, as in the review's header: on a wide board, flush right, it
             ended a screen's width away from the words it names. */}
         <span class="code-val t2 g-goal-id">{g().id}</span>
+        {/* An overlap is said with the row it belongs to, after its id: in the identity column a bare "◇ G-0003" read as
+            this row's own id. Below 1241 it leaves with the identity column and lives on in the title's tooltip. */}
+        <Show when={g().overlaps?.length}>
+          <span class="g-overlap" title={overlapTitle()}>
+            <NoticeMark title={t("goal.overlaps", { id: g().overlaps[0].goal_id })} />
+            <span>{overlapsWith(g().overlaps[0].goal_id)}</span>
+            <Show when={g().overlaps.length > 1}>
+              <span class="num">+{g().overlaps.length - 1}</span>
+            </Show>
+          </span>
+        </Show>
         <Show when={props.onPeek}>
           <button
             type="button"
@@ -122,13 +137,6 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
               <PrLine pr={pr()} compact />
             </span>
           )}
-        </Show>
-        <Show when={g().overlaps?.length}>
-          <span class="g-overlap" title={g().overlaps.map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n")}>
-            <NoticeMark title={t("goal.overlaps", { id: g().overlaps[0].goal_id })} />
-            <span class="code-val">{g().overlaps[0].goal_id}</span>
-            <Show when={g().overlaps.length > 1}>+{g().overlaps.length - 1}</Show>
-          </span>
         </Show>
         <Show when={state.settings?.muted_goals.includes(g().id)}>
           <span class="t3">{t("quiet.muted")}</span>

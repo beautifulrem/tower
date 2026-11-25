@@ -18,7 +18,7 @@ import { buildTree, treeOrder, unitUnder } from "../lib/filetree";
 import { count, short } from "../lib/format";
 import { caveats, notEvidence } from "../lib/discounted";
 import { t } from "../lib/i18n";
-import { useKeys } from "../lib/keys";
+import { keyHint, useKeys } from "../lib/keys";
 import { ask } from "../lib/native";
 import { back, go, goProjectSetting } from "../lib/nav";
 import { advanceQueue, queuePosition } from "../lib/reviewQueue";
@@ -27,6 +27,7 @@ import { act, onTrace, state, toast } from "../lib/store";
 import { applySuggestion } from "../lib/suggest";
 import type { ExtReviewUnit, ExtReviewView } from "./goal/ext";
 import { FileDiff } from "./review/FileDiff";
+import { fitStats } from "./review/fitStats";
 import { type ReviewScope, TimelineSwitcher, buildSnapshots, lastTurnRev } from "./review/Timeline";
 import { type ReviewNote, ReviewNotes, UnitNarrative } from "./review/notes";
 import { AcceptPanel, ChangesPanel, VerifyPanel } from "./review/panels";
@@ -37,33 +38,6 @@ const RELOAD_VIEW = new Set(["pinned", "human_edited", "rolled_back"]);
 const RELOAD_DETAIL = new Set(["pinned", "human_edited", "rolled_back", "sentinel_hit", "verify_finished", "criterion_result", "claim_reviewed", "human_check", "original_tests_result"]);
 const TREE_FROM = 2;
 type HunkRef = { path: string; index: number };
-
-/**
- * The pin pair goes first, and only for want of room: shown when, with it, the verification group keeps every part
- * (nothing wraps onto its hidden second line) and the line does not run over. Measured again when the line or the
- * group changes size.
- */
-function fitPins(stats: HTMLDivElement) {
-  const fit = () => {
-    stats.classList.remove("pins-off");
-    const verify = stats.querySelector<HTMLElement>(".review-verify");
-    // A part drops when the group wraps onto its hidden line, or when the criteria bar does inside itself.
-    const wraps = (el: HTMLElement | null | undefined) => !!el && el.scrollHeight > el.clientHeight + 1;
-    const over = stats.scrollWidth > stats.clientWidth + 1 || wraps(verify) || wraps(verify?.querySelector<HTMLElement>(".criteria-bar"));
-    stats.classList.toggle("pins-off", over);
-  };
-  const ro = new ResizeObserver(fit);
-  ro.observe(stats);
-  const watchVerify = new MutationObserver(() => {
-    const verify = stats.querySelector(".review-verify");
-    if (verify) ro.observe(verify);
-    fit();
-  });
-  watchVerify.observe(stats, { childList: true, subtree: true, characterData: true });
-  const verify = stats.querySelector(".review-verify");
-  if (verify) ro.observe(verify);
-  onCleanup(() => (ro.disconnect(), watchVerify.disconnect()));
-}
 
 export function Review(props: { id: string }) {
   const [persisted] = createResource<ReviewState>(() => loadReviewState(props.id));
@@ -523,7 +497,7 @@ export function Review(props: { id: string }) {
             <Show when={queue()}>{(q) => <span class="meta t3 num">{t("review.queuePosition", { i: q().i, n: q().n })}</span>}</Show>
           </div>
           <Show when={view()}>
-            <div class="review-stats meta halt" classList={{ comparing: scope() === "compare" }} ref={fitPins}>
+            <div class="review-stats meta halt" classList={{ comparing: scope() === "compare" }} ref={fitStats}>
               <span class="review-stat-group num">
                 <Show when={units().length > 0}>
                   <span>
@@ -561,7 +535,7 @@ export function Review(props: { id: string }) {
           />
         </Show>
         <Show when={units().length > 0}>
-          <Button onClick={() => setPanel("changes")} kbd="c">
+          <Button onClick={() => setPanel("changes")} kbd="c" title={`${t("review.requestChanges")} ${keyHint("c")}`}>
             {t("review.requestChanges")}
             {comments().length ? t("review.commentCount", { n: comments().length }) : ""}
           </Button>
@@ -569,7 +543,7 @@ export function Review(props: { id: string }) {
         <Show when={g()?.state === "in_review"}>
           {/* The button's weight follows the evidence: black only when the verifier's pass counts and no high sentinel
               stands against it; otherwise it is one choice among the others, and the sheet says why. */}
-          <Button variant={proven() ? "primary" : "default"} onClick={() => setPanel("accept")} kbd="mod+shift+enter">
+          <Button variant={proven() ? "primary" : "default"} onClick={() => setPanel("accept")} kbd="mod+shift+enter" title={`${t("review.accept")} ${keyHint("mod+shift+enter")}`}>
             {t("review.accept")}
           </Button>
         </Show>

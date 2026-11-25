@@ -57,7 +57,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   const c = () => color[toneOf(props.goal.state, verified())];
   const s = () => props.size ?? 10;
   // Verified, with caveats: the ring keeps a gap at its lower right (docs/12 §12.5.2's notch), the check still green.
-  const qualified = () => props.goal.state === "in_review" && verified() && caveats(props.goal).length > 0;
+  const qualified = () => (props.goal.state === "in_review" || props.goal.state === "accepted") && verified() && caveats(props.goal).length > 0;
   const svg = (children: JSX.Element) => (
     <svg
       class="glyph"
@@ -68,7 +68,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
       stroke={c()}
       stroke-width="1.25"
       role="img"
-      aria-label={qualified() ? t("honesty.qualified") : t(`state.${props.goal.state}`)}
+      aria-label={qualified() ? (props.goal.state === "accepted" ? `${t("state.accepted")}, ${t("honesty.qualified")}` : t("honesty.qualified")) : t(`state.${props.goal.state}`)}
     >
       {children}
     </svg>
@@ -138,11 +138,13 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
           </>,
         )}
       </Match>
-      {/* Accepted: sealed. Verified seals are solid; unverified ones stay hatched. */}
+      {/* Accepted: sealed. Verified seals are solid (cut at the lower right when accepted with caveats, ●*); unverified ones stay hatched. */}
       <Match when={props.goal.state === "accepted" && verified()}>
         {svg(
           <>
-            <circle cx="5" cy="5" r="4.25" fill={c()} stroke="none" />
+            <Show when={qualified()} fallback={<circle cx="5" cy="5" r="4.25" fill={c()} stroke="none" />}>
+              <path d="M9.25 5.15A4.25 4.25 0 1 0 5.15 9.25Z" fill={c()} stroke="none" />
+            </Show>
             {check("var(--bg-app)")}
           </>,
         )}
@@ -413,8 +415,12 @@ export function NotEvidenceMark() {
 }
 
 /** A seal's or stamp's tooltip: the verifier's run, its caveats, or why that pass doesn't count (the bar's words). */
-const sealTitle = (tampered: boolean | undefined, pin: string, why?: string[]) =>
-  tampered ? `@${pin} ${t("honesty.discountedTitle")}` : why?.length ? t("honesty.qualifiedTitle", { pin, why: caveatList(why) }) : t("honesty.sealTitle", { pin });
+const sealTitle = (tampered: boolean | undefined, pin: string, why?: string[], done?: boolean) =>
+  tampered
+    ? `@${pin} ${t("honesty.discountedTitle")}`
+    : why?.length
+      ? t(done ? "honesty.qualifiedDoneTitle" : "honesty.qualifiedTitle", { pin, why: caveatList(why) })
+      : t("honesty.sealTitle", { pin });
 
 /** The verified disc, whole, or with its lower right cut off when the pass carries caveats (docs/12 §12.5.2). */
 const Disc = (p: { cut?: boolean }) =>
@@ -430,13 +436,13 @@ const Disc = (p: { cut?: boolean }) =>
  * register's line, "said, not proven" — and the ◆ stands where the disc
  * would. `press` plays the impression once, as the sheet opens.
  */
-export function Stamp(props: { pin: string; tampered?: boolean; qualified?: string[]; press?: boolean; size?: "l" | "m" }) {
+export function Stamp(props: { pin: string; tampered?: boolean; qualified?: string[]; press?: boolean; size?: "l" | "m"; accepted?: boolean }) {
   const pin = () => props.pin.slice(0, 7);
   return (
     <span
       class={`stamp stamp-${props.size ?? "l"}`}
       classList={{ "stamp-tampered": !!props.tampered, "stamp-press": !!props.press }}
-      title={sealTitle(props.tampered, pin(), props.qualified)}
+      title={sealTitle(props.tampered, pin(), props.qualified, props.accepted)}
     >
       <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
       <span class="stamp-verdict">

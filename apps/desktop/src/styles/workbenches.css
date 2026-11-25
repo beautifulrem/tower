@@ -189,6 +189,7 @@
 }
 .ledger-claim-cell { font-size: var(--fs-meta); line-height: 18px; color: var(--text-2); min-width: 0; }
 .ledger-claim-cell.dim { color: var(--text-3); }
+.ledger-runs { display: block; }
 .ledger-link { text-align: center; color: var(--text-4); font-family: var(--font-mono); font-size: 11px; }
 .ledger-fact-cell {
   display: flex;
@@ -324,18 +325,42 @@
   font-weight: 500;
   box-shadow: inset 0 -1.5px 0 var(--text-1);
 }
-.timeline-compare { display: inline-flex; align-items: center; gap: 5px; }
-.timeline-select {
+.timeline-compare { display: inline-flex; align-items: center; gap: 4px; }
+/* A run picker is its face (the run, then its pin, then the caret) with the native select laid over it, unseen: the
+   select is what you press, type at and hear; the face sizes to the run it names, never to the longest option. */
+.timeline-pick { position: relative; display: inline-flex; }
+.timeline-pick-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   height: 22px;
-  padding: 0 6px;
+  padding: 0 4px 0 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
   background: var(--bg-raised);
   color: var(--text-1);
   font-family: var(--font-mono);
   font-size: 11px;
-  max-width: 150px;
+  white-space: nowrap;
 }
+.timeline-pick-face > .icon { color: var(--text-3); }
+.timeline-pick-pin { color: var(--text-2); }
+.timeline-pick:hover .timeline-pick-face { border-color: var(--border-strong); }
+.timeline-pick:has(.timeline-select:focus-visible) .timeline-pick-face {
+  outline: 1.5px solid var(--focus);
+  outline-offset: -1px;
+  border-color: var(--text-3);
+}
+.timeline-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font-size: 11px;
+}
+/* Short of room for the verdict, the pickers keep the runs' names and let their pins go whole. */
+.review-stats.short-picks .timeline-pick-pin { display: none; }
 
 .file {
   content-visibility: auto;

@@ -358,21 +358,48 @@ for (const lang of ["en", "zh-CN"] as const)
       expect([...new Set(out)]).toEqual([]);
     });
 
-// Review 8, R8-P3-04 (D96): comparing runs at the window's smallest widths put the run pickers on the header's line and
-// pushed the verdict off it. The verdict is what the header is for: it stays, whole, while comparing.
+// Review 8, R8-P3-04 (D96), and review 9, R9-P3-01: comparing runs at the window's smaller widths put the run pickers on
+// the header's line and pushed the verdict off it — at 1024–1096 and again just past the 1240 band. The verdict is what
+// the header is for: comparing, it stays whole on the line you see at every width, for a pass that counts (G-0003) and
+// for the longer verdict of one that doesn't (G-0001), while what gives way first is the pin pair, the counts, the gaps
+// and the pickers' pins — the runs' names stay.
 for (const lang of ["en", "zh-CN"] as const)
-  test(`comparing runs keeps the review header's verdict in view, whole, at the smallest widths (${lang})`, async ({ page }) => {
-    await openTower(page, "review/G-0003", { lang, enrich: enrichRich });
-    await settled(page, "review/G-0003");
-    await page.locator(".review-stats .scope-switch .tab").last().click();
-    await expect(page.locator(".review-stats .timeline-compare")).toBeVisible();
-    for (const w of [1024, 1040, 1100, 1240]) {
-      await page.setViewportSize({ width: w, height: 900 });
-      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-      const seal = page.locator(".review-stats .review-verify .seal");
-      await expect(seal, `at ${w}`).toBeVisible();
-      const [s, line] = await Promise.all([seal.boundingBox(), page.locator(".review-stats").boundingBox()]);
-      expect(s!.x + s!.width, `the verdict ends inside the line at ${w}`).toBeLessThanOrEqual(line!.x + line!.width + 0.5);
-      expect(s!.x, `at ${w}`).toBeGreaterThanOrEqual(line!.x - 0.5);
-    }
-  });
+  for (const id of ["G-0003", "G-0001"])
+    test(`comparing runs keeps the review header's verdict whole on its line at every width from 1024 to 1400 (${id}, ${lang})`, async ({ page }) => {
+      await openTower(page, `review/${id}`, { lang, enrich: enrichRich });
+      await settled(page, `review/${id}`);
+      await page.locator(".review-stats .scope-switch .tab").last().click();
+      await expect(page.locator(".review-stats .timeline-compare")).toBeVisible();
+      const lost: number[] = [];
+      for (let w = 1024; w <= 1400; w += 8) {
+        await page.setViewportSize({ width: w, height: 900 });
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        const whole = await page.evaluate(() => {
+          const seal = document.querySelector(".review-stats .review-verify .seal");
+          const group = document.querySelector(".review-stats .review-verify");
+          const line = document.querySelector(".review-stats")!;
+          if (!seal || !group) return false;
+          const [s, g, l] = [seal, group, line].map((e) => e.getBoundingClientRect());
+          // Whole, inside the group's clip and the line's, and on the line you see (not wrapped onto the hidden one).
+          return s.width > 0 && s.left >= l.left - 0.5 && s.right <= Math.min(g.right, l.right) + 0.5 && s.top >= g.top - 0.5 && s.bottom <= g.bottom + 0.5;
+        });
+        if (!whole) lost.push(w);
+      }
+      expect(lost, "widths where the verdict is not whole").toEqual([]);
+      // Each run is still named: the pickers keep the runs' names even when their pins go.
+      for (const face of await page.locator(".review-stats .timeline-pick-face").all()) expect((await face.innerText()).trim()).not.toBe("");
+    });
+
+// Review 9, R9-P3-02: the buttons' key caps go only when the verdict needs their room, never for want of a media query;
+// and where they go, the button's tooltip still says the shortcut.
+test("the review header keeps its buttons' key caps while the verdict has room, and their tooltips always say them", async ({ page }) => {
+  await openTower(page, "review/G-0003", { enrich: enrichRich });
+  await settled(page, "review/G-0003");
+  for (const w of [1024, 1100, 1240]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await expect(page.locator(".review-head > .btn .kbd").first(), `at ${w}`).toBeVisible();
+  }
+  await expect(page.locator(".review-head > .btn", { hasText: "Request changes" })).toHaveAttribute("title", /Request changes C$/);
+  await expect(page.locator(".review-head > .btn", { hasText: "Accept" })).toHaveAttribute("title", /Accept ⌘⇧↩$/);
+});

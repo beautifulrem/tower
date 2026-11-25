@@ -322,7 +322,10 @@ export const zhLater = {
     network: "允许联网",
     networkHint: "关闭时，不能访问本机以外；本机上也只能访问下面的端口，以及 Agent 或验收检查自己的进程在监听的端口。准备命令始终可以联网。",
     ports: "本机端口",
+    portsShort: "端口",
     loopbackOpen: "放开本机回环",
+    loopbackShort: "本机回环已放开",
+    escalatesTo: "升级到",
     loopbackOpenHint:
       "适合在运行时自己挑端口的测试（监听 0 号端口的服务器、构建守护进程）：本机上除已在监听的服务外都可以访问；之后才启动的服务也会变得可以访问。",
     engine: "引擎",

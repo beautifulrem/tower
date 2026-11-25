@@ -329,7 +329,10 @@ export const enLater: DictLater = {
     networkHint:
       "Off: nothing beyond this Mac, and on this Mac only the ports below and what the agent's or the checks' own processes listen on. Setup commands always have the network.",
     ports: "Ports on this machine",
+    portsShort: "Ports",
     loopbackOpen: "Open loopback",
+    loopbackShort: "Loopback open",
+    escalatesTo: "Escalates to",
     loopbackOpenHint:
       "For tests that pick their ports at run time (servers on port 0, a build daemon): everything on this Mac except what was already listening. A service started later becomes reachable to them.",
     engine: "Engine",

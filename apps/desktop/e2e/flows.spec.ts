@@ -296,6 +296,34 @@ test("the board's identity says the engine in words, leaves the only project uns
   }
 });
 
+// Review 9, R9-P3-06: with the id moved beside the title, the identity column held only "◇ G-0003" on G-0001's row —
+// another goal's id where this row's own used to stand. The overlap is said in words, after the row's own id; below
+// 1241 it leaves with the identity column, and the title's tooltip keeps it.
+for (const [lang, words] of [
+  ["en", "Overlaps G-0003"],
+  ["zh-CN", "与 G-0003 改动重叠"],
+] as const)
+  test(`a goal row says an overlap in words beside its own id, never as a bare other id (${lang})`, async ({ page }) => {
+    await openTower(page, "overview", { lang });
+    await settled(page, "overview");
+    const row = page.locator('.board-rows .g-row[data-goal="G-0001"]');
+    for (const width of [1241, 1440, 1800]) {
+      await page.setViewportSize({ width, height: 900 });
+      const overlap = row.locator(".g-title-cell .g-overlap");
+      await expect(overlap, `at ${width}`).toBeVisible();
+      await expect(overlap).toHaveText(words);
+      expect(await overlap.evaluate((e) => e.getClientRects().length), `whole at ${width}`).toBe(1);
+      const [cell, o, id] = await Promise.all([row.locator(".g-title-cell"), overlap, row.locator(".g-goal-id")].map((l) => l.boundingBox()));
+      expect(o!.x, `after the row's own id at ${width}`).toBeGreaterThanOrEqual(id!.x + id!.width);
+      expect(o!.x + o!.width, `inside the title cell at ${width}`).toBeLessThanOrEqual(cell!.x + cell!.width + 0.5);
+      // The identity column names no other goal.
+      await expect(row.locator(".g-id")).not.toContainText("G-0003");
+    }
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await expect(row.locator(".g-overlap")).toBeHidden();
+    await expect(row.locator(".g-title")).toHaveAttribute("title", new RegExp(words));
+  });
+
 test("the board writes one age format, decisions and goals alike", async ({ page }) => {
   await openTower(page, "overview", {
     enrich: (F) => {

@@ -62,6 +62,18 @@ export function IconButton(
  * alias ("n / mod+n") puts a slash between its caps, so two caps never
  * mean "either" and "both" with the same picture.
  */
+/**
+ * Sizes a field's padding to its unit (`--unit-w`), so a value never runs under "rounds", "分钟" or "$" in any language:
+ * the unit is measured, not guessed per string.
+ */
+export function fitUnit(wrap: HTMLElement) {
+  const unit = wrap.querySelector<HTMLElement>(".field-unit");
+  if (!unit) return;
+  const ro = new ResizeObserver(() => wrap.style.setProperty("--unit-w", `${Math.ceil(unit.getBoundingClientRect().width)}px`));
+  ro.observe(unit);
+  onCleanup(() => ro.disconnect());
+}
+
 export function Kbd(props: { k: string }) {
   const parts = () => props.k.split(" ");
   return (
@@ -116,9 +128,9 @@ export function Field(props: {
     <label class={`field ${props.class ?? ""}`}>
       <span class="field-label">{props.label}</span>
       <Show when={props.unit} fallback={props.children}>
-        <span class="unit-wrap" classList={{ "unit-left": !!props.unitLeft }}>
+        <span class="unit-wrap" classList={{ "unit-left": !!props.unitLeft }} ref={fitUnit}>
           {props.children}
-          <span class="unit">{props.unit}</span>
+          <span class="field-unit">{props.unit}</span>
         </span>
       </Show>
       <Show when={props.error}>

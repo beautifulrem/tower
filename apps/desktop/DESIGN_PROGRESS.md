@@ -222,3 +222,10 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   247 / 167 / 109 ms; switches 30–82 ms against 15–46 ms); line limit; bundle all JS 161,693 / 163,840 B, start-up
   55,478 / 65,536 B, goal page 11,596 / 12,288 B; doc numbers; detector: 0 anti-patterns, 2 advisories on older
   lines. No Rust changed. Not yet independently re-reviewed.
+- 2026-11-25 Independent review of `2f1d0c5` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
+  **PASS 8.38 / 10**, no P0, P1 or P2. Iteration 11's fixes confirmed (R10-P3-04 for one finding); the new tests fail
+  on `deef352` for the right reasons. Four P3s, recorded as D113–D116, open: the overlap note's hover room hides its
+  words where the row fits them (from iteration 11), a neutral caveat pill beside a held pass, picker names lost on a
+  refresh or scope switch, and older hard cuts in the live and identity columns
+  (`design-evidence/reports/review11.md`). Its e2e run was 369/5 by the plain command (fonts 403 through the
+  symlinked node_modules) and 374/0 with fonts served. Reviewer worktree removed.

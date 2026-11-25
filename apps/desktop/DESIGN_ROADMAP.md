@@ -92,6 +92,10 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T79 Provenance told by form | D110 | P3 | runs note 11 px and worded as a note ("said in runs 1 and 2") | `honesty.spec.ts` wording, grey and size; fails on `deef352` | Done (iteration 11) |
 | T80 One tone, one wording per caveat | D111 | P3 | a caveat is a neutral pill in the seal's words; a high finding is named for what was done; others amber in their own words | `GoalDeck.test.tsx` six sentinels' words and tone; five fail on `deef352` | Done (iteration 11) |
 | T81 Run names in the interface language | D112 | P3 | the frontend words each point from its kind, run and time, then its pin; the supervisor's label only for an unknown kind | `review-scope.spec.ts` en/zh option names; fails on `deef352` | Done (iteration 11) |
+| T82 The overlap words where the row fits them | D113 | P3 | decide on the row at rest (the peek button may cover the note's end, or leave the cell); ◇ with the other id when short; one title floor either side of 1561; docs/12 says the rule | `flows.spec.ts` words shown when the title and words fit: G-0003 at 1728, zh G-0001 at 1440 | Open |
+| T83 No caveat beside a held pass | D114 | P3 | each family's most severe finding; no neutral caveat pill on a row whose pass is held | `GoalDeck.test.tsx` the two mixed cases | Open |
+| T84 The picker keeps its point | D115 | P3 | key without `at`; the picked point in Review's state; an end that leaves the list moves or is named | e2e refresh, scope switch, new pin | Open |
+| T85 No hard cuts on the board | D116 | P3 | the live column's seal and the identity column give way by measuring | e2e at 1241 and 1800, crowded fixture | Open |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

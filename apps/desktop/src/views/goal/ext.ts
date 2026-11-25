@@ -3,6 +3,7 @@
  * attachment helpers, and compact bilingual labels for the Command Deck,
  * Review Theater, and Contract Studio.
  */
+import { heldOrTampered } from "../../lib/discounted";
 import { t } from "../../lib/i18n";
 import { engineTrustTier } from "../../lib/labels";
 import type { Contract } from "../../gen/Contract";
@@ -142,24 +143,29 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [s
   if (cur.criterion.kind.type !== "exec" || !ver) return [];
   const out: [string, string, string?, 1?][] = [];
   const okC = cur.canary !== "tampered";
+  // A pass a high finding holds (or a tampered canary undoes) is counted with no caveats, as the supervisor counts it
+  // (summaries.rs `progress()`): what would have been one is a finding to look at first, never the neutral caveat pill.
+  const held = heldOrTampered(cur, sents);
+  const cav = held ? "attn" : "obs";
   if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", t("goal.evRedGreen"), undefined, 1]);
   if (cur.passes_with_source_only === true && okC) out.push(["fact", t("goal.evSourceOnly")]);
   else if (cur.passes_with_source_only === false) out.push(["attn", t("goal.dependsOnEditedTests"), undefined, 1]);
   if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk"), undefined, 1]);
   else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered"), undefined, 1]);
-  else if (cur.canary === "not_checked") out.push(["obs", t("honesty.cavAsserts"), undefined, 1]);
+  else if (cur.canary === "not_checked") out.push([cav, t("honesty.cavAsserts"), undefined, 1]);
   const forCur = (h: SentinelHit) => !h.detail || h.detail.includes(cur.criterion.id) || !/\bC\d+\b/.test(h.detail);
-  // The assertions' guard and the test machinery, each said once; "assertions untouched" only when neither finding stands,
-  // so the row never says it beside the caveat "code reaches into the test runner".
-  const gh = sents.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
-  const mh = sents.find((h) => MACHINERY_RE.test(h.sentinel) && forCur(h));
+  // The assertions' guard and the test machinery, each said once, by its weightiest finding; "assertions untouched" only
+  // when neither finding stands, so the row never says it beside the caveat "code reaches into the test runner".
+  const weightiest = [...sents].sort((a, b) => b.severity - a.severity);
+  const gh = weightiest.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
+  const mh = weightiest.find((h) => MACHINERY_RE.test(h.sentinel) && forCur(h));
   for (const h of [gh, mh])
     if (h) {
       // A finding the supervisor counts the pass with is a caveat: in the seal's words and the strip's neutral tone
       // (docs/12 §12.5.2), whichever finding raised it. A high one holds the pass, named for what was done; any other
       // finding is one to look at first.
       const machinery = MACHINERY_RE.test(h.sentinel);
-      const caveat = h.severity < 3 && (machinery || UNCHECKED_RE.test(h.sentinel));
+      const caveat = !held && h.severity < 3 && (machinery || UNCHECKED_RE.test(h.sentinel));
       const words = caveat
         ? t(machinery ? "honesty.cavMachinery" : "honesty.cavAsserts")
         : machinery
@@ -172,9 +178,9 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [s
   if (!gh && !mh && ver.passed && cur.canary === "intact") out.push(["fact", t("goal.evGuardOk")]);
   const ho = ver.held_out_proof;
   if (ho?.not_ran.length) out.push(["attn", t("goal.heldOutSome", { m: ho.ran.length, n: ho.ran.length + ho.not_ran.length }), undefined, 1]);
-  if (ver.flaky) out.push(["obs", t("honesty.cavFlaky")]);
+  if (ver.flaky) out.push([cav, t("honesty.cavFlaky")]);
   if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? t("goal.evLoopbackBase") : t("goal.evLoopbackProject"), undefined, 1]);
-  const bh = sents.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
+  const bh = weightiest.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
   if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? t("goal.evBypass") : bh.sentinel.includes("perturb") ? t("goal.evPerturb") : t("goal.evTestExpectation"), bh.detail || bh.title]);
   const errs = ver.console_errors ?? cur.look?.console_errors ?? [];
   if (errs.length) out.push(["danger", t("look.consoleErrors", { n: errs.length }), errs.join("\n")]);

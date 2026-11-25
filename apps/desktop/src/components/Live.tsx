@@ -15,6 +15,7 @@ import { ago, duration } from "../lib/format";
 import { t } from "../lib/i18n";
 import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
 import { heartbeatState, isEngineTool, modeLabel, modeNeedsYou, pauseLabel, stateLabel, statusWord, toolLabel } from "../lib/labels";
+import { refit } from "../lib/refit";
 import { livenessOf, state } from "../lib/store";
 import { NeedsYouMark, Seal } from "./Glyph";
 
@@ -127,13 +128,29 @@ export function liveDetail(g: GoalSummary): LiveDetail {
   }
 }
 
+/**
+ * A seal in a narrow cell gives way by measure, never cut: its word first (the badge beside it says the verdict), then
+ * the whole seal, as green never stands without the pin it was measured on. What is set aside stays for a screen reader.
+ */
+const fitSeal = (detail: HTMLElement) =>
+  refit(detail, () => {
+    const seal = detail.querySelector<HTMLElement>(".seal");
+    if (!seal) return;
+    const word = seal.querySelector<HTMLElement>(".seal-word");
+    for (const step of [0, 1, 2]) {
+      word?.classList.toggle("sr-only", step > 0);
+      seal.classList.toggle("sr-only", step > 1);
+      if (detail.scrollWidth <= detail.clientWidth + 0.5) break;
+    }
+  });
+
 export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget?: boolean }) {
   const d = () => liveDetail(props.goal);
   return (
     <div class="live-line halt" classList={{ "live-line-large": !!props.large }}>
       <ModeBadge goal={props.goal} />
       {/* The tooltip carries the whole line, for the narrow window where only the verb stays on screen. */}
-      <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(", ") || undefined}>
+      <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(", ") || undefined} ref={fitSeal}>
         <Show
           when={d().seal}
           fallback={

@@ -394,6 +394,7 @@ export const enLater: DictLater = {
     snapReviewed: "Last review",
     snapVerified: "Verification",
     snapLatest: "Latest",
+    snapGone: "No longer listed",
     accept: "Accept",
     loading: "Computing the changes and review units…",
     loadFailed: "Could not load changes",

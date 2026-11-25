@@ -274,6 +274,8 @@ describe("ChangesPanel steering dispatch & Review extras", () => {
         fromRev="base000"
         toRev="pin9999"
         onCompare={(f, to) => compares.push([f, to])}
+        picks={[null, null]}
+        onPicks={() => {}}
       />
     ));
     expect(screen.getByRole("tab", { name: "All changes" })).toBeTruthy();
@@ -282,5 +284,28 @@ describe("ChangesPanel steering dispatch & Review extras", () => {
     expect(screen.getByRole("tab", { name: "Compare runs…" })).toBeTruthy();
     screen.getByRole("tab", { name: "Last turn" }).click();
     expect(scopes).toEqual(["last_turn"]);
+  });
+
+  // Review 11, R11-P3-03: an end no point stands at any more left the face blank over a select that fell back to Base.
+  it("names a range end no point stands at any more, as the face, the select and its tooltip alike", async () => {
+    const { TimelineSwitcher, keyed } = await import("../Timeline");
+    const snapshots = [
+      { rev: "base000aaaa", kind: "base", label: "", run_no: null, at: null },
+      { rev: "run1111aaaa", kind: "run_start", label: "", run_no: 1, at: 100 },
+      { rev: "pin9999aaaa", kind: "pin", label: "", run_no: null, at: null },
+    ];
+    render(() => (
+      <TimelineSwitcher scope="compare" onScope={() => {}} previous={null} pin="pin9999aaaa" snapshots={snapshots} fromRev="base000aaaa" toRev="old7777aaaa" onCompare={() => {}} picks={[null, null]} onPicks={() => {}} />
+    ));
+    const to = screen.getByRole("combobox", { name: "Compare to" }) as HTMLSelectElement;
+    expect(to.value).toBe("gone:old7777aaaa");
+    expect(to.selectedOptions[0].textContent).toBe("No longer listed @old7777");
+    const pick = to.closest(".timeline-pick")!;
+    expect(pick.getAttribute("title")).toBe("No longer listed @old7777");
+    expect(pick.querySelector(".timeline-pick-face")!.textContent).toBe("No longer listed@old7777");
+    expect((screen.getByRole("combobox", { name: "Compare from" }) as HTMLSelectElement).value).toBe(keyed(snapshots)[0].key);
+    // Keys say what and where a point is, not when: a fresh verification of the same pin keeps the point you picked.
+    expect(keyed([{ ...snapshots[2], kind: "verified", at: 1 }])[0].key).toBe(keyed([{ ...snapshots[2], kind: "verified", at: 2 }])[0].key);
+    expect(new Set(keyed([snapshots[1], { ...snapshots[1] }]).map((p) => p.key)).size).toBe(2);
   });
 });

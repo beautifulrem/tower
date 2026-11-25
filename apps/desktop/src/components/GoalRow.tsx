@@ -5,7 +5,7 @@
  * board, and one goal reads the same way, just shorter. The last reading,
  * the id, ends on the board's right edge, where its hairlines end.
  */
-import { onCleanup, Show } from "solid-js";
+import { createSignal, onCleanup, Show } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { GoalSummaryExt } from "../lib/apiTypes";
@@ -13,6 +13,7 @@ import { ago, count, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { effectiveEngine, engineLabel, statusWord } from "../lib/labels";
 import { go } from "../lib/nav";
+import { refit } from "../lib/refit";
 import { state } from "../lib/store";
 import { Icon, LifecycleGlyph, NoticeMark } from "./Glyph";
 import { CriteriaBar } from "./HonestyCore";
@@ -35,28 +36,52 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   const showProject = () => state.projects.length > 1;
   // Arrived in the last few seconds: one short settle, so the eye finds it.
   const fresh = Date.now() - props.goal.created_at < 5000;
-  // Identity with more than the id and one name in it: the engine's name leaves first in a narrower window (whole, never clipped).
-  const crowded = () => otherEngine() && (showProject() || g().rework_cycles > 0 || !!g().pr || !!state.settings?.muted_goals.includes(g().id));
+  // The identity gives way by measure, a step at a time, and is never cut: the engine's name leaves first, while the
+  // readings would not fit beside it or it would shorten the project's name; then the PR keeps only what it needs you for
+  // (a failing check; its state once merged or closed); then the project's name leaves; last, the word that you muted the
+  // goal (your own setting, not news). What leaves is whole or gone, and lives on in the title's tooltip.
+  const [crowd, setCrowd] = createSignal<"" | "engine" | "readings" | "project" | "quiet">("");
+  const fitId = (box: HTMLElement) =>
+    refit(box, () => {
+      const over = () => box.scrollWidth > box.clientWidth + 0.5;
+      const shortened = () => {
+        const p = box.querySelector<HTMLElement>(".g-project");
+        return !!p && !!box.querySelector(".g-engine") && p.scrollWidth > p.clientWidth + 0.5;
+      };
+      for (const step of ["", "engine", "readings", "project", "quiet"] as const) {
+        setCrowd(step);
+        if (!over() && !(step === "" && shortened())) break;
+      }
+    });
   // Another goal changing the same files, in words: "Overlaps G-0003" beside this row's own id, never a bare id that reads as it.
-  const overlapsWith = (id: string) => t("goal.overlaps", { id: "\u0001" }).split("\u0001").flatMap((part, i) => (i ? [<span class="code-val">{id}</span>, part] : [part]));
+  // The words around the id are their own spans, so a short row can keep "◇ G-0003" and set the words aside.
+  const say = (part: string) => (part ? <span class="g-overlap-say">{part}</span> : null);
+  const overlapsWith = (id: string) => t("goal.overlaps", { id: "\u0001" }).split("\u0001").flatMap((part, i) => (i ? [<span class="code-val">{id}</span>, say(part)] : [say(part)]));
   const overlapTitle = () => (g().overlaps ?? []).map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n");
-  const titleTip = () => [g().title, otherEngine() ? engineLabel(engine()!) : "", overlapTitle()].filter(Boolean).join("\n");
-  // The note gives way before the title does: when the title would show less than it needs (all of a short one, 12em of a
-  // longer one), the note keeps its ◇ alone, and its words stay in the tooltip and for a screen reader.
+  const muted = () => !!state.settings?.muted_goals.includes(g().id);
+  const titleTip = () =>
+    [g().title, otherEngine() ? engineLabel(engine()!) : "", showProject() ? g().project_name : "", muted() ? t("quiet.muted") : "", overlapTitle()].filter(Boolean).join("\n");
+  // The note gives way before the title does, a step at a time: "◇ Overlaps G-0003", then "◇ G-0003", then the ◇ alone,
+  // while the title would show less than it needs (all of a short one, 12em of a longer one). Whatever is set aside stays
+  // in the tooltip and for a screen reader.
   const fitOverlap = (note: HTMLElement) => {
     const fit = () => {
       const cell = note.parentElement;
       const title = cell?.querySelector<HTMLElement>(".g-title .ellipsis");
       const words = note.querySelector<HTMLElement>(".g-overlap-words");
-      if (!title || !words) return;
-      words.classList.remove("sr-only");
+      if (!cell || !title || !words) return;
+      const said = [...words.querySelectorAll<HTMLElement>(".g-overlap-say")];
       const need = Math.min(title.scrollWidth, 12 * (parseFloat(getComputedStyle(title).fontSize) || 13));
-      // Decided as if the peek button were shown (it comes with the pointer and the selection), so moving over the rows
-      // never turns the words into the ◇ and back; the button takes the cell's free room first, then the title's.
-      const peek = cell!.querySelector<HTMLElement>(".g-peek-btn");
-      const reserve = peek && getComputedStyle(peek).display === "none" ? parseFloat(getComputedStyle(peek).width) + parseFloat(getComputedStyle(cell!).columnGap) || 0 : 0;
-      const free = cell!.getBoundingClientRect().right - note.getBoundingClientRect().right;
-      words.classList.toggle("sr-only", title.clientWidth - Math.max(0, reserve - free) < need - 0.5);
+      // Decided on the row at rest: the peek button comes with the pointer and the selection and may take the title's room
+      // while it shows, so that room is counted back, and moving over the rows never changes the note.
+      const peek = cell.querySelector<HTMLElement>(".g-peek-btn");
+      const peekRoom = peek && peek.offsetWidth ? peek.offsetWidth + (parseFloat(getComputedStyle(cell).columnGap) || 0) : 0;
+      const atRest = () => (title.clientWidth < title.scrollWidth - 0.5 ? Math.min(title.scrollWidth, title.clientWidth + peekRoom) : title.clientWidth);
+      for (const step of [0, 1, 2]) {
+        for (const s of said) s.classList.toggle("sr-only", step === 1);
+        words.classList.toggle("sr-only", step === 2);
+        if (atRest() >= need - 0.5) break;
+      }
     };
     // The cell for the window's width, the title for its own (a rename, a font), the cell's text for the language. Set up
     // once the note is in its cell.
@@ -79,7 +104,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
       classList={{ selected: !!props.selected, "has-act": g().state === "in_review" }}
       data-goal={g().id}
       data-new={fresh ? "true" : undefined}
-      data-crowded={crowded() ? "true" : undefined}
+      data-crowded={crowd() || undefined}
       onClick={open}
     >
       <span class="g-glyph">
@@ -167,7 +192,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
       <span class="g-age num meta halt">{age()}</span>
       {/* Identity, set flush right: the optional readings, then the engine and the project by name. Grouped by space and
           weight, never by a dot. */}
-      <span class="g-id meta halt">
+      <span class="g-id meta halt" ref={fitId}>
         <Show when={g().pr}>
           {(pr) => (
             <span onClick={(e) => e.stopPropagation()}>
@@ -175,8 +200,8 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
             </span>
           )}
         </Show>
-        <Show when={state.settings?.muted_goals.includes(g().id)}>
-          <span class="t3">{t("quiet.muted")}</span>
+        <Show when={muted()}>
+          <span class="t3 g-muted">{t("quiet.muted")}</span>
         </Show>
         <Show when={g().rework_cycles > 0}>
           <span class="t3 num row" style={{ gap: "3px" }} title={t("card.rework", { n: g().rework_cycles, max: g().max_rework })}>

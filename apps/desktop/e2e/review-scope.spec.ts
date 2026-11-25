@@ -82,3 +82,70 @@ for (const [lang, names] of [
     for (const p of [from2, to2]) expect(p.face).toBe(p.chosen);
     await expect(page.getByRole("combobox", { name: lang === "en" ? "Compare to" : "比较终点" })).toHaveValue(to2.keys[3]);
   });
+
+// Review 11, R11-P3-03: a picked name was lost when the same pin's verification was read again (its time was part of the
+// point's key) and when another scope took the pickers away; and an end no point stood at any more, after a new pin, left
+// the face blank over a select that fell back to Base. The review keeps the points you picked, keyed by what and where
+// they are; an end that left the list is named so, as the select's chosen option.
+test("the run pickers keep the points you picked across a refresh and another scope, and name an end that left the list", async ({ page }) => {
+  await openTower(page, "review/G-0003");
+  await settled(page, "review/G-0003");
+  const tabs = page.locator(".review-stats .scope-switch .tab");
+  await tabs.last().click();
+  const picks = page.locator(".review-stats .timeline-pick");
+  await expect(picks).toHaveCount(2);
+  const read = (i: number) =>
+    picks.nth(i).evaluate((p) => {
+      const sel = p.querySelector("select")!;
+      const face = p.querySelector(".timeline-pick-face") as HTMLElement;
+      return {
+        chosen: sel.selectedOptions[0]?.textContent ?? "",
+        face: [...face.querySelectorAll(":scope > span")].map((x) => x.textContent).join(" "),
+        title: p.getAttribute("title"),
+        value: sel.value,
+        options: [...sel.options].map((o) => o.textContent ?? ""),
+      };
+    });
+  const both = async () => {
+    const r = [await read(0), await read(1)];
+    for (const p of r) {
+      expect(p.face, "the face says what the select holds").toBe(p.chosen);
+      expect(p.title).toBe(p.chosen);
+    }
+    return r.map((p) => p.chosen);
+  };
+  const { options } = await read(0);
+  const run2 = options.find((o) => o.startsWith("Run 2 start @"))!;
+  const verification = options.find((o) => o.startsWith("Verification @"))!;
+  await page.getByRole("combobox", { name: "Compare from" }).selectOption({ label: run2 });
+  await page.getByRole("combobox", { name: "Compare to" }).selectOption({ label: verification });
+  expect(await both()).toEqual([run2, verification]);
+  const reads = () => page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "compare_snapshots").length);
+  const pinned = async (change: string) => {
+    const before = await reads();
+    await page.evaluate((change) => {
+      const snaps = (window as any).__towerFixtures["review-G-0003"].snapshots as { kind: string; rev: string; at: number | null }[];
+      for (const s of snaps)
+        if (change === "verified again" && s.kind === "verified") s.at = (s.at ?? 0) + 60_000;
+        else if (change === "new pin" && (s.kind === "verified" || s.kind === "pin")) s.rev = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+      (window as any).__towerEmit("tower://update", { type: "traces", entries: [{ seq: 1, goal_id: "G-0003", at: Date.now(), source: "tower", event: { kind: "pinned", pin: "x", files: 1, additions: 1, deletions: 1 } }] });
+    }, change);
+    await expect.poll(reads).toBeGreaterThan(before);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  };
+  // The same pin verified again: its time moved, the point you picked did not.
+  await pinned("verified again");
+  expect(await both()).toEqual([run2, verification]);
+  // Another scope and back.
+  await tabs.first().click();
+  await expect(picks).toHaveCount(0);
+  await tabs.last().click();
+  await expect(picks).toHaveCount(2);
+  expect(await both()).toEqual([run2, verification]);
+  // A new pin moves every point off the range's end: the end is still where the range ends, and it says so.
+  await pinned("new pin");
+  const [from, to] = await both();
+  expect(from).toBe(run2);
+  expect(to).toBe(`No longer listed @${verification.slice(-7)}`);
+  await expect(page.getByRole("combobox", { name: "Compare to" })).toHaveValue(/^gone:15085f2/);
+});

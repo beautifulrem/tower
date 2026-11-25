@@ -1,6 +1,6 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, seventeen local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, eighteen local commits, nothing pushed, merged or deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -187,30 +187,32 @@ test now checks. It confirmed the new tests fail on `deef352` for the right reas
 the peek button's room even when the button is hidden, so the words go where the row fits them (D113, from iteration
 11); a neutral caveat pill can stand beside a pass a high finding holds (D114); a picked run name is lost on a refresh
 or a scope switch, and an end that leaves the list is blank (D115); the live and identity columns cut words without an
-ellipsis (D116, older). All open. The last acceptance stands on `2f1d0c5`.
+ellipsis (D116, older). The last acceptance stands on `2f1d0c5`.
+
+Iteration 12 fixes all four, each with a test that fails on `4ea4567` (review 11's commit; its code is `2f1d0c5`'s). Not yet independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 11):
+At the final commit (iteration 12):
 
-- **Type check and unit tests:** tsc clean; vitest 43 files, 236 tests.
-- **e2e:** Playwright WebKit 374 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+- **Type check and unit tests:** tsc clean; vitest 43 files, 239 tests.
+- **e2e:** Playwright WebKit 377 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
   supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs five "Importing a
-  module script failed" lines (four in iteration 10): pages left by a test while a view was still loading; no test
+  module script failed" lines (also five in iteration 11, four in iteration 10): pages left by a test while a view was still loading; no test
   fails and the new tests emit none.
-- **Shots:** 69/69 (`/tmp/tower-design/iter11/shots`).
+- **Shots:** 69/69 (`/tmp/tower-design/iter12/allshots`).
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 161,693 / 163,840 B (2,147 B left), start-up 55,478 / 65,536 B, goal page
-  11,596 / 12,288 B. The budget was never raised.
-- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 664 / 282 / 198 ms against
-  247 / 167 / 109 ms for the seeded board, inside its 750 ms margin; view switches with 50 goals take 30–82 ms against
-  15–46 ms, inside 150 ms.
-- **Rust (iteration 9; iterations 10 and 11 changed no Rust):** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
+- **Bundle:** all interface JS 162,269 / 163,840 B (1,571 B left), start-up 55,749 / 65,536 B, goal page
+  11,597 / 12,288 B. The budget was never raised.
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 713 / 303 / 198 ms against
+  239 / 184 / 123 ms for the seeded board, inside its 750 ms margin (every row now measures its identity column);
+  view switches with 50 goals take 30–110 ms against 16–61 ms, their medians inside 150 ms.
+- **Rust (iteration 9; iterations 10–12 changed no Rust):** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
   e2e suite and the shots ran beside it, `evidence::a_criterion_whose_base_did_not_run_keeps_its_canary` failed its
   canary assertion; it passed alone, three times more, and in the full rerun. It drives a real sandboxed `node --test`
   and this work does not touch the verifier or the canary: recorded as load-sensitive, not hidden or retried away.
 - **Detector:** no new finding; the 3 `side-tab` findings are the review pen on hunk headers, kept since the baseline
-  (`app.css`, not changed in iteration 11); the DESIGN.md advisories on the changed stylesheets are all on lines older
+  (`app.css`, lines not touched since); the DESIGN.md advisories on the changed stylesheets are all on lines older
   than this iteration.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion.
@@ -221,7 +223,7 @@ user's `~/.tower`, no model called. Looked at through the accessibility tree, in
 row "runs 1, 2" (D91), the folded engine clause (D92), titles with their ids on the board (D23), a schedule "Weekdays
 02:00" before its cron (D20, the schedule added to the scratch database, disabled), and the native unsaved-contract
 sheet. Screenshots: `design-evidence/packaged-app/`. Not reached there: a pass with caveats (the demo has none) and a
-1040 px window (D58, D96); their evidence is the WebKit tests. Iteration 10's and 11's fixes were not looked at in the packaged
+1040 px window (D58, D96); their evidence is the WebKit tests. Iterations 10–12's fixes were not looked at in the packaged
 app. Typing into the WebView in the background does not
 reach its fields — keys went to the app's shortcuts once (a stray draft, discarded through the app's own sheet).
 
@@ -230,7 +232,8 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 `bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
 (review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run), the iteration-9 commit `7a23f45` (the owner's
 remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`), the
-iteration-11 commit `2f1d0c5` (review 10's findings) and the commit recording review 11. All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+iteration-11 commit `2f1d0c5` (review 10's findings), the commit recording review 11 (`4ea4567`) and the iteration-12
+commit (review 11's findings). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
@@ -238,15 +241,18 @@ Iteration 9 fixed the owner's remaining list: D84 (bundle), D91, D92, D96, D51/D
 D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. Iteration 10 fixed
 review 9's findings (D98–D106), each with a test that fails on `7a23f45`; review 10 passed it. Iteration 11 fixed
 review 10's (D107–D112) and its empty settings test, each with a test that fails on `deef352`; review 11 passed it.
+Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `4ea4567`; not yet re-reviewed.
 What is left:
 
-- **Review 11's findings are open (D113–D116), all P3.** The overlap note's words go where the row fits them, because
-  the fit keeps the hidden peek button's room (from iteration 11); a neutral caveat pill can stand beside a held pass;
-  a picked run name is lost on a refresh or a scope switch, and an end that leaves the list is blank; the live and
-  identity columns cut words without an ellipsis (older; 7–23 px narrower at 1241–1277 since the 16em title floor).
+- **Three more columns give way by measuring** since iteration 12 (`lib/refit.ts`): the overlap note (three steps),
+  the live seal (its word, then the whole seal) and the identity (the engine's name, the PR's quieter readings, the
+  project's name, the word "muted"). Each runs again on its box, its text and the fonts; the board of 50 still paints
+  inside its margin. A row with a failing PR, a mute and rework needs the last step at 1241 (17 px short before it);
+  past it, readings longer than any the fixtures hold would run off the identity's end rather than cut its first one.
 - **The overlap note gives way by measuring** each overlapping row (a ResizeObserver on the title cell and the title, a
-  MutationObserver for its text), with the room of the row's peek button kept so hovering never changes it. Measured at 1241/1280/1366/1440/1560/1800 for a short and a long title in both
-  languages; at 1241 a long title has about 12em with the note at its ◇, the column itself allowing no more.
+  MutationObserver for its text), decided on the row at rest, so hovering or selecting never changes it. Measured at ten
+  widths 1241–1800 for both rows of the pair, a short and a long title, in both languages; at 1241 a long title has
+  about 12em with the note at its ◇, the column itself allowing no more.
 - **Run names are worded by the frontend.** The supervisor still writes English labels (`edits.rs`, `timeline.rs`);
   the interface no longer shows them except for a snapshot kind it does not know. The verifier's point is named
   "Verification", not "Verified", so a pass that does not count is never called verified in the picker.
@@ -254,8 +260,8 @@ What is left:
   by width band. The sweep test covers 1024–1400 for both fixture goals in both languages; a verdict longer than any
   the fixtures hold would still give way last, but only those widths and verdicts were measured.
 - **Below 1241 px the board's overlap notice is in the title's tooltip only**, as the identity column it replaced was;
-  above it the note's words stay while the title has its room, and the ◇ alone (words in its tooltip and for a screen
-  reader) when it has not — and, until D113, also where only the hidden peek button's room is short.
+  above it the note says as much as leaves the title its room: its words, the other goal's id, or the ◇ alone (what it
+  sets aside stays in its tooltip and for a screen reader).
 
 - **D58 covers three caveats.** "Verified, with caveats" is computed for test machinery reached into, assertions not
   checked and a flaky pass; docs/07's other qualifiers (S0, a Node version unlike the profile, an unsupported ecosystem,

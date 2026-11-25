@@ -4373,17 +4373,24 @@ input[type="radio"] {
 }
 /* Identity: words grouped by space and weight — the readings, the engine and the project by name in text-3 — flush right,
    so the last word on every line ends on the board's edge (the id is read with the title, beside it). Nothing in it is
-   squeezed by the browser's own proportions: the project name may shorten but stays legible (3.5em); the engine's name is whole or
-   gone — on a crowded row (a second project, rework, a mute, a PR) it leaves first, below 1560, and lives on
-   in the title's tooltip. */
+   squeezed by the browser's own proportions or cut: measured (GoalRow `fitId`), the engine's name leaves first, whole,
+   before the project's name would shorten; then the PR keeps what it needs you for (a failing check, a state other than
+   open); then the project's name, which may shorten but stays legible (3.5em), leaves whole; last, the word "muted".
+   What leaves lives on in the title's tooltip. The leading pseudo-element takes the free room, so anything left
+   over would run off the end rather than cut the first reading. */
 .g-id {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--sp-2);
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
+}
+.g-id::before {
+  content: "";
+  margin-left: auto;
+  /* Not a reading: the gap after it is given back. */
+  margin-right: calc(-1 * var(--sp-2));
 }
 .g-id > * {
   flex: 0 0 auto;
@@ -4392,15 +4399,17 @@ input[type="radio"] {
   flex: 0 1 auto;
   min-width: 3.5em;
 }
-@media (max-width: 1560px) {
-  .g-row[data-crowded="true"] .g-engine {
-    display: none;
-  }
+.g-row[data-crowded] .g-engine,
+.g-row:is([data-crowded="readings"], [data-crowded="project"], [data-crowded="quiet"]) .g-id :is(.pr-passed, .pr-pending, .pr-line[data-state="open"] :is(.pr-state, .pr-state + .sep)),
+.g-row:is([data-crowded="project"], [data-crowded="quiet"]) .g-project,
+.g-row[data-crowded="quiet"] .g-muted {
+  display: none;
 }
 /* Wide enough for every reading at once: the identity column takes the room the engine's name needs on a crowded row. */
 @media (min-width: 1561px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 12.5em;
+    /* The title's floor and its share of the room as just below 1561, so the title keeps its width across the step. */
+    grid-template-columns: 14px minmax(16em, 1.4fr) minmax(13em, 1.05fr) 11em 4.5em 7em 6.5em 12.5em;
   }
 }
 /* Ready to accept: the row's one action. It stands where the identity is, on the row you point at or are on, and the

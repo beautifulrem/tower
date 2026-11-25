@@ -143,6 +143,43 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
       expect(pills[0].dataset.mark).toBe(tone);
       expect(screen.queryByText("assertions untouched")).toBeNull();
     });
+
+  // Review 11, R11-P3-02: each family was said by its first finding, so a low one listed first hid the high one that held
+  // the pass; and a low finding kept the neutral caveat pill beside a pass a high finding held, which no caveat qualifies.
+  for (const [name, sentinels, said, gone] of [
+    ["a low guard finding listed before a high one", [["assertion_identity_unchecked", 2], ["assertions_removed", 3]], ["assertions weakened"], ["assertions not checked"]],
+    ["a low machinery finding beside a high bypass", [["source_touches_tests", 2], ["bypass_around_bug", 3]], ["code reaches into the test runner", "works around the bug"], []],
+  ] as const)
+    it(`says ${name} by the weightiest finding, and no neutral caveat beside the held pass`, () => {
+      const criterion = {
+        criterion: { id: "C1", title: "Checkout tests", kind: { type: "exec" as const, command: "pnpm test", timeout_secs: 60 } },
+        verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 420, output_tail: "ok", at: Date.now() - 5000, stale: false, held_out: false, held_out_proof: null, flaky: true, console_errors: [] },
+        passed_on_base: false,
+        base_error: null,
+        look: null,
+        passes_with_source_only: true,
+        canary: "intact" as const,
+        loopback_opened: undefined,
+        observed: null,
+        human_checked: false,
+      };
+      render(() => (
+        <CriterionRow
+          goalId="G-0001"
+          c={criterion}
+          state="in_review"
+          base="1111111"
+          sentinels={sentinels.map(([sentinel, severity]) => ({ sentinel, severity, title: "Finding", detail: "src/cart.js" }))}
+        />
+      ));
+      fireEvent.click(screen.getByText("passed"));
+      const pills = [...document.querySelectorAll<HTMLElement>(".ev-pill")];
+      for (const s of said) expect(pills.filter((p) => p.textContent === s).map((p) => p.dataset.mark), s).toEqual(["attn"]);
+      for (const s of gone) expect(pills.some((p) => p.textContent === s), s).toBe(false);
+      // Not one pill in the caveat's neutral tone, the flaky rerun included: the pass is held, not counted with caveats.
+      expect(pills.filter((p) => p.dataset.mark === "obs").map((p) => p.textContent)).toEqual([]);
+      expect(screen.queryByText("assertions untouched")).toBeNull();
+    });
 });
 
 describe("SteerBox Multimodal Steering Console", () => {

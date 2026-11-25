@@ -47,6 +47,7 @@ export function Review(props: { id: string }) {
   const previous = () => persisted()?.reviewed ?? null;
   const [scope, setScope] = createSignal<ReviewScope>("all");
   const [cmp, setCmp] = createSignal<[string, string]>(["", ""]);
+  const [cmpPicks, setCmpPicks] = createSignal<[string | null, string | null]>([null, null]);
   let lastSnaps: ReturnType<typeof buildSnapshots> = [];
 
   const [viewRes, { refetch: refetchView }] = createResource(
@@ -513,7 +514,7 @@ export function Review(props: { id: string }) {
                   <Icon name="arrow-right" size={10} class="t3" />@{short(view()!.pin)}
                 </span>
               </span>
-              <TimelineSwitcher scope={scope()} onScope={(sc) => (setScope(sc), setPick(null), resetTexts())} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => (setCmp([f, to]), resetTexts())} />
+              <TimelineSwitcher scope={scope()} onScope={(sc) => (setScope(sc), setPick(null), resetTexts())} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => (setCmp([f, to]), resetTexts())} picks={cmpPicks()} onPicks={setCmpPicks} />
               <Show when={g()}>
                 <button class="review-stat-group review-verify link-plain" onClick={() => setPanel("verify")} title={t("review.verifyOpen")} aria-haspopup="dialog">
                   <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} />

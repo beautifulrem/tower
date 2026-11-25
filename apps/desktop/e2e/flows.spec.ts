@@ -302,66 +302,89 @@ test("the board's identity says the engine in words, leaves the only project uns
 // Review 10, R10-P2-01: the words took the title's room — "Fi…" at 1241, 143px of a 252px title at 1440 — while the
 // window 1px narrower gave the title 251px. The note gives way first: the title keeps all of a short title and 12em of
 // a long one at every width, the note keeps its ◇ alone when it must, and its words stay in its text and tooltips.
+// Review 11, R11-P3-01: the note was decided as if the peek button were always shown, so at 1440 (zh) and 1728 (en) a
+// row with room for the words showed the ◇ alone, and one row of the pair said the words while the other did not. The
+// note is decided on the row at rest and gives way a step at a time — the words, then "◇ G-0003", then the ◇ — saying
+// as much as leaves the title its room. Both rows of the pair are on the board here.
 const LONG_TITLE = { en: "Fix the cart total rounding when a discount and the tax apply together", "zh-CN": "修复折扣和税同时生效时购物车总价的舍入错误" };
-for (const [lang, words] of [
-  ["en", "Overlaps G-0003"],
-  ["zh-CN", "与 G-0003 改动重叠"],
-] as const)
+const OVERLAP_WORDS = { en: (id: string) => `Overlaps ${id}`, "zh-CN": (id: string) => `与 ${id} 改动重叠` };
+for (const lang of ["en", "zh-CN"] as const)
   for (const long of [false, true])
-    test(`a goal row says an overlap in words beside its own id, and the title keeps its room (${lang}${long ? ", long title" : ""})`, async ({ page }) => {
+    test(`a goal row says an overlap beside its own id, giving way a step at a time so the title keeps its room (${lang}${long ? ", long title" : ""})`, async ({ page }) => {
       await openTower(page, "overview", {
         lang,
-        enrich: long
-          ? (F) => {
-              for (const g of F.goals) if (g.id === "G-0001") g.title = LONG_TITLE[lang];
-            }
-          : undefined,
+        enrich: (F) => {
+          F.inbox = F.inbox.filter((i: any) => i.goal_id !== "G-0003");
+          if (long) for (const g of F.goals) if (g.id === "G-0001") g.title = LONG_TITLE[lang];
+        },
       });
       await settled(page, "overview");
-      const row = page.locator('.board-rows .g-row[data-goal="G-0001"]');
-      const overlap = row.locator(".g-title-cell .g-overlap");
-      const shown: Record<number, boolean> = {};
-      for (const width of [1241, 1280, 1366, 1440, 1560, 1800]) {
+      const step: Record<string, Record<number, number>> = { "G-0001": {}, "G-0003": {} };
+      const widths = [1241, 1280, 1366, 1440, 1505, 1560, 1561, 1600, 1728, 1800];
+      for (const width of widths) {
         await page.setViewportSize({ width, height: 900 });
-        await expect(overlap, `at ${width}`).toBeVisible();
-        await expect(overlap).toHaveText(words);
-        expect(await overlap.evaluate((e) => e.getClientRects().length), `whole at ${width}`).toBe(1);
-        const [cell, o, id] = await Promise.all([row.locator(".g-title-cell"), overlap, row.locator(".g-goal-id")].map((l) => l.boundingBox()));
-        expect(o!.x, `after the row's own id at ${width}`).toBeGreaterThanOrEqual(id!.x + id!.width);
-        expect(o!.x + o!.width, `inside the title cell at ${width}`).toBeLessThanOrEqual(cell!.x + cell!.width + 0.5);
-        // The title shows all of itself, or 12em of a longer one, whatever the note does; where the column itself is
-        // narrower than that, the note costs it no more than its ◇ (measured with everything but the mark set aside).
-        const room = await row.evaluate((r) => {
-          const title = r.querySelector<HTMLElement>(".g-title .ellipsis")!;
-          const note = r.querySelector<HTMLElement>(".g-overlap")!;
-          const visible = title.clientWidth;
-          const rest = [...note.children].slice(1) as HTMLElement[];
-          const was = rest.map((c) => c.style.display);
-          for (const c of rest) c.style.display = "none";
-          const markOnly = title.clientWidth;
-          rest.forEach((c, i) => (c.style.display = was[i]));
-          return { visible, markOnly, whole: title.scrollWidth, em: parseFloat(getComputedStyle(title).fontSize), note: note.getBoundingClientRect().width };
-        });
-        const need = Math.min(room.whole, 12 * room.em, room.markOnly);
-        expect(room.visible, `title's room at ${width} (${JSON.stringify(room)})`).toBeGreaterThanOrEqual(need - 1);
-        // The words are either whole on the line or kept for a screen reader, never cut.
-        const w = await overlap.evaluate((e) => ({ width: e.getBoundingClientRect().width, scroll: e.scrollWidth }));
-        expect(w.scroll, `note whole at ${width}`).toBeLessThanOrEqual(w.width + 0.5);
-        shown[width] = room.note > 30;
-        // The pointer brings the peek button; the note is decided with its room kept, so hovering never changes it.
-        await row.hover();
         await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-        expect((await overlap.boundingBox())!.width > 30, `note unchanged on hover at ${width}`).toBe(shown[width]);
-        await page.mouse.move(0, 0);
-        // The identity column names no other goal.
-        await expect(row.locator(".g-id")).not.toContainText("G-0003");
+        for (const [id, other] of [["G-0001", "G-0003"], ["G-0003", "G-0001"]]) {
+          const at = `${id} at ${width}`;
+          const row = page.locator(`.board-rows .g-row[data-goal="${id}"]`);
+          const overlap = row.locator(".g-title-cell .g-overlap");
+          await expect(overlap, at).toBeVisible();
+          await expect(overlap).toHaveText(OVERLAP_WORDS[lang](other));
+          expect(await overlap.evaluate((e) => e.getClientRects().length), `whole, ${at}`).toBe(1);
+          const [cell, o, own] = await Promise.all([row.locator(".g-title-cell"), overlap, row.locator(".g-goal-id")].map((l) => l.boundingBox()));
+          expect(o!.x, `after the row's own id, ${at}`).toBeGreaterThanOrEqual(own!.x + own!.width);
+          expect(o!.x + o!.width, `inside the title cell, ${at}`).toBeLessThanOrEqual(cell!.x + cell!.width + 0.5);
+          // The title's room with the note at each step (the words, "◇ G-0003", the ◇), measured on the row at rest.
+          const m = await row.evaluate((r) => {
+            const title = r.querySelector<HTMLElement>(".g-title .ellipsis")!;
+            const words = r.querySelector<HTMLElement>(".g-overlap-words")!;
+            const said = [...r.querySelectorAll<HTMLElement>(".g-overlap-say")];
+            const was = [words, ...said].map((e) => e.classList.contains("sr-only"));
+            const shown = was[0] ? 2 : was.slice(1).some(Boolean) ? 1 : 0;
+            const rooms = [0, 1, 2].map((n) => {
+              for (const e of said) e.classList.toggle("sr-only", n === 1);
+              words.classList.toggle("sr-only", n === 2);
+              return title.clientWidth;
+            });
+            [words, ...said].forEach((e, i) => e.classList.toggle("sr-only", was[i]));
+            const note = r.querySelector<HTMLElement>(".g-overlap")!;
+            return { shown, rooms, whole: title.scrollWidth, em: parseFloat(getComputedStyle(title).fontSize), fits: note.scrollWidth <= note.getBoundingClientRect().width + 0.5 };
+          });
+          const need = Math.min(m.whole, 12 * m.em);
+          // The title keeps all of a short title and 12em of a longer one, or, where the column is narrower than that,
+          // all the column gives it with the note at its smallest; and the note says as much as leaves it that room.
+          expect(m.rooms[m.shown], `title's room, ${at} (${JSON.stringify(m)})`).toBeGreaterThanOrEqual(Math.min(need, m.rooms[2]) - 1);
+          if (m.shown > 0) expect(m.rooms[m.shown - 1], `a step more would cost the title, ${at} (${JSON.stringify(m)})`).toBeLessThan(need);
+          expect(m.fits, `note never cut, ${at}`).toBe(true);
+          if (m.shown === 1) await expect(overlap.locator(".code-val"), `the other goal's id stays, ${at}`).toBeVisible();
+          step[id][width] = m.shown;
+          // The pointer brings the peek button; the note is decided on the row at rest, so hovering never changes it.
+          await row.hover();
+          await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+          const hovered = await row.evaluate((r) => {
+            const words = r.querySelector<HTMLElement>(".g-overlap-words")!;
+            return words.classList.contains("sr-only") ? 2 : [...r.querySelectorAll(".g-overlap-say")].some((e) => e.classList.contains("sr-only")) ? 1 : 0;
+          });
+          expect(hovered, `note unchanged on hover, ${at}`).toBe(m.shown);
+          await page.mouse.move(0, 0);
+          // The identity column names no other goal.
+          await expect(row.locator(".g-id")).not.toContainText(other);
+        }
       }
-      // A wide board has the room for the words beside a short title (a long one may need it for its 12em).
-      if (!long) expect(shown[1800], "words shown at 1800").toBe(true);
-      await expect(overlap).toHaveAttribute("title", new RegExp(`${words}: src/`));
+      // A wider window never says less, across the 1560/1561 step too.
+      for (const id of ["G-0001", "G-0003"])
+        widths.slice(1).forEach((w, i) => expect(step[id][w], `${id} says no less at ${w} than at ${widths[i]}`).toBeLessThanOrEqual(step[id][widths[i]]));
+      // The common laptop widths have the room for the words beside a short title.
+      if (!long) {
+        expect(step["G-0001"][1440], "G-0001 words at 1440").toBe(0);
+        expect(step["G-0003"][1728], "G-0003 words at 1728").toBe(0);
+        expect(step["G-0001"][1800], "G-0001 words at 1800").toBe(0);
+      }
+      const row = page.locator('.board-rows .g-row[data-goal="G-0001"]');
+      await expect(row.locator(".g-overlap")).toHaveAttribute("title", new RegExp(`${OVERLAP_WORDS[lang]("G-0003")}: src/`));
       await page.setViewportSize({ width: 1100, height: 900 });
       await expect(row.locator(".g-overlap")).toBeHidden();
-      await expect(row.locator(".g-title")).toHaveAttribute("title", new RegExp(words));
+      await expect(row.locator(".g-title")).toHaveAttribute("title", new RegExp(OVERLAP_WORDS[lang]("G-0003")));
     });
 
 test("the board writes one age format, decisions and goals alike", async ({ page }) => {
@@ -387,7 +410,7 @@ test("on a crowded row the engine's name is whole or gone, never clipped; the ag
   };
   await openTower(page, "overview", { enrich: crowd });
   const row = page.locator('.g-row[data-goal="G-0002"]');
-  await expect(row).toHaveAttribute("data-crowded", "true");
+  await expect(row).toHaveAttribute("data-crowded", "engine");
   // 1440: rework, Claude Code, shop and the id would not fit whole, so the engine's name leaves and the project name stays legible.
   await expect(row.locator(".g-engine")).toBeHidden();
   const project = row.locator(".g-project");
@@ -402,6 +425,115 @@ test("on a crowded row the engine's name is whole or gone, never clipped; the ag
   await expect(row.locator(".g-engine")).toHaveText("Claude Code");
   expect(await row.locator(".g-id").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
 });
+
+// Review 11, R11-P3-04: the live column cut the seal to "Verifi" (en ≤1417, zh ≤1281), its pin gone; the identity
+// column was cut from the left on a row with an engine, a PR and rework ("en" of the engine's name at 1800, the PR gone
+// at 1241), since the engine left by a count of readings, below 1560 only. Both give way by measure now, and nothing is
+// cut: the seal's word, then the seal (green never without its pin); the engine's name, the PR's quieter readings, the
+// project's name, then the word "muted".
+for (const lang of ["en", "zh-CN"] as const)
+  test(`the live and identity columns give way by measure and cut nothing (${lang})`, async ({ page }) => {
+    const pr = { url: "https://github.com/acme/shop/pull/42", status: { state: "open", passed: 3, failed: 1, pending: 0, failing: ["test"] } };
+    await openTower(page, "overview", {
+      lang,
+      enrich: (F) => {
+        enrichEngines(F);
+        secondProject(F);
+        F.inbox = F.inbox.filter((i: any) => i.goal_id !== "G-0003");
+        for (const g of F.goals) if (g.id === "G-0003") Object.assign(g, { engine: "claude-code", pr, rework_cycles: 1 });
+        // The fullest identity: a PR with a failing check, a mute and rework, in a second project.
+        for (const g of F.goals) if (g.id === "G-0001") Object.assign(g, { pr, rework_cycles: 2 });
+        F.settings.muted_goals = ["G-0001"];
+      },
+    });
+    await settled(page, "overview");
+    const seen = { engineGone: 0, engineShown: 0, readings: 0, quiet: 0, wordGone: 0, wordShown: 0 };
+    for (const width of [1241, 1260, 1277, 1320, 1366, 1417, 1440, 1500, 1560, 1561, 1600, 1728, 1800]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const rows = await page.locator(".board-rows .g-row").evaluateAll((rows) =>
+        rows.map((r) => {
+          const id = r.querySelector<HTMLElement>(".g-id")!;
+          const cut = (e: Element | null) => !!e && e.scrollWidth > e.clientWidth + 1;
+          const shown = (e: Element | null) => !!e && getComputedStyle(e).display !== "none" && !e.classList.contains("sr-only") && !e.closest(".sr-only");
+          const engine = id.querySelector(".g-engine"), project = id.querySelector<HTMLElement>(".g-project");
+          const crowd = r.getAttribute("data-crowded");
+          // What a step more would have cost: the engine (or the project) put back, measured, and set aside again.
+          const back = (to: string | null) => {
+            if (to === null) r.removeAttribute("data-crowded");
+            else r.setAttribute("data-crowded", to);
+            const over = id.scrollWidth > id.clientWidth + 0.5 || (!!engine && shown(engine) && cut(project));
+            if (crowd === null) r.removeAttribute("data-crowded");
+            else r.setAttribute("data-crowded", crowd);
+            return over;
+          };
+          const detail = r.querySelector<HTMLElement>(".g-live .live-detail");
+          const seal = detail?.querySelector<HTMLElement>(".seal") ?? null, word = seal?.querySelector<HTMLElement>(".seal-word") ?? null;
+          const sealBack = (wordToo: boolean) => {
+            const was = [seal!.classList.contains("sr-only"), word!.classList.contains("sr-only")];
+            seal!.classList.remove("sr-only");
+            word!.classList.toggle("sr-only", !wordToo);
+            const over = detail!.scrollWidth > detail!.clientWidth + 0.5;
+            seal!.classList.toggle("sr-only", was[0]);
+            word!.classList.toggle("sr-only", was[1]);
+            return over;
+          };
+          return {
+            goal: r.getAttribute("data-goal"),
+            idShown: shown(id),
+            idOver: id.scrollWidth > id.clientWidth + 1,
+            children: [...id.children].filter((c) => shown(c) && !c.classList.contains("g-project")).map((c) => [c.textContent, cut(c)] as const),
+            prFailedShown: [...id.querySelectorAll(".pr-line .mark-danger")].every((m) => shown(m.parentElement)),
+            project: project && shown(project) ? { width: project.getBoundingClientRect().width, em: parseFloat(getComputedStyle(project).fontSize), shortened: cut(project) } : null,
+            engineShown: shown(engine),
+            hasEngine: !!engine,
+            crowd,
+            stepBackOver: crowd ? back(({ engine: null, readings: "engine", project: "readings", quiet: "project" } as Record<string, string | null>)[crowd]) : null,
+            tip: r.querySelector(".g-title")!.getAttribute("title"),
+            liveOver: !!detail && detail.scrollWidth > detail.clientWidth + 0.5,
+            seal: seal ? { shown: shown(seal), wordShown: shown(word) && !!word!.textContent, hasWord: !!word?.textContent, pinShown: shown(seal.querySelector(".seal-pin")) } : null,
+            sealStepBackOver: seal && !shown(seal) ? sealBack(false) : seal && word?.textContent && !shown(word) ? sealBack(true) : null,
+          };
+        }),
+      );
+      for (const r of rows) {
+        const at = `${r.goal} at ${width}: ${JSON.stringify(r)}`;
+        // A live line with a seal is never cut (words end in an ellipsis, a seal has none): the seal keeps its pin, or
+        // gives way whole, and only as far as it must.
+        if (r.seal) {
+          expect(r.liveOver, `seal cut, ${at}`).toBe(false);
+          if (r.seal.shown) expect(r.seal.pinShown, `seal without its pin, ${at}`).toBe(true);
+          if (r.sealStepBackOver !== null) expect(r.sealStepBackOver, `the seal gave way where it fit, ${at}`).toBe(true);
+          if (r.seal.hasWord) r.seal.wordShown ? seen.wordShown++ : seen.wordGone++;
+        }
+        if (!r.idShown) continue;
+        // The identity is never cut: every reading whole, the project's name at least 3.5em, the engine's whole or gone.
+        expect(r.idOver, `identity cut, ${at}`).toBe(false);
+        for (const [text, cut] of r.children) expect(cut, `"${text}" cut, ${at}`).toBe(false);
+        if (r.project) expect(r.project.width, `project legible, ${at}`).toBeGreaterThanOrEqual(3.5 * r.project.em - 1);
+        if (r.engineShown && r.project) expect(r.project.shortened, `the engine stays while the project's name shortens, ${at}`).toBe(false);
+        if (r.stepBackOver !== null) expect(r.stepBackOver, `a name left where it fit, ${at}`).toBe(true);
+        // A failing check stays at every step: the PR keeps what it needs you for.
+        expect(r.prFailedShown, `the PR's failing check, ${at}`).toBe(true);
+        if (r.crowd === "readings" || r.crowd === "project") seen.readings++;
+        if (r.crowd === "quiet") {
+          seen.quiet++;
+          expect(r.tip, `"muted" in the title's tooltip, ${at}`).toContain(lang === "en" ? "Muted" : "已静音");
+        }
+        if (r.hasEngine) {
+          r.engineShown ? seen.engineShown++ : seen.engineGone++;
+          expect(r.tip, `the engine's name in the title's tooltip, ${at}`).toContain("Claude Code");
+        }
+      }
+    }
+    // The sweep saw both sides of each give-way, so the checks above checked something.
+    expect(seen.engineGone, JSON.stringify(seen)).toBeGreaterThan(0);
+    expect(seen.engineShown, JSON.stringify(seen)).toBeGreaterThan(0);
+    expect(seen.wordShown, JSON.stringify(seen)).toBeGreaterThan(0);
+    expect(seen.wordGone, JSON.stringify(seen)).toBeGreaterThan(0);
+    expect(seen.readings, JSON.stringify(seen)).toBeGreaterThan(0);
+    expect(seen.quiet, JSON.stringify(seen)).toBeGreaterThan(0);
+  });
 
 test("in a half-screen window the live line keeps its verb and lets the elapsed time go, with no two words touching", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });

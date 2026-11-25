@@ -4375,8 +4375,9 @@ input[type="radio"] {
    so the last word on every line ends on the board's edge (the id is read with the title, beside it). Nothing in it is
    squeezed by the browser's own proportions or cut: measured (GoalRow `fitId`), the engine's name leaves first, whole,
    before the project's name would shorten; then the PR keeps what it needs you for (a failing check, a state other than
-   open); then the project's name, which may shorten but stays legible (3.5em), leaves whole; last, the word "muted".
-   What leaves lives on in the title's tooltip. The leading pseudo-element takes the free room, so anything left
+   open); then the word "muted"; then the project's name, which may shorten but stays legible (3.5em), leaves whole;
+   then the PR's state; and last the whole identity folds, as below 1241. What leaves is still read by a screen reader,
+   and the title's tooltip says the whole identity. The leading pseudo-element takes the free room, so anything left
    over would run off the end rather than cut the first reading. */
 .g-id {
   display: flex;
@@ -4395,15 +4396,24 @@ input[type="radio"] {
 .g-id > * {
   flex: 0 0 auto;
 }
+/* The project's name takes its own width and may shorten (the measure keeps it at 3.5em or sets it aside). */
 .g-id .g-project {
   flex: 0 1 auto;
-  min-width: 3.5em;
+  min-width: 0;
 }
+/* Each step of the give-way, cumulative. What a step sets aside leaves the line but not a screen reader. */
 .g-row[data-crowded] .g-engine,
-.g-row:is([data-crowded="readings"], [data-crowded="project"], [data-crowded="quiet"]) .g-id :is(.pr-passed, .pr-pending, .pr-line[data-state="open"] :is(.pr-state, .pr-state + .sep)),
-.g-row:is([data-crowded="project"], [data-crowded="quiet"]) .g-project,
-.g-row[data-crowded="quiet"] .g-muted {
-  display: none;
+.g-row:not([data-crowded="engine"])[data-crowded] .g-id :is(.pr-passed, .pr-pending, .pr-line[data-state="open"] :is(.pr-state, .pr-state + .sep), .pr-line:not([data-failing]) :is(.pr-state + .sep, .pr-counts)),
+.g-row:is([data-crowded="quiet"], [data-crowded="project"], [data-crowded="pr-state"], [data-crowded="folded"]) .g-muted,
+.g-row:is([data-crowded="project"], [data-crowded="pr-state"], [data-crowded="folded"]) .g-project,
+.g-row:is([data-crowded="pr-state"], [data-crowded="folded"]) .g-id .pr-line :is(.pr-state, .pr-state + .sep),
+.g-row[data-crowded="folded"] .g-id > * {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 /* Wide enough for every reading at once: the identity column takes the room the engine's name needs on a crowded row. */
 @media (min-width: 1561px) {

@@ -412,7 +412,9 @@ test("on a crowded row the engine's name is whole or gone, never clipped; the ag
   const row = page.locator('.g-row[data-goal="G-0002"]');
   await expect(row).toHaveAttribute("data-crowded", "engine");
   // 1440: rework, Claude Code, shop and the id would not fit whole, so the engine's name leaves and the project name stays legible.
-  await expect(row.locator(".g-engine")).toBeHidden();
+  // Set aside for the eye (a 1px box), still read: the title's tooltip says it too.
+  expect(await row.locator(".g-engine").evaluate((e) => e.getBoundingClientRect().width)).toBeLessThanOrEqual(1);
+  await expect(row.locator(".g-engine")).toHaveText("Claude Code");
   const project = row.locator(".g-project");
   await expect(project).toHaveText("shop");
   expect(await project.evaluate((el) => el.getBoundingClientRect().width >= el.scrollWidth - 1)).toBe(true);
@@ -429,111 +431,155 @@ test("on a crowded row the engine's name is whole or gone, never clipped; the ag
 // Review 11, R11-P3-04: the live column cut the seal to "Verifi" (en ≤1417, zh ≤1281), its pin gone; the identity
 // column was cut from the left on a row with an engine, a PR and rework ("en" of the engine's name at 1800, the PR gone
 // at 1241), since the engine left by a count of readings, below 1560 only. Both give way by measure now, and nothing is
-// cut: the seal's word, then the seal (green never without its pin); the engine's name, the PR's quieter readings, the
-// project's name, then the word "muted".
+// cut: the seal's word, then the seal (green never without its pin); in the identity, step by step.
+// Review 12, R12-P3-01/02: a merged or closed PR kept its state at every step, so with rework the last step still ran
+// off the end ("⟳3/" at 1440); the PR readings a step set aside were nowhere, not in the tooltip nor the button's name;
+// a short project name held 3.5em. The steps now end in one that always fits; what they set aside is still read and is
+// in the title's tooltip; a project name takes its own width. Two boards: PRs open, and PRs merged or closed.
+const PR_WORDS = {
+  en: { open: "open", merged: "merged", closed: "closed", passed: "passed", failed: "failing", pending: "pending", sep: ", ", head: ": ", n: (n: number, w: string) => `${n} ${w}` },
+  "zh-CN": { open: "开启中", merged: "已合并", closed: "已关闭", passed: "通过", failed: "失败", pending: "等待中", sep: "，", head: "：", n: (n: number, w: string) => `${n} 项${w}` },
+} as const;
+const prSaid = (lang: "en" | "zh-CN", st: { state: "open" | "merged" | "closed"; passed: number; failed: number; pending: number }) => {
+  const w = PR_WORDS[lang];
+  const checks = (["passed", "failed", "pending"] as const).filter((k) => st[k] > 0).map((k) => w.n(st[k], w[k]));
+  return `PR ${w[st.state]}${checks.length ? w.head + checks.join(w.sep) : ""}`;
+};
+type PrState = { state: "open" | "merged" | "closed"; passed: number; failed: number; pending: number };
+const CROWDS: Record<string, Record<string, { pr?: PrState; rework?: number; engine?: boolean; muted?: boolean; project?: Record<"en" | "zh-CN", string> }>> = {
+  open: {
+    "G-0001": { pr: { state: "open", passed: 3, failed: 1, pending: 0 }, rework: 2, muted: true },
+    "G-0002": { project: { en: "lib", "zh-CN": "lib" } },
+    "G-0003": { pr: { state: "open", passed: 3, failed: 1, pending: 0 }, rework: 1, engine: true },
+  },
+  settled: {
+    "G-0001": { pr: { state: "merged", passed: 0, failed: 2, pending: 0 }, rework: 2, muted: true },
+    "G-0002": { pr: { state: "merged", passed: 4, failed: 0, pending: 0 }, rework: 1, project: { en: "lib", "zh-CN": "lib" } },
+    "G-0003": { pr: { state: "closed", passed: 0, failed: 1, pending: 0 }, rework: 3, engine: true, muted: true, project: { en: "storefront-payments", "zh-CN": "店面支付服务" } },
+  },
+};
 for (const lang of ["en", "zh-CN"] as const)
-  test(`the live and identity columns give way by measure and cut nothing (${lang})`, async ({ page }) => {
-    const pr = { url: "https://github.com/acme/shop/pull/42", status: { state: "open", passed: 3, failed: 1, pending: 0, failing: ["test"] } };
-    await openTower(page, "overview", {
-      lang,
-      enrich: (F) => {
-        enrichEngines(F);
-        secondProject(F);
-        F.inbox = F.inbox.filter((i: any) => i.goal_id !== "G-0003");
-        for (const g of F.goals) if (g.id === "G-0003") Object.assign(g, { engine: "claude-code", pr, rework_cycles: 1 });
-        // The fullest identity: a PR with a failing check, a mute and rework, in a second project.
-        for (const g of F.goals) if (g.id === "G-0001") Object.assign(g, { pr, rework_cycles: 2 });
-        F.settings.muted_goals = ["G-0001"];
-      },
-    });
-    await settled(page, "overview");
-    const seen = { engineGone: 0, engineShown: 0, readings: 0, quiet: 0, wordGone: 0, wordShown: 0 };
-    for (const width of [1241, 1260, 1277, 1320, 1366, 1417, 1440, 1500, 1560, 1561, 1600, 1728, 1800]) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-      const rows = await page.locator(".board-rows .g-row").evaluateAll((rows) =>
-        rows.map((r) => {
-          const id = r.querySelector<HTMLElement>(".g-id")!;
-          const cut = (e: Element | null) => !!e && e.scrollWidth > e.clientWidth + 1;
-          const shown = (e: Element | null) => !!e && getComputedStyle(e).display !== "none" && !e.classList.contains("sr-only") && !e.closest(".sr-only");
-          const engine = id.querySelector(".g-engine"), project = id.querySelector<HTMLElement>(".g-project");
-          const crowd = r.getAttribute("data-crowded");
-          // What a step more would have cost: the engine (or the project) put back, measured, and set aside again.
-          const back = (to: string | null) => {
-            if (to === null) r.removeAttribute("data-crowded");
-            else r.setAttribute("data-crowded", to);
-            const over = id.scrollWidth > id.clientWidth + 0.5 || (!!engine && shown(engine) && cut(project));
-            if (crowd === null) r.removeAttribute("data-crowded");
-            else r.setAttribute("data-crowded", crowd);
-            return over;
-          };
-          const detail = r.querySelector<HTMLElement>(".g-live .live-detail");
-          const seal = detail?.querySelector<HTMLElement>(".seal") ?? null, word = seal?.querySelector<HTMLElement>(".seal-word") ?? null;
-          const sealBack = (wordToo: boolean) => {
-            const was = [seal!.classList.contains("sr-only"), word!.classList.contains("sr-only")];
-            seal!.classList.remove("sr-only");
-            word!.classList.toggle("sr-only", !wordToo);
-            const over = detail!.scrollWidth > detail!.clientWidth + 0.5;
-            seal!.classList.toggle("sr-only", was[0]);
-            word!.classList.toggle("sr-only", was[1]);
-            return over;
-          };
-          return {
-            goal: r.getAttribute("data-goal"),
-            idShown: shown(id),
-            idOver: id.scrollWidth > id.clientWidth + 1,
-            children: [...id.children].filter((c) => shown(c) && !c.classList.contains("g-project")).map((c) => [c.textContent, cut(c)] as const),
-            prFailedShown: [...id.querySelectorAll(".pr-line .mark-danger")].every((m) => shown(m.parentElement)),
-            project: project && shown(project) ? { width: project.getBoundingClientRect().width, em: parseFloat(getComputedStyle(project).fontSize), shortened: cut(project) } : null,
-            engineShown: shown(engine),
-            hasEngine: !!engine,
-            crowd,
-            stepBackOver: crowd ? back(({ engine: null, readings: "engine", project: "readings", quiet: "project" } as Record<string, string | null>)[crowd]) : null,
-            tip: r.querySelector(".g-title")!.getAttribute("title"),
-            liveOver: !!detail && detail.scrollWidth > detail.clientWidth + 0.5,
-            seal: seal ? { shown: shown(seal), wordShown: shown(word) && !!word!.textContent, hasWord: !!word?.textContent, pinShown: shown(seal.querySelector(".seal-pin")) } : null,
-            sealStepBackOver: seal && !shown(seal) ? sealBack(false) : seal && word?.textContent && !shown(word) ? sealBack(true) : null,
-          };
-        }),
-      );
-      for (const r of rows) {
-        const at = `${r.goal} at ${width}: ${JSON.stringify(r)}`;
-        // A live line with a seal is never cut (words end in an ellipsis, a seal has none): the seal keeps its pin, or
-        // gives way whole, and only as far as it must.
-        if (r.seal) {
-          expect(r.liveOver, `seal cut, ${at}`).toBe(false);
-          if (r.seal.shown) expect(r.seal.pinShown, `seal without its pin, ${at}`).toBe(true);
-          if (r.sealStepBackOver !== null) expect(r.sealStepBackOver, `the seal gave way where it fit, ${at}`).toBe(true);
-          if (r.seal.hasWord) r.seal.wordShown ? seen.wordShown++ : seen.wordGone++;
-        }
-        if (!r.idShown) continue;
-        // The identity is never cut: every reading whole, the project's name at least 3.5em, the engine's whole or gone.
-        expect(r.idOver, `identity cut, ${at}`).toBe(false);
-        for (const [text, cut] of r.children) expect(cut, `"${text}" cut, ${at}`).toBe(false);
-        if (r.project) expect(r.project.width, `project legible, ${at}`).toBeGreaterThanOrEqual(3.5 * r.project.em - 1);
-        if (r.engineShown && r.project) expect(r.project.shortened, `the engine stays while the project's name shortens, ${at}`).toBe(false);
-        if (r.stepBackOver !== null) expect(r.stepBackOver, `a name left where it fit, ${at}`).toBe(true);
-        // A failing check stays at every step: the PR keeps what it needs you for.
-        expect(r.prFailedShown, `the PR's failing check, ${at}`).toBe(true);
-        if (r.crowd === "readings" || r.crowd === "project") seen.readings++;
-        if (r.crowd === "quiet") {
-          seen.quiet++;
-          expect(r.tip, `"muted" in the title's tooltip, ${at}`).toContain(lang === "en" ? "Muted" : "已静音");
-        }
-        if (r.hasEngine) {
-          r.engineShown ? seen.engineShown++ : seen.engineGone++;
-          expect(r.tip, `the engine's name in the title's tooltip, ${at}`).toContain("Claude Code");
+  for (const [name, crowd] of Object.entries(CROWDS))
+    test(`the live and identity columns give way by measure and cut nothing (${lang}, PRs ${name})`, async ({ page }) => {
+      await openTower(page, "overview", {
+        lang,
+        enrich: (F) => {
+          enrichEngines(F);
+          secondProject(F);
+          F.inbox = F.inbox.filter((i: any) => i.goal_id !== "G-0003");
+          F.settings.muted_goals = [];
+          for (const g of F.goals) {
+            const c = crowd[g.id];
+            if (!c) continue;
+            if (c.pr) g.pr = { url: "https://github.com/acme/shop/pull/42", status: { ...c.pr, failing: c.pr.failed ? ["test"] : [] } };
+            if (c.rework) g.rework_cycles = c.rework;
+            if (c.engine) g.engine = "claude-code";
+            if (c.muted) F.settings.muted_goals.push(g.id);
+            if (c.project) g.project_name = c.project[lang];
+          }
+        },
+      });
+      await settled(page, "overview");
+      const seen: Record<string, number> = { engineGone: 0, engineShown: 0, wordGone: 0, wordShown: 0 };
+      for (const width of [1241, 1260, 1277, 1320, 1366, 1417, 1440, 1500, 1560, 1561, 1600, 1728, 1800]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        const rows = await page.locator(".board-rows .g-row[data-goal]").evaluateAll((rows) =>
+          rows.map((r) => {
+            const id = r.querySelector<HTMLElement>(".g-id")!;
+            const cut = (e: Element | null) => !!e && e.scrollWidth > e.clientWidth + 1;
+            // On the line, to the eye: a step sets a reading aside to a 1px box a screen reader still reads.
+            const shown = (e: Element | null) => !!e && getComputedStyle(e).display !== "none" && e.getBoundingClientRect().width > 1 && !e.closest(".sr-only");
+            const engine = id.querySelector(".g-engine"), project = id.querySelector<HTMLElement>(".g-project");
+            const em = project ? parseFloat(getComputedStyle(project).fontSize) : 12;
+            const illegible = () => !!project && shown(project) && cut(project) && project.clientWidth < 3.5 * em - 0.5;
+            const crowd = r.getAttribute("data-crowded");
+            // What a step more would have cost: the step before put back, measured, and set aside again.
+            const back = (to: string | null) => {
+              if (to === null) r.removeAttribute("data-crowded");
+              else r.setAttribute("data-crowded", to);
+              const over = id.scrollWidth > id.clientWidth + 0.5 || illegible() || (!!engine && shown(engine) && cut(project));
+              if (crowd === null) r.removeAttribute("data-crowded");
+              else r.setAttribute("data-crowded", crowd);
+              return over;
+            };
+            const before: Record<string, string | null> = { engine: null, readings: "engine", quiet: "readings", project: "quiet", "pr-state": "project", folded: "pr-state" };
+            const detail = r.querySelector<HTMLElement>(".g-live .live-detail");
+            const seal = detail?.querySelector<HTMLElement>(".seal") ?? null, word = seal?.querySelector<HTMLElement>(".seal-word") ?? null;
+            const sealBack = (wordToo: boolean) => {
+              const was = [seal!.classList.contains("sr-only"), word!.classList.contains("sr-only")];
+              seal!.classList.remove("sr-only");
+              word!.classList.toggle("sr-only", !wordToo);
+              const over = detail!.scrollWidth > detail!.clientWidth + 0.5;
+              seal!.classList.toggle("sr-only", was[0]);
+              word!.classList.toggle("sr-only", was[1]);
+              return over;
+            };
+            const text = project ? document.createRange() : null;
+            text?.selectNodeContents(project!);
+            return {
+              goal: r.getAttribute("data-goal")!,
+              idShown: getComputedStyle(id).display !== "none",
+              idOver: id.scrollWidth > id.clientWidth + 1,
+              children: [...id.children].filter((c) => shown(c) && !c.classList.contains("g-project")).map((c) => [c.textContent, cut(c)] as const),
+              prFailedShown: [...id.querySelectorAll(".pr-line .mark-danger")].every((m) => shown(m.parentElement)),
+              rework: id.querySelector("[title]:not(.pr-line):not(.g-project)")?.getAttribute("title") ?? null,
+              projectName: project?.textContent ?? null,
+              project: project && shown(project) ? { width: project.getBoundingClientRect().width, text: text!.getBoundingClientRect().width, em, shortened: cut(project) } : null,
+              engineShown: shown(engine),
+              hasEngine: !!engine,
+              mutedWord: id.querySelector(".g-muted")?.textContent ?? null,
+              crowd,
+              stepBackOver: crowd ? back(before[crowd]) : null,
+              tip: r.querySelector(".g-title")!.getAttribute("title") ?? "",
+              liveOver: !!detail && detail.scrollWidth > detail.clientWidth + 0.5,
+              seal: seal ? { shown: shown(seal), wordShown: shown(word) && !!word!.textContent, hasWord: !!word?.textContent, pinShown: shown(seal.querySelector(".seal-pin")) } : null,
+              sealStepBackOver: seal && !shown(seal) ? sealBack(false) : seal && word?.textContent && !shown(word) ? sealBack(true) : null,
+            };
+          }),
+        );
+        for (const r of rows) {
+          const at = `${r.goal} at ${width}: ${JSON.stringify(r)}`;
+          // A live line with a seal is never cut (words end in an ellipsis, a seal has none): the seal keeps its pin, or
+          // gives way whole, and only as far as it must.
+          if (r.seal) {
+            expect(r.liveOver, `seal cut, ${at}`).toBe(false);
+            if (r.seal.shown) expect(r.seal.pinShown, `seal without its pin, ${at}`).toBe(true);
+            if (r.sealStepBackOver !== null) expect(r.sealStepBackOver, `the seal gave way where it fit, ${at}`).toBe(true);
+            if (r.seal.hasWord) r.seal.wordShown ? seen.wordShown++ : seen.wordGone++;
+          }
+          // The title's tooltip says the whole identity at every width, and the PR's button its every reading.
+          const c = crowd[r.goal];
+          if (c?.pr) {
+            // Its name is its own text (no label laid over what it shows, axe's label-content-name-mismatch), every reading.
+            const button = page.locator(`.board-rows .g-row[data-goal="${r.goal}"] .g-id .pr-line`);
+            await expect(button, `the PR's name, ${at}`).toHaveAccessibleName(prSaid(lang, c.pr));
+            expect(await button.getAttribute("aria-label"), `no label over the PR's text, ${at}`).toBeNull();
+            expect(r.tip, `the PR in the title's tooltip, ${at}`).toContain(prSaid(lang, c.pr));
+          }
+          if (r.rework) expect(r.tip, `rework in the title's tooltip, ${at}`).toContain(r.rework);
+          if (r.mutedWord) expect(r.tip, `"muted" in the title's tooltip, ${at}`).toContain(r.mutedWord);
+          if (r.projectName) expect(r.tip, `the project in the title's tooltip, ${at}`).toContain(r.projectName);
+          if (r.hasEngine) expect(r.tip, `the engine's name in the title's tooltip, ${at}`).toContain("Claude Code");
+          if (!r.idShown) continue;
+          // The identity is never cut: every reading whole; the project's name its own width, or shortened to no less than
+          // 3.5em and never beside the engine's name; each step taken only where the one before did not fit.
+          expect(r.idOver, `identity cut, ${at}`).toBe(false);
+          for (const [text, cut] of r.children) expect(cut, `"${text}" cut, ${at}`).toBe(false);
+          if (r.project && r.project.shortened) expect(r.project.width, `project legible, ${at}`).toBeGreaterThanOrEqual(3.5 * r.project.em - 1);
+          if (r.project && !r.project.shortened) expect(r.project.width, `project as wide as its name, ${at}`).toBeLessThanOrEqual(r.project.text + 1);
+          if (r.engineShown && r.project) expect(r.project.shortened, `the engine stays while the project's name shortens, ${at}`).toBe(false);
+          if (r.stepBackOver !== null) expect(r.stepBackOver, `a step taken where the one before fit, ${at}`).toBe(true);
+          // A failing check stays on the line until the whole identity folds.
+          if (r.crowd !== "folded") expect(r.prFailedShown, `the PR's failing check, ${at}`).toBe(true);
+          if (r.crowd) seen[r.crowd] = (seen[r.crowd] ?? 0) + 1;
+          if (r.hasEngine) r.engineShown ? seen.engineShown++ : seen.engineGone++;
         }
       }
-    }
-    // The sweep saw both sides of each give-way, so the checks above checked something.
-    expect(seen.engineGone, JSON.stringify(seen)).toBeGreaterThan(0);
-    expect(seen.engineShown, JSON.stringify(seen)).toBeGreaterThan(0);
-    expect(seen.wordShown, JSON.stringify(seen)).toBeGreaterThan(0);
-    expect(seen.wordGone, JSON.stringify(seen)).toBeGreaterThan(0);
-    expect(seen.readings, JSON.stringify(seen)).toBeGreaterThan(0);
-    expect(seen.quiet, JSON.stringify(seen)).toBeGreaterThan(0);
-  });
+      // The sweep saw both sides of the give-ways it is about, so the checks above checked something.
+      const want = name === "open" ? ["engineGone", "engineShown", "wordShown", "wordGone", "readings", "quiet"] : ["engineGone", "wordShown", "wordGone", "project"];
+      for (const k of want) expect(seen[k] ?? 0, `${k} seen: ${JSON.stringify(seen)}`).toBeGreaterThan(0);
+    });
 
 test("in a half-screen window the live line keeps its verb and lets the elapsed time go, with no two words touching", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });

@@ -18,7 +18,7 @@ import { state } from "../lib/store";
 import { Icon, LifecycleGlyph, NoticeMark } from "./Glyph";
 import { CriteriaBar } from "./HonestyCore";
 import { LiveLine } from "./Live";
-import { PrLine } from "./Pr";
+import { PrLine, prSummary } from "./Pr";
 import { Button } from "./ui";
 
 export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect?: () => void; onPeek?: () => void }) {
@@ -38,19 +38,24 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   const fresh = Date.now() - props.goal.created_at < 5000;
   // The identity gives way by measure, a step at a time, and is never cut: the engine's name leaves first, while the
   // readings would not fit beside it or it would shorten the project's name; then the PR keeps only what it needs you for
-  // (a failing check; its state once merged or closed); then the project's name leaves; last, the word that you muted the
-  // goal (your own setting, not news). What leaves is whole or gone, and lives on in the title's tooltip.
-  const [crowd, setCrowd] = createSignal<"" | "engine" | "readings" | "project" | "quiet">("");
+  // (a failing check; its state once merged or closed); then the word that you muted the goal (your own setting, not
+  // news); then the project's name, which may shorten to 3.5em first; then the PR's state; and if even that does not fit,
+  // the whole identity folds, as below 1241. What leaves is set aside for the eye only: a screen reader still reads it,
+  // and the title's tooltip says all of it.
+  const STEPS = ["", "engine", "readings", "quiet", "project", "pr-state", "folded"] as const;
+  const [crowd, setCrowd] = createSignal<(typeof STEPS)[number]>("");
   const fitId = (box: HTMLElement) =>
     refit(box, () => {
-      const over = () => box.scrollWidth > box.clientWidth + 0.5;
-      const shortened = () => {
+      const fits = (step: (typeof STEPS)[number]) => {
+        if (box.scrollWidth > box.clientWidth + 0.5) return false;
         const p = box.querySelector<HTMLElement>(".g-project");
-        return !!p && !!box.querySelector(".g-engine") && p.scrollWidth > p.clientWidth + 0.5;
+        if (!p || p.offsetWidth <= 1 || p.scrollWidth <= p.clientWidth + 0.5) return true;
+        // A shortened project name: never beside the engine's name, never under 3.5em.
+        return !(step === "" && box.querySelector(".g-engine")) && p.clientWidth >= 3.5 * (parseFloat(getComputedStyle(p).fontSize) || 12) - 0.5;
       };
-      for (const step of ["", "engine", "readings", "project", "quiet"] as const) {
+      for (const step of STEPS) {
         setCrowd(step);
-        if (!over() && !(step === "" && shortened())) break;
+        if (step === "folded" || fits(step)) break;
       }
     });
   // Another goal changing the same files, in words: "Overlaps G-0003" beside this row's own id, never a bare id that reads as it.
@@ -59,8 +64,19 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
   const overlapsWith = (id: string) => t("goal.overlaps", { id: "\u0001" }).split("\u0001").flatMap((part, i) => (i ? [<span class="code-val">{id}</span>, say(part)] : [say(part)]));
   const overlapTitle = () => (g().overlaps ?? []).map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n");
   const muted = () => !!state.settings?.muted_goals.includes(g().id);
+  // The title's tooltip says the row's whole identity, whatever the row has room to show.
   const titleTip = () =>
-    [g().title, otherEngine() ? engineLabel(engine()!) : "", showProject() ? g().project_name : "", muted() ? t("quiet.muted") : "", overlapTitle()].filter(Boolean).join("\n");
+    [
+      g().title,
+      g().pr ? prSummary(g().pr!) : "",
+      g().rework_cycles > 0 ? t("card.rework", { n: g().rework_cycles, max: g().max_rework }) : "",
+      muted() ? t("quiet.muted") : "",
+      otherEngine() ? engineLabel(engine()!) : "",
+      showProject() ? g().project_name : "",
+      overlapTitle(),
+    ]
+      .filter(Boolean)
+      .join("\n");
   // The note gives way before the title does, a step at a time: "◇ Overlaps G-0003", then "◇ G-0003", then the ◇ alone,
   // while the title would show less than it needs (all of a short one, 12em of a longer one). Whatever is set aside stays
   // in the tooltip and for a screen reader.

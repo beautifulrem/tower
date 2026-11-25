@@ -125,7 +125,8 @@ export function TimelineSwitcher(props: {
  * The select chooses what the face says: each point is its own option (two can share a rev), and the one chosen is the
  * one you picked while the range still ends there, else the range's own end (its first point from, its last point to).
  * An end no point stands at any more (a new pin moved every point off it) is still the range's end: it is named so, as
- * its own option, chosen, rather than left blank over a select that falls back to its first point.
+ * its own option, chosen, rather than left blank over a select that falls back to its first point; its pin is its only
+ * name, so it keeps it in a narrow header too.
  */
 function RunPick(props: {
   label: string;
@@ -146,7 +147,7 @@ function RunPick(props: {
   const goneOption = () => <Show when={gone()}>{(x) => <option value={x().key} selected>{x().name}</option>}</Show>;
   const at = () => cur().lastIndexOf(" @");
   return (
-    <span class="timeline-pick" title={cur()}>
+    <span class="timeline-pick" classList={{ "timeline-pick-gone": !point() && !!gone() }} title={cur()}>
       <span class="timeline-pick-face" aria-hidden="true">
         <span>{at() < 0 ? cur() : cur().slice(0, at())}</span>
         <Show when={at() >= 0}>

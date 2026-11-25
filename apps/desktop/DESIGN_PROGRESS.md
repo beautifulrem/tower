@@ -231,7 +231,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   symlinked node_modules) and 374/0 with fonts served. Reviewer worktree removed.
 - 2026-11-25 Iteration 12 — every review 11 finding (T82–T85). The board's overlap note is decided on the row at rest
   and gives way a step at a time ("◇ Overlaps G-0003", "◇ G-0003", the ◇), saying as much as leaves the title its
-  room; from 1561 the title column keeps the floor it has below, so it goes 366 → 352 px across the step. The evidence
+  room; from 1561 the title column keeps the floor it has below, so it goes 370 → 352 px across the step. The evidence
   strip says each family by its weightiest finding, and a pass a high finding holds draws no neutral caveat pill. The
   run pickers key a point by kind, run and rev, the review keeps the points you picked, and an end that left the list
   is named ("No longer listed @15085f2"). The live seal and the identity column give way by measure (`lib/refit.ts`):
@@ -244,3 +244,26 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   239 / 184 / 123 ms; switches 30–110 ms against 16–61 ms); line limit; bundle all JS 162,269 / 163,840 B, start-up
   55,749 / 65,536 B, goal page 11,597 / 12,288 B; doc numbers; detector: the three triaged `side-tab` findings and
   10 advisories, none on a changed line. No Rust changed. Not yet independently re-reviewed.
+- 2026-11-25 Independent review of `886ab38` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
+  **PASS 8.42 / 10**, no P0, P1 or P2. Iteration 12's fixes confirmed, the identity column's in part; the new tests
+  fail on `4ea4567` for the right reasons. Two P3s, recorded as D117–D118: a merged or closed PR with rework still ran
+  past the identity's last step ("⟳3/" at 1440), and the PR readings a step set aside were in neither the tooltip nor
+  the button's name, a short project name held 3.5em, a separator's gap stayed (`design-evidence/reports/review12.md`).
+  Its e2e run was 373/4 by the plain command (fonts 403 through the symlinked node_modules) and 377/0 with fonts
+  served. Reviewer worktree removed.
+- 2026-11-25 Iteration 13 — both review 12 findings (T86–T87) and two of its record-only notes. The identity gives way
+  in this order: the engine's name, the PR's quieter readings, "muted", the project's name (which may first shorten
+  to 3.5em), the PR's state, and last the whole identity folds into the tooltip, as below 1241: the last step always
+  fits. What a step
+  sets aside leaves the line but not a screen reader; the title's tooltip says the whole identity, the PR in words; the
+  PR button's name is its own text with its counts said in words (the first full run had a label laid over it, and
+  axe's `label-content-name-mismatch` failed the inbox in both themes; fixed before the commit). A project name takes
+  its own width; the separator goes with the counts. A run picker's gone end keeps its pin in a narrow header.
+  Checked against `886ab38` by restoring its sources under the new tests: 5 e2e fail there (the four sweeps: `lib` 42 px
+  for 13 px of text, the name "PR merged" with the identity past its column; the picker: the gone end's pin hidden at
+  1100), pass here. Gates: tsc; vitest 43 files / 239 tests; Playwright WebKit 379 passed, 0 failed (76 shot tests
+  skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter13/allshots`); perf passes (board of 50: 1082 / 466 / 252 ms
+  against 269 / 254 / 196 ms; switches 49–179 ms against 32–73 ms); line limit; bundle all JS 162,638 / 163,840 B,
+  start-up 56,037 / 65,536 B, goal page 11,597 / 12,288 B; doc numbers, once the two READMEs and docs/17 quote the
+  build's 55 KB start-up and 159 KB total (they said 54 and 157; the check allows 1 KB); detector: the three triaged
+  `side-tab` findings and 12 advisories, none on a changed line. No Rust changed. Not yet independently re-reviewed.

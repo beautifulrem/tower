@@ -96,6 +96,8 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T83 No caveat beside a held pass | D114 | P3 | each family's most severe finding; no neutral caveat pill on a row whose pass is held | `GoalDeck.test.tsx` the two mixed cases; fail on `4ea4567` | Done (iteration 12) |
 | T84 The picker keeps its point | D115 | P3 | key without `at`; the picked point in Review's state; an end that leaves the list moves or is named | `review-scope.spec.ts` refresh, scope switch, new pin; `panels.test.tsx` the gone end; fail on `4ea4567` | Done (iteration 12) |
 | T85 No hard cuts on the board | D116 | P3 | the live column's seal and the identity column give way by measuring | `flows.spec.ts` 13 widths 1241–1800 en/zh, crowded fixture; fails on `4ea4567` | Done (iteration 12) |
+| T86 The identity's last step fits | D117 | P3 | after "muted" and the project's name, the PR's state, then the whole identity folds into the tooltip | `flows.spec.ts` a second crowded board, merged and closed PRs with rework, 13 widths en/zh; fails on `886ab38` | Done (iteration 13) |
+| T87 What leaves is still said | D118 | P3 | the PR in words in the title's tooltip and in the button's own name; set aside from sight only; a project its own width; the separator with the counts | `flows.spec.ts` tooltip and accessible name at every width, project width; smoke axe; fails on `886ab38` | Done (iteration 13) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

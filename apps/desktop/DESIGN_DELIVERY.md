@@ -1,6 +1,6 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, eighteen local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, nineteen local commits, nothing pushed, merged or deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -154,6 +154,7 @@ available in that session. The reviewers never edited code. Reports are committe
 | `7a23f45` | **PASS, 8.28**, no P0/P1; one P2 (review 9, after the owner's remaining list) |
 | `deef352` | **PASS, 8.20**, no P0/P1; one new P2 (review 10, after review 9's fixes) |
 | `2f1d0c5` | **PASS, 8.38**, no P0/P1/P2; four P3 (review 11, after review 10's fixes) |
+| `886ab38` | **PASS, 8.42**, no P0/P1/P2; two P3 (review 12, after review 11's fixes) |
 
 Review 8 raised four P3s. Two were introduced by iteration 8's own fixes: the peek head called a waiting run
 "Unresponsive", and the sidebar still said "Needs you" for a goal in To review. Two were older: the cron broke at
@@ -187,27 +188,38 @@ test now checks. It confirmed the new tests fail on `deef352` for the right reas
 the peek button's room even when the button is hidden, so the words go where the row fits them (D113, from iteration
 11); a neutral caveat pill can stand beside a pass a high finding holds (D114); a picked run name is lost on a refresh
 or a scope switch, and an end that leaves the list is blank (D115); the live and identity columns cut words without an
-ellipsis (D116, older). The last acceptance stands on `2f1d0c5`.
+ellipsis (D116, older).
 
-Iteration 12 fixes all four, each with a test that fails on `4ea4567` (review 11's commit; its code is `2f1d0c5`'s). Not yet independently re-reviewed.
+Iteration 12 fixes all four, each with a test that fails on `4ea4567` (review 11's commit; its code is `2f1d0c5`'s).
+
+Review 12 read `886ab38` (iteration 12) and passed it at 8.42, with no P0, P1 or P2. The overlap note says as much as
+leaves the title its room, at rest (swept every 4 px); a held pass draws no neutral pill; picked run names survive a
+re-verification and a scope switch, and a gone end is named; the live seal gives way whole, never a green mark without
+its pin. It confirmed the new tests fail on `4ea4567` for the right reasons. Two P3s: a merged or closed PR with rework
+still ran past the identity's last step (D117, what D116 left), and the PR readings a step set aside were in neither
+the tooltip nor the button's name, a short project name held 3.5em (D118, from iteration 12). The last acceptance
+stands on `886ab38`.
+
+Iteration 13 fixes both, and two of the review's record-only notes, each with a test that fails on `886ab38`. Not yet
+independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 12):
+At the final commit (iteration 13):
 
 - **Type check and unit tests:** tsc clean; vitest 43 files, 239 tests.
-- **e2e:** Playwright WebKit 377 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+- **e2e:** Playwright WebKit 379 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
   supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs five "Importing a
-  module script failed" lines (also five in iteration 11, four in iteration 10): pages left by a test while a view was still loading; no test
+  module script failed" lines (also five in iterations 11 and 12, four in iteration 10): pages left by a test while a view was still loading; no test
   fails and the new tests emit none.
-- **Shots:** 69/69 (`/tmp/tower-design/iter12/allshots`).
+- **Shots:** 69/69 (`/tmp/tower-design/iter13/allshots`).
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 162,269 / 163,840 B (1,571 B left), start-up 55,749 / 65,536 B, goal page
+- **Bundle:** all interface JS 162,638 / 163,840 B (1,202 B left), start-up 56,037 / 65,536 B, goal page
   11,597 / 12,288 B. The budget was never raised.
-- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 713 / 303 / 198 ms against
-  239 / 184 / 123 ms for the seeded board, inside its 750 ms margin (every row now measures its identity column);
-  view switches with 50 goals take 30–110 ms against 16–61 ms, their medians inside 150 ms.
-- **Rust (iteration 9; iterations 10–12 changed no Rust):** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 1,082 / 466 / 252 ms against
+  269 / 254 / 196 ms for the seeded board (medians 466 against 254), inside its 750 ms margin (every row now measures its identity column);
+  view switches with 50 goals take 49–179 ms against 32–73 ms, their medians inside 150 ms.
+- **Rust (iteration 9; iterations 10–13 changed no Rust):** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
   e2e suite and the shots ran beside it, `evidence::a_criterion_whose_base_did_not_run_keeps_its_canary` failed its
   canary assertion; it passed alone, three times more, and in the full rerun. It drives a real sandboxed `node --test`
   and this work does not touch the verifier or the canary: recorded as load-sensitive, not hidden or retried away.
@@ -223,7 +235,7 @@ user's `~/.tower`, no model called. Looked at through the accessibility tree, in
 row "runs 1, 2" (D91), the folded engine clause (D92), titles with their ids on the board (D23), a schedule "Weekdays
 02:00" before its cron (D20, the schedule added to the scratch database, disabled), and the native unsaved-contract
 sheet. Screenshots: `design-evidence/packaged-app/`. Not reached there: a pass with caveats (the demo has none) and a
-1040 px window (D58, D96); their evidence is the WebKit tests. Iterations 10–12's fixes were not looked at in the packaged
+1040 px window (D58, D96); their evidence is the WebKit tests. Iterations 10–13's fixes were not looked at in the packaged
 app. Typing into the WebView in the background does not
 reach its fields — keys went to the app's shortcuts once (a stray draft, discarded through the app's own sheet).
 
@@ -232,8 +244,8 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 `bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
 (review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run), the iteration-9 commit `7a23f45` (the owner's
 remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`), the
-iteration-11 commit `2f1d0c5` (review 10's findings), the commit recording review 11 (`4ea4567`) and the iteration-12
-commit (review 11's findings). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+iteration-11 commit `2f1d0c5` (review 10's findings), the commit recording review 11 (`4ea4567`), the iteration-12
+commit `886ab38` (review 11's findings) and the iteration-13 commit (review 12's findings, with review 12's report). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
@@ -241,14 +253,16 @@ Iteration 9 fixed the owner's remaining list: D84 (bundle), D91, D92, D96, D51/D
 D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. Iteration 10 fixed
 review 9's findings (D98–D106), each with a test that fails on `7a23f45`; review 10 passed it. Iteration 11 fixed
 review 10's (D107–D112) and its empty settings test, each with a test that fails on `deef352`; review 11 passed it.
-Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `4ea4567`; not yet re-reviewed.
+Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `4ea4567`; review 12 passed it.
+Iteration 13 fixed review 12's (D117–D118), each with a test that fails on `886ab38`; not yet re-reviewed.
 What is left:
 
 - **Three more columns give way by measuring** since iteration 12 (`lib/refit.ts`): the overlap note (three steps),
   the live seal (its word, then the whole seal) and the identity (the engine's name, the PR's quieter readings, the
-  project's name, the word "muted"). Each runs again on its box, its text and the fonts; the board of 50 still paints
-  inside its margin. A row with a failing PR, a mute and rework needs the last step at 1241 (17 px short before it);
-  past it, readings longer than any the fixtures hold would run off the identity's end rather than cut its first one.
+  word "muted", the project's name, the PR's state, and last the whole identity). Each runs again on its box, its text
+  and the fonts; the board of 50 still paints inside its margin. The identity's last step folds it into the title's
+  tooltip, as below 1241, so nothing on it is cut however long its readings; what leaves the line is still read by a
+  screen reader. The sweeps hold two crowded boards (open PRs; merged and closed PRs with rework up to 3/3).
 - **The overlap note gives way by measuring** each overlapping row (a ResizeObserver on the title cell and the title, a
   MutationObserver for its text), decided on the row at rest, so hovering or selecting never changes it. Measured at ten
   widths 1241–1800 for both rows of the pair, a short and a long title, in both languages; at 1241 a long title has

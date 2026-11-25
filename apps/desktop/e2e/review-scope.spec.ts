@@ -148,4 +148,10 @@ test("the run pickers keep the points you picked across a refresh and another sc
   expect(from).toBe(run2);
   expect(to).toBe(`No longer listed @${verification.slice(-7)}`);
   await expect(page.getByRole("combobox", { name: "Compare to" })).toHaveValue(/^gone:15085f2/);
+  // Review 12: in a narrow header the pins go (`short-picks`), but this end's pin is its only name, so it stays.
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(page.locator(".review-stats")).toHaveClass(/short-picks/);
+  await expect(picks.nth(0).locator(".timeline-pick-pin")).toBeHidden();
+  await expect(picks.nth(1).locator(".timeline-pick-pin")).toBeVisible();
+  expect((await both())[1]).toBe(to);
 });

@@ -14,15 +14,15 @@ export function PrLine(props: { pr: PrView; compact?: boolean }) {
   const stateWord = () =>
     ({ open: t("goal.prOpen"), merged: t("goal.prMerged"), closed: t("goal.prClosed") })[s().state] ?? s().state;
   return (
-    <button class="pr-line link-quiet row text-btn halt" onClick={() => void openUrl(props.pr.url)} title={props.pr.url}>
+    <button class="pr-line link-quiet row text-btn halt" data-state={s().state} onClick={() => void openUrl(props.pr.url)} title={props.pr.url}>
       <span class="t1">PR</span>
-      <span class="t2">{stateWord()}</span>
+      <span class="t2 pr-state">{stateWord()}</span>
       <Show when={s().passed + s().failed + s().pending > 0}>
         <span class="sep" />
         <span class="row num" style={{ gap: "6px" }}>
           <Show when={s().passed > 0}>
             {/* GitHub's count, not the verifier's: a neutral check, never the green that only Tower's verifier may wear. */}
-            <span class="row t2" style={{ gap: "3px" }}>
+            <span class="row t2 pr-passed" style={{ gap: "3px" }}>
               <Icon name="check" size={10} /> {s().passed}
             </span>
           </Show>
@@ -32,7 +32,7 @@ export function PrLine(props: { pr: PrView; compact?: boolean }) {
             </span>
           </Show>
           <Show when={s().pending > 0}>
-            <span class="row t3" style={{ gap: "3px" }}>
+            <span class="row t3 pr-pending" style={{ gap: "3px" }}>
               <Icon name="dot" size={10} /> {s().pending}
             </span>
           </Show>

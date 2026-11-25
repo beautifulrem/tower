@@ -229,3 +229,18 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   refresh or scope switch, and older hard cuts in the live and identity columns
   (`design-evidence/reports/review11.md`). Its e2e run was 369/5 by the plain command (fonts 403 through the
   symlinked node_modules) and 374/0 with fonts served. Reviewer worktree removed.
+- 2026-11-25 Iteration 12 — every review 11 finding (T82–T85). The board's overlap note is decided on the row at rest
+  and gives way a step at a time ("◇ Overlaps G-0003", "◇ G-0003", the ◇), saying as much as leaves the title its
+  room; from 1561 the title column keeps the floor it has below, so it goes 366 → 352 px across the step. The evidence
+  strip says each family by its weightiest finding, and a pass a high finding holds draws no neutral caveat pill. The
+  run pickers key a point by kind, run and rev, the review keeps the points you picked, and an end that left the list
+  is named ("No longer listed @15085f2"). The live seal and the identity column give way by measure (`lib/refit.ts`):
+  the seal's word, then the seal, never a green mark without its pin; the engine's name, the PR's quieter readings,
+  the project's name, the word "muted", each into the title's tooltip. Checked against `4ea4567` by restoring its
+  sources under the new tests: 8 e2e and 3 unit tests fail there, pass here; each for the review's reason except the
+  older crowded-row test, which fails only on the renamed `data-crowded` value.
+  Gates: tsc; vitest 43 files / 239 tests; Playwright WebKit 377 passed, 0 failed (76 shot tests skip without
+  SHOTS); shots 69/69 (`/tmp/tower-design/iter12/allshots`); perf passes (board of 50: 713 / 303 / 198 ms against
+  239 / 184 / 123 ms; switches 30–110 ms against 16–61 ms); line limit; bundle all JS 162,269 / 163,840 B, start-up
+  55,749 / 65,536 B, goal page 11,597 / 12,288 B; doc numbers; detector: the three triaged `side-tab` findings and
+  10 advisories, none on a changed line. No Rust changed. Not yet independently re-reviewed.

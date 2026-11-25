@@ -387,6 +387,7 @@ export const zhLater = {
     snapReviewed: "上次评审",
     snapVerified: "验证时",
     snapLatest: "最新",
+    snapGone: "已不在列表中",
     accept: "验收",
     loading: "正在计算改动与评审单元…",
     loadFailed: "无法载入改动",

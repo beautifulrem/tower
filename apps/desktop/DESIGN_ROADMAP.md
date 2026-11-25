@@ -86,6 +86,12 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T73 Overlap in words beside the id | D104 | P3 | "◇ Overlaps G-0003" after the row's own id; tooltip below 1241 | `flows.spec.ts` en/zh, fails on `7a23f45` | Done (iteration 10) |
 | T74 Units clear of their values | D105 | P3 | `.field-unit` (no clash with the review's `.unit`), padding measured from the unit (`fitUnit`) | `contract.spec.ts` contract en/zh + settings, fails on `7a23f45` | Done (iteration 10) |
 | T75 docs/12's last three places | D106 | P3 | `●*` placed, caveats as words not badges, only the diff tokens that exist; overlap position | read-through, doc numbers | Done (iteration 10) |
+| T76 The title keeps its room beside an overlap | D107 | P2 | the title a readable minimum before the note; the note gives way first | `flows.spec.ts` title width at 1241/1280/1366/1440 | Open |
+| T77 Done means done on every seal | D108 | P3 | `Seal` knows a done goal; decide `◉*` for integrated | `honesty.spec.ts` peek, review head, readout, integrated | Open |
+| T78 The picker's value is its face | D109 | P3 | options selected after render; unique option keys | e2e `select.value` = face | Open |
+| T79 Provenance told by form | D110 | P3 | the runs note apart by size or place, not colour alone | `honesty.spec.ts` | Open |
+| T80 One tone, one wording per caveat | D111 | P3 | strip pill and docs/12 agree | read-through, unit test | Open |
+| T81 Run names in the interface language | D112 | P3 | supervisor gives kind/run/pin; the frontend words them | `language.spec.ts` compare | Open |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

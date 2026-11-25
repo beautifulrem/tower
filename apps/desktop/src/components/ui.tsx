@@ -314,6 +314,23 @@ const FOCUSABLE =
   'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([tabindex="-1"]), [href], summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])';
 
 /**
+ * Tab walks a modal layer's own controls and wraps (a sheet, the peek): WebKit's own walk skips buttons unless macOS
+ * Full Keyboard Access is on, and from the last field it would leave the layer for the board behind it — where the
+ * next key lands in the quick-start field instead of the layer that says what it does.
+ */
+export const trapTab = (panel: () => HTMLElement) => (e: KeyboardEvent) => {
+  // A sheet opened inside another (Look in Verify) is drawn inside it: the innermost one moves focus, once.
+  if (e.key !== "Tab" || e.defaultPrevented) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const p = panel();
+  const items = [...p.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+  if (!items.length) return p.focus();
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  items[at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length].focus();
+};
+
+/**
  * A modal layer: dialog semantics, focus moved in, kept in (Tab wraps) and
  * restored on close; Esc closes it before any view binding sees the key.
  * `instant` layers (opened from the keyboard) do not animate (§12.7).
@@ -371,19 +388,7 @@ export function Overlay(props: {
     (first ?? panel).focus({ preventScroll: true });
   });
   onCleanup(() => previous?.focus?.({ preventScroll: true }));
-  // Tab walks the sheet's own controls and wraps: WebKit's own walk skips buttons unless macOS Full Keyboard Access
-  // is on, and from the last field it would leave the modal sheet for the board behind it.
-  const trap = (e: KeyboardEvent) => {
-    // A sheet opened inside another (Look in Verify) is drawn inside it: the innermost one moves focus, once.
-    if (e.key !== "Tab" || e.defaultPrevented) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
-    if (!items.length) return panel.focus();
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
-    items[next].focus();
-  };
+  const trap = trapTab(() => panel);
   return (
     <div
       class="overlay"

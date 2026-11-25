@@ -69,6 +69,9 @@ describe("formats", () => {
     expect(usd(1.5)).toBe("$1.50");
     expect(usdLimit(5)).toBe("$5");
     expect(usdLimit(7.5)).toBe("$7.5");
+    // One format at any size: thousands grouped.
+    expect(usd(43209.6)).toBe("$43,209.60");
+    expect(usdLimit(1500)).toBe("$1,500");
     expect(short("abcdef123456")).toBe("abcdef1");
   });
 });

@@ -4306,8 +4306,8 @@ input[type="radio"] {
   white-space: nowrap;
 }
 /* A board cell is narrow: the words keep whole and the segments narrow (to 5px, never fewer, never under the words)
-   when a goal has many criteria. A pass that doesn't count needs its words; where the cell cannot also hold the human
-   count, that count goes to the cell's tooltip, as below 1240px. */
+   when a goal has many criteria. A pass that doesn't count needs its words, so its human count goes to the cell's
+   tooltip (as on every row below 1240px): the column stays 11em at every width, and the titles beside it keep theirs. */
 .criteria-bar.tiny {
   max-width: 100%;
   gap: var(--sp-1);
@@ -4317,10 +4317,8 @@ input[type="radio"] {
   min-width: 5px;
   height: 5px;
 }
-@media (max-width: 1399px) {
-  .criteria-bar.tiny.has-discounted .crit-human {
-    display: none;
-  }
+.criteria-bar.tiny.has-discounted .crit-human {
+  display: none;
 }
 .criteria-bar.tiny .meta {
   flex: none;
@@ -4364,11 +4362,10 @@ input[type="radio"] {
     display: none;
   }
 }
-/* Wide enough for every reading at once: the identity column takes the room the engine's name needs on a crowded row,
-   and the criteria cell holds a pass that doesn't count beside the human count (16em, as from 1400px). */
+/* Wide enough for every reading at once: the identity column takes the room the engine's name needs on a crowded row. */
 @media (min-width: 1561px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 16em 4.5em 7em 6.5em 17em;
+    grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 17em;
   }
 }
 /* Ready to accept: the row's one action. It stands where the identity is, on the row you point at or are on, and the

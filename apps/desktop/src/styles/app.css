@@ -1438,52 +1438,29 @@ input[type="radio"] {
    Welcome
    ====================================================================== */
 
+/* First run reads as a setup page at a page's measure, not a landing: the page title at the title size, the check
+   list and its actions first, then how a goal ends. */
 .welcome {
   display: grid;
-  grid-template-columns: minmax(0, 440px) minmax(300px, 400px);
-  gap: var(--sp-10) var(--sp-10);
-  max-width: 920px;
-  margin: 9vh auto 0;
-  align-items: start;
-}
-@media (max-width: 1100px) {
-  .welcome {
-    grid-template-columns: minmax(0, 560px);
-  }
-}
-.welcome-main {
-  display: grid;
   gap: var(--sp-5);
+  max-width: 600px;
+  margin: var(--sp-8) auto 0;
 }
 .welcome-title {
-  font-size: var(--fs-display);
-  line-height: var(--lh-display);
-  letter-spacing: -0.016em;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  letter-spacing: -0.012em;
   font-weight: 500;
-  font-variation-settings: var(--opsz-display);
+  margin-top: calc(-1 * var(--sp-2));
 }
-.welcome-lede {
-  font-size: var(--fs-reading);
-  line-height: 24px;
-  color: var(--text-2);
+.welcome-note {
+  margin: calc(-1 * var(--sp-2)) 0 0;
 }
-.welcome-points {
+.welcome-how {
   display: grid;
-  gap: var(--sp-3);
-  padding: var(--sp-3) 0;
+  gap: var(--sp-4);
+  padding-top: var(--sp-5);
   border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.welcome-points > div {
-  display: grid;
-  grid-template-columns: 9em 1fr;
-  gap: var(--sp-3);
-}
-.welcome-points b {
-  font-weight: 500;
-}
-.welcome-points span {
-  color: var(--text-2);
 }
 /* A goal's life as a route: six stations, each a glyph over its word, joined by hairlines. The glyphs are the
    board's own at 14px; the words the wordmark's small tracked voice. Green starts at the verifier's station. */
@@ -1541,15 +1518,6 @@ input[type="radio"] {
   padding: 0;
   min-height: 20px;
 }
-/* The side column's first line sits on the wordmark's line: both 12px tall, both at the top. */
-.welcome-side {
-  display: grid;
-  gap: var(--sp-4);
-  padding-top: 0;
-}
-.checks .section-title {
-  line-height: 12px;
-}
 /* The wordmark: Tower's own mark and its name set as a name — the display cut, a touch tight — above the first
    sentence. Capitals tracked wide are kept for one place only, the contract's masthead. */
 .wordmark {
@@ -1562,7 +1530,6 @@ input[type="radio"] {
   font-weight: 600;
   font-variation-settings: "opsz" 28;
   color: var(--text-2);
-  margin-bottom: calc(-1 * var(--sp-2));
 }
 .wordmark svg {
   display: block;
@@ -1572,7 +1539,6 @@ input[type="radio"] {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
-  padding-top: var(--sp-3);
 }
 
 /* ======================================================================
@@ -2827,6 +2793,24 @@ input[type="radio"] {
   .review-stats > .review-stat-group:first-child > :not(:first-child) {
     display: none;
   }
+  /* The verdict is the last thing the header gives up. Comparing two runs, the pickers name the range, so the line
+     and file counts go; the groups close up; and the buttons keep their words but not their key caps (the shortcut
+     sheet and the tooltips still say them). */
+  .review-stats {
+    gap: var(--sp-3);
+  }
+  .review-head .review-stats .scope-switch {
+    gap: var(--sp-2);
+  }
+  .review-head .review-stats .timeline-select {
+    max-width: 128px;
+  }
+  .review-stats.comparing > .review-stat-group:first-child {
+    display: none;
+  }
+  .review-head > .btn .kbd {
+    display: none;
+  }
 }
 .review-body {
   display: grid;
@@ -3715,6 +3699,43 @@ input[type="radio"] {
 .contract-mast + .editor-block {
   padding-top: 0;
 }
+/* A folded clause: one line of what is set (each value told apart by a gap), a chevron that turns when open. The line
+   stays when the clause opens, as its summary. */
+/* The chevron, then the settings: each whole, told apart by the gap, a wrapped line hanging under the first setting
+   (the side column is under 300 px wide at every layout, too narrow for all four on one line). */
+.clause-summary {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  column-gap: var(--sp-2);
+  align-items: start;
+  padding-block: 6px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-2);
+  list-style: none;
+  cursor: pointer;
+}
+.clause-summary::-webkit-details-marker {
+  display: none;
+}
+.clause-summary > .icon {
+  margin-top: 3px;
+  color: var(--text-3);
+}
+.clause-summary-items {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--sp-4);
+}
+.clause-summary-items > span {
+  white-space: nowrap;
+}
+.clause-fold[open] > .clause-summary {
+  margin-bottom: var(--sp-3);
+}
+.clause-fold[open] > .clause-summary > .icon {
+  transform: rotate(90deg);
+}
 .clause-head {
   display: flex;
   align-items: center;
@@ -4257,13 +4278,14 @@ input[type="radio"] {
 
 /* One goal per line. Columns, left to right: glyph, title, live line,
    criteria, change, spend, age, identity. Fixed widths keep every reading
-   under the one above it; the identity is set flush right, so the last word
-   on every line ends where the hairlines do. No column waits for an action
-   most rows do not have. */
+   under the one above it; the id sits beside its title, and the identity
+   (engine, project, readings) is set flush right, so the last word on every
+   line ends where the hairlines do. No column waits for an action most rows
+   do not have. */
 .g-row {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 12.5em;
+  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 8.5em;
   column-gap: var(--sp-3);
   align-items: center;
   height: var(--row-goal-h);
@@ -4360,9 +4382,9 @@ input[type="radio"] {
 .g-spend {
   color: var(--text-2);
 }
-/* Identity: words grouped by space and weight — the readings, the engine and the project by name in text-3, the id in
-   mono text-2 — flush right, so every id ends on the board's edge under the one above it. Nothing in it is squeezed by
-   the browser's own proportions: the project name may shorten but stays legible (3.5em); the engine's name is whole or
+/* Identity: words grouped by space and weight — the readings, the engine and the project by name in text-3 — flush right,
+   so the last word on every line ends on the board's edge (the id is read with the title, beside it). Nothing in it is
+   squeezed by the browser's own proportions: the project name may shorten but stays legible (3.5em); the engine's name is whole or
    gone — on a crowded row (a second project, rework, a mute, an overlap, a PR) it leaves first, below 1560, and lives on
    in the title's tooltip. */
 .g-id {
@@ -4389,7 +4411,7 @@ input[type="radio"] {
 /* Wide enough for every reading at once: the identity column takes the room the engine's name needs on a crowded row. */
 @media (min-width: 1561px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 17em;
+    grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 12.5em;
   }
 }
 /* Ready to accept: the row's one action. It stands where the identity is, on the row you point at or are on, and the
@@ -4465,9 +4487,6 @@ input[type="radio"] {
   gap: var(--sp-5);
   margin-top: clamp(120px, 24vh, 280px);
   padding-top: 0;
-}
-.empty-poster .wordmark {
-  margin-bottom: 0;
 }
 .empty-rules {
   margin: 0;

@@ -259,10 +259,12 @@
 }
 .g-spend-text { line-height: 14px; }
 .g-spend-cell .meter-micro { width: 56px; }
-/* At the low end of this range the fixed columns add up to more than the board: the identity column gives first. */
+/* At the low end of this range the fixed columns add up to more than the board: the identity column gives first. The id
+   is beside the title, so the title's column carries it (a larger share) and the identity is the readings, the engine
+   and the project (less room than with the id). */
 @media (min-width: 1241px) and (max-width: 1560px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.2fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(12em, 15.5em);
+    grid-template-columns: 14px minmax(12em, 1.4fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(8em, 10em);
   }
 }
 .g-overlap {
@@ -278,7 +280,9 @@
   gap: 6px;
   min-width: 0;
 }
-.g-title-cell .g-title { flex: 1 1 auto; }
+/* The title takes what it needs and gives way first; its id stays whole beside it. */
+.g-title-cell .g-title { flex: 0 1 auto; min-width: 0; }
+.g-title-cell .g-goal-id { flex: none; }
 .g-peek-btn {
   display: none;
   align-items: center;
@@ -673,9 +677,11 @@
   white-space: nowrap;
 }
 /* A reading cell — a cron expression, an approval mode, a time and its goal — is one token on one line ("0 2 * * 1-5",
-   never "1-" over "5"); a schedule's title is the column that wraps. */
+   never "1-" over "5"); a schedule's title is the column that wraps. A schedule's time in words is one token too, and
+   when the table is narrow its cron goes under it rather than the table past its frame. */
 .data-table td > code,
-.data-table td.meta {
+.data-table td.meta,
+.data-table td.ops-when > span {
   white-space: nowrap;
 }
 /* A goal cell (a name that truncates) takes what the other columns leave, and never more: max-width 0 lets the cell
@@ -696,6 +702,8 @@
   text-overflow: ellipsis;
 }
 .data-table .toggle-row {
+  /* The state word keeps its width: in a narrow actions cell "On" must not run into the button after it. */
+  flex: none;
   margin-bottom: 0;
   align-items: center;
   gap: 6px;

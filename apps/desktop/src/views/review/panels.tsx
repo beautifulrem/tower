@@ -20,7 +20,7 @@ import type { CriterionView } from "../../gen/CriterionView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
-import { notEvidence } from "../../lib/discounted";
+import { caveatList, caveats, heldOrTampered, notEvidence } from "../../lib/discounted";
 import { locale, t } from "../../lib/i18n";
 import { hasIssue } from "../../lib/labels";
 import { back } from "../../lib/nav";
@@ -71,7 +71,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
-            <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} />
+            <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} />
           </Show>
           <span class="grow" />
           <Show when={g()}>
@@ -90,7 +90,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                 <div class="verify-item">
                   <div class="criterion-row">
                     <Show when={c.criterion.kind.type === "exec"} fallback={<ResultMark kind={c.human_checked ? "obs-pass" : "pending"} title={c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")} />}>
-                      <Show when={c.canary === "tampered" && mark(c) === "pass"} fallback={<ResultMark kind={mark(c)} />}>
+                      <Show when={heldOrTampered(c, props.detail?.sentinels) && mark(c) === "pass"} fallback={<ResultMark kind={mark(c)} />}>
                         <NotEvidenceMark />
                       </Show>
                     </Show>
@@ -170,6 +170,8 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
 interface OpenItem {
   danger?: boolean;
   notEvidence?: boolean;
+  /** A counted pass with caveats: a judgement (◆), so Accept asks twice, but not a withheld seal. */
+  qualified?: boolean;
   text: string;
   sentinel?: boolean;
 }
@@ -215,8 +217,10 @@ export function AcceptPanel(props: AcceptPanelProps) {
     el?.focus();
   };
   const tampered = () => props.detail?.criteria.filter((c) => c.canary === "tampered") ?? [];
-  const counted = () => Math.max(0, (g()?.progress.machine ?? 0) - tampered().length);
   const highSentinels = () => (props.detail?.sentinels ?? []).filter((h) => h.severity >= 3);
+  // As the supervisor counts: a high finding of this verification holds every pass until it is dealt with.
+  const counted = () => (highSentinels().length ? 0 : Math.max(0, (g()?.progress.machine ?? 0) - tampered().length));
+  const withheld = () => tampered().length > 0 || highSentinels().length > 0 || notEvidence(g());
   const staleCount = () => (props.detail?.criteria ?? []).filter((c) => c.verified?.stale).length;
   const overlaps = () => g()?.overlaps ?? [];
   const snapshotFresh = () => !!g()?.verified_pin && staleCount() === 0 && tampered().length === 0;
@@ -224,6 +228,8 @@ export function AcceptPanel(props: AcceptPanelProps) {
   const open = () => {
     const items: OpenItem[] = [];
     for (const c of tampered()) items.push({ danger: true, notEvidence: true, text: t("review.openTampered", { id: c.criterion.id }) });
+    const why = caveats(g());
+    if (why.length && g()?.verified_pin) items.push({ danger: true, qualified: true, text: t("honesty.qualifiedTitle", { pin: g()!.verified_pin!.slice(0, 7), why: caveatList(why) }) });
     for (const c of props.detail?.claims ?? []) if (c.kind === "assumption" && c.approved === null) items.push({ text: t("review.openAssumption", { text: c.text }) });
     if (props.total - props.viewed > 0) items.push({ text: t("review.openUnviewed", { n: props.total - props.viewed }) });
     for (const h of props.detail?.sentinels ?? []) items.push({ danger: h.severity >= 3, text: h.title, sentinel: true });
@@ -239,8 +245,8 @@ export function AcceptPanel(props: AcceptPanelProps) {
           </Show>
           <div class="row meta t1">
             <Show when={p.danger} fallback={<NoticeMark />}>
-              <Show when={o.notEvidence} fallback={<DangerMark />}>
-                <NeedsYouMark title={t("honesty.notEvidence")} />
+              <Show when={o.notEvidence || o.qualified} fallback={<DangerMark />}>
+                <NeedsYouMark title={t(o.qualified ? "honesty.qualified" : "honesty.notEvidence")} />
               </Show>
             </Show>
             <span class="grow">
@@ -334,12 +340,16 @@ export function AcceptPanel(props: AcceptPanelProps) {
             <Show when={g()!.verified_pin}>
               {(pin) => (
                 <span class="accept-stamp">
-                  <Stamp pin={pin()} tampered={tampered().length > 0} press />
+                  <Stamp pin={pin()} tampered={withheld()} qualified={caveats(g())} press />
                 </span>
               )}
             </Show>
             <span class="meta accept-basis">
-              {tampered().length > 0 ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length }) : t("review.allPassed", { n: g()!.progress.machine })}
+              {highSentinels().length
+                ? t("review.allPassedHeld", { n: g()!.progress.machine })
+                : tampered().length > 0
+                  ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length })
+                  : t("review.allPassed", { n: g()!.progress.machine })}
               <Show when={props.total > 0 && props.viewed === props.total}>
                 <span class="num accept-viewed">{t("review.viewedAll", { n: props.total })}</span>
               </Show>

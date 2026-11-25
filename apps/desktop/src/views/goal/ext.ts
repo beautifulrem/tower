@@ -143,14 +143,14 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = []): [s
   else if (cur.passes_with_source_only === false) out.push(["attn", t("goal.dependsOnEditedTests"), undefined, 1]);
   if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk"), undefined, 1]);
   else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered"), undefined, 1]);
-  else if (cur.canary === "not_checked") out.push(["obs", t("goal.canaryNotChecked"), undefined, 1]);
+  else if (cur.canary === "not_checked") out.push(["obs", t("honesty.cavAsserts"), undefined, 1]);
   const forCur = (h: SentinelHit) => !h.detail || h.detail.includes(cur.criterion.id) || !/\bC\d+\b/.test(h.detail);
   const gh = sents.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
-  if (gh) out.push([gh.severity >= 3 ? "danger" : "attn", /guard|unchecked/.test(gh.sentinel) ? t("goal.evGuardGap") : t("goal.evAssertTamper"), gh.detail || gh.title]);
+  if (gh) out.push([gh.severity >= 3 ? "danger" : "attn", /guard|unchecked/.test(gh.sentinel) ? t("honesty.cavAsserts") : t("goal.evAssertTamper"), gh.detail || gh.title]);
   else if (ver.passed && cur.canary === "intact") out.push(["fact", t("goal.evGuardOk")]);
   const ho = ver.held_out_proof;
   if (ho?.not_ran.length) out.push(["attn", t("goal.heldOutSome", { m: ho.ran.length, n: ho.ran.length + ho.not_ran.length }), undefined, 1]);
-  if (ver.flaky) out.push(["obs", t("goal.evFlaky")]);
+  if (ver.flaky) out.push(["obs", t("honesty.cavFlaky")]);
   if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? t("goal.evLoopbackBase") : t("goal.evLoopbackProject"), undefined, 1]);
   const bh = sents.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
   if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? t("goal.evBypass") : bh.sentinel.includes("perturb") ? t("goal.evPerturb") : t("goal.evTestExpectation"), bh.detail || bh.title]);

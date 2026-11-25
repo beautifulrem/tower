@@ -22,7 +22,7 @@ import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
 import { ago, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
-import { notEvidence } from "../lib/discounted";
+import { caveats, notEvidence } from "../lib/discounted";
 import { approves, optionTone, statusWord } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go, goProjectSetting } from "../lib/nav";
@@ -191,22 +191,25 @@ export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPee
           {(g) => <LifecycleGlyph goal={g()} />}
         </Show>
       </span>
-      <button
-        class="g-title"
-        aria-expanded="false"
-        aria-label={`${kindLabel(it().kind)}: ${it().subject}. ${it().goal_title}`}
-        title={it().goal_title}
-        // Space peeks, as on every board row; only Enter or a click opens the card (the button would take Space as a click).
-        onKeyDown={(e) => {
-          if (e.key === " " && props.onPeek) (e.preventDefault(), e.stopPropagation(), props.onPeek());
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          props.onOpen();
-        }}
-      >
-        <span class="ellipsis">{it().goal_title}</span>
-      </button>
+      <div class="g-title-cell">
+        <button
+          class="g-title"
+          aria-expanded="false"
+          aria-label={`${kindLabel(it().kind)}: ${it().subject}. ${it().goal_title}`}
+          title={it().goal_title}
+          // Space peeks, as on every board row; only Enter or a click opens the card (the button would take Space as a click).
+          onKeyDown={(e) => {
+            if (e.key === " " && props.onPeek) (e.preventDefault(), e.stopPropagation(), props.onPeek());
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onOpen();
+          }}
+        >
+          <span class="ellipsis">{it().goal_title}</span>
+        </button>
+        <span class="code-val t2 g-goal-id">{it().goal_id}</span>
+      </div>
       <span class="decision-line-ask">
         {/* The first slot is one width on every line, so what follows starts on one line: a goal waiting for acceptance
             puts its verdict there, in the goal page's words (what you would be accepting), and its question after it. */}
@@ -224,7 +227,6 @@ export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPee
         <Show when={goal() && state.projects.length > 1}>
           <span class="t3 ellipsis g-project">{goal()!.project_name}</span>
         </Show>
-        <span class="code-val t2 g-goal-id">{it().goal_id}</span>
       </span>
     </div>
   );
@@ -329,7 +331,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                 {(g) => (
                   <div class="decision-readout decision-readout-main halt">
                     {/* The head already says the verdict: a withheld seal keeps its ◆ and pin, not the words again. */}
-                    <Seal pin={g().verified_pin} large tampered={notEvidence(g())} text={notEvidence(g()) ? "" : undefined} />
+                    <Seal pin={g().verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} text={notEvidence(g()) || caveats(g()).length ? "" : undefined} />
                     <Show when={g().diffstat}>
                       <span class="sep" />
                       <span class="num">

@@ -13,7 +13,7 @@ import { Show, createEffect, on } from "solid-js";
 import type { GoalSummary } from "../gen/GoalSummary";
 import { ago, duration } from "../lib/format";
 import { t } from "../lib/i18n";
-import { notEvidence } from "../lib/discounted";
+import { caveats, notEvidence } from "../lib/discounted";
 import { heartbeatState, isEngineTool, modeLabel, modeNeedsYou, pauseLabel, stateLabel, statusWord, toolLabel } from "../lib/labels";
 import { livenessOf, state } from "../lib/store";
 import { NeedsYouMark, Seal } from "./Glyph";
@@ -154,8 +154,8 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
             </>
           }
         >
-          {/* The badge already says the verdict; a pass that is not evidence keeps only the withheld mark and its pin. */}
-          <Seal pin={d().seal} compact tampered={notEvidence(props.goal)} text={notEvidence(props.goal) ? "" : undefined} />
+          {/* The badge already says the verdict; a pass that is not evidence, or one with caveats, keeps only its mark and pin. */}
+          <Seal pin={d().seal} compact tampered={notEvidence(props.goal)} qualified={caveats(props.goal)} text={notEvidence(props.goal) || caveats(props.goal).length ? "" : undefined} />
         </Show>
       </span>
       {/* The right slot is the time of the last movement; when the engine has gone silent that is exactly the reading you need, so it stays and says so. */}

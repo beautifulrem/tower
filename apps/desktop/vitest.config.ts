@@ -1,11 +1,15 @@
+import { readFileSync } from "node:fs";
+
 import solid from "vite-plugin-solid";
 import { defineConfig } from "vitest/config";
+
+import { localeKeys } from "./plugins/localeKeys.ts";
 
 // Pure-logic tests (`*.test.ts`) cover formats, matching and text; component
 // tests (`*.test.tsx`) render Solid components in jsdom with a stubbed Tauri
 // bridge. Neither touches the real supervisor.
 export default defineConfig({
-  plugins: [solid()],
+  plugins: [solid(), localeKeys((file) => readFileSync(file, "utf8"))],
   resolve: { conditions: ["development", "browser"] },
   test: {
     environment: "jsdom",

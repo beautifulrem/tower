@@ -10,7 +10,7 @@ import { type JSX, Show, createEffect } from "solid-js";
 import type { CriterionView } from "../gen/CriterionView";
 import type { Progress } from "../gen/Progress";
 import { api } from "../lib/api";
-import { discountedN, firstAsk } from "../lib/discounted";
+import { discountedIn, discountedN, firstAsk } from "../lib/discounted";
 import { t } from "../lib/i18n";
 
 /**
@@ -46,14 +46,8 @@ export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX
   );
 }
 
-/**
- * Machine criteria whose must-fail canary passed: the command passed, and
- * that pass is not evidence (the assertions or the runner were tampered
- * with). Derived from the criteria themselves, never from the summary's
- * count, so the line under a criterion and the total above it say the
- * same thing.
- */
-export const discountedOf = (criteria: readonly CriterionView[] | null | undefined): number => (criteria ?? []).filter((c) => c.canary === "tampered").length;
+/** Machine criteria whose pass is not evidence (`discountedIn`): a canary passed too, or a high finding holds the pass. */
+export const discountedOf = (criteria: readonly CriterionView[] | null | undefined, p?: Progress | null): number => discountedIn(criteria, p);
 
 /**
  * Two-track progress (ADR-020): verified segments are facts and may be
@@ -70,7 +64,7 @@ export function CriteriaBar(props: { progress: Progress; criteria?: readonly Cri
   createEffect(() => {
     if (props.id && p().not_evidence && firstAsk(props.id)) void api.goal(props.id).catch(() => {});
   });
-  const discounted = () => Math.max(0, Math.min(props.criteria ? discountedOf(props.criteria) : discountedN(props.id), p().machine - verified()));
+  const discounted = () => Math.max(0, Math.min(props.criteria ? discountedOf(props.criteria, p()) : discountedN(props.id), p().machine - verified()));
   const segs = () =>
     Array.from({ length: p().machine }, (_, i) =>
       i < verified() ? "verified" : i < verified() + discounted() ? "discounted" : i < Math.max(verified() + discounted(), p().observed) ? "observed" : "empty",

@@ -1,7 +1,8 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, twelve local commits, nothing pushed, merged or deployed. Working
-evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`. Status words:
+Branch `design/evolution`, from `main` at `bf22cad`, thirteen local commits, nothing pushed, merged or deployed. Working
+evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
+pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
 accepted it), **Unverified**, **Deferred** (with reason), **Blocked**.
 
@@ -23,7 +24,7 @@ in `DESIGN_REVIEW.md`. The ones that mattered most:
 
 ## 2. External research — Verified (sources cited)
 
-`/tmp/tower-design/research.md` covers:
+`design-evidence/reports/research.md` covers:
 
 - agent desks: Conductor, the Codex app, Claude Code desktop, Vibe Kanban, the Cursor 3 Agents Window, GitHub Agent HQ;
 - review tools: Linear, GitHub/Graphite, Gerrit, Phabricator;
@@ -137,7 +138,7 @@ that is enforced by e2e on 14 surfaces.
 ## 12. Independent reviews — Accepted
 
 Every review used the user's `frontend-reviewer` agent, in a fresh read-only worktree on its own port. The reviewers
-never edited code. Reports are under `/tmp/tower-design/review*/report.md`.
+never edited code. Reports are committed in `design-evidence/reports/review*.md`.
 
 | Commit | Verdict |
 |---|---|
@@ -159,49 +160,58 @@ The last commit fixes the first two and the cron, and the dot half of the fourth
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit:
+At the final commit (iteration 9):
 
-- **Type check and unit tests:** tsc clean; vitest 41 files, 220 tests.
-- **e2e:** Playwright WebKit 331 passed, 0 failed (76 shot tests skip without SHOTS). The suite includes axe on the rich
-  states in both themes.
-- **Shots:** 69/69.
-- **Line limit:** passes.
-- **Bundle:** all interface JS 163,720 / 163,840 B, goal page 11,437 / 12,288 B. The budget was never raised.
-- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 549 / 265 / 185 ms against 179 / 167 /
-  116 ms for the seeded board, inside its 750 ms margin. View switches with 50 goals take 31–67 ms
-  (`/tmp/tower-design/iter8b/checks/perf.log`).
-- **Hardening probe:**
-  - no element runs past the edge at 1040 and 1440 with long en and zh titles;
-  - text contrast at least 5.26:1 light and 5.70:1 dark;
-  - a focus ring on every Tab stop;
-  - nothing animates under reduced motion.
-- **Long titles:** iteration 8 added three lengths × 5 widths (from the 1040 px minimum) × 4 routes.
+- **Type check and unit tests:** tsc clean; vitest 43 files, 230 tests.
+- **e2e:** Playwright WebKit 353 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+  supervisor's views. The suite includes axe on the rich states in both themes.
+- **Shots:** 69/69 (`/tmp/tower-design/iter9/shots`).
+- **Line limit, doc numbers:** pass.
+- **Bundle:** all interface JS 160,049 / 163,840 B (3,791 B left), start-up 54,859 / 65,536 B, goal page
+  11,573 / 12,288 B. The budget was never raised.
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 468 / 253 / 184 ms against
+  196 / 221 / 111 ms for the seeded board, inside its 750 ms margin; view switches with 50 goals take 34–89 ms against
+  16–29 ms, inside 150 ms.
+- **Rust:** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
+  e2e suite and the shots ran beside it, `evidence::a_criterion_whose_base_did_not_run_keeps_its_canary` failed its
+  canary assertion; it passed alone, three times more, and in the full rerun. It drives a real sandboxed `node --test`
+  and this work does not touch the verifier or the canary: recorded as load-sensitive, not hidden or retried away.
+- **Detector:** no new finding; the 3 `side-tab` findings are the review pen on hunk headers, kept since the baseline.
+- **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
+  contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion.
 
-Unverified: real macOS Tauri runtime behaviour. Everything was exercised in WebKit with stubbed IPC and dumped real
-views, not in the packaged app.
+**Packaged app (iteration 9).** A debug `Tower.app` (`pnpm tauri build --debug --bundles app`: the built bundle, so the
+locale plugin's output too) ran on a demo seeded into its own `TOWER_HOME` with the scripted demo engine — not the
+user's `~/.tower`, no model called. Looked at through the accessibility tree, in the background: G-0003's one ledger
+row "runs 1, 2" (D91), the folded engine clause (D92), titles with their ids on the board (D23), a schedule "Weekdays
+02:00" before its cron (D20, the schedule added to the scratch database, disabled), and the native unsaved-contract
+sheet. Screenshots: `design-evidence/packaged-app/`. Not reached there: a pass with caveats (the demo has none) and a
+1040 px window (D58, D96); their evidence is the WebKit tests. Typing into the WebView in the background does not
+reach its fields — keys went to the app's shortcuts once (a stray draft, discarded through the app's own sheet).
 
 ## 14. Commits — Implemented
 
 `bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
-(review-8 fixes, refreshed evidence, this report) and the last commit on the branch, which records the perf run here. All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+(review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run) and the iteration-9 commit (the owner's
+remaining list). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
-- **Bundle headroom is 120 B (D84), Deferred.** The next feature must first pay for itself: a copy diet over the long
-  hints, or per-surface locale bundles. The budget was not raised.
-- **Duplicate-looking claims across runs (D91), Deferred.** The same claim from two runs shows twice without the run
-  number.
-- **Contract editor advanced section opens by default (D92 part), Deferred.** A native `<details>` would be cheap; what
-  its one-line summary says is a design pass of its own.
-- **Comparing runs at 1040 px drops the seal and verdict from the review header (D96 part), Deferred.** This is the
-  header's designed drop order. Making the verdict the last to go changes that order.
-- **Supervisor and fixture English in the zh interface (D51/D86), Deferred.** This is on the data side.
+Iteration 9 fixed the owner's remaining list: D84 (bundle), D91, D92, D96, D51/D86, the docs/12 drift, D20, D22, D23,
+D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. What is left:
+
+- **D58 covers three caveats.** "Verified, with caveats" is computed for test machinery reached into, assertions not
+  checked and a flaky pass; docs/07's other qualifiers (S0, a Node version unlike the profile, an unsupported ecosystem,
+  opportunistic verification) are not computed yet. A caveat is confirmed by two presses, not a written reason.
+- **docs/12 still specifies four things the code does not render** (the revert badge, the dependency notice, the review
+  backlog head and bar): future specs, left as written. An integrated goal tells verified from human-only by colour
+  alone — written down in docs/12 as a known limit.
+- **Supervisor text is written in the language of the moment.** A goal's findings and pauses keep the words they were
+  written in; switching the interface language does not rewrite stored events. Test output and the prompts Tower sends
+  the agent stay as they are, by design.
 - **11px labels and 10px keycaps (D54/D85), Kept by decision.** No sentence is below 12px.
-- **Raw cron expression in Operations (D20), Deferred.**
-- **Welcome page as a landing template (D22), Deferred.**
-- **Title and ID far apart at 1800 (D23), Open.**
-- **Whether the sidebar should mirror the board (D58), an owner question.**
-- **`docs/12` disagrees with the code in 17 places.** The owner decides which side is canonical.
-- **Evidence is WebKit with stubbed IPC, not the packaged app.** Working evidence in `/tmp` is not durable.
+- **Packaged-app evidence is a debug build on a seeded demo**, looked at, not driven by an automated suite; D58 and D96
+  were not reachable there.
+- **One Rust integration test is load-sensitive** (§13).
 - **Impeccable critique history is not saved across sessions.** The tool suggests `npx impeccable login` for that;
   it was not run, since it is an account action.

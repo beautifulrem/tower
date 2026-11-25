@@ -47,7 +47,18 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
   const assumptions = () => d().claims.filter((c) => c.kind === "assumption");
   const decisions = () => d().claims.filter((c) => c.kind === "decision");
   const next = () => [...d().claims].reverse().find((c) => c.kind === "next");
-  const ledger = () => d().claims.filter((c) => c.kind === "criterion_met");
+  // One row per thing said: the same words about the same criterion in several runs are one row (the latest), naming its runs.
+  const ledger = () => {
+    const by = new Map<string, ClaimView & { runs: number[] }>();
+    for (const c of d().claims)
+      if (c.kind === "criterion_met") {
+        // One row per claim, the latest, with every run that made it (a run that said it twice counts once).
+        const k = `${c.criterion}\n${c.text}`;
+        const runs = by.get(k)?.runs ?? [];
+        by.set(k, { ...c, runs: runs.includes(c.run_no) ? runs : [...runs, c.run_no] });
+      }
+    return [...by.values()];
+  };
   const [allRuns, setAllRuns] = createSignal(false);
   // Low sentinels fold to one line under the criteria, naming the most telling path one of them touched (HOLDOUT, then SENSITIVE).
   const low = () => d().sentinels.filter((h) => h.severity < 3);
@@ -346,7 +357,7 @@ function RunRow(props: { goalId: string; r: RunView; editable: boolean; onUndo: 
   );
 }
 
-function LedgerRow(props: { c: ClaimView; testDependent?: boolean }) {
+function LedgerRow(props: { c: ClaimView & { runs: number[] }; testDependent?: boolean }) {
   const value = () => (props.testDependent ? "contradicted" : props.c.consistency);
   const evidence = () => (props.testDependent ? t("goal.dependsOnEditedTestsLong") : props.c.evidence);
   return (
@@ -357,6 +368,9 @@ function LedgerRow(props: { c: ClaimView; testDependent?: boolean }) {
           <span class="num t3">{props.c.criterion} </span>
         </Show>
         <span>{props.c.text}</span>
+        <Show when={props.c.runs.length > 1}>
+          <span class="meta"> {t("goal.claimRuns", { r: props.c.runs })}</span>
+        </Show>
       </div>
       <span class="ledger-link" aria-hidden="true">
         ↔

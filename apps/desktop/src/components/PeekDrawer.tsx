@@ -10,7 +10,7 @@ import type { CriterionResultExt, GoalDetailExt, GoalSummaryExt } from "../lib/a
 import { ago, duration, short, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
-import { notEvidence } from "../lib/discounted";
+import { caveats, heldOrTampered, notEvidence } from "../lib/discounted";
 import { effectiveEngine, engineLabel, engineTrustTier, statusWord } from "../lib/labels";
 import { go } from "../lib/nav";
 import { reviewEach } from "../lib/reviewQueue";
@@ -96,7 +96,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                   {/* The verdict and its pin, once: when "Now" draws the seal (in review), the head leaves it to it; a pass
                       that doesn't count is marked here by the glyph alone. */}
                   <Show when={!notEvidence(s()) && !liveDetail(s() as GoalSummary).seal}>
-                    <Seal pin={s().verified_pin} compact />
+                    <Seal pin={s().verified_pin} compact qualified={caveats(s())} />
                   </Show>
                   <span class="grow" />
                   <button class="icon-btn peek-close" aria-label={t("common.close")} onClick={props.onClose}><Icon name="cross" size={12} /></button>
@@ -135,7 +135,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                     <For each={detail()?.criteria ?? []}>
                       {(c) => {
                         const ver = c.verified as CriterionResultExt | null;
-                        const kind = c.canary === "tampered" ? "tampered" : ver ? (ver.passed ? "pass" : "fail") : c.observed ? (c.observed.passed ? "obs-pass" : "obs-fail") : "pending";
+                        const kind = c.canary === "tampered" || (ver?.passed && !ver.stale && heldOrTampered(c, detail()?.sentinels)) ? "tampered" : ver ? (ver.passed ? "pass" : "fail") : c.observed ? (c.observed.passed ? "obs-pass" : "obs-fail") : "pending";
                         return (
                           <div class="peek-crit-item">
                             {kind === "tampered" ? <NeedsYouMark /> : <ResultMark kind={kind} />}

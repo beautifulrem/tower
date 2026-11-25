@@ -71,6 +71,9 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         >
           <span class="ellipsis">{g().title}</span>
         </button>
+        {/* The id stays beside its title at every width, as in the review's header: on a wide board, flush right, it
+            ended a screen's width away from the words it names. */}
+        <span class="code-val t2 g-goal-id">{g().id}</span>
         <Show when={props.onPeek}>
           <button
             type="button"
@@ -110,8 +113,8 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         </span>
       </span>
       <span class="g-age num meta halt">{age()}</span>
-      {/* Identity, set flush right so the id ends on the board's edge, under every other id: the optional readings, then the
-          engine and the project by name, then the id. Grouped by space and weight, never by a dot. */}
+      {/* Identity, set flush right: the optional readings, then the engine and the project by name. Grouped by space and
+          weight, never by a dot. */}
       <span class="g-id meta halt">
         <Show when={g().pr}>
           {(pr) => (
@@ -144,7 +147,6 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
             {g().project_name}
           </span>
         </Show>
-        <span class="code-val t2 g-goal-id">{g().id}</span>
       </span>
       {/* Ready to accept: the row's one action stands over the identity on the row you point at or are on (r from the
           keyboard), so the board keeps no empty action column on every other line. */}

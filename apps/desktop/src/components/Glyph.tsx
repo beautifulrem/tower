@@ -18,7 +18,7 @@ import { type JSX, Match, Show, Switch } from "solid-js";
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { LifecycleState } from "../gen/LifecycleState";
 import { t } from "../lib/i18n";
-import { notEvidence } from "../lib/discounted";
+import { caveatList, caveats, notEvidence } from "../lib/discounted";
 import { machineVerified } from "../lib/labels";
 
 type Tone = "neutral" | "active" | "verified" | "faint";
@@ -56,6 +56,8 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
     (props.goal.state === "in_review" || props.goal.state === "accepted") && notEvidence(props.goal);
   const c = () => color[toneOf(props.goal.state, verified())];
   const s = () => props.size ?? 10;
+  // Verified, with caveats: the ring keeps a gap at its lower right (docs/12 §12.5.2's notch), the check still green.
+  const qualified = () => props.goal.state === "in_review" && verified() && caveats(props.goal).length > 0;
   const svg = (children: JSX.Element) => (
     <svg
       class="glyph"
@@ -66,7 +68,7 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
       stroke={c()}
       stroke-width="1.25"
       role="img"
-      aria-label={t(`state.${props.goal.state}`)}
+      aria-label={qualified() ? t("honesty.qualified") : t(`state.${props.goal.state}`)}
     >
       {children}
     </svg>
@@ -122,7 +124,8 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
       <Match when={props.goal.state === "in_review" && verified()}>
         {svg(
           <>
-            {ring()}
+            {/* The gap is centred on the lower right: dashes start 4.94 along a ring of 25.13 and leave 3.6 open. */}
+            <circle cx="5" cy="5" r="4" stroke-dasharray={qualified() ? "21.53 3.6" : undefined} stroke-dashoffset={qualified() ? "-4.94" : undefined} />
             {check()}
           </>,
         )}
@@ -409,8 +412,13 @@ export function NotEvidenceMark() {
   );
 }
 
-/** A seal's or stamp's tooltip: the verifier's run, or why that pass doesn't count (the bar's words, one explanation). */
-const sealTitle = (tampered: boolean | undefined, pin: string) => (tampered ? `@${pin} ${t("honesty.discountedTitle")}` : t("honesty.sealTitle", { pin }));
+/** A seal's or stamp's tooltip: the verifier's run, its caveats, or why that pass doesn't count (the bar's words). */
+const sealTitle = (tampered: boolean | undefined, pin: string, why?: string[]) =>
+  tampered ? `@${pin} ${t("honesty.discountedTitle")}` : why?.length ? t("honesty.qualifiedTitle", { pin, why: caveatList(why) }) : t("honesty.sealTitle", { pin });
+
+/** The verified disc, whole, or with its lower right cut off when the pass carries caveats (docs/12 §12.5.2). */
+const Disc = (p: { cut?: boolean }) =>
+  p.cut ? <path d="M9.25 5.15A4.25 4.25 0 1 0 5.15 9.25Z" fill="var(--st-verified)" /> : <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />;
 
 /**
  * The stamp: the seal set as Tower's one signature, where a verdict is the
@@ -422,13 +430,13 @@ const sealTitle = (tampered: boolean | undefined, pin: string) => (tampered ? `@
  * register's line, "said, not proven" — and the ◆ stands where the disc
  * would. `press` plays the impression once, as the sheet opens.
  */
-export function Stamp(props: { pin: string; tampered?: boolean; press?: boolean; size?: "l" | "m" }) {
+export function Stamp(props: { pin: string; tampered?: boolean; qualified?: string[]; press?: boolean; size?: "l" | "m" }) {
   const pin = () => props.pin.slice(0, 7);
   return (
     <span
       class={`stamp stamp-${props.size ?? "l"}`}
       classList={{ "stamp-tampered": !!props.tampered, "stamp-press": !!props.press }}
-      title={sealTitle(props.tampered, pin())}
+      title={sealTitle(props.tampered, pin(), props.qualified)}
     >
       <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
       <span class="stamp-verdict">
@@ -441,11 +449,11 @@ export function Stamp(props: { pin: string; tampered?: boolean; press?: boolean;
           }
         >
           <svg class="glyph stamp-glyph" viewBox="0 0 10 10" aria-hidden="true">
-            <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
+            <Disc cut={!!props.qualified?.length} />
             <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.1" />
           </svg>
         </Show>
-        <span class="stamp-word">{props.tampered ? t("honesty.sealTampered") : t("goal.verified")}</span>
+        <span class="stamp-word">{props.tampered ? t("honesty.sealTampered") : props.qualified?.length ? t("honesty.qualified") : t("goal.verified")}</span>
       </span>
       <span class="stamp-pin code-val num">@{pin()}</span>
     </span>
@@ -459,7 +467,7 @@ export function Stamp(props: { pin: string; tampered?: boolean; press?: boolean;
  * must-fail canary passed too, so the pass is not evidence — the attention
  * register's ◆ stands where the green disc would, and the words say so.
  */
-export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean; tampered?: boolean }) {
+export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean; tampered?: boolean; qualified?: string[] }) {
   const s = () => (props.large ? 12 : 10);
   const pin = () => props.pin!.slice(0, 7);
   return (
@@ -467,7 +475,7 @@ export function Seal(props: { pin: string | null | undefined; text?: string; com
       <span
         class="seal"
         classList={{ "seal-compact": !!props.compact, "seal-large": !!props.large, "seal-tampered": !!props.tampered }}
-        title={sealTitle(props.tampered, pin())}
+        title={sealTitle(props.tampered, pin(), props.qualified)}
       >
         <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
         <Show
@@ -479,11 +487,11 @@ export function Seal(props: { pin: string | null | undefined; text?: string; com
           }
         >
           <svg class="glyph" width={s()} height={s()} viewBox="0 0 10 10" aria-hidden="true">
-            <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
+            <Disc cut={!!props.qualified?.length} />
             <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.25" />
           </svg>
         </Show>
-        <span class="seal-word">{props.text ?? (props.tampered ? t("honesty.sealTampered") : t("goal.verified"))}</span>
+        <span class="seal-word">{props.text ?? (props.tampered ? t("honesty.sealTampered") : props.qualified?.length ? t("honesty.qualified") : t("goal.verified"))}</span>
         <span class="code-val seal-pin">@{pin()}</span>
       </span>
     </Show>

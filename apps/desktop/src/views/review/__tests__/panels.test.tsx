@@ -14,11 +14,11 @@ vi.mock("../../../lib/store", async () => {
     env: { issues: [] as Array<{ kind: string }> },
     now: Date.now(),
   });
-  return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn(), refreshEnvironment: async () => {}, __setEnvIssues: (issues: Array<{ kind: string }>) => setState("env", "issues", issues) };
+  return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn(), refreshEnvironment: async () => {}, __setEnvIssues: (issues: Array<{ kind: string }>) => setState("env", "issues", issues), __setProgress: (p: unknown) => (setState as (...path: unknown[]) => void)("goals", "G-0001", "progress", p) };
 });
 
 const { AcceptPanel, VerifyPanel } = await import("../panels");
-const { __setEnvIssues } = (await import("../../../lib/store")) as unknown as { __setEnvIssues: (issues: Array<{ kind: string }>) => void };
+const { __setEnvIssues, __setProgress } = (await import("../../../lib/store")) as unknown as { __setEnvIssues: (issues: Array<{ kind: string }>) => void; __setProgress: (p: unknown) => void };
 
 const detail = {
   criteria: [
@@ -101,9 +101,38 @@ describe("AcceptPanel", () => {
   });
 
   it("says the verifier's word with its pin", () => {
-    render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    const quiet = { ...detail, sentinels: [] } as unknown as GoalDetail;
+    render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={quiet} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(screen.getByText("@a4a90b2")).toBeTruthy();
     expect(screen.getByText(/All 2 machine criteria passed/)).toBeTruthy();
+  });
+
+  // As the supervisor counts (summaries.rs `progress`): a high finding of this verification holds every pass, so the
+  // stamp is withheld and the sentence says none counts, rather than "All passed" over a red sentinel.
+  it("counts no pass while a high-severity finding of this verification stands", () => {
+    const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    expect(container.querySelector(".stamp.stamp-tampered")).not.toBeNull();
+    expect(screen.queryByText(/All 2 machine criteria passed/)).toBeNull();
+    expect(screen.getByText(/2 machine criteria passed; none counts while a high-severity finding stands/)).toBeTruthy();
+  });
+
+  it("names a counted pass's caveats as a judgement, so accepting asks twice, under the stamp that says so", () => {
+    const base = { verified: 2, observed: 1, machine: 2, human: 1, human_done: 0 };
+    __setProgress({ ...base, qualified: { test_machinery: true, assertions_unchecked: false, flaky: true } });
+    try {
+      const calm = { ...detail, sentinels: [], claims: [], criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as unknown as GoalDetail;
+      const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={calm} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+      const stamp = container.querySelector(".stamp")!;
+      expect(stamp.classList.contains("stamp-tampered")).toBe(false);
+      expect(stamp.textContent).toContain("Verified, with caveats");
+      const judgement = container.querySelector(".open-judgement")!;
+      expect(judgement.textContent).toContain("code reaches into the test runner, flaky: passed on rerun");
+      expect(judgement.querySelector(".mark-attention")).not.toBeNull();
+      expect(screen.getByText("Accept anyway")).toBeTruthy();
+    } finally {
+      // A store merges objects: the caveats are cleared by name.
+      __setProgress({ ...base, qualified: undefined });
+    }
   });
 
   it("without a git identity blocks accepting and offers the form, for this repository by default", () => {
@@ -153,6 +182,7 @@ describe("AcceptPanel", () => {
   it("does not count a pass with a tampered canary: the seal is withheld, the sentence says how many count, and the criterion heads the open list", () => {
     const tampered = {
       ...detail,
+      sentinels: [],
       criteria: [
         ...detail.criteria,
         {

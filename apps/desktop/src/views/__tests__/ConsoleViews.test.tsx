@@ -295,11 +295,13 @@ describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () =>
     await vi.waitFor(() => expect(apiMock.deleteScheduledGoal).toHaveBeenCalledWith("sc-1"));
   });
 
-  it("says a schedule's cron is in UTC, as the supervisor reads it, and when it next runs with the day", async () => {
+  it("says a schedule's time in words and in UTC, as the supervisor reads it, keeps the cron beside it, and says when it next runs with the day", async () => {
     render(() => <Operations />);
     await screen.findByText("Nightly dependency audit");
-    expect(screen.getByRole("columnheader", { name: "Cron (UTC)" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "When (UTC)" })).toBeTruthy();
     expect(screen.getByLabelText("Cron (UTC)")).toBeTruthy();
+    const when = screen.getByText("Nightly dependency audit").closest("tr")!.querySelector(".ops-when")!;
+    expect(when.textContent).toBe("Weekdays 02:00 0 2 * * 1-5");
     const next = mockSchedules[0].next_run_at!;
     const cell = screen.getByText("Nightly dependency audit").closest("tr")!.children[3];
     expect(cell.textContent).toContain(new Date(next).toLocaleDateString("en", { month: "short", day: "numeric" }));

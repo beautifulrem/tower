@@ -64,13 +64,28 @@ export async function settled(page: Page, route?: string) {
 }
 
 export const FIXTURES = process.env.E2E_FIXTURES ?? "/tmp/e2e-fixtures";
+/** The same demo seeded by a supervisor running in Chinese (tools/e2e.sh dumps both), for the Chinese interface. */
+export const FIXTURES_ZH = process.env.E2E_FIXTURES_ZH;
 
-export function fixtures(): Record<string, unknown> {
+/** The dumped views; in Chinese, the Chinese supervisor's when they were dumped, so its own words are Chinese too. */
+export function fixtures(lang?: "en" | "zh-CN"): Record<string, unknown> {
+  const dir = lang === "zh-CN" && FIXTURES_ZH ? FIXTURES_ZH : FIXTURES;
   const out: Record<string, unknown> = {};
-  for (const f of readdirSync(FIXTURES).filter((n) => n.endsWith(".json"))) {
-    out[f.replace(/\.json$/, "")] = JSON.parse(readFileSync(join(FIXTURES, f), "utf8"));
+  for (const f of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
+    out[f.replace(/\.json$/, "")] = JSON.parse(readFileSync(join(dir, f), "utf8"));
   }
   return out;
+}
+
+/**
+ * A demo goal's title as the views of that language dump it: the Chinese seed titles its goals in Chinese, so a test
+ * that runs in both languages names a goal through this. Given the English title or its start; any other title (one an
+ * enrichment adds) is returned as given.
+ */
+export function titleIn(lang: "en" | "zh-CN" | undefined, title: string): string {
+  if (lang !== "zh-CN" || !FIXTURES_ZH) return title;
+  const id = (fixtures().goals as Array<{ id: string; title: string }>).find((g) => g.title.startsWith(title))?.id;
+  return (fixtures("zh-CN").goals as Array<{ id: string; title: string }>).find((g) => g.id === id)?.title ?? title;
 }
 
 export async function openTower(
@@ -83,7 +98,7 @@ export async function openTower(
     theme?: "light" | "dark";
   } = {},
 ) {
-  const F = fixtures() as Record<string, any>;
+  const F = fixtures(opts.lang) as Record<string, any>;
   if (opts.lang) F.settings = { ...F.settings, language: opts.lang };
   opts.enrich?.(F);
   if (opts.theme) route = `${route}?theme=${opts.theme}`;

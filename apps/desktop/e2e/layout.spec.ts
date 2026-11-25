@@ -357,3 +357,22 @@ for (const lang of ["en", "zh-CN"] as const)
       }
       expect([...new Set(out)]).toEqual([]);
     });
+
+// Review 8, R8-P3-04 (D96): comparing runs at the window's smallest widths put the run pickers on the header's line and
+// pushed the verdict off it. The verdict is what the header is for: it stays, whole, while comparing.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`comparing runs keeps the review header's verdict in view, whole, at the smallest widths (${lang})`, async ({ page }) => {
+    await openTower(page, "review/G-0003", { lang, enrich: enrichRich });
+    await settled(page, "review/G-0003");
+    await page.locator(".review-stats .scope-switch .tab").last().click();
+    await expect(page.locator(".review-stats .timeline-compare")).toBeVisible();
+    for (const w of [1024, 1040, 1100, 1240]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const seal = page.locator(".review-stats .review-verify .seal");
+      await expect(seal, `at ${w}`).toBeVisible();
+      const [s, line] = await Promise.all([seal.boundingBox(), page.locator(".review-stats").boundingBox()]);
+      expect(s!.x + s!.width, `the verdict ends inside the line at ${w}`).toBeLessThanOrEqual(line!.x + line!.width + 0.5);
+      expect(s!.x, `at ${w}`).toBeGreaterThanOrEqual(line!.x - 0.5);
+    }
+  });

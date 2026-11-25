@@ -213,6 +213,57 @@ async fn every_end_and_an_answer_leave_the_run_on_the_newest_call_still_in_fligh
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn while_a_question_is_open_the_run_waits_on_you_whatever_starts_or_ends_beside_it() {
+    use tower_core::Mode::*;
+    let h = harness("ask_while_running").await;
+    let id = create(&h).await;
+    // The question is open, the command and the note have ended beside it, the read still runs.
+    let mut item = None;
+    for _ in 0..200 {
+        let ended = h
+            .sup
+            .trace(&id, None, 500)
+            .unwrap()
+            .into_iter()
+            .any(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == "wl"));
+        item = h.sup.inbox().unwrap().into_iter().find(|i| i.kind == InboxKind::Question && i.goal_id == id);
+        if ended && item.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let item = item.expect("question in inbox");
+    assert_eq!(h.sup.goal(&id).unwrap().summary.mode, WaitingOnYou, "an open question keeps the run waiting on you");
+    h.sup.answer(&item.id, "a").await.unwrap();
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+    let mut trace = h.sup.trace(&id, None, 500).unwrap();
+    trace.sort_by_key(|e| e.seq);
+    let first = trace
+        .iter()
+        .position(|e| matches!(&e.event, EventKind::ToolStarted { call_id, .. } if call_id == "wb"))
+        .expect("the command started");
+    let last = trace
+        .iter()
+        .position(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == "wr"))
+        .expect("the read ended");
+    let modes: Vec<_> = trace[first..]
+        .iter()
+        .filter_map(|e| match &e.event {
+            EventKind::ModeChanged { mode } => Some((e.seq, *mode)),
+            _ => None,
+        })
+        .take_while(|(seq, _)| *seq <= trace[last].seq + 1)
+        .map(|(_, m)| m)
+        .collect();
+    assert_eq!(
+        modes,
+        vec![Executing, WaitingOnYou, Reading, Thinking],
+        "the command; the question (a read starting, the command and a note ending leave it waiting); answered (the \
+         read, the newest call left); the read ends (thinking)"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn repeated_failures_raise_a_stall_without_stopping_the_run() {
     let h = harness("flaky").await;
     let id = create(&h).await;

@@ -164,6 +164,9 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T151 The dark shimmer brightens | D183 | — | a gap in a veil of the ground | `flows.spec.ts`; fails on `f9dd353` | Done (iteration 18) |
 | T152 Inside the budget | D184 | — | the polyfill off, a dead component gone | `bundle-budget.sh` | Done (iteration 18) |
 | T153 Every review in the table | D185 | — | reviews 15–17 in DESIGN_REVIEW | — | Done (iteration 18) |
+| T154 An open question keeps the run waiting | D186 | — | start and settle keep waiting on you while a question is open | `flow.rs`; fails on either old path | Done (iteration 18 follow-up) |
+| T155 The later of two calls in a millisecond | D187 | — | insertion order breaks the tie | `pulse.test.ts`; fails on the sort | Done (iteration 18 follow-up) |
+| T156 The rail test either side of 1281 | D188 | — | 1281 and 1280 wide | `flows.spec.ts` | Done (iteration 18 follow-up) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

@@ -26,6 +26,14 @@ describe("the pulse", () => {
     expect(state.pulse["G-7"].tool).toBeNull();
     expect(state.pulse["G-7"].at).toBe(6_000);
   });
+  it("takes the later of two calls that start in the same millisecond, as the supervisor does", () => {
+    beat("G-6", started("a", "read"), 1_000);
+    beat("G-6", started("b", "bash"), 1_000);
+    expect(state.pulse["G-6"].tool).toEqual({ name: "bash", since: 1_000 });
+    beat("G-6", started("c", "ls"), 1_000);
+    beat("G-6", ended("c", "ls"), 1_000);
+    expect(state.pulse["G-6"].tool, "the command, the later of the two left").toEqual({ name: "bash", since: 1_000 });
+  });
   it("counts no note, hand-in or question as work, and keeps the calls through an engine's error", () => {
     beat("G-9", started("a", "bash"), 1_000);
     for (const [id, tool] of [["l", "log"], ["s", "submit"], ["q", "ask_user"]]) beat("G-9", started(id, tool), 2_000);

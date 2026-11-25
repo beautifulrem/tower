@@ -9,6 +9,7 @@ import {
   enrichHeldOutPartly,
   enrichHeldOutTests,
   enrichLook,
+  enrichTallLook,
   enrichPhone,
   enrichPhoneProblem,
   enrichPushes,
@@ -1008,7 +1009,7 @@ test("rolling back is not only for the pointer: a run you can roll back to is a 
 });
 
 test("the look comparison answers the keyboard: modes, slider, held space", async ({ page }) => {
-  await openTower(page, "goal/G-0001", { enrich: enrichLook });
+  await openTower(page, "goal/G-0001", { enrich: enrichTallLook });
   await openReadings(page);
   await expect(page.getByText("couldn't check on")).toBeVisible();
   // The reason is on the line, not only in its tooltip.
@@ -1042,7 +1043,7 @@ test("the look comparison answers the keyboard: modes, slider, held space", asyn
 });
 
 test("a look thumbnail is as tall as its frame and no wider than its page; the verification sheet says when there is more below", async ({ page }) => {
-  await openTower(page, "goal/G-0001", { enrich: enrichLook });
+  await openTower(page, "goal/G-0001", { enrich: enrichTallLook });
   const img = page.locator(".look-img").first();
   await expect(img).toBeVisible();
   const box = await img.boundingBox();
@@ -2052,6 +2053,9 @@ test("a card's text field grows with its lines and stops at six, then scrolls", 
 // 17: a rail sized to stop short of the box still ran 58px under it before the page scrolled (it starts below the
 // goal's head). The box keeps to the main column beside the rail; measured, they never meet, before and after a
 // scroll, in a short window and a tall one; and the rail stays in the window.
+// Beside the page (from 1281) the rail is sticky too: the two must never cover each other. Folded under the page (to
+// 1280) the rail is page content like the criteria above it: it passes under the sticky box as the page scrolls, and
+// at the end the box covers none of it.
 test("the goal rail and the steer box never cover each other", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 560 });
   const { fixtures } = await openTower(page, "overview");
@@ -2059,8 +2063,9 @@ test("the goal rail and the steer box never cover each other", async ({ page }) 
   await openTower(page, `goal/${running.id}`);
   await expect(page.locator(".steer-console textarea")).toBeVisible();
   await expect(page.locator(".goal-rail .rail")).toBeVisible();
-  for (const height of [560, 640, 900]) {
-    await page.setViewportSize({ width: 1440, height });
+  // Either side of 1281, where the rail moves beside the page, and the default width.
+  for (const [width, height] of [[1440, 560], [1440, 640], [1440, 900], [1281, 640], [1280, 640], [1280, 900]]) {
+    await page.setViewportSize({ width, height });
     for (const end of [false, true]) {
       await page.evaluate((end) => {
         let pane = document.querySelector<HTMLElement>(".goal-page")!;
@@ -2075,7 +2080,7 @@ test("the goal rail and the steer box never cover each other", async ({ page }) 
         const pane = document.querySelector(".goal-page")!.closest("main")!.getBoundingClientRect();
         return { overlap: w > 0 && h > 0 ? Math.round(w * h) : 0, railBottom: Math.round(r.bottom), box: Math.round(b.top), window: innerHeight, scrolled: Math.round(pane.top) };
       });
-      expect(m.overlap, `${height}, ${end ? "scrolled to the end" : "at the top"}: ${JSON.stringify(m)}`).toBe(0);
+      if (width > 1280 || end) expect(m.overlap, `${width}×${height}, ${end ? "scrolled to the end" : "at the top"}: ${JSON.stringify(m)}`).toBe(0);
       if (end) expect(m.railBottom, "the rail stays in the window").toBeLessThanOrEqual(m.window);
     }
   }

@@ -378,8 +378,8 @@ function gaugesHtml(s) {
   if (running.length) h += `<span class="gauge active num">${G.runs(running.some(moves))}${esc(t("runs")(running.length, max))}</span>`;
   const heard = Math.max(0, ...running.map(heardAt));
   const since = Date.now() - heard;
-  // As the desk's heartbeat reads: past 30 s with a tool in flight, the oldest tool and how long it has run (busy, no
-  // mark); with none, how long the runs have been quiet, and past two minutes the hint mark.
+  // As the desk's heartbeat reads: past 30 s with a tool in flight, of the runs' calls at work the one running longest,
+  // and how long (busy, no mark); with none, how long the runs have been quiet, and past two minutes the hint mark.
   const tool = running.filter((g) => busy(g) && g.live_line).sort((a, b) => a.live_line.at - b.live_line.at)[0];
   if (running.length && heard > 0 && since > 30_000)
     h += tool

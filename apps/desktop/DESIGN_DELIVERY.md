@@ -1,6 +1,6 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, sixteen local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, seventeen local commits, nothing pushed, merged or deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -153,6 +153,7 @@ available in that session. The reviewers never edited code. Reports are committe
 | `d6f07ef` | **PASS, 8.30**, no P0/P1/P2 (re-check after review 7's P2) |
 | `7a23f45` | **PASS, 8.28**, no P0/P1; one P2 (review 9, after the owner's remaining list) |
 | `deef352` | **PASS, 8.20**, no P0/P1; one new P2 (review 10, after review 9's fixes) |
+| `2f1d0c5` | **PASS, 8.38**, no P0/P1/P2; four P3 (review 11, after review 10's fixes) |
 
 Review 8 raised four P3s. Two were introduced by iteration 8's own fixes: the peek head called a waiting run
 "Unresponsive", and the sidebar still said "Needs you" for a goal in To review. Two were older: the cron broke at
@@ -176,8 +177,17 @@ tooltips and the integrated glyph (D108), the compare picker's select value (D10
 (D110), a docs/12 "neutral pill" that is amber (D111), English run names in Chinese (D112).
 
 Iteration 11 fixes all six, and the empty settings test, each with a test that fails on `deef352` (the picker's
-face-against-select check also as a name-free variant). Those fixes are **Verified, not independently re-reviewed**:
-the last acceptance stands on `deef352`.
+face-against-select check also as a name-free variant).
+
+Review 11 read `2f1d0c5` (iteration 11) and passed it at 8.38, with no P0, P1 or P2. The overlapping row's title is
+whole at every width (swept 1241–1800 every 4 px; hover, selection and a live rename flip nothing); every seal of an
+accepted or merged goal says the caveats were taken with it, and the merged ring has its gap; the run pickers' select,
+face and tooltip agree, in the interface language; the ledger note is apart by size and wording; the empty settings
+test now checks. It confirmed the new tests fail on `deef352` for the right reasons. Four P3s: the overlap note keeps
+the peek button's room even when the button is hidden, so the words go where the row fits them (D113, from iteration
+11); a neutral caveat pill can stand beside a pass a high finding holds (D114); a picked run name is lost on a refresh
+or a scope switch, and an end that leaves the list is blank (D115); the live and identity columns cut words without an
+ellipsis (D116, older). All open. The last acceptance stands on `2f1d0c5`.
 
 ## 13. Function, performance, accessibility — Verified
 
@@ -219,18 +229,21 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 
 `bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
 (review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run), the iteration-9 commit `7a23f45` (the owner's
-remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`) and the
-iteration-11 commit (review 10's findings). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`), the
+iteration-11 commit `2f1d0c5` (review 10's findings) and the commit recording review 11. All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
 Iteration 9 fixed the owner's remaining list: D84 (bundle), D91, D92, D96, D51/D86, the docs/12 drift, D20, D22, D23,
 D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. Iteration 10 fixed
 review 9's findings (D98–D106), each with a test that fails on `7a23f45`; review 10 passed it. Iteration 11 fixed
-review 10's (D107–D112) and its empty settings test, each with a test that fails on `deef352`. What is left:
+review 10's (D107–D112) and its empty settings test, each with a test that fails on `deef352`; review 11 passed it.
+What is left:
 
-- **Iteration 11's fixes (D107–D112) are not independently re-reviewed.** Each has a test that fails on `deef352`
-  and passes here; no reviewer has read them yet.
+- **Review 11's findings are open (D113–D116), all P3.** The overlap note's words go where the row fits them, because
+  the fit keeps the hidden peek button's room (from iteration 11); a neutral caveat pill can stand beside a held pass;
+  a picked run name is lost on a refresh or a scope switch, and an end that leaves the list is blank; the live and
+  identity columns cut words without an ellipsis (older; 7–23 px narrower at 1241–1277 since the 16em title floor).
 - **The overlap note gives way by measuring** each overlapping row (a ResizeObserver on the title cell and the title, a
   MutationObserver for its text), with the room of the row's peek button kept so hovering never changes it. Measured at 1241/1280/1366/1440/1560/1800 for a short and a long title in both
   languages; at 1241 a long title has about 12em with the note at its ◇, the column itself allowing no more.
@@ -242,7 +255,7 @@ review 10's (D107–D112) and its empty settings test, each with a test that fai
   the fixtures hold would still give way last, but only those widths and verdicts were measured.
 - **Below 1241 px the board's overlap notice is in the title's tooltip only**, as the identity column it replaced was;
   above it the note's words stay while the title has its room, and the ◇ alone (words in its tooltip and for a screen
-  reader) when it has not.
+  reader) when it has not — and, until D113, also where only the hidden peek button's room is short.
 
 - **D58 covers three caveats.** "Verified, with caveats" is computed for test machinery reached into, assertions not
   checked and a flaky pass; docs/07's other qualifiers (S0, a Node version unlike the profile, an unsupported ecosystem,

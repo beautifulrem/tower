@@ -74,7 +74,7 @@ untampered verifier pass. No neighbouring product can copy that rule without als
 ## Product Principles
 
 1. Proof over prose: a statement's source is always visible, and colour follows proof, not mood.
-2. Quiet until it needs you: normal work is visually still; attention is spent only on human decisions.
+2. Quiet until it needs you: normal work moves only in its own small, slow mark (a running goal's turning arc), never in colour; attention is spent only on human decisions.
 3. The goal is the unit: every surface answers a question about goals, not about sessions or chats.
 4. Keyboard and glance first, with a lossless way down: the full trace is always one key away.
 5. Review capacity paces the work: review must stay faster than generation.

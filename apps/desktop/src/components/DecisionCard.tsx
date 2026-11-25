@@ -3,7 +3,7 @@
  * Amber lives only in the 28px header strip — the ECAM title-bar idea — so
  * a page of decisions does not become a page of amber. In a queue every card
  * needs you, so amber cannot say which one you are on: there each strip is
- * quiet with its one ◆, and the focused card's strip takes the neutral
+ * quiet with its one ! mark, and the focused card's strip takes the neutral
  * selection ground.
  *
  * The strip says the kind (`item.kind`), the question line says only the
@@ -173,7 +173,7 @@ export function heldOutParts(body: string): { prose: string; failures: HeldOutFa
 }
 
 /**
- * A decision on the overview: one line on the board's own grid — ◆ in the
+ * A decision on the overview: one line on the board's own grid — the ! in the
  * glyph column, the goal where every goal's name is, then what it asks (its
  * kind and question across the live, criteria, change and spend columns),
  * its age and identity under the rows' own. The overview is the whole board
@@ -330,7 +330,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <Show when={goal()} fallback={<p class="decision-question">{it().subject}</p>}>
                 {(g) => (
                   <div class="decision-readout decision-readout-main halt">
-                    {/* The head already says the verdict: a withheld seal keeps its ◆ and pin, not the words again. */}
+                    {/* The head already says the verdict: a withheld seal keeps its ! and pin, not the words again. */}
                     <Seal pin={g().verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} text={notEvidence(g()) || caveats(g()).length ? "" : undefined} />
                     <Show when={g().diffstat}>
                       <span class="sep" />

@@ -59,7 +59,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
       }
     });
   // Another goal changing the same files, in words: "Overlaps G-0003" beside this row's own id, never a bare id that reads as it.
-  // The words around the id are their own spans, so a short row can keep "◇ G-0003" and set the words aside.
+  // The words around the id are their own spans, so a short row can keep "ⓘ G-0003" and set the words aside.
   const say = (part: string) => (part ? <span class="g-overlap-say">{part}</span> : null);
   const overlapsWith = (id: string) => t("goal.overlaps", { id: "\u0001" }).split("\u0001").flatMap((part, i) => (i ? [<span class="code-val">{id}</span>, say(part)] : [say(part)]));
   const overlapTitle = () => (g().overlaps ?? []).map((o) => `${t("goal.overlaps", { id: o.goal_id })}: ${o.files.join(", ")}`).join("\n");
@@ -77,7 +77,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
     ]
       .filter(Boolean)
       .join("\n");
-  // The note gives way before the title does, a step at a time: "◇ Overlaps G-0003", then "◇ G-0003", then the ◇ alone,
+  // The note gives way before the title does, a step at a time: "ⓘ Overlaps G-0003", then "ⓘ G-0003", then the ⓘ alone,
   // while the title would show less than it needs (all of a short one, 12em of a longer one). Whatever is set aside stays
   // in the tooltip and for a screen reader.
   const fitOverlap = (note: HTMLElement) => {
@@ -127,7 +127,7 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         <LifecycleGlyph goal={g()} />
       </span>
       <div class="g-title-cell">
-        {/* A row never says it needs you, in words or by a ◆: what needs you is a decision line in the queue above, and the
+        {/* A row never says it needs you, in words or by a ! mark: what needs you is a decision line in the queue above, and the
             title bar counts those. A goal waiting in To review is filed there, not counted, and not said to need you. */}
         <button
           class="g-title"
@@ -151,8 +151,8 @@ export function GoalRow(props: { goal: GoalSummary; selected?: boolean; onSelect
         {/* The id stays beside its title at every width, as in the review's header: on a wide board, flush right, it
             ended a screen's width away from the words it names. */}
         <span class="code-val t2 g-goal-id">{g().id}</span>
-        {/* An overlap is said with the row it belongs to, after its id: in the identity column a bare "◇ G-0003" read as
-            this row's own id. Short of the title's room it keeps its ◇ alone; below 1241 it leaves with the identity
+        {/* An overlap is said with the row it belongs to, after its id: in the identity column a bare "ⓘ G-0003" read as
+            this row's own id. Short of the title's room it keeps its ⓘ alone; below 1241 it leaves with the identity
             column. Its words live on in the tooltips either way. */}
         <Show when={g().overlaps?.length}>
           <span class="g-overlap" title={overlapTitle()} ref={fitOverlap}>

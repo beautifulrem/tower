@@ -200,34 +200,53 @@ still ran past the identity's last step (D117, what D116 left), and the PR readi
 the tooltip nor the button's name, a short project name held 3.5em (D118, from iteration 12). The last acceptance
 stands on `886ab38`.
 
-Iteration 13 fixes both, and two of the review's record-only notes, each with a test that fails on `886ab38`. Not yet
-independently re-reviewed.
+Iteration 13 fixes both, and two of the review's record-only notes, each with a test that fails on `886ab38`.
+
+Review 13 read `3ff2ebf` (iteration 13) and passed it at 8.47, with no P0, P1 or P2: the identity's last step always
+fits and what a step sets aside is still said. Two P3s: a project name squeezed to 1 px or less counted as set aside,
+so a sliver of it stayed and the order could reverse in 1–2 px bands (D120, from iteration 13), and a gone end's kept
+pin cut the criteria bar in a narrow review header at en 1040–1052 (D121). The last acceptance stands on `3ff2ebf`.
+
+Then the owner asked for the status marks to change: the red square, the amber diamond and the blue half disc, and
+crude UI like them anywhere, with good agent front ends, open-source design systems and motion libraries as the
+reference (D119). The marks are now one family, a disc with its symbol cut out as a true hole (! amber, × red, an
+outlined i uncoloured), drawn from one set of paths in the components, the stylesheets and the phone page. Running
+work turns a quarter arc on its ring, and the goal in view shimmers its live line while its agent moves. Segments are
+capsules that fill in place, and layers, toasts, new rows and presses settle on springs with no overshoot. All of it
+stands still under reduced motion. DESIGN.md, PRODUCT.md principle 2 and docs/12 §12.6–§12.7 say the new rule:
+only work in motion loops. Not yet independently reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 13):
+At the final commit (the status marks and motion, D119):
 
-- **Type check and unit tests:** tsc clean; vitest 43 files, 239 tests.
-- **e2e:** Playwright WebKit 379 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+- **Type check and unit tests:** tsc clean; vitest 42 files, 241 tests (the runs gauge's wedge and its test are gone).
+- **e2e:** Playwright WebKit 380 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
   supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs five "Importing a
-  module script failed" lines (also five in iterations 11 and 12, four in iteration 10): pages left by a test while a view was still loading; no test
+  module script failed" lines (also five in iterations 11–13, four in iteration 10): pages left by a test while a view was still loading; no test
   fails and the new tests emit none.
-- **Shots:** 69/69 (`/tmp/tower-design/iter13/allshots`).
+- **Shots:** 69/69 (`/tmp/tower-design/glyph3/allshots`); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 162,638 / 163,840 B (1,202 B left), start-up 56,037 / 65,536 B, goal page
-  11,597 / 12,288 B. The budget was never raised.
-- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 1,082 / 466 / 252 ms against
-  269 / 254 / 196 ms for the seeded board (medians 466 against 254), inside its 750 ms margin (every row now measures its identity column);
-  view switches with 50 goals take 49–179 ms against 32–73 ms, their medians inside 150 ms.
-- **Rust (iteration 9; iterations 10–13 changed no Rust):** rustfmt; clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
+- **Bundle:** all interface JS 162,671 / 163,840 B (1,169 B left), start-up 56,058 / 65,536 B, goal page
+  11,600 / 12,288 B. The budget was never raised.
+- **Performance (`perf` project, WebKit):** passes. A board of 50 goals paints in 1,057 / 596 / 287 ms against
+  325 / 323 / 254 ms for the seeded board (medians 596 against 323), inside its 750 ms margin (every row measures its
+  identity column, and every running row's mark turns); view switches with 50 goals take 68–147 ms against 38–94 ms,
+  their medians inside 150 ms.
+- **Rust (iteration 9; iterations 10–13 changed no Rust):** the redesign changed the phone page the supervisor
+  embeds (`remote.html`, `include_str!`): the crate builds and its four `remote` tests pass. At iteration 9: rustfmt;
+  clippy `-D warnings`; `cargo test --workspace` passes on an idle machine (29 suites, 461 tests). Once, run while the full
   e2e suite and the shots ran beside it, `evidence::a_criterion_whose_base_did_not_run_keeps_its_canary` failed its
   canary assertion; it passed alone, three times more, and in the full rerun. It drives a real sandboxed `node --test`
   and this work does not touch the verifier or the canary: recorded as load-sensitive, not hidden or retried away.
-- **Detector:** no new finding; the 3 `side-tab` findings are the review pen on hunk headers, kept since the baseline
-  (`app.css`, lines not touched since); the DESIGN.md advisories on the changed stylesheets are all on lines older
-  than this iteration.
+- **Detector:** the 3 `side-tab` findings are the review pen on hunk headers, kept since the baseline (`app.css`,
+  lines not touched since), and the DESIGN.md advisories on the changed stylesheets are on older lines. The redesign
+  adds six, each triaged in `DESIGN_REVIEW.md` with no ignore: four `bounce-easing` on the two springs (both now with
+  no overshoot; the rule fires on the `linear()` form), one `gradient-text` (the in-view shimmer, a functional state)
+  and one `repeating-stripes-gradient` (the phone's hatched "observed" pip).
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
-  contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion.
+  contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion
+  (re-checked for the redesign: the turning marks and the shimmer hold still, `flows.spec.ts`).
 
 **Packaged app (iteration 9).** A debug `Tower.app` (`pnpm tauri build --debug --bundles app`: the built bundle, so the
 locale plugin's output too) ran on a demo seeded into its own `TOWER_HOME` with the scripted demo engine — not the
@@ -245,7 +264,8 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 (review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run), the iteration-9 commit `7a23f45` (the owner's
 remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`), the
 iteration-11 commit `2f1d0c5` (review 10's findings), the commit recording review 11 (`4ea4567`), the iteration-12
-commit `886ab38` (review 11's findings) and the iteration-13 commit (review 12's findings, with review 12's report). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+commit `886ab38` (review 11's findings), the iteration-13 commit `3ff2ebf` (review 12's findings, with review 12's
+report) and the status-marks-and-motion commit (D119, with review 13's report). All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
@@ -254,7 +274,8 @@ D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that f
 review 9's findings (D98–D106), each with a test that fails on `7a23f45`; review 10 passed it. Iteration 11 fixed
 review 10's (D107–D112) and its empty settings test, each with a test that fails on `deef352`; review 11 passed it.
 Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `4ea4567`; review 12 passed it.
-Iteration 13 fixed review 12's (D117–D118), each with a test that fails on `886ab38`; not yet re-reviewed.
+Iteration 13 fixed review 12's (D117–D118), each with a test that fails on `886ab38`; review 13 passed it and found
+D120–D121, open. The status marks and motion (D119) followed the owner's feedback; not yet re-reviewed.
 What is left:
 
 - **Three more columns give way by measuring** since iteration 12 (`lib/refit.ts`): the overlap note (three steps),

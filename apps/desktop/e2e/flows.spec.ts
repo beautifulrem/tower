@@ -42,7 +42,7 @@ test("R on a board goal with nothing changed yet opens its page, not an empty re
   await expect(page.locator(".review")).toHaveCount(0);
 });
 
-test("in the inbox amber says only 'needs you': the focused card is told by the neutral selection ground, each card keeps one ◆, and a sidebar row under Needs you adds none", async ({ page }) => {
+test("in the inbox amber says only 'needs you': the focused card is told by the neutral selection ground, each card keeps one ! mark, and a sidebar row under Needs you adds none", async ({ page }) => {
   await openTower(page, "inbox", { enrich: enrichRich });
   const cards = page.locator(".inbox .decision");
   await expect(cards.first()).toHaveClass(/focused/);
@@ -64,7 +64,7 @@ test("in the inbox amber says only 'needs you': the focused card is told by the 
   await expect(cards.nth(1)).toHaveClass(/focused/);
   expect(await ground(1)).toBe(tokens.selected);
   expect(await ground(0)).not.toBe(tokens.selected);
-  // The sidebar's Needs-you group says it once, in its title; its rows add no trailing ◆ (a row's lifecycle glyph may be one).
+  // The sidebar's Needs-you group says it once, in its title; its rows add no trailing ! mark (a row's lifecycle glyph may be one).
   const rows = page.locator(".sidebar .side-group").filter({ hasText: "Needs you" }).locator(".side-goal");
   expect(await rows.count()).toBeGreaterThan(0);
   await expect(rows.locator(":scope > .mark-attention")).toHaveCount(0);
@@ -296,15 +296,15 @@ test("the board's identity says the engine in words, leaves the only project uns
   }
 });
 
-// Review 9, R9-P3-06: with the id moved beside the title, the identity column held only "◇ G-0003" on G-0001's row —
+// Review 9, R9-P3-06: with the id moved beside the title, the identity column held only "ⓘ G-0003" on G-0001's row —
 // another goal's id where this row's own used to stand. The overlap is said in words, after the row's own id; below
 // 1241 it leaves with the identity column, and the title's tooltip keeps it.
 // Review 10, R10-P2-01: the words took the title's room — "Fi…" at 1241, 143px of a 252px title at 1440 — while the
 // window 1px narrower gave the title 251px. The note gives way first: the title keeps all of a short title and 12em of
-// a long one at every width, the note keeps its ◇ alone when it must, and its words stay in its text and tooltips.
+// a long one at every width, the note keeps its ⓘ alone when it must, and its words stay in its text and tooltips.
 // Review 11, R11-P3-01: the note was decided as if the peek button were always shown, so at 1440 (zh) and 1728 (en) a
-// row with room for the words showed the ◇ alone, and one row of the pair said the words while the other did not. The
-// note is decided on the row at rest and gives way a step at a time — the words, then "◇ G-0003", then the ◇ — saying
+// row with room for the words showed the ⓘ alone, and one row of the pair said the words while the other did not. The
+// note is decided on the row at rest and gives way a step at a time — the words, then "ⓘ G-0003", then the ⓘ — saying
 // as much as leaves the title its room. Both rows of the pair are on the board here.
 const LONG_TITLE = { en: "Fix the cart total rounding when a discount and the tax apply together", "zh-CN": "修复折扣和税同时生效时购物车总价的舍入错误" };
 const OVERLAP_WORDS = { en: (id: string) => `Overlaps ${id}`, "zh-CN": (id: string) => `与 ${id} 改动重叠` };
@@ -334,7 +334,7 @@ for (const lang of ["en", "zh-CN"] as const)
           const [cell, o, own] = await Promise.all([row.locator(".g-title-cell"), overlap, row.locator(".g-goal-id")].map((l) => l.boundingBox()));
           expect(o!.x, `after the row's own id, ${at}`).toBeGreaterThanOrEqual(own!.x + own!.width);
           expect(o!.x + o!.width, `inside the title cell, ${at}`).toBeLessThanOrEqual(cell!.x + cell!.width + 0.5);
-          // The title's room with the note at each step (the words, "◇ G-0003", the ◇), measured on the row at rest.
+          // The title's room with the note at each step (the words, "ⓘ G-0003", the ⓘ), measured on the row at rest.
           const m = await row.evaluate((r) => {
             const title = r.querySelector<HTMLElement>(".g-title .ellipsis")!;
             const words = r.querySelector<HTMLElement>(".g-overlap-words")!;
@@ -487,7 +487,8 @@ for (const lang of ["en", "zh-CN"] as const)
         const rows = await page.locator(".board-rows .g-row[data-goal]").evaluateAll((rows) =>
           rows.map((r) => {
             const id = r.querySelector<HTMLElement>(".g-id")!;
-            const cut = (e: Element | null) => !!e && e.scrollWidth > e.clientWidth + 1;
+            // Cut means any overflow the browser would end in an ellipsis or clip: the measure GoalRow itself uses (half a pixel).
+            const cut = (e: Element | null) => !!e && e.scrollWidth > e.clientWidth + 0.5;
             // On the line, to the eye: a step sets a reading aside to a 1px box a screen reader still reads.
             const shown = (e: Element | null) => !!e && getComputedStyle(e).display !== "none" && e.getBoundingClientRect().width > 1 && !e.closest(".sr-only");
             const engine = id.querySelector(".g-engine"), project = id.querySelector<HTMLElement>(".g-project");
@@ -520,7 +521,7 @@ for (const lang of ["en", "zh-CN"] as const)
             return {
               goal: r.getAttribute("data-goal")!,
               idShown: getComputedStyle(id).display !== "none",
-              idOver: id.scrollWidth > id.clientWidth + 1,
+              idOver: id.scrollWidth > id.clientWidth + 0.5,
               children: [...id.children].filter((c) => shown(c) && !c.classList.contains("g-project")).map((c) => [c.textContent, cut(c)] as const),
               prFailedShown: [...id.querySelectorAll(".pr-line .mark-danger")].every((m) => shown(m.parentElement)),
               rework: id.querySelector("[title]:not(.pr-line):not(.g-project)")?.getAttribute("title") ?? null,
@@ -604,23 +605,53 @@ test("with a decision card on a ready-to-accept goal, the card's first option is
   await expect(primaries).toHaveText(/Send the failures to the agent/);
 });
 
-test("the title bar's runs gauge fills the ring by the slots in use, and silence beats once", async ({ page }) => {
+test("the title bar's runs gauge is the running mark, turning, and silence beats once", async ({ page }) => {
   await openTower(page, "overview", {
     enrich: (F) => {
       F.settings = { ...F.settings, max_concurrent: 4 };
-      // One goal has been silent for twenty minutes: the hollow square shows, and beats once as it appears.
+      // One goal has been silent for twenty minutes: the hollow dot shows, and beats once as it appears.
       for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now() - 20 * 60_000;
     },
   });
   const gauge = page.locator(".gauge-runs");
   await expect(gauge).toBeVisible();
-  // One of four running: a quarter wedge, counter-clockwise from the top to the left.
-  await expect(gauge.locator("path")).toHaveAttribute("d", "M5 5 L5 1 A4 4 0 0 0 1 5 Z");
+  // Work in motion: the faint ring and its arc, the whole mark turning without end — never a filled wedge.
+  await expect(gauge).toHaveClass(/glyph-spin/);
+  expect(await gauge.locator("[fill]:not([fill='none'])").count()).toBe(0);
+  expect(await gauge.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).animationIterationCount])).toEqual(["spin", "infinite"]);
   await expect(page.locator(".gauge-active")).toContainText("1/4");
   const hollow = page.locator(".gauge-dot.hollow");
   await expect(hollow).toBeVisible();
+  // A status dot, round, drawn as a ring.
+  expect(await hollow.evaluate((el) => getComputedStyle(el).borderRadius)).toBe("50%");
   expect(await hollow.evaluate((el) => getComputedStyle(el).animationName)).toBe("beat");
   expect(await hollow.evaluate((el) => getComputedStyle(el).animationIterationCount)).toBe("1");
+  // The silent goal's own words do not shimmer: nothing is moving.
+  await expect(page.locator(".live-moving")).toHaveCount(0);
+});
+
+test("the goal in view that is moving shimmers its words; on the board its row keeps still words and only turns its mark; with motion reduced all holds still", async ({ page }) => {
+  const fresh = (F: Record<string, any>) => {
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
+  };
+  await openTower(page, "overview", { enrich: fresh });
+  // The board: a running row turns its mark, and its words stay ink, however many goals run.
+  const marks = page.locator(".board-rows .g-row .g-glyph svg.glyph-spin");
+  await expect(marks.first()).toBeVisible();
+  await expect(page.locator(".board-rows .live-moving")).toHaveCount(0);
+  const row = page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first();
+  expect(await row.locator(".live-action").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+  // The goal in view: its live line shimmers. The light is the page's own ground over the words' own ink.
+  const id = await row.getAttribute("data-goal");
+  await openTower(page, `goal/${id}`, { enrich: fresh });
+  const words = page.locator(".annunciator .live-moving .live-action");
+  await expect(words).toBeVisible();
+  expect(await words.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).color])).toEqual(["shimmer", "rgba(0, 0, 0, 0)"]);
+  expect(await words.evaluate((el) => getComputedStyle(el).backgroundImage)).toMatch(/^linear-gradient\(90deg.*\), linear-gradient\(/);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await words.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).color === "rgba(0, 0, 0, 0)"])).toEqual(["none", false]);
+  await openTower(page, "overview", { enrich: fresh });
+  expect(await page.locator(".board-rows .g-glyph svg.glyph-spin").first().evaluate((el) => getComputedStyle(el).animationDuration)).toBe("0s");
 });
 
 test("the title bar's bell is a 22pt target, and a half-screen window drops a healthy engine's label rather than hanging it empty", async ({ page }) => {
@@ -1120,7 +1151,7 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // Folded, the read at the held-out tests is named before the dotfile: it bears on whether the evidence holds.
   await expect(fold.locator("code")).toHaveText("test/holdout/rounding.test.js");
   await page.locator(".section").filter({ has: fold }).locator("button[aria-expanded]").click();
-  // The sentinels: the high ones are squares, the medium ones hollow diamonds; the probing detail is a sentence over a list of paths.
+  // The sentinels: the high ones wear the red ×, the medium ones the outlined i; the probing detail is a sentence over a list of paths.
   const sentinels = page.locator(".sentinel");
   await expect(sentinels).toHaveCount(4);
   const probing = sentinels.filter({ hasText: "outside its workspace" });
@@ -1349,7 +1380,7 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   await expect(settingsRow.getByRole("button", { name: "Set in git" })).toBeVisible();
   // With projects, where to write it is a choice: every repository, or one of them.
   await expect(settingsRow.getByRole("button", { name: /^Where: Every repository/ })).toBeVisible();
-  // Settings › Environment is a gauge strip: one line of readings, the missing identity wearing the ◇ its check row wears
+  // Settings › Environment is a gauge strip: one line of readings, the missing identity wearing the i mark its check row wears
   // (it blocks a branch, not a run), the problem spelled out under it.
   const gauges = page.locator(".env-gauges .env-gauge");
   await expect(gauges).toHaveCount(4);
@@ -1551,9 +1582,12 @@ test("the contract editor's switch is 28×18 with a 32×24 target", async ({ pag
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   // Measured right before each press: the page may still be settling (fonts, the sheet's entrance).
   const at = async () => {
-    // A view transition lays its own layers over the page while it plays.
+    // A view transition lays its own layers over the page while it plays. Every animation with an end has ended (a
+    // running goal's mark turns without one, by design).
     await page.waitForFunction(
-      () => !document.documentElement.dataset.transition && document.getAnimations().every((a) => a.playState !== "running"),
+      () =>
+        !document.documentElement.dataset.transition &&
+        document.getAnimations().every((a) => a.effect?.getComputedTiming().iterations === Infinity || a.playState !== "running"),
     );
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     return (await toggle.boundingBox())!;

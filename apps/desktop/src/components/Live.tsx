@@ -146,8 +146,12 @@ const fitSeal = (detail: HTMLElement) =>
 
 export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget?: boolean }) {
   const d = () => liveDetail(props.goal);
+  // The agent is at work and moving: not waiting on you, not silent. On the goal in view (the goal page, the peek) its
+  // words shimmer (app.css `.live-moving`); a board row keeps still words beside its turning mark, so a board of
+  // running goals stays quiet.
+  const moving = () => props.goal.state === "running" && !modeNeedsYou(props.goal.mode) && !props.goal.needs_you && !silent(props.goal, state.now);
   return (
-    <div class="live-line halt" classList={{ "live-line-large": !!props.large }}>
+    <div class="live-line halt" classList={{ "live-line-large": !!props.large, "live-moving": !!props.large && moving() }}>
       <ModeBadge goal={props.goal} />
       {/* The tooltip carries the whole line, for the narrow window where only the verb stays on screen. */}
       <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(", ") || undefined} ref={fitSeal}>

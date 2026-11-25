@@ -113,16 +113,18 @@
 .ev-strip > .ev-pill + .ev-pill {
   margin-left: var(--sp-3);
 }
+/* A held or flagged reading is a status tag (Geist's subtle badge, Primer's label): its tone's ground, a hairline of
+   its tone, ink words, and a chip's 4px corners (it holds words, so it is no capsule). */
 .ev-pill-attn,
 .ev-pill-danger {
-  padding: 0 5px;
+  padding: 0 6px;
   margin-left: 6px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-s);
   color: var(--text-1);
 }
-.ev-strip > :is(.ev-pill-attn, .ev-pill-danger):first-child { margin-left: -5px; }
-.ev-pill-attn { background: var(--attention-bg); }
-.ev-pill-danger { background: var(--danger-bg); }
+.ev-strip > :is(.ev-pill-attn, .ev-pill-danger):first-child { margin-left: -6px; }
+.ev-pill-attn { background: var(--attention-bg); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--st-attention) 32%, transparent); }
+.ev-pill-danger { background: var(--danger-bg); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--st-danger) 32%, transparent); }
 
 .ev-holdout-files {
   display: flex;
@@ -141,9 +143,10 @@
   color: var(--text-2);
 }
 .ev-hf-miss {
-  padding: 0 5px;
-  border-radius: var(--radius-xs);
+  padding: 0 6px;
+  border-radius: var(--radius-s);
   background: var(--attention-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--st-attention) 32%, transparent);
   color: var(--text-1);
 }
 
@@ -401,9 +404,9 @@
 .unit-narrative-text { margin: 0; color: var(--text-2); line-height: 18px; max-width: var(--measure); }
 .unit-risk-badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .risk-badge { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-hint); color: var(--text-2); }
-.risk-badge::before { content: "◆"; color: var(--st-attention); }
+/* The badge's mark is the shared one (app.css): ! for a risk, × for a danger; the flex gap spaces it. */
+.risk-badge::before { margin-inline-end: 0; }
 .risk-badge-danger { color: var(--text-1); }
-.risk-badge-danger::before { content: "■"; color: var(--st-danger); }
 
 /* Acceptance Seal 4-point pre-flight checklist: unboxed 2x2 glyph readout */
 .seal-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px var(--sp-4); margin-top: var(--sp-1); }

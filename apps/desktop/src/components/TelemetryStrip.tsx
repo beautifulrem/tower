@@ -1,7 +1,7 @@
 /**
  * Title bar instrument strip (docs/19 §19.2):
  * Borderless Airbus/Linear lights-out readings — blocking Needs-You count,
- * swept RunsGauge, heartbeat, spend, sandbox posture (framed only on warning),
+ * the running mark (its arc turning), heartbeat, spend, sandbox posture (framed only on warning),
  * quiet hours, remote phone posture, and active engine.
  */
 import { Show } from "solid-js";
@@ -12,8 +12,8 @@ import { engineLabel, hasIssue, isBlocking } from "../lib/labels";
 import { openActivity } from "../lib/layers";
 import { go } from "../lib/nav";
 import { goalList, quietNow, quietUntil, state } from "../lib/store";
-import { Heartbeat, RunsGauge, pickQuiet } from "./Chrome";
-import { Icon, NeedsYouMark } from "./Glyph";
+import { Heartbeat, pickQuiet } from "./Chrome";
+import { Icon, NeedsYouMark, Spinner } from "./Glyph";
 
 export function TelemetryStrip() {
   const running = () => goalList().filter((g) => g.state === "running").length;
@@ -63,14 +63,14 @@ export function TelemetryStrip() {
       </Show>
       <Show when={blocking() > 0}>
         <button class="tel-blocking" onClick={() => go({ name: "inbox" })} title={t("chrome.openInbox")}>
-          {/* Said in words: the count is what is in Needs you, not every ◆ on the board (a pass that doesn't count wears one too). */}
+          {/* Said in words: the count is what is in Needs you, not every amber ! on the board (a pass that doesn't count wears one too). */}
           <NeedsYouMark />
           <span>{t("chrome.needYou", { n: blocking() })}</span>
         </button>
       </Show>
       <Show when={running() > 0}>
         <span class="gauge gauge-active" title={t("chrome.running", { n: running(), max: max() })}>
-          <RunsGauge n={running()} max={max()} />
+          <Spinner class="gauge-runs" />
           {t("chrome.runningShort", { n: running(), max: max() })}
         </span>
       </Show>

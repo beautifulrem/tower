@@ -1,4 +1,5 @@
 import { render } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 
 import type { CriterionView } from "../../gen/CriterionView";
@@ -41,7 +42,7 @@ describe("LoopbackLine", () => {
 });
 
 describe("ConsistencyBadge", () => {
-  it("keeps the failure's red × for a refutation: 'Cannot confirm' is not evidence, and wears the ◆", () => {
+  it("keeps the failure's red × for a refutation: 'Cannot confirm' is not evidence, and wears the amber !", () => {
     const { ConsistencyBadge } = Honesty;
     const no = render(() => <ConsistencyBadge value="contradicted" />);
     expect(no.container.querySelector(".result-fail")).not.toBeNull();
@@ -187,6 +188,17 @@ describe("a tampered canary and the totals", () => {
     expect(plain.querySelectorAll(".seg-empty")).toHaveLength(1);
   });
 
+  it("keeps each segment's element when the count moves, so the segment fills on its transition instead of being redrawn", () => {
+    const [p, setP] = createSignal({ verified: 1, observed: 1, machine: 3, human: 0, human_done: 0 });
+    const { container } = render(() => <CriteriaBar progress={p()} compact />);
+    const before = [...container.querySelectorAll(".seg")];
+    expect(before.map((s) => s.className)).toEqual(["seg seg-verified", "seg seg-empty", "seg seg-empty"]);
+    setP({ verified: 2, observed: 2, machine: 3, human: 0, human_done: 0 });
+    const after = [...container.querySelectorAll(".seg")];
+    expect(after.map((s) => s.className)).toEqual(["seg seg-verified", "seg seg-verified", "seg seg-empty"]);
+    after.forEach((el, i) => expect(el).toBe(before[i]));
+  });
+
   it("is never the green half of red → green, and a refused base reads as an environment problem with its lines in view", () => {
     const { BaselineLine } = Honesty;
     const red = { ...criterion("tampered"), passed_on_base: false };
@@ -204,18 +216,19 @@ describe("a tampered canary and the totals", () => {
     expect(line.querySelector(".result-fail, .mark-danger")).toBeNull();
   });
 
-  it("withholds the seal: ◆ where the green disc would be, and the words say the pass is not evidence", () => {
+  it("withholds the seal: the amber ! where the green disc would be, and the words say the pass is not evidence", () => {
     const { container } = render(() => <Seal pin="f20e1bf1234" large tampered />);
     const seal = container.querySelector(".seal")!;
     expect(seal.className).toContain("seal-tampered");
-    expect(seal.querySelector("circle")).toBeNull();
-    expect(seal.querySelector(".mark-attention")).not.toBeNull();
+    // No green disc: the amber one stands in its place.
+    expect(seal.querySelector('[fill="var(--st-verified)"]')).toBeNull();
+    expect(seal.querySelector(".mark-attention path")!.getAttribute("fill")).toBe("var(--st-attention)");
     expect(seal.textContent).toContain("Passed, doesn't count");
     expect(seal.textContent).toContain("@f20e1bf");
     // One explanation of a pass that doesn't count, the same one the criteria use, after the pin.
     expect(seal.getAttribute("title")).toMatch(/^@f20e1bf Doesn't count: .*must fail.*tampered with/);
     const { container: ok } = render(() => <Seal pin="f20e1bf1234" large />);
-    expect(ok.querySelector("circle")).not.toBeNull();
+    expect(ok.querySelector('circle[fill="var(--st-verified)"]')).not.toBeNull();
     expect(ok.textContent).toContain("Verified");
   });
 });

@@ -23,12 +23,14 @@ function Shot(props: { file: string | null; error: string | null; label: string;
     () => props.file,
     (f) => (f ? api.lookImage(f).catch(() => null) : Promise.resolve(null)),
   );
+  // An image the webview cannot decode is gone too: said in words in the frame, never a 2px sliver of border.
+  const [broken, setBroken] = createSignal<string | null>(null);
   return (
     <figure class="look-shot">
       <Show when={props.file && !props.error} fallback={<div class="look-missing meta t3">{props.error ?? t("look.notCaptured")}</div>}>
-        <Show when={src()} fallback={<div class="look-missing meta t3">{src.loading ? t("common.loading") : t("look.gone")}</div>}>
+        <Show when={src() && broken() !== src()} fallback={<div class="look-missing meta t3">{src.loading ? t("common.loading") : t("look.gone")}</div>}>
           <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label}, ${t("look.enlarge")}`}>
-            <img class="look-img" src={src()!} alt={props.label} />
+            <img class="look-img" src={src()!} alt={props.label} onError={() => setBroken(src() ?? null)} />
           </button>
         </Show>
       </Show>

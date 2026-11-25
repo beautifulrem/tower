@@ -42,6 +42,7 @@
   --radius-s: 4px; /* badges, chips */
   --radius-m: 6px; /* buttons, inputs, cards, decision cards, diff frames */
   --radius-l: 10px; /* floating layers only: palette, menus, toasts */
+  --radius-full: 999px; /* capsules that hold no words: criteria segments */
   /* Concentric corners: what sits inside a rounded layer is rounded by the layer's radius minus its inset, so the two
      curves share a centre. A floating layer (10) holds its rows (6) at this inset. */
   --float-inset: 4px;
@@ -76,6 +77,19 @@
   --dur-attn: 700ms;
   --dur-view: 120ms;
   --dur-space: 220ms;
+  /* Springs, Motion's spring(visualDuration, bounce) (motion.dev/docs/css) sampled into a CSS linear() curve, with the
+     time it takes to settle: something small arriving (a mark, a menu, a segment filling) settles quickly,
+     spring(0.25, 0); a panel moving in settles slower, spring(0.4, 0). Neither overshoots: nothing here bounces.
+     Use with transform; opacity keeps --ease-out over the visual duration. */
+  --spring-snappy: 465ms linear(0, 0.043, 0.137, 0.242, 0.357, 0.458, 0.555, 0.634, 0.706, 0.761, 0.811, 0.848, 0.881, 0.905, 0.926, 0.941, 0.955, 0.965, 0.972, 0.979, 0.983, 0.987, 0.99, 0.992, 0.994, 0.995, 0.996, 0.997, 0.998, 0.998, 0.999, 0.999, 1);
+  --spring-soft: 699ms linear(0, 0.036, 0.117, 0.218, 0.324, 0.426, 0.519, 0.598, 0.669, 0.73, 0.781, 0.824, 0.858, 0.885, 0.909, 0.927, 0.942, 0.954, 0.964, 0.972, 0.977, 0.982, 0.986, 0.989, 0.991, 0.993, 0.995, 0.996, 0.997, 0.998, 0.998, 0.998, 1);
+  /* One turn of a running mark: steady, never hurried. */
+  --dur-spin: 1100ms;
+  /* The status marks as masks, for a mark a stylesheet places before words: Glyph.tsx's MARK_PATH, the same even-odd
+     paths (a unit test holds them equal), so the symbol is a hole in any ground. */
+  --mark-attention: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM7.125 4.6a.875 .875 0 0 1 1.75 0v4.1a.875 .875 0 0 1 -1.75 0zM8 10.35a1.05 1.05 0 1 1 0 2.1a1.05 1.05 0 1 1 0 -2.1z'/%3E%3C/svg%3E");
+  --mark-danger: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 9.237L9.781 11.019A.875 .875 0 0 0 11.019 9.781L9.237 8L11.019 6.219A.875 .875 0 0 0 9.781 4.981L8 6.763L6.219 4.981A.875 .875 0 0 0 4.981 6.219L6.763 8L4.981 9.781A.875 .875 0 0 0 6.219 11.019z'/%3E%3C/svg%3E");
+  --mark-notice: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0 -11zM7.2 7.3a.8 .8 0 0 1 1.6 0v3.7a.8 .8 0 0 1 -1.6 0zM8 3.95a.95 .95 0 1 1 0 1.9a.95 .95 0 1 1 0 -1.9z'/%3E%3C/svg%3E");
   /* How long a destructive option stays armed for its second press (DecisionCard ARM_MS). */
   --dur-arm: 2000ms;
 }
@@ -141,7 +155,7 @@
   --st-attention: oklch(0.800 0.150 75);
   --st-danger: oklch(0.750 0.150 25);
   --st-verified: oklch(0.770 0.130 155);
-  /* Enough chroma that the running half-disc is told from a neutral grey at 10px. */
+  /* Enough chroma that the running arc is told from a neutral grey at 10px. */
   --st-active: oklch(0.780 0.120 235);
   --st-neutral: var(--text-3);
   --attention-bg: oklch(0.225 0.030 75);

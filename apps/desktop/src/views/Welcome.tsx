@@ -72,7 +72,7 @@ function Check(props: { ok: boolean | null; blocking?: boolean; title: string; d
 const LIFE: LifecycleState[] = ["draft", "running", "claimed", "verifying", "in_review", "accepted"];
 
 /**
- * A goal's life in Tower's own glyphs: ring, half-disc, dashed claim, the
+ * A goal's life in Tower's own glyphs: ring, turning arc, dashed claim, the
  * verifier filling it in, the check, the seal — each with its word, joined
  * by hairlines like a route. The one picture that says what Tower does
  * without a sentence: the agent's "done" is the dashed station in the

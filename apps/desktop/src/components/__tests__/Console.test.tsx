@@ -213,7 +213,7 @@ describe("Four-Provenance physical frames & pills", () => {
 });
 
 describe("TelemetryStrip", () => {
-  it("renders swept RunsGauge, borderless blocking Needs-You count and sandbox posture", () => {
+  it("renders the turning runs mark, borderless blocking Needs-You count and sandbox posture", () => {
     const { container } = render(() => <TelemetryStrip />);
     expect(container.querySelector(".gauge-runs")).not.toBeNull();
     expect(container.querySelector(".gauge-active")?.textContent).toContain("1/4 running");

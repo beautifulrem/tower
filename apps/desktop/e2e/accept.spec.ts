@@ -141,7 +141,7 @@ test("the accept sheet's checklist never wears the verifier's green: clear check
     return out;
   });
   expect(greens).toEqual([]);
-  // The overlap reads as the goal page reads it: ◇, not the amber ◆ that asks for a decision.
+  // The overlap reads as the goal page reads it: the i mark, not the amber ! that asks for a decision.
   const overlap = checks.locator(".seal-check").filter({ hasText: /Overlaps/ });
   if (await overlap.count()) {
     await expect(overlap.locator(".mark-attention")).toHaveCount(0);

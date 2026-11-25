@@ -8,10 +8,13 @@
  * red), by activity (blue-grey) or by a decision waiting for you (amber).
  *
  * Shape vocabulary: a ring is a goal; dashes are the claim register ("said,
- * not proven"); a check inside a ring is the verifier's word; a solid disc
- * is sealed. There are no warning triangles: a sentinel's finding is the
- * danger square, an environment problem the sandbox's open box, one glyph
- * per fact wherever the fact is said.
+ * not proven"); an arc turning on a faint ring is work in motion; a check
+ * inside a ring is the verifier's word; a solid disc is sealed. The status
+ * marks are one disc with a symbol cut out of it (after Primer's -fill status
+ * icons): ! needs you (amber), × something is wrong (red); the notice is the
+ * same disc drawn as a line, uncoloured, with an i. The symbol, not the
+ * colour, tells them apart. There are no warning triangles: an environment
+ * problem is the sandbox's open box, one glyph per fact wherever the fact is said.
  */
 import { type JSX, Match, Show, Switch } from "solid-js";
 
@@ -50,24 +53,24 @@ const DASH = "1.7 1.45";
 
 export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin"> & { id?: string }; size?: number }) {
   const verified = () => machineVerified(props.goal as GoalSummary);
-  // Ready or accepted with a pass that is not evidence: the seal's amber ◆ stands where the green check would, so the
+  // Ready or accepted with a pass that is not evidence: the seal's amber ! stands where the green check would, so the
   // title, the sidebar and the board never draw green on a goal whose header says "Passed, not evidence".
   const discounted = () =>
     (props.goal.state === "in_review" || props.goal.state === "accepted") && notEvidence(props.goal);
   const c = () => color[toneOf(props.goal.state, verified())];
-  const s = () => props.size ?? 10;
+  const s = () => props.size ?? 12;
   // Verified, with caveats: the ring keeps a gap at its lower right (docs/12 §12.5.2's notch), the check still green; the
   // accepted disc and the merged ring keep the same cut, so a goal's caveats stay on its mark after you took it.
   const qualified = () => ["in_review", "accepted", "integrated"].includes(props.goal.state) && verified() && caveats(props.goal).length > 0;
-  const svg = (children: JSX.Element) => (
+  const svg = (children: JSX.Element, spin?: boolean) => (
     <svg
-      class="glyph"
+      class={spin ? "glyph glyph-spin" : "glyph"}
       width={s()}
       height={s()}
       viewBox="0 0 10 10"
       fill="none"
       stroke={c()}
-      stroke-width="1.25"
+      stroke-width="1.1"
       role="img"
       aria-label={qualified() ? (props.goal.state === "in_review" ? t("honesty.qualified") : `${t(`state.${props.goal.state}`)}, ${t("honesty.qualified")}`) : t(`state.${props.goal.state}`)}
     >
@@ -78,11 +81,13 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   // The claim register's dashes keep square ends: round ones would turn the ring into a string of beads.
   const dashedRing = () => <circle cx="5" cy="5" r="4" stroke-dasharray={DASH} stroke-linecap="butt" />;
   const check = (stroke?: string) => <path d="M3.1 5.2 L4.5 6.6 L7 3.7" stroke={stroke} />;
+  // In motion: a quarter arc turning on the ring (the whole mark turns, so it stays on the compositor).
+  const arc = () => <path d="M5 1a4 4 0 0 1 4 4" />;
   return (
     <Switch>
       <Match when={discounted()}>
-        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" role="img" aria-label={props.goal.state === "in_review" ? t("honesty.sealTampered") : `${t(`state.${props.goal.state}`)}, ${t("honesty.sealTampered")}`}>
-          <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 16 16" role="img" aria-label={props.goal.state === "in_review" ? t("honesty.sealTampered") : `${t(`state.${props.goal.state}`)}, ${t("honesty.sealTampered")}`}>
+          {attnDisc()}
         </svg>
       </Match>
       <Match when={props.goal.state === "draft"}>{svg(ring())}</Match>
@@ -97,28 +102,31 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
       <Match when={props.goal.state === "running"}>
         {svg(
           <>
-            {ring()}
-            <path d="M5 1 A4 4 0 0 0 5 9 Z" fill={c()} stroke="none" />
+            <circle cx="5" cy="5" r="4" stroke-opacity=".28" />
+            {arc()}
           </>,
+          true,
         )}
       </Match>
+      {/* Paused: the goal's ring held, two bars inside it. */}
       <Match when={props.goal.state === "paused"}>
         {svg(
           <>
-            <line x1="3.3" y1="1.5" x2="3.3" y2="8.5" />
-            <line x1="6.7" y1="1.5" x2="6.7" y2="8.5" />
+            {ring()}
+            <path d="M4 3.6v2.8M6 3.6v2.8" />
           </>,
         )}
       </Match>
       {/* Claimed done: the claim register's dashes around an empty goal. */}
       <Match when={props.goal.state === "claimed"}>{svg(dashedRing())}</Match>
-      {/* Verifying: the verifier is filling the claim in. */}
+      {/* Verifying: the verifier's arc going round the claim's dashes. */}
       <Match when={props.goal.state === "verifying"}>
         {svg(
           <>
             {dashedRing()}
-            <path d="M5 1 A4 4 0 0 0 5 9 Z" fill={c()} stroke="none" />
+            {arc()}
           </>,
+          true,
         )}
       </Match>
       {/* Ready to accept: the verifier's check inside the ring — green only with a pin. */}
@@ -180,29 +188,57 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   );
 }
 
-/** ◆: something needs your decision. The only attention mark. */
+/** The page's own ground: a status mark's symbol is cut out of its disc, so it holds in either theme. */
+/*
+ * The status marks on the icons' 16-unit grid, each one even-odd path: the symbol is a hole in the disc, so it shows
+ * whatever ground the mark sits on (a selected row, a raised sheet), never a guessed one. tokens.css draws the same
+ * paths as masks for marks a stylesheet places; a unit test holds the two equal.
+ */
+export const MARK_PATH = {
+  attention: "M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM7.125 4.6a.875 .875 0 0 1 1.75 0v4.1a.875 .875 0 0 1 -1.75 0zM8 10.35a1.05 1.05 0 1 1 0 2.1a1.05 1.05 0 1 1 0 -2.1z",
+  danger: "M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 9.237L9.781 11.019A.875 .875 0 0 0 11.019 9.781L9.237 8L11.019 6.219A.875 .875 0 0 0 9.781 4.981L8 6.763L6.219 4.981A.875 .875 0 0 0 4.981 6.219L6.763 8L4.981 9.781A.875 .875 0 0 0 6.219 11.019z",
+  notice: "M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0 -11zM7.2 7.3a.8 .8 0 0 1 1.6 0v3.7a.8 .8 0 0 1 -1.6 0zM8 3.95a.95 .95 0 1 1 0 1.9a.95 .95 0 1 1 0 -1.9z",
+} as const;
+
+/** The ! cut out of an amber disc: needs you, or a pass that doesn't count (which needs you to look). */
+const attnDisc = () => <path d={MARK_PATH.attention} fill="var(--st-attention)" fill-rule="evenodd" />;
+
+/** A status mark: 12px, on the icons' 16-unit grid. */
+const Mark = (p: { cls: string; label: string; children: JSX.Element }) => (
+  <svg class={`glyph ${p.cls}`} width="12" height="12" viewBox="0 0 16 16" role="img" aria-label={p.label}>
+    {p.children}
+  </svg>
+);
+
+/** Needs you: an amber disc with a !. The only attention mark. */
 export function NeedsYouMark(props: { title?: string }) {
-  return (
-    <svg class="glyph mark-attention" width="9" height="9" viewBox="0 0 10 10" role="img" aria-label={props.title ?? t("common.needsYou")}>
-      <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
-    </svg>
-  );
+  return <Mark cls="mark-attention" label={props.title ?? t("common.needsYou")}>{attnDisc()}</Mark>;
 }
 
-/** ◇: worth noticing, no decision needed. Never coloured. */
+/** Worth noticing, no decision needed: the disc as a line, with an i. Never coloured. */
 export function NoticeMark(props: { title?: string }) {
   return (
-    <svg class="glyph" width="9" height="9" viewBox="0 0 10 10" role="img" aria-label={props.title ?? t("common.notice")}>
-      <path d="M5 1 L9 5 L5 9 L1 5 Z" fill="none" stroke="currentColor" stroke-width="1.2" />
-    </svg>
+    <Mark cls="mark-notice" label={props.title ?? t("common.notice")}>
+      <path d={MARK_PATH.notice} fill="currentColor" fill-rule="evenodd" />
+    </Mark>
   );
 }
 
-/** ■: the verifier or a sentinel found something wrong. */
+/** Something is wrong (the verifier, a sentinel, a failing check): a red disc with a ×. */
 export function DangerMark(props: { title?: string }) {
   return (
-    <svg class="glyph mark-danger" width="9" height="9" viewBox="0 0 10 10" role="img" aria-label={props.title ?? t("common.problem")}>
-      <rect x="1" y="1" width="8" height="8" fill="currentColor" />
+    <Mark cls="mark-danger" label={props.title ?? t("common.problem")}>
+      <path d={MARK_PATH.danger} fill="currentColor" fill-rule="evenodd" />
+    </Mark>
+  );
+}
+
+/** Work in motion with no glyph of its own (a load, the runs gauge): a faint ring and the turning arc. */
+export function Spinner(props: { size?: number; class?: string }) {
+  return (
+    <svg class={`glyph glyph-spin ${props.class ?? ""}`} width={props.size ?? 10} height={props.size ?? 10} viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true">
+      <circle cx="5" cy="5" r="4" stroke-opacity=".28" />
+      <path d="M5 1a4 4 0 0 1 4 4" />
     </svg>
   );
 }
@@ -288,7 +324,7 @@ const PATHS: Record<IconName, () => JSX.Element> = {
     </>
   ),
   /* The environment: the sandbox's box, its wall broken where something tried to pass. Not a warning triangle — an
-     environment problem is nobody's failure — and not ◇ or ◆, which belong to notices and decisions. */
+     environment problem is nobody's failure — and not the i or the !, which belong to notices and decisions. */
   sandbox: () => <path d="M5.25 2.5H4A1.5 1.5 0 0 0 2.5 4v8A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5V4A1.5 1.5 0 0 0 12 2.5h-1.25" />,
   return: () => <path d="M3 2.5v5a2 2 0 0 0 2 2h8m-3-3 3 3-3 3" />,
   sliders: () => (
@@ -407,7 +443,7 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
   );
 }
 
-/** A criterion's mark when it passed but its must-fail canary passed too: the seal's ◆, never the green check. */
+/** A criterion's mark when it passed but its must-fail canary passed too: the seal's amber !, never the green check. */
 export function NotEvidenceMark() {
   return (
     <span class="result result-tampered" title={t("honesty.sealTampered")}>
@@ -435,7 +471,7 @@ const Disc = (p: { cut?: boolean }) =>
  * word in the display cut, the largest type in the interface) and the pin it
  * was measured on (mono, tabular), divided by the frame's own rule. A pass
  * that is not evidence is the seal withheld: the frame is dashed — the claim
- * register's line, "said, not proven" — and the ◆ stands where the disc
+ * register's line, "said, not proven" — and the amber ! stands where the disc
  * would. `press` plays the impression once, as the sheet opens.
  */
 export function Stamp(props: { pin: string; tampered?: boolean; qualified?: string[]; press?: boolean; size?: "l" | "m"; accepted?: boolean }) {
@@ -451,8 +487,8 @@ export function Stamp(props: { pin: string; tampered?: boolean; qualified?: stri
         <Show
           when={!props.tampered}
           fallback={
-            <svg class="glyph stamp-glyph" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+            <svg class="glyph stamp-glyph" viewBox="0 0 16 16" aria-hidden="true">
+              {attnDisc()}
             </svg>
           }
         >
@@ -473,7 +509,7 @@ export function Stamp(props: { pin: string; tampered?: boolean; qualified?: stri
  * was measured on. One component, used everywhere the verdict is shown.
  * `tampered` is the seal withheld: every command passed on this pin, but a
  * must-fail canary passed too, so the pass is not evidence — the attention
- * register's ◆ stands where the green disc would, and the words say so.
+ * register's amber ! stands where the green disc would, and the words say so.
  */
 export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean; tampered?: boolean; qualified?: string[]; accepted?: boolean }) {
   const s = () => (props.large ? 12 : 10);
@@ -489,8 +525,8 @@ export function Seal(props: { pin: string | null | undefined; text?: string; com
         <Show
           when={!props.tampered}
           fallback={
-            <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+            <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 16 16" aria-hidden="true">
+              {attnDisc()}
             </svg>
           }
         >

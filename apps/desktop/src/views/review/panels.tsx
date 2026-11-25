@@ -170,7 +170,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
 interface OpenItem {
   danger?: boolean;
   notEvidence?: boolean;
-  /** A counted pass with caveats: a judgement (◆), so Accept asks twice, but not a withheld seal. */
+  /** A counted pass with caveats: a judgement (the ! mark), so Accept asks twice, but not a withheld seal. */
   qualified?: boolean;
   text: string;
   sentinel?: boolean;
@@ -188,7 +188,7 @@ export interface AcceptPanelProps {
 }
 
 // A clear check is neutral: green is the verifier's word, and these are Tower's own checks and yours. An overlap is
-// worth noticing (◇, as on the goal page), not a decision.
+// worth noticing (the i mark, as on the goal page), not a decision.
 const SEAL_MARK = { ok: () => <Icon name="check" size={10} />, warn: () => <NeedsYouMark />, notice: () => <NoticeMark />, danger: () => <DangerMark /> };
 
 export function AcceptPanel(props: AcceptPanelProps) {

@@ -65,7 +65,7 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
   return (
     <span class={`consistency consistency-${props.value}`} title={props.evidence ?? undefined}>
       {/* Only a refutation wears the failure's red ×. A claim the agent's own words keep a pass from confirming is not
-          refuted, it is not evidence: the ◆ a tampered pass wears, read as firmly. */}
+          refuted, it is not evidence: the amber ! a tampered pass wears, read as firmly. */}
       <Show when={props.value === "contradicted"}>
         <ResultMark kind="fail" />
       </Show>
@@ -75,7 +75,7 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
       <Show when={props.value === "stale"}>
         <ResultMark kind="stale" />
       </Show>
-      {/* No fact supports the claim: worth a look, not a decision — the hollow ◇ in body ink (docs/12 §12.6.2). */}
+      {/* No fact supports the claim: worth a look, not a decision — the outlined i in body ink (docs/12 §12.6.2). */}
       <Show when={props.value === "unsupported"}>
         <NoticeMark />
       </Show>

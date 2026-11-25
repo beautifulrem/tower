@@ -4,7 +4,7 @@ import { type JSX, type Resource, Show, createUniqueId, onCleanup, onMount, spli
 import { errorText } from "../lib/api";
 import { t } from "../lib/i18n";
 import { type Binding, KeyLayer, keyHint, useKeys } from "../lib/keys";
-import { DangerMark, Icon, type IconName } from "./Glyph";
+import { DangerMark, Icon, type IconName, Spinner } from "./Glyph";
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "default" | "ghost" | "danger";
@@ -201,8 +201,8 @@ export function Toggle(props: {
 /**
  * An empty, loading or failed state: one statement where the content would
  * be, a specific reason underneath, and at most one way forward. `kind`
- * picks the mark: a hollow ring (nothing here), a dot (waiting), a square
- * (an error, in the danger colour).
+ * picks the mark: a hollow ring (nothing here), the turning arc (waiting),
+ * the red disc with its × (an error).
  */
 /**
  * A resource's value, or undefined once its load has failed: reading the resource itself would throw the error. While
@@ -250,7 +250,7 @@ export function Empty(props: {
             <Icon name="ring" size={12} />
           </Show>
           <Show when={kind() === "loading"}>
-            <Icon name="dot" size={10} />
+            <Spinner />
           </Show>
           <Show when={kind() === "error"}>
             <DangerMark />

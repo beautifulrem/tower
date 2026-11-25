@@ -10,7 +10,7 @@ import { openTower, settled } from "./tauri";
 
 const calls = (page: Page, cmd: string) => page.evaluate((cmd) => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls.filter(([c]) => c === cmd).length, cmd);
 
-test("with a tampered pass the title's glyph, the sidebar's and the criterion's mark are the seal's amber ◆, never a green check", async ({ page }) => {
+test("with a tampered pass the title's glyph, the sidebar's and the criterion's mark are the seal's amber !, never a green check", async ({ page }) => {
   // The high findings dealt with, so the other passes count beside the tampered one.
   await openTower(page, "goal/G-0001", { enrich: (F) => (enrichCanary(F), withoutHighFindings(F)) });
   const head = page.locator(".goal-head");
@@ -19,7 +19,7 @@ test("with a tampered pass the title's glyph, the sidebar's and the criterion's 
   await expect(head.locator(".row > svg.glyph").first()).toHaveAttribute("aria-label", /Passed, doesn.t count/);
   const side = page.locator(".side-goal").filter({ hasText: "Fix the cart total" });
   await expect(side.locator(".side-icon svg")).toHaveClass(/mark-attention/);
-  // The tampered criterion's row: ◆ in its mark column; "passed" stays, it is a fact.
+  // The tampered criterion's row: the ! in its mark column; "passed" stays, it is a fact.
   const row = page.locator(".goal-page .criterion").filter({ hasText: "Rounding tests pass" }).first();
   await expect(row.locator(".criterion-row").first().locator(".result-tampered")).toBeVisible();
   await expect(row.locator(".criterion-row").first().locator(".result-pass")).toHaveCount(0);
@@ -28,7 +28,7 @@ test("with a tampered pass the title's glyph, the sidebar's and the criterion's 
   await expect(page.locator(".goal-page .criterion .criterion-row .result-pass").first()).toBeVisible();
 });
 
-test("while a high finding of this verification stands, no pass keeps the verifier's check: each is the amber ◆, as the supervisor holds them", async ({ page }) => {
+test("while a high finding of this verification stands, no pass keeps the verifier's check: each is the amber !, as the supervisor holds them", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichCanary });
   await expect(page.locator(".goal-head .seal-tampered")).toBeVisible();
   const marks = page.locator(".goal-page .criterion .criterion-row > .result-tampered");
@@ -93,7 +93,7 @@ for (const [lang, word, why] of [
     await expect(head.locator(".row > svg.glyph").first()).toHaveAttribute("aria-label", word);
     await expect(head.locator(".seal .seal-word")).toHaveText(word);
     await expect(head.locator(".seal")).toHaveAttribute("title", new RegExp(why));
-    // Green stays the verifier's: the pass counts, the check is the verified one, never the amber ◆.
+    // Green stays the verifier's: the pass counts, the check is the verified one, never the amber !.
     await expect(head.locator(".seal-tampered")).toHaveCount(0);
 
     await openTower(page, "review/G-0003", { lang, enrich: qualified });

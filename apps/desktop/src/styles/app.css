@@ -144,17 +144,19 @@
   border-radius: 50%;
   background: var(--text-3);
 }
+/* A status dot (Geist's): down is a red dot with a soft halo of its own colour. */
 .gauge-dot.down {
-  border-radius: 1px;
   background: var(--st-danger);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--st-danger) 22%, transparent);
 }
-/* Silence is worth a look, not a failure: a hollow square, so the strip never shows two ■. The moment it
-   appears it beats once — 700ms, like a new card's amber — and then holds still; a heartbeat that stopped. */
+/* Silence is worth a look, not a failure: the dot drawn as a ring, so the strip never shows two red dots. The moment
+   it appears it beats once — 700ms, like a new card's amber — and then holds still; a heartbeat that stopped. */
 .gauge-dot.hollow {
-  border-radius: 1px;
   background: transparent;
   box-sizing: border-box;
-  border: 1px solid var(--st-danger);
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--st-danger);
   animation: beat var(--dur-attn) var(--ease-out) 1;
 }
 @keyframes beat {
@@ -170,9 +172,10 @@
     transform: scale(1);
   }
 }
-/* The runs gauge fills the running glyph's ring by the slots in use: it is the same family of shape, one reading richer. */
+/* The runs gauge is the running goals' own mark, turning while anything runs. */
 .gauge-runs {
   vertical-align: -1px;
+  color: var(--st-active);
 }
 .gauge-busy {
   color: var(--text-2);
@@ -180,7 +183,7 @@
 .gauge-down {
   color: var(--text-1);
 }
-/* The engine heartbeat: quiet while recent, text-1 past 30 s, a danger square past 2 min. */
+/* The engine heartbeat: quiet while recent, text-1 past 30 s, a hollow ring past 2 min. */
 .gauge-stale {
   color: var(--text-1);
 }
@@ -406,6 +409,43 @@
 }
 .mark-danger {
   color: var(--st-danger);
+}
+/* A 12px status mark sits on the text's x-height, not its baseline. */
+:is(.mark-attention, .mark-danger, .mark-notice)[width="12"] {
+  vertical-align: -2px;
+}
+/* Work in motion: the mark turns as a whole (a transform on the svg box stays on the compositor), steady and slow —
+   Geist's building dot and GitHub's in-progress ring are the models. Where motion is reduced it holds still, its arc
+   at the top right. */
+.glyph-spin {
+  animation: spin var(--dur-spin) linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+/* The agent's own words while it works: a light passes over them (AI Elements' Shimmer), so a line that is moving
+   reads as moving. Only for a running goal that is not silent, and only where motion is welcome: elsewhere the words
+   are plain. The light is the page's ground, so the words fade toward it and back, never to a colour. */
+@media (prefers-reduced-motion: no-preference) {
+  .live-moving .live-action {
+    color: transparent;
+    background-image: linear-gradient(90deg, #0000 calc(50% - 2.5em), var(--bg-app) 50%, #0000 calc(50% + 2.5em)), linear-gradient(var(--text-2), var(--text-2));
+    background-size: 250% 100%, auto;
+    background-repeat: no-repeat, padding-box;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation: shimmer 2.4s linear infinite;
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% center, 0 0;
+  }
+  to {
+    background-position: 0% center, 0 0;
+  }
 }
 
 .result {
@@ -705,27 +745,42 @@
   display: inline-flex;
   gap: 2px;
 }
-/* An empty segment is drawn, not hinted: "not yet" has to be as visible as "done". */
+/* One rounded track per criterion. An empty segment is drawn, not hinted — a track as visible as the fill, since "not
+   yet" has to read as clearly as "done"; an observed one is hatched in grey (seen, not measured: the unverified seal's
+   hatching); a verified one in the verifier's green. A segment that changes fills from its left on a spring, so the
+   bar moves the way the count does. */
 .seg {
+  position: relative;
+  overflow: hidden;
   width: 12px;
   height: 4px;
-  border-radius: 1px;
-  box-sizing: border-box;
-  border: 1px solid var(--text-4);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--text-4) 55%, transparent);
+}
+.seg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform var(--spring-snappy), background-color var(--dur-base) var(--ease-out);
 }
 .compact .seg {
   width: 9px;
 }
-.seg-verified {
-  border: 0;
+.seg-verified::after {
+  transform: none;
   background: var(--st-verified);
 }
-.seg-observed {
-  border: 1px solid var(--text-3);
+.seg-observed::after {
+  transform: none;
+  background: repeating-linear-gradient(-45deg, var(--text-3) 0 1.5px, transparent 1.5px 3px);
 }
 /* A pass with a tampered canary: solid like a fact, amber like a question — it happened, and it does not count. */
-.seg-discounted {
-  border: 0;
+.seg-discounted::after {
+  transform: none;
   background: var(--st-attention);
 }
 .criteria-bar .discounted {
@@ -761,19 +816,22 @@
   font-size: var(--fs-body);
   font-weight: 500;
   white-space: nowrap;
+  /* A press gives a little and springs back on release (the transform first, so a rule that keeps only it keeps its
+     spring); the ground arrives at once and leaves slowly. */
   transition:
+    transform var(--spring-snappy),
     background-color var(--dur-hover-out) linear,
-    border-color var(--dur-hover-out) linear,
-    transform var(--dur-fast) var(--ease-out);
+    border-color var(--dur-hover-out) linear;
 }
 .btn:hover:not(:disabled) {
   background: var(--bg-hover);
   border-color: var(--border-strong);
-  transition-duration: 0ms;
+  transition-property: transform;
 }
 .btn:active:not(:disabled) {
   background: var(--bg-selected);
-  transform: translateY(0.5px);
+  transform: scale(0.98);
+  transition: transform 90ms var(--ease-out);
 }
 /* Disabled like AppKit: the frame stays, only the words step back. */
 .btn:disabled {
@@ -1112,17 +1170,10 @@ input[type="radio"] {
   font-size: var(--fs-meta);
   color: var(--text-1);
 }
-.field-error::before {
-  content: "■ ";
-  color: var(--st-danger);
-}
 .field-warn {
   font-size: var(--fs-meta);
   color: var(--text-1);
   margin: 6px 0 var(--sp-3);
-}
-.field-warn::before {
-  content: "◇ ";
 }
 
 .check,
@@ -1849,7 +1900,7 @@ input[type="radio"] {
   grid-column: 3 / -1;
   justify-content: flex-start;
 }
-/* A note's leading mark (◆, the scale, the environment's ◫) hangs in the id column, so every note's words start on
+/* A note's leading mark (the amber !, the scale, the environment's ◫) hangs in the id column, so every note's words start on
    the title's edge, marked or not. */
 .criterion-row.criterion-obs .col-span > :is(svg.glyph, .icon, .result):first-child {
   flex: 0 0 10px;
@@ -2407,7 +2458,7 @@ input[type="radio"] {
   user-select: text;
 }
 /* The note reads at the card's own width (the card is already a reading width; a 60ch cap left one word on a
-   second line in English), and its ◇ sits on the first line, never between two. */
+   second line in English), and its ⓘ sits on the first line, never between two. */
 .heldout-note {
   display: flex;
   gap: 6px;
@@ -2618,10 +2669,6 @@ input[type="radio"] {
 }
 .trace-error {
   color: var(--text-1);
-}
-.trace-error::before {
-  content: "■ ";
-  color: var(--st-danger);
 }
 /* A run boundary: one full-width rule with the time inline, not a row in the grid. */
 .trace-divider {
@@ -3251,7 +3298,7 @@ input[type="radio"] {
   box-shadow: var(--shadow-overlay);
   overflow: hidden;
   outline: none;
-  animation: lift var(--dur-base) var(--ease-out);
+  animation: lift var(--spring-snappy);
 }
 /* The palette floats over the page: its top edge catches the light (a sheet you read in has no such edge). */
 .palette {
@@ -3330,7 +3377,7 @@ input[type="radio"] {
   color: var(--text-1);
   font-weight: 500;
 }
-/* The ◆ modifies the state word, so it sits next to it. */
+/* The ! mark modifies the state word, so it sits next to it. */
 .palette-state {
   display: inline-flex;
   align-items: center;
@@ -3558,7 +3605,7 @@ input[type="radio"] {
   border-radius: var(--radius-l);
   box-shadow: var(--material-edge), var(--shadow-overlay);
   color: var(--text-1);
-  animation: rise var(--dur-base) var(--ease-out);
+  animation: rise var(--spring-snappy);
   transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
   user-select: text;
 }
@@ -3591,13 +3638,31 @@ input[type="radio"] {
 .toast-text {
   min-width: 0;
 }
-.toast-error .toast-text::before {
-  content: "■ ";
-  color: var(--st-danger);
+/* A mark a stylesheet places before words (a field's error or warning, a toast, a failed trace step, a risk): the
+   mark family drawn as a mask (tokens.css), 12px on the x-height like the components' marks. */
+:where(.field-error, .field-warn, .trace-error, .toast-error .toast-text, .toast-warning .toast-text, .risk-badge)::before {
+  content: "";
+  display: inline-block;
+  inline-size: 12px;
+  block-size: 12px;
+  margin-inline-end: 6px;
+  vertical-align: -2px;
+  background-color: var(--mark-ink, currentColor);
+  -webkit-mask: var(--mark) center / contain no-repeat;
+  mask: var(--mark) center / contain no-repeat;
 }
-.toast-warning .toast-text::before {
-  content: "◆ ";
-  color: var(--st-attention);
+/* Weightless, and danger after attention: a danger badge is a badge too, and says ×. */
+:where(.toast-warning .toast-text, .risk-badge) {
+  --mark: var(--mark-attention);
+  --mark-ink: var(--st-attention);
+}
+:where(.field-error, .trace-error, .toast-error .toast-text, .risk-badge-danger) {
+  --mark: var(--mark-danger);
+  --mark-ink: var(--st-danger);
+}
+/* Worth noticing: the outlined i, in the words' own ink. */
+:where(.field-warn) {
+  --mark: var(--mark-notice);
 }
 /* Success wears a quiet check; information has no prefix: three shapes for three kinds. */
 .toast-success .icon {
@@ -4290,12 +4355,12 @@ input[type="radio"] {
   background: var(--bg-selected);
 }
 .g-row[data-new="true"] {
-  animation: arrive var(--dur-base) var(--ease-out) 1;
+  animation: arrive var(--spring-snappy) 1;
 }
 @keyframes arrive {
   from {
     opacity: 0;
-    transform: translateY(-2px);
+    transform: translateY(-4px);
   }
 }
 .g-glyph {
@@ -4328,7 +4393,7 @@ input[type="radio"] {
 .g-live {
   min-width: 0;
 }
-/* On a board line the glyph column wears the withheld seal's ◆ and the word says the verdict: the seal stays on the goal page. */
+/* On a board line the glyph column wears the withheld seal's ! and the word says the verdict: the seal stays on the goal page. */
 .g-live .seal-tampered {
   display: none;
 }
@@ -5295,7 +5360,7 @@ input[type="radio"] {
 .phone-transport .icon {
   align-self: center;
 }
-/* Switched on but not served: the attention register — ◆ and primary text — and the supervisor's own sentence,
+/* Switched on but not served: the attention register — the ! mark and primary text — and the supervisor's own sentence,
    which already names the way out. Nothing amber beyond the mark: the page is off, not on fire. */
 .phone-problem {
   display: flex;
@@ -5331,7 +5396,7 @@ input[type="radio"] {
   padding-right: 8px !important;
   text-align: center;
 }
-/* The last push's outcome beside the test button: a sent one is a quiet check, a failed one carries its ■, time and reason. */
+/* The last push's outcome beside the test button: a sent one is a quiet check, a failed one carries its ×, time and reason. */
 .push-test {
   gap: var(--sp-3);
   min-height: 28px;

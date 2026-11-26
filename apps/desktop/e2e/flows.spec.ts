@@ -474,40 +474,43 @@ test("reloaded mid-command, the title bar reads the command still running, never
 
 // Review 19 (R19-P3-03): a call that had ended (the live line keeps its words with `running` off) was still written as
 // what the run was doing — "Thinking  bash pnpm test --filter checkout" — on the goal page, the board and the phone,
-// and the shimmer ran over the finished command. Ended, the detail says which run; gone quiet, it keeps the last call.
+// and the shimmer ran over the finished command. Ended, the detail says which run (on the board) or how long it has
+// gone (on the goal page, whose header names the run); gone quiet, it keeps the last call.
 test("a call that has ended is not written as what the run is doing; gone quiet, its words stay", async ({ page }) => {
-  for (const [running, quietFor, words] of [[true, 20, "bash"], [false, 20, "Run 1"], [false, 300, "bash"]] as const) {
+  const cases = [[true, 20, "bash", "bash"], [false, 20, "running 5m", "Run 1"], [false, 300, "bash", "bash"]] as const;
+  for (const [running, quietFor, onPage, onBoard] of cases) {
     const enrich = (F: Record<string, any>) => {
       const at = Date.now() - quietFor * 1000;
       for (const g of F.goals) {
         if (g.id !== "G-0002") continue;
-        Object.assign(g, { mode: "thinking", needs_you: 0, run_no: 1, updated_at: at });
+        Object.assign(g, { mode: "thinking", needs_you: 0, run_no: 1, run_started_at: Date.now() - 5 * 60_000 - 5_000, updated_at: at });
         g.live_line = { mode: "executing", action: "bash", target: "pnpm test --filter checkout", at, running };
       }
     };
     await openTower(page, "goal/G-0002", { enrich });
     const line = page.locator(".annunciator .live-line-large");
-    await expect(line.locator(".live-action")).toHaveText(words);
-    await expect(line.locator(".live-target")).toHaveCount(words === "bash" ? 1 : 0);
-    // Review 20 (record only): the run was named twice, in the header and on the live line just under it. While the goal
-    // runs, the live line names it.
-    await expect(page.locator(".goal-identity")).not.toContainText("Run 1");
-    // The shimmer runs over the call at work, or over which run while the agent thinks: never over a finished command.
+    await expect(line.locator(".live-action")).toHaveText(onPage);
+    await expect(line.locator(".live-target")).toHaveCount(onPage === "bash" ? 1 : 0);
+    // Review 20 (record only): the run was named twice, in the header and on the live line just under it. The header
+    // names it, whatever the line says (a call in flight hid it there for a moment otherwise); the line never repeats it.
+    await expect(page.locator(".goal-identity")).toContainText("Run 1");
+    await expect(line).not.toContainText("Run 1");
+    // The shimmer runs over the call at work, or over the run's time while the agent thinks: never over a finished command.
     await expect(line).toHaveClass(quietFor > 120 ? /^(?!.*live-moving)/ : /live-moving/);
     await openTower(page, "overview", { enrich });
-    await expect(page.locator('.g-row[data-goal="G-0002"] .live-action')).toHaveText(words);
+    await expect(page.locator('.g-row[data-goal="G-0002"] .live-action')).toHaveText(onBoard);
   }
-  // Review 20 (record only): beside the run's name, the time was the finished call's start (10m ago) though the run moved
-  // just now. It is the last movement.
+  // Review 20 (record only): beside the run, the time was the finished call's start (10m ago) though the run moved just
+  // now. It is the last movement.
   await openTower(page, "goal/G-0002", {
     enrich: (F) => {
       const g = F.goals.find((x: { id: string }) => x.id === "G-0002");
-      Object.assign(g, { mode: "thinking", needs_you: 0, run_no: 1, updated_at: Date.now() });
+      Object.assign(g, { mode: "thinking", needs_you: 0, run_no: 1, run_started_at: Date.now() - 30 * 60_000 - 5_000, updated_at: Date.now() });
       g.live_line = { mode: "executing", action: "bash", target: "pnpm test", at: Date.now() - 10 * 60_000, running: false };
     },
   });
   const line = page.locator(".annunciator .live-line-large");
-  await expect(line.locator(".live-action")).toHaveText("Run 1");
+  await expect(line.locator(".live-action")).toHaveText("running 30m");
   await expect(line.locator(".live-age")).toHaveText("just now");
 });
 
@@ -539,6 +542,8 @@ test("a board row's elapsed time holds still while calls come and go, its detail
       const words = [".live-action", ".live-target"].map((sel) => line.querySelector(sel)?.textContent ?? "");
       out.push({ detail: words.filter(Boolean).join(" "), time: time?.textContent ?? null, left: time ? time.getBoundingClientRect().left : null });
     };
+    // Sampled once the fonts are in: a face swapping in moves the line, and that is not a call coming or going.
+    await document.fonts.ready;
     const timer = setInterval(take, 50);
     const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const call = (target: string, at: number, running: boolean) =>

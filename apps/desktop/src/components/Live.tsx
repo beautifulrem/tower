@@ -73,7 +73,7 @@ export interface LiveDetail {
 /** Looks like a path or command: printable ASCII without runs of spaces. */
 const machine = (s: string) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
 
-export function liveDetail(g: GoalSummary, lingering = false): LiveDetail {
+export function liveDetail(g: GoalSummary, lingering = false, large = false): LiveDetail {
   if (g.state === "paused" && g.pause_reason) return { action: pauseLabel(g.pause_reason), target: "" };
   if (g.needs_you > 0 && (g.state === "running" || g.state === "accepted")) {
     const item = state.inbox.find((i) => i.goal_id === g.id && i.kind !== "review_ready");
@@ -100,12 +100,13 @@ export function liveDetail(g: GoalSummary, lingering = false): LiveDetail {
   }
   switch (g.state) {
     case "running":
-      // No tool in flight: the badge already says what kind of step it is; the detail says which run. A first run is
-      // getting started until its first call, unless it has gone quiet before one (review 20: silent for 22 hours,
-      // "Silent  Getting started").
+      // No tool in flight: the badge already says what kind of step it is; the detail says which run. On the goal page
+      // and the peek (`large`) the header names the run, so the line says how long it has gone: said once (review 20,
+      // record only). A first run is getting started until its first call, unless it has gone quiet before one (review
+      // 20: silent for 22 hours, "Silent  Getting started").
       return g.mode === "starting"
-        ? { action: t("live.starting"), target: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : "", elapsed: ran }
-        : { action: g.run_no > 1 || g.live_line || silent(g, state.now) ? t("live.runN", { n: g.run_no }) : t("live.getStarted"), target: "", elapsed: ran };
+        ? { action: t("live.starting"), target: g.run_no > 1 && !large ? t("live.runN", { n: g.run_no }) : "", elapsed: ran }
+        : { action: g.run_no > 1 || g.live_line || silent(g, state.now) ? (large ? ran : t("live.runN", { n: g.run_no })) : t("live.getStarted"), target: "", elapsed: ran };
     case "verifying":
       return { action: t("live.criteria"), target: t("live.passedOf", { v: g.progress.verified, m: g.progress.machine }) };
     case "claimed":
@@ -165,7 +166,7 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
     ),
   );
   onCleanup(() => clearTimeout(timer));
-  const d = () => liveDetail(props.goal, lingering());
+  const d = () => liveDetail(props.goal, lingering(), props.large);
   // The agent at work and moving (labels `moving`, as its mark turns): on the goal in view (the goal page, the peek) its
   // words shimmer (app.css `.live-moving`); a board row keeps still words beside its turning mark, so a board of
   // running goals stays quiet.

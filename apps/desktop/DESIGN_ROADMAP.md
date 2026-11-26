@@ -196,7 +196,7 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T183 A board row that holds still | D219 | — | a call's words linger a second; the elapsed time after the run's name only | `Live.test.tsx`, `flows.spec.ts`; fails on `b6baa8a` | Done (iteration 21) |
 | T184 A ring clear of the digits | D220 | — | the button is the whole number cell | `review-keys.spec.ts`; fails on `b6baa8a` | Done (iteration 21) |
 | T185 A missing side's code whole | D221 | — | no break inside `::` `://`; five lines in the strip; `_` holds side by side | `flows.spec.ts`; fails on `b6baa8a` | Done (iteration 21) |
-| T186 The run named once, and not "getting started" when quiet | D224, D225 | — | the header leaves the run to the live line; "已进行"; the board's time whole or set aside; a quiet first run is "Run 1" | `flows.spec.ts`, `Live.test.tsx`; fails on `b6baa8a` | Done (iteration 21) |
+| T186 The run named once, and not "getting started" when quiet | D224, D225 | — | the header names the run, the goal page's line its time; "已进行"; the board's time whole or set aside; a quiet first run is "Run 1" | `flows.spec.ts`, `Live.test.tsx`; fails on `b6baa8a` | Done (iteration 21) |
 | T187 Counts that wait on you in ink | D226 | — | `.side-count.t1` is text-1 | `verdict.spec.ts`; fails on `b6baa8a` | Done (iteration 21) |
 | T188 The docs say when the detail names the run | D227 | — | DESIGN.md, docs/04, D206's words | reading | Done (iteration 21) |
 | T189 Every mode write under the lock, none after a stop | D229, D234 | — | a new turn, compaction, retry and the first message settle under the lock; a stopping run writes no mode | `asks.rs`, `run/mod.rs`; `mut/j`, `k`, `launch-dialogs`, `stop-guard` | Done (iteration 21) |

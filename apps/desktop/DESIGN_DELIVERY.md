@@ -302,8 +302,8 @@ Review 20 (`b6baa8a`, iteration 20) passed at 8.63 / 10 with no P0, P1 or P2 and
 (`design-evidence/reports/review20.md`): a question answered the moment it reached the inbox found no dialog and left
 the run waiting on you (D218); on the board quick calls changed a row's detail twice each and its elapsed time jumped
 (D219, from D206); the focus ring crossed a diff line's number (D220). Iteration 21 fixes all three, every record-only
-note and every test weakness it named: a missing side's code stays whole (D221); the run is named once on the goal
-page, the board's elapsed time is whole or set aside, never cut, and a quiet first run is "Run 1" (D224, D225); the
+note and every test weakness it named: a missing side's code stays whole (D221); the goal page's header names the
+run while its live line says how long it has gone, the board's elapsed time is whole or set aside, never cut, and a quiet first run is "Run 1" (D224, D225); the
 sidebar's count is in ink (D226); the docs say when the detail names the run (D227); every write of the mode beside the
 engine's events takes the lock and none covers an open question (D229); `·` leaves the supervisor's strings where the
 rule applies (D230); the tests hold the orders they claim (D231–D233). From its own reading, nothing writes a mode over
@@ -317,7 +317,7 @@ iteration 21 is not yet independently re-reviewed.
 
 At the final commit (iteration 21; the gates run alone):
 
-- **Type check and unit tests:** tsc clean; vitest 45 files, 259 tests.
+- **Type check and unit tests:** tsc clean; vitest 45 files, 260 tests.
 - **e2e:** Playwright WebKit 423 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
   supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs
   "Importing a module script failed" lines (twenty-two at iteration 21; twenty-one at iteration 20; fifteen at iteration 19; twelve at iteration 18; eleven at iteration 17; fewer before):
@@ -326,23 +326,23 @@ At the final commit (iteration 21; the gates run alone):
 - **Shots:** 69/69 (`/tmp/tower-design/iter21/allshots`); the harness waits for code loaded on demand, the
   highlighting worker and pictures (D194), and a shot fails if anything is still drawing at its 15 s cap (D208); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 163,714 / 163,840 B (126 B left), start-up 56,133 / 65,536 B, goal page
-  11,649 / 12,288 B. The budget was never raised. Iteration 17's first build was 163,953 B, over by 113: its own
+- **Bundle:** all interface JS 163,674 / 163,840 B (166 B left), start-up 56,147 / 65,536 B, goal page
+  11,626 / 12,288 B. The budget was never raised. Iteration 17's first build was 163,953 B, over by 113: its own
   additions were rewritten tighter until it fit. Iteration 18's fixes reached 164,051 B: Vite's modulepreload polyfill
   is off (238 B; WebKit preloads modules itself from Safari 17, and on an older one the start-up chunks load when the
   entry imports them, from disk) and an unused component is gone (D184). Iteration 19's reached 163,837 B: sixteen
   keys that said the same thing in both languages became one each (D201). Iteration 20's reached 163,887 B:
   twenty-nine keys that said the same thing as another became one each (D216). Iteration 21's reached 163,890 B: each
   icon is its markup as a string set into one `<svg>`, not a tree of components (D235).
-- **Performance (`perf` project, WebKit, run alone):** passes. A board of 50 goals paints in 911 / 380 / 269 ms
-  against 299 / 217 / 191 ms for the seeded board (medians 380 against 217), inside its 750 ms margin (every row measures
-  its identity column); view switches with 50 goals take 47–149 ms against 22–58 ms, their medians (about 97 against
-  37 ms) inside 150 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
+- **Performance (`perf` project, WebKit, run alone):** passes. A board of 50 goals paints in 888 / 486 / 274 ms
+  against 273 / 275 / 193 ms for the seeded board (medians 486 against 273), inside its 750 ms margin (every row measures
+  its identity column); view switches with 50 goals take 66–133 ms against 25–65 ms, their medians (about 115 against
+  44 ms) inside 150 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
   it off (`design-evidence/reports/iter15-shimmer-cpu.md`; the old shimmer cost 33–38 %).
 - **Rust:** iteration 21 changed the supervisor (D218: a question's inbox item and dialog in one step under the lock,
   an answer with no dialog refused; D229: every write of the mode beside the engine's events under the lock; D234: none
-  over a stop's), the core and the store (D230: strings without `·`): rustfmt, workspace clippy and `cargo test
-  --workspace` pass (29 suites, 480 tests, 2 ignored), and the flow suite passed 20 runs of 20, run beside the cargo gates and e2e checks.
+  over a stop's, and no live line at rest), the core and the store (D230: strings without `·`): rustfmt, workspace clippy and `cargo test
+  --workspace` pass (29 suites, 480 tests, 2 ignored), and the flow suite passed 20 runs of 20 with ten CPU burners held for the whole run (one-minute load 17.5–48.7).
   Iteration 20 changed the supervisor (D204: one lock for every write of the mode; D210: a question closes
   before Pi's limit; D214: writes before sends): rustfmt, `cargo clippy --workspace --all-targets -- -D warnings` and
   `cargo test --workspace` pass, as CI runs them (D215: 29 suites, 472 tests, 2 ignored), and the flow suite passed 20
@@ -438,9 +438,9 @@ What is left:
   is open the run waits on you, whatever starts or ends beside it (D186), and a question whose time runs out closes
   (D196), a tenth before Pi's own limit (D210). Every write of the mode takes one lock (D204, D229), a question's inbox
   item and its dialog are one step under it (D218), a write the engine's reply could overtake goes before the send
-  (D214), and once a run is stopping nothing writes over the mode it stops on (D234).
+  (D214), and once a run is stopping nothing writes over the mode it stops on, nor puts up a running live line (D234).
 
-- **The bundle has 126 B left** (163,714 / 163,840 B). The budget stays; the next change that adds interface code has
+- **The bundle has 166 B left** (163,674 / 163,840 B). The budget stays; the next change that adds interface code has
   to make its own room, as iterations 17 to 21 did.
 - **Merged keys couple meanings (D228).** To fit the budget, keys that said the same thing became one (D201, D216): for
   example `trace.output` and `settings.testCheckOutput`, `sidebar.ended` and `state.archived`, `goal.resume` and

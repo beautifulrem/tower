@@ -445,7 +445,7 @@ export function Review(props: { id: string }) {
         desc: () => t("keys.undoHunk"),
         when: editable,
       },
-      { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("keys.pathJump") },
+      { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("review.pathPalette") },
       { key: "mod+shift+enter", run: () => setPanel("accept"), inInputs: true, desc: () => t("review.accept") },
       { key: "c", run: () => setPanel("changes"), desc: () => t("review.requestChanges"), when: () => units().length > 0 },
       { key: "escape", run: () => (composer() ? setComposer(null) : editingPath() ? closeEditor() : back()) },

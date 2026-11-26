@@ -114,8 +114,12 @@ export function FileDiff(props: FileDiffProps) {
   // Tabbing into the table lands on its first line, where the arrow keys move. A press of the pointer focuses the table
   // too, and moving focus then would drop the text you are selecting (review 15: no diff line could be selected or
   // copied), so a focus that a press brought stays on the table; the arrow keys then start from the line pressed, and ↩
-  // comments on it, as ↩ on its number does (review 16).
+  // comments on it, as ↩ on its number does (review 16). Focus coming in moves to the first line, from another control
+  // (Tab) or from nowhere (the first Tab on the page); focus handed back by a sheet that opened over the table and
+  // closed, or by the window coming back, keeps your place, the line pressed (review 18): the table lost it to a sheet
+  // or to nowhere, and it comes back from there.
   let pressed = false;
+  let away = false;
   let pressedRow: Element | null = null;
   const press = (e: PointerEvent) => {
     pressed = true;
@@ -126,8 +130,11 @@ export function FileDiff(props: FileDiffProps) {
     window.addEventListener("pointerup", up, { capture: true, signal: done.signal });
     window.addEventListener("pointercancel", up, { capture: true, signal: done.signal });
   };
+  const sheetOrNowhere = (e: FocusEvent) => !e.relatedTarget || !!(e.relatedTarget as Element).closest("[role=dialog]");
   const onTableFocus = (e: FocusEvent) => {
-    if (e.target !== table || pressed) return;
+    const back = away && sheetOrNowhere(e);
+    away = false;
+    if (e.target !== table || pressed || back) return;
     table.querySelector<HTMLElement>(".ln-btn")?.focus({ preventScroll: true });
   };
   const onTableKey = (e: KeyboardEvent) => {
@@ -363,6 +370,7 @@ export function FileDiff(props: FileDiffProps) {
           aria-describedby={helpId}
           onPointerDown={press}
           onFocus={onTableFocus}
+          onBlur={(e) => (away = e.target === table && sheetOrNowhere(e))}
           onKeyDown={onTableKey}
           onCopy={(e) => copyLines(table, e)}
           onClick={selectLine}

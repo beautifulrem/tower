@@ -15,7 +15,7 @@ const mockSummary: GoalSummaryExt = {
     state: "running",
     mode: "editing",
     pause_reason: null,
-    live_line: { mode: "editing", action: "run", target: "pnpm test", at: Date.now() - 10_000 },
+    live_line: { mode: "editing", action: "run", target: "pnpm test", at: Date.now() - 10_000, running: true },
     run_no: 2,
     rework_cycles: 1,
     max_rework: 3,

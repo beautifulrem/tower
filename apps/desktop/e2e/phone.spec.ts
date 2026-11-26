@@ -143,14 +143,15 @@ test("offline, the page keeps the language it last spoke: a Chinese desk's phone
 
 test("the header is the desk's title bar: runs of slots, the silence once it is worth a look, the spend; freshness is a footnote", async ({ page }) => {
   const now = Date.now();
-  const goal = (id: string, state: string, cost: number, heard: number, mode = "thinking") => ({
+  const goal = (id: string, state: string, cost: number, heard: number, mode = "thinking", running = false, needs_you = 0) => ({
     id,
     title: id,
     state,
     mode,
+    needs_you,
     run_started_at: now - 600_000,
     updated_at: heard,
-    live_line: { action: "bash", target: "npm test", at: heard },
+    live_line: { action: "bash", target: "npm test", at: heard, running },
     pause_reason: null,
     verified_pin: null,
     cost_usd: cost,
@@ -178,10 +179,21 @@ test("the header is the desk's title bar: runs of slots, the silence once it is 
   await expect(page.locator("#conn")).toBeEmpty();
   // Review 15 (record only): a tool in flight keeps the run busy, as the desk's heartbeat reads it — the tool and how long
   // it has run, no hint mark — never silent (a full test suite can take minutes without a word).
-  await openPhone(page, { state: { goals: [goal("G-1", "running", 0.05, now - 185_000, "executing")], inbox: [], lang: "en", max_running: 4 } });
+  await openPhone(page, { state: { goals: [goal("G-1", "running", 0.05, now - 185_000, "executing", true)], inbox: [], lang: "en", max_running: 4 } });
   await expect(gauges.nth(1)).toHaveText("bash running for 3m");
   await expect(gauges.nth(1).locator("svg")).toHaveCount(0);
   await expect(gauges.nth(0).locator("svg")).toHaveClass("spin");
+  // Review 18: a command running beside an open question is busy too, as the desk's title bar says ("bash running for"),
+  // never "silent" with the hint mark; the row still says it needs you. In flight is the live line's word, not the mode's.
+  for (const lang of ["en", "zh-CN"]) {
+    await openPhone(page, { state: { goals: [goal("G-1", "running", 0.05, now - 185_000, "waiting_on_you", true, 1)], inbox: [], lang, max_running: 4 } });
+    await expect(gauges.nth(1)).toHaveText(lang === "en" ? "bash running for 3m" : "bash 已运行 3m");
+    await expect(gauges.nth(1).locator("svg")).toHaveCount(0);
+    await expect(page.locator(".row .badge").first()).toHaveText(lang === "en" ? "Needs you" : "等你");
+  }
+  // The live line's call has ended (it keeps the last call's words): three minutes with no word is silence again.
+  await openPhone(page, { state: { goals: [goal("G-1", "running", 0.05, now - 185_000, "thinking", false)], inbox: [], lang: "en", max_running: 4 } });
+  await expect(gauges.nth(1)).toHaveText("silent for 3m");
   // A run heard from just now has no silence reading: the page reads every 5 s and does not count seconds.
   await openPhone(page, { state: { goals: [goal("G-1", "running", 0, Date.now())], inbox: [], lang: "zh-CN", max_running: 4 } });
   await expect(page.locator("#status .gauge:not(#conn)")).toHaveText(["1/4 运行", "累计 $0"]);
@@ -471,8 +483,9 @@ test("a run's mark turns on the phone only while the run moves, as on the desk; 
   const moving = run("G-1", {});
   const waiting = run("G-2", { mode: "waiting_on_you", needs_you: 1 });
   const silent = run("G-3", { mode: "thinking", updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000 } });
-  // Five minutes inside one tool call: busy, not silent (review 15, record only — the desk's `heartbeatState`).
-  const busy = run("G-4", { updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000 } });
+  // Five minutes inside one tool call: busy, not silent (review 15, record only — the desk's `heartbeatState`). In
+  // flight is the live line's word (review 18).
+  const busy = run("G-4", { updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000, running: true } });
   // Flagged for you while its mode still says thinking, and quiet for five minutes: it waits on you, as the desk reads it.
   const flagged = run("G-5", { mode: "thinking", needs_you: 1, updated_at: now - 300_000, live_line: { action: "bash", target: "npm test", at: now - 300_000 } });
   await openPhone(page, { state: { goals: [moving, waiting, silent, busy, flagged], inbox: [], lang: "en", max_running: 4 } });

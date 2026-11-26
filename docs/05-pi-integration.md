@@ -331,7 +331,7 @@ const settingsManager = SettingsManager.fromStorage(storage, { projectTrusted: f
 | `setTheme` | `{success:false}` |
 | 其余终端相关方法 | 空实现 |
 
-Pi 会把我们的 UIContext 包装一层，在阻塞对话框前后发出扩展事件 `ui_prompt_start` / `ui_prompt_end`（`runner.ts:573, 593`；类型 `types.ts:1039-1055`）。因此任何扩展（包括用户自己的扩展）发起的对话框都会经过 `TowerUIContext`，并作为 Needs-You 呈现，不会悄悄卡住。
+Pi 会把我们的 UIContext 包装一层，在阻塞对话框前后发出扩展事件 `ui_prompt_start` / `ui_prompt_end`（`runner.ts:573, 593`；类型 `types.ts:1039-1055`）。因此任何扩展（包括用户自己的扩展）发起的对话框都会经过 `TowerUIContext`，并作为 Needs-You 呈现，不会悄悄卡住。带 `timeout` 的对话框到时由 Pi 自己应答（`select`/`input` 得到 `undefined`，`confirm` 得到 `false`），不通知客户端；所以 Supervisor 在同一时限后检查：这一条仍未回答，就以“已超时：提问的一方不再等这个回答”关闭它，开着的对话框都关闭后，Mode 回到仍在进行的调用或思考，不再一直停在 `waiting_on_you`（review 18）。
 
 ### 5.3.5 Host 骨架
 

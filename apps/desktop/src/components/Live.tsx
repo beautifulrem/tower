@@ -102,7 +102,7 @@ export function liveDetail(g: GoalSummary): LiveDetail {
       return { action: t("live.claimedDone"), target: t("live.awaitingVerify") };
     case "in_review":
       return g.progress.machine === 0 || !g.verified_pin
-        ? { action: t("live.notMachineVerified"), target: t("live.yourCall") }
+        ? { action: t("honesty.notMachineVerified"), target: t("live.yourCall") }
         : { action: "", target: "", seal: g.verified_pin };
     case "accepted":
       return { action: t("live.branch"), target: g.branch ?? "", code: { target: true } };

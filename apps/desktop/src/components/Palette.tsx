@@ -74,8 +74,8 @@ export function CommandPalette() {
       { id: "learning", title: t("chrome.openLearning"), hint: "mod+3", icon: "learning", run: () => go({ name: "learning" }) },
       { id: "operations", title: t("chrome.openOperations"), hint: "mod+4", icon: "operations", run: () => go({ name: "operations" }) },
       { id: "settings", title: t("chrome.openSettings"), hint: "mod+,", icon: "sliders", run: () => go({ name: "settings" }) },
-      { id: "activity", title: t("chrome.openActivity"), hint: "mod+shift+l", icon: "list", run: () => openActivity() },
-      { id: "shortcuts", title: t("chrome.openShortcuts"), hint: "?", icon: "keyboard", run: () => openShortcuts() },
+      { id: "activity", title: t("activity.title"), hint: "mod+shift+l", icon: "list", run: () => openActivity() },
+      { id: "shortcuts", title: t("keys.title"), hint: "?", icon: "keyboard", run: () => openShortcuts() },
       { id: "quiet", title: quietNow() ? t("quiet.off") : t("quiet.forHour"), icon: "bell", run: () => void (quietNow() ? patchSettings({ quiet_until: null }) : patchSettings({ quiet_until: Date.now() + HOUR })) },
       { id: "integration", title: t("chrome.checkIntegration"), icon: "harness", run: () => void act(api.checkIntegration, t("chrome.checked")) },
     ];
@@ -86,7 +86,7 @@ export function CommandPalette() {
       if (g?.state === "paused") base.unshift({ id: "resume", title: t("chrome.resume", { id: g.id }), hint: "p", run: () => void act(() => api.resume(g.id)) });
       // A ready-to-accept goal already has its review verb below, from anywhere.
       if (g && ["running", "accepted", "verifying"].includes(g.state))
-        base.unshift({ id: "review", title: t("chrome.review", { id: g.id }), hint: "r", run: () => go({ name: "review", id: g.id }) });
+        base.unshift({ id: "review", title: t("app.review", { id: g.id }), hint: "r", run: () => go({ name: "review", id: g.id }) });
       // The page's own cards can be put aside from here, as with H on the page.
       for (const it of state.inbox)
         if (it.goal_id === r.id && isBlocking(it))

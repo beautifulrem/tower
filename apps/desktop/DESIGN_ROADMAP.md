@@ -167,6 +167,18 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T154 An open question keeps the run waiting | D186 | — | start and settle keep waiting on you while a question is open | `flow.rs`; fails on either old path | Done (iteration 18 follow-up) |
 | T155 The later of two calls in a millisecond | D187 | — | insertion order breaks the tie | `pulse.test.ts`; fails on the sort | Done (iteration 18 follow-up) |
 | T156 The rail test either side of 1281 | D188 | — | 1281 and 1280 wide | `flows.spec.ts` | Done (iteration 18 follow-up) |
+| T157 The rail's head stays in sight at the page's end | D189 | — | the steer box ends the main column | `flows.spec.ts`; fails on `54ba274` | Done (iteration 19) |
+| T158 ↩ after a sheet closes comments on the line pressed | D190 | — | focus handed back by a sheet or the window keeps the press | `review-keys.spec.ts`, `FileDiff.test.tsx`; fails on `54ba274` | Done (iteration 19) |
+| T159 The live line says whether its call is in flight | D191, D192 | — | `LiveLine.running`, read by the phone and the desk | `flow.rs`, store unit, `pulse.test.ts`, `phone.spec.ts`, `flows.spec.ts`; fail on the old code and its mutations | Done (iteration 19) |
+| T160 The diff's evidence test holds under load | D193 | — | waits for the cell's text and colours | 40/40 under load | Done (iteration 19) |
+| T161 Shots wait for everything they draw | D194 | — | requests, the worker and pictures settled | probe 36/36 against 28/36 | Done (iteration 19) |
+| T162 A slow first highlight is run again | D195 | — | a pass over the line limit runs again, warm | `highlight.test.ts`; fails on the old worker | Done (iteration 19) |
+| T163 A dialog whose time runs out closes | D196 | — | the supervisor closes it after the same time | `flow.rs`; fails with the expiry off | Done (iteration 19) |
+| T164 One name for the hint mark in docs/12 | D197 | — | `◆` | — | Done (iteration 19) |
+| T165 The dark shimmer eases out | D198 | — | the band fades over 0.6 s | `flows.spec.ts`; fails on `54ba274` | Done (iteration 19) |
+| T166 A missing side in its capture's frame | D200 | — | 16:10 at the slot's height | `flows.spec.ts` (en, zh) | Done (iteration 19) |
+| T167 Observed failures in ink | D202 | — | GitHub checks, merge conflicts, the sidebar notice in text-1 | `flows.spec.ts` | Done (iteration 19) |
+| T168 Inside the budget | D201 | — | sixteen duplicate keys merged | `bundle-budget.sh` | Done (iteration 19) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

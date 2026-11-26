@@ -121,8 +121,8 @@ export function Sidebar() {
           </Show>
         </button>
         <button class="side-row" classList={{ active: route().name === "operations" }} aria-current={route().name === "operations" ? "page" : undefined} onClick={() => go({ name: "operations" })}>
-          <span class="side-icon" classList={{ "side-icon-danger": state.mergeConflicts > 0 }}>
-            <Icon name="operations" size={14} label={state.mergeConflicts > 0 ? t("common.problem") : undefined} />
+          <span class="side-icon" classList={{ "side-icon-notice": state.mergeConflicts > 0 }}>
+            <Icon name="operations" size={14} label={state.mergeConflicts > 0 ? t("common.notice") : undefined} />
           </span>
           <span class="grow">{t("app.operations")}</span>
           <Show when={state.mergeConflicts > 0 || state.activeSchedules > 0} fallback={<Kbd k="mod+4" />}>

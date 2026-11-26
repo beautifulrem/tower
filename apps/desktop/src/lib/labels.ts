@@ -278,7 +278,7 @@ export function runPurposeLabel(purpose: string): string {
 export function runOutcomeLabel(outcome: string | null): string | null {
   const key = (
     {
-      submitted: "goal.outcomeSubmitted",
+      submitted: "state.claimed",
       paused: "goal.outcomePaused",
       crashed: "goal.outcomeCrashed",
       abandoned: "goal.outcomeAbandoned",

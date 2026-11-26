@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 import {
   enrichCanary,
   enrichCi,
+  enrichConsole,
   enrichEngines,
   enrichHeldOut,
   enrichHeldOutPartly,
@@ -426,6 +427,48 @@ for (const lang of ["en", "zh-CN"] as const)
       await expect(row.locator(".g-title")).toHaveAttribute("title", new RegExp(OVERLAP_WORDS[lang]("G-0003")));
     });
 
+// Review 18 (record only): GitHub's failing check and the merge queue's conflict wore the verifier's red disc, outside
+// docs/12 §12.4.3's list. Both are failures observed (GitHub's ✓ beside them was already neutral): ink, a cross.
+test("a failing GitHub check and a merge conflict are said in ink, never the verifier's red", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCi });
+  const failed = page.locator(".pr-line .pr-failed").first();
+  await expect(failed).toHaveText("1");
+  const ink = (q: string) => page.locator(q).first().evaluate((el) => [getComputedStyle(el.querySelector("svg")!).color, getComputedStyle(el).color, !!el.querySelector(".mark-danger")]);
+  const [mark, words, red] = await ink(".pr-line .pr-failed");
+  expect([mark, red]).toEqual([words, false]);
+  await openTower(page, "operations", { enrich: enrichConsole });
+  const conflict = page.locator(".mq-row.mq-conflict .mq-status").first();
+  await expect(conflict).toBeVisible();
+  const [cmark, cwords, cred] = await ink(".mq-row.mq-conflict .mq-status");
+  expect([cmark, cred]).toEqual([cwords, false]);
+  // The sidebar's operations icon, with a conflict in the queue, lifts to text-1 beside its count: never red.
+  const icon = page.locator(".side-row .side-icon.side-icon-notice");
+  await expect(icon).toHaveCount(1);
+  const [iconInk, one, danger] = await icon.evaluate((el) => [getComputedStyle(el).color, getComputedStyle(document.documentElement).getPropertyValue("--text-1").trim(), getComputedStyle(document.documentElement).getPropertyValue("--st-danger").trim()]);
+  expect(iconInk).not.toBe(danger);
+  expect(await page.evaluate(([a, b]) => { const p = document.createElement("i"); document.body.append(p); p.style.color = b; const c = getComputedStyle(p).color; p.remove(); return c === a; }, [iconInk, one])).toBe(true);
+});
+
+// Review 18: reloaded while a command had run for five minutes, the desk had seen no call start and read the run as
+// silent ("silent for 5m" and the hint mark) while the phone said the command ran. The supervisor's live line says a
+// call is in flight; the title bar and the badge read it so, and a line whose call has ended is silence again.
+test("reloaded mid-command, the title bar reads the command still running, never silence", async ({ page }) => {
+  for (const running of [true, false]) {
+    await openTower(page, "overview", {
+      enrich: (F) => {
+        const five = Date.now() - 5 * 60_000;
+        for (const g of F.goals) {
+          g.updated_at = five;
+          if (g.state === "running") g.live_line = { mode: "executing", action: "bash", target: "npm test", at: five, running };
+        }
+      },
+    });
+    const hb = page.locator(".titlebar-gauges .gauge.num").filter({ hasText: /running for|silent for/ });
+    await expect(hb).toHaveText(running ? "bash running for 5m" : "silent for 5m");
+    await expect(hb.locator("svg")).toHaveCount(running ? 0 : 1);
+  }
+});
+
 test("the board writes one age format, decisions and goals alike", async ({ page }) => {
   await openTower(page, "overview", {
     enrich: (F) => {
@@ -594,7 +637,7 @@ for (const lang of ["en", "zh-CN"] as const)
               idShown: getComputedStyle(id).display !== "none",
               idOver: id.scrollWidth > id.clientWidth + 0.5,
               children: [...id.children].filter((c) => shown(c) && !c.classList.contains("g-project")).map((c) => [c.textContent, cut(c)] as const),
-              prFailedShown: [...id.querySelectorAll(".pr-line .mark-danger")].every((m) => shown(m.parentElement)),
+              prFailedShown: [...id.querySelectorAll(".pr-line .pr-failed")].every((m) => shown(m.parentElement)),
               prState: id.querySelector(".pr-line")?.getAttribute("data-state") ?? null,
               prStateShown: shown(id.querySelector(".pr-line .pr-state")),
               prTab: id.querySelector<HTMLElement>(".pr-line")?.tabIndex ?? null,
@@ -922,6 +965,37 @@ test("in the dark theme the shimmer's light brightens the words it passes: they 
   expect(reached / cols, "over one pass the light crosses the whole word").toBeGreaterThanOrEqual(0.95);
 });
 
+// Review 18 (record only): in the dark theme the words rest under the veil at 65% of their ink, and the band left with
+// the run's motion, so the moment the run went still they leapt to full ink. The band fades out (and in) instead, and
+// holds still while it goes.
+test("when the run goes still, the shimmer's band fades away rather than leaving the words at once (light and dark)", async ({ page }) => {
+  const fresh = (F: Record<string, any>) => {
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
+  };
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await openTower(page, "overview", { enrich: fresh });
+    const id = await page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first().getAttribute("data-goal");
+    await openTower(page, `goal/${id}`, { enrich: fresh });
+    const words = page.locator(".annunciator .live-moving .live-action");
+    await expect(words).toBeVisible();
+    await expect.poll(() => words.evaluate((el) => getComputedStyle(el, "::after").opacity), { message: `${scheme}: the band has faded in` }).toBe("1");
+    const fade = await words.evaluate(async (el) => {
+      const band = () => getComputedStyle(el, "::after");
+      const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      el.closest(".live-moving")!.classList.remove("live-moving");
+      await frames();
+      const soon = { content: band().content, opacity: Number(band().opacity), held: band().animationPlayState };
+      await new Promise((r) => setTimeout(r, 900));
+      return { soon, later: Number(band().opacity) };
+    });
+    expect(fade.soon.content, `${scheme}: the band stays while it fades`).not.toBe("none");
+    expect(fade.soon.opacity, `${scheme}: just after the run went still the band is still there`).toBeGreaterThan(0.5);
+    expect(fade.soon.held, `${scheme}: the band holds where it is as it fades`).toBe("paused");
+    expect(fade.later, `${scheme}: then it is gone`).toBe(0);
+  }
+});
+
 test("with motion reduced, a criteria segment takes its new count at once: its fill (an ::after) does not grow along the bar", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openTower(page, "goal/G-0002");
@@ -1097,6 +1171,27 @@ test("a look thumbnail that has not decoded yet holds a page's frame, not a sliv
   await expect.poll(() => imgs.evaluateAll((els) => els.every((e) => (e as HTMLImageElement).naturalWidth > 0))).toBe(true);
   expect(await widths(), "the desktop's capture lands in the box it waited in").toEqual(waiting);
 });
+
+// Review 18 (record only): a side that was gone said so in a frame of its words' width (175 in English, 140 in
+// Chinese) beside a 152-wide picture. It says it in the frame a capture has, in either language.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a missing side says why in the frame its capture would have had (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        enrichLook(F);
+        const look = F["goal-G-0001"].criteria.at(-1).look;
+        look.pin = "looks/G-0001/C4-gone.png";
+      },
+    });
+    const shots = page.locator(".criterion .look-strip .look-shot");
+    await expect(shots).toHaveCount(2);
+    await expect(shots.nth(1).locator(".look-missing")).toHaveText(lang === "en" ? "The screenshot file is gone" : "截图文件已不在");
+    await expect.poll(() => shots.nth(0).locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const [picture, gone] = await Promise.all([shots.nth(0).locator(".look-img"), shots.nth(1).locator(".look-missing")].map((l) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })));
+    expect(Math.abs(gone[0] - picture[0]), `gone ${gone} beside the picture ${picture}`).toBeLessThanOrEqual(2);
+    expect(gone[1]).toBe(picture[1]);
+  });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
   await openTower(page, "goal/G-0002");
@@ -2056,6 +2151,9 @@ test("a card's text field grows with its lines and stops at six, then scrolls", 
 // Beside the page (from 1281) the rail is sticky too: the two must never cover each other. Folded under the page (to
 // 1280) the rail is page content like the criteria above it: it passes under the sticky box as the page scrolls, and
 // at the end the box covers none of it.
+// Review 18: scrolled to the end of a short window, the rail stood 52 to 104px up under the title bar (its row ended
+// where the box began); beside the page it now keeps its sticky top at the end too, with a one-line box and a
+// six-line one.
 test("the goal rail and the steer box never cover each other", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 560 });
   const { fixtures } = await openTower(page, "overview");
@@ -2063,8 +2161,7 @@ test("the goal rail and the steer box never cover each other", async ({ page }) 
   await openTower(page, `goal/${running.id}`);
   await expect(page.locator(".steer-console textarea")).toBeVisible();
   await expect(page.locator(".goal-rail .rail")).toBeVisible();
-  // Either side of 1281, where the rail moves beside the page, and the default width.
-  for (const [width, height] of [[1440, 560], [1440, 640], [1440, 900], [1281, 640], [1280, 640], [1280, 900]]) {
+  const measure = async (width: number, height: number, lines: number) => {
     await page.setViewportSize({ width, height });
     for (const end of [false, true]) {
       await page.evaluate((end) => {
@@ -2077,11 +2174,20 @@ test("the goal rail and the steer box never cover each other", async ({ page }) 
         const [r, b] = [".goal-rail", ".steer-console"].map((q) => document.querySelector(q)!.getBoundingClientRect());
         const w = Math.min(r.right, b.right) - Math.max(r.left, b.left);
         const h = Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top);
-        const pane = document.querySelector(".goal-page")!.closest("main")!.getBoundingClientRect();
-        return { overlap: w > 0 && h > 0 ? Math.round(w * h) : 0, railBottom: Math.round(r.bottom), box: Math.round(b.top), window: innerHeight, scrolled: Math.round(pane.top) };
+        const view = document.querySelector<HTMLElement>(".view")!;
+        const stickyTop = view.getBoundingClientRect().top + parseFloat(getComputedStyle(view).paddingTop);
+        return { overlap: w > 0 && h > 0 ? Math.round(w * h) : 0, railTop: Math.round(r.top), stickyTop: Math.round(stickyTop), railBottom: Math.round(r.bottom), box: Math.round(b.top), boxHeight: Math.round(b.height), window: innerHeight };
       });
-      if (width > 1280 || end) expect(m.overlap, `${width}×${height}, ${end ? "scrolled to the end" : "at the top"}: ${JSON.stringify(m)}`).toBe(0);
-      if (end) expect(m.railBottom, "the rail stays in the window").toBeLessThanOrEqual(m.window);
+      const at = `${width}×${height}, ${lines} line(s), ${end ? "scrolled to the end" : "at the top"}: ${JSON.stringify(m)}`;
+      if (width > 1280 || end) expect(m.overlap, at).toBe(0);
+      if (end) expect(m.railBottom, `the rail stays in the window; ${at}`).toBeLessThanOrEqual(m.window);
+      // Beside the page, never above its sticky top (the view's padding under the title bar), at the top or the end.
+      if (width > 1280) expect(m.railTop, `the rail's head stays in sight; ${at}`).toBeGreaterThanOrEqual(m.stickyTop);
     }
-  }
+  };
+  // Either side of 1281, where the rail moves beside the page, and the default width.
+  for (const [width, height] of [[1440, 560], [1440, 640], [1440, 900], [1281, 560], [1281, 640], [1280, 640], [1280, 900]]) await measure(width, height, 1);
+  // A box grown to six lines: the rail's room is the window's, not the box's.
+  await page.locator(".steer-console textarea").fill(Array.from({ length: 6 }, (_, i) => `line ${i + 1}`).join("\n"));
+  for (const [width, height] of [[1440, 560], [1281, 640], [1280, 640]]) await measure(width, height, 6);
 });

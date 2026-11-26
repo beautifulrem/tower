@@ -158,7 +158,7 @@ export function GoalPage(props: { id: string }) {
                   <Show when={extDetail()?.contract}><span>{t("goal.contractV", { v: extDetail()!.contract.version })}</span></Show>
                   <Show when={g().run_no > 0}>
                     <span>
-                      {t("goal.runN", { n: g().run_no })}
+                      {t("live.runN", { n: g().run_no })}
                       <Show when={g().rework_cycles > 0}>{t("goal.reworkParen", { n: g().rework_cycles, max: g().max_rework })}</Show>
                     </span>
                   </Show>
@@ -166,7 +166,7 @@ export function GoalPage(props: { id: string }) {
                   <Show when={showStateWord(g())}>
                     <span class="t1">{stateLabel(g().state)}</span>
                     <Show when={g().pause_reason && g().state === "paused" && inbox().length === 0}><span>{pauseLabel(g().pause_reason!)}</span></Show>
-                    <Show when={g().state === "in_review" && !g().verified_pin}><span>{t("live.notMachineVerified")}</span></Show>
+                    <Show when={g().state === "in_review" && !g().verified_pin}><span>{t("honesty.notMachineVerified")}</span></Show>
                   </Show>
                   <Show when={state.settings?.muted_goals.includes(g().id)}><span class="t3">{t("quiet.muted")}</span></Show>
                   <Show when={trustTierOf(eng()) === "experimental"}><span class="wb-exception wb-exception-danger">{t("trust.experimental")}</span></Show>
@@ -229,6 +229,15 @@ export function GoalPage(props: { id: string }) {
                   {(d) => <GoalBlocks d={d()} hasDecision={inbox().length > 0} undoable={undoable()} onUndoRollback={undoRollback} />}
                 </Show>
               </Show>
+              {/* The steer box ends the main column, so the column (and the rail's row beside it) runs to the page's foot:
+                  the sticky rail is never pushed up under the title bar as the page ends (review 18). Folded, it moves
+                  after the rail (app.css). Its code comes on demand: a load that fails says so in its place, with Retry
+                  (which loads it again), and never takes the goal page down with it (review 16, record only). */}
+              <Show when={g().state === "running" || (g().state === "paused" && inbox().length === 0)}>
+                <ErrorBoundary fallback={(err, reset) => <div class="steer-console steer-failed"><Failed inline error={err} onRetry={reset} /></div>}>
+                  <Suspense><SteerBox id={props.id} running={g().state === "running"} files={knownFiles()} /></Suspense>
+                </ErrorBoundary>
+              </Show>
             </div>
             <Show when={!watch()}>
               <aside class="goal-rail">
@@ -236,14 +245,6 @@ export function GoalPage(props: { id: string }) {
               </aside>
             </Show>
           </div>
-
-          <Show when={g().state === "running" || (g().state === "paused" && inbox().length === 0)}>
-            {/* Its code comes on demand: a load that fails says so in its place, with Retry (which loads it again), and
-                never takes the goal page down with it (review 16, record only). */}
-            <ErrorBoundary fallback={(err, reset) => <div class="steer-console steer-failed"><Failed inline error={err} onRetry={reset} /></div>}>
-              <Suspense><SteerBox id={props.id} running={g().state === "running"} files={knownFiles()} /></Suspense>
-            </ErrorBoundary>
-          </Show>
         </div>
       )}
     </Show>

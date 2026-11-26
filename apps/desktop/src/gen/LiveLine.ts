@@ -5,4 +5,10 @@ import type { Mode } from "./Mode";
  * One line telling you the goal is alive and what kind of thing it is doing.
  * Always a steerable detail, never "working…" (`docs/12` §12.6.4).
  */
-export type LiveLine = { mode: Mode, action: string, target: string, at: number, };
+export type LiveLine = { mode: Mode, action: string, target: string, at: number, 
+/**
+ * Whether the call it names is still in flight. A start sets it; once no call is at work the line keeps the last
+ * call's words with this off, so the desk and the phone read a command still running as busy, never as silence,
+ * and a finished one as nothing in flight (review 18). Lines stored before it read as not in flight.
+ */
+running: boolean, };

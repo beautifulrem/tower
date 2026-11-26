@@ -262,12 +262,9 @@
   background: var(--bg-raised);
   box-shadow: var(--card-lift);
 }
-/* Beside the rail (wider than 1280), the box keeps to the main column, so the rail beside it is never under it: a
-   rail sized to stop short of the box could not know how far down the page it starts (review 17). Folded, or while
-   watching (no rail), it spans the page. */
-@media (min-width: 1281px) {
-  .goal-page:has(.goal-rail) .steer-console { margin-right: calc(var(--rail-w) + var(--sp-8)); }
-}
+/* Beside the rail (wider than 1280), the box is the main column's last block (GoalPage.tsx), so the rail beside it is
+   never under it: a rail sized to stop short of the box could not know how far down the page it starts (review 17).
+   Folded, or while watching (no rail), it spans the page. */
 .steer-console.drag-over { border-color: var(--border-strong); background: var(--bg-hover); }
 .steer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: var(--fs-meta); color: var(--text-3); }
 .steer-title { font-size: var(--fs-meta); font-weight: 500; color: var(--text-2); }

@@ -174,7 +174,7 @@ export function App() {
       { key: "mod+,", run: () => go({ name: "settings" }), inInputs: true, desc: () => t("chrome.openSettings") },
       { key: "escape", run: back, desc: () => t("keys.back"), hint: "escape / mod+[" },
       { key: "mod+[", run: back, inInputs: true },
-      { key: "mod+k", run: togglePalette, inInputs: true, desc: () => t("keys.palette") },
+      { key: "mod+k", run: togglePalette, inInputs: true, desc: () => t("chrome.search") },
       { key: "shift+r", run: reviewEach, desc: () => t("inbox.reviewAll") },
       { key: "?", run: toggleShortcuts, desc: () => t("keys.shortcuts") },
       { key: "mod+shift+l", run: toggleActivity, inInputs: true, desc: () => t("keys.activity") },

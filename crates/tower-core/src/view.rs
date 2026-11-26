@@ -76,6 +76,11 @@ pub struct LiveLine {
     pub action: String,
     pub target: String,
     pub at: Millis,
+    /// Whether the call it names is still in flight. A start sets it; once no call is at work the line keeps the last
+    /// call's words with this off, so the desk and the phone read a command still running as busy, never as silence,
+    /// and a finished one as nothing in flight (review 18). Lines stored before it read as not in flight.
+    #[serde(default)]
+    pub running: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]

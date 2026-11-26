@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { TraceEntry } from "../../gen/TraceEntry";
 
-const { beat, state } = await import("../store");
+const { beat, livenessOf, state } = await import("../store");
 
 type Ev = TraceEntry["event"];
 const started = (call_id: string, tool: string) => ({ kind: "tool_started", call_id, tool, summary: "" }) as unknown as Ev;
@@ -40,6 +40,19 @@ describe("the pulse", () => {
     expect(state.pulse["G-9"].tool).toEqual({ name: "bash", since: 1_000 });
     beat("G-9", { kind: "engine_error", message: "x" } as unknown as Ev, 3_000);
     expect(state.pulse["G-9"].tool, "the supervisor ends no call on an engine error").toEqual({ name: "bash", since: 1_000 });
+  });
+  // Review 18: the desk had only its own sight of the calls. Reloaded mid-command it had seen none start (and read the
+  // command as silence); a turn that ended left calls whose end never came (and read as running). The supervisor's
+  // live line says whether a call is in flight; the pulse still names it, and when, while it does.
+  it("takes the live line's word on whether a call is in flight", () => {
+    const goal = (id: string, running: boolean | undefined) =>
+      ({ id, updated_at: 500, live_line: running === undefined ? null : { mode: "executing", action: "bash", target: "npm test", at: 900, running } }) as unknown as Parameters<typeof livenessOf>[0];
+    expect(livenessOf(goal("G-5", true)).tool, "reloaded: the line's call, from when it started").toEqual({ name: "bash", since: 900 });
+    beat("G-4", started("a", "read"), 1_000);
+    expect(livenessOf(goal("G-4", true)).tool, "seen: the pulse's own").toEqual({ name: "read", since: 1_000 });
+    expect(livenessOf(goal("G-4", false)).tool, "the turn is over: nothing in flight").toBeNull();
+    expect(livenessOf(goal("G-4", undefined)).tool, "no line: the pulse's own").toEqual({ name: "read", since: 1_000 });
+    expect(livenessOf(goal("G-3", false))).toEqual({ at: 500, tool: null });
   });
   it("lets go of every call when the run ends", () => {
     beat("G-8", started("a", "bash"), 1_000);

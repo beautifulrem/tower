@@ -360,11 +360,14 @@ export function beat(goalId: string, event: TraceEntry["event"] | null, now = Da
 
 /**
  * How alive a running goal's engine is: when it last moved (the newer of
- * its event stream and its summary) and the tool it is inside, if any.
+ * its event stream and its summary) and the tool it is inside, if any. The
+ * supervisor's live line has the last word on whether a call is in flight:
+ * after a reload the desk has seen no call start, and a turn that ends
+ * leaves calls whose end never comes (review 18).
  */
 export function livenessOf(g: GoalSummary): { at: number; tool: Pulse["tool"] } {
-  const p = state.pulse[g.id];
-  return { at: Math.max(g.updated_at, p?.at ?? 0), tool: p?.tool ?? null };
+  const p = state.pulse[g.id], l = g.live_line;
+  return { at: Math.max(g.updated_at, p?.at ?? 0), tool: l?.running === false ? null : p?.tool ?? (l?.running ? { name: l.action, since: l.at } : null) };
 }
 
 /** Loads the replica. Safe to call again after a failure (the Retry button). */

@@ -104,7 +104,7 @@ export function Inbox() {
       >
         <Group title={t("inbox.blocking")} count={blocking().length} shown={shownBlocking} offset={0} />
         <Group
-          title={t("inbox.toReview")}
+          title={t("sidebar.toReview")}
           count={review().length}
           shown={shownReview}
           offset={blocking().length}

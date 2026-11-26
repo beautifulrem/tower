@@ -203,7 +203,7 @@ fn expire_dialog(inner: &Arc<Inner>, run: &Arc<Run>, ui_id: &str) -> Result<()> 
         "（已超时：提问的一方不再等这个回答）",
         "(timed out: the asker stopped waiting for an answer)"
     );
-    if inner.store(|s| s.resolve_inbox(&item, &note)).is_err() {
+    if inner.store(|s| s.close_inbox(&item, &note, true)).is_err() {
         return Ok(());
     }
     run.flags().dialogs.remove(ui_id);

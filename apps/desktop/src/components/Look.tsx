@@ -225,8 +225,9 @@ function LookCompare(props: { look: LookViewExt; title: string; initialViewport?
         }
       >
         <div class="look-side" classList={{ "look-phone": vp() === "mobile" }}>
-          <Shot file={baseFile()} error={props.look.base_error} label={t("look.before")} wide />
-          <Shot file={pinFile()} error={props.look.pin_error} label={t("look.after")} wide />
+          {/* The phone's frame follows the window's height and is narrow in a short one: it breaks as the strip does. */}
+          <Shot file={baseFile()} error={props.look.base_error} label={t("look.before")} wide={vp() === "desktop"} />
+          <Shot file={pinFile()} error={props.look.pin_error} label={t("look.after")} wide={vp() === "desktop"} />
         </div>
       </Show>
       <ConsoleErrorsBlock errors={props.look.console_errors} />

@@ -237,6 +237,11 @@ pub enum EventKind {
     InboxResolved {
         item_id: String,
         response: String,
+        /// Tower closed it (the asker stopped waiting, the run ended, a newer item replaced it): no person answered, and
+        /// the trace never says one did (review 22 follow-up: "Your answer: Replaced by a newer one").
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[ts(as = "Option<bool>", optional)]
+        auto: bool,
     },
     Steered {
         text: String,
@@ -374,6 +379,7 @@ impl EventKind {
                 Source::Claim
             }
             Self::Observed { .. } => Source::Observation,
+            Self::InboxResolved { auto: true, .. } => Source::System,
             Self::ContractRatified { .. }
             | Self::InboxResolved { .. }
             | Self::Steered { .. }

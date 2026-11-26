@@ -12,6 +12,26 @@ test("the board shows every goal and what needs you", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+// Review 19 (record only): at its cap `settled` said nothing, so a shot could catch a page still drawing; and its count
+// of answers owed would never come back down for a worker that failed to load. It names what is pending at the cap, and
+// a worker that failed owes nothing.
+// The app warms a waiting review's colours on its own worker while the window idles (`prewarm.ts`): a world with no review
+// waiting gives it nothing to warm, so the only answers owed are this test's (under the full suite's load the warming
+// was still owed at the cap).
+const nothingToWarm = (F: Record<string, any>) => {
+  for (const g of F.goals) if (g.state === "in_review") g.diffstat = null;
+};
+test("settled names what is still pending at its cap; a worker that failed to load owes nothing", async ({ page }) => {
+  await openTower(page, "overview", { enrich: nothingToWarm });
+  expect(await settled(page, "overview")).toBeNull();
+  await page.evaluate(() => new Worker(URL.createObjectURL(new Blob(["onmessage = () => {};"], { type: "text/javascript" }))).postMessage(1));
+  expect(await settled(page, undefined, 400)).toBe("1 worker answer(s)");
+  await openTower(page, "overview", { enrich: nothingToWarm });
+  await settled(page, "overview");
+  await page.evaluate(() => new Worker(URL.createObjectURL(new Blob(["this is not code"], { type: "text/javascript" }))).postMessage(1));
+  expect(await settled(page, undefined, 3_000)).toBeNull();
+});
+
 for (const scheme of ["light", "dark"] as const) {
   for (const route of ["overview", "inbox", "learning", "operations", "goal/G-0001", "review/G-0001", "settings"]) {
     test(`${route} has no serious accessibility violations (${scheme})`, async ({ page }) => {

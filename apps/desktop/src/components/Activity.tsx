@@ -25,7 +25,7 @@ export function ActivityPanel() {
     toast("success", t("common.copied"));
   };
   return (
-    <Overlay onClose={closeActivity} label={t("activity.title")} title={t("activity.title")} instant class="panel panel-wide panel-tracked">
+    <Overlay onClose={closeActivity} label={t("keys.activity")} title={t("keys.activity")} instant class="panel panel-wide panel-tracked">
         <div class="activity-head meta">
           <span class="t3">{t("activity.keeps", { n: ACTIVITY_MAX })}</span>
           <span class="grow" />

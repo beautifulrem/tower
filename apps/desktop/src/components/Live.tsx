@@ -74,13 +74,15 @@ export function liveDetail(g: GoalSummary): LiveDetail {
   if (g.needs_you > 0 && (g.state === "running" || g.state === "accepted")) {
     const item = state.inbox.find((i) => i.goal_id === g.id && i.kind !== "review_ready");
     if (item) {
-      const action = item.kind === "approval" ? t("live.approval") : item.kind === "ci_failed" ? t("live.ciFailed") : t("live.question");
+      const action = item.kind === "approval" ? t("live.approval") : item.kind === "ci_failed" ? t("inboxKind.ci_failed") : t("inboxKind.question");
       return { action, target: item.subject };
     }
   }
   // The run's elapsed time rides with the live detail, so the board's age column means one thing: last update.
   const ran = g.state === "running" && g.run_started_at ? t("live.runningFor", { d: duration(Math.max(0, state.now - g.run_started_at), false) }) : "";
-  if (g.live_line && g.state === "running") {
+  // The call in flight, or the last one once the run has gone quiet (what it went quiet after). A call that has ended
+  // is not what the run is doing: the detail then says which run, and no shimmer runs over a finished command (review 19).
+  if (g.live_line && g.state === "running" && (g.live_line.running !== false || silent(g, state.now))) {
     const tool = g.live_line.action;
     const label = toolLabel(tool);
     return {
@@ -95,7 +97,7 @@ export function liveDetail(g: GoalSummary): LiveDetail {
       // No tool in flight: the badge already says what kind of step it is; the detail says which run.
       return g.mode === "starting"
         ? { action: t("live.starting"), target: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : "", elapsed: ran }
-        : { action: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : t("live.getStarted"), target: "", elapsed: ran };
+        : { action: g.run_no > 1 || g.live_line ? t("live.runN", { n: g.run_no }) : t("live.getStarted"), target: "", elapsed: ran };
     case "verifying":
       return { action: t("live.criteria"), target: t("live.passedOf", { v: g.progress.verified, m: g.progress.machine }) };
     case "claimed":
@@ -111,7 +113,7 @@ export function liveDetail(g: GoalSummary): LiveDetail {
     case "ready":
       return { action: t("live.queued"), target: t("live.waitingSlot") };
     case "draft":
-      return { action: t("live.draft"), target: t("live.unratified") };
+      return { action: t("state.draft"), target: t("live.unratified") };
     default:
       return { action: stateLabel(g.state), target: "" };
   }

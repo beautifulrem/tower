@@ -21,3 +21,26 @@ it("a pass cut short by the line time limit is run again, so no line is left as 
   expect(posted.at(-1)?.id).toBe(2);
   expect(posted.at(-1)?.tokens?.[0].map(([text]) => text)).toEqual(["import", " { mock } ", "from", " ", "'node:test'", ";"]);
 });
+
+// Review 19 (record only): the pass was run again whenever it took over 500 ms in all, so a big hunk, or one long line
+// that was never cut, cost twice. Only a pass that cut a line short is run again. Here every line takes 300 ms before
+// the tokenizer starts on it (out of its own clock): two lines are 600 ms, and neither is cut.
+it("a pass that was long but cut no line short is not run again", async () => {
+  const posted: Array<{ id: number; tokens: unknown }> = [];
+  vi.spyOn(window, "postMessage").mockImplementation((m: any) => void posted.push(m));
+  const { get } = await import("../highlight.worker");
+  const ask = (id: number, code: string) => (self.onmessage as any)({ data: { id, lang: "javascript", code } });
+  await ask(3, "let a = 1;");
+  const grammar = (await get()).getLanguage("javascript") as unknown as { tokenizeLine2: (...a: unknown[]) => unknown };
+  const line = grammar.tokenizeLine2;
+  let lines = 0;
+  vi.spyOn(grammar, "tokenizeLine2").mockImplementation((...a: unknown[]) => {
+    lines++;
+    const until = performance.now() + 300;
+    while (performance.now() < until);
+    return line(...a);
+  });
+  await ask(4, "let b = 2;\nlet c = 3;");
+  expect(posted.at(-1)?.id).toBe(4);
+  expect(lines, "two lines, one pass").toBe(2);
+});

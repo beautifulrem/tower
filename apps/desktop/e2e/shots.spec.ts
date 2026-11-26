@@ -13,7 +13,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { type Page, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 import { enrichConsole, enrichRich } from "./rich";
 import { openTower, settled } from "./tauri";
@@ -211,9 +211,10 @@ for (const s of screens) {
       },
     });
     if (s.ready) await page.locator(s.ready).first().waitFor();
-    await settled(page, s.ready ? undefined : s.route);
+    // A shot of a page still drawing is no shot: it waits longer than a test's read, and fails if the page never settles.
+    expect(await settled(page, s.ready ? undefined : s.route, 15_000), "still drawing").toBeNull();
     await s.after?.(page);
-    await settled(page);
+    expect(await settled(page, undefined, 15_000), "still drawing").toBeNull();
     if (s.element) await page.locator(s.element).first().screenshot({ path: join(OUT!, `${s.name}.png`) });
     else await page.screenshot({ path: join(OUT!, `${s.name}.png`) });
   });

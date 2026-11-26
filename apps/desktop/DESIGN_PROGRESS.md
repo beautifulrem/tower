@@ -442,3 +442,24 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   the first focus rule (the first Tab on a page no longer reached the first line), the phone's copied rule in
   `Glyph.test.tsx`. Gates (run alone): tsc; vitest 44 / 252; e2e 415/0 (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter19/allshots`); perf alone (board of 50: 607 / 250 / 187 ms against 178 / 148 / 107 ms; switch medians about 63 against 24 ms); line limit; doc numbers; `cargo test -p tower-supervisor -p tower-store -p tower-core` 388 passed, 2 ignored, rustfmt; bundle 163,802 / 163,840 B. The new dialog test first ran a timed command and missed it once under the full suite's load; its command now runs until the test lets it end (three full flow runs pass, and it still fails with the expiry off). Visual check at DPR 2, light and dark: `/tmp/tower-design/iter19/visual/`. Detector 19 against 19 on the touched UI files, the same findings.
   Not yet independently re-reviewed.
+- Review 19 — independent reviewer (general-purpose agent, read-only worktree at `939be97`, ports 1441–1443):
+  **PASS, 8.59 / 10**, no P0, P1 or P2 (`design-evidence/reports/review19.md`). Review 18's four P3s confirmed fixed.
+  New P3s: a dialog's expiry raced the event pump (from D196; the flow suite failed 3 of 12 runs), a missing side
+  upright beside its picture with a long reason taller than the strip and a URL broken letter by letter (D200 not
+  done), an ended call written as what the run was doing (what D192 left); and seven record-only notes. Recorded as
+  D204–D213. It also showed that "three full flow runs pass" proved nothing about a race.
+- Iteration 20 — review 19's three P3s and every record-only note (D204–D213, T169–T177), and D214–D217 from its own
+  checks (T178–T181). One lock orders every write of the mode, a call joining the calls in flight inside it, and the
+  turn's end stops the line of a call never ended (D204; the dialog code moved to `run/asks.rs`); a missing side is its
+  capture's frame in the strip and side by side, its words clamped and breaking after URL punctuation (D205); the live
+  line names a call only while it runs or once the run is quiet (D206); highlighting runs again only for a line cut
+  short (D207); `settled()` names what it still waited for, and shots fail on it (D208); a merge conflict has its own
+  mark and name in the sidebar, and docs/04 lists conflict prediction as a notice (D209, D211); a question closes a
+  tenth before Pi's limit and a late answer is refused (D210); the shimmer's fade is `--dur-settle` (D212); focus
+  handed back to a diff rings the line pressed (D213). Its own checks: the flow suite run 20 times passed 18, from two
+  writes the engine's reply could overtake, now written before the send (D214; then 20 runs of 20); the gates now run
+  what CI runs, workspace clippy and tests (D215); twenty-nine duplicate keys merged keep the bundle inside its budget
+  (D216); the held tags under a criterion lost their amber rings (D217). Each fix's test fails on `939be97`'s sources
+  or a stated mutation (`/tmp/tower-design/iter20/oldsrc/`, `mut/`, `race2/`). Caught at the gates and fixed before commit: workspace clippy found a test of D204's holding a lock across an await (now on a thread of its own, its mutation still failing), and the new `settled()` test failed once under the full suite's load, the overview's idle warming of a waiting review owing its own 2 worker answers at the test's cap (a probe saw them from 628 ms after load); it now opens a world with no review waiting (30 of 30 with ten workers). Gates (run alone): tsc; vitest 45 / 257; e2e 420/0 (76 shot tests skip without SHOTS); shots 69/69, which now fail on anything still drawing (`/tmp/tower-design/iter20/allshots`); perf alone (board of 50: 609 / 286 / 202 ms against 200 / 163 / 136 ms; switch medians about 67 against 27 ms); line limit; doc numbers; rustfmt, `cargo clippy --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites, 472 tests, 2 ignored); the flow suite 20 of 20; bundle 163,733 / 163,840 B. Visual check at DPR 2, light
+  and dark, en and zh: `/tmp/tower-design/iter20/visual/`. Detector 16 against 16 on the touched UI files, the same
+  findings. Not yet independently re-reviewed.

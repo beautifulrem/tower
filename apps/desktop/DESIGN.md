@@ -340,6 +340,7 @@ Compact AppKit-like controls that are clear without needing colour.
 - **Observation chip:** 18px, 11px, a 1px **dashed** frame in `--border-strong`, no icon.
 - **Fact chip:** the same chip with a **solid** 1px hairline.
 - **You chip:** a 2px solid ink-1 rule at the left edge, square corners, ink-1 text.
+- **Held tag (a criterion's evidence strip):** its tone's ground (amber, or red for a danger), ink-1 words, 4px corners, no frame: the row's mark already says the tone.
 - **Mode badge:** words with no frame. Attention mode adds an amber ground tint (4px radius). A badge word that changes settles over 100ms (split-flap).
 
 ### Cards (the decision card)
@@ -371,7 +372,7 @@ Every statement on the goal page, review, peek and proposals is a three-column g
 - **Stamp:** a 1px frame of ink at 82%, 3px radius, holding two cells divided by its own rule. On the left, the verdict (glyph plus word, 28px/580 or 20px). On the right, the pin (mono, ink-2). When the seal is withheld, the frame and divider are dashed and the ink drops to ink-3. When the accept sheet opens, the frame lands half a pixel heavy and settles while the ink rises 60ms behind it, over 220ms with no bounce. Under reduced motion it simply stands.
 
 ### Live line (flight strip)
-A three-column line: mode badge, detail (action and target in ink-2), and age in ink-3. 12/16 on the board and 13/20 on the goal page. Agent activity replaces the text instantly. On the goal in view (the goal page and the peek), while the agent is moving (running, not waiting on you, not silent) its words shimmer: a band of the line's own ground sweeps across the ink-2 words every 2.4s, the way AI Elements' Shimmer marks an agent at work. The band is the words' `::after`, clipped to them and moved by transform alone, so the words keep their ink and nothing repaints per frame. It stops the moment the goal waits on you or falls silent. Board rows never shimmer; there the turning mark says it. Under reduced motion the words are plain ink-2.
+A three-column line: mode badge, detail (action and target in ink-2), and age in ink-3. 12/16 on the board and 13/20 on the goal page. Agent activity replaces the text instantly. On the goal in view (the goal page and the peek), while the agent is moving (running, not waiting on you, not silent) its words shimmer: a band of the line's own ground sweeps across the ink-2 words every 2.4s, the way AI Elements' Shimmer marks an agent at work. The band is the words' `::after`, clipped to them and moved by transform alone, so the words keep their ink and nothing repaints per frame. When the goal waits on you or falls silent, the band holds where it is and fades out over 600ms (`--dur-settle`), so the words never jump between their dimmed and their whole ink. Board rows never shimmer; there the turning mark says it. Under reduced motion the words are plain ink-2.
 
 ## Do's and Don'ts
 

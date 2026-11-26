@@ -176,8 +176,8 @@ export const zh = {
   },
   sidebar: {
     label: "目标",
-    ended: "已归档",
     toReview: "评审队列",
+    mergeConflict: "合并冲突",
   },
   decision: {
     answerPlaceholder: "写下你的回答…",
@@ -236,8 +236,6 @@ export const zh = {
   },
   live: {
     approval: "批准",
-    question: "问题",
-    ciFailed: "CI 失败",
     starting: "启动",
     runN: "第 {n} 次运行",
     getStarted: "开始工作",
@@ -250,7 +248,6 @@ export const zh = {
     merged: "已合入本地基线",
     queued: "排队",
     waitingSlot: "等待执行槽位",
-    draft: "草稿",
     unratified: "合同未批准",
     runningFor: "已运行 {d}",
     lastMove: "最后动静 {d}",
@@ -261,7 +258,6 @@ export const zh = {
   overview: {
     colGoal: "目标",
     colLive: "实况",
-    colCriteria: "标准",
     colChange: "改动",
     colSpend: "花费",
     colAge: "更新",
@@ -325,7 +321,6 @@ export const zh = {
     gaugeSandbox: "沙箱",
     gaugeOn: "开",
     gaugeNone: "无",
-    gaugeIdentity: "身份",
     gaugeSet: "已设",
     gaugeUnset: "未设",
     testCheckPass: "{base} 上测试通过，用时 {dur}",

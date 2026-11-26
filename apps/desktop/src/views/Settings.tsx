@@ -309,7 +309,7 @@ export function Settings() {
               />
             </Field>
             {/* The engine: which agent new goals run on, paired with its explicit sandbox Trust Tier badge. */}
-            <Field label={t("settings.engine")} hint={engineDesc()?.note || (engine() === "claude-code" ? t("settings.engineTrust") : t("settings.engineHintPi"))}>
+            <Field label={t("chrome.engine")} hint={engineDesc()?.note || (engine() === "claude-code" ? t("settings.engineTrust") : t("settings.engineHintPi"))}>
               <Select value={engine()} options={engineOptions()} onChange={(v) => void patchNow({ engine: v, default_model: "" })} />
             </Field>
             <div class="engine-trust-row meta-inline halt">
@@ -430,7 +430,7 @@ export function Settings() {
               value={size()}
               options={[
                 { value: "compact", label: t("settings.sizeCompact") },
-                { value: "standard", label: t("settings.sizeStandard") },
+                { value: "standard", label: t("contract.standard") },
                 { value: "large", label: t("settings.sizeLarge") },
               ]}
               onChange={(c) => {
@@ -640,8 +640,8 @@ function AttentionBlock(props: { s: SettingsT; patch: (p: Partial<SettingsT>) =>
     <section class="settings-block" id={SETTINGS_CLAUSES[5].id} onFocusOut={() => void props.commit()}>
       <ClauseHead title={t("settings.attention")} />
       <div class="settings-form">
-        <Field label={t("settings.notifications")} hint={t("quiet.hint")}>
-          <button type="button" class="select" aria-haspopup="menu" aria-label={`${t("settings.notifications")}: ${props.quietLabel}`} onClick={() => void pickQuiet()}>
+        <Field label={t("quiet.menuTitle")} hint={t("quiet.hint")}>
+          <button type="button" class="select" aria-haspopup="menu" aria-label={`${t("quiet.menuTitle")}: ${props.quietLabel}`} onClick={() => void pickQuiet()}>
             <span class="ellipsis grow">{props.quietLabel}</span>
             <svg width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
               <path d="M1 3.5 L4 1 L7 3.5 M1 6.5 L4 9 L7 6.5" fill="none" stroke="currentColor" stroke-width="1.2" />

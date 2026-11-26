@@ -77,6 +77,9 @@
   --dur-attn: 700ms;
   --dur-view: 120ms;
   --dur-space: 220ms;
+  /* The light over the agent's words fading in and out as a run starts and stops moving: slow enough that the words
+     never jump between their dimmed and their whole ink. */
+  --dur-settle: 600ms;
   /* Springs, Motion's spring(visualDuration, bounce) (motion.dev/docs/css) sampled into a CSS linear() curve, with the
      time it takes to settle: something small arriving (a mark, a menu, a segment filling) settles quickly,
      spring(0.25, 0); a panel moving in settles slower, spring(0.4, 0). Neither overshoots: nothing here bounces.

@@ -14,7 +14,7 @@ import { reviewEach, toReviewIds } from "../lib/reviewQueue";
 import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
-import { Icon, LifecycleGlyph } from "./Glyph";
+import { Icon, LifecycleGlyph, NoticeMark } from "./Glyph";
 import { Kbd } from "./ui";
 
 const ORDER: Group[] = ["needs_you", "running", "verifying", "review", "ready", "paused", "done"];
@@ -121,8 +121,13 @@ export function Sidebar() {
           </Show>
         </button>
         <button class="side-row" classList={{ active: route().name === "operations" }} aria-current={route().name === "operations" ? "page" : undefined} onClick={() => go({ name: "operations" })}>
+          {/* A merge conflict, observed (git's word, not the verifier's): the row's icon gives way to the notice mark, in ink,
+              named for what it is, beside the conflicts' count; never red (docs/12 §12.4.3). A shape of its own, not only a
+              darker ink, which hover and the row you are on give every icon (review 19, record only). */}
           <span class="side-icon" classList={{ "side-icon-notice": state.mergeConflicts > 0 }}>
-            <Icon name="operations" size={14} label={state.mergeConflicts > 0 ? t("common.notice") : undefined} />
+            <Show when={state.mergeConflicts > 0} fallback={<Icon name="operations" size={14} />}>
+              <NoticeMark title={t("sidebar.mergeConflict")} />
+            </Show>
           </span>
           <span class="grow">{t("app.operations")}</span>
           <Show when={state.mergeConflicts > 0 || state.activeSchedules > 0} fallback={<Kbd k="mod+4" />}>
@@ -171,7 +176,7 @@ export function Sidebar() {
             >
               <span>
                 <Icon name={endedOpen() ? "caret-down" : "caret-right"} size={10} />
-                {t("sidebar.ended")}
+                {t("state.archived")}
               </span>
               <span class="num">{ended().length}</span>
             </button>

@@ -50,7 +50,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
     [
       { key: "escape", run: props.onClose, inInputs: true },
       { key: "space", run: props.onClose, desc: () => t("common.close") },
-      { key: "p", run: toggleRun, when: canToggle, desc: () => t(canPause() ? "goal.pause" : "goal.resume") },
+      { key: "p", run: toggleRun, when: canToggle, desc: () => t(canPause() ? "goal.pause" : "goal.purposeResume") },
       { key: "r", run: () => canReview() && openTo("review"), when: canReview, desc: () => t("goal.review") },
       { key: "enter", run: () => openTo("goal"), desc: () => t("review.openGoal") },
       // The board's ⇧R, from inside the peek too: close it and start the review queue.
@@ -148,7 +148,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                     </For>
                   </div>
                   <Show when={detail()?.sentinels?.length}>
-                    <ProvBox kind="fact" badge={t("goal.sentinels")} danger>
+                    <ProvBox kind="fact" badge={t("review.sentinels")} danger>
                       <For each={detail()!.sentinels}>{(sn) => <div class="row meta t1">{sn.severity >= 3 ? <DangerMark /> : <NoticeMark />}<span class="ellipsis">{sn.title}</span></div>}</For>
                     </ProvBox>
                   </Show>
@@ -183,7 +183,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
               </div>
 
               <footer class="peek-foot">
-                <Show when={canToggle()}><Button size="s" kbd="p" onClick={toggleRun}>{t(canPause() ? "goal.pause" : "goal.resume")}</Button></Show>
+                <Show when={canToggle()}><Button size="s" kbd="p" onClick={toggleRun}>{t(canPause() ? "goal.pause" : "goal.purposeResume")}</Button></Show>
                 <Show when={canReview()}><Button size="s" kbd="r" onClick={() => openTo("review")}>{t("goal.review")}</Button></Show>
                 <span class="grow" />
                 <Button size="s" variant="primary" kbd="enter" onClick={() => openTo("goal")}>{t("review.openGoal")}</Button>

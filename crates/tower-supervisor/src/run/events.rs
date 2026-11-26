@@ -5,10 +5,10 @@
 use tokio::sync::mpsc;
 use tower_core::contract::CriterionKind;
 use tower_core::honesty::ClaimKind;
-use tower_pi::{EngineOutput, PiEvent, UiRequest};
+use tower_pi::{EngineOutput, PiEvent};
 
 use super::*;
-use crate::api::{ToastLevel, UiUpdate};
+use crate::api::UiUpdate;
 use crate::{summarize, verify};
 
 /// Reads the engine's output until it exits. One task per run, so events of
@@ -36,7 +36,7 @@ pub(super) async fn pump(inner: Arc<Inner>, run: Arc<Run>, mut rx: mpsc::Unbound
     }
 }
 
-async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> {
+pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> {
     let g = run.goal_id.as_str();
     match e {
         PiEvent::AgentStart | PiEvent::TurnStart => {
@@ -206,6 +206,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
         PiEvent::AgentSettled { .. } => on_settled(inner, run).await?,
         // The agent's turn is over: a call it never ended is not running any more, and the live line says so.
         PiEvent::AgentEnd { .. } => {
+            let _mode = run.lock_mode();
             run.flags().tools.clear();
             inner.store(|s| s.stop_live_line(g))?;
             inner.mark_dirty(g);
@@ -298,7 +299,13 @@ fn on_sandbox_denial(inner: &Arc<Inner>, run: &Arc<Run>, target: Option<String>)
     });
 }
 
-fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: String, args: Value) -> Result<()> {
+pub(super) fn on_tool_start(
+    inner: &Arc<Inner>,
+    run: &Arc<Run>,
+    call_id: String,
+    tool: String,
+    args: Value,
+) -> Result<()> {
     let g = run.goal_id.as_str();
     // Engine call ids are unique within a run only.
     let claim_id = format!("r{}:{}", run.run_no, call_id);
@@ -379,6 +386,9 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
         }
         _ => {}
     }
+    // Recorded whole under the mode lock: a settle from beside these events never lands between the start and the
+    // call's entry among the calls in flight (see `Run::lock_mode`).
+    let _mode = run.lock_mode();
     let at = inner
         .append(
             g,
@@ -458,116 +468,6 @@ async fn check_budget(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
             let r = pause(&inner, &g, reason, &detail).await;
             report(&inner, &g, r).await;
         });
-    }
-    Ok(())
-}
-
-fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<()> {
-    let g = run.goal_id.as_str();
-    if !req.is_dialog() {
-        if req.method == "notify"
-            && let Some(m) = req.message.filter(|m| !m.is_empty())
-        {
-            inner.append(g, EventKind::Note { text: m })?;
-        }
-        return Ok(());
-    }
-    let title = req.title.clone().unwrap_or_default();
-    let lang = inner.lang();
-    let item = match title.strip_prefix("tower:").and_then(|j| serde_json::from_str::<Value>(j).ok()) {
-        Some(p) if p.get("tower").and_then(Value::as_str) == Some("approval") => {
-            let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-            NewInboxItem {
-                goal_id: g.into(),
-                kind: InboxKind::Approval,
-                title: {
-                    let reason = s("reason");
-                    tr!(lang, "需要你批准：{reason}", "Approval needed: {reason}")
-                },
-                subject: s("reason"),
-                body: format!("{} · {}", s("tool"), s("target")),
-                options: req.options.clone(),
-                allow_text: false,
-                urgency: 0,
-                engine_ref: Some(req.id.clone()),
-            }
-        }
-        Some(p) => {
-            let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-            let options = p
-                .get("options")
-                .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
-                .unwrap_or_default();
-            NewInboxItem {
-                goal_id: g.into(),
-                kind: InboxKind::Question,
-                title: s("question"),
-                subject: s("question"),
-                body: s("why"),
-                options,
-                allow_text: true,
-                urgency: 1,
-                engine_ref: Some(req.id.clone()),
-            }
-        }
-        // A dialog from one of the user's own extensions.
-        None => NewInboxItem {
-            goal_id: g.into(),
-            kind: InboxKind::Question,
-            subject: title.clone(),
-            title: if title.is_empty() {
-                tr!(lang, "扩展请求你的输入", "An extension asks for your input")
-            } else {
-                title
-            },
-            body: req.message.clone().unwrap_or_default(),
-            options: if req.method == "confirm" {
-                Choice::labels(&[Choice::Yes, Choice::No], lang)
-            } else {
-                req.options.clone()
-            },
-            allow_text: matches!(req.method.as_str(), "input" | "editor"),
-            urgency: 1,
-            engine_ref: Some(req.id.clone()),
-        },
-    };
-    let opened = inner.open_inbox(item)?;
-    run.flags().dialogs.insert(req.id.clone(), (opened.id.clone(), req.method));
-    inner.set_mode(g, Mode::WaitingOnYou)?;
-    let title = &opened.title;
-    inner.toast(g, ToastLevel::Warning, tr!(lang, "{g} 需要你：{title}", "{g} needs you: {title}"));
-    // A dialog with a time limit is answered by Pi itself when the time runs out: the extension's call gets nothing back
-    // and no one is told. Left alone, the question stayed open and the run waited on you for good (review 18, record
-    // only); when the time is up and the question is still open, it is closed as timed out.
-    if let Some(ms) = req.timeout.filter(|ms| *ms > 0) {
-        let (inner, run) = (inner.clone(), run.clone());
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(ms)).await;
-            if let Err(e) = expire_dialog(&inner, &run, &req.id) {
-                tracing::warn!(goal = %run.goal_id, error = %e, "could not close a timed-out dialog");
-            }
-        });
-    }
-    Ok(())
-}
-
-/// Closes a dialog whose time ran out, unless it was answered (or its run ended) first.
-fn expire_dialog(inner: &Arc<Inner>, run: &Arc<Run>, ui_id: &str) -> Result<()> {
-    let Some((item, _)) = run.flags().dialogs.remove(ui_id) else {
-        return Ok(());
-    };
-    let g = run.goal_id.as_str();
-    let lang = inner.lang();
-    let note =
-        tr!(lang, "（已超时：提问的一方不再等这个回答）", "(timed out: the asker stopped waiting for an answer)");
-    // Answered in the same moment, or withdrawn as the run ended: already closed, nothing to do.
-    if inner.store(|s| s.resolve_inbox(&item, &note)).is_ok() {
-        inner.emit_inbox();
-        inner.emit_goal_now(g);
-    }
-    if run.flags().dialogs.is_empty() && inner.run_of(g).is_some_and(|r| Arc::ptr_eq(&r, run)) {
-        settle_mode(inner, run)?;
     }
     Ok(())
 }

@@ -646,6 +646,11 @@
         "purpose": "A panel moving in: the peek drawer. Never overshoots."
       },
       {
+        "name": "dur-settle",
+        "value": "600ms",
+        "purpose": "The live line's shimmer fading in and out as the run starts and stops moving, so the words never jump."
+      },
+      {
         "name": "dur-spin",
         "value": "1100ms linear, infinite",
         "purpose": "A running or verifying mark turning (and the runs gauge, the same mark). Held still under reduced motion."

@@ -400,7 +400,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                     </span>
                   </span>
                 </summary>
-                <Field label={t("contract.engine")} hint={t(`trust.${trustTierOf(engine())}`)}>
+                <Field label={t("chrome.engine")} hint={t(`trust.${trustTierOf(engine())}`)}>
                   <Select value={c.engine} options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]} onChange={(v) => (setC("engine", v), setC("model", ""), setC("escalation_model", ""))} />
                 </Field>
                 <Field label={t("contract.model")}>

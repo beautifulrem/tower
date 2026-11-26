@@ -232,7 +232,12 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
     const c = (await rows.nth(i).locator(".code").boundingBox())!;
     await page.mouse.click(c.x + 40, c.y + c.height / 2);
   };
+  // Review 19 (record only): the table itself can hold focus. A press of the pointer puts it there and shows no ring.
+  const ring = (l: import("@playwright/test").Locator) => l.evaluate((el) => getComputedStyle(el).outlineStyle);
+  const held = rows.nth(2).locator(".ln-btn").first();
   await pressRow(2);
+  await expect(long).toBeFocused();
+  expect([await ring(held), await ring(long)], "a press shows no ring").toEqual(["none", "none"]);
   const walked: number[] = [];
   for (const k of ["ArrowDown", "ArrowDown", "ArrowUp"]) (await page.keyboard.press(k), walked.push(await at()));
   expect(walked, "↓↓↑ after a press walk from the line pressed").toEqual([3, 4, 3]);
@@ -255,6 +260,10 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   expect(await sheet.evaluate((d) => d.contains(document.activeElement)), "focus is in the sheet").toBe(true);
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
+  // Handed back by the keyboard, the table holds focus with a ring where ↓ and ↩ act: on the line pressed, its number
+  // (it showed none, review 19).
+  await expect(long).toBeFocused();
+  expect([await ring(held), await ring(long)], "the line pressed wears the ring, the table none").toEqual(["solid", "none"]);
   // Review 18 (R18-P3-02): closed, the sheet hands focus back to the table and the line pressed is still your place:
   // ↩ comments on it and ↓ walks from it (focus had moved to the first line's number, so ↩ commented on line 0).
   await page.keyboard.press("Enter");

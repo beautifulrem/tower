@@ -162,28 +162,6 @@ impl Flags {
     }
 }
 
-/// After a call ends or a question is answered: the mode of the call still at work, and the live line back on it,
-/// or thinking when none is (review 16 and 17: a call ending, or an answer, while another runs set the run to
-/// thinking, and the desk and the phone then read a running command as silence). While a question is open the run
-/// waits on you, whatever starts or ends beside it; the live line follows the call at work and says if one runs.
-pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
-    let g = &run.goal_id;
-    let work = run.flags().at_work().map(|c| LiveLine {
-        mode: Mode::for_tool(&c.tool),
-        action: c.tool.clone(),
-        target: crate::summarize::tool_call(&c.tool, &c.args, &run.workspace),
-        at: c.at,
-        running: true,
-    });
-    match &work {
-        Some(line) => inner.store(|s| s.set_live_line(g, line))?,
-        None => inner.store(|s| s.stop_live_line(g))?,
-    }
-    inner.mark_dirty(g);
-    let asked = !run.flags().dialogs.is_empty();
-    inner.set_mode(g, if asked { Mode::WaitingOnYou } else { work.map_or(Mode::Thinking, |l| l.mode) })
-}
-
 #[derive(Debug)]
 pub struct Run {
     pub goal_id: String,
@@ -196,6 +174,8 @@ pub struct Run {
     /// ports): every end of the run waits on this after taking the run out of
     /// the runs, so no rewrite lands after the end released its ports and folders.
     pub profile: Mutex<()>,
+    /// See `Run::lock_mode`.
+    pub mode_lock: Mutex<()>,
 }
 
 impl Run {
@@ -592,6 +572,7 @@ async fn start_run_inner(
         workspace: real(&ws).display().to_string(),
         flags: Mutex::new(initial_flags),
         profile: Mutex::default(),
+        mode_lock: Mutex::default(),
     });
     if !begin(inner, &run, seen, purpose, start_pin)? {
         // Nothing reads this engine yet (its events stay in `rx`).
@@ -645,6 +626,14 @@ async fn launch(
         return Ok(());
     }
     inner.append(goal_id, EventKind::Injected { channel: "prompt".into(), text: message.clone() })?;
+    // The run thinks from the moment its message goes. Written before it is sent: written after, it landed over a call
+    // the engine had already started (iteration 20, one flow run in ten).
+    {
+        let flags = run.flags();
+        if flags.stopping.is_none() {
+            inner.set_mode(goal_id, Mode::Thinking)?;
+        }
+    }
     if let Err(e) = run.engine.prompt_with_images(&message, images).await {
         if run.flags().stopping.is_some() {
             // Stopped while the message was on its way: whoever stopped it
@@ -655,10 +644,6 @@ async fn launch(
         let detail = tr!(lang, "发送开场消息失败：{e}", "Could not send the first message: {e}");
         pause_after_stop(inner, goal_id, PauseReason::PrepareFailed, &detail)?;
         return Err(e.into());
-    }
-    let flags = run.flags();
-    if flags.stopping.is_none() {
-        inner.set_mode(goal_id, Mode::Thinking)?;
     }
     Ok(())
 }
@@ -791,8 +776,11 @@ fn fail_to_start(inner: &Arc<Inner>, goal_id: &str, detail: &str) -> Result<()> 
     pause_failed_start(inner, goal_id, PauseReason::PrepareFailed, detail)
 }
 
+mod asks;
 mod events;
 mod slots;
+use asks::on_ui_request;
+pub(crate) use asks::settle_mode;
 use events::pump;
 pub(crate) use events::{sandbox_denied, stop_engine};
 pub(crate) use slots::{Starting, already_starting};
@@ -843,7 +831,10 @@ mod tests {
     }
 
     /// Without `ratify`, the goal stays a draft (nothing starts it).
-    async fn fake_engine_goal(script_body: &str, ratify: bool) -> (tempfile::TempDir, crate::Supervisor, String) {
+    pub(super) async fn fake_engine_goal(
+        script_body: &str,
+        ratify: bool,
+    ) -> (tempfile::TempDir, crate::Supervisor, String) {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();
         let repo = tmp.path().join("repo");
@@ -964,6 +955,7 @@ done"#;
             workspace: repo.display().to_string(),
             flags: Mutex::new(Flags::default()),
             profile: Mutex::default(),
+            mode_lock: Mutex::default(),
         });
         assert!(begin(inner, &run, LifecycleState::Ready, "initial", None).unwrap());
         pause(inner, &id, PauseReason::Human, "").await.unwrap();

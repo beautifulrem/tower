@@ -179,6 +179,19 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T166 A missing side in its capture's frame | D200 | — | 16:10 at the slot's height | `flows.spec.ts` (en, zh) | Done (iteration 19) |
 | T167 Observed failures in ink | D202 | — | GitHub checks, merge conflicts, the sidebar notice in text-1 | `flows.spec.ts` | Done (iteration 19) |
 | T168 Inside the budget | D201 | — | sixteen duplicate keys merged | `bundle-budget.sh` | Done (iteration 19) |
+| T169 One order for the mode's writes | D204 | — | start, end, settle, answer and expiry under `Run::lock_mode` | `asks.rs`; each piece fails mutated | Done (iteration 20) |
+| T170 A missing side in its capture's frame, whatever its words | D205 | — | 96 high in the strip, 16:10 side by side, breaks after URL punctuation | `flows.spec.ts` (en, zh); fails on `939be97` | Done (iteration 20) |
+| T171 An ended call is not what the run is doing | D206 | — | the detail names a call in flight or a quiet run's last | `Live.test.tsx`, `flows.spec.ts`, `phone.spec.ts`; fail on `939be97` | Done (iteration 20) |
+| T172 Highlight again only a line cut short | D207 | — | `stoppedEarly` | `highlight.test.ts`; fails on the old rule | Done (iteration 20) |
+| T173 `settled()` says what it waited for | D208 | — | names the pending at its cap; per-worker counts | `smoke.spec.ts` | Done (iteration 20) |
+| T174 A merge conflict named in the sidebar | D209, D211 | — | `◇` "Merge conflict" in the operations row; docs/04 | `flows.spec.ts` | Done (iteration 20) |
+| T175 A question closes before Pi lets it go | D210 | — | a tenth early, a second at most | `asks.rs`; fails with the timer late | Done (iteration 20) |
+| T176 The shimmer's fade a token | D212 | — | `--dur-settle` | — | Done (iteration 20) |
+| T177 A ring where the keyboard's place is | D213 | — | the line pressed, else the table | `review-keys.spec.ts`; fails on `939be97` | Done (iteration 20) |
+| T178 Write, then hand the engine | D214 | — | the first "thinking" and an answer's mode before the send | `race2/`; the flow suite ×20 | Done (iteration 20) |
+| T179 The gates run what CI runs | D215 | — | workspace clippy and tests | gates | Done (iteration 20) |
+| T180 Inside the budget | D216 | — | twenty-nine duplicate keys merged | `bundle-budget.sh` | Done (iteration 20) |
+| T181 Quieter held tags | D217 | — | a tag is its tone's ground, no hairline | visual check; `honesty.spec.ts` | Done (iteration 20) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

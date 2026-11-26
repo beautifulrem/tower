@@ -526,6 +526,30 @@ test("a run's mark turns on the phone only while the run moves, as on the desk; 
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
 });
 
+// Review 19 (R19-P3-03): the phone wrote a call that had ended as what the run was doing. Ended, the detail says which
+// run, as the desk's does; in flight, or gone quiet after it, the call's words stay.
+test("a call that has ended is not the phone row's detail; in flight or gone quiet, its words stay", async ({ page }) => {
+  const now = Date.now();
+  const run = (id: string, at: number, running: boolean) => ({
+    id,
+    title: id,
+    state: "running",
+    mode: "thinking",
+    needs_you: 0,
+    run_no: 2,
+    run_started_at: now - 600_000,
+    updated_at: at,
+    live_line: { mode: "executing", action: "bash", target: "pnpm test", at, running },
+    pause_reason: null,
+    verified_pin: null,
+  });
+  for (const lang of ["en", "zh"]) {
+    const goals = [run("G-1", now, true), run("G-2", now - 20_000, false), run("G-3", now - 300_000, false)];
+    await openPhone(page, { state: { goals, inbox: [], lang, max_running: 4 } });
+    await expect(page.locator(".row .meta .detail")).toHaveText(["bash pnpm test", lang === "en" ? "Run 2" : "第 2 次运行", "bash pnpm test"]);
+  }
+});
+
 test("the phone card's strip carries the desk's 12px ! (review 14: an old rule drew it at 9px)", async ({ page }) => {
   await openPhone(page);
   const mark = page.locator(".strip .mark").first();

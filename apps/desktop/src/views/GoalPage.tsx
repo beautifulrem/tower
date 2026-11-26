@@ -77,7 +77,7 @@ export function GoalPage(props: { id: string }) {
       if ((await act(() => api.pause(props.id))) !== undefined)
         toast("info", t("goal.pausedToast", { id: props.id }), {
           goalId: props.id,
-          action: { label: t("goal.resume"), run: () => void act(() => api.resume(props.id)) },
+          action: { label: t("goal.purposeResume"), run: () => void act(() => api.resume(props.id)) },
         });
     } else if (s === "paused") void act(() => api.resume(props.id));
   };

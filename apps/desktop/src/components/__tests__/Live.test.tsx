@@ -1,3 +1,4 @@
+import { render } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 
 const now = Date.now();
@@ -7,7 +8,7 @@ vi.mock("../../lib/store", async () => {
   return { state, livenessOf: (g: { updated_at: number }) => ({ at: g.updated_at, tool: null }) };
 });
 
-const { liveDetail } = await import("../Live");
+const { liveDetail, LiveLine } = await import("../Live");
 
 // Review 19 (R19-P3-03): a call that had ended was still written as what the run was doing.
 describe("the live line's detail", () => {
@@ -50,9 +51,17 @@ describe("the live line's detail", () => {
       expect(liveDetail(g, false, true).action).toBe("elapsed 1m");
     }
   });
-  // Review 21 (record only): with no start time the goal page's line was empty, the shimmer over nothing.
-  it("names the run where it cannot say how long it has gone", () => {
-    expect(liveDetail(goal(false, 20, { run_started_at: null }), false, true).action).toBe("Run 1");
+  // Review 21 (record only): with no start time the goal page's line was empty under the shimmer's class. Review 22
+  // (record only): naming the run there said it twice, the header having said it. The line says nothing it cannot say,
+  // and nothing shimmers (`LiveLine` below); on the board, where no header names it, the line names the run.
+  it("says no run a header has named where it cannot say how long it has gone", () => {
+    const g = goal(false, 20, { run_started_at: null });
+    expect([liveDetail(g, false, true).action, liveDetail(g).action]).toEqual(["", "Run 1"]);
+  });
+  it("lights no words that are not there", () => {
+    const at = (g: never) => render(() => <LiveLine goal={g} large />).container.querySelector(".live-line")!.classList;
+    expect(at(goal(false, 20, { run_started_at: null, mode: "thinking" })).contains("live-moving")).toBe(false);
+    expect(at(goal(false, 20, { mode: "thinking" })).contains("live-moving")).toBe(true);
   });
   it("keeps a call's words while it lingers on the board", () => {
     const lingering = liveDetail(goal(false), true);

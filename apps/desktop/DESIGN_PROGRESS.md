@@ -525,3 +525,31 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   each, ten CPU burners held for the whole run, one-minute load 20.3–41.4); bundle 163,722 / 163,840 B. Visual check
   of the shots at DPR 2, light and dark, en and zh. Detector 17 against 17 on the four touched UI files, the same
   findings. Not yet independently re-reviewed.
+- Review 22 — independent reviewer (general-purpose agent, read-only worktree at `864d6c3`, ports 1441–1443):
+  **PASS, 8.81 / 10** (8.810), no P0, P1 or P2 (`design-evidence/reports/review22.md`). Review 21's two P3s confirmed
+  fixed, each reproduced on `9397e07`; D239, D240, D242–D253 confirmed and D241 kept with reason. New P3, pre-existing:
+  an approval's code block did not tell a row it carried over from a line of the command's own, and the phone parted
+  `--` and `fill`. Eight record-only notes, among them an approval Pi raises as a run is stopped and the desk's fold of
+  two approvals alike; D237's and D250's wording corrected; three sentences without a test. Recorded as D254–D264.
+- Iteration 23 — review 22's P3, every record-only note and every untested sentence (D254–D264, T199–T205), and
+  D265–D267 from its own reading (T206). An approval's command is a row per line, a carried-over row two in under a
+  hook, a word moved whole, on the desk and the phone, and what is copied is the command (D254); a dialog to a run being
+  stopped is cancelled to the engine and opens nothing (D255); where the start time is unknown the goal page's line says
+  nothing and does not shimmer, the header having named the run (D256, superseding D246); a stall's command and a
+  failing check's name are code in the question, marked by the store (D257), as the ledger's pin is (D261); the
+  tooltip reads "Run 2, elapsed 21h 33m" (D258); the fold of a note said again moved into the store and every dialog is
+  its own item on both surfaces (D259); a failed capture says why on the phone's tab too (D262); D250 and D237 corrected
+  (D260, D263); the denial's sentences live once in `policy.ts` with a test, and the phone's Chinese time and multi-line
+  body are tested (D264). The phone says Chinese times in words (D265), its page's policy lets data-URL marks draw and
+  its tests serve that policy (D266), and its tails copy a blank line as blank (D267). Each fix's test fails on
+  `864d6c3`'s sources or a stated mutation (`/tmp/tower-design/iter23/oldsrc/`, `mut/`); a desk mutation the first
+  version of the hook's test let through (the word box inline) is caught by a sweep of widths, and the CSP mutation
+  fails on the missing ink, the screenshot read on a page of its own. Gates: tsc; vitest 44 / 263; e2e 434/0 (76 shot
+  tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter23/allshots`); perf alone (board of 50: 871 / 465 /
+  276 ms against 246 / 262 / 225 ms; switch medians about 113 against 40 ms); line limit; doc numbers; rustfmt,
+  `cargo clippy --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites, 489 tests, 2 ignored);
+  the extension's tests (33) and `tools/security-tests.mjs` (118 named tests present); the flow suite 20 of 20 (50
+  tests each, ten CPU burners held for the whole run, one-minute load 17.0–36.0); bundle 163,733 / 163,840 B. Visual
+  check of the approval blocks at DPR 2 (desk light 1440 and dark 1040, phone light 390 and dark 320) and the stall
+  card (`/tmp/tower-design/iter23/vis`). Detector 17 against 17 on the seven touched UI files, the same findings. Not
+  yet independently re-reviewed.

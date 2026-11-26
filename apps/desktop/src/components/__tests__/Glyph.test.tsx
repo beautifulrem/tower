@@ -136,7 +136,13 @@ describe("the marks", () => {
     // Vitest hands a stylesheet's ?raw import over empty, so the file is read as it is (as inks.test does).
     const tokensCss = readFileSync("src/styles/tokens.css", "utf8") as string;
     const masks = Object.fromEntries([...tokensCss.matchAll(/--mark-(\w+): url\("data:image\/svg\+xml,[^"]*d='([^']+)'/g)].map((m) => [m[1], m[2]]));
-    expect(masks).toEqual({ ...MARK_PATH });
+    // The hook a carried-over row of a command wears (review 22) is drawn by stylesheets alone, the desk's and the
+    // phone's, never by a component: the very same mask in both.
+    const { hook, ...status } = masks;
+    expect(status).toEqual({ ...MARK_PATH });
     for (const d of Object.values(MARK_PATH)) expect(phoneHtml).toContain(d);
+    const mask = (css: string) => /--mark-hook: (url\("data:image\/svg\+xml,[^"]*"\))/.exec(css)?.[1];
+    expect(hook).toBeTruthy();
+    expect(mask(phoneHtml)).toBe(mask(tokensCss));
   });
 });

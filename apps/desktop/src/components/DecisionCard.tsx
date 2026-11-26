@@ -359,12 +359,18 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </>
           }
         >
-          {/* A failing check's name is a machine value inside the question, not the question's typeface. On the goal's own
-              page the PR line just above already names the failing checks, so the card does not say them again. */}
+          {/* A machine value the question starts with (a failing check's name, a stalled call's command) is code, not the
+              question's typeface (review 22, record only: "pnpm test (bash) failed 4 times in a row" read as prose). On the
+              goal's own page the PR line just above already names the failing checks, so the card does not say them again. */}
           <Show when={!(it().kind === "ci_failed" && props.showGoal === false && goal()?.pr)}>
             <p class="decision-question">
-              <Show when={it().kind === "ci_failed"} fallback={it().subject}>
-                <span class="code-val">{it().subject}</span>
+              <Show when={it().code} fallback={it().subject}>
+                {(c) => (
+                  <>
+                    <span class="code-val">{c()}</span>
+                    {it().subject.slice(c().length)}
+                  </>
+                )}
               </Show>
             </p>
           </Show>
@@ -421,8 +427,15 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                 </p>
               )}
             </Show>
+            {/* An approval's block is the command, line for line (review 22, R22-P3-01): each line a box of its own, its
+                words whole (`.w`), so a wrapped part goes on under a hook (app.css `.decision-cmd`) and never reads as a
+                line of the command's own; the text is the command, character for character, newlines and all. */}
             <Show when={parts().tail}>
-              <pre class="output-tail decision-tail">{parts().tail}</pre>
+              <pre class="output-tail decision-tail" classList={{ "decision-cmd": it().kind === "approval" }}>
+                {it().kind === "approval"
+                  ? parts().tail.split("\n").map((l, i) => [i ? "\n" : "", <span class="tl">{l.split(/( +)/).map((w, j) => (j % 2 ? w : w && <span class="w">{w}</span>))}</span>])
+                  : parts().tail}
+              </pre>
             </Show>
           </Show>
           {/* Held-out: the sentence, then the output in your register — a solid rule, "for you only" in the source gutter — then the hint field first. */}

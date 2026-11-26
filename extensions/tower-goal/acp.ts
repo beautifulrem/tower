@@ -40,6 +40,8 @@ import {
 	checkBash,
 	checkRead,
 	checkWrite,
+	declinedCommand,
+	declinedWrite,
 	evaluatePermission,
 	isAllow,
 	langOf,
@@ -212,7 +214,7 @@ async function mcpServer() {
 		const reason = TEXT[verdict];
 		return (await approve(tool, rel, reason[LANG]))
 			? null
-			: `The human declined to let you ${reason.en}: ${rel}. Stay inside the contract's scope or ask_user.`;
+			: declinedWrite(verdict, rel);
 	};
 
 	async function call(name: string, args: Json): Promise<{ text: string; error?: boolean; stop?: boolean }> {
@@ -254,7 +256,7 @@ async function mcpServer() {
 				const command = String(args.command ?? "");
 				const v = checkBash(command, contract.autonomy);
 				if (v.action === "ask" && !(await approve("bash", command, v.reason[LANG]))) {
-					return { text: `The human declined this command (${v.reason.en}). Find another way or ask_user.`, error: true };
+					return { text: declinedCommand(v.reason), error: true };
 				}
 				return runBash(command, Number(args.timeout ?? 120));
 			}

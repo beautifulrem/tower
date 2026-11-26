@@ -379,7 +379,8 @@ function LedgerRow(props: { c: ClaimView & { runs: number[] }; testDependent?: b
       </span>
       <div class="ledger-fact-cell" classList={{ "fact-contradicted": value() === "contradicted", "fact-warn": value() === "cannot_confirm" || value() === "stale" }}>
         <ConsistencyBadge value={value()} evidence={evidence()} />
-        <Show when={evidence()}><span class="ledger-fact-ev">{evidence()}</span></Show>
+        {/* The pin the sentence ends on is set as the seal sets one (review 22, record only: "@c772361" in the words' face). */}
+        <Show when={evidence()}><span class="ledger-fact-ev"><Prose text={evidence()!.replace(/@\w+$/, "`$&`")} /></span></Show>
       </div>
     </div>
   );

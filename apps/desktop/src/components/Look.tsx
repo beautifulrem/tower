@@ -31,6 +31,10 @@ const Why = (p: { text: string; wide?: boolean }) => (
   </div>
 );
 
+/**
+ * A side's capture is one browser session for both viewports: when it fails, its reason is the phone's as much as the
+ * desktop's (review 22, record only: the phone's frame said "Not captured" and nothing more).
+ */
 function Shot(props: { file: string | null; error: string | null; label: string; onOpen?: (from: HTMLElement) => void; wide?: boolean }) {
   const [src] = createResource(
     () => props.file,
@@ -117,8 +121,8 @@ export function LookStrip(props: { look: LookView; title: string }) {
         <div class="look-viewports"><ViewportTabs value={vp()} onChange={setVp} /></div>
       </Show>
       <div class="look-strip" classList={{ "look-phone": vp() === "mobile" }}>
-        <Shot file={activeBase()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} onOpen={openFrom} />
-        <Shot file={activePin()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} onOpen={openFrom} />
+        <Shot file={activeBase()} error={props.look.base_error} label={t("look.before")} onOpen={openFrom} />
+        <Shot file={activePin()} error={props.look.pin_error} label={t("look.after")} onOpen={openFrom} />
       </div>
       <ConsoleErrorsBlock errors={ext().console_errors} inline />
       <Show when={open()}>
@@ -221,8 +225,8 @@ function LookCompare(props: { look: LookViewExt; title: string; initialViewport?
         }
       >
         <div class="look-side" classList={{ "look-phone": vp() === "mobile" }}>
-          <Shot file={baseFile()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} wide />
-          <Shot file={pinFile()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} wide />
+          <Shot file={baseFile()} error={props.look.base_error} label={t("look.before")} wide />
+          <Shot file={pinFile()} error={props.look.pin_error} label={t("look.after")} wide />
         </div>
       </Show>
       <ConsoleErrorsBlock errors={props.look.console_errors} />

@@ -351,7 +351,9 @@ mod tests {
         id
     }
 
+    /// An agent's question: each one a dialog of its own, as the engine's are.
     fn question(s: &mut Store, goal: &str) -> String {
+        let n = s.open_inbox_items().unwrap().len();
         let item = NewInboxItem {
             goal_id: goal.into(),
             kind: InboxKind::Question,
@@ -361,7 +363,7 @@ mod tests {
             options: Vec::new(),
             allow_text: true,
             urgency: 1,
-            engine_ref: None,
+            engine_ref: Some(format!("ui-{n}")),
         };
         s.open_inbox(item).unwrap().id
     }

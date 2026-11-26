@@ -618,6 +618,15 @@ impl Stall {
         }
     }
 
+    /// The machine value `text` starts with, in either language: what was run, else the tool that ran it.
+    pub fn code(&self) -> Option<&str> {
+        match self {
+            Stall::NoProgress { .. } => None,
+            Stall::Repeated { target, .. } if !target.is_empty() => Some(target),
+            Stall::Repeated { tool, .. } => Some(tool),
+        }
+    }
+
     pub fn text(&self, lang: Lang) -> String {
         match self {
             Stall::NoProgress { minutes } => {
@@ -721,6 +730,16 @@ mod tests {
         assert_eq!(back, s);
         assert_eq!(back.text(Lang::En), "npm test -- --run (bash) failed 3 times in a row");
         assert_eq!(back.text(Lang::Zh), "npm test -- --run（bash）连续失败 3 次");
+        // What was run, set as code where the words are shown (review 22, record only: the command read as prose), or
+        // the tool when nothing names it: in either language, what the words start with.
+        let bare = Stall::Repeated { tool: "read".into(), target: String::new(), times: 2 };
+        for (stall, code) in [(&back, "npm test -- --run"), (&bare, "read")] {
+            assert_eq!(stall.code(), Some(code));
+            for l in Lang::ALL {
+                assert!(stall.text(l).starts_with(code), "{}", stall.text(l));
+            }
+        }
+        assert_eq!(Stall::NoProgress { minutes: 12 }.code(), None);
         // As iteration 21 and the iterations before it stored them.
         for old in ["\u{1f}repeated 3 bash npm test -- --run", "\u{1f}repeated 3 bash · npm test -- --run"] {
             assert_eq!(Stall::decode(old), Some(s.clone()), "{old}");

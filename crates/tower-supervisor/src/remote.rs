@@ -336,10 +336,11 @@ async fn handle_async(
     if path == "/" && method == tiny_http::Method::Get {
         let mut r = tiny_http::Response::from_data(PAGE.as_bytes().to_vec());
         r.add_header(tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("static header"));
+        // Pictures only from the page itself or drawn in it (`data:`, the marks its stylesheet draws), as docs/11 §11.10.
         r.add_header(
             tiny_http::Header::from_bytes(
                 "Content-Security-Policy",
-                "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+                "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:",
             )
             .expect("static header"),
         );
@@ -608,6 +609,7 @@ mod tests {
             urgency: 0,
             tones: vec![],
             snoozed_until: None,
+            code: None,
         }
     }
 

@@ -435,6 +435,11 @@ pub struct InboxItem {
     pub tones: Vec<OptionTone>,
     /// Set while the item is put aside ("remind me later"), until when.
     pub snoozed_until: Option<Millis>,
+    /// Where `subject` starts with a machine value (a stalled call's command, a failing check), that value, set as code
+    /// where the subject is shown: the words around it stay in the interface's face.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

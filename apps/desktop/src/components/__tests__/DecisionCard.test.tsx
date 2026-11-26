@@ -201,9 +201,22 @@ describe("DecisionCard", () => {
   });
 
   it("sets a failing check's name as a machine value and keeps the explanation as prose", () => {
-    render(() => <DecisionCard item={item({ kind: "ci_failed", subject: "test (ubuntu-latest, node 22)", body: "You can send the failing check to the agent.", options: ["Send to the agent", "Leave it"], tones: ["primary", "neutral"] })} />);
+    // As the supervisor sends it: the machine value the subject starts with, whole here (`code`).
+    const subject = "test (ubuntu-latest, node 22)";
+    render(() => <DecisionCard item={item({ kind: "ci_failed", subject, code: subject, body: "You can send the failing check to the agent.", options: ["Send to the agent", "Leave it"], tones: ["primary", "neutral"] })} />);
     expect(screen.getByText("test (ubuntu-latest, node 22)").className).toContain("code-val");
     expect(screen.getByText(/send the failing check/).className).not.toContain("code-val");
+  });
+
+  // Review 22 (record only): "pnpm test (bash) failed 4 times in a row" set the command in the words' face.
+  it("sets a stalled call's command as a machine value and the words after it as words", () => {
+    const { container } = render(() => (
+      <DecisionCard item={item({ kind: "stalled", subject: "pnpm test (bash) failed 4 times in a row", code: "pnpm test", body: "", options: ["Keep waiting", "Pause"], tones: ["neutral", "neutral"] })} />
+    ));
+    const question = container.querySelector(".decision-question")!;
+    expect(question.textContent).toBe("pnpm test (bash) failed 4 times in a row");
+    expect([...question.querySelectorAll(".code-val")].map((c) => c.textContent)).toEqual(["pnpm test"]);
+    expect(question.className).not.toContain("code-val");
   });
 
   it("offers to put a decision aside", async () => {

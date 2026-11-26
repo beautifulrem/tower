@@ -43,6 +43,8 @@ import {
 	checkBash,
 	checkRead,
 	checkWrite,
+	declinedCommand,
+	declinedWrite,
 	isAllow,
 	langOf,
 	sandboxed,
@@ -254,7 +256,7 @@ export default function towerGoal(pi: ExtensionAPI) {
 			);
 			return isAllow(choice)
 				? undefined
-				: { block: true, reason: `The human declined to let you ${reason.en}: ${rel}. Stay inside the contract's scope or ask_user.` };
+				: { block: true, reason: declinedWrite(verdict, rel) };
 		}
 
 		if (name === "bash") {
@@ -267,7 +269,7 @@ export default function towerGoal(pi: ExtensionAPI) {
 			);
 			return isAllow(choice)
 				? undefined
-				: { block: true, reason: `The human declined this command (${v.reason.en}). Find another way or ask_user.` };
+				: { block: true, reason: declinedCommand(v.reason) };
 		}
 
 		return undefined;

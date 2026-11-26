@@ -13,6 +13,8 @@ import {
 	checkBash,
 	checkRead,
 	checkWrite,
+	declinedCommand,
+	declinedWrite,
 	evaluatePermission,
 	globToRegExp,
 	isAllow,
@@ -57,6 +59,26 @@ test("a path's approval reason names the write it asks for", () => {
 		assert.match(TEXT[verdict].en, /^write to a path /);
 		assert.match(TEXT[verdict].zh, /^写入/);
 	}
+});
+
+// Review 22: what the agent is told after a "Deny" was written twice in each bridge and never tested. The reasons are
+// the dialog's own words, so the sentence must still read as one with each of them in it.
+test("a denied write or command tells the agent what was refused, in a sentence, and the way on", () => {
+	assert.equal(
+		declinedWrite("readonly", "migrations/001.sql"),
+		"The human declined to let you write to a path the contract makes read-only: migrations/001.sql. Stay inside the contract's scope or ask_user.",
+	);
+	assert.equal(
+		declinedWrite("excluded", ".env"),
+		"The human declined to let you write to a path the contract excludes: .env. Stay inside the contract's scope or ask_user.",
+	);
+	assert.equal(
+		declinedWrite("outside_scope", "docs/notes.md"),
+		"The human declined to let you write to a path outside the contract's scope fence: docs/notes.md. Stay inside the contract's scope or ask_user.",
+	);
+	const v = checkBash("git push origin main", "autonomous");
+	assert.ok(v.action === "ask");
+	assert.equal(declinedCommand(v.reason), "The human declined this command (push to a remote (one-way door)). Find another way or ask_user.");
 });
 
 test("normalize resolves dot segments", () => {

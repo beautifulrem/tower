@@ -40,6 +40,20 @@ export const TEXT = {
 	outside_scope: { zh: "写入合同范围围栏之外的路径", en: "write to a path outside the contract's scope fence" },
 } satisfies Record<string, Text>;
 
+/**
+ * What the agent is told when the human denies a gated write: the write it asked for, in the dialog's words, the path,
+ * and the way on. The reasons above are verb phrases so this reads as a sentence (review 22: one copy here, not one per
+ * bridge).
+ */
+export function declinedWrite(verdict: "readonly" | "excluded" | "outside_scope", rel: string): string {
+	return `The human declined to let you ${TEXT[verdict].en}: ${rel}. Stay inside the contract's scope or ask_user.`;
+}
+
+/** What the agent is told when the human denies a command: why it was asked about, and the way on. */
+export function declinedCommand(reason: Text): string {
+	return `The human declined this command (${reason.en}). Find another way or ask_user.`;
+}
+
 /** Whether a dialog answer allows, in either language (the human may have switched). */
 export function isAllow(choice: string | undefined): boolean {
 	return choice === TEXT.allow.zh || choice === TEXT.allow.en;

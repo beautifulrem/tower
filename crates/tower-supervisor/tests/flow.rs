@@ -263,6 +263,110 @@ async fn while_a_question_is_open_the_run_waits_on_you_whatever_starts_or_ends_b
     );
 }
 
+/// Review 18: a command running beside an open question is busy, on the phone as on the desk. A question is not work,
+/// so the live line stays on the command (the newest call at work, never the question) and says it is in flight;
+/// once the last call has ended it keeps the command's words and says none is.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_command_beside_an_open_question_stays_in_flight_on_the_live_line_until_it_ends() {
+    use tower_core::Mode::*;
+    let h = harness("ask_beside_command").await;
+    let id = create(&h).await;
+    let question = |not: Option<&str>| {
+        h.sup
+            .inbox()
+            .unwrap()
+            .into_iter()
+            .find(|i| i.kind == InboxKind::Question && i.goal_id == id && Some(i.id.as_str()) != not)
+    };
+    // The question is open and the read has ended beside it; the command still runs.
+    let mut first = None;
+    for _ in 0..200 {
+        let read_ended = h
+            .sup
+            .trace(&id, None, 500)
+            .unwrap()
+            .into_iter()
+            .any(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == "cr"));
+        first = question(None);
+        if read_ended && first.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let first = first.expect("question in inbox");
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!(g.mode, WaitingOnYou, "an open question keeps the run waiting on you");
+    let line = g.live_line.expect("a live line");
+    assert_eq!((line.action.as_str(), line.running), ("bash", true), "the command, in flight beside the question");
+    h.sup.answer(&first.id, "a").await.unwrap();
+    // The second question comes once the ask and the command have ended: nothing is in flight.
+    let mut second = None;
+    for _ in 0..200 {
+        second = question(Some(&first.id));
+        if second.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let second = second.expect("a second question");
+    let line = h.sup.goal(&id).unwrap().summary.live_line.expect("the last call's words");
+    assert_eq!((line.action.as_str(), line.running), ("bash", false), "every call has ended: none in flight");
+    h.sup.answer(&second.id, "a").await.unwrap();
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+}
+
+// Review 18 (record only): Pi answers a dialog whose time runs out by itself and says nothing, so the question stayed
+// open and the run waited on you while the agent went on working.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dialog_whose_time_runs_out_closes_and_the_run_stops_waiting_on_you() {
+    use tower_core::Mode::*;
+    let h = harness("extension_timeout").await;
+    let id = create(&h).await;
+    let asked = |h: &Harness| {
+        h.sup.trace(&id, None, 500).unwrap().into_iter().find_map(|e| match e.event {
+            EventKind::InboxOpened { item_id, .. } => Some(item_id),
+            _ => None,
+        })
+    };
+    let mut item = None;
+    for _ in 0..500 {
+        item = asked(&h);
+        if item.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let item = item.expect("the extension's question in the inbox");
+    // The time runs out and the command starts; while it runs (until the test lets it end), the question is closed
+    // and the run is at work.
+    let mut seen = None;
+    for _ in 0..500 {
+        let g = h.sup.goal(&id).unwrap().summary;
+        if g.live_line.as_ref().is_some_and(|l| l.action == "bash" && l.running) {
+            seen = Some(g);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut g = seen.expect("the command in flight");
+    for _ in 0..250 {
+        if g.mode != WaitingOnYou {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        g = h.sup.goal(&id).unwrap().summary;
+    }
+    assert_eq!(g.mode, Executing, "the time ran out: the run is at its command, not waiting on you");
+    assert!(!h.sup.inbox().unwrap().iter().any(|i| i.id == item), "the timed-out question has left the inbox");
+    let closed = h.sup.trace(&id, None, 500).unwrap().into_iter().find_map(|e| match e.event {
+        EventKind::InboxResolved { item_id, response } if item_id == item => Some(response),
+        _ => None,
+    });
+    assert!(closed.expect("the question closed").contains("timed out"), "closed as timed out");
+    std::fs::write(h._tmp.path().join("home/release"), "").unwrap();
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn repeated_failures_raise_a_stall_without_stopping_the_run() {
     let h = harness("flaky").await;

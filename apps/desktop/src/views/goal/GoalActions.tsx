@@ -26,7 +26,7 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
   const confirmPush = async (pr: boolean) => {
     const ok = await ask(t("goal.confirmPush", { branch: props.goal.branch ?? "", pr }), {
       title: pr ? (props.goal.pr ? t("goal.pushUpdatePr") : t("goal.pushPr")) : t("goal.pushOnly"),
-      ok: pr ? (props.goal.pr ? t("goal.pushVerb") : t("goal.pushPrVerb")) : t("goal.pushVerb"),
+      ok: pr ? (props.goal.pr ? t("goal.pushVerb") : t("goal.pushPr")) : t("goal.pushVerb"),
       cancel: t("common.cancel"),
       kind: "warning",
     });
@@ -67,7 +67,7 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
             cancel: t("common.cancel"),
             kind: "warning",
           });
-          if (ok) void act(() => api.removeWorkspace(id()), t("goal.workspaceRemoved"));
+          if (ok) void act(() => api.removeWorkspace(id()), t("trace.evWorkspaceRemoved"));
         },
         enabled: ["archived", "abandoned"].includes(s()),
       },

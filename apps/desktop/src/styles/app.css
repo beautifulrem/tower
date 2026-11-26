@@ -299,8 +299,10 @@
 .side-row .side-icon.side-icon-attention {
   color: var(--st-attention);
 }
-.side-row .side-icon.side-icon-danger {
-  color: var(--st-danger);
+/* A merge conflict, observed (git's word, not the verifier's): the icon lifts to text-1 beside its count, never red
+   (docs/12 §12.4.3, review 18). */
+.side-row .side-icon.side-icon-notice {
+  color: var(--text-1);
 }
 .side-row .kbd {
   opacity: 0;
@@ -402,7 +404,9 @@
    The words clip the band: it never passes over the target beside them. The band is 5em across, or a fifth of the
    ::after (half the words) when that is narrower, so a short word ("bash") sees a light pass over it rather than
    dimming whole (review 15). At its peak the band is the ground at 60%, so a letter under it dims and never goes out
-   (review 16: a full-ground peak erased a short word's letters one by one). */
+   (review 16: a full-ground peak erased a short word's letters one by one). The band stays on the goal in view and
+   fades in and out over 0.6s as the run starts and stops moving, so the words never jump (review 18: in dark they
+   leapt from the veil's 65% to full ink the moment the run went still); still, it holds where it is. */
 .live-line {
   --live-ground: var(--bg-app);
 }
@@ -410,11 +414,11 @@
   --live-ground: var(--bg-overlay);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .live-moving .live-action {
+  .live-line-large .live-action {
     position: relative;
     clip-path: inset(0);
   }
-  .live-moving .live-action::after {
+  .live-line-large .live-action::after {
     content: "";
     position: absolute;
     top: 0;
@@ -428,12 +432,18 @@
       #0000 calc(50% + min(2.5em, 10%))
     );
     pointer-events: none;
-    animation: shimmer 2.4s linear infinite;
+    opacity: 0;
+    transition: opacity 0.6s;
+    animation: shimmer 2.4s linear infinite paused;
+  }
+  .live-moving .live-action::after {
+    opacity: 1;
+    animation-play-state: running;
   }
   /* Dark: the ground is darker than the words, so a band of it read as the words dimming (review 17). There the light
      is a gap in a veil of the ground: under the veil the words keep 65% of their ink, and in the light (up to 2em
      across) they stand whole, so the line brightens as it is lit. The same band of the ground, moved by transform alone. */
-  :root[data-theme="dark"] .live-moving .live-action::after {
+  :root[data-theme="dark"] .live-line-large .live-action::after {
     --veil: color-mix(in oklab, var(--live-ground) 35%, transparent);
     background: linear-gradient(
       90deg,
@@ -1750,22 +1760,42 @@ input[type="radio"] {
   grid-template-columns: minmax(0, 1fr);
 }
 /* The rail starts on the main column's first line and stays in sight as the page scrolls: the contract is what every
-   block on the left is measured against. Taller than the window, it scrolls itself. The steer box keeps to the main
-   column beside it (workbenches.css), so the rail runs its full height and nothing covers it. */
+   block on the left is measured against. Taller than the window, it scrolls itself. It fits inside the view's own
+   padding (20 above, 40 below), and the steer box ends the main column beside it (GoalPage.tsx), so the rail's row
+   runs to the page's foot: at the end of the page the rail still stands at its sticky top, never under the title
+   bar, and nothing covers it (review 18). */
 .goal-rail {
   position: sticky;
   top: 0;
-  max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - var(--sp-5));
+  max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - var(--sp-10));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-/* A half-screen window: the rail folds under the main column (its own rule follows the rail's base rule below). */
+/* The column stands as tall as its row, so on a short page the steer box still sits at the foot of the window. */
+.goal-main {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+.goal-main > .steer-console { margin-top: auto; }
+/* 24 above the box, from whatever stands just above it: the main column's last block beside the rail or while
+   watching, the folded rail otherwise. */
+.goal-body.watching .goal-main > :has(+ .steer-console) { margin-bottom: var(--sp-6); }
+@media (min-width: 1281px) {
+  .goal-main > :has(+ .steer-console) { margin-bottom: var(--sp-6); }
+}
+/* A half-screen window: the rail folds under the main column (its own rule follows the rail's base rule below), and
+   the steer box comes after it, at the foot of the page as before: the main column's blocks and the rail stand in
+   one column, the box last. */
 @media (max-width: 1280px) {
   .goal-body {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
   }
+  .goal-main { display: contents; }
+  .goal-main > .steer-console { order: 1; }
+  .goal-body:has(.steer-console) > .goal-rail { margin-bottom: var(--sp-6); }
   .goal-rail {
     position: static;
     max-height: none;
@@ -5221,9 +5251,12 @@ input[type="radio"] {
 }
 
 /* Inside the verification sheet the strip is a reading among readings: shorter. */
-.verify-item .look-img,
-.verify-item .look-missing {
+.verify-item .look-img {
   height: 72px;
+}
+.verify-item .look-missing {
+  width: calc(72px * 16 / 10);
+  min-height: 72px;
 }
 .verify-item .look-img {
   max-width: 120px;
@@ -5236,15 +5269,25 @@ input[type="radio"] {
   outline-offset: 1px;
   border-radius: var(--radius-s);
 }
+/* A side that is missing says why in the frame its capture would have had (the desktop's 16:10 at the strip's height,
+   the width a waiting thumbnail holds), so a strip of one picture and one gone reads as a pair (review 18, record
+   only: 175 and 140 wide beside 152). Longer words wrap, and a long reason makes the frame taller, never wider. The
+   phone's frame is too narrow for a sentence: there the words keep their own width. */
 .look-missing {
   display: flex;
   align-items: center;
-  height: 96px;
-  min-width: 140px;
-  max-width: 220px;
-  padding: 0 10px;
+  box-sizing: border-box;
+  width: calc(96px * 16 / 10);
+  min-height: 96px;
+  padding: 6px 10px;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-s);
+  overflow-wrap: anywhere;
+}
+.look-phone .look-missing {
+  width: auto;
+  min-width: 140px;
+  max-width: 220px;
 }
 .look-panel {
   width: min(1120px, 94vw);
@@ -5281,7 +5324,8 @@ input[type="radio"] {
   object-position: top left;
 }
 .look-side .look-missing {
-  height: 120px;
+  min-height: 120px;
+  width: calc(120px * 16 / 10);
 }
 /* Laid over each other: the stage takes the "before" picture's own size (a phone page stands tall in the
    middle, a desktop page runs wide), and the "after" is fitted onto exactly that box, so the two align and

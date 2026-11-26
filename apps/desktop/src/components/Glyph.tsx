@@ -232,7 +232,8 @@ export function NoticeMark(props: { title?: string }) {
   );
 }
 
-/** Something is wrong (the verifier, a sentinel, a failing check): a red disc with a ×. */
+/** Something is wrong by the verifier's own reading (a failure, a sentinel, a block): a red disc with a ×. A failure
+ * only observed (a GitHub check, a merge conflict) is said in ink, never this (docs/12 §12.4.3, review 18). */
 export function DangerMark(props: { title?: string }) {
   return (
     <Mark cls="mark-danger" label={props.title ?? t("common.problem")}>

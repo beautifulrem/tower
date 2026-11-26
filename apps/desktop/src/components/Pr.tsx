@@ -1,13 +1,14 @@
 /**
- * A pull request as GitHub reports it: state and check counts. Red appears
- * only for failing checks, named; the rest is grey. The link opens outside.
+ * A pull request as GitHub reports it: state and check counts. A failing check
+ * is said in ink with a cross, and named; the rest is grey. GitHub's readings
+ * never wear the verifier's colours (docs/12 §12.4.3). The link opens outside.
  */
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Show } from "solid-js";
 
 import type { PrView } from "../gen/PrView";
 import { t } from "../lib/i18n";
-import { DangerMark, Icon } from "./Glyph";
+import { Icon } from "./Glyph";
 
 const stateWordOf = (state: string) => ({ open: t("goal.prOpen"), merged: t("goal.prMerged"), closed: t("goal.prClosed") })[state] ?? state;
 
@@ -54,8 +55,10 @@ export function PrLine(props: { pr: PrView; compact?: boolean; aside?: boolean }
             </span>
           </Show>
           <Show when={s().failed > 0}>
-            <span class="row t1" style={{ gap: "3px" }}>
-              <DangerMark /> {s().failed}
+            {/* GitHub's count too: a failure observed, in ink with a cross (text-1, worth a look), never the red of the
+                verifier's own (docs/12 §12.4.3, review 18). */}
+            <span class="row t1 pr-failed" style={{ gap: "3px" }}>
+              <Icon name="cross" size={10} /> {s().failed}
             </span>
           </Show>
           <Show when={s().pending > 0}>

@@ -147,7 +147,7 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = [], ids
   // (summaries.rs `progress()`): what would have been one is a finding to look at first, never the neutral caveat pill.
   const held = heldOrTampered(cur, sents);
   const cav = held ? "attn" : "obs";
-  if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", t("goal.evRedGreen"), undefined, 1]);
+  if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", t("goal.redToGreen"), undefined, 1]);
   if (cur.passes_with_source_only === true && okC) out.push(["fact", t("goal.evSourceOnly")]);
   else if (cur.passes_with_source_only === false) out.push(["attn", t("goal.dependsOnEditedTests"), undefined, 1]);
   if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk"), undefined, 1]);

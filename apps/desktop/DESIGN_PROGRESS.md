@@ -422,3 +422,23 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   of 50: 660 / 296 / 188 ms against 188 / 161 / 107 ms; switch medians about 66 against 24 ms); line limit; doc numbers;
   `cargo test -p tower-supervisor -p tower-store -p tower-core` 385 passed, 2 ignored, rustfmt; bundle 163,830 /
   163,840 B; detector 19 against 19 on the touched files. Not yet independently re-reviewed.
+- Review 18 — independent reviewer (general-purpose agent, read-only worktree at `54ba274`, ports 1441–1443):
+  **PASS, 8.47 / 10**, no P0, P1 or P2 (`design-evidence/reports/review18.md`). Review 17's P2 and three P3s confirmed
+  fixed. New P3s: the rail's head under the title bar at the end of a short page (from D173), ↩ after ⌘⇧↩ and Esc on
+  line 0, the phone silent beside a command running with a question open, D171's evidence test flaky under load; and
+  thirteen record-only notes. Recorded as D189–D203.
+- Iteration 19 — review 18's four P3s and every record-only note (D189–D203, T157–T168). The steer box ends the main
+  column, so the rail's row runs to the page's foot (D189); focus handed back by a sheet or the window keeps the
+  press, focus from another control or from nowhere goes to the first line (D190); the live line says whether its call
+  is in flight, and the phone and the desk read that (D191, D192); the diff's evidence test waits for text and colours
+  (D193); the shots harness waits for code, the highlighting worker and pictures (D194), which found a slow first
+  highlight cut short and cached for the session, now run again (D195); a dialog whose time runs out closes (D196);
+  docs/12 names the hint mark one way (D197); the dark shimmer fades out instead of leaping to full ink (D198); a
+  missing side keeps its capture's frame (D200); sixteen duplicate keys merged keep the bundle inside its budget
+  (D201); observed failures (GitHub checks, merge conflicts, the sidebar notice) are drawn in ink (D202). Kept by
+  decision: the steer box's width at the fold (D199), the Chinese caveat label's break at its colon (D203). Each fix's
+  test fails on `54ba274`'s sources or a stated mutation (`/tmp/tower-design/iter19/oldsrc/`). Caught at the gates and
+  fixed before commit: the first fold layout (a flex column; a section past the edge, the criteria head at 624 px),
+  the first focus rule (the first Tab on a page no longer reached the first line), the phone's copied rule in
+  `Glyph.test.tsx`. Gates (run alone): tsc; vitest 44 / 252; e2e 415/0 (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter19/allshots`); perf alone (board of 50: 607 / 250 / 187 ms against 178 / 148 / 107 ms; switch medians about 63 against 24 ms); line limit; doc numbers; `cargo test -p tower-supervisor -p tower-store -p tower-core` 388 passed, 2 ignored, rustfmt; bundle 163,802 / 163,840 B. The new dialog test first ran a timed command and missed it once under the full suite's load; its command now runs until the test lets it end (three full flow runs pass, and it still fails with the expiry off). Visual check at DPR 2, light and dark: `/tmp/tower-design/iter19/visual/`. Detector 19 against 19 on the touched UI files, the same findings.
+  Not yet independently re-reviewed.

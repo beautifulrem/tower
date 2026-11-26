@@ -119,7 +119,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                   <h3 class="peek-band-head halt">{t("peek.l1")}</h3>
                   <LiveLine goal={s() as GoalSummary} large />
                   <div class="meta-inline meta halt">
-                    <span class="num t2">{t("goal.runN", { n: Math.max(1, s().run_no) })}</span>
+                    <span class="num t2">{t("live.runN", { n: Math.max(1, s().run_no) })}</span>
                     <span class="t3 num" hidden={!s().rework_cycles}>{t("card.rework", { n: s().rework_cycles, max: s().max_rework })}</span>
                     <code class="code-val t2" hidden={!detail()?.escalated_model}>{detail()?.escalated_model}</code>
                   </div>

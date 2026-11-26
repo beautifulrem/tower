@@ -153,11 +153,11 @@ pub struct Flags {
 
 impl Flags {
     /// The call the run is at work on: the newest still in flight, as a start sets the mode and the live line to the
-    /// call that starts. `log` and `submit` are never work; an `ask_user` whose question is answered no longer waits.
+    /// call that starts. A note, the hand-in and a question (`log`, `submit`, `ask_user`) are never work (review 18).
     fn at_work(&self) -> Option<&ToolCall> {
         self.tools
             .values()
-            .filter(|c| c.tool != "log" && c.tool != "submit" && (c.tool != "ask_user" || !self.dialogs.is_empty()))
+            .filter(|c| !matches!(c.tool.as_str(), "log" | "submit" | "ask_user"))
             .max_by_key(|c| c.started)
     }
 }
@@ -165,7 +165,7 @@ impl Flags {
 /// After a call ends or a question is answered: the mode of the call still at work, and the live line back on it,
 /// or thinking when none is (review 16 and 17: a call ending, or an answer, while another runs set the run to
 /// thinking, and the desk and the phone then read a running command as silence). While a question is open the run
-/// waits on you, whatever starts or ends beside it; the live line still follows the call at work.
+/// waits on you, whatever starts or ends beside it; the live line follows the call at work and says if one runs.
 pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
     let g = &run.goal_id;
     let work = run.flags().at_work().map(|c| LiveLine {
@@ -173,11 +173,13 @@ pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
         action: c.tool.clone(),
         target: crate::summarize::tool_call(&c.tool, &c.args, &run.workspace),
         at: c.at,
+        running: true,
     });
-    if let Some(line) = &work {
-        inner.store(|s| s.set_live_line(g, line))?;
-        inner.mark_dirty(g);
+    match &work {
+        Some(line) => inner.store(|s| s.set_live_line(g, line))?,
+        None => inner.store(|s| s.stop_live_line(g))?,
     }
+    inner.mark_dirty(g);
     let asked = !run.flags().dialogs.is_empty();
     inner.set_mode(g, if asked { Mode::WaitingOnYou } else { work.map_or(Mode::Thinking, |l| l.mode) })
 }

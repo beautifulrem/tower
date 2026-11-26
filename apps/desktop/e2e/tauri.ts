@@ -47,15 +47,30 @@ const LANDMARK: Array<[RegExp, string]> = [
   [/^new/, ".view .editor:not(.contract-skeleton) .clause-head"],
 ];
 
+/** The page's requests still in flight (code loaded on demand, pictures), counted from `openTower` on. */
+const inflight = new WeakMap<Page, Set<object>>();
+
 /**
  * Waits until `route`'s own content is drawn, the fonts are in and every finite animation has run out — instead of a
  * fixed sleep, which is too short on a busy machine and wasted on an idle one. Infinite animations (a live pulse) are
  * left running. Use it before reading layout, running axe, or pressing a view's keys.
+ *
+ * Drawn means no code still loading on demand (the steer box's chunk), no colours still due from the highlighting
+ * worker and every picture in and decoded: twice over, two frames apart, as one load can start the next (review 18,
+ * record only: a shot caught the goal page without its steer box, a look's pictures not yet in, a diff untinted). A
+ * request a test holds back is waited on for 5 s at most, and a picture still loading is not decoded.
  */
 export async function settled(page: Page, route?: string) {
   const landmark = route && LANDMARK.find(([re]) => re.test(route))?.[1];
   if (landmark) await page.locator(landmark).first().waitFor();
+  const frames = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  for (let quiet = 0, end = Date.now() + 5_000; quiet < 2 && Date.now() < end; ) {
+    const idle = !inflight.get(page)?.size && (await page.evaluate(() => !(window as any).__towerBusy?.() && [...document.images].every((i) => i.complete)));
+    quiet = idle ? quiet + 1 : 0;
+    await frames();
+  }
   await page.evaluate(async () => {
+    await Promise.all([...document.images].filter((i) => i.complete).map((i) => i.decode().catch(() => undefined)));
     await document.fonts.ready;
     const finite = document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity);
     await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
@@ -242,9 +257,30 @@ export async function openTower(
         },
       };
       (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+      // The highlighting worker answers each request once: `settled` waits until every request has its answer.
+      const Native = window.Worker;
+      let busy = 0;
+      (window as any).__towerBusy = () => busy;
+      window.Worker = class extends Native {
+        constructor(url: string | URL, opts?: WorkerOptions) {
+          super(url, opts);
+          this.addEventListener("message", () => void busy--);
+        }
+        postMessage(message: unknown, transfer?: any) {
+          busy++;
+          super.postMessage(message, transfer);
+        }
+      };
     },
     [F, route] as const,
   );
+  if (!inflight.has(page)) {
+    const open = new Set<object>();
+    page.on("request", (r) => void open.add(r));
+    page.on("requestfinished", (r) => void open.delete(r));
+    page.on("requestfailed", (r) => void open.delete(r));
+    inflight.set(page, open);
+  }
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => {

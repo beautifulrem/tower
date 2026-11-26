@@ -56,7 +56,12 @@ self.onmessage = async (e: MessageEvent<Request>) => {
       await h.loadLanguage((await load()) as never);
       loaded.add(lang);
     }
-    const { tokens } = h.codeToTokens(code, { lang, theme: "tower" });
+    // Shiki gives a line 500 ms; one that runs over ends there, the rest of it a single token in one colour. On a cold
+    // worker on a busy machine the time goes to compiling the patterns the code reaches, not to the line: a pass that ran
+    // over is run again, warm, so a review's first hunk is not left coarse for the session (review 18, record only).
+    const start = Date.now();
+    let { tokens } = h.codeToTokens(code, { lang, theme: "tower" });
+    if (Date.now() - start > 500) ({ tokens } = h.codeToTokens(code, { lang, theme: "tower" }));
     const out: Tokens = tokens.map((line) => line.map((t) => [t.content, t.color, t.fontStyle]));
     self.postMessage({ id, tokens: out });
   } catch {

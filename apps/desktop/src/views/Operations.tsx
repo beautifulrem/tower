@@ -5,7 +5,7 @@
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 
 import { ALL, DataTable, MeterCell, ProjectFilter, SecHead, SmBtn, inPlace } from "../components/Console";
-import { DangerMark, Icon, LifecycleGlyph, NoticeMark } from "../components/Glyph";
+import { Icon, LifecycleGlyph, NoticeMark } from "../components/Glyph";
 import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
@@ -185,7 +185,8 @@ export function Operations() {
                 </td>
                 <td>
                   <span class="mq-status meta halt" classList={{ t1: entry.status === "conflict", t2: entry.status !== "conflict" }}>
-                    {entry.status === "conflict" && <DangerMark />}
+                    {/* git's word on the merge, observed: ink and a cross, never the verifier's red (docs/12 §12.4.3, review 18). */}
+                    {entry.status === "conflict" && <Icon name="cross" size={10} />}
                     <span>{t(`ops.mq_${entry.status}` as Parameters<typeof t>[0])}</span>
                   </span>
                   {/* Merging cleanly is git's word; whether the pass counts is the verifier's, said beside it. */}

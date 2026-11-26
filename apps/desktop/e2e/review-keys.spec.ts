@@ -188,7 +188,12 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   await page.setViewportSize({ width: 1600, height: 900 });
   await openTower(page, "review/G-0003", { enrich: enrichReview });
   const code = page.locator("tr.dl .code").first();
-  await expect(code).toBeVisible();
+  // Review 18 (R18-P3-04): read once it is rendered, and select once its colours are in. A file's box is
+  // `content-visibility: auto`: the frame it arrives in, before the browser has found it on screen, its text is skipped
+  // (innerText was read empty 4 times in 8); and the colours, when they arrive, draw the line's words anew, which ends
+  // a selection made a moment before.
+  await expect(code).toHaveText(/[^\s+−-]/, { useInnerText: true });
+  await expect(code.locator("span[style*='color']").first()).toBeAttached();
   const text = (await code.innerText()).trim();
   const b = (await code.boundingBox())!;
   const selected = () => page.evaluate(() => getSelection()!.toString().trim());
@@ -215,6 +220,7 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   const long = page.locator("table.diff").filter({ hasText: "Money in whole cents" });
   const rows = long.locator("tr.dl");
   await expect(rows.first()).toBeVisible();
+  await expect(rows.first().locator(".code span[style*='color']").first()).toBeAttached();
   expect(await rows.count()).toBeGreaterThan(4);
   const at = () =>
     page.evaluate(() => {
@@ -249,6 +255,23 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   expect(await sheet.evaluate((d) => d.contains(document.activeElement)), "focus is in the sheet").toBe(true);
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
+  // Review 18 (R18-P3-02): closed, the sheet hands focus back to the table and the line pressed is still your place:
+  // ↩ comments on it and ↓ walks from it (focus had moved to the first line's number, so ↩ commented on line 0).
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".composer textarea")).toBeFocused();
+  expect(
+    await rows.nth(2).evaluate((pressed) => document.querySelector(".composer")!.closest("tr")!.previousElementSibling === pressed),
+    "↩ after the sheet closes comments on the line pressed",
+  ).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".composer")).toHaveCount(0);
+  await pressRow(2);
+  await page.keyboard.press("Meta+Shift+Enter");
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await page.keyboard.press("ArrowDown");
+  expect(await at(), "↓ after the sheet closes walks from the line pressed").toBe(3);
   // What a real ⌘C puts on the clipboard: the page's own text when it writes one, else the browser's (the selection).
   await page.evaluate(() => {
     const w = window as unknown as { copied: string | null; set: string | null };
@@ -290,6 +313,9 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   // Review 17 (R17-P3-01): a drag from one file into the next keeps both files' lines (the page's copy kept only the
   // first file's); in the split view, a drag that starts on an added file's empty side takes the side with the code.
   const next = page.locator("table.diff").filter({ hasText: "function total(" }).locator("tr.dl .code");
+  // (Its box drawn and its colours in first, as above.)
+  await expect(next.first()).toHaveText(/[^\s+−-]/, { useInnerText: true });
+  await expect(next.first().locator("span[style*='color']").first()).toBeAttached();
   await drag(mid((await rows.nth(5).locator(".code").boundingBox())!, 20), mid((await next.first().boundingBox())!, 160));
   const across = await copy();
   expect(across, "the first file's line").toContain("fromCents(");

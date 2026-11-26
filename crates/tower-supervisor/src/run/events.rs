@@ -204,8 +204,12 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             inner.append(g, EventKind::EngineError { message })?;
         }
         PiEvent::AgentSettled { .. } => on_settled(inner, run).await?,
-        // The agent's turn is over: a call it never ended is not running any more.
-        PiEvent::AgentEnd { .. } => run.flags().tools.clear(),
+        // The agent's turn is over: a call it never ended is not running any more, and the live line says so.
+        PiEvent::AgentEnd { .. } => {
+            run.flags().tools.clear();
+            inner.store(|s| s.stop_live_line(g))?;
+            inner.mark_dirty(g);
+        }
         PiEvent::Other { .. } => {}
     }
     Ok(())
@@ -529,10 +533,42 @@ fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<(
         },
     };
     let opened = inner.open_inbox(item)?;
-    run.flags().dialogs.insert(req.id, (opened.id, req.method));
+    run.flags().dialogs.insert(req.id.clone(), (opened.id.clone(), req.method));
     inner.set_mode(g, Mode::WaitingOnYou)?;
     let title = &opened.title;
     inner.toast(g, ToastLevel::Warning, tr!(lang, "{g} 需要你：{title}", "{g} needs you: {title}"));
+    // A dialog with a time limit is answered by Pi itself when the time runs out: the extension's call gets nothing back
+    // and no one is told. Left alone, the question stayed open and the run waited on you for good (review 18, record
+    // only); when the time is up and the question is still open, it is closed as timed out.
+    if let Some(ms) = req.timeout.filter(|ms| *ms > 0) {
+        let (inner, run) = (inner.clone(), run.clone());
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+            if let Err(e) = expire_dialog(&inner, &run, &req.id) {
+                tracing::warn!(goal = %run.goal_id, error = %e, "could not close a timed-out dialog");
+            }
+        });
+    }
+    Ok(())
+}
+
+/// Closes a dialog whose time ran out, unless it was answered (or its run ended) first.
+fn expire_dialog(inner: &Arc<Inner>, run: &Arc<Run>, ui_id: &str) -> Result<()> {
+    let Some((item, _)) = run.flags().dialogs.remove(ui_id) else {
+        return Ok(());
+    };
+    let g = run.goal_id.as_str();
+    let lang = inner.lang();
+    let note =
+        tr!(lang, "（已超时：提问的一方不再等这个回答）", "(timed out: the asker stopped waiting for an answer)");
+    // Answered in the same moment, or withdrawn as the run ended: already closed, nothing to do.
+    if inner.store(|s| s.resolve_inbox(&item, &note)).is_ok() {
+        inner.emit_inbox();
+        inner.emit_goal_now(g);
+    }
+    if run.flags().dialogs.is_empty() && inner.run_of(g).is_some_and(|r| Arc::ptr_eq(&r, run)) {
+        settle_mode(inner, run)?;
+    }
     Ok(())
 }
 

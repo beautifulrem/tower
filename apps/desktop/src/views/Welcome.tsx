@@ -152,7 +152,7 @@ export function Welcome() {
         <h2 class="section-title">{t("welcome.envCheck")}</h2>
         <Check
           ok={piOk()}
-          title={piOk() ? `Pi ${env()?.pi_version ?? ""}` : piIssue() ? envIssueLabel(piIssue()!, env()) : t("welcome.piMissing")}
+          title={piOk() ? `Pi ${env()?.pi_version ?? ""}` : piIssue() ? envIssueLabel(piIssue()!, env()) : t("envIssue.pi_missing")}
           detail={piOk() ? (piNote() ? envIssueLabel(piNote()!, env()) : env()?.pi_path ?? undefined) : state.settings?.engine === "claude-code" ? t("welcome.piNotEngine") : t("welcome.piWhat")}
           fix={piOk() === false ? (fixFor(piIssue()) ?? "npm i -g @earendil-works/pi-coding-agent") : undefined}
         />
@@ -190,7 +190,7 @@ export function Welcome() {
         </Show>
         <Check
           ok={env() ? !!env()!.git_version : null}
-          title={env()?.git_version ?? t("welcome.gitMissing")}
+          title={env()?.git_version ?? t("envIssue.git_missing")}
           fix={env() && !env()!.git_version ? (fixFor(issues().find((i) => i.kind === "git_missing")) ?? "xcode-select --install") : undefined}
         />
         <Check

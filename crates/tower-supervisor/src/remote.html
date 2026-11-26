@@ -283,10 +283,11 @@ const CAVEATS = ["test_machinery", "assertions_unchecked", "flaky"];
 // When the page last heard from a run; a run moves (the desk's labels `moving`) unless it waits on you, is flagged for
 // you, or is silent (the header's hint mark). Nothing turns on a run that is not moving.
 const heardAt = (g) => Math.max(g.updated_at || 0, (g.live_line && g.live_line.at) || 0);
-// A tool in flight keeps a run busy, never silent: the supervisor's mode while one runs is reading, editing or executing
-// (it goes back to thinking when the tool ends), and a full test suite can take minutes without a word (the desk's
-// labels `heartbeatState`). Silent: two minutes with no word and no tool in flight.
-const busy = (g) => g.mode === "reading" || g.mode === "editing" || g.mode === "executing";
+// A tool in flight keeps a run busy, never silent: the supervisor's live line says whether the call it names is still
+// in flight, whatever the run's mode (a command beside an open question is busy too, review 18), and a full test suite
+// can take minutes without a word (the desk's labels `heartbeatState`). Silent: two minutes with no word and no tool in
+// flight.
+const busy = (g) => !!(g.live_line && g.live_line.running);
 const silentRun = (g) => g.state === "running" && !busy(g) && heardAt(g) > 0 && Date.now() - heardAt(g) > 120_000;
 const waits = (g) => g.mode === "waiting_on_you" || !!g.needs_you;
 const moves = (g) => g.state === "running" && !waits(g) && !silentRun(g);
@@ -380,7 +381,7 @@ function gaugesHtml(s) {
   const since = Date.now() - heard;
   // As the desk's heartbeat reads: past 30 s with a tool in flight, of the runs' calls at work the one running longest,
   // and how long (busy, no mark); with none, how long the runs have been quiet, and past two minutes the hint mark.
-  const tool = running.filter((g) => busy(g) && g.live_line).sort((a, b) => a.live_line.at - b.live_line.at)[0];
+  const tool = running.filter(busy).sort((a, b) => a.live_line.at - b.live_line.at)[0];
   if (running.length && heard > 0 && since > 30_000)
     h += tool
       ? `<span class="gauge busy num">${esc(t("toolFor")(tool.live_line.action, dur(Math.max(0, Date.now() - tool.live_line.at))))}</span>`

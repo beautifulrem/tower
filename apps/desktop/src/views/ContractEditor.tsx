@@ -196,7 +196,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         // A draft that failed to save must not be ratified as its old version, nor left behind with your edits.
         if (!(await act(async () => (await api.updateDraft(props.draftId!, title(), contract), true)))) return;
         markSaved();
-        if (ratify) await act(() => api.ratify(props.draftId!), t("contract.ratified"));
+        if (ratify) await act(() => api.ratify(props.draftId!), t("trace.evContractRatified"));
         go({ name: "goal", id: props.draftId });
       } else {
         const g = await act(() => api.createGoal({ project_id: projectId(), title: title().trim() || titleFrom(contract.intent), contract, ratify }));

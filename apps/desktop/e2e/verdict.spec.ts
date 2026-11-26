@@ -487,7 +487,17 @@ test("the title bar says in words how many need you, the Needs you count; a side
   const tel = page.locator(".tel-blocking");
   await expect(tel).toHaveText(/^\s*\d+ needs? you\s*$/);
   const n = (await tel.innerText()).match(/\d+/)![0];
-  await expect(page.locator(".sidebar .side-row").filter({ hasText: "Needs you" }).first().locator(".side-count")).toHaveText(n);
+  const count = page.locator(".sidebar .side-row").filter({ hasText: "Needs you" }).first().locator(".side-count");
+  await expect(count).toHaveText(n);
+  // In ink, as what waits on you is (review 20, record only: a later rule took it back to text-3).
+  const ink = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("span"));
+    probe.style.color = "var(--text-1)";
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  });
+  expect(await count.evaluate((el) => getComputedStyle(el).color)).toBe(ink);
   for (const [row, marks] of await visibleMarks(page.locator(".sidebar .side-goal"))) expect(marks, row).toBeLessThanOrEqual(1);
   // One name, one set: the sidebar's Review queue and the Needs you page's Review queue count the same items.
   const queue = (await page.locator(".sidebar .side-row").filter({ hasText: "Review queue" }).locator(".side-count").innerText()).trim();

@@ -8,7 +8,7 @@
  * board: one goal per row, one changing word per goal. When the word
  * changes it settles in 100ms, the flight board's flap in miniature.
  */
-import { Show, createEffect, on } from "solid-js";
+import { Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import { ago, duration } from "../lib/format";
@@ -62,14 +62,18 @@ export interface LiveDetail {
   code?: { action?: boolean; target?: boolean };
   /** The verified seal replaces the detail (in review, with a pin). */
   seal?: string;
-  /** How long the current run has been going ("running 1h 46m"), on the board. */
+  /**
+   * How long the current run has been going ("running 1h 46m"), on the board: after the run's name, which holds still, and
+   * never after a call, where it would read as the call's own time (review 20: it rode after each call's words and
+   * jumped up to 148px as calls came and went). Always in the detail's tooltip.
+   */
   elapsed?: string;
 }
 
 /** Looks like a path or command: printable ASCII without runs of spaces. */
 const machine = (s: string) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
 
-export function liveDetail(g: GoalSummary): LiveDetail {
+export function liveDetail(g: GoalSummary, lingering = false): LiveDetail {
   if (g.state === "paused" && g.pause_reason) return { action: pauseLabel(g.pause_reason), target: "" };
   if (g.needs_you > 0 && (g.state === "running" || g.state === "accepted")) {
     const item = state.inbox.find((i) => i.goal_id === g.id && i.kind !== "review_ready");
@@ -82,7 +86,9 @@ export function liveDetail(g: GoalSummary): LiveDetail {
   const ran = g.state === "running" && g.run_started_at ? t("live.runningFor", { d: duration(Math.max(0, state.now - g.run_started_at), false) }) : "";
   // The call in flight, or the last one once the run has gone quiet (what it went quiet after). A call that has ended
   // is not what the run is doing: the detail then says which run, and no shimmer runs over a finished command (review 19).
-  if (g.live_line && g.state === "running" && (g.live_line.running !== false || silent(g, state.now))) {
+  // On the board a call that has just ended keeps its words a beat (`lingering`), so a run reading file after file
+  // changes its detail once a call, not twice (review 20).
+  if (g.live_line && g.state === "running" && (g.live_line.running !== false || lingering || silent(g, state.now))) {
     const tool = g.live_line.action;
     const label = toolLabel(tool);
     return {
@@ -94,10 +100,12 @@ export function liveDetail(g: GoalSummary): LiveDetail {
   }
   switch (g.state) {
     case "running":
-      // No tool in flight: the badge already says what kind of step it is; the detail says which run.
+      // No tool in flight: the badge already says what kind of step it is; the detail says which run. A first run is
+      // getting started until its first call, unless it has gone quiet before one (review 20: silent for 22 hours,
+      // "Silent  Getting started").
       return g.mode === "starting"
         ? { action: t("live.starting"), target: g.run_no > 1 ? t("live.runN", { n: g.run_no }) : "", elapsed: ran }
-        : { action: g.run_no > 1 || g.live_line ? t("live.runN", { n: g.run_no }) : t("live.getStarted"), target: "", elapsed: ran };
+        : { action: g.run_no > 1 || g.live_line || silent(g, state.now) ? t("live.runN", { n: g.run_no }) : t("live.getStarted"), target: "", elapsed: ran };
     case "verifying":
       return { action: t("live.criteria"), target: t("live.passedOf", { v: g.progress.verified, m: g.progress.machine }) };
     case "claimed":
@@ -120,11 +128,16 @@ export function liveDetail(g: GoalSummary): LiveDetail {
 }
 
 /**
- * A seal in a narrow cell gives way by measure, never cut: its word first (the badge beside it says the verdict), then
- * the whole seal, as green never stands without the pin it was measured on. What is set aside stays for a screen reader.
+ * A narrow cell gives way by measure, never cut. The run's elapsed time is whole or set aside: cut, "running 21h 3…" read
+ * as another number (review 20, record only); it stays in the tooltip. A seal gives its word first (the badge beside it
+ * says the verdict), then the whole seal, as green never stands without the pin it was measured on. What is set aside
+ * stays for a screen reader.
  */
-const fitSeal = (detail: HTMLElement) =>
+const fitDetail = (detail: HTMLElement) =>
   refit(detail, () => {
+    const time = detail.querySelectorAll(".live-elapsed, .live-elapsed-sep");
+    time.forEach((el) => el.classList.remove("sr-only"));
+    if (detail.scrollWidth > detail.clientWidth + 0.5) time.forEach((el) => el.classList.add("sr-only"));
     const seal = detail.querySelector<HTMLElement>(".seal");
     if (!seal) return;
     const word = seal.querySelector<HTMLElement>(".seal-word");
@@ -135,8 +148,24 @@ const fitSeal = (detail: HTMLElement) =>
     }
   });
 
+/** How long a board row keeps the words of a call that has just ended, unless another starts first. */
+const LINGER = 1000;
+
 export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget?: boolean }) {
-  const d = () => liveDetail(props.goal);
+  const [lingering, setLingering] = createSignal(false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  createEffect(
+    on(
+      () => props.goal.live_line?.running,
+      (running, was) => {
+        clearTimeout(timer);
+        setLingering(!props.large && !!was && !running);
+        timer = setTimeout(setLingering, LINGER, false);
+      },
+    ),
+  );
+  onCleanup(() => clearTimeout(timer));
+  const d = () => liveDetail(props.goal, lingering());
   // The agent at work and moving (labels `moving`, as its mark turns): on the goal in view (the goal page, the peek) its
   // words shimmer (app.css `.live-moving`); a board row keeps still words beside its turning mark, so a board of
   // running goals stays quiet.
@@ -145,7 +174,7 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
     <div class="live-line halt" classList={{ "live-line-large": !!props.large, "live-moving": !!props.large && shimmer() }}>
       <ModeBadge goal={props.goal} />
       {/* The tooltip carries the whole line, for the narrow window where only the verb stays on screen. */}
-      <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(", ") || undefined} ref={fitSeal}>
+      <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(", ") || undefined} ref={fitDetail}>
         <Show
           when={d().seal}
           fallback={
@@ -159,7 +188,7 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
                   {d().target}
                 </span>
               </Show>
-              <Show when={d().elapsed && !props.large}>
+              <Show when={d().elapsed && !props.large && !d().code}>
                 <span class="sep live-elapsed-sep" />
                 <span class="live-elapsed num t3">{d().elapsed}</span>
               </Show>
@@ -177,8 +206,10 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
           when={!silent(props.goal, state.now)}
           fallback={<span class="live-age live-age-silent meta num"><NoticeMark />{t("live.lastMove", { d: ago(livenessOf(props.goal).at, state.now) })}</span>}
         >
+          {/* A call at work: since it started. Ended, the line names the run, and the time is its last movement, not when the
+              finished call began (review 20, record only). */}
           <Show when={props.goal.live_line}>
-            <span class="live-age meta num">{ago(props.goal.live_line!.at, state.now)}</span>
+            {(l) => <span class="live-age meta num">{ago(l().running === false ? livenessOf(props.goal).at : l().at, state.now)}</span>}
           </Show>
         </Show>
       </Show>

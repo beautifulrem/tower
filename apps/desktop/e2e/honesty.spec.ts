@@ -204,6 +204,16 @@ for (const lang of ["en", "zh-CN"] as const)
     await settled(page, "goal/G-0003");
     const c1 = page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C1$/ }) }).first();
     await expect(c1.locator(".ev-strip .ev-pill")).toHaveCount(6);
+    // D217 (review 19, the owner's view: three rings of amber in two lines): a tag is its tone's ground and ink words,
+    // with no hairline, inset ring or outline of its tone around it; the row's mark says the tone.
+    const tags = await c1.locator(".ev-pill-attn, .ev-pill-danger").evaluateAll((ps) =>
+      ps.map((p) => {
+        const s = getComputedStyle(p);
+        return [s.boxShadow, s.borderTopStyle, s.outlineStyle, s.backgroundColor !== "rgba(0, 0, 0, 0)"];
+      }),
+    );
+    expect(tags.length).toBeGreaterThan(1);
+    for (const tag of tags) expect(tag).toEqual(["none", "none", "none", true]);
     let wrapped = 0;
     for (let w = 1040; w <= 1800; w += 8) {
       await page.setViewportSize({ width: w, height: 900 });

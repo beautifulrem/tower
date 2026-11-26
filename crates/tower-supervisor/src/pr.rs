@@ -73,7 +73,7 @@ pub async fn push(inner: &Arc<Inner>, goal: &str, open_pr: bool) -> Result<Optio
             ));
         }
         body.push_str(&format!(
-            "\n<sub>Tower goal {} · verified snapshot {}</sub>\n",
+            "\n<sub>Tower goal {}, verified snapshot {}</sub>\n",
             rec.id,
             rec.verified_pin.clone().unwrap_or_default()
         ));

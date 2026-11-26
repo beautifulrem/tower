@@ -30,4 +30,14 @@ describe("the live line's detail", () => {
   it("is getting started before any call", () => {
     expect(words(goal(null))).toEqual(["Getting started", ""]);
   });
+  // Review 20 (record only): silent for 22 hours with no call yet, it read "Silent  Getting started".
+  it("says which run, not getting started, once a run with no call yet has gone quiet", () => {
+    expect(words(goal(null, 300))).toEqual(["Run 1", ""]);
+  });
+  // Review 20 (R20-P3-02): on the board a call that has just ended keeps its words a beat, so a run reading file after
+  // file changes its detail once a call.
+  it("keeps a call's words while it lingers on the board", () => {
+    const lingering = liveDetail(goal(false), true);
+    expect([lingering.action, lingering.target]).toEqual(["bash", "pnpm test --filter checkout"]);
+  });
 });

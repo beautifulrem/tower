@@ -301,7 +301,18 @@ pub fn answer_dialog(inner: &Arc<Inner>, goal: &str, ui_id: &str, response: &str
             "The agent is no longer running; this question has expired"
         ))
     })?;
-    let method = run.flags().dialogs.remove(ui_id).map(|(_, m)| m).unwrap_or_else(|| "input".into());
+    // Under the mode's lock, which a question holds from its inbox item to its dialog: the dialog is found whenever the
+    // question could be answered (review 20). One not found is not sent as text to a dialog the engine may never have
+    // opened, or already let go.
+    let mode = run.lock_mode();
+    let Some((_, method)) = run.flags().dialogs.remove(ui_id) else {
+        tracing::warn!(goal, ui_id, "an answer found no open dialog");
+        return Err(invalid(tr!(
+            inner.lang(),
+            "Agent 已不再等这个问题的回答",
+            "The agent is no longer waiting for an answer to this question"
+        )));
+    };
     let answer = match method.as_str() {
         "confirm" => UiAnswer::Confirmed(
             matches!(Choice::parse(response), Some(Choice::Yes | Choice::Allow)) || response.trim() == "true",
@@ -311,10 +322,13 @@ pub fn answer_dialog(inner: &Arc<Inner>, goal: &str, ui_id: &str, response: &str
     };
     // Answered: back to the call still at work, if one runs beside the question (review 17), else thinking. Written
     // before the answer goes, so what the engine does with it (a call ending at once) is always recorded after it:
-    // sent first, a call that ended in the meantime was skipped over (iteration 20, one flow run in ten). The answer
-    // goes even if the mode could not be written: Pi is waiting on it.
-    let settled = if run.flags().dialogs.is_empty() { crate::run::settle_mode(inner, &run) } else { Ok(()) };
+    // sent first, a call that ended in the meantime was skipped over (iteration 20, one flow run in ten). The lock is
+    // held until the answer is sent, so a call that ends in between waits for both (review 20). The answer goes even
+    // if the mode could not be written: Pi is waiting on it.
+    let settled = if run.flags().dialogs.is_empty() { crate::run::settle_held(inner, &run, &mode) } else { Ok(()) };
     run.engine.answer(ui_id, &answer)?;
+    crate::run::between(&run, "answer-sent");
+    drop(mode);
     settled
 }
 

@@ -433,7 +433,10 @@ impl Store {
                             }
                         });
                         let evidence = match (consistency, evidence) {
-                            (Consistency::CannotConfirm, Some(e)) => Some(format!("{e} · {admits_note}")),
+                            (Consistency::CannotConfirm, Some(e)) => Some(match lang {
+                                Lang::Zh => format!("{e}；{admits_note}"),
+                                Lang::En => format!("{e}. {admits_note}"),
+                            }),
                             (Consistency::CannotConfirm, None) => Some(admits_note.to_string()),
                             (_, e) => e,
                         };

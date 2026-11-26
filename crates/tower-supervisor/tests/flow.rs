@@ -1355,10 +1355,14 @@ async fn blocking_items_are_pushed_to_the_configured_topic() {
 async fn verification_leaves_nothing_running() {
     let h = harness("pass").await;
     let mut c = contract();
+    // A length of this run's own, so a process from another run of the suite (another checkout's, at the same time) is
+    // never counted as this one's (review 20, record only).
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos();
+    let mark = format!("4321.{}{nanos}", std::process::id());
     c.criteria[0].kind = CriterionKind::Exec {
-        command:
-            "(perl -e 'use POSIX; setsid(); exec \"sleep\", \"4321\"' >/dev/null 2>&1 &) ; sleep 1; test -f done.txt"
-                .into(),
+        command: format!(
+            "(perl -e 'use POSIX; setsid(); exec \"sleep\", \"{mark}\"' >/dev/null 2>&1 &) ; sleep 1; test -f done.txt"
+        ),
         timeout_secs: 30,
     };
     let id = create_with(&h, c).await;
@@ -1366,7 +1370,7 @@ async fn verification_leaves_nothing_running() {
     assert_eq!(g.state, LifecycleState::InReview);
     tokio::time::sleep(Duration::from_millis(300)).await;
     let ps = Command::new("/bin/ps").args(["-axww", "-o", "command="]).output().unwrap();
-    let left = String::from_utf8_lossy(&ps.stdout).lines().filter(|l| l.trim() == "sleep 4321").count();
+    let left = String::from_utf8_lossy(&ps.stdout).lines().filter(|l| l.trim() == format!("sleep {mark}")).count();
     assert_eq!(left, 0, "a process from the verification survived it");
 }
 

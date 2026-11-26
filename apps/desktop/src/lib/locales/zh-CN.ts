@@ -249,7 +249,7 @@ export const zh = {
     queued: "排队",
     waitingSlot: "等待执行槽位",
     unratified: "合同未批准",
-    runningFor: "已运行 {d}",
+    runningFor: "已进行 {d}",
     lastMove: "最后动静 {d}",
   },
   trace: {

@@ -192,6 +192,17 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T179 The gates run what CI runs | D215 | — | workspace clippy and tests | gates | Done (iteration 20) |
 | T180 Inside the budget | D216 | — | twenty-nine duplicate keys merged | `bundle-budget.sh` | Done (iteration 20) |
 | T181 Quieter held tags | D217 | — | a tag is its tone's ground, no hairline | visual check; `honesty.spec.ts` | Done (iteration 20) |
+| T182 A question and its dialog in one step | D218 | — | the inbox item, the dialog and the mode under the lock; an answer with no dialog refused | `asks.rs`; `mut/p`, `mut/i`; the flow suite ×20 | Done (iteration 21) |
+| T183 A board row that holds still | D219 | — | a call's words linger a second; the elapsed time after the run's name only | `Live.test.tsx`, `flows.spec.ts`; fails on `b6baa8a` | Done (iteration 21) |
+| T184 A ring clear of the digits | D220 | — | the button is the whole number cell | `review-keys.spec.ts`; fails on `b6baa8a` | Done (iteration 21) |
+| T185 A missing side's code whole | D221 | — | no break inside `::` `://`; five lines in the strip; `_` holds side by side | `flows.spec.ts`; fails on `b6baa8a` | Done (iteration 21) |
+| T186 The run named once, and not "getting started" when quiet | D224, D225 | — | the header leaves the run to the live line; "已进行"; the board's time whole or set aside; a quiet first run is "Run 1" | `flows.spec.ts`, `Live.test.tsx`; fails on `b6baa8a` | Done (iteration 21) |
+| T187 Counts that wait on you in ink | D226 | — | `.side-count.t1` is text-1 | `verdict.spec.ts`; fails on `b6baa8a` | Done (iteration 21) |
+| T188 The docs say when the detail names the run | D227 | — | DESIGN.md, docs/04, D206's words | reading | Done (iteration 21) |
+| T189 Every mode write under the lock, none after a stop | D229, D234 | — | a new turn, compaction, retry and the first message settle under the lock; a stopping run writes no mode | `asks.rs`, `run/mod.rs`; `mut/j`, `k`, `launch-dialogs`, `stop-guard` | Done (iteration 21) |
+| T190 Middle dots only where the rule allows | D230 | — | supervisor strings drop `·`; the pips' criteria scale and the held-out format kept | Rust tests | Done (iteration 21) |
+| T191 Tests that hold the orders they claim | D231, D232, D233 | — | a test step between two writes; a run's own sleep; the highlighter as Shiki made it; the held tags' rings | `mut/f`, `g`, `h`; `oldsrc/d207-worker`, `d217-chips` | Done (iteration 21) |
+| T192 Inside the budget | D235 | — | the icons as markup strings | `bundle-budget.sh` | Done (iteration 21) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

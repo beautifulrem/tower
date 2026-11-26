@@ -14,13 +14,16 @@ impl Run {
     /// it, never between the call's start and its entry among the calls in flight (review 19: the settle found no call
     /// at work, and the run read as thinking, then silent, while a command ran).
     pub(crate) fn lock_mode(&self) -> MutexGuard<'_, ()> {
-        self.mode_lock.lock().unwrap_or_else(PoisonError::into_inner)
+        let held = self.mode_lock.lock().unwrap_or_else(PoisonError::into_inner);
+        between(self, "mode-held");
+        held
     }
 }
 
 /// A point between two writes that are seen together, under the mode's lock: a call's start and its entry among the
-/// calls in flight, a question and its dialog, an answer's mode and the answer itself. A test runs a step of its own
-/// here, to try to come between them; elsewhere it does nothing.
+/// calls in flight, a question and its dialog, an answer's mode and the answer itself; and the moment the lock is taken
+/// (`mode-held`), for a test to see whether it was let go and taken again between two such writes. A test runs a step of
+/// its own here, to try to come between them or to note what happened; elsewhere it does nothing.
 #[cfg(not(test))]
 #[inline(always)]
 pub(crate) fn between(_run: &Run, _point: &str) {}
@@ -80,7 +83,7 @@ pub(super) fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) 
         if req.method == "notify"
             && let Some(m) = req.message.filter(|m| !m.is_empty())
         {
-            inner.append(g, EventKind::Note { text: m })?;
+            inner.append(g, EventKind::Note { text: m, tower: false })?;
         }
         return Ok(());
     }
@@ -158,14 +161,12 @@ pub(super) fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) 
         // paused goal waiting on you, with an item to answer for a run that was gone). Once the engine is shut down there
         // is no one to tell, and that is no error. The trace keeps that it was asked, and that Tower closed it (review
         // 23, record only: nothing showed it had ever been asked).
-        let stopping = run.flags().stopping.is_some();
-        between(run, "stop-checked");
-        if stopping {
+        if stop_checked(run) {
             let _ = run.engine.answer(&req.id, &tower_pi::UiAnswer::Cancelled);
             let what = &item.title;
             let text =
-                tr!(lang, "Tower 取消了“{what}”：运行正在停止", "Tower cancelled “{what}”: the run was stopping");
-            inner.append(g, EventKind::Note { text })?;
+                tr!(lang, "Tower 取消了“{what}”：运行正在停止", "Tower cancelled “{what}”: The run was stopping");
+            inner.append(g, EventKind::tower_note(text))?;
             return Ok(());
         }
         let opened = inner.open_inbox(item)?;
@@ -192,6 +193,15 @@ pub(super) fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) 
     Ok(())
 }
 
+/// Whether the run is stopping, for a dialog about to open: read under the mode's lock its caller holds. The read and
+/// the point a test comes in at are one step, so the read cannot leave the lock without the point (review 24, record 8:
+/// with the point a line below the read, the read alone moved out of the lock still passed the test).
+fn stop_checked(run: &Run) -> bool {
+    let stopping = run.flags().stopping.is_some();
+    between(run, "stop-checked");
+    stopping
+}
+
 /// When a dialog Pi gives up on after `ms` is closed: a tenth sooner, a second at most (see `on_ui_request`).
 fn closes_after(ms: u64) -> Duration {
     Duration::from_millis(ms - (ms / 10).min(1_000))
@@ -208,7 +218,7 @@ fn expire_dialog(inner: &Arc<Inner>, run: &Arc<Run>, ui_id: &str) -> Result<()> 
     let lang = inner.lang();
     let note =
         tr!(lang, "（已超时：提问的一方不再等这个回答）", "(timed out: the asker stopped waiting for an answer)");
-    let why = tr!(lang, "已超时，提问的一方不再等这个回答", "It timed out; the asker stopped waiting for an answer");
+    let why = tower_core::i18n::timed_out_why(lang);
     if inner.store(|s| s.close_inbox(&item, &note, Some(&why))).is_err() {
         return Ok(());
     }
@@ -224,6 +234,7 @@ fn expire_dialog(inner: &Arc<Inner>, run: &Arc<Run>, ui_id: &str) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use std::sync::LazyLock;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc as sync_mpsc;
 
     use serde_json::json;
@@ -601,6 +612,24 @@ done"#;
         }
     }
 
+    /// Review 24 (record only 1): Tower's own notes carry its mark in the trace. A `notify` is the engine's (Pi, or an
+    /// extension it loaded), however it is worded: its note is never written as Tower's.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_engines_notify_is_never_towers_note() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        let said = "Tower closed “Deploy?”: The run stopped";
+        let req = serde_json::from_value(json!({"id": "n1", "method": "notify", "message": said})).unwrap();
+        on_ui_request(inner, &run, req).unwrap();
+        let trace = inner.read_store(|s| s.trace(&g, None, 500)).unwrap();
+        let notes: Vec<(String, bool)> = trace
+            .into_iter()
+            .filter_map(|e| if let EventKind::Note { text, tower } = e.event { Some((text, tower)) } else { None })
+            .filter(|(text, _)| text == said)
+            .collect();
+        assert_eq!(notes, [(said.to_string(), false)]);
+    }
+
     /// An approval of the tower-goal extension's, for `command`.
     fn approval(id: &str, command: &str) -> UiRequest {
         let payload = json!({"tower": "approval", "tool": "bash", "target": command, "reason": "delete recursively"});
@@ -664,10 +693,10 @@ done"#;
             let trace = inner.read_store(|s| s.trace(g, None, 500)).unwrap();
             trace
                 .into_iter()
-                .filter_map(|e| if let EventKind::Note { text } = e.event { Some(text) } else { None })
+                .filter_map(|e| if let EventKind::Note { text, tower: true } = e.event { Some(text) } else { None })
                 .collect()
         };
-        let said = "Tower cancelled “Approval needed: delete recursively”: the run was stopping";
+        let said = "Tower cancelled “Approval needed: delete recursively”: The run was stopping";
         assert!(notes(inner, &g).iter().any(|n| n == said), "{:?}", notes(inner, &g));
 
         // After the pause has landed and the engine is gone: nothing to tell, nothing opens.
@@ -684,18 +713,29 @@ done"#;
     /// Review 23 (a gap in the tests): the stop's check and the dialog's opening are one step under the mode's lock,
     /// the lock a stop is marked under. A stop that tries to land between them waits, then writes its mode over the
     /// dialog's: the run never reads "needs you" after its stop. Checked outside the lock, the stop landed in between
-    /// and the dialog opened on a stopped run, its mode written last.
+    /// and the dialog opened on a stopped run, its mode written last. Review 24 (record 8): the stop comes in at the
+    /// read itself (`stop_checked`), so a read moved out of the lock takes the point with it; and from the read to the
+    /// opening the lock is held once, never let go and taken again (a read under a hold of its own leaves the same gap).
     #[tokio::test(flavor = "multi_thread")]
     async fn a_stop_cannot_come_between_a_dialogs_check_and_its_opening() {
         let (_tmp, sup, run, _) = running().await;
         let (inner, g) = (&sup.inner, run.goal_id.clone());
         let (done, stopped) = sync_mpsc::channel();
-        let (i2, r2) = (sup.inner.clone(), run.clone());
+        let held_again = Arc::new(AtomicBool::new(false));
+        let (i2, r2, r3, again) = (sup.inner.clone(), run.clone(), run.clone(), held_again.clone());
         at(&run, "stop-checked", move || {
             std::thread::spawn(move || {
                 done.send(settle_on(&i2, &r2, Stop::Pause(PauseReason::Human)).map_err(|e| e.to_string())).unwrap()
             });
             std::thread::sleep(Duration::from_millis(200));
+            at(&r3, "mode-held", move || again.store(true, Ordering::SeqCst));
+        });
+        let again = held_again.clone();
+        at(&run, "dialog-opened", move || {
+            assert!(
+                !again.load(Ordering::SeqCst),
+                "the lock was let go and taken again between the check and the opening"
+            )
         });
         on_ui_request(inner, &run, approval("a1", "rm -rf dist")).unwrap();
         stopped.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();

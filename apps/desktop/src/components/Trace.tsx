@@ -230,6 +230,9 @@ function plainLabel(e: TraceEntry["event"]): string {
 }
 
 const Pin = (p: { sha: string }) => <span class="col-pin"><Icon name="harness" size={10} />@{short(p.sha)}</span>;
+/** A line in Tower's own words (a note of its own, its closing of a card): under Tower's mark, which stands by the first
+ * line of a long one (app.css `.mark-line`). */
+const TowerLine = (p: { text: string }) => <span class="t2 mark-line"><Icon name="harness" size={10} />{p.text}</span>;
 const HumanRow = (p: { stamp: string; cls?: string; children: import("solid-js").JSX.Element }) => (
   <div class={`human-line${p.cls ? ` ${p.cls}` : ""}`}><span class="human-stamp">{p.stamp}</span>{p.children}</div>
 );
@@ -357,7 +360,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       <Icon name={open() ? "caret-down" : "caret-right"} size={10} />
                     </button>
                     {/* The text is for the agent, in its language: the fold says so, so English in a Chinese interface is not a gap. */}
-                    <Show when={open()} fallback={<span class="t3 ellipsis">{c.text.split("\n")[0]} <span class="t4">{t("trace.forAgent")}</span></span>}>
+                    <Show when={open()} fallback={<span class="injected-fold"><span class="t3 ellipsis">{c.text.split("\n")[0]}</span><span class="t4">{t("trace.forAgent")}</span></span>}>
                       <pre class="output-tail">{c.text}</pre>
                     </Show>
                   </div>
@@ -449,14 +452,14 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 const c = x() as Extract<TraceEntry["event"], { kind: "sentinel_hit" }>;
                 return (
                   <div class="col">
-                    <span class="t1 row">{c.severity >= 3 ? <DangerMark /> : <NoticeMark />}{t("trace.sentinel")}<span class="sep" />{c.title}</span>
+                    <span class="t1 mark-line">{c.severity >= 3 ? <DangerMark /> : <NoticeMark />}<span>{t("trace.sentinel")}<span class="sep" />{c.title}</span></span>
                     <span class="meta mono pre">{c.detail}</span>
                   </div>
                 );
               }}
             </Match>
             <Match when={ev().kind === "stalled" && ev()}>
-              {(x) => <span class="t1 row"><NoticeMark /> {t("trace.stalled")}<span class="sep" />{(x() as { detail: string }).detail}</span>}
+              {(x) => <span class="t1 mark-line"><NoticeMark /><span>{t("trace.stalled")}<span class="sep" />{(x() as { detail: string }).detail}</span></span>}
             </Match>
             <Match when={ev().kind === "human_edited" && ev()}>
               {(x) => <HumanRow stamp={t("trace.youEdited")}> <span class="mono t2">{(x() as { files: string[] }).files.join("  ")}</span></HumanRow>}
@@ -501,9 +504,9 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
               }}
             </Match>
             <Match when={ev().kind === "inbox_resolved" && ev()}>
-              {/* Tower's own closing (timed out, withdrawn, replaced) is its note under Tower's mark, as what it injects
+              {/* Tower's own closing (timed out, withdrawn, replaced) is its line under Tower's mark, as what it injects
                   is, never "Your answer" (review 23, record only: a grey sentence with no mark). */}
-              {(x) => ((x() as { auto?: boolean }).auto ? <span class="t2 row"><Icon name="harness" size={10} />{(x() as { response: string }).response}</span> : <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>)}
+              {(x) => ((x() as { auto?: boolean }).auto ? <TowerLine text={(x() as { response: string }).response} /> : <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>)}
             </Match>
             <Match when={ev().kind === "pinned" && ev()}>
               {(x) => {
@@ -517,7 +520,9 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 return <span class="t2">{t("trace.loopbackOpened", { id: c.criterion, why: c.why })}</span>;
               }}
             </Match>
-            <Match when={ev().kind === "note" && ev()}>{(x) => <span class="t2">{(x() as { text: string }).text}</span>}</Match>
+            {/* A note in Tower's own words is under its mark, as its closing of a card is (review 24, record only: "Tower
+                cancelled …" with no mark); one the engine sent (`notify`) is not Tower's, and stays a plain line. */}
+            <Match when={ev().kind === "note" && ev()}>{(x) => ((x() as { tower?: boolean }).tower ? <TowerLine text={(x() as { text: string }).text} /> : <span class="t2">{(x() as { text: string }).text}</span>)}</Match>
             <Match when={(ev() as { kind: string }).kind === "model_escalated" && ev()}>
               {(x) => {
                 const c = x() as unknown as { from_model: string; to_model: string; rework_cycle: number };

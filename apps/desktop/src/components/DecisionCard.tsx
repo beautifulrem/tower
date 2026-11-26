@@ -20,13 +20,14 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
+import { refit } from "../lib/refit";
 import { ago, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
 import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
 import { approves, optionTone, statusWord } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go, goProjectSetting } from "../lib/nav";
-import { act, state, toast } from "../lib/store";
+import { act, drafts, state, toast } from "../lib/store";
 import { Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { Claim, CriteriaBar } from "./HonestyCore";
 import { PrLine } from "./Pr";
@@ -40,18 +41,16 @@ let armTimer: number | undefined;
 export const ARM_MS = 2000;
 const HOUR = 3_600_000;
 
+/** A command's word longer than a row is the row's own text, found by measure: its box, kept to the row's width, runs over
+ * (app.css `.decision-cmd .wl`; review 24, R24-P3-03). */
+const fitWords = (pre: HTMLElement) => {
+  for (const w of pre.querySelectorAll<HTMLElement>(".w")) (w.className = "w"), w.scrollWidth > w.clientWidth + 1 && (w.className = "w wl");
+};
+
 /**
  * Chooses option `index` on an item. Destructive options arm on the first
  * call and send on the second within two seconds. Returns true when sent.
  */
-/**
- * What you typed in a card and have not sent, by goal, kind and words: it outlives the card (another view, or a newer item
- * of the same goal, kind and words that replaced it, D259) while the app is open, and goes once an answer to such an
- * item is sent (review 23, not covered: it went with the card).
- */
-const drafts: Record<string, string> = {};
-const draftOf = (item: InboxItem) => item.goal_id + item.kind + item.subject;
-
 export async function chooseOption(item: InboxItem, index: number, text = ""): Promise<boolean> {
   const option = item.options[index];
   if (option === undefined) return false;
@@ -68,7 +67,7 @@ export async function chooseOption(item: InboxItem, index: number, text = ""): P
   }
   // Assumptions carry the note with either verdict.
   const ok = (await act(() => (item.kind === "assumption" ? api.answerAssumption(item.id, approves(item, index), text.trim()) : api.answer(item.id, option)))) !== undefined;
-  if (ok) delete drafts[draftOf(item)];
+  if (ok) delete drafts[item.id];
   return ok;
 }
 
@@ -100,6 +99,18 @@ export async function snoozeMenu(item: InboxItem) {
 const submitClaim = (item: InboxItem): string | null => item.body.trim() || null;
 
 /** A line that came out of a machine: an installer, a test runner, a path, a command, the sandbox refusing one. */
+/** A question whose first characters are a machine value: the code lies over them, its words set as code and its line
+ * breaks standing for the question's own characters there (the list mark between failing checks, ", " or "、"), and the
+ * question goes on after it. Worked out whole at each read, so a card given a new item starts again from its start. */
+const codeOver = (subject: string, code: string) => {
+  let at = 0;
+  const parts = code.split(/(\n+)/).map((p, i) => {
+    const own = subject.slice(at, (at += p.length));
+    return i % 2 ? own : <span class="code-val">{p}</span>;
+  });
+  return [...parts, subject.slice(at)];
+};
+
 const MACHINE_LINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d|sandbox-exec|[~/][\w@.+-]*(\/[\w@.+-]+)+)/;
 const DENIAL = /deny\(1\)|operation not permitted|\bEPERM\b|\bEACCES\b/i;
 export const isMachineLine = (line: string): boolean => MACHINE_LINE.test(line) || DENIAL.test(line);
@@ -245,7 +256,7 @@ export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPee
 }
 
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean; ref?: (el: HTMLElement) => void }) {
-  const draft = draftOf(props.item);
+  const draft = props.item.id;
   const [text, setText] = createSignal(drafts[draft] || "");
   const [busy, setBusy] = createSignal(false);
   const [leaving, setLeaving] = createSignal(false);
@@ -375,12 +386,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
           <Show when={!(it().kind === "ci_failed" && props.showGoal === false && goal()?.pr)}>
             <p class="decision-question">
               <Show when={it().code} fallback={it().subject}>
-                {(c) => (
-                  <>
-                    {c().split("\n\n").map((n, i) => [i ? ", " : "", <span class="code-val">{n}</span>])}
-                    {it().subject.slice(c().length)}
-                  </>
-                )}
+                {(c) => <>{codeOver(it().subject, c())}</>}
               </Show>
             </p>
           </Show>
@@ -439,12 +445,14 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </Show>
             {/* An approval's block is the command, line for line (review 22, R22-P3-01): each line a box of its own, its
                 words whole (`.w`), so a wrapped part goes on under a hook (app.css `.decision-cmd`) and never reads as a
-                line of the command's own; the text is the command, character for character, newlines and all. A line's
-                first word is its own text, not a box, so one longer than a row hangs under the hook too (R23-P2-01). */}
+                line of the command's own; the text is the command, character for character, newlines and all. A word
+                found longer than a row is the row's own text again (`fitWords`), wherever it stands: it starts in place
+                and fills each row it runs over, under the hook (R23-P2-01: a path or a URL that began a line; R24-P3-03:
+                one after an indent or as a third word went down a row whole and left the row above it blank or short). */}
             <Show when={parts().tail}>
-              <pre class="output-tail decision-tail" classList={{ "decision-cmd": it().kind === "approval" }}>
+              <pre class="output-tail decision-tail" classList={{ "decision-cmd": it().kind === "approval" }} ref={(el) => refit(el, () => fitWords(el), true)}>
                 {it().kind === "approval"
-                  ? parts().tail.split("\n").map((l, i) => [i ? "\n" : "", <span class="tl">{l.split(/(\s+)/).map((w, j) => (j % 2 || !j ? w : w && <span class="w">{w}</span>))}</span>])
+                  ? parts().tail.split("\n").map((l, i) => [i ? "\n" : "", <span class="tl">{l.split(/(\s+)/).map((w, j) => (j % 2 ? w : w && <span class="w">{w}</span>))}</span>])
                   : parts().tail}
               </pre>
             </Show>

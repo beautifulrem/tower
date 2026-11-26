@@ -161,9 +161,7 @@ export function enrichCi(F: F) {
     // The store marks a failing check's name as code (review 23, record only: the preview's card had none, so its name
     // was set in the words' face where the app sets it in mono).
     code: "test (ubuntu-latest, node 22)",
-    body: cn
-      ? "可以把失败的检查和日志发给 Agent：它会在同一个工作区里修复，验证通过后由你再次验收，并推送到同一个 PR。"
-      : "You can send the failing checks and their logs to the agent: it fixes them in the same workspace; once verified, you accept again and push to the same PR.",
+    body: cn ? "Agent 可以在原工作区里修复，验证通过后由你再次验收，并推送到同一个 PR。" : "The agent can fix them in place; once verified, you accept again and push to the same PR.",
     options: cn ? ["把失败发给 Agent 修复", "先不管"] : ["Send the failures to the agent", "Leave it"],
     tones: ["primary", "neutral"],
     allow_text: false,

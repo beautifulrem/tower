@@ -23,10 +23,12 @@ import { Button, Kbd, Overlay } from "./ui";
  * never inside a word (review 19: "CONNECTIO|N_REFUSED") nor between the marks of `::` and `://` (review 20: "net:|:ERR"),
  * in as many lines as the frame holds, and the whole reason is its tooltip. Large, side by side (`wide`), a line holds
  * any code, so a code keeps whole: only an address breaks, after `://` or a `/` (review 21: a nowrap span around `_<wbr>`
- * still broke "ERR_|CONNECTION" in WebKit).
+ * still broke "ERR_|CONNECTION" in WebKit). In the strip on the phone's tab the frame is the box a phone's capture waits
+ * in (`.look-frame`), too narrow for words, and they stand beside it (app.css).
  */
 const Why = (p: { text: string; wide?: boolean }) => (
   <div class="look-missing meta t3" title={p.text}>
+    <i class="look-frame" />
     <span>{p.text.split(p.wide ? /(:\/\/|\/)/ : /(:\/\/|::|[/._:?&=])/).map((s, i) => (i % 2 ? [s, <wbr />] : s))}</span>
   </div>
 );

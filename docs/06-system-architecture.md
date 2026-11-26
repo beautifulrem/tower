@@ -1109,6 +1109,7 @@ Coalescer 位于 Supervisor 中，按“订阅者 × topic”运行。它决定*
 - 迁移前先执行 `VACUUM INTO db-backups/pre-migrate-v<N>.db`。迁移失败时回滚事务，保留备份，应用进入安全模式并提示用户。
 - **防止降级打开**：数据库版本高于当前应用支持的版本时，拒绝写入，以只读模式打开，并提示“请升级 Tower”。
 - **事件 payload 演进**：`events.v` 记录 payload 版本。读取路径上注册 upcaster（`(type, v) → v+1`），**从不改写**历史事件。
+- **唯一的例外**（Rust 实现的迁移 24、25；第 24 轮评审 R24-P3-02）：`inbox_resolved` 起初不记录是不是 Tower 关闭的，旧版 Tower 撤回、替换、超时关闭的项一律记成人的回答。迁移 24 给这些事件补上 `auto`、把来源改为系统，但它只看文字、不分大小写，会把人写的形似回答（“withdrawn: …”“WITHDRAWN: yes”）也算成 Tower 的；迁移 25 把这些还给人，判据是该项自己在 `inbox` 表里的记录：Tower 撤回或替换时在那里写的是带括号的另一种文字（“(withdrawn: …)”“（撤回：…）”），人的回答两处相同；超时只有一句固定的话，逐字比较。两次迁移只改 `source` 与 `auto`，不改文字。旧格式的关闭句（“Withdrawn: The run stopped”）在读取时说成今天的句子（“Tower 关闭了“…”：…”，点出是哪一项，保持写入时的语言——原因里可能有只属于那种语言的内容，如检查名、分支名），日志里的原文不变（`tower-store/src/events.rs` 的 `worded`）。
 - **Pi 会话格式**：Pi 在加载时会自己迁移 v1/v2 会话（`CURRENT_SESSION_VERSION = 3`，pi.md §8.1）。Tower 从不直接改写 JSONL。
 
 ### 6.6.3 备份与导出

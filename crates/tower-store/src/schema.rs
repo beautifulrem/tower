@@ -336,6 +336,8 @@ const MIGRATIONS: &[&str] = &[
     "#,
     // 24: an inbox item Tower closed before the event said so (review 23, record only: an older trace still read "Your
     // answer: Withdrawn: The run stopped"). Its words were Tower's alone: withdrawn, replaced by a newer one, timed out.
+    // So it was meant; matched by words in any case, it also took answers a person wrote like them, which 25 gives back.
+    // The one change made to events already written, with 25 (docs/06 §6.6.2): `source` and `auto`, never the words.
     r#"
     UPDATE events SET source = 'system', payload = json_set(payload, '$.auto', json('true'))
     WHERE kind = 'inbox_resolved' AND json_extract(payload, '$.auto') IS NULL
@@ -344,6 +346,30 @@ const MIGRATIONS: &[&str] = &[
         OR json_extract(payload, '$.response') IN ('Replaced by a newer one', '被更新的一项取代')
         OR json_extract(payload, '$.response') LIKE '(timed out: %'
         OR json_extract(payload, '$.response') LIKE '（已超时：%');
+    "#,
+    // 25: what 24 took from a person goes back (review 24, R24-P3-02). 24 told Tower's closings by their words alone,
+    // and SQLite's LIKE ignores case, so an answer worded like one ("withdrawn: the PR, please redo it", "WITHDRAWN:
+    // yes") became Tower's. The item's own row tells instead: Tower wrote a withdrawal's or a replacement's response
+    // there in brackets ("(withdrawn: …)", "（撤回：…）") and the event's without, while a person's answer is the same in
+    // both; a question that timed out said one sentence, word for word. A closing 24 could have marked that is neither
+    // is a person's again, as it was written. Compared with `=` and `substr`, case and all.
+    r#"
+    UPDATE events SET source = 'human', payload = json_remove(payload, '$.auto')
+    WHERE kind = 'inbox_resolved' AND json_extract(payload, '$.auto') = 1
+      AND (json_extract(payload, '$.response') LIKE 'Withdrawn: %'
+        OR json_extract(payload, '$.response') LIKE '撤回：%'
+        OR json_extract(payload, '$.response') IN ('Replaced by a newer one', '被更新的一项取代')
+        OR json_extract(payload, '$.response') LIKE '(timed out: %'
+        OR json_extract(payload, '$.response') LIKE '（已超时：%')
+      AND json_extract(payload, '$.response') NOT IN
+        ('(timed out: the asker stopped waiting for an answer)', '（已超时：提问的一方不再等这个回答）')
+      AND NOT EXISTS (
+        SELECT 1 FROM inbox i WHERE i.id = json_extract(events.payload, '$.item_id') AND (
+          i.response = '（' || json_extract(events.payload, '$.response') || '）'
+          OR (substr(json_extract(events.payload, '$.response'), 1, 11) = 'Withdrawn: '
+            AND i.response = '(withdrawn: ' || substr(json_extract(events.payload, '$.response'), 12) || ')')
+          OR (json_extract(events.payload, '$.response') = 'Replaced by a newer one'
+            AND i.response = '(replaced by a newer one)')));
     "#,
 ];
 
@@ -427,34 +453,91 @@ mod tests {
         .unwrap();
     }
 
+    /// Runs the migrations up to `n` alone, as a Tower of that schema would have.
+    fn migrate_to(conn: &mut Connection, n: usize) {
+        let current = conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap() as usize;
+        for (i, sql) in MIGRATIONS.iter().enumerate().take(n).skip(current) {
+            conn.execute_batch(sql).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+    }
+
     /// Review 23 (record only): an item Tower closed before its event said so read in an older trace as your answer.
-    /// Opened by this Tower, it is Tower's; what a person answered stays theirs.
+    /// Review 24 (R24-P3-02): 24 gave Tower its closings by their words, in any case, and so took answers a person wrote
+    /// worded like them; 25 gives them back, by the item's own row (Tower wrote a withdrawal's or a replacement's
+    /// response there in brackets; a person's answer is the same in both). Review 24 (record 3): read now, Tower's
+    /// closing says today's sentence, naming the item, in the language it was written in; the log keeps its words.
     #[test]
-    fn an_older_trace_gives_tower_its_own_closings() {
+    fn an_older_trace_gives_tower_its_closings_and_a_person_their_answers() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("tower.db");
         v1_database(&path);
         let conn = Connection::open(&path).unwrap();
-        let said = [
-            "Withdrawn: The run stopped",
-            "撤回：运行已停止",
-            "Replaced by a newer one",
-            "(timed out: the asker stopped waiting for an answer)",
-            "订单号",
-            "Withdrawn",
+        // (the event's response, the item's, `auto` as written, Tower's sentence today; none for a person's answer)
+        let t = |what: &str, why: &str| Some(format!("Tower closed “{what}”: {why}"));
+        let z = |what: &str, why: &str| Some(format!("Tower 关闭了“{what}”：{why}"));
+        let timed_en = "(timed out: the asker stopped waiting for an answer)";
+        let timed_zh = "（已超时：提问的一方不再等这个回答）";
+        let closings: Vec<(&str, &str, bool, Option<String>)> = vec![
+            // An older Tower's, before `auto`: the item's response in brackets, or the one timed-out sentence.
+            ("Withdrawn: The run stopped", "(withdrawn: The run stopped)", false, t("Q0?", "The run stopped")),
+            ("撤回：运行已停止", "（撤回：运行已停止）", false, z("Q1?", "运行已停止")),
+            ("Replaced by a newer one", "(replaced by a newer one)", false, t("Q2?", "A newer one replaced it")),
+            ("被更新的一项取代", "（被更新的一项取代）", false, z("Q3?", "被更新的一项取代")),
+            (timed_en, timed_en, false, t("Q4?", "It timed out; the asker stopped waiting for an answer")),
+            (timed_zh, timed_zh, false, z("Q5?", "已超时，提问的一方不再等这个回答")),
+            // 43576b0's, written with `auto`: 25 leaves them be.
+            ("Withdrawn: Accepted", "(withdrawn: Accepted)", true, t("Q6?", "Accepted")),
+            (timed_en, timed_en, true, t("Q7?", "It timed out; the asker stopped waiting for an answer")),
+            // A person's answers: the same on the item, whatever the words, Tower's own included.
+            ("订单号", "订单号", false, None),
+            ("Withdrawn", "Withdrawn", false, None),
+            ("withdrawn: the PR, please redo it", "withdrawn: the PR, please redo it", false, None),
+            ("WITHDRAWN: yes", "WITHDRAWN: yes", false, None),
+            ("(Timed Out: I was away)", "(Timed Out: I was away)", false, None),
+            ("Withdrawn: I changed my mind", "Withdrawn: I changed my mind", false, None),
+            ("撤回：不需要了", "撤回：不需要了", false, None),
+            ("Replaced by a newer one", "Replaced by a newer one", false, None),
+            (
+                "(TIMED OUT: the asker stopped waiting for an answer)",
+                "(TIMED OUT: the asker stopped waiting for an answer)",
+                false,
+                None,
+            ),
         ];
-        for (i, response) in said.iter().enumerate() {
-            let payload =
-                serde_json::json!({"kind": "inbox_resolved", "item_id": format!("inb_{i}"), "response": response});
+        for (i, (said, kept, auto, _)) in closings.iter().enumerate() {
             conn.execute(
-                "INSERT INTO events (goal_id, at, kind, source, payload) VALUES ('G-0001', ?1, 'inbox_resolved', 'human', ?2)",
-                params![3000 + i as i64, payload.to_string()],
+                "INSERT INTO inbox (id, goal_id, kind, title, body, options, allow_text, urgency, created_at, resolved_at, response)
+                 VALUES (?1, 'G-0001', 'question', ?2, '', '[]', 1, 2, 2500, ?3, ?4)",
+                params![format!("inb_q{i}"), format!("Q{i}?"), 3000 + i as i64, kept],
+            )
+            .unwrap();
+            let mut payload =
+                serde_json::json!({"kind": "inbox_resolved", "item_id": format!("inb_q{i}"), "response": said});
+            if *auto {
+                payload["auto"] = true.into();
+            }
+            conn.execute(
+                "INSERT INTO events (goal_id, at, kind, source, payload) VALUES ('G-0001', ?1, 'inbox_resolved', ?2, ?3)",
+                params![3000 + i as i64, if *auto { "system" } else { "human" }, payload.to_string()],
             )
             .unwrap();
         }
+        // Up to 24 alone, words in any case are Tower's: the person's "WITHDRAWN: yes" was taken.
+        let mut conn = conn;
+        migrate_to(&mut conn, 24);
+        let taken: String = conn
+            .query_row(
+                "SELECT source FROM events WHERE json_extract(payload, '$.response') = 'WITHDRAWN: yes'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(taken, "system", "24 took it; 25 is what gives it back");
         drop(conn);
+
         let s = Store::open(&path).unwrap();
-        let closed: Vec<(String, bool, tower_core::event::Source)> = s
+        let read: Vec<(String, bool, tower_core::event::Source)> = s
             .trace("G-0001", None, 100)
             .unwrap()
             .into_iter()
@@ -465,9 +548,26 @@ mod tests {
             })
             .collect();
         use tower_core::event::Source::{Human, System};
-        let expected: Vec<_> =
-            said.iter().enumerate().map(|(i, r)| (r.to_string(), i < 4, if i < 4 { System } else { Human })).collect();
-        assert_eq!(closed, expected);
+        let expected: Vec<_> = closings
+            .iter()
+            .map(|(said, _, _, today)| match today {
+                Some(today) => (today.clone(), true, System),
+                None => (said.to_string(), false, Human),
+            })
+            .collect();
+        assert_eq!(read, expected);
+        // The log keeps what was written: only `source` and `auto` were ever changed.
+        let kept: Vec<String> = s
+            .conn
+            .prepare(
+                "SELECT json_extract(payload, '$.response') FROM events WHERE kind = 'inbox_resolved' ORDER BY seq",
+            )
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(kept, closings.iter().map(|c| c.0.to_string()).collect::<Vec<_>>());
     }
 
     #[test]

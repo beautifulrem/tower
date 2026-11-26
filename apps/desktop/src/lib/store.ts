@@ -280,6 +280,27 @@ let subscribed: Promise<unknown> | null = null;
 /** What live updates set while the first snapshot was still loading: newer than the snapshot, so it must not overwrite them. */
 const fresh = { goals: new Set<string>(), inbox: false, projects: false };
 
+/**
+ * What you typed in a card and have not sent, by item (`DecisionCard`): it outlives the card (another view) while the app
+ * is open, and goes once an answer to the item is sent. An item that leaves takes it along (answered on the phone,
+ * withdrawn), unless a new item of its goal, kind and words comes in its place in the same update (D259 replaces one so):
+ * that one finds it. Two such items open at once (two dialogs asking the same) each have their own (review 24, record
+ * only 4). Put aside, an item is still open, and so is what you typed in it. Only live updates carry drafts: a card is
+ * first shown after the first snapshot, and a snapshot is loaded again only after it failed (Retry), with none shown.
+ */
+export const drafts: Record<string, string> = {};
+function carryDrafts(now: InboxItem[]) {
+  const was = [...state.inbox, ...state.snoozed];
+  const key = (i?: InboxItem) => i && i.goal_id + i.kind + i.subject;
+  for (const id in drafts)
+    if (!now.some((i) => i.id === id)) {
+      const k = key(was.find((i) => i.id === id));
+      const heir = now.find((i) => key(i) === k && !was.some((w) => w.id === i.id));
+      if (heir) drafts[heir.id] = drafts[id];
+      delete drafts[id];
+    }
+}
+
 function subscribe() {
   if (subscribed) return subscribed;
   subscribed = onUpdate((u) => {
@@ -290,6 +311,8 @@ function subscribe() {
         break;
       case "inbox":
         fresh.inbox = true;
+        // Before the cards: a new one reads its draft as it is made.
+        carryDrafts([...u.items, ...(u.snoozed ?? [])]);
         setState("inbox", reconcile(u.items, { key: "id" }));
         setState("snoozed", reconcile(u.snoozed ?? [], { key: "id" }));
         break;

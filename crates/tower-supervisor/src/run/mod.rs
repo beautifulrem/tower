@@ -583,7 +583,7 @@ async fn start_run_inner(
             "启动期间目标被暂停或放弃，这次运行没有开始",
             "The goal was paused or abandoned while it was starting, so the run did not start"
         );
-        inner.append(goal_id, EventKind::Note { text })?;
+        inner.append(goal_id, EventKind::tower_note(text))?;
         return Ok(());
     }
     launch(inner, &goal, &run, rx, message, &images).await
@@ -704,7 +704,7 @@ async fn setup_workspace(inner: &Arc<Inner>, goal: &tower_store::GoalRecord, ws:
             "准备命令失败，Agent 会在没有它的情况下开始：\n{tail}",
             "The setup command failed; the agent starts without it:\n{tail}"
         );
-        inner.append(&goal.id, EventKind::Note { text })?;
+        inner.append(&goal.id, EventKind::tower_note(text))?;
     }
     Ok(())
 }

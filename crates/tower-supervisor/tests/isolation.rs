@@ -155,7 +155,9 @@ async fn an_agents_background_listener_does_not_outlive_its_run() {
     assert!(!listening(port), "the agent's server outlived its run");
     let trace = h.sup.trace(&id, None, 200).unwrap();
     assert!(
-        trace.iter().any(|e| matches!(&e.event, tower_core::EventKind::Note { text } if text.contains("left running"))),
+        trace.iter().any(
+            |e| matches!(&e.event, tower_core::EventKind::Note { text, tower: true } if text.contains("left running"))
+        ),
         "the trace says what Tower stopped"
     );
     assert!(yours.try_wait().unwrap().is_none(), "your own process keeps running");

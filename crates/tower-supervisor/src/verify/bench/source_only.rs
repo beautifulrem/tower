@@ -71,7 +71,7 @@ impl Bench<'_> {
             first = r.output_tail,
             second = r2.output_tail
         );
-        self.inner.append(self.goal, EventKind::Note { text: note })?;
+        self.inner.append(self.goal, EventKind::tower_note(note))?;
         self.inner.append(
             self.goal,
             EventKind::CriterionFlaky {
@@ -186,7 +186,7 @@ impl Bench<'_> {
             }
             let shown: Vec<&str> = all_restored.iter().take(12).map(String::as_str).collect();
             let more = all_restored.len() - shown.len();
-            let mut list = shown.join(", ");
+            let mut list = shown.join(lang.pick("、", ", "));
             if more > 0 {
                 list.push_str(&tr!(lang, " 等另外 {more} 个", " and {more} more"));
             }
@@ -194,7 +194,7 @@ impl Bench<'_> {
                 lang,
                 "{ids} 只有在 Agent 对源码之外（或内联测试区域）的改动下才通过；这些文件恢复成基线版本后失败：{list}",
                 "{ids} pass only with the agent's changes outside the source code (or inside inline test blocks), and fail with these files as they were on the base: {list}",
-                ids = depends.join(", ")
+                ids = depends.join(lang.pick("、", ", "))
             );
             let hit = sentinel_hit("passes_only_with_non_source_changes", detail, lang);
             append_hit(inner, goal, &hit)?;

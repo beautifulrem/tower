@@ -36,6 +36,67 @@ for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0003", "setti
   });
 }
 
+// The trace scrolls down, never sideways (iteration 25's own finding, before review 25: the folded first line of a
+// message Tower injected ran 73 px past the trace's edge at 1040 px, taking its "for the agent" note out of view, and a
+// hash in a note ran past it at every width). A word with nowhere to break breaks at its line's edge, in every row that
+// carries words from elsewhere: a note, Tower's own line, an answer, what the agent says, claims, is blocked on and
+// submits, an error, a sentinel's finding, a stall and a reopened criterion. A folded message ends in an ellipsis with
+// its note beside it; a row's short cells (a tool's duration) never break for it.
+test("the trace runs down, never sideways, at every desktop width", async ({ page }) => {
+  const token = `sha256:${"0123456789abcdef".repeat(8)}`;
+  await openTower(page, "goal/G-0002", {
+    enrich: (F) => {
+      const t = F["trace-G-0002"] as Array<{ seq: number; at: number }>;
+      const [seq, at] = [t[0].seq, t[0].at];
+      const e = (n: number, source: string, event: object) => ({ seq: seq + n, goal_id: "G-0002", at: at + n * 1000, source, event });
+      t.unshift(
+        e(13, "engine", { kind: "claim", claim_id: "c9", claim: "cause", text: `The lockfile pins ${token}` }),
+        e(12, "engine", { kind: "agent_blocked", reason: `Cannot fetch ${token}`, evidence: `GET ${token} 403` }),
+        e(11, "engine", { kind: "submitted", summary: `Done; the cache key is ${token}` }),
+        e(10, "system", { kind: "engine_error", message: `spawn failed: ${token}` }),
+        e(9, "system", { kind: "sentinel_hit", sentinel: "secrets", severity: 3, title: `A key in ${token}`, detail: `line 3: ${token}` }),
+        e(8, "system", { kind: "stalled", detector: "silence", detail: `No output since ${token}` }),
+        e(7, "system", { kind: "loopback_opened", criterion: "C1", command: "npm test", why: `It read ${token}` }),
+        e(4, "human", { kind: "inbox_resolved", item_id: "y", response: `Use ${token}` }),
+        e(3, "system", { kind: "note", text: `The engine read ${token}` }),
+        e(2, "system", { kind: "note", text: `Tower retried: ${token} could not be read`, tower: true }),
+        e(1, "system", { kind: "inbox_resolved", item_id: "x", response: `Tower closed “${token}”: The run stopped`, auto: true }),
+      );
+    },
+  });
+  await settled(page, "goal/G-0002");
+  await page.keyboard.press("w");
+  await expect(page.locator(".trace-row", { hasText: "Tower retried" })).toBeVisible();
+  const out: string[] = [];
+  let folded = 0;
+  for (const w of [1040, 1240, 1283, 1440, 1800]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const seen = await page.locator(".trace-scroll").evaluate((s) => {
+      const found: string[] = [];
+      if (s.scrollWidth > s.clientWidth + 1) found.push(`it scrolls sideways (${s.scrollWidth} > ${s.clientWidth})`);
+      const edge = s.getBoundingClientRect().right;
+      let cut = 0;
+      for (const f of s.querySelectorAll(".injected-fold")) {
+        const line = f.querySelector(".ellipsis")!;
+        if (line.scrollWidth > line.clientWidth) cut++;
+        const note = f.querySelector(".t4")!.getBoundingClientRect();
+        if (note.width === 0 || note.right > edge + 1) found.push(`a folded message's note is out of view (${Math.round(note.right)} > ${Math.round(edge)})`);
+      }
+      for (const d of s.querySelectorAll(".trace-tool ~ .meta")) {
+        const r = document.createRange();
+        r.selectNodeContents(d);
+        if (new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size > 1) found.push(`a duration on two lines (${d.textContent})`);
+      }
+      return { found, cut };
+    });
+    folded += seen.cut;
+    if (seen.found.length) out.push(`${w}: ${seen.found.join(" | ")}`);
+  }
+  expect(out).toEqual([]);
+  expect(folded, "a folded message long enough to be cut").toBeGreaterThan(0);
+});
+
 // The review header is one line of stats: when they don't fit, a whole stat goes (the least needed first), and no
 // word is cut through its letters ("2 revi") — a clipped word reads as a different word. Nor is a stat's dot left
 // behind at the line's end when the stat after it goes ("观测 0/3 ·"): it reads as a cut.

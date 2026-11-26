@@ -450,6 +450,9 @@ test("a failing GitHub check and a merge conflict are said in ink, never the ver
   const [iconInk, one, danger] = await icon.evaluate((el) => [getComputedStyle(el).color, getComputedStyle(document.documentElement).getPropertyValue("--text-1").trim(), getComputedStyle(document.documentElement).getPropertyValue("--st-danger").trim()]);
   expect(iconInk).not.toBe(danger);
   expect(await page.evaluate(([a, b]) => { const p = document.createElement("i"); document.body.append(p); p.style.color = b; const c = getComputedStyle(p).color; p.remove(); return c === a; }, [iconInk, one])).toBe(true);
+  // Its count too, the conflicts in ink like the mark (review 21, record only: untested).
+  const count = icon.locator("xpath=ancestor::*[contains(@class,'side-row')][1]").locator(".side-count");
+  expect(await count.evaluate((el) => getComputedStyle(el).color)).toBe(iconInk);
 });
 
 // Review 18: reloaded while a command had run for five minutes, the desk had seen no call start and read the run as
@@ -477,7 +480,7 @@ test("reloaded mid-command, the title bar reads the command still running, never
 // and the shimmer ran over the finished command. Ended, the detail says which run (on the board) or how long it has
 // gone (on the goal page, whose header names the run); gone quiet, it keeps the last call.
 test("a call that has ended is not written as what the run is doing; gone quiet, its words stay", async ({ page }) => {
-  const cases = [[true, 20, "bash", "bash"], [false, 20, "running 5m", "Run 1"], [false, 300, "bash", "bash"]] as const;
+  const cases = [[true, 20, "bash", "bash"], [false, 20, "elapsed 5m", "Run 1"], [false, 300, "bash", "bash"]] as const;
   for (const [running, quietFor, onPage, onBoard] of cases) {
     const enrich = (F: Record<string, any>) => {
       const at = Date.now() - quietFor * 1000;
@@ -510,7 +513,7 @@ test("a call that has ended is not written as what the run is doing; gone quiet,
     },
   });
   const line = page.locator(".annunciator .live-line-large");
-  await expect(line.locator(".live-action")).toHaveText("running 30m");
+  await expect(line.locator(".live-action")).toHaveText("elapsed 30m");
   await expect(line.locator(".live-age")).toHaveText("just now");
 });
 
@@ -529,18 +532,26 @@ test("a board row's elapsed time holds still while calls come and go, its detail
     },
   });
   const row = page.locator('.board-rows .g-row[data-goal="G-0002"]');
-  await expect(row.locator(".live-elapsed")).toHaveText(/^running 2h/);
-  await expect(row.locator(".live-detail")).toHaveAttribute("title", /running 2h/);
+  await expect(row.locator(".live-elapsed")).toHaveText(/^elapsed 2h/);
+  await expect(row.locator(".live-detail")).toHaveAttribute("title", /^elapsed 2h/);
   const files = ["src/cart.ts", "src/checkout/total.ts", "test/money.test.ts", "src/money.ts"];
   const samples = await page.evaluate(async (files) => {
     const w = window as any;
     const g0 = w.__towerFixtures.goals.find((g: any) => g.id === "G-0002");
-    const out: { detail: string; time: string | null; left: number | null }[] = [];
+    const out: { detail: string; badge: string; title: string; from: number; time: string | null; left: number | null }[] = [];
     const take = () => {
       const line = document.querySelector('.board-rows .g-row[data-goal="G-0002"] .live-line')!;
       const time = line.querySelector(".live-elapsed") as HTMLElement | null;
+      const detail = line.querySelector(".live-detail")!;
       const words = [".live-action", ".live-target"].map((sel) => line.querySelector(sel)?.textContent ?? "");
-      out.push({ detail: words.filter(Boolean).join(" "), time: time?.textContent ?? null, left: time ? time.getBoundingClientRect().left : null });
+      out.push({
+        detail: words.filter(Boolean).join(" "),
+        badge: line.querySelector(".mode-badge")!.textContent!,
+        title: detail.getAttribute("title") ?? "",
+        from: detail.getBoundingClientRect().left,
+        time: time?.textContent ?? null,
+        left: time ? time.getBoundingClientRect().left : null,
+      });
     };
     // Sampled once the fonts are in: a face swapping in moves the line, and that is not a call coming or going.
     await document.fonts.ready;
@@ -568,6 +579,12 @@ test("a board row's elapsed time holds still while calls come and go, its detail
   for (const s of samples) expect(s.time === null, `${s.detail}: ${s.time}`).toBe(s.detail !== "Run 1");
   const at = samples.filter((s) => s.left !== null).map((s) => Math.round(s.left!));
   expect(new Set(at).size, JSON.stringify(at)).toBe(1);
+  // Review 21 (record only): the row changes as one. While a call's words stay, the badge keeps its mode (it read
+  // "Thinking  read src/…" for a second); the detail starts at one x whichever word the badge says ("Thinking" is wider
+  // than "Working"); and the tooltip puts the run's time with the run's name, never after a command as if it were its own.
+  for (const s of samples) expect(s.badge, s.detail).toBe(s.detail === "Run 1" ? "Thinking" : "Working");
+  expect(Math.max(...samples.map((s) => s.from)) - Math.min(...samples.map((s) => s.from)), "the detail's x").toBeLessThan(0.5);
+  for (const s of samples) expect(s.title, s.detail).toMatch(s.detail === "Run 1" ? /^elapsed 2h \d+m$/ : /^(src|test)\/\S+\nRun 1 elapsed 2h \d+m$/);
 });
 
 // Review 20 (record only): at 1241 the time was cut ("runnin…", "已…"), and in Chinese at 1440 too ("21 小时 3…"), a cut
@@ -589,7 +606,7 @@ for (const lang of ["en", "zh-CN"] as const)
       });
       const detail = page.locator('.board-rows .g-row[data-goal="G-0002"] .live-detail');
       const time = detail.locator(".live-elapsed");
-      await expect(time).toHaveText(lang === "en" ? /^running 21h 33m$/ : /^已进行 21 小时 33/);
+      await expect(time).toHaveText(lang === "en" ? /^elapsed 21h 33m$/ : /^已进行 21 小时 33/);
       const words = (await time.textContent())!;
       const fit = await detail.evaluate((el) => ({
         cut: el.scrollWidth > el.clientWidth + 0.5,
@@ -1336,6 +1353,10 @@ const longWhy = {
   en: "The page did not open: net::ERR_CONNECTION_REFUSED at http://localhost:3000/checkout, still no answer after 60 seconds",
   "zh-CN": "页面没有打开：net::ERR_CONNECTION_REFUSED，http://localhost:3000/checkout 在 60 秒后仍无响应",
 } as const;
+const wideWhy = {
+  en: "The capture waited sixty seconds for the checkout page to load its scripts, its styles, its fonts and its pictures, and stopped on net::ERR_CONNECTION_REFUSED at http://localhost:3000/checkout",
+  "zh-CN": "截图等了六十秒，结账页面的脚本、样式和图片一直没有加载完，开发服务器可能没有启动，或者端口被别的程序占用了，最后停在 net::ERR_CONNECTION_REFUSED，地址是 http://localhost:3000/checkout",
+} as const;
 for (const lang of ["en", "zh-CN"] as const)
   test(`a missing side keeps the picture's frame with a long reason and side by side, words whole, captions level (${lang})`, async ({ page }) => {
     await openTower(page, "goal/G-0001", {
@@ -1386,18 +1407,18 @@ for (const lang of ["en", "zh-CN"] as const)
           return k >= 0 && new Set(chars.slice(k, k + t.length).map(top)).size === 1;
         });
       }, texts);
-    // Each break the reason offers: the characters either side of it, and whether it may break there (`white-space`).
+    // Each break the reason offers: the characters either side of it.
     const breaks = (l: import("@playwright/test").Locator) =>
       l.evaluate((el) => {
         let text = "";
-        const at: { i: number; wraps: boolean }[] = [];
+        const at: number[] = [];
         const walk = (n: Node) => {
           if (n.nodeType === Node.TEXT_NODE) text += n.textContent;
-          else if ((n as Element).localName === "wbr") at.push({ i: text.length, wraps: getComputedStyle(n.parentElement!).whiteSpace !== "nowrap" });
+          else if ((n as Element).localName === "wbr") at.push(text.length);
           n.childNodes.forEach(walk);
         };
         walk(el);
-        return at.map(({ i, wraps }) => ({ pair: text.slice(i - 1, i + 1), wraps }));
+        return at.map((i) => text.slice(i - 1, i + 1));
       });
     const shown = (l: import("@playwright/test").Locator) =>
       l.locator("span").first().evaluate((el) => {
@@ -1431,8 +1452,8 @@ for (const lang of ["en", "zh-CN"] as const)
     expect(await shown(gone), "the code and the address are in the frame").toEqual(expect.stringMatching(/REFUSED.*localhost/s));
     expect(await sameLine(gone, ["net::", "http://"])).toEqual([true, true]);
     const offered = await breaks(gone);
-    expect(offered.filter((b) => /^(::|:\/|\/\/)$/.test(b.pair)), "no break inside :: or ://").toEqual([]);
-    expect(offered.filter((b) => b.pair.startsWith("_")).every((b) => b.wraps), "in the strip a code may break after its _").toBe(true);
+    expect(offered.filter((b) => /^(::|:\/|\/\/)$/.test(b)), "no break inside :: or ://").toEqual([]);
+    expect(offered.filter((b) => b.startsWith("_")).length, "in the strip a code may break after its _").toBeGreaterThan(0);
     const captions = await shots.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(captions[1], "the captions level").toBe(captions[0]);
 
@@ -1447,13 +1468,30 @@ for (const lang of ["en", "zh-CN"] as const)
     expect(Math.abs(mw - bw), `gone ${mw}×${mh} beside the picture ${bw}×${bh}`).toBeLessThanOrEqual(2);
     expect(Math.abs(mh - bh)).toBeLessThanOrEqual(2);
     expect(await wordsWhole(big.nth(1).locator(".look-missing"))).toEqual([]);
-    // Wide, the code is narrower than a line: it keeps whole, never broken at its `_`.
-    expect(await sameLine(big.nth(1).locator(".look-missing"), ["net::ERR_CONNECTION_REFUSED"])).toEqual([true]);
-    const wide = await breaks(big.nth(1).locator(".look-missing"));
-    expect(wide.filter((b) => b.pair.startsWith("_")).length, "the code's _ are there").toBeGreaterThan(0);
-    expect(wide.filter((b) => b.pair.startsWith("_") && b.wraps), "wide, no break after a _").toEqual([]);
     const bigCaptions = await big.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(bigCaptions[1], "the captions level").toBe(bigCaptions[0]);
+    // Wide, a line holds the code: it keeps whole wherever the line ends fall. Review 21: measured on screen, with the
+    // code at the end of a line, it broke after its `_` ("net::ERR_ / CONNECTION_REFUSED") with a nowrap rule in place.
+    // A reason that puts the code near the end of its second line, and a frame narrowing from 532px to 460px, move the
+    // line's end across the whole code.
+    await page.keyboard.press("Escape");
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        enrichLook(F);
+        F["goal-G-0001"].criteria.at(-1).look.pin_error = wideWhy[lang];
+      },
+    });
+    await page.locator(".criterion .look-strip .look-shot .look-img-btn").first().click();
+    await expect(big.nth(1).locator(".look-missing")).toHaveAttribute("title", wideWhy[lang]);
+    const whole: string[] = [];
+    for (let w = 1200; w >= 1040; w -= 2) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      const [code, address] = await sameLine(big.nth(1).locator(".look-missing"), ["net::ERR_CONNECTION_REFUSED", "http://"]);
+      if (!code || !address) whole.push(`${w}: ${code ? "" : "code "}${address ? "" : "://"}`);
+    }
+    expect(whole, "wide, the code and :// whole at every width").toEqual([]);
   });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
@@ -1973,6 +2011,29 @@ test("with held-out tests set, nothing is said about their absence", async ({ pa
   await expect(page.locator("table").first()).toBeVisible();
   await expect(page.locator(".held-out-none")).toHaveCount(0);
 });
+
+// Review 21 (R21-P3-02): the approval's code block read "bash rm -rf dist", a command no one asked to run. The supervisor
+// now sends the command alone (`asks.rs`, tested there) and what it does in words: the card shows them as sent.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`an approval's code block is the command it allows, alone, every line of it (${lang})`, async ({ page }) => {
+    const command = "cd web &&\n  rm -rf dist node_modules/.cache";
+    const reason = lang === "en" ? "delete recursively" : "递归删除";
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        const g = F.goals.find((x: { id: string }) => x.id === "G-0001");
+        F.inbox.push({
+          id: "inbox-approval-G-0001", goal_id: "G-0001", goal_title: g.title, kind: "approval",
+          title: lang === "en" ? `Approval needed: ${reason}` : `需要你批准：${reason}`, subject: reason, body: command,
+          options: lang === "en" ? ["Allow", "Deny"] : ["允许", "拒绝"], tones: ["primary", "destructive"], allow_text: false,
+          created_at: Date.now() - 60_000, urgency: 0, snoozed_until: null,
+        });
+      },
+    });
+    const card = page.locator(".decision").filter({ hasText: reason }).first();
+    await expect(card).toBeVisible();
+    expect(await card.locator(".decision-tail").innerText()).toBe(command);
+  });
 
 test("a sandbox refusal is an environment problem: the card says so before its details with the refused path in view, and the criterion's base line is never red", async ({ page }) => {
   await openTower(page, "goal/G-0004", { enrich: enrichSandboxRefused });

@@ -588,8 +588,8 @@ impl PauseNote {
 pub enum Stall {
     /// No tool call for a while.
     NoProgress { minutes: u64 },
-    /// The same call failed again and again.
-    Repeated { signature: String, times: u32 },
+    /// The same call failed again and again: the tool, and what it was called on (a command, a path).
+    Repeated { tool: String, target: String, times: u32 },
 }
 
 impl Stall {
@@ -598,7 +598,7 @@ impl Stall {
     pub fn encode(&self) -> String {
         match self {
             Stall::NoProgress { minutes } => format!("{}no_progress {minutes}", Self::MARK),
-            Stall::Repeated { signature, times } => format!("{}repeated {times} {signature}", Self::MARK),
+            Stall::Repeated { tool, target, times } => format!("{}repeated {times} {tool} {target}", Self::MARK),
         }
     }
 
@@ -608,8 +608,11 @@ impl Stall {
         match kind {
             "no_progress" => Some(Stall::NoProgress { minutes: rest.parse().ok()? }),
             "repeated" => {
-                let (times, signature) = rest.split_once(' ')?;
-                Some(Stall::Repeated { signature: signature.into(), times: times.parse().ok()? })
+                let (times, call) = rest.split_once(' ')?;
+                let (tool, target) = call.split_once(' ').unwrap_or((call, ""));
+                // Stored before iteration 21 as "bash · npm test".
+                let target = target.strip_prefix("· ").unwrap_or(target);
+                Some(Stall::Repeated { tool: tool.into(), target: target.into(), times: times.parse().ok()? })
             }
             _ => None,
         }
@@ -620,8 +623,12 @@ impl Stall {
             Stall::NoProgress { minutes } => {
                 tr!(lang, "{minutes} 分钟没有任何工具调用", "No tool calls for {minutes} minutes")
             }
-            Stall::Repeated { signature, times } => {
-                tr!(lang, "{signature} 连续失败 {times} 次", "{signature} failed {times} times in a row")
+            // What was run, then the tool that ran it, apart (review 21: "bash npm test failed" ran the two together).
+            Stall::Repeated { tool, target, times } if !target.is_empty() => {
+                tr!(lang, "{target}（{tool}）连续失败 {times} 次", "{target} ({tool}) failed {times} times in a row")
+            }
+            Stall::Repeated { tool, times, .. } => {
+                tr!(lang, "{tool} 连续失败 {times} 次", "{tool} failed {times} times in a row")
             }
         }
     }
@@ -709,10 +716,15 @@ mod tests {
 
     #[test]
     fn stalls_are_put_into_words_on_read() {
-        let s = Stall::Repeated { signature: "bash npm test".into(), times: 3 };
+        let s = Stall::Repeated { tool: "bash".into(), target: "npm test -- --run".into(), times: 3 };
         let back = Stall::decode(&s.encode()).unwrap();
         assert_eq!(back, s);
-        assert_eq!(back.text(Lang::En), "bash npm test failed 3 times in a row");
+        assert_eq!(back.text(Lang::En), "npm test -- --run (bash) failed 3 times in a row");
+        assert_eq!(back.text(Lang::Zh), "npm test -- --run（bash）连续失败 3 次");
+        // As iteration 21 and the iterations before it stored them.
+        for old in ["\u{1f}repeated 3 bash npm test -- --run", "\u{1f}repeated 3 bash · npm test -- --run"] {
+            assert_eq!(Stall::decode(old), Some(s.clone()), "{old}");
+        }
         assert_eq!(
             Stall::decode(&Stall::NoProgress { minutes: 12 }.encode()).unwrap().text(Lang::Zh),
             "12 分钟没有任何工具调用"

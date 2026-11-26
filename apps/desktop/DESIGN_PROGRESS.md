@@ -496,3 +496,32 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   doc numbers; rustfmt, `cargo clippy --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites,
   480 tests, 2 ignored); the flow suite 20 of 20 (50 tests each, with ten CPU burners held for the whole run, one-minute load 17.5–48.7); bundle 163,674 / 163,840 B. Visual check at DPR 2, light and dark, en and
   zh. Detector 16 against 16 on the touched UI files, the same findings. Not yet independently re-reviewed.
+- Review 21 — independent reviewer (general-purpose agent, read-only worktree at `9397e07`, with `b59e68a`, ports
+  1441–1443): **PASS, 8.69 / 10** (8.685), no P0, P1 or P2 (`design-evidence/reports/review21.md`). Review 20's three
+  P3s confirmed fixed. New P3s: side by side a missing side's code still broke after `_`, D221's rule having done
+  nothing in WebKit while its test read the computed style; and an approval's code block read `bash rm -rf …`, a
+  command no one would run, with the stall title gluing the tool to its command (from D230). Fourteen record-only notes,
+  among them a pause beside a settle under way, reproduced with a 400 ms delay, and two of D234's sentences without a
+  test. Recorded as D237–D252, with D221, D227, D230, D233 and D234 corrected.
+- Iteration 22 — review 21's two P3s and every record-only note (D237–D252, T193–T197), and D253 from its own gates
+  (T198). Side by side the missing side's frame breaks only an address, after `://` or a `/`, and the `.u` rule is gone
+  (D237); an approval's code block is the command or path alone, every line, the reason says what it does (a path's
+  now names the write), and the stall title names the command before the tool (D238); the stop is marked under the mode
+  lock, so a settle under way finishes first and a pause beside it has the last word (D239), and `settle_on`'s lock
+  and `report_mode`'s stop guard have a test each (D240). On the board the badge lingers with its call (D242); the
+  tooltip gives the run's name and time their own line (D243); the time reads "elapsed", on the desk and the phone
+  (D244, D248); a starting run and one with no start time are named by their number (D245, D246); the docs say so
+  (D247); the English badge column holds "Thinking" and "Working" (D249); the + clears the ring by 4 px (D250); the
+  conflict count's ink is tested (D251); an evidence line ends on its pin (D252). Kept by stated reason: the answer's
+  lock held to the send, untested (D241). D221, D227, D230, D233 and D234 now say what review 21 found they
+  overstated. Each fix's test fails on `9397e07`'s sources or a stated mutation (`/tmp/tower-design/iter22/oldsrc/`,
+  `mut/`); the clients' approval tests pin that they add nothing to the body (the clients did not change). The gates
+  now run on fixtures dumped from the supervisor under test, as `tools/e2e.sh` makes them; the first run failed one
+  test that named the old dump's revision (D253). Gates: tsc; vitest 45 / 262; e2e 425/0 (76 shot tests skip without
+  SHOTS); shots 69/69 (`/tmp/tower-design/iter22/allshots`); perf alone (board of 50: 862 / 390 / 241 ms against
+  270 / 227 / 180 ms; switch medians about 99 against 36 ms); line limit; doc numbers; rustfmt, `cargo clippy
+  --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites, 485 tests, 2 ignored); the
+  extension's tests (32) and `tools/security-tests.mjs` (118 named tests present); the flow suite 20 of 20 (50 tests
+  each, ten CPU burners held for the whole run, one-minute load 20.3–41.4); bundle 163,722 / 163,840 B. Visual check
+  of the shots at DPR 2, light and dark, en and zh. Detector 17 against 17 on the four touched UI files, the same
+  findings. Not yet independently re-reviewed.

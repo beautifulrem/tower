@@ -230,7 +230,6 @@ export const en: DictNow = {
   },
   live: {
     approval: "Approval",
-    starting: "Starting",
     runN: "Run {n}",
     getStarted: "Getting started",
     criteria: "Criteria",
@@ -243,7 +242,7 @@ export const en: DictNow = {
     queued: "Queued",
     waitingSlot: "Waiting for a run slot",
     unratified: "Contract not approved",
-    runningFor: "running {d}",
+    runningFor: "elapsed {d}",
     lastMove: "last activity {d}",
   },
   trace: {

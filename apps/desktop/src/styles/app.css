@@ -3154,8 +3154,10 @@ input[type="radio"] {
 .col-ln {
   width: 44px;
 }
+/* 24px, the "+" 16px in it: 4px either side, so a ring on the number beside it stands clear of it (review 21, record
+   only: 2px, the two touched). */
 .col-gutter {
-  width: 20px;
+  width: 24px;
 }
 .hunk-head td {
   padding: 4px 12px;
@@ -3183,7 +3185,7 @@ input[type="radio"] {
 .gutter-btn::before {
   content: "";
   position: absolute;
-  inset: -4px -2px;
+  inset: -4px;
 }
 .gutter-btn {
   position: relative;
@@ -4459,6 +4461,11 @@ input[type="radio"] {
 .g-live .live-line {
   grid-template-columns: minmax(3.5em, max-content) minmax(0, 1fr);
 }
+/* In English the badge's column holds "Thinking" and "Working" alike, so a row's detail starts at one x as a call comes
+   and goes (review 21, record only: it moved 1.7px each call). The Chinese words are two characters, inside 3.5em. */
+.g-live .live-line:lang(en) {
+  grid-template-columns: minmax(4.25em, max-content) minmax(0, 1fr);
+}
 .g-crit {
   min-width: 0;
   overflow: hidden;
@@ -5374,9 +5381,6 @@ input[type="radio"] {
 }
 .look-side .look-missing > span {
   -webkit-line-clamp: 8;
-}
-.look-side .look-missing .u {
-  white-space: nowrap;
 }
 /* Laid over each other: the stage takes the "before" picture's own size (a phone page stands tall in the
    middle, a desktop page runs wide), and the "after" is fitted onto exactly that box, so the two align and

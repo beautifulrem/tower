@@ -19,12 +19,13 @@ import { refit } from "../lib/refit";
 import { livenessOf, state } from "../lib/store";
 import { NeedsYouMark, NoticeMark, Seal } from "./Glyph";
 
-export function ModeBadge(props: { goal: GoalSummary }) {
+/** `mode`: the mode a board row holds while a call's words linger (`LiveLine`), so the row changes as one. */
+export function ModeBadge(props: { goal: GoalSummary; mode?: GoalSummary["mode"] }) {
   const attention = () => modeNeedsYou(props.goal.mode) || (props.goal.needs_you > 0 && props.goal.state === "running");
   const isSilent = () => !attention() && silent(props.goal, state.now);
   const text = () => {
     const g = props.goal;
-    if (g.state === "running") return attention() ? modeLabel("waiting_on_you") : isSilent() ? t("chrome.silent") : modeLabel(g.mode);
+    if (g.state === "running") return attention() ? modeLabel("waiting_on_you") : isSilent() ? t("chrome.silent") : modeLabel(props.mode ?? g.mode);
     if (g.state === "verifying") return modeLabel("verifying");
     if (g.state === "paused") return stateLabel("paused");
     return statusWord(g);
@@ -100,13 +101,16 @@ export function liveDetail(g: GoalSummary, lingering = false, large = false): Li
   }
   switch (g.state) {
     case "running":
-      // No tool in flight: the badge already says what kind of step it is; the detail says which run. On the goal page
-      // and the peek (`large`) the header names the run, so the line says how long it has gone: said once (review 20,
-      // record only). A first run is getting started until its first call, unless it has gone quiet before one (review
-      // 20: silent for 22 hours, "Silent  Getting started").
-      return g.mode === "starting"
-        ? { action: t("live.starting"), target: g.run_no > 1 && !large ? t("live.runN", { n: g.run_no }) : "", elapsed: ran }
-        : { action: g.run_no > 1 || g.live_line || silent(g, state.now) ? (large ? ran : t("live.runN", { n: g.run_no })) : t("live.getStarted"), target: "", elapsed: ran };
+      // No tool in flight: the badge already says what kind of step it is, starting included (review 21, record only:
+      // "Starting  Starting"); the detail says which run. On the goal page and the peek (`large`) the header names the
+      // run, so the line says how long it has gone: said once (review 20, record only). A first run is getting started
+      // until its first call, unless it has gone quiet before one (review 20: silent for 22 hours, "Silent  Getting
+      // started").
+      return {
+        action: g.mode === "starting" || g.run_no > 1 || g.live_line || silent(g, state.now) ? (large && ran) || t("live.runN", { n: g.run_no }) : t("live.getStarted"),
+        target: "",
+        elapsed: ran,
+      };
     case "verifying":
       return { action: t("live.criteria"), target: t("live.passedOf", { v: g.progress.verified, m: g.progress.machine }) };
     case "claimed":
@@ -155,6 +159,9 @@ const LINGER = 1000;
 export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget?: boolean }) {
   const [lingering, setLingering] = createSignal(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // While a call's words linger the badge keeps the call's mode, so the row changes as one (review 21, record only:
+  // "Thinking  read src/checkout/tota…" for a second); never "needs you" for a question already answered.
+  const held = () => (lingering() && props.goal.live_line?.mode !== "waiting_on_you" ? props.goal.live_line?.mode : undefined);
   createEffect(
     on(
       () => props.goal.live_line?.running,
@@ -173,9 +180,10 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
   const shimmer = () => props.goal.state === "running" && moving(props.goal, state.now);
   return (
     <div class="live-line halt" classList={{ "live-line-large": !!props.large, "live-moving": !!props.large && shimmer() }}>
-      <ModeBadge goal={props.goal} />
-      {/* The tooltip carries the whole line, for the narrow window where only the verb stays on screen. */}
-      <span class="live-detail ellipsis" title={[d().target, props.large ? "" : d().elapsed].filter(Boolean).join(", ") || undefined} ref={fitDetail}>
+      <ModeBadge goal={props.goal} mode={held()} />
+      {/* The tooltip carries the whole line, for the narrow window where only the verb stays on screen; the run's time on
+          a line of its own, with the run's name, never after a command as if it were the command's (review 21). */}
+      <span class="live-detail ellipsis" title={[d().target, !props.large && d().elapsed && [d().code && t("live.runN", { n: props.goal.run_no }), d().elapsed].filter(Boolean).join(" ")].filter(Boolean).join("\n") || undefined} ref={fitDetail}>
         <Show
           when={d().seal}
           fallback={

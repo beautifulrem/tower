@@ -147,7 +147,10 @@ test("the run pickers keep the points you picked across a refresh and another sc
   const [from, to] = await both();
   expect(from).toBe(run2);
   expect(to).toBe(`No longer listed @${verification.slice(-7)}`);
-  await expect(page.getByRole("combobox", { name: "Compare to" })).toHaveValue(/^gone:15085f2/);
+  // The pin the range ended on, from this dump's own verification: the demo's runs commit at the time they run, so a
+  // fresh dump (`tools/e2e.sh`) has other revisions than the one these lines were first written against.
+  const pin = verification.slice(-7);
+  await expect(page.getByRole("combobox", { name: "Compare to" })).toHaveValue(new RegExp(`^gone:${pin}`));
   // Review 12: in a narrow header the pins go (`short-picks`), but this end's pin is its only name, so it stays.
   await page.setViewportSize({ width: 1100, height: 900 });
   await expect(page.locator(".review-stats")).toHaveClass(/short-picks/);
@@ -181,7 +184,7 @@ test("the run pickers keep the points you picked across a refresh and another sc
   await expect(picks.nth(1)).toHaveAttribute("title", to);
   for (let width = 1040; width <= 1064; width += 4) {
     await page.setViewportSize({ width, height: 900 });
-    expect(await goneFace(picks.nth(1)), `the gone end's face at ${width}`).toMatchObject({ pin: "@15085f2", word: expect.stringMatching(/^(No longer listed|Gone)$/) });
+    expect(await goneFace(picks.nth(1)), `the gone end's face at ${width}`).toMatchObject({ pin: `@${pin}`, word: expect.stringMatching(/^(No longer listed|Gone)$/) });
   }
 });
 

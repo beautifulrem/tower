@@ -18,6 +18,7 @@ import {
 	isAllow,
 	langOf,
 	normalize,
+	TEXT,
 	permissionOutcome,
 	sandboxed,
 	scrubEnv,
@@ -48,6 +49,14 @@ test("writes are fenced by the contract scope", () => {
 	assert.equal(checkWrite(scope, ws, "/w/G-0001/README.md").verdict, "outside_scope");
 	assert.equal(checkWrite(scope, ws, "/w/G-0001/../G-0002/src/a.ts").verdict, "outside_workspace");
 	assert.equal(checkWrite(scope, ws, "/w/G-0001/.git/config").verdict, "outside_workspace");
+});
+
+// Review 21: an approval's code block holds the path alone, so its reason says what the agent asks to do with it.
+test("a path's approval reason names the write it asks for", () => {
+	for (const verdict of ["readonly", "excluded", "outside_scope"] as const) {
+		assert.match(TEXT[verdict].en, /^write to a path /);
+		assert.match(TEXT[verdict].zh, /^写入/);
+	}
 });
 
 test("normalize resolves dot segments", () => {

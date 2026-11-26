@@ -212,7 +212,7 @@ async function mcpServer() {
 		const reason = TEXT[verdict];
 		return (await approve(tool, rel, reason[LANG]))
 			? null
-			: `The human declined: writing ${rel} is not allowed (${reason.en}). Stay inside the contract's scope or ask_user.`;
+			: `The human declined to let you ${reason.en}: ${rel}. Stay inside the contract's scope or ask_user.`;
 	};
 
 	async function call(name: string, args: Json): Promise<{ text: string; error?: boolean; stop?: boolean }> {

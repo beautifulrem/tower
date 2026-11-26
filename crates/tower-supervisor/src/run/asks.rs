@@ -54,6 +54,7 @@ pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
 pub(crate) fn settle_held(inner: &Inner, run: &Run, _mode: &MutexGuard<'_, ()>) -> Result<()> {
     let g = &run.goal_id;
     let stopping = run.flags().stopping.is_some();
+    between(run, "settle-read");
     let work = run.flags().at_work().filter(|_| !stopping).map(|c| LiveLine {
         mode: Mode::for_tool(&c.tool),
         action: c.tool.clone(),
@@ -96,7 +97,9 @@ pub(super) fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) 
                     tr!(lang, "需要你批准：{reason}", "Approval needed: {reason}")
                 },
                 subject: s("reason"),
-                body: format!("{} {}", s("tool"), s("target")),
+                // The code block is the command or the path it allows, whole and alone: the reason says what it does in
+                // words (review 21: "bash rm -rf dist" read as another command).
+                body: s("target"),
                 options: req.options.clone(),
                 allow_text: false,
                 urgency: 0,
@@ -212,7 +215,7 @@ mod tests {
     use tower_pi::PiEvent;
 
     use super::*;
-    use crate::run::events::{on_event, on_tool_start};
+    use crate::run::events::{on_event, on_tool_start, settle_on};
     use crate::run::tests::fake_engine_goal;
 
     type Step = Box<dyn FnOnce() + Send>;
@@ -483,6 +486,96 @@ done"#;
         assert_eq!(mode(inner, &g), Mode::Idle, "{:?}", modes(inner, &g));
         // Idle cleared the live line, and no settle after it put the call back as running.
         assert!(!live(inner, &g).is_some_and(|l| l.running), "{:?}", live(inner, &g));
+    }
+
+    /// Review 21: the approval's code block read `bash rm -rf dist`, a command no one asked to run. It holds the
+    /// command alone, every line of it as the agent wrote it; what the command does is the subject, in words.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_approval_shows_the_command_it_allows_and_nothing_else() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        let command = "cd web &&\n  rm -rf dist node_modules/.cache";
+        let payload = json!({"tower": "approval", "tool": "bash", "target": command, "reason": "delete recursively"});
+        let title = format!("tower:{payload}");
+        let req = json!({"id": "a1", "method": "select", "title": title, "options": ["Allow", "Deny"]});
+        on_ui_request(inner, &run, serde_json::from_value(req).unwrap()).unwrap();
+        let item = inner.read_store(|s| s.open_inbox_items()).unwrap().into_iter().find(|i| i.goal_id == g).unwrap();
+        assert_eq!(
+            (item.kind, item.subject.as_str(), item.body.as_str()),
+            (InboxKind::Approval, "delete recursively", command)
+        );
+    }
+
+    /// Review 21 (record only): a pause landed beside a settle already past its look at `stopping`, and the settle then
+    /// wrote the call's mode and a running live line over the pause's idle. The stop is marked under the mode's lock,
+    /// so a settle under way finishes first, and the pause's idle is the last word.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_pause_beside_a_settle_has_the_last_word() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        on_tool_start(inner, &run, "c1".into(), "bash".into(), json!({"command": "pnpm test"})).unwrap();
+        let (done, paused) = sync_mpsc::channel();
+        let (i2, g2, pump) = (sup.inner.clone(), g.clone(), tokio::runtime::Handle::current());
+        at(&run, "settle-read", move || {
+            let (i3, g3) = (i2.clone(), g2.clone());
+            std::thread::spawn(move || {
+                let r = pump.block_on(crate::control::pause(&i3, &g3, PauseReason::Human, ""));
+                done.send(r.map_err(|e| e.to_string())).unwrap();
+            });
+            // Long enough for the whole pause to land, if nothing holds it back.
+            for _ in 0..75 {
+                if i2.store(|s| s.goal(&g2)).is_ok_and(|r| r.state == LifecycleState::Paused) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        settle_mode(inner, &run).unwrap();
+        paused.recv_timeout(Duration::from_secs(15)).unwrap().unwrap();
+        let rec = inner.store(|s| s.goal(&g)).unwrap();
+        assert_eq!((rec.state, rec.mode), (LifecycleState::Paused, Mode::Idle), "{:?}", modes(inner, &g));
+        assert!(!live(inner, &g).is_some_and(|l| l.running), "{:?}", live(inner, &g));
+    }
+
+    /// The same for a run that settles on its own (submitted, or reporting itself blocked): its stop and its settled
+    /// mode are written under the lock, after a settle under way.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_run_settling_beside_a_settle_stays_settled() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        on_tool_start(inner, &run, "c1".into(), "bash".into(), json!({"command": "pnpm test"})).unwrap();
+        let (done, settled) = sync_mpsc::channel();
+        let (i2, r2, g2) = (sup.inner.clone(), run.clone(), g.clone());
+        at(&run, "settle-read", move || {
+            let i3 = i2.clone();
+            std::thread::spawn(move || {
+                done.send(settle_on(&i3, &r2, Stop::Submitted).map_err(|e| e.to_string())).unwrap()
+            });
+            for _ in 0..50 {
+                if mode(&i2, &g2) == Mode::Settled {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+        settle_mode(inner, &run).unwrap();
+        settled.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+        assert_eq!(mode(inner, &g), Mode::Settled, "{:?}", modes(inner, &g));
+    }
+
+    /// Review 21 (record only): with no question open to hold the mode, what the engine reports for itself after the
+    /// stop (a compaction, a retry) still leaves the stop's mode.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stopped_run_reports_no_mode_of_its_own() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        run.flags().stopping = Some(Stop::Pause(PauseReason::Human));
+        inner.set_mode(&g, Mode::Idle).unwrap();
+        let retry = PiEvent::RetryStart { attempt: 1, max_attempts: 3, error: "overloaded".into() };
+        for e in [PiEvent::CompactionStart, retry] {
+            on_event(inner, &run, e).await.unwrap();
+            assert_eq!(mode(inner, &g), Mode::Idle, "{:?}", modes(inner, &g));
+        }
     }
 
     /// An answer that finds no dialog (its run let it go) is refused, and nothing goes to the engine as text.

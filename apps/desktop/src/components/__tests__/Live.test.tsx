@@ -11,10 +11,10 @@ const { liveDetail } = await import("../Live");
 
 // Review 19 (R19-P3-03): a call that had ended was still written as what the run was doing.
 describe("the live line's detail", () => {
-  const goal = (running: boolean | null, quietFor = 20) => {
+  const goal = (running: boolean | null, quietFor = 20, more: object = {}) => {
     const at = now - quietFor * 1000;
     const line = running === null ? null : { mode: "executing", action: "bash", target: "pnpm test --filter checkout", at, running };
-    return { id: "G-2", state: "running", mode: "thinking", needs_you: 0, run_no: 1, run_started_at: now - 60_000, updated_at: at, live_line: line } as never;
+    return { id: "G-2", state: "running", mode: "thinking", needs_you: 0, run_no: 1, run_started_at: now - 60_000, updated_at: at, live_line: line, ...more } as never;
   };
   const words = (g: never) => [liveDetail(g).action, liveDetail(g).target];
 
@@ -39,8 +39,20 @@ describe("the live line's detail", () => {
   // Review 20 (record only): the goal page said "Run 2" in its header and again on the live line under it. There, and in
   // the peek, the header names the run: the line says how long it has gone.
   it("says how long the run has gone where a header names it", () => {
-    expect([liveDetail(goal(false), false, true).action, liveDetail(goal(null, 300), false, true).action]).toEqual(["running 1m", "running 1m"]);
+    expect([liveDetail(goal(false), false, true).action, liveDetail(goal(null, 300), false, true).action]).toEqual(["elapsed 1m", "elapsed 1m"]);
     expect(liveDetail(goal(true), false, true).action).toBe("bash");
+  });
+  // Review 21 (record only): a run starting read "Starting  Starting" (the badge, then the detail). The badge says it.
+  it("says which run while it starts, once", () => {
+    for (const run_no of [1, 2]) {
+      const g = goal(null, 20, { mode: "starting", run_no });
+      expect([liveDetail(g).action, liveDetail(g).target]).toEqual([`Run ${run_no}`, ""]);
+      expect(liveDetail(g, false, true).action).toBe("elapsed 1m");
+    }
+  });
+  // Review 21 (record only): with no start time the goal page's line was empty, the shimmer over nothing.
+  it("names the run where it cannot say how long it has gone", () => {
+    expect(liveDetail(goal(false, 20, { run_started_at: null }), false, true).action).toBe("Run 1");
   });
   it("keeps a call's words while it lingers on the board", () => {
     const lingering = liveDetail(goal(false), true);

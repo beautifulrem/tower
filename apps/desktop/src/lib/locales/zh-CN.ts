@@ -236,7 +236,6 @@ export const zh = {
   },
   live: {
     approval: "批准",
-    starting: "启动",
     runN: "第 {n} 次运行",
     getStarted: "开始工作",
     criteria: "标准",

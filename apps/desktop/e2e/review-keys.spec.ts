@@ -277,6 +277,15 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   expect(clear.right, JSON.stringify(clear)).toBeGreaterThanOrEqual(2);
   expect(clear.left, JSON.stringify(clear)).toBeGreaterThanOrEqual(2);
   expect(clear.cell, "the button is the whole cell").toEqual([0, 0]);
+  // Review 21 (record only): on the new number, the ring's outer edge touched the comment "+" beside it (2px). It stands
+  // 4px clear, the "+" shown as on hover.
+  // The ring is drawn inside the button's edge (its offset is minus its width), so that edge is the ring's outer one.
+  const plus = await rows.nth(2).evaluate((tr) => {
+    const gutter = tr.querySelector("td.gutter")!;
+    const ln = gutter.previousElementSibling!.querySelector(".ln-btn")!;
+    return gutter.querySelector(".gutter-btn")!.getBoundingClientRect().left - ln.getBoundingClientRect().right;
+  });
+  expect(plus, "the ring stands clear of the +").toBeGreaterThanOrEqual(4);
   // Review 18 (R18-P3-02): closed, the sheet hands focus back to the table and the line pressed is still your place:
   // ↩ comments on it and ↓ walks from it (focus had moved to the first line's number, so ↩ commented on line 0).
   await page.keyboard.press("Enter");

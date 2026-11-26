@@ -34,9 +34,10 @@ export function langOf(code: string | undefined): Lang {
 export const TEXT = {
 	allow: { zh: "允许", en: "Allow" },
 	deny: { zh: "拒绝", en: "Deny" },
-	readonly: { zh: "合同把这个路径设为只读", en: "the contract makes this path read-only" },
-	excluded: { zh: "合同排除了这个路径", en: "the contract excludes this path" },
-	outside_scope: { zh: "这个路径在合同的范围围栏之外", en: "this path is outside the contract's scope fence" },
+	// What the agent asks to do, in words (as the commands' reasons below are): the approval's code block is the path alone.
+	readonly: { zh: "写入合同设为只读的路径", en: "write to a path the contract makes read-only" },
+	excluded: { zh: "写入合同排除的路径", en: "write to a path the contract excludes" },
+	outside_scope: { zh: "写入合同范围围栏之外的路径", en: "write to a path outside the contract's scope fence" },
 } satisfies Record<string, Text>;
 
 /** Whether a dialog answer allows, in either language (the human may have switched). */

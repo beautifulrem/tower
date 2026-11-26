@@ -1,6 +1,6 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, thirty-one local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, thirty-three local commits, nothing pushed, merged or deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -310,36 +310,54 @@ rule applies (D230); the tests hold the orders they claim (D231–D233). From it
 a stop's (D234), and the icons became markup strings to fit the budget (D235). Four notes are kept by stated decision:
 the side-by-side rule (D222), the phone strip's frame width (D223), the merged keys (D228) and where two tests first
 fail on old sources (D236). Each fix's test fails on
-`b6baa8a`'s sources (D217's on `939be97`'s) or a stated mutation. The last acceptance stands on `b6baa8a` (review 20);
-iteration 21 is not yet independently re-reviewed.
+`b6baa8a`'s sources (D217's on `939be97`'s) or a stated mutation.
+
+Review 21 (`9397e07` with `b59e68a`, iteration 21) passed at 8.69 / 10 with no P0, P1 or P2 and two P3s
+(`design-evidence/reports/review21.md`): side by side a missing side's code still broke after `_`, D221's rule doing
+nothing in WebKit while its test read the style (D237); an approval's code block read `bash rm -rf …`, a command no
+one would run, and the stall title glued the tool to its command (D238, from D230). Iteration 22 fixes both and every
+record-only note: the wide frame breaks only an address; the body is the command or path alone and the reason says
+what it does; the stop is marked under the mode lock, so a pause beside a settle has the last word (D239), and the
+two sentences of D234 without a test have one each (D240); on the board the badge lingers with its call (D242), the
+tooltip puts the run's time on its own line (D243), the time reads "elapsed" (D244, D248), a starting run or one with
+no start time is named by its number (D245, D246), the docs say so (D247), the English badge column holds both words
+(D249), the ring clears the + (D250), the conflict count's ink is tested (D251) and the evidence line ends on its pin
+(D252). D241 (the answer's lock held to the send, untested) is kept by stated reason. D221, D227, D230, D233 and D234
+now say what review 21 found they overstated. Each fix's test fails on `9397e07`'s sources or a stated mutation; the
+clients' approval tests pin that they add nothing to the body, since the clients did not change. The last acceptance
+stands on `9397e07` (review 21); iteration 22 is not yet independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 21; the gates run alone):
+At the final commit (iteration 22; the gates run alone, on fixtures dumped from the supervisor under test):
 
-- **Type check and unit tests:** tsc clean; vitest 45 files, 260 tests.
-- **e2e:** Playwright WebKit 423 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+- **Type check and unit tests:** tsc clean; vitest 45 files, 262 tests.
+- **e2e:** Playwright WebKit 425 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
   supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs
-  "Importing a module script failed" lines (twenty-two at iteration 21; twenty-one at iteration 20; fifteen at iteration 19; twelve at iteration 18; eleven at iteration 17; fewer before):
+  "Importing a module script failed" lines (twenty-two at iterations 21 and 22; twenty-one at iteration 20; fifteen at iteration 19; twelve at iteration 18; eleven at iteration 17; fewer before):
   pages left by a test while a view was still loading, and three tests on purpose (a view, the steer box, and the
   Chinese failure that fail to load); no test fails.
-- **Shots:** 69/69 (`/tmp/tower-design/iter21/allshots`); the harness waits for code loaded on demand, the
+- **Shots:** 69/69 (`/tmp/tower-design/iter22/allshots`); the harness waits for code loaded on demand, the
   highlighting worker and pictures (D194), and a shot fails if anything is still drawing at its 15 s cap (D208); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 163,674 / 163,840 B (166 B left), start-up 56,147 / 65,536 B, goal page
-  11,626 / 12,288 B. The budget was never raised. Iteration 17's first build was 163,953 B, over by 113: its own
+- **Bundle:** all interface JS 163,722 / 163,840 B (118 B left), start-up 56,180 / 65,536 B, goal page
+  11,627 / 12,288 B. The budget was never raised. Iteration 17's first build was 163,953 B, over by 113: its own
   additions were rewritten tighter until it fit. Iteration 18's fixes reached 164,051 B: Vite's modulepreload polyfill
   is off (238 B; WebKit preloads modules itself from Safari 17, and on an older one the start-up chunks load when the
   entry imports them, from disk) and an unused component is gone (D184). Iteration 19's reached 163,837 B: sixteen
   keys that said the same thing in both languages became one each (D201). Iteration 20's reached 163,887 B:
   twenty-nine keys that said the same thing as another became one each (D216). Iteration 21's reached 163,890 B: each
   icon is its markup as a string set into one `<svg>`, not a tree of components (D235).
-- **Performance (`perf` project, WebKit, run alone):** passes. A board of 50 goals paints in 888 / 486 / 274 ms
-  against 273 / 275 / 193 ms for the seeded board (medians 486 against 273), inside its 750 ms margin (every row measures
-  its identity column); view switches with 50 goals take 66–133 ms against 25–65 ms, their medians (about 115 against
-  44 ms) inside 150 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
+- **Performance (`perf` project, WebKit, run alone):** passes. A board of 50 goals paints in 862 / 390 / 241 ms
+  against 270 / 227 / 180 ms for the seeded board (medians 390 against 227), inside its 750 ms margin (every row measures
+  its identity column); view switches with 50 goals take 51–114 ms against 20–54 ms, their medians (about 99 against
+  36 ms) inside 150 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
   it off (`design-evidence/reports/iter15-shimmer-cpu.md`; the old shimmer cost 33–38 %).
-- **Rust:** iteration 21 changed the supervisor (D218: a question's inbox item and dialog in one step under the lock,
+- **Rust:** iteration 22 changed the supervisor (D239: the stop marked under the mode lock; D238: an approval's body
+  the command alone, the stall title), the core (D238) and the store (D252), and the extension (D238: a path's reason):
+  rustfmt, workspace clippy and `cargo test --workspace` pass (29 suites, 485 tests, 2 ignored), the extension's 32
+  tests and `tools/security-tests.mjs` pass, and the flow suite passed 20 runs of 20 with ten CPU burners held for the
+  whole run (one-minute load 20.3–41.4). Iteration 21 changed the supervisor (D218: a question's inbox item and dialog in one step under the lock,
   an answer with no dialog refused; D229: every write of the mode beside the engine's events under the lock; D234: none
   over a stop's, and no live line at rest), the core and the store (D230: strings without `·`): rustfmt, workspace clippy and `cargo test
   --workspace` pass (29 suites, 480 tests, 2 ignored), and the flow suite passed 20 runs of 20 with ten CPU burners held for the whole run (one-minute load 17.5–48.7).
@@ -368,6 +386,7 @@ At the final commit (iteration 21; the gates run alone):
   17 against 17 at `2d3eeb8`, the same findings. Iteration 18's 7 changed UI files and the phone page: 19 against 19
   at `f9dd353`, the same findings. Iteration 19's: 19 against 19 at `54ba274`. Iteration 20's 6 changed UI files: 16
   against 16 at `939be97`, the same findings. Iteration 21's 6: 16 against 16 at `b6baa8a`, the same findings.
+  Iteration 22's 4 (the phone page among them): 17 against 17 at `9397e07`, the same findings.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion
   (re-checked for the redesign: the turning marks and the shimmer hold still, `flows.spec.ts`).
@@ -396,8 +415,10 @@ review 15's report), its follow-up `2d3eeb8` (↑↓ in a diff after a press, re
 limit in §15), the iteration-17 commit `f9dd353` (review 16's findings and notes, with review 16's report) and the
 iteration-18 commit `03999c0` (review 17's findings and notes, with review 17's report), its follow-up `54ba274`
 (D186–D188), the iteration-19 commit `939be97` (review 18's findings and notes, with review 18's report), the
-iteration-20 commit `b6baa8a` (review 19's findings and notes, with review 19's report) and the iteration-21 commit
-(review 20's findings and notes, with review 20's report).
+iteration-20 commit `b6baa8a` (review 19's findings and notes, with review 19's report), the iteration-21 commit
+`b59e68a` (review 20's findings and notes, with review 20's report), its follow-up `9397e07` (the header names the
+run, no mode or live line over a stop) and the iteration-22 commit (review 21's findings and notes, with review 21's
+report).
 All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
@@ -425,7 +446,9 @@ record-only notes. Iteration 20 fixed all of them (D204–D213), each with a tes
 a stated mutation, and D214–D217 from its own checks; review 20 passed it and found D218–D220, eleven record-only
 notes and three untested orders. Iteration 21 fixed all of them (D218–D221, D224–D227, D229–D233), each with a test
 that fails on `b6baa8a`'s sources or a stated mutation, kept D222, D223, D228 and D236 by stated decisions, and fixed D234–D235
-from its own reading and gates; not yet re-reviewed.
+from its own reading and gates; review 21 passed it and found D237–D238 and fourteen record-only notes. Iteration 22
+fixed all of them (D237–D240, D242–D252), each with a test that fails on `9397e07`'s sources or a stated mutation,
+and kept D241 by stated reason; not yet re-reviewed.
 What is left:
 
 - **"Busy" has no upper bound (D151).** A run is busy while a tool call is in flight, as the supervisor's live line
@@ -438,9 +461,10 @@ What is left:
   is open the run waits on you, whatever starts or ends beside it (D186), and a question whose time runs out closes
   (D196), a tenth before Pi's own limit (D210). Every write of the mode takes one lock (D204, D229), a question's inbox
   item and its dialog are one step under it (D218), a write the engine's reply could overtake goes before the send
-  (D214), and once a run is stopping nothing writes over the mode it stops on, nor puts up a running live line (D234).
+  (D214), and once a run is stopping nothing writes over the mode it stops on, nor puts up a running live line (D234):
+  the stop itself is marked under the lock, so a settle under way finishes before it (D239).
 
-- **The bundle has 166 B left** (163,674 / 163,840 B). The budget stays; the next change that adds interface code has
+- **The bundle has 118 B left** (163,722 / 163,840 B). The budget stays; the next change that adds interface code has
   to make its own room, as iterations 17 to 21 did.
 - **Merged keys couple meanings (D228).** To fit the budget, keys that said the same thing became one (D201, D216): for
   example `trace.output` and `settings.testCheckOutput`, `sidebar.ended` and `state.archived`, `goal.resume` and

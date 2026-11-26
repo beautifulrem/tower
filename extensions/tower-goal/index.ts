@@ -254,7 +254,7 @@ export default function towerGoal(pi: ExtensionAPI) {
 			);
 			return isAllow(choice)
 				? undefined
-				: { block: true, reason: `The human declined: writing ${rel} is not allowed (${reason.en}). Stay inside the contract's scope or ask_user.` };
+				: { block: true, reason: `The human declined to let you ${reason.en}: ${rel}. Stay inside the contract's scope or ask_user.` };
 		}
 
 		if (name === "bash") {

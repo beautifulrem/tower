@@ -87,7 +87,8 @@ test("decisions that widen what the agent may do are named as desk-only, not off
     state: {
       goals: [],
       inbox: [
-        { id: "a", goal_id: "G-0001", goal_title: "Fix the cart total", kind: "approval", title: "", subject: "rm -rf dist", body: "", options: ["Allow", "Deny"], tones: ["primary", "destructive"], allow_text: false, created_at: Date.now() },
+        // As the supervisor sends it: what the command does in words, the command alone (review 21).
+        { id: "a", goal_id: "G-0001", goal_title: "Fix the cart total", kind: "approval", title: "Approval needed: delete recursively", subject: "delete recursively", body: "rm -rf dist node_modules/.cache", options: ["Allow", "Deny"], tones: ["primary", "destructive"], allow_text: false, created_at: Date.now() },
         { id: "p", goal_id: "G-0002", goal_title: "Align discount rules", kind: "paused", title: "", subject: "Sentinel hit", body: "", options: ["I've checked, go to review", "Have the agent redo it without these changes"], tones: ["destructive", "neutral"], allow_text: false, created_at: Date.now() },
       ],
       lang: "en",
@@ -95,6 +96,7 @@ test("decisions that widen what the agent may do are named as desk-only, not off
   });
   await expect(page.getByRole("button", { name: "Deny" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Allow" })).toHaveCount(0);
+  await expect(page.locator(".tail").first()).toHaveText("rm -rf dist node_modules/.cache");
   await expect(page.locator(".desk").first()).toContainText("At your Mac: Allow");
   await expect(page.getByRole("button", { name: /go to review/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /redo it/ })).toBeVisible();
@@ -291,7 +293,7 @@ test("the phone card is drawn with the desk's pen: a 32px strip with an amber ed
   expect(Math.round(b!.y - (a!.y + a!.height))).toBe(12);
   // How long it has run ends the title line (the desk's age column); a screen reader hears what the number is.
   const elapsed = page.locator(".row .head .elapsed");
-  await expect(elapsed).toHaveText("running 1h 49m");
+  await expect(elapsed).toHaveText("elapsed 1h 49m");
   expect((await elapsed.locator(".sr").boundingBox())!.width).toBeLessThanOrEqual(1);
 });
 

@@ -21,16 +21,17 @@ import { Button, Kbd, Overlay } from "./ui";
 /**
  * Why a side is missing, in the frame its capture would have had: a path or a code breaks only after / . _ : :: :// ? & =,
  * never inside a word (review 19: "CONNECTIO|N_REFUSED") nor between the marks of `::` and `://` (review 20: "net:|:ERR"),
- * in as many lines as the frame holds, and the whole reason is its tooltip. Large, side by side, a code is wider than
- * no line, so it keeps whole there: its `_` gives no break (`.u`).
+ * in as many lines as the frame holds, and the whole reason is its tooltip. Large, side by side (`wide`), a line holds
+ * any code, so a code keeps whole: only an address breaks, after `://` or a `/` (review 21: a nowrap span around `_<wbr>`
+ * still broke "ERR_|CONNECTION" in WebKit).
  */
-const Why = (p: { text: string }) => (
+const Why = (p: { text: string; wide?: boolean }) => (
   <div class="look-missing meta t3" title={p.text}>
-    <span>{p.text.split(/(:\/\/|::|[/._:?&=])/).map((s, i) => (i % 2 ? (s === "_" ? <span class="u">_<wbr /></span> : [s, <wbr />]) : s))}</span>
+    <span>{p.text.split(p.wide ? /(:\/\/|\/)/ : /(:\/\/|::|[/._:?&=])/).map((s, i) => (i % 2 ? [s, <wbr />] : s))}</span>
   </div>
 );
 
-function Shot(props: { file: string | null; error: string | null; label: string; onOpen?: (from: HTMLElement) => void }) {
+function Shot(props: { file: string | null; error: string | null; label: string; onOpen?: (from: HTMLElement) => void; wide?: boolean }) {
   const [src] = createResource(
     () => props.file,
     (f) => (f ? api.lookImage(f).catch(() => null) : Promise.resolve(null)),
@@ -39,8 +40,8 @@ function Shot(props: { file: string | null; error: string | null; label: string;
   const [broken, setBroken] = createSignal<string | null>(null);
   return (
     <figure class="look-shot">
-      <Show when={props.file && !props.error} fallback={<Why text={props.error ?? t("look.notCaptured")} />}>
-        <Show when={src() && broken() !== src()} fallback={<Why text={src.loading ? t("common.loading") : t("look.gone")} />}>
+      <Show when={props.file && !props.error} fallback={<Why text={props.error ?? t("look.notCaptured")} wide={props.wide} />}>
+        <Show when={src() && broken() !== src()} fallback={<Why text={src.loading ? t("common.loading") : t("look.gone")} wide={props.wide} />}>
           <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label}, ${t("look.enlarge")}`}>
             {/* Until it has decoded, it holds the frame of Tower's capture, desktop or phone (`.look-img`), never a 2px line (review 16). */}
             <img class="look-img" src={src()!} alt={props.label} onError={() => setBroken(src() ?? null)} />
@@ -220,8 +221,8 @@ function LookCompare(props: { look: LookViewExt; title: string; initialViewport?
         }
       >
         <div class="look-side" classList={{ "look-phone": vp() === "mobile" }}>
-          <Shot file={baseFile()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} />
-          <Shot file={pinFile()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} />
+          <Shot file={baseFile()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} wide />
+          <Shot file={pinFile()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} wide />
         </div>
       </Show>
       <ConsoleErrorsBlock errors={props.look.console_errors} />

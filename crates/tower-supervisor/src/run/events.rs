@@ -110,7 +110,8 @@ pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> 
                 on_sandbox_denial(inner, run, target.clone());
             }
             if let Some(call) = &call {
-                let signature = format!("{tool} {}", summarize::tool_call(&tool, &call.args, &run.workspace));
+                let on = summarize::tool_call(&tool, &call.args, &run.workspace);
+                let signature = format!("{tool} {on}");
                 if is_error {
                     let n = {
                         let mut f = run.flags();
@@ -123,7 +124,7 @@ pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> 
                             inner,
                             run,
                             &format!("repeat:{signature}"),
-                            tower_core::i18n::Stall::Repeated { signature: signature.clone(), times: n },
+                            tower_core::i18n::Stall::Repeated { tool: tool.clone(), target: on, times: n },
                         );
                     }
                 } else {
@@ -481,7 +482,7 @@ async fn check_budget(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
 }
 
 /// The run is stopping, settled: under the mode's lock, so a settle already under way lands before it, and none after.
-fn settle_on(inner: &Inner, run: &Run, why: Stop) -> Result<()> {
+pub(super) fn settle_on(inner: &Inner, run: &Run, why: Stop) -> Result<()> {
     let _mode = run.lock_mode();
     run.flags().stopping = Some(why);
     inner.set_mode(&run.goal_id, Mode::Settled)
@@ -629,7 +630,12 @@ fn remove_run(inner: &Inner, run: &Run) {
 }
 
 pub(crate) async fn stop_engine(inner: &Arc<Inner>, run: &Arc<Run>, why: Stop) {
-    run.flags().stopping = Some(why);
+    // Marked under the mode's lock: a settle under way finishes before it, and none after it writes a mode or a running
+    // live line over the stop's (review 21, record only: a pause beside a settle read idle, then working).
+    {
+        let _mode = run.lock_mode();
+        run.flags().stopping = Some(why);
+    }
     let _ = tokio::time::timeout(Duration::from_secs(3), run.engine.abort()).await;
     run.engine.shutdown(Duration::from_secs(5)).await;
     remove_run(inner, run);

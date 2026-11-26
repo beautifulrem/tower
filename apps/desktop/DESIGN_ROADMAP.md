@@ -239,6 +239,7 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T226 The trace runs down, never sideways | D302 | — | A word with nowhere to break breaks at its line's edge; a mark stands by the first line; a folded message keeps its note | `Trace.tsx`, `app.css`, `layout.spec.ts`; `fm/tr-*` | Done (iteration 25) |
 | T227 The budget kept and measured the same | D300 | — | An on-demand chunk no longer lists its imports to preload; the budget script follows the entry's imports; an unreachable label gone | `vite.config.ts`, `tools/bundle-budget.sh`, `en.later.ts`, `zh-CN.later.ts`; `budget-*.txt` | Done (iteration 25) |
 | T228 The caches test timed against itself | D303 | — | Four times the sources in under eight times as long, best of three | `caches.rs`; `fm/caches-quadratic`, `under-load.txt` | Done (iteration 25) |
+| T229 A held card answers its own controls | D304 | — | With words selected on a card, Deny reads "Press again" and the bell opens | `remote.html`; `phone.spec.ts` | Done (review 25 follow-up) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

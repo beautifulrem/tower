@@ -638,6 +638,10 @@ function showOffline(err) {
 app.addEventListener("click", (e) => {
   const b = e.target.closest("button");
   if (!b) return;
+  // A press on a block's own control lets go of words selected in it: the block answers the press (Press again,
+  // Remind me later), which a block held for its selection would not show.
+  const sel = getSelection();
+  if (!sel.isCollapsed && b.closest("[data-key]")?.contains(sel.anchorNode)) sel.removeAllRanges();
   if (b.dataset.retry !== undefined) { load(); startSse(); return; }
   if (b.dataset.later) { later = later === b.dataset.later ? null : b.dataset.later; return render(last); }
   if (b.dataset.snooze) return snooze(b.dataset.snooze, b.dataset.until === "hour" ? Date.now() + 3_600_000 : tomorrowAt9());

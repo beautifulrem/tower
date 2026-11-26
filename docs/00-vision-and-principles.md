@@ -1,7 +1,7 @@
 # 00 · 愿景与设计原则
 
 > 代号 **Tower**（暂定，取自空管塔台：一个人同时监督多个自主运行的对象，只在例外时介入）。
-> 引擎：Pi（`@earendil-works/pi-coding-agent`，固定版本 1.2.0（精确；核实基线见 `research/pi-release-diff.md`）），通过 Engine Adapter 接入，可替换。
+> 引擎：Pi（`@earendil-works/pi-coding-agent`，固定版本 1.2.0（精确）），通过 Engine Adapter 接入，可替换。
 
 ## 0.1 一句话
 
@@ -144,4 +144,3 @@ Pi 的哲学（Mario Zechner 原文与 Pi 1.0 公告）：极简系统提示词�
 | `14-roadmap-and-validation.md` | 里程碑、MVP 范围、验证实验与指标 |
 | `15-decision-log.md` | 架构决策记录（ADR） |
 | `16-registry.md` | 注册表（单一来源，ADR-039）：标识符与枚举、默认数值、快捷键、刷新节奏、远程能力矩阵、特性开关、章节索引、包管理器环境变量表 |
-| `reviews/` | 每轮对抗评审的问题、评分与回应 |

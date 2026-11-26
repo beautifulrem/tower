@@ -34,7 +34,7 @@ const loaded = new Set<string>();
 /** Whether the time limit cut a line of the pass in hand short (vscode-textmate's `stoppedEarly`). */
 let cut = false;
 
-export function get(): Promise<HighlighterCore> {
+function get(): Promise<HighlighterCore> {
   highlighter ??= createHighlighterCore({ themes: [theme], langs: [], engine: createJavaScriptRegexEngine() });
   return highlighter;
 }

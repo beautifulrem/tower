@@ -314,6 +314,11 @@
   font-size: var(--fs-meta);
   color: var(--text-3);
 }
+/* A count of what waits on you (the inbox, the merge conflicts) is read in ink, beside its tinted or marked icon (review
+   20, record only: the rule above had taken `t1` back to text-3). */
+.side-count.t1 {
+  color: var(--text-1);
+}
 .side-scroll {
   flex: 1;
   overflow-y: auto;
@@ -4961,10 +4966,13 @@ input[type="radio"] {
   height: 20px;
   font-size: var(--fs-hint);
 }
+/* The button is the whole number cell, its padding included, so its ring stands clear of the digits (review 20: drawn
+   inside a button the width of the number, it crossed the last digit). */
 .ln-btn {
-  width: 100%;
+  width: calc(100% + 12px);
   height: var(--lh-code);
-  padding: 0;
+  margin: 0 -6px;
+  padding: 0 6px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -5293,11 +5301,16 @@ input[type="radio"] {
   border-radius: var(--radius-s);
   overflow-wrap: break-word;
 }
+/* As many lines as the frame holds: five in the strip's 96, three in a verify item's 72 (review 20: clamped to three in
+   the strip, the reason lost its code and its address to the ellipsis). */
 .look-missing > span {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 5;
   overflow: hidden;
+}
+.verify-item .look-missing > span {
+  -webkit-line-clamp: 3;
 }
 .look-phone .look-missing {
   width: auto;
@@ -5361,6 +5374,9 @@ input[type="radio"] {
 }
 .look-side .look-missing > span {
   -webkit-line-clamp: 8;
+}
+.look-side .look-missing .u {
+  white-space: nowrap;
 }
 /* Laid over each other: the stage takes the "before" picture's own size (a phone page stands tall in the
    middle, a desktop page runs wide), and the "after" is fitted onto exactly that box, so the two align and

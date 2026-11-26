@@ -675,10 +675,10 @@ mod tests {
         let en = PauseNote::render(&stored, Lang::En);
         assert!(en.starts_with("Tower tried the acceptance criteria"), "{en}");
         assert!(en.ends_with(
-            "C1 · Tests pass: refused by the verification sandbox on the base (exit code 1): deny(1) file-read-data /x"
+            "C1 Tests pass: refused by the verification sandbox on the base (exit code 1): deny(1) file-read-data /x"
         ));
         let zh = PauseNote::render(&stored, Lang::Zh);
-        assert!(zh.ends_with("C1 · Tests pass: 在基线上被验证沙箱拒绝（退出码 1）：deny(1) file-read-data /x"), "{zh}");
+        assert!(zh.ends_with("C1 Tests pass: 在基线上被验证沙箱拒绝（退出码 1）：deny(1) file-read-data /x"), "{zh}");
         // Setup failing on the base, inside the preflight and on its own.
         let setup = PauseNote::SetupFails(SetupFails { setup: "npm ci".into(), tail: "ERR".into() }).encode();
         let n = PauseNote::CannotRunOnBase(Preflight { setup: Some(setup.clone()), criteria: vec![] });
@@ -699,7 +699,7 @@ mod tests {
         assert!(PauseNote::render(&n.encode(), Lang::Zh).starts_with("端口 17010 上已经有别的程序在监听"));
         let n = PauseNote::Blocked {
             cause: crate::env_cause::EnvCause::Loopback(5432),
-            problem: "C1 · `npm test`\nError: connect EPERM 127.0.0.1:5432".into(),
+            problem: "C1 `npm test`\nError: connect EPERM 127.0.0.1:5432".into(),
         };
         assert_eq!(PauseNote::decode(&n.encode()), Some(n.clone()));
         let en = PauseNote::render(&n.encode(), Lang::En);
@@ -709,10 +709,10 @@ mod tests {
 
     #[test]
     fn stalls_are_put_into_words_on_read() {
-        let s = Stall::Repeated { signature: "bash · npm test".into(), times: 3 };
+        let s = Stall::Repeated { signature: "bash npm test".into(), times: 3 };
         let back = Stall::decode(&s.encode()).unwrap();
         assert_eq!(back, s);
-        assert_eq!(back.text(Lang::En), "bash · npm test failed 3 times in a row");
+        assert_eq!(back.text(Lang::En), "bash npm test failed 3 times in a row");
         assert_eq!(
             Stall::decode(&Stall::NoProgress { minutes: 12 }.encode()).unwrap().text(Lang::Zh),
             "12 分钟没有任何工具调用"

@@ -489,12 +489,116 @@ test("a call that has ended is not written as what the run is doing; gone quiet,
     const line = page.locator(".annunciator .live-line-large");
     await expect(line.locator(".live-action")).toHaveText(words);
     await expect(line.locator(".live-target")).toHaveCount(words === "bash" ? 1 : 0);
+    // Review 20 (record only): the run was named twice, in the header and on the live line just under it. While the goal
+    // runs, the live line names it.
+    await expect(page.locator(".goal-identity")).not.toContainText("Run 1");
     // The shimmer runs over the call at work, or over which run while the agent thinks: never over a finished command.
     await expect(line).toHaveClass(quietFor > 120 ? /^(?!.*live-moving)/ : /live-moving/);
     await openTower(page, "overview", { enrich });
     await expect(page.locator('.g-row[data-goal="G-0002"] .live-action')).toHaveText(words);
   }
+  // Review 20 (record only): beside the run's name, the time was the finished call's start (10m ago) though the run moved
+  // just now. It is the last movement.
+  await openTower(page, "goal/G-0002", {
+    enrich: (F) => {
+      const g = F.goals.find((x: { id: string }) => x.id === "G-0002");
+      Object.assign(g, { mode: "thinking", needs_you: 0, run_no: 1, updated_at: Date.now() });
+      g.live_line = { mode: "executing", action: "bash", target: "pnpm test", at: Date.now() - 10 * 60_000, running: false };
+    },
+  });
+  const line = page.locator(".annunciator .live-line-large");
+  await expect(line.locator(".live-action")).toHaveText("Run 1");
+  await expect(line.locator(".live-age")).toHaveText("just now");
 });
+
+// Review 20 (R20-P3-02): on the board the run's elapsed time rode after the detail and jumped (up to 148px) as calls came
+// and went, the detail flipping between the call and "Run 1" twice a call. The time now follows the run's name only,
+// which holds still, never a call's words (where it read as the call's own time); and a call that has just ended keeps
+// its words a beat, so the detail changes once a call.
+test("a board row's elapsed time holds still while calls come and go, its detail changing once a call", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      for (const g of F.goals) {
+        if (g.id !== "G-0002") continue;
+        Object.assign(g, { state: "running", mode: "thinking", needs_you: 0, run_no: 1, run_started_at: Date.now() - 2 * 3600_000, updated_at: Date.now() });
+        g.live_line = { mode: "reading", action: "read", target: "src/money.ts", at: Date.now() - 5000, running: false };
+      }
+    },
+  });
+  const row = page.locator('.board-rows .g-row[data-goal="G-0002"]');
+  await expect(row.locator(".live-elapsed")).toHaveText(/^running 2h/);
+  await expect(row.locator(".live-detail")).toHaveAttribute("title", /running 2h/);
+  const files = ["src/cart.ts", "src/checkout/total.ts", "test/money.test.ts", "src/money.ts"];
+  const samples = await page.evaluate(async (files) => {
+    const w = window as any;
+    const g0 = w.__towerFixtures.goals.find((g: any) => g.id === "G-0002");
+    const out: { detail: string; time: string | null; left: number | null }[] = [];
+    const take = () => {
+      const line = document.querySelector('.board-rows .g-row[data-goal="G-0002"] .live-line')!;
+      const time = line.querySelector(".live-elapsed") as HTMLElement | null;
+      const words = [".live-action", ".live-target"].map((sel) => line.querySelector(sel)?.textContent ?? "");
+      out.push({ detail: words.filter(Boolean).join(" "), time: time?.textContent ?? null, left: time ? time.getBoundingClientRect().left : null });
+    };
+    const timer = setInterval(take, 50);
+    const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const call = (target: string, at: number, running: boolean) =>
+      w.__towerEmit("tower://update", { type: "goal", goal: { ...g0, mode: running ? "reading" : "thinking", updated_at: Date.now(), live_line: { mode: "reading", action: "read", target, at, running } } });
+    await pause(200);
+    for (const file of files) {
+      const at = Date.now();
+      call(file, at, true);
+      await pause(300);
+      call(file, at, false);
+      await pause(300);
+    }
+    await pause(1300);
+    clearInterval(timer);
+    return out;
+  }, files);
+  expect(samples.length).toBeGreaterThan(40);
+  // The detail: which run, then each call once, in order, then which run again once the last has ended for a beat.
+  const details = samples.map((s) => s.detail).filter((d, i, all) => i === 0 || d !== all[i - 1]);
+  expect(details).toEqual(["Run 1", ...files.map((f) => `read ${f}`), "Run 1"]);
+  // The time: after the run's name only, and in one place whenever it is there.
+  for (const s of samples) expect(s.time === null, `${s.detail}: ${s.time}`).toBe(s.detail !== "Run 1");
+  const at = samples.filter((s) => s.left !== null).map((s) => Math.round(s.left!));
+  expect(new Set(at).size, JSON.stringify(at)).toBe(1);
+});
+
+// Review 20 (record only): at 1241 the time was cut ("runnin…", "已…"), and in Chinese at 1440 too ("21 小时 3…"), a cut
+// number reading as another. It is whole or set aside, and set aside it is in the detail's tooltip.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a board row's elapsed time is whole or set aside, never cut (${lang})`, async ({ page }) => {
+    const seen: string[] = [];
+    for (const width of [1241, 1440, 1800]) {
+      await page.setViewportSize({ width, height: 900 });
+      await openTower(page, "overview", {
+        lang,
+        enrich: (F) => {
+          for (const g of F.goals) {
+            if (g.id !== "G-0002") continue;
+            Object.assign(g, { state: "running", mode: "thinking", needs_you: 0, run_no: 2, run_started_at: Date.now() - (21 * 60 + 33) * 60_000, updated_at: Date.now() });
+            g.live_line = { mode: "reading", action: "read", target: "src/money.ts", at: Date.now() - 20_000, running: false };
+          }
+        },
+      });
+      const detail = page.locator('.board-rows .g-row[data-goal="G-0002"] .live-detail');
+      const time = detail.locator(".live-elapsed");
+      await expect(time).toHaveText(lang === "en" ? /^running 21h 33m$/ : /^已进行 21 小时 33/);
+      const words = (await time.textContent())!;
+      const fit = await detail.evaluate((el) => ({
+        cut: el.scrollWidth > el.clientWidth + 0.5,
+        aside: el.querySelector(".live-elapsed")!.classList.contains("sr-only"),
+        sep: el.querySelector(".live-elapsed-sep")!.classList.contains("sr-only"),
+      }));
+      expect(fit.cut, `${width}: the detail is cut`).toBe(false);
+      expect(fit.sep, `${width}: the separator goes with the time`).toBe(fit.aside);
+      await expect(detail).toHaveAttribute("title", new RegExp(words));
+      seen.push(fit.aside ? "aside" : "whole");
+    }
+    expect(seen[0], "at 1241 the run's name keeps the room").toBe("aside");
+    expect(seen.at(-1), "at 1800 the time is whole").toBe("whole");
+  });
 
 test("the board writes one age format, decisions and goals alike", async ({ page }) => {
   await openTower(page, "overview", {
@@ -1258,6 +1362,53 @@ for (const lang of ["en", "zh-CN"] as const)
         }
         return broken;
       });
+    // Whether each of `texts` stands on one line; and the reason's characters the clamp leaves in view.
+    const sameLine = (l: import("@playwright/test").Locator, texts: string[]) =>
+      l.evaluate((el, texts) => {
+        const chars: { n: Node; i: number }[] = [];
+        let all = "";
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode())
+          for (let i = 0; i < (n.textContent ?? "").length; i++) (chars.push({ n, i }), (all += n.textContent![i]));
+        const top = ({ n, i }: { n: Node; i: number }) => {
+          const r = document.createRange();
+          r.setStart(n, i);
+          r.setEnd(n, i + 1);
+          return Math.round(r.getClientRects()[0]?.top ?? -1);
+        };
+        return texts.map((t) => {
+          const k = all.indexOf(t);
+          return k >= 0 && new Set(chars.slice(k, k + t.length).map(top)).size === 1;
+        });
+      }, texts);
+    // Each break the reason offers: the characters either side of it, and whether it may break there (`white-space`).
+    const breaks = (l: import("@playwright/test").Locator) =>
+      l.evaluate((el) => {
+        let text = "";
+        const at: { i: number; wraps: boolean }[] = [];
+        const walk = (n: Node) => {
+          if (n.nodeType === Node.TEXT_NODE) text += n.textContent;
+          else if ((n as Element).localName === "wbr") at.push({ i: text.length, wraps: getComputedStyle(n.parentElement!).whiteSpace !== "nowrap" });
+          n.childNodes.forEach(walk);
+        };
+        walk(el);
+        return at.map(({ i, wraps }) => ({ pair: text.slice(i - 1, i + 1), wraps }));
+      });
+    const shown = (l: import("@playwright/test").Locator) =>
+      l.locator("span").first().evaluate((el) => {
+        const bottom = el.getBoundingClientRect().bottom;
+        let out = "";
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode())
+          for (let i = 0; i < (n.textContent ?? "").length; i++) {
+            const r = document.createRange();
+            r.setStart(n, i);
+            r.setEnd(n, i + 1);
+            const rect = r.getClientRects()[0];
+            if (rect && rect.bottom <= bottom + 0.5) out += n.textContent![i];
+          }
+        return out;
+      });
     const shots = page.locator(".criterion .look-strip .look-shot");
     await expect(shots).toHaveCount(2);
     await expect.poll(() => shots.nth(0).locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
@@ -1267,9 +1418,16 @@ for (const lang of ["en", "zh-CN"] as const)
     const [gw, gh] = await box(gone);
     expect(Math.abs(gw - pw), `gone ${gw}×${gh} beside the picture ${pw}×${ph}`).toBeLessThanOrEqual(2);
     expect(gh).toBe(ph);
-    const lines = await gone.locator("span").evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)));
-    expect(lines, "three lines at most").toBeLessThanOrEqual(3);
+    const lines = await gone.locator("span").first().evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)));
+    expect(lines, "five lines at most, in the picture's height").toBeLessThanOrEqual(5);
     expect(await wordsWhole(gone)).toEqual([]);
+    // Review 20 (record only): clamped to three lines, the reason lost its code's end and its address to the ellipsis, and
+    // `net::` broke between its colons. Now the frame shows them, and `::` and `://` stay whole.
+    expect(await shown(gone), "the code and the address are in the frame").toEqual(expect.stringMatching(/REFUSED.*localhost/s));
+    expect(await sameLine(gone, ["net::", "http://"])).toEqual([true, true]);
+    const offered = await breaks(gone);
+    expect(offered.filter((b) => /^(::|:\/|\/\/)$/.test(b.pair)), "no break inside :: or ://").toEqual([]);
+    expect(offered.filter((b) => b.pair.startsWith("_")).every((b) => b.wraps), "in the strip a code may break after its _").toBe(true);
     const captions = await shots.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(captions[1], "the captions level").toBe(captions[0]);
 
@@ -1284,6 +1442,11 @@ for (const lang of ["en", "zh-CN"] as const)
     expect(Math.abs(mw - bw), `gone ${mw}×${mh} beside the picture ${bw}×${bh}`).toBeLessThanOrEqual(2);
     expect(Math.abs(mh - bh)).toBeLessThanOrEqual(2);
     expect(await wordsWhole(big.nth(1).locator(".look-missing"))).toEqual([]);
+    // Wide, the code is narrower than a line: it keeps whole, never broken at its `_`.
+    expect(await sameLine(big.nth(1).locator(".look-missing"), ["net::ERR_CONNECTION_REFUSED"])).toEqual([true]);
+    const wide = await breaks(big.nth(1).locator(".look-missing"));
+    expect(wide.filter((b) => b.pair.startsWith("_")).length, "the code's _ are there").toBeGreaterThan(0);
+    expect(wide.filter((b) => b.pair.startsWith("_") && b.wraps), "wide, no break after a _").toEqual([]);
     const bigCaptions = await big.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(bigCaptions[1], "the captions level").toBe(bigCaptions[0]);
   });

@@ -19,12 +19,14 @@ import { ProvenanceFrame } from "./ProvenanceFrame";
 import { Button, Kbd, Overlay } from "./ui";
 
 /**
- * Why a side is missing, in the frame its capture would have had: a path or a code breaks only after / . _ : ? & =, never
- * inside a word, in at most three lines, and the whole reason is the frame's tooltip (review 19: "CONNECTIO|N_REFUSED").
+ * Why a side is missing, in the frame its capture would have had: a path or a code breaks only after / . _ : :: :// ? & =,
+ * never inside a word (review 19: "CONNECTIO|N_REFUSED") nor between the marks of `::` and `://` (review 20: "net:|:ERR"),
+ * in as many lines as the frame holds, and the whole reason is its tooltip. Large, side by side, a code is wider than
+ * no line, so it keeps whole there: its `_` gives no break (`.u`).
  */
 const Why = (p: { text: string }) => (
   <div class="look-missing meta t3" title={p.text}>
-    <span>{p.text.split(/([/._:?&=])/).map((s, i) => (i % 2 ? [s, <wbr />] : s))}</span>
+    <span>{p.text.split(/(:\/\/|::|[/._:?&=])/).map((s, i) => (i % 2 ? (s === "_" ? <span class="u">_<wbr /></span> : [s, <wbr />]) : s))}</span>
   </div>
 );
 

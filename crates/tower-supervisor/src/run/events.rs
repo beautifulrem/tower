@@ -43,7 +43,9 @@ pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> 
             // A new turn is a new request: an earlier turn's provider error
             // is no longer why the agent might stop.
             run.flags().last_error = None;
-            inner.set_mode(g, Mode::Thinking)?
+            // Thinking, unless a question is open (it waits on you until answered) or a call is still at work: under
+            // the mode's lock, like every write of the mode beside the engine's events (review 20, record only).
+            settle_mode(inner, run)?
         }
         PiEvent::TextDelta { delta } => {
             let text = {
@@ -108,7 +110,7 @@ pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> 
                 on_sandbox_denial(inner, run, target.clone());
             }
             if let Some(call) = &call {
-                let signature = format!("{tool} · {}", summarize::tool_call(&tool, &call.args, &run.workspace));
+                let signature = format!("{tool} {}", summarize::tool_call(&tool, &call.args, &run.workspace));
                 if is_error {
                     let n = {
                         let mut f = run.flags();
@@ -170,11 +172,11 @@ pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> 
             )?;
             on_sandbox_denial(inner, run, Some(format!("{engine}:{tool}")));
         }
-        PiEvent::CompactionStart => inner.set_mode(g, Mode::Compacting)?,
-        PiEvent::CompactionEnd => inner.set_mode(g, Mode::Thinking)?,
+        PiEvent::CompactionStart => report_mode(inner, run, Mode::Compacting)?,
+        PiEvent::CompactionEnd => settle_mode(inner, run)?,
         PiEvent::RetryStart { attempt, max_attempts, error } => {
             let error = readable_error(&error);
-            inner.set_mode(g, Mode::Retrying)?;
+            report_mode(inner, run, Mode::Retrying)?;
             inner.append(
                 g,
                 EventKind::Note {
@@ -191,7 +193,7 @@ pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> 
             if success {
                 run.flags().last_error = None;
             }
-            inner.set_mode(g, Mode::Thinking)?
+            settle_mode(inner, run)?
         }
         PiEvent::TurnEnd => check_budget(inner, run).await?,
         PiEvent::UiRequest(req) => on_ui_request(inner, run, req)?,
@@ -399,10 +401,16 @@ pub(super) fn on_tool_start(
             },
         )?
         .at;
-    // A note and the hand-in are not work; a call that starts while a question is open leaves the run waiting on you.
-    if tool != "log" && tool != "submit" && run.flags().dialogs.is_empty() {
+    // A note and the hand-in are not work; a call that starts while a question is open leaves the run waiting on you,
+    // and one that starts once the run is stopping leaves the stop's mode.
+    let quiet = {
+        let f = run.flags();
+        f.dialogs.is_empty() && f.stopping.is_none()
+    };
+    if tool != "log" && tool != "submit" && quiet {
         inner.set_mode(g, Mode::for_tool(&tool))?;
     }
+    between(run, "call-recording");
     run.flags().tools.insert(call_id, ToolCall { tool, args, started: Instant::now(), at });
     Ok(())
 }
@@ -472,6 +480,13 @@ async fn check_budget(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     Ok(())
 }
 
+/// The run is stopping, settled: under the mode's lock, so a settle already under way lands before it, and none after.
+fn settle_on(inner: &Inner, run: &Run, why: Stop) -> Result<()> {
+    let _mode = run.lock_mode();
+    run.flags().stopping = Some(why);
+    inner.set_mode(&run.goal_id, Mode::Settled)
+}
+
 async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     let g = run.goal_id.clone();
     let (stopping, submitted, blocked_report, nudged, last_error) = {
@@ -482,8 +497,7 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         return Ok(());
     }
     if let Some(blocked) = blocked_report {
-        run.flags().stopping = Some(Stop::Pause(AGENT_REPORTED_BLOCKED_PAUSE_REASON));
-        inner.set_mode(&g, Mode::Settled)?;
+        settle_on(inner, run, Stop::Pause(AGENT_REPORTED_BLOCKED_PAUSE_REASON))?;
         let inner = inner.clone();
         let run = run.clone();
         tokio::spawn(async move {
@@ -494,8 +508,7 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         return Ok(());
     }
     if submitted {
-        run.flags().stopping = Some(Stop::Submitted);
-        inner.set_mode(&g, Mode::Settled)?;
+        settle_on(inner, run, Stop::Submitted)?;
         let inner = inner.clone();
         let run = run.clone();
         tokio::spawn(async move {

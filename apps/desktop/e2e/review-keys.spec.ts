@@ -264,6 +264,19 @@ test("a diff line selects and copies; Tab into the diff still lands on its first
   // (it showed none, review 19).
   await expect(long).toBeFocused();
   expect([await ring(held), await ring(long)], "the line pressed wears the ring, the table none").toEqual(["solid", "none"]);
+  // Review 20 (R20-P3-03): the ring stands clear of the number. Drawn 1.5px inside a button the width of the digits, it
+  // crossed the last one; the button is now the whole cell, and the digits stand clear of the ring's inner edge on both
+  // sides (the cell's 6px padding less the ring's 3px: 3px, 2px or more asserted for the glyphs' own bounds).
+  const clear = await held.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const digits = range.getBoundingClientRect(), box = el.getBoundingClientRect(), cell = el.closest("td")!.getBoundingClientRect();
+    const inner = parseFloat(getComputedStyle(el).outlineWidth) - parseFloat(getComputedStyle(el).outlineOffset);
+    return { right: box.right - inner - digits.right, left: digits.left - (box.left + inner), cell: [box.left - cell.left, cell.right - box.right] };
+  });
+  expect(clear.right, JSON.stringify(clear)).toBeGreaterThanOrEqual(2);
+  expect(clear.left, JSON.stringify(clear)).toBeGreaterThanOrEqual(2);
+  expect(clear.cell, "the button is the whole cell").toEqual([0, 0]);
   // Review 18 (R18-P3-02): closed, the sheet hands focus back to the table and the line pressed is still your place:
   // ↩ comments on it and ↓ walks from it (focus had moved to the first line's number, so ↩ commented on line 0).
   await page.keyboard.press("Enter");

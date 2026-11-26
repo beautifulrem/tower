@@ -463,3 +463,31 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   or a stated mutation (`/tmp/tower-design/iter20/oldsrc/`, `mut/`, `race2/`). Caught at the gates and fixed before commit: workspace clippy found a test of D204's holding a lock across an await (now on a thread of its own, its mutation still failing), and the new `settled()` test failed once under the full suite's load, the overview's idle warming of a waiting review owing its own 2 worker answers at the test's cap (a probe saw them from 628 ms after load); it now opens a world with no review waiting (30 of 30 with ten workers). Gates (run alone): tsc; vitest 45 / 257; e2e 420/0 (76 shot tests skip without SHOTS); shots 69/69, which now fail on anything still drawing (`/tmp/tower-design/iter20/allshots`); perf alone (board of 50: 609 / 286 / 202 ms against 200 / 163 / 136 ms; switch medians about 67 against 27 ms); line limit; doc numbers; rustfmt, `cargo clippy --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites, 472 tests, 2 ignored); the flow suite 20 of 20; bundle 163,733 / 163,840 B. Visual check at DPR 2, light
   and dark, en and zh: `/tmp/tower-design/iter20/visual/`. Detector 16 against 16 on the touched UI files, the same
   findings. Not yet independently re-reviewed.
+- Review 20 — independent reviewer (general-purpose agent, read-only worktree at `b6baa8a`, ports 1441–1443):
+  **PASS, 8.63 / 10** (8.625), no P0, P1 or P2 (`design-evidence/reports/review20.md`). Review 19's three P3s
+  confirmed fixed. New P3s: a question answered the moment it reached the inbox found no dialog and left the run waiting
+  on you (a 300 ms probe reproduced it on both commits), the board's detail changed twice a call with its elapsed time
+  jumping (from D206), and the focus ring crossed a diff line's number; eleven record-only notes; and three orderings
+  its mutations showed untested. Recorded as D218–D233.
+- Iteration 21 — review 20's three P3s, every record-only note and every test weakness it named (D218–D233,
+  T182–T191), and D234–D235 from its own reading and gates (T189, T192). A question's inbox item, its dialog and its
+  mode are one step under the run's mode lock, and an answer that finds no dialog is refused and logged (D218); every
+  write of the mode beside the engine's events takes the lock, the engine's own modes and the first message never cover
+  an open question (D229), and once a run is stopping nothing writes a mode over the stop's (D234). On the board a
+  call's words linger a second and the elapsed time follows only the run's name (D219); the diff's ring stands clear of
+  the digits (D220); a missing side's code stays whole and the strip holds five lines (D221); the run is named once on
+  the goal page, "已进行" replaces the doubled 运行, the board's elapsed time is whole or set aside by measure (it was
+  cut at 1241, and in Chinese at 1440), a quiet first run is "Run 1", and the time beside the run's name is its last
+  movement (D224, D225); the sidebar's count is in ink (D226); DESIGN.md and docs/04 say when the detail names
+  the run (D227); `·` leaves the supervisor's strings where DESIGN.md's rule applies (D230). Tests: a test step between
+  two writes (`between`, a no-op outside tests) gives the three untested orders a test each (D232), the flow test counts
+  only its own sleep and the highlight test reaches Shiki's highlighter as made (D231), and D217 has its test (D233).
+  Kept by stated decision: the side-by-side rule (D222), the phone strip's frame width (D223), the merged keys (D228)
+  and where two tests first fail on old sources (D236). The icons became markup strings to fit the budget (D235). Each fix's test fails on `b6baa8a`'s sources (or
+  `939be97`'s for D217) or a stated mutation (`/tmp/tower-design/iter21/oldsrc/`, `mut/`). Caught before commit: the
+  first board fix gave the elapsed time a column of its own, which cut the detail at 1241, so the time rides only
+  beside the run's name; the ring test's comment claimed 4 px of room where there are 3. Gates: tsc; vitest 45 / 259;
+  e2e 423/0 (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter21/allshots`); perf alone (board of 50: 911 / 380 / 269 ms against 299 / 217 / 191 ms; switch medians about 97 against 37 ms); line limit;
+  doc numbers; rustfmt, `cargo clippy --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites,
+  480 tests, 2 ignored); the flow suite 20 of 20 (50 tests each, beside the cargo gates and e2e checks); bundle 163,714 / 163,840 B. Visual check at DPR 2, light and dark, en and
+  zh. Detector 16 against 16 on the touched UI files, the same findings. Not yet independently re-reviewed.

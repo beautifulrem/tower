@@ -627,10 +627,13 @@ async fn launch(
     }
     inner.append(goal_id, EventKind::Injected { channel: "prompt".into(), text: message.clone() })?;
     // The run thinks from the moment its message goes. Written before it is sent: written after, it landed over a call
-    // the engine had already started (iteration 20, one flow run in ten).
+    // the engine had already started (iteration 20, one flow run in ten). Under the mode's lock, like every write of
+    // the mode once the engine runs, and not over a stop recorded first, nor over a question an extension opened while
+    // the engine started: that waits on you until it is answered (review 20, record only).
     {
+        let _mode = run.lock_mode();
         let flags = run.flags();
-        if flags.stopping.is_none() {
+        if flags.stopping.is_none() && flags.dialogs.is_empty() {
             inner.set_mode(goal_id, Mode::Thinking)?;
         }
     }
@@ -779,8 +782,8 @@ fn fail_to_start(inner: &Arc<Inner>, goal_id: &str, detail: &str) -> Result<()> 
 mod asks;
 mod events;
 mod slots;
-use asks::on_ui_request;
-pub(crate) use asks::settle_mode;
+pub(crate) use asks::{between, settle_held, settle_mode};
+use asks::{on_ui_request, report_mode};
 use events::pump;
 pub(crate) use events::{sandbox_denied, stop_engine};
 pub(crate) use slots::{Starting, already_starting};
@@ -969,6 +972,72 @@ done"#;
         let ended = trace.iter().filter(|e| matches!(e.event, EventKind::RunEnded { .. })).count();
         assert_eq!(ended, 1, "the engine is stopped once");
         assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::Injected { .. })), "no first message");
+    }
+
+    /// Iteration 20 (D214): the first message thinks before it goes. An engine that starts a command before it answers
+    /// the message leaves the run on the command: written after, "thinking" landed over it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_first_message_thinks_before_it_goes_never_over_a_call_started() {
+        let script = r#"
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  type=$(printf '%s' "$line" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')
+  case "$type" in
+    prompt)
+      printf '{"type":"agent_start"}\n'
+      printf '{"type":"tool_execution_start","toolCallId":"b1","toolName":"bash","args":{"command":"pnpm test"}}\n'
+      sleep 0.5
+      printf '{"id":"%s","type":"response","command":"prompt","success":true,"data":{"disposition":"started"}}\n' "$id" ;;
+    *) printf '{"id":"%s","type":"response","command":"%s","success":true,"data":{}}\n' "$id" "$type" ;;
+  esac
+done"#;
+        let (_tmp, sup, id) = run_fake_engine_scenario(script).await;
+        let started = || {
+            let trace = sup.trace(&id, None, 200).unwrap();
+            trace.iter().any(|e| matches!(&e.event, EventKind::ToolStarted { call_id, .. } if call_id == "b1"))
+        };
+        for _ in 0..100 {
+            if started() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(started(), "the command started");
+        // Past the engine's answer to the message, and the run's own write after it, if there were one.
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert_eq!(sup.goal(&id).unwrap().summary.mode, Mode::Executing);
+    }
+
+    /// Review 20 (record only): a question an extension opens while the engine starts, before the first message goes,
+    /// waits on you; the first message's "thinking" is not written over it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_question_opened_before_the_first_message_still_waits_on_you() {
+        let script = r#"
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+  type=$(printf '%s' "$line" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')
+  case "$type" in
+    get_state)
+      printf '{"type":"extension_ui_request","id":"ext1","method":"input","title":"Which account?"}\n'
+      sleep 0.3
+      printf '{"id":"%s","type":"response","command":"get_state","success":true,"data":{}}\n' "$id" ;;
+    *) printf '{"id":"%s","type":"response","command":"%s","success":true,"data":{}}\n' "$id" "$type" ;;
+  esac
+done"#;
+        let (_tmp, sup, id) = run_fake_engine_scenario(script).await;
+        let sent = || {
+            let trace = sup.trace(&id, None, 200).unwrap();
+            trace.iter().any(|e| matches!(&e.event, EventKind::Injected { channel, .. } if channel == "prompt"))
+        };
+        for _ in 0..100 {
+            if sent() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(sent(), "the first message went");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(sup.goal(&id).unwrap().summary.mode, Mode::WaitingOnYou);
     }
 
     #[tokio::test(flavor = "multi_thread")]

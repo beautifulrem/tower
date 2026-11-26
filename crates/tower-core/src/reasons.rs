@@ -131,7 +131,7 @@ impl Preflight {
             None => self
                 .criteria
                 .iter()
-                .map(|c| format!("{} · {}: {}", c.id, c.title, BaseError::render(&c.error, lang)))
+                .map(|c| format!("{} {}: {}", c.id, c.title, BaseError::render(&c.error, lang)))
                 .collect::<Vec<_>>()
                 .join("\n"),
         };

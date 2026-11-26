@@ -18,14 +18,43 @@ impl Run {
     }
 }
 
+/// A point between two writes that are seen together, under the mode's lock: a call's start and its entry among the
+/// calls in flight, a question and its dialog, an answer's mode and the answer itself. A test runs a step of its own
+/// here, to try to come between them; elsewhere it does nothing.
+#[cfg(not(test))]
+#[inline(always)]
+pub(crate) fn between(_run: &Run, _point: &str) {}
+#[cfg(test)]
+pub(crate) use tests::between;
+
+/// A mode the engine reports for itself (compacting, retrying): written under the mode's lock, and never over an open
+/// question, which leaves the run waiting on you until it is answered or closed (review 20, record only), nor once the
+/// run is stopping.
+pub(super) fn report_mode(inner: &Inner, run: &Run, mode: Mode) -> Result<()> {
+    let _mode = run.lock_mode();
+    let quiet = {
+        let f = run.flags();
+        f.dialogs.is_empty() && f.stopping.is_none()
+    };
+    if quiet { inner.set_mode(&run.goal_id, mode) } else { Ok(()) }
+}
+
 /// After a call ends or a question is answered: the mode of the call still at work, and the live line back on it,
 /// or thinking when none is (review 16 and 17: a call ending, or an answer, while another runs set the run to
 /// thinking, and the desk and the phone then read a running command as silence). While a question is open the run
 /// waits on you, whatever starts or ends beside it; the live line follows the call at work and says if one runs.
 pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
-    let _mode = run.lock_mode();
+    let mode = run.lock_mode();
+    settle_held(inner, run, &mode)
+}
+
+/// `settle_mode`, for a caller that already holds the mode's lock. Once the run is stopping, what ends after the stop
+/// (a call the abort ended, an answer late to a dialog) stops the live line and writes no mode: the stop writes the
+/// one the run ends on (idle, settled), and a settle after it read thinking on a paused goal.
+pub(crate) fn settle_held(inner: &Inner, run: &Run, _mode: &MutexGuard<'_, ()>) -> Result<()> {
     let g = &run.goal_id;
-    let work = run.flags().at_work().map(|c| LiveLine {
+    let stopping = run.flags().stopping.is_some();
+    let work = run.flags().at_work().filter(|_| !stopping).map(|c| LiveLine {
         mode: Mode::for_tool(&c.tool),
         action: c.tool.clone(),
         target: crate::summarize::tool_call(&c.tool, &c.args, &run.workspace),
@@ -37,6 +66,9 @@ pub(crate) fn settle_mode(inner: &Inner, run: &Run) -> Result<()> {
         None => inner.store(|s| s.stop_live_line(g))?,
     }
     inner.mark_dirty(g);
+    if stopping {
+        return Ok(());
+    }
     let asked = !run.flags().dialogs.is_empty();
     inner.set_mode(g, if asked { Mode::WaitingOnYou } else { work.map_or(Mode::Thinking, |l| l.mode) })
 }
@@ -64,7 +96,7 @@ pub(super) fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) 
                     tr!(lang, "需要你批准：{reason}", "Approval needed: {reason}")
                 },
                 subject: s("reason"),
-                body: format!("{} · {}", s("tool"), s("target")),
+                body: format!("{} {}", s("tool"), s("target")),
                 options: req.options.clone(),
                 allow_text: false,
                 urgency: 0,
@@ -111,12 +143,18 @@ pub(super) fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) 
             engine_ref: Some(req.id.clone()),
         },
     };
-    let opened = inner.open_inbox(item)?;
-    {
+    // The question can be answered the moment it is in the inbox, so its dialog is registered in the same step, under
+    // the mode's lock, which an answer takes before it looks for the dialog (review 20: answered in between, the answer
+    // found no dialog and went as text, and the dialog registered after it was never closed: the run waited on you for
+    // good with nothing to answer).
+    let opened = {
         let _mode = run.lock_mode();
+        let opened = inner.open_inbox(item)?;
+        between(run, "dialog-opened");
         run.flags().dialogs.insert(req.id.clone(), (opened.id.clone(), req.method));
         inner.set_mode(g, Mode::WaitingOnYou)?;
-    }
+        opened
+    };
     let title = &opened.title;
     inner.toast(g, ToastLevel::Warning, tr!(lang, "{g} 需要你：{title}", "{g} needs you: {title}"));
     // A dialog with a time limit is answered by Pi itself when the time runs out: the extension's call gets nothing back
@@ -167,11 +205,43 @@ fn expire_dialog(inner: &Arc<Inner>, run: &Arc<Run>, ui_id: &str) -> Result<()> 
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+    use std::sync::mpsc as sync_mpsc;
+
     use serde_json::json;
+    use tower_pi::PiEvent;
 
     use super::*;
     use crate::run::events::{on_event, on_tool_start};
     use crate::run::tests::fake_engine_goal;
+
+    type Step = Box<dyn FnOnce() + Send>;
+    /// A test's step at a point of one run (by its address: every test has runs of its own), taken when reached.
+    static STEPS: LazyLock<Mutex<HashMap<(usize, String), Step>>> = LazyLock::new(Mutex::default);
+
+    pub(crate) fn between(run: &Run, point: &str) {
+        let step =
+            STEPS.lock().unwrap_or_else(PoisonError::into_inner).remove(&(run as *const Run as usize, point.into()));
+        if let Some(step) = step {
+            step()
+        }
+    }
+
+    /// Runs `step` the next time `run` reaches `point`, with whatever that point holds still held.
+    pub(crate) fn at(run: &Run, point: &str, step: impl FnOnce() + Send + 'static) {
+        let key = (run as *const Run as usize, point.to_string());
+        STEPS.lock().unwrap_or_else(PoisonError::into_inner).insert(key, Box::new(step));
+    }
+
+    /// The modes the run went through, oldest first (the trace lists the newest first).
+    fn modes(inner: &Inner, g: &str) -> Vec<Mode> {
+        let trace = inner.read_store(|s| s.trace(g, None, 500)).unwrap();
+        let changes = trace.iter().rev().filter_map(|e| match &e.event {
+            EventKind::ModeChanged { mode } => Some(*mode),
+            _ => None,
+        });
+        changes.collect()
+    }
 
     /// A running goal on an engine that answers every command and writes down, in its workspace, what it is sent.
     async fn running() -> (tempfile::TempDir, crate::Supervisor, Arc<Run>, PathBuf) {
@@ -340,6 +410,143 @@ done"#;
         assert!(crate::actions::answer(inner, &item, "Yes").await.is_err());
         let log = std::fs::read_to_string(&sent).unwrap();
         assert!(!log.contains(r#""id":"u2""#), "nothing went to the engine for it: {log}");
+    }
+
+    /// Review 20 (record only): a call's start, its mode and its entry among the calls in flight are one step under the
+    /// mode's lock. A settle that tries to come in between, as an answer or a time limit would, waits, then finds the
+    /// call at work: the run reads as running the command, not thinking, and the live line still runs.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_settle_cannot_come_between_a_calls_start_and_its_entry() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        let (done, settled) = sync_mpsc::channel();
+        let (i2, r2) = (sup.inner.clone(), run.clone());
+        at(&run, "call-recording", move || {
+            std::thread::spawn(move || done.send(settle_mode(&i2, &r2).map_err(|e| e.to_string())).unwrap());
+            std::thread::sleep(Duration::from_millis(200));
+        });
+        on_tool_start(inner, &run, "c1".into(), "bash".into(), json!({"command": "pnpm test"})).unwrap();
+        settled.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+        assert_eq!(mode(inner, &g), Mode::Executing, "{:?}", modes(inner, &g));
+        let line = live(inner, &g).unwrap();
+        assert!(line.running && line.action == "bash", "{line:?}");
+    }
+
+    /// Review 20: a question answered the moment it was in the inbox, before its dialog was registered. The answer found
+    /// no dialog and went out as text, and the dialog registered after it was never closed: the run waited on you for
+    /// good, with nothing to answer. The answer now waits for the dialog, and the yes reaches the engine as a yes.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_question_answered_the_moment_it_opens_finds_its_dialog() {
+        let (_tmp, sup, run, sent) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        let (done, answered) = sync_mpsc::channel();
+        let (i2, g2) = (sup.inner.clone(), g.clone());
+        at(&run, "dialog-opened", move || {
+            std::thread::spawn(move || {
+                let item = open_item(&i2, &g2).expect("the question is in the inbox");
+                i2.store(|s| s.resolve_inbox(&item, "Yes")).unwrap();
+                done.send(crate::control::answer_dialog(&i2, &g2, "u1", "Yes").map_err(|e| e.to_string())).unwrap();
+            });
+            std::thread::sleep(Duration::from_millis(200));
+        });
+        on_ui_request(inner, &run, confirm("u1", None)).unwrap();
+        answered.recv_timeout(Duration::from_secs(5)).unwrap().expect("the answer found its dialog");
+        assert!(run.flags().dialogs.is_empty(), "no dialog is left open");
+        assert_eq!(mode(inner, &g), Mode::Thinking, "{:?}", modes(inner, &g));
+        let reply = || {
+            let log = std::fs::read_to_string(&sent).unwrap_or_default();
+            log.lines().find(|l| l.contains("extension_ui_response")).map(String::from)
+        };
+        until("the answer reaches the engine", || reply().is_some()).await;
+        let reply: Value = serde_json::from_str(&reply().unwrap()).unwrap();
+        assert_eq!(reply["confirmed"], true, "{reply}");
+    }
+
+    /// Once the run is stopping, the stop's mode stands: a call the abort ended, a compaction the engine reports and an
+    /// answer late to its dialog, each handled after the stop wrote it, leave the run idle, nothing running.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn what_ends_after_a_stop_writes_no_mode_over_it() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        on_tool_start(inner, &run, "c1".into(), "bash".into(), json!({"command": "pnpm test"})).unwrap();
+        on_ui_request(inner, &run, confirm("u1", None)).unwrap();
+        run.flags().stopping = Some(Stop::Pause(PauseReason::Human));
+        inner.set_mode(&g, Mode::Idle).unwrap();
+
+        let end = PiEvent::ToolEnd { call_id: "c1".into(), tool: "bash".into(), result: json!({}), is_error: false };
+        on_event(inner, &run, end).await.unwrap();
+        on_event(inner, &run, PiEvent::CompactionStart).await.unwrap();
+        on_event(inner, &run, PiEvent::CompactionEnd).await.unwrap();
+        crate::control::answer_dialog(inner, &g, "u1", "Yes").unwrap();
+        assert_eq!(mode(inner, &g), Mode::Idle, "{:?}", modes(inner, &g));
+        // Idle cleared the live line, and no settle after it put the call back as running.
+        assert!(!live(inner, &g).is_some_and(|l| l.running), "{:?}", live(inner, &g));
+    }
+
+    /// An answer that finds no dialog (its run let it go) is refused, and nothing goes to the engine as text.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_answer_with_no_dialog_is_refused() {
+        let (_tmp, sup, run, sent) = running().await;
+        let err = crate::control::answer_dialog(&sup.inner, &run.goal_id, "u9", "Yes").unwrap_err();
+        assert!(err.to_string().contains("no longer waiting"), "{err}");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let log = std::fs::read_to_string(&sent).unwrap_or_default();
+        assert!(!log.contains("extension_ui_response"), "{log}");
+    }
+
+    /// Iteration 20 (D214): an answer's mode is written before the answer goes, under the mode's lock. What the engine
+    /// does with it at once (here, the command ending) is recorded after: the run is back on the command, then on the
+    /// read still at work. Sent first, the command's end came before the answer's mode, and the run skipped the command.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn what_the_engine_does_with_an_answer_is_recorded_after_it() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        on_tool_start(inner, &run, "r1".into(), "read".into(), json!({"path": "src/a.ts"})).unwrap();
+        on_tool_start(inner, &run, "b1".into(), "bash".into(), json!({"command": "pnpm test"})).unwrap();
+        on_ui_request(inner, &run, confirm("u1", None)).unwrap();
+        let item = open_item(inner, &g).unwrap();
+        inner.store(|s| s.resolve_inbox(&item, "Yes")).unwrap();
+        let before = modes(inner, &g).len();
+        let (done, ended) = sync_mpsc::channel();
+        let (i2, r2, pump) = (sup.inner.clone(), run.clone(), tokio::runtime::Handle::current());
+        at(&run, "answer-sent", move || {
+            std::thread::spawn(move || {
+                let end =
+                    PiEvent::ToolEnd { call_id: "b1".into(), tool: "bash".into(), result: json!({}), is_error: false };
+                done.send(pump.block_on(on_event(&i2, &r2, end)).map_err(|e| e.to_string())).unwrap();
+            });
+            std::thread::sleep(Duration::from_millis(200));
+        });
+        crate::control::answer_dialog(inner, &g, "u1", "Yes").unwrap();
+        ended.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+        assert_eq!(modes(inner, &g)[before..], [Mode::Executing, Mode::Reading]);
+    }
+
+    /// Review 20 (record only): the modes the engine reports for itself (a new turn, compacting, retrying) were written
+    /// over an open question, and the run no longer read as waiting on you while it did. They now leave the question
+    /// on top, and take over once it is answered.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_engines_own_modes_never_cover_an_open_question() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        on_ui_request(inner, &run, confirm("u1", None)).unwrap();
+        let retry = || PiEvent::RetryStart { attempt: 1, max_attempts: 3, error: "overloaded".into() };
+        for e in [PiEvent::TurnStart, PiEvent::CompactionStart, PiEvent::CompactionEnd, retry()] {
+            on_event(inner, &run, e).await.unwrap();
+            assert_eq!(mode(inner, &g), Mode::WaitingOnYou, "{:?}", modes(inner, &g));
+        }
+        on_event(inner, &run, PiEvent::RetryEnd { success: true }).await.unwrap();
+        assert_eq!(mode(inner, &g), Mode::WaitingOnYou);
+        let item = open_item(inner, &g).unwrap();
+        inner.store(|s| s.resolve_inbox(&item, "Yes")).unwrap();
+        crate::control::answer_dialog(inner, &g, "u1", "Yes").unwrap();
+        assert_eq!(mode(inner, &g), Mode::Thinking);
+        on_event(inner, &run, PiEvent::CompactionStart).await.unwrap();
+        assert_eq!(mode(inner, &g), Mode::Compacting);
+        on_event(inner, &run, retry()).await.unwrap();
+        assert_eq!(mode(inner, &g), Mode::Retrying);
+        on_event(inner, &run, PiEvent::RetryEnd { success: true }).await.unwrap();
+        assert_eq!(mode(inner, &g), Mode::Thinking);
     }
 
     #[test]

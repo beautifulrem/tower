@@ -179,21 +179,6 @@ export function dismissToast(id: number) {
   setTimeout(() => setState("toasts", (t) => t.filter((x) => x.id !== id)), 110);
 }
 
-/**
- * The same question asked twice (a pause event the supervisor sent again)
- * is one card: the newest of each (goal, kind, subject) stands, in the
- * original order. Insurance on the reading side; the fix belongs upstream.
- */
-export function dedupeInbox(items: InboxItem[]): InboxItem[] {
-  const newest = new Map<string, InboxItem>();
-  for (const i of items) {
-    const k = `${i.goal_id}\u0000${i.kind}\u0000${i.subject.trim()}`;
-    const have = newest.get(k);
-    if (!have || i.created_at >= have.created_at) newest.set(k, i);
-  }
-  return items.filter((i) => newest.get(`${i.goal_id}\u0000${i.kind}\u0000${i.subject.trim()}`) === i);
-}
-
 /** Runs an action, surfacing failures as an error toast. */
 export async function act<T>(fn: () => Promise<T>, success?: string): Promise<T | undefined> {
   try {
@@ -305,7 +290,7 @@ function subscribe() {
         break;
       case "inbox":
         fresh.inbox = true;
-        setState("inbox", reconcile(dedupeInbox(u.items), { key: "id" }));
+        setState("inbox", reconcile(u.items, { key: "id" }));
         setState("snoozed", reconcile(u.snoozed ?? [], { key: "id" }));
         break;
       case "projects":
@@ -396,7 +381,7 @@ export async function init() {
         s.goals = Object.fromEntries(goals.map((g) => [g.id, fresh.goals.has(g.id) ? live[g.id] : g]));
         for (const id of fresh.goals) if (!s.goals[id] && live[id]) s.goals[id] = live[id];
         if (!fresh.inbox) {
-          s.inbox = dedupeInbox(inbox);
+          s.inbox = inbox;
           s.snoozed = snoozed;
         }
         if (!fresh.projects) s.projects = projects;

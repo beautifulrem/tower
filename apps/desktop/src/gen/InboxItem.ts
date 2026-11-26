@@ -27,4 +27,9 @@ tones: Array<OptionTone>,
 /**
  * Set while the item is put aside ("remind me later"), until when.
  */
-snoozed_until: number | null, };
+snoozed_until: number | null, 
+/**
+ * Where `subject` starts with a machine value (a stalled call's command, a failing check), that value, set as code
+ * where the subject is shown: the words around it stay in the interface's face.
+ */
+code?: string, };

@@ -249,6 +249,7 @@ export const zh = {
     waitingSlot: "等待执行槽位",
     unratified: "合同未批准",
     runningFor: "已进行 {d}",
+    runFor: "第 {n} 次运行，{d}",
     lastMove: "最后动静 {d}",
   },
   trace: {

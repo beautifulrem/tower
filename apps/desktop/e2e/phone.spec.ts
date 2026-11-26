@@ -10,10 +10,15 @@ import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+import { paintedCommand } from "./command";
 import { HELD_OUT_BODY, HELD_OUT_OPTIONS, HELD_OUT_TONES, enrichRich } from "./rich";
 import { fixtures, settled } from "./tauri";
 
 const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../crates/tower-supervisor/src/remote.html"), "utf8");
+/** The page's Content-Security-Policy, as the supervisor sends it (remote.rs): a mark the policy blocks is tested blocked. */
+const CSP = /"Content-Security-Policy",\s*"([^"]+)"/.exec(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../crates/tower-supervisor/src/remote.rs"), "utf8"),
+)![1];
 
 /**
  * Opens the page with `state` answering `/api/state` (null: the supervisor cannot be reached). `remembered` is the
@@ -31,7 +36,7 @@ async function openPhone(
   serve.state = state;
   await page.setViewportSize({ width: opts.width ?? 390, height: 844 });
   if (opts.remembered) await page.addInitScript((l) => localStorage.setItem("tower-lang", l), opts.remembered);
-  await page.route("http://phone.test/", (r) => r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: PAGE }));
+  await page.route("http://phone.test/", (r) => r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", headers: { "Content-Security-Policy": CSP }, body: PAGE }));
   await page.route("http://phone.test/api/state", (r) =>
     serve.state ? r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(serve.state) }) : r.abort("connectionfailed"),
   );
@@ -100,6 +105,72 @@ test("decisions that widen what the agent may do are named as desk-only, not off
   await expect(page.locator(".desk").first()).toContainText("At your Mac: Allow");
   await expect(page.getByRole("button", { name: /go to review/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /redo it/ })).toBeVisible();
+});
+
+// Review 22 (R22-P3-01): a row carried over hung two characters in, like the command's own indented second line, and
+// "--fill" parted as "--" and "fill". As on the desk: a line starts at the edge, a carried-over row two in under a hook
+// the command's own indent never has, a word that fits a row stays whole, and what is copied is the command.
+const PHONE_COMMANDS = [
+  "git push --force-with-lease origin feature/checkout-total-rounding-fix-for-multi-currency-carts && gh pr create --fill",
+  "cd web &&\n  rm -rf dist node_modules/.cache\n\npnpm --filter checkout test -- --run --reporter=dot",
+];
+for (const [scheme, width] of [["light", 390], ["dark", 320]] as const)
+  test(`an approval's command on the phone shows where a row is carried over (${scheme}, ${width})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await openPhone(page, {
+      width,
+      state: {
+        goals: [],
+        inbox: PHONE_COMMANDS.map((body, n) => ({
+          id: `a${n}`, goal_id: "G-0001", goal_title: "Fix the cart total", kind: "approval", title: `Approval needed: step ${n}`, subject: `step ${n}`,
+          body, options: ["Allow", "Deny"], tones: ["primary", "destructive"], allow_text: false, created_at: Date.now() - n,
+        })),
+        lang: "en",
+      },
+    });
+    for (const [n, command] of PHONE_COMMANDS.entries()) {
+      const pre = page.locator(".card").filter({ hasText: `step ${n}` }).locator(".tail");
+      await expect(pre).toBeVisible();
+      const { rows, text, broken } = await paintedCommand(pre);
+      expect(text, "what is copied is the command").toBe(command);
+      expect(rows.some((r) => !r.first), `${command} is carried over at ${width}`).toBe(true);
+      expect(broken, "a word that fits a row is never parted").toEqual([]);
+      for (const r of rows) {
+        const where = `${scheme} ${width} line ${r.line} "${r.text}"`;
+        if (r.first) expect(r.at, `${where}: a line starts at the edge`).toBe(0);
+        else expect([r.at, r.ink], `${where}: a carried-over row starts two in, under the hook`).toEqual([2, true]);
+        if (r.first && r.text.startsWith("  ")) expect(r.ink, `${where}: the command's own indent has no hook`).toBe(false);
+      }
+    }
+    // Wherever a row ends, a word that fits moves whole.
+    const parted: string[] = [];
+    for (let w = width === 390 ? 376 : 320; w <= (width === 390 ? 430 : 376); w += 2) {
+      await page.setViewportSize({ width: w, height: 844 });
+      for (const n of [0, 1]) parted.push(...(await paintedCommand(page.locator(".card").filter({ hasText: `step ${n}` }).locator(".tail"), { ink: false })).broken.map((b) => `${w}: ${b}`));
+    }
+    expect(parted, "no word parted at any width").toEqual([]);
+  });
+
+// Review 22 (record only): "pnpm test (bash) failed 4 times in a row" set the command in the words' face. The command is
+// code; the words around it are not. A failing check's name, the whole question, is code as before.
+test("a stalled call's command and a failing check are code in the question, the words around them are not", async ({ page }) => {
+  await openPhone(page, {
+    state: {
+      goals: [],
+      inbox: [
+        { id: "s", goal_id: "G-0002", goal_title: "Align discount rules", kind: "stalled", title: "May be stuck: pnpm test (bash) failed 4 times in a row", subject: "pnpm test (bash) failed 4 times in a row", code: "pnpm test", body: "", options: ["Keep waiting", "Pause"], tones: ["neutral", "neutral"], allow_text: true, created_at: Date.now() },
+        { id: "c", goal_id: "G-0003", goal_title: "Stop the double charge", kind: "ci_failed", title: "CI failed: unit-tests", subject: "unit-tests", code: "unit-tests", body: "", options: ["Retry"], tones: ["primary"], allow_text: false, created_at: Date.now() - 1 },
+      ],
+      lang: "en",
+    },
+  });
+  const stalled = page.locator(".card").filter({ hasText: "failed 4 times" }).locator(".question");
+  await expect(stalled).toHaveText("pnpm test (bash) failed 4 times in a row");
+  await expect(stalled.locator("code")).toHaveText("pnpm test");
+  const faces = await stalled.evaluate((el) => [getComputedStyle(el.querySelector("code")!).fontFamily, getComputedStyle(el).fontFamily]);
+  expect(faces[0]).toMatch(/mono/i);
+  expect(faces[1]).not.toMatch(/mono/i);
+  await expect(page.locator(".card").filter({ hasText: "unit-tests" }).locator(".question code")).toHaveText("unit-tests");
 });
 
 test("offline, the page says so once, says where to look and offers one retry; the header is the gauges with the power off", async ({ page }) => {
@@ -189,7 +260,8 @@ test("the header is the desk's title bar: runs of slots, the silence once it is 
   // never "silent" with the hint mark; the row still says it needs you. In flight is the live line's word, not the mode's.
   for (const lang of ["en", "zh-CN"]) {
     await openPhone(page, { state: { goals: [goal("G-1", "running", 0.05, now - 185_000, "waiting_on_you", true, 1)], inbox: [], lang, max_running: 4 } });
-    await expect(gauges.nth(1)).toHaveText(lang === "en" ? "bash running for 3m" : "bash 已运行 3m");
+    // In Chinese the time in words, as the desk's title bar says it ("bash 已运行 3 分钟"; review 22: the phone said "3m").
+    await expect(gauges.nth(1)).toHaveText(lang === "en" ? "bash running for 3m" : "bash 已运行 3 分钟");
     await expect(gauges.nth(1).locator("svg")).toHaveCount(0);
     await expect(page.locator(".row .badge").first()).toHaveText(lang === "en" ? "Needs you" : "等你");
   }
@@ -295,6 +367,22 @@ test("the phone card is drawn with the desk's pen: a 32px strip with an amber ed
   const elapsed = page.locator(".row .head .elapsed");
   await expect(elapsed).toHaveText("elapsed 1h 49m");
   expect((await elapsed.locator(".sr").boundingBox())!.width).toBeLessThanOrEqual(1);
+});
+
+// Review 22 (gap): the run's time reads "已进行", as on the desk (D248), never "已运行" beside a silent badge; and its
+// length in words, as the desk says it.
+test("on the phone in Chinese the run's time is how long it has gone, as on the desk", async ({ page }) => {
+  await openPhone(page, {
+    state: {
+      goals: [{ id: "G-0002", title: "对齐折扣规则", state: "running", mode: "executing", run_started_at: Date.now() - 109 * 60_000, live_line: { action: "bash", target: "npm test", at: Date.now() }, pause_reason: null, verified_pin: null }],
+      inbox: [],
+      lang: "zh-CN",
+    },
+  });
+  const elapsed = page.locator(".row .head .elapsed");
+  await expect(elapsed.locator(".sr")).toHaveText("已进行 ");
+  // In words, as the desk says it (format.ts `duration`): the phone said "1h 49m" in Chinese.
+  await expect(elapsed).toHaveText("已进行 1 小时 49 分");
 });
 
 const HELD_OUT_STATE = {
@@ -452,9 +540,16 @@ test("one black button a screen: only the first card fills its primary, another 
   await expect.poll(() => second.evaluate(filled)).toBe(false);
   await cards.nth(1).locator("textarea").focus();
   await expect.poll(() => second.evaluate(filled)).toBe(true);
-  // Each output line is a block with a two-character hang, so a wrapped line reads as one.
+  // Each output line is a box the output's width with a two-character hang, so a wrapped line reads as one.
   const line = cards.nth(0).locator(".tail .tl").filter({ hasText: "AssertionError" }).first();
-  expect(await line.evaluate((el) => [getComputedStyle(el).display, parseFloat(getComputedStyle(el).textIndent) < 0])).toEqual(["block", true]);
+  expect(
+    await line.evaluate((el) => {
+      const tail = el.closest(".tail")!;
+      const cs = getComputedStyle(tail);
+      const inner = tail.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      return [Math.abs(el.getBoundingClientRect().width - inner) < 1, parseFloat(getComputedStyle(el).textIndent) < 0];
+    }),
+  ).toEqual([true, true]);
 });
 
 test("a ready goal's id sits in its second line and the foot says how often the page refreshes", async ({ page }) => {

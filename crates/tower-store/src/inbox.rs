@@ -36,6 +36,7 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
     let body: String = r.get("body")?;
     // System-written titles follow the current language; the agent's and
     // extensions' words stay as written.
+    let mut code = None;
     let (title, subject) = match kind {
         InboxKind::Paused => match opt_enum_col::<PauseReason>(r, "goal_pause_reason")? {
             Some(reason) => {
@@ -51,10 +52,16 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
             (tr!(lang, "Agent 的假设待你确认", "An assumption by the agent needs your confirmation"), body.clone())
         }
         InboxKind::Stalled if !subject.is_empty() => {
-            let subject = tower_core::i18n::Stall::decode(&subject).map_or(subject, |s| s.text(lang));
+            let stall = tower_core::i18n::Stall::decode(&subject);
+            code = stall.as_ref().and_then(|s| s.code()).map(String::from);
+            let subject = stall.map_or(subject, |s| s.text(lang));
             (tr!(lang, "可能卡住：{subject}", "May be stuck: {subject}"), subject)
         }
-        InboxKind::CiFailed => (tr!(lang, "CI 未通过：{subject}", "CI failed: {subject}"), subject),
+        InboxKind::CiFailed => {
+            // The failing check's name, whole.
+            code = Some(subject.clone()).filter(|s| !s.is_empty());
+            (tr!(lang, "CI 未通过：{subject}", "CI failed: {subject}"), subject)
+        }
         InboxKind::Approval if !subject.is_empty() => {
             (tr!(lang, "需要你批准：{subject}", "Approval needed: {subject}"), subject)
         }
@@ -91,6 +98,7 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
     Ok(InboxItem {
         tones,
         snoozed_until: r.get("snoozed_until")?,
+        code,
         title,
         subject,
         goal_title,
@@ -118,6 +126,30 @@ impl Store {
     }
 
     fn insert_inbox(&mut self, n: NewInboxItem) -> Result<InboxItem> {
+        // The same thing said again (a check failing on another push) is one card, on the desk and the phone alike: it
+        // replaces the goal's open item of its kind and words (review 22, record only: the desk kept the newest of each
+        // by itself and the phone showed both). Never an engine's dialog: each is a question the agent waits on, and is
+        // answered on its own.
+        if n.engine_ref.is_none() {
+            let older: Vec<String> = self
+                .conn
+                .prepare(
+                    "SELECT id FROM inbox WHERE goal_id = ?1 AND kind = ?2 AND subject = ?3 AND engine_ref IS NULL
+                     AND resolved_at IS NULL",
+                )?
+                .query_map(params![n.goal_id, enum_str(&n.kind), n.subject], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            let lang = self.lang();
+            for item_id in older {
+                let now = self.now();
+                self.conn.execute(
+                    "UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1",
+                    params![item_id, now, tr!(lang, "（被更新的一项取代）", "(replaced by a newer one)")],
+                )?;
+                let response = tr!(lang, "被更新的一项取代", "Replaced by a newer one").to_string();
+                self.append(&n.goal_id, EventKind::InboxResolved { item_id, response })?;
+            }
+        }
         let id = new_id("inb");
         let now = self.now();
         self.conn.execute(
@@ -275,6 +307,64 @@ mod tests {
         clock.advance(61_000);
         assert_eq!(s.open_inbox_items().unwrap().len(), 1);
         assert!(s.snoozed_inbox_items().unwrap().is_empty());
+    }
+
+    /// Review 22 (record only): the same thing said again was one card on the desk, which kept the newest of each by
+    /// itself, and two on the phone. The supervisor's list is the one both read: the newer item replaces the older, and
+    /// the goal needs you once. Two dialogs with the same words are two questions the agent waits on: both stay.
+    #[test]
+    fn the_same_thing_said_again_is_one_item_but_every_dialog_stays() {
+        let (mut s, _, id) = crate::goals::tests::seeded();
+        let ci = |subject: &str| NewInboxItem {
+            kind: InboxKind::CiFailed,
+            subject: subject.into(),
+            engine_ref: None,
+            ..item(&id, InboxKind::CiFailed, 2)
+        };
+        let first = s.open_inbox(ci("unit-tests")).unwrap();
+        let other = s.open_inbox(ci("lint")).unwrap();
+        let again = s.open_inbox(ci("unit-tests")).unwrap();
+        let ids = |s: &crate::Store| s.open_inbox_items().unwrap().into_iter().map(|i| i.id).collect::<Vec<_>>();
+        assert_eq!(ids(&s), vec![other.id.clone(), again.id.clone()]);
+        // A failing check's name is code, whole (review 22, record only).
+        assert_eq!(again.code.as_deref(), Some("unit-tests"));
+        assert_eq!(s.summary(&id).unwrap().needs_you, 2);
+        assert!(s.resolve_inbox(&first.id, "late").is_err(), "the older one is closed, not left to answer");
+
+        let ask = |ui: &str| NewInboxItem { engine_ref: Some(ui.into()), ..item(&id, InboxKind::Approval, 0) };
+        let (a, b) = (s.open_inbox(ask("ui-1")).unwrap(), s.open_inbox(ask("ui-2")).unwrap());
+        let open = ids(&s);
+        assert!(open.contains(&a.id) && open.contains(&b.id), "{open:?}");
+        assert_eq!(s.summary(&id).unwrap().needs_you, 4);
+    }
+
+    /// Review 22 (record only): "pnpm test (bash) failed 4 times in a row" set the command in the words' face. The item
+    /// says which part is code, in the language it is read in; the clients set it so.
+    #[test]
+    fn a_stalls_command_is_code_in_either_language() {
+        let (mut s, _, id) = crate::goals::tests::seeded();
+        let stall = tower_core::i18n::Stall::Repeated { tool: "bash".into(), target: "pnpm test".into(), times: 4 };
+        s.open_inbox(NewInboxItem {
+            kind: InboxKind::Stalled,
+            subject: stall.encode(),
+            engine_ref: None,
+            ..item(&id, InboxKind::Stalled, 2)
+        })
+        .unwrap();
+        for (lang, subject) in
+            [("en", "pnpm test (bash) failed 4 times in a row"), ("zh-CN", "pnpm test（bash）连续失败 4 次")]
+        {
+            let mut cfg = s.settings().unwrap();
+            cfg.language = lang.into();
+            s.save_settings(&cfg).unwrap();
+            let it = s.open_inbox_items().unwrap().pop().unwrap();
+            assert_eq!((it.subject.as_str(), it.code.as_deref()), (subject, Some("pnpm test")));
+        }
+        let quiet = tower_core::i18n::Stall::NoProgress { minutes: 12 };
+        let it = s
+            .open_inbox(NewInboxItem { subject: quiet.encode(), engine_ref: None, ..item(&id, InboxKind::Stalled, 2) })
+            .unwrap();
+        assert_eq!(it.code, None);
     }
 
     #[test]

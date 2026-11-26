@@ -152,6 +152,15 @@ pub(super) fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) 
     // good with nothing to answer).
     let opened = {
         let _mode = run.lock_mode();
+        // A run being stopped asks nothing: its dialog is cancelled (an approval reads as declined) and nothing opens.
+        // Checked under the lock the stop is marked under (review 22, record only: an approval Pi raised as it was
+        // aborted read "needs you" until the pause took it away, and one that came after the pause left the paused goal
+        // waiting on you, with an item to answer for a run that was gone). Once the engine is shut down there is no one
+        // to tell, and that is no error.
+        if run.flags().stopping.is_some() {
+            let _ = run.engine.answer(&req.id, &tower_pi::UiAnswer::Cancelled);
+            return Ok(());
+        }
         let opened = inner.open_inbox(item)?;
         between(run, "dialog-opened");
         run.flags().dialogs.insert(req.id.clone(), (opened.id.clone(), req.method));
@@ -219,6 +228,7 @@ mod tests {
     use crate::run::tests::fake_engine_goal;
 
     type Step = Box<dyn FnOnce() + Send>;
+    type EngineEvents = tokio::sync::mpsc::UnboundedReceiver<tower_pi::EngineOutput>;
     /// A test's step at a point of one run (by its address: every test has runs of its own), taken when reached.
     static STEPS: LazyLock<Mutex<HashMap<(usize, String), Step>>> = LazyLock::new(Mutex::default);
 
@@ -246,16 +256,26 @@ mod tests {
         changes.collect()
     }
 
-    /// A running goal on an engine that answers every command and writes down, in its workspace, what it is sent.
-    async fn running() -> (tempfile::TempDir, crate::Supervisor, Arc<Run>, PathBuf) {
-        let script = r#"
+    /// An engine that answers every command and writes down, in its workspace, what it is sent; `ON_ABORT` is what it
+    /// says first when it is aborted.
+    const ENGINE: &str = r#"
 while IFS= read -r line; do
   printf '%s\n' "$line" >> .sent.jsonl
   id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   type=$(printf '%s' "$line" | sed -n 's/.*"type":"\([^"]*\)".*/\1/p')
+  if [ "$type" = "abort" ]; then ON_ABORT; fi
   printf '{"id":"%s","type":"response","command":"%s","success":true,"data":{}}\n' "$id" "$type"
 done"#;
-        let (tmp, sup, id) = fake_engine_goal(script, false).await;
+
+    /// A running goal on that engine.
+    async fn running() -> (tempfile::TempDir, crate::Supervisor, Arc<Run>, PathBuf) {
+        let (tmp, sup, run, sent, _) = running_on(":").await;
+        (tmp, sup, run, sent)
+    }
+
+    /// The same, with what the engine says as it is aborted, and its events for a pump to read.
+    async fn running_on(on_abort: &str) -> (tempfile::TempDir, crate::Supervisor, Arc<Run>, PathBuf, EngineEvents) {
+        let (tmp, sup, id) = fake_engine_goal(&ENGINE.replace("ON_ABORT", on_abort), false).await;
         let inner = &sup.inner;
         inner.transition(&id, Transition::Ratify, None, "").unwrap();
         let repo = tmp.path().join("repo");
@@ -264,7 +284,7 @@ done"#;
         let workspace = repo.display().to_string();
         inner.append(&id, EventKind::WorkspacePrepared { workspace, base_commit: base }).unwrap();
         let goal = inner.store(|s| s.goal(&id)).unwrap();
-        let (engine, _rx) = Engine::spawn(&engine_config(inner, &goal, &repo).unwrap()).unwrap();
+        let (engine, rx) = Engine::spawn(&engine_config(inner, &goal, &repo).unwrap()).unwrap();
         let run = Arc::new(Run {
             goal_id: id,
             run_no: 1,
@@ -277,7 +297,7 @@ done"#;
         });
         assert!(slots::begin(inner, &run, LifecycleState::Ready, "initial", None).unwrap());
         let sent = repo.join(".sent.jsonl");
-        (tmp, sup, run, sent)
+        (tmp, sup, run, sent, rx)
     }
 
     /// An extension's yes-or-no question, with Pi's time limit if any.
@@ -495,10 +515,7 @@ done"#;
         let (_tmp, sup, run, _) = running().await;
         let (inner, g) = (&sup.inner, run.goal_id.clone());
         let command = "cd web &&\n  rm -rf dist node_modules/.cache";
-        let payload = json!({"tower": "approval", "tool": "bash", "target": command, "reason": "delete recursively"});
-        let title = format!("tower:{payload}");
-        let req = json!({"id": "a1", "method": "select", "title": title, "options": ["Allow", "Deny"]});
-        on_ui_request(inner, &run, serde_json::from_value(req).unwrap()).unwrap();
+        on_ui_request(inner, &run, approval("a1", command)).unwrap();
         let item = inner.read_store(|s| s.open_inbox_items()).unwrap().into_iter().find(|i| i.goal_id == g).unwrap();
         assert_eq!(
             (item.kind, item.subject.as_str(), item.body.as_str()),
@@ -576,6 +593,75 @@ done"#;
             on_event(inner, &run, e).await.unwrap();
             assert_eq!(mode(inner, &g), Mode::Idle, "{:?}", modes(inner, &g));
         }
+    }
+
+    /// An approval of the tower-goal extension's, for `command`.
+    fn approval(id: &str, command: &str) -> UiRequest {
+        let payload = json!({"tower": "approval", "tool": "bash", "target": command, "reason": "delete recursively"});
+        let req =
+            json!({"id": id, "method": "select", "title": format!("tower:{payload}"), "options": ["Allow", "Deny"]});
+        serde_json::from_value(req).unwrap()
+    }
+
+    /// The goal's open items, by kind.
+    fn open_kinds(inner: &Inner, g: &str) -> Vec<InboxKind> {
+        let items = inner.read_store(|s| s.open_inbox_items()).unwrap();
+        items.into_iter().filter(|i| i.goal_id == g).map(|i| i.kind).collect()
+    }
+
+    /// Review 22 (record only): Pi raised an approval as it was aborted, and the paused run read "needs you" until the
+    /// pause took the question away. A run being stopped asks nothing: read by the pump as a run reads it, the approval
+    /// opens no item and the run never waits on you.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_approval_raised_as_the_run_is_stopped_asks_nothing() {
+        let on_abort = r#"printf '%s\n' '{"type":"extension_ui_request","id":"late","method":"select","title":"tower:{\"tower\":\"approval\",\"tool\":\"bash\",\"target\":\"rm -rf dist\",\"reason\":\"delete recursively\"}","options":["Allow","Deny"]}'"#;
+        let (_tmp, sup, run, _, rx) = running_on(on_abort).await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        let pumped = tokio::spawn(crate::run::events::pump(sup.inner.clone(), run.clone(), rx));
+        on_tool_start(inner, &run, "c1".into(), "bash".into(), json!({"command": "pnpm test"})).unwrap();
+        crate::control::pause(inner, &g, PauseReason::Human, "").await.unwrap();
+        // The engine is shut down: the pump has read everything it said, the approval included.
+        tokio::time::timeout(Duration::from_secs(15), pumped).await.unwrap().unwrap();
+        let rec = inner.store(|s| s.goal(&g)).unwrap();
+        assert_eq!((rec.state, rec.mode), (LifecycleState::Paused, Mode::Idle));
+        assert!(!modes(inner, &g).contains(&Mode::WaitingOnYou), "{:?}", modes(inner, &g));
+        // Your own pause asks nothing of you either.
+        assert!(open_kinds(inner, &g).is_empty(), "{:?}", open_kinds(inner, &g));
+        let trace = inner.read_store(|s| s.trace(&g, None, 500)).unwrap();
+        assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::InboxOpened { .. })));
+    }
+
+    /// Review 22 (record only): an approval that reached the supervisor once a pause had landed left the paused goal
+    /// waiting on you, with an item to answer for a run that was gone. While the engine is still there to hear it, the
+    /// dialog is cancelled, which the extension reads as declined.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_dialog_to_a_stopping_or_stopped_run_is_cancelled() {
+        let (_tmp, sup, run, sent) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        {
+            let _mode = run.lock_mode();
+            run.flags().stopping = Some(Stop::Pause(PauseReason::Human));
+        }
+        on_ui_request(inner, &run, approval("a1", "rm -rf dist")).unwrap();
+        assert!(open_kinds(inner, &g).is_empty());
+        assert!(run.flags().dialogs.is_empty());
+        assert_ne!(mode(inner, &g), Mode::WaitingOnYou, "{:?}", modes(inner, &g));
+        let reply = || {
+            let log = std::fs::read_to_string(&sent).unwrap_or_default();
+            log.lines().find(|l| l.contains("extension_ui_response") && l.contains(r#""id":"a1""#)).map(String::from)
+        };
+        until("the dialog is cancelled", || reply().is_some()).await;
+        let reply: Value = serde_json::from_str(&reply().unwrap()).unwrap();
+        assert_eq!(reply["cancelled"], true, "{reply}");
+
+        // After the pause has landed and the engine is gone: nothing to tell, nothing opens.
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        crate::control::pause(inner, &g, PauseReason::Human, "").await.unwrap();
+        on_ui_request(inner, &run, approval("a2", "rm -rf dist")).unwrap();
+        let rec = inner.store(|s| s.goal(&g)).unwrap();
+        assert_eq!((rec.state, rec.mode), (LifecycleState::Paused, Mode::Idle), "{:?}", modes(inner, &g));
+        assert!(open_kinds(inner, &g).is_empty(), "{:?}", open_kinds(inner, &g));
     }
 
     /// An answer that finds no dialog (its run let it go) is refused, and nothing goes to the engine as text.

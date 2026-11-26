@@ -69,6 +69,13 @@ for (const [lang, runs] of [["en", "said in runs 1 and 2"], ["zh-CN", "第 1、2
     expect(note.top).toBeGreaterThanOrEqual(said.bottom - 1);
     // Said once, a claim names no runs.
     await expect(rows.filter({ has: page.locator(".num", { hasText: /^C2\s*$/ }) }).locator(".ledger-claim-cell .ledger-runs")).toHaveCount(0);
+    // The pin the verifier's sentence ends on is a machine value, set as the seal sets one (review 22, note 7): the
+    // words before it in the interface's face, the pin alone in mono.
+    const ev = c1.locator(".ledger-fact-ev");
+    await expect(ev.locator("code.code-val")).toHaveText(/^@[0-9a-f]{7}$/);
+    const [pin, words] = await ev.evaluate((e) => [getComputedStyle(e.querySelector("code")!).fontFamily, getComputedStyle(e).fontFamily]);
+    expect(pin).not.toBe(words);
+    expect(pin).toMatch(/mono/i);
   });
 
 /** G-0003's two passes counted, with caveats: the runner reached into and a pass on rerun (`progress.qualified`). */

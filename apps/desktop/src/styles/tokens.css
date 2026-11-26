@@ -93,6 +93,9 @@
   --mark-attention: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM7.125 4.6a.875 .875 0 0 1 1.75 0v4.1a.875 .875 0 0 1 -1.75 0zM8 10.35a1.05 1.05 0 1 1 0 2.1a1.05 1.05 0 1 1 0 -2.1z'/%3E%3C/svg%3E");
   --mark-danger: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 9.237L9.781 11.019A.875 .875 0 0 0 11.019 9.781L9.237 8L11.019 6.219A.875 .875 0 0 0 9.781 4.981L8 6.763L6.219 4.981A.875 .875 0 0 0 4.981 6.219L6.763 8L4.981 9.781A.875 .875 0 0 0 6.219 11.019z'/%3E%3C/svg%3E");
   --mark-notice: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0 -11zM7.2 7.3a.8 .8 0 0 1 1.6 0v3.7a.8 .8 0 0 1 -1.6 0zM8 3.95a.95 .95 0 1 1 0 1.9a.95 .95 0 1 1 0 -1.9z'/%3E%3C/svg%3E");
+  /* A row carried over (an approval's command, wrapped): the one-pen line turning down and right, as a mask 2ch × one 18px
+     row, repeated down the rows it marks (app.css .decision-cmd, and the phone's .cmd). */
+  --mark-hook: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='18' fill='none' stroke='%23000' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 4.5v3a2.5 2.5 0 0 0 2.5 2.5h5M9 7.5l2.5 2.5L9 12.5'/%3E%3C/svg%3E");
   /* How long a destructive option stays armed for its second press (DecisionCard ARM_MS). */
   --dur-arm: 2000ms;
 }

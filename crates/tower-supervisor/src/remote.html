@@ -22,6 +22,8 @@
     --st-attention: oklch(0.600 0.150 65); --attention-bg: oklch(0.962 0.034 85);
     --st-danger: oklch(0.540 0.190 25); --st-verified: oklch(0.550 0.130 155); --st-active: oklch(0.500 0.130 240);
     --verified-bg: oklch(0.960 0.025 155); --focus: oklch(0.220 0.006 70 / 0.65);
+    /* The desk's hook (tokens.css --mark-hook): a row carried over. */
+    --mark-hook: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='18' fill='none' stroke='%23000' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 4.5v3a2.5 2.5 0 0 0 2.5 2.5h5M9 7.5l2.5 2.5L9 12.5'/%3E%3C/svg%3E");
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -97,14 +99,21 @@
   .later .btn { min-height: 44px; padding: 0 10px; font-size: 14px; }
   .main { padding: 11px 12px 12px; display: grid; gap: 9px; }
   .question { font-size: 16px; line-height: 23px; font-weight: 500; letter-spacing: -0.008em; user-select: text; }
-  .question.code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-  .question.code { font-size: 14.5px; font-weight: 500; word-break: break-word; }
+  .question code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  /* A machine value the question starts with (a failing check, a stalled call's command) is code; the words stay words. */
+  .question code { font-size: 14.5px; font-weight: 500; word-break: break-word; }
   .body { color: var(--text-2); font-size: 14px; white-space: pre-wrap; word-break: break-word; user-select: text; }
   /* Agent-reported blocker claim uses dashed left border (Claim register, never Fact green). */
   .claim-box { border-left: 2px dashed var(--border-strong); background: var(--bg-inset); padding: 8px 10px; border-radius: 0 6px 6px 0; display: grid; gap: 4px; }
   .claim-box .tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
   .tail { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-inset); border: 1px solid var(--border-subtle); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-variant-ligatures: none; }
-  .tail .tl { display: block; padding-left: 2ch; text-indent: -2ch; }
+  /* Each line of the output a box the block's width, apart by the output's own newlines: what is read and copied is the
+     output, blank lines included, and a row carried over goes on two characters in. An approval's command (.cmd) marks
+     each carried-over row with a hook and moves a word to the next row whole (review 22, R22-P3-01: "--" and "fill" on two
+     rows, and a carried-over row indented like the command's own second line): the desk's .decision-cmd. */
+  .tail .tl { display: inline-block; box-sizing: border-box; width: 100%; position: relative; padding-left: 2ch; text-indent: -2ch; vertical-align: top; }
+  .cmd .tl::after { content: ""; position: absolute; top: 18px; bottom: 0; left: 0; width: 2ch; background: var(--text-3); -webkit-mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y; mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y; }
+  .cmd .w { display: inline-block; max-width: 100%; text-indent: 0; overflow-wrap: anywhere; vertical-align: top; }
   .caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-1); }
   .caution svg { flex: 0 0 auto; margin-top: 3px; }
   .caution.note { color: var(--text-3); }
@@ -320,7 +329,7 @@ function heldOut(body) {
   for (const [id, list] of names) if (!failures.some((f) => f.id === id)) failures.push({ id, title: "", tail: "", names: list });
   return { prose: prose.join("\n").trim(), failures };
 }
-const tailHtml = (text) => `<pre class="tail">${text.split("\n").map((l) => `<span class="tl">${esc(l) || " "}</span>`).join("")}</pre>`;
+const tailHtml = (text, cmd) => `<pre class="tail${cmd ? " cmd" : ""}">${text.split("\n").map((l) => `<span class="tl">${cmd ? l.split(/( +)/).map((w, j) => (j % 2 ? w : w && `<span class="w">${esc(w)}</span>`)).join("") : esc(l)}</span>`).join("\n")}</pre>`;
 const heldHtml = (h) => `<div class="heldout"><span class="label">${t("forYou")}</span>${h.failures.map((f) => `
   <div class="head"><span class="id">${esc(f.id)}</span><span>${esc(f.title)}</span></div>
   ${f.names.length ? `<div class="names"><span>${t("failing")}</span>${f.names.map((n) => `<code>${esc(n)}</code>`).join("")}</div>` : ""}
@@ -363,7 +372,14 @@ let sseLive = false;
 let offline = false;
 const ago = (at) => t("ago")(Math.round((Date.now() - at) / 60000));
 const clock = (at) => { const d = new Date(at); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
-const dur = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
+// As the desk says a time it does not count to the millisecond (format.ts `duration`): in Chinese, in words.
+const dur = (ms) => {
+  const s = Math.round(ms / 1000), zh = lang === "zh";
+  if (s < 60) return zh ? `${s} 秒` : `${s}s`;
+  const m = Math.floor(s / 60), h = Math.floor(m / 60);
+  if (m < 60) return zh ? `${m} 分钟` : `${m}m`;
+  return zh ? (m % 60 ? `${h} 小时 ${m % 60} 分` : `${h} 小时`) : `${h}h ${m % 60}m`;
+};
 const usd = (v) => v === 0 ? "$0" : v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`;
 function pipsHtml(p) {
   if (!p || !p.machine) return "";
@@ -461,9 +477,9 @@ function render(s) {
       <div class="strip">${G.attn}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span><button class="bell" data-later="${esc(i.id)}" aria-label="${t("later")}" aria-expanded="${laterOpen}">${G.bell}</button></div>
       <div class="main">
         ${laterOpen ? `<div class="later"><span>${t("later")}</span><button class="btn" data-snooze="${esc(i.id)}" data-until="${Date.now() + 3_600_000}">${t("inHour")}</button><button class="btn" data-snooze="${esc(i.id)}" data-until="${tomorrowAt9()}">${t("tomorrow")}</button></div>` : ""}
-        <p class="question ${i.kind === "ci_failed" ? "code" : ""}">${esc(i.subject)}</p>
+        <p class="question">${i.code ? `<code>${esc(i.code)}</code>${esc(i.subject.slice(i.code.length))}` : esc(i.subject)}</p>
         ${p.prose ? (isBlockedClaim ? `<div class="claim-box"><span class="tag">${esc(t("claim"))}</span><p class="body">${esc(p.prose)}</p></div>` : `<p class="body">${esc(p.prose)}</p>`) : ""}
-        ${p.tail ? tailHtml(p.tail) : ""}
+        ${p.tail ? tailHtml(p.tail, i.kind === "approval") : ""}
         ${held && held.failures.length ? heldHtml(held) : ""}
         ${held && i.allow_text ? replyHtml(i, true) : ""}
         ${security ? `<p class="caution">${G.notice}<span>${t("security")}</span></p>` : ""}

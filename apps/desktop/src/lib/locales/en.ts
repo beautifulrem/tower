@@ -243,6 +243,7 @@ export const en: DictNow = {
     waitingSlot: "Waiting for a run slot",
     unratified: "Contract not approved",
     runningFor: "elapsed {d}",
+    runFor: "Run {n}, {d}",
     lastMove: "last activity {d}",
   },
   trace: {

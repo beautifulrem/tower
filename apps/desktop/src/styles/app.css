@@ -2440,6 +2440,40 @@ input[type="radio"] {
   margin: 0;
   max-height: 200px;
 }
+/* An approval's block is the command it allows, line for line (review 22, R22-P3-01: a wrapped part began at the left
+   edge like a line of the command's own, and in a shell a new line is a new command). Each of the command's lines is a
+   box the width of the block, its first row at the edge; a row the block's width carried over goes on two characters in,
+   under a hook in that margin (the one-pen line, text-3), so a carried-over row and a line the command indents itself never
+   look alike. A word moves to the next row whole ("--fill" never parts as "--" and "fill"), and breaks only when it is
+   longer than the row. The boxes are inline, apart by the command's own newlines, so what is read and copied is the
+   command, character for character, blank lines included. The phone's block is the same (remote.html `.cmd`). */
+.decision-cmd .tl {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 100%;
+  position: relative;
+  padding-left: 2ch;
+  text-indent: -2ch;
+  vertical-align: top;
+}
+.decision-cmd .tl::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  left: 0;
+  width: 2ch;
+  background: var(--text-3);
+  -webkit-mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y;
+  mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y;
+}
+.decision-cmd .w {
+  display: inline-block;
+  max-width: 100%;
+  text-indent: 0;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
 /* The bell is quieter than the time beside it until the pointer finds it. */
 .decision-snooze {
   color: var(--text-3);

@@ -103,11 +103,12 @@ export function liveDetail(g: GoalSummary, lingering = false, large = false): Li
     case "running":
       // No tool in flight: the badge already says what kind of step it is, starting included (review 21, record only:
       // "Starting  Starting"); the detail says which run. On the goal page and the peek (`large`) the header names the
-      // run, so the line says how long it has gone: said once (review 20, record only). A first run is getting started
-      // until its first call, unless it has gone quiet before one (review 20: silent for 22 hours, "Silent  Getting
-      // started").
+      // run, so the line says how long it has gone: said once (review 20, record only), and with no start time nothing,
+      // never the run a second time (review 22, record only: "Run 2" in the header and again on the line). A first run is
+      // getting started until its first call, unless it has gone quiet before one (review 20: silent for 22 hours,
+      // "Silent  Getting started").
       return {
-        action: g.mode === "starting" || g.run_no > 1 || g.live_line || silent(g, state.now) ? (large && ran) || t("live.runN", { n: g.run_no }) : t("live.getStarted"),
+        action: g.mode === "starting" || g.run_no > 1 || g.live_line || silent(g, state.now) ? (large ? ran : t("live.runN", { n: g.run_no })) : t("live.getStarted"),
         target: "",
         elapsed: ran,
       };
@@ -179,11 +180,12 @@ export function LiveLine(props: { goal: GoalSummary; large?: boolean; hideTarget
   // running goals stays quiet.
   const shimmer = () => props.goal.state === "running" && moving(props.goal, state.now);
   return (
-    <div class="live-line halt" classList={{ "live-line-large": !!props.large, "live-moving": !!props.large && shimmer() }}>
+    <div class="live-line halt" classList={{ "live-line-large": !!props.large, "live-moving": !!props.large && shimmer() && !!d().action }}>
       <ModeBadge goal={props.goal} mode={held()} />
       {/* The tooltip carries the whole line, for the narrow window where only the verb stays on screen; the run's time on
-          a line of its own, with the run's name, never after a command as if it were the command's (review 21). */}
-      <span class="live-detail ellipsis" title={[d().target, !props.large && d().elapsed && [d().code && t("live.runN", { n: props.goal.run_no }), d().elapsed].filter(Boolean).join(" ")].filter(Boolean).join("\n") || undefined} ref={fitDetail}>
+          a line of its own, with the run's name, never after a command as if it were the command's (review 21), and apart
+          from it, as a sentence (review 22, record only: "Run 2 elapsed 21h 33m"). */}
+      <span class="live-detail ellipsis" title={[d().target, !props.large && d().elapsed && (d().code ? t("live.runFor", { n: props.goal.run_no, d: d().elapsed! }) : d().elapsed)].filter(Boolean).join("\n") || undefined} ref={fitDetail}>
         <Show
           when={d().seal}
           fallback={

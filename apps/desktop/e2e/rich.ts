@@ -156,10 +156,15 @@ export function enrichCi(F: F) {
     goal_id: "G-0001",
     goal_title: F.goals.find((g: any) => g.id === "G-0001")?.title ?? "Fix the cart total",
     kind: "ci_failed",
-    title: cn ? "CI 失败：test (ubuntu-latest, node 22)" : "CI failed: test (ubuntu-latest, node 22)",
+    title: cn ? "CI 未通过：test (ubuntu-latest, node 22)" : "CI failed: test (ubuntu-latest, node 22)",
     subject: "test (ubuntu-latest, node 22)",
-    body: cn ? "你可以把失败的检查发给 Agent。" : "You can send the failing check to the agent.",
-    options: cn ? ["把失败发给 Agent", "先放着"] : ["Send the failures to the agent", "Leave it"],
+    // The store marks a failing check's name as code (review 23, record only: the preview's card had none, so its name
+    // was set in the words' face where the app sets it in mono).
+    code: "test (ubuntu-latest, node 22)",
+    body: cn
+      ? "可以把失败的检查和日志发给 Agent：它会在同一个工作区里修复，验证通过后由你再次验收，并推送到同一个 PR。"
+      : "You can send the failing checks and their logs to the agent: it fixes them in the same workspace; once verified, you accept again and push to the same PR.",
+    options: cn ? ["把失败发给 Agent 修复", "先不管"] : ["Send the failures to the agent", "Leave it"],
     tones: ["primary", "neutral"],
     allow_text: false,
     created_at: Date.now() - 39 * 60_000,

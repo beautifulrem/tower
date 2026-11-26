@@ -52,7 +52,7 @@ export const zhLater = {
     evVerifyStarted: "开始验证",
     evSetupFinished: "准备命令完成",
     evVerifyFinished: "验证完成",
-    evInboxOpened: "进入“需要你”",
+    evInboxOpened: "“{title}”进入“需要你”",
     evHumanCheck: "你勾选了人工标准",
     evClaimReviewed: "你审阅了一条假设",
     evCostUpdated: "花费更新",

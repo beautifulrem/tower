@@ -152,13 +152,20 @@ pub(super) fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) 
     // good with nothing to answer).
     let opened = {
         let _mode = run.lock_mode();
-        // A run being stopped asks nothing: its dialog is cancelled (an approval reads as declined) and nothing opens.
-        // Checked under the lock the stop is marked under (review 22, record only: an approval Pi raised as it was
-        // aborted read "needs you" until the pause took it away, and one that came after the pause left the paused goal
-        // waiting on you, with an item to answer for a run that was gone). Once the engine is shut down there is no one
-        // to tell, and that is no error.
-        if run.flags().stopping.is_some() {
+        // A run being stopped asks nothing: its dialog is cancelled (the extension tells the agent no one answered) and
+        // nothing opens. Checked under the lock the stop is marked under (review 22, record only: an approval Pi raised
+        // as it was aborted read "needs you" until the pause took it away, and one that came after the pause left the
+        // paused goal waiting on you, with an item to answer for a run that was gone). Once the engine is shut down there
+        // is no one to tell, and that is no error. The trace keeps that it was asked, and that Tower closed it (review
+        // 23, record only: nothing showed it had ever been asked).
+        let stopping = run.flags().stopping.is_some();
+        between(run, "stop-checked");
+        if stopping {
             let _ = run.engine.answer(&req.id, &tower_pi::UiAnswer::Cancelled);
+            let what = &item.title;
+            let text =
+                tr!(lang, "Tower 取消了“{what}”：运行正在停止", "Tower cancelled “{what}”: the run was stopping");
+            inner.append(g, EventKind::Note { text })?;
             return Ok(());
         }
         let opened = inner.open_inbox(item)?;
@@ -198,12 +205,11 @@ fn expire_dialog(inner: &Arc<Inner>, run: &Arc<Run>, ui_id: &str) -> Result<()> 
         return Ok(());
     };
     let g = run.goal_id.as_str();
-    let note = tr!(
-        inner.lang(),
-        "（已超时：提问的一方不再等这个回答）",
-        "(timed out: the asker stopped waiting for an answer)"
-    );
-    if inner.store(|s| s.close_inbox(&item, &note, true)).is_err() {
+    let lang = inner.lang();
+    let note =
+        tr!(lang, "（已超时：提问的一方不再等这个回答）", "(timed out: the asker stopped waiting for an answer)");
+    let why = tr!(lang, "已超时，提问的一方不再等这个回答", "It timed out; the asker stopped waiting for an answer");
+    if inner.store(|s| s.close_inbox(&item, &note, Some(&why))).is_err() {
         return Ok(());
     }
     run.flags().dialogs.remove(ui_id);
@@ -653,6 +659,16 @@ done"#;
         until("the dialog is cancelled", || reply().is_some()).await;
         let reply: Value = serde_json::from_str(&reply().unwrap()).unwrap();
         assert_eq!(reply["cancelled"], true, "{reply}");
+        // Review 23 (record only): the trace keeps that it was asked, and that Tower, not a person, closed it.
+        let notes = |inner: &Inner, g: &str| -> Vec<String> {
+            let trace = inner.read_store(|s| s.trace(g, None, 500)).unwrap();
+            trace
+                .into_iter()
+                .filter_map(|e| if let EventKind::Note { text } = e.event { Some(text) } else { None })
+                .collect()
+        };
+        let said = "Tower cancelled “Approval needed: delete recursively”: the run was stopping";
+        assert!(notes(inner, &g).iter().any(|n| n == said), "{:?}", notes(inner, &g));
 
         // After the pause has landed and the engine is gone: nothing to tell, nothing opens.
         let (_tmp, sup, run, _) = running().await;
@@ -662,6 +678,32 @@ done"#;
         let rec = inner.store(|s| s.goal(&g)).unwrap();
         assert_eq!((rec.state, rec.mode), (LifecycleState::Paused, Mode::Idle), "{:?}", modes(inner, &g));
         assert!(open_kinds(inner, &g).is_empty(), "{:?}", open_kinds(inner, &g));
+        assert!(notes(inner, &g).iter().any(|n| n == said), "{:?}", notes(inner, &g));
+    }
+
+    /// Review 23 (a gap in the tests): the stop's check and the dialog's opening are one step under the mode's lock,
+    /// the lock a stop is marked under. A stop that tries to land between them waits, then writes its mode over the
+    /// dialog's: the run never reads "needs you" after its stop. Checked outside the lock, the stop landed in between
+    /// and the dialog opened on a stopped run, its mode written last.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stop_cannot_come_between_a_dialogs_check_and_its_opening() {
+        let (_tmp, sup, run, _) = running().await;
+        let (inner, g) = (&sup.inner, run.goal_id.clone());
+        let (done, stopped) = sync_mpsc::channel();
+        let (i2, r2) = (sup.inner.clone(), run.clone());
+        at(&run, "stop-checked", move || {
+            std::thread::spawn(move || {
+                done.send(settle_on(&i2, &r2, Stop::Pause(PauseReason::Human)).map_err(|e| e.to_string())).unwrap()
+            });
+            std::thread::sleep(Duration::from_millis(200));
+        });
+        on_ui_request(inner, &run, approval("a1", "rm -rf dist")).unwrap();
+        stopped.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+        let seen = modes(inner, &g);
+        assert_eq!(seen.last(), Some(&Mode::Settled), "the stop's mode is written last: {seen:?}");
+        let (asked, settled) =
+            (seen.iter().rposition(|m| *m == Mode::WaitingOnYou), seen.iter().rposition(|m| *m == Mode::Settled));
+        assert!(asked < settled, "{seen:?}");
     }
 
     /// An answer that finds no dialog (its run let it go) is refused, and nothing goes to the engine as text.

@@ -2445,8 +2445,12 @@ input[type="radio"] {
    box the width of the block, its first row at the edge; a row the block's width carried over goes on two characters in,
    under a hook in that margin (the one-pen line, text-3), so a carried-over row and a line the command indents itself never
    look alike. A word moves to the next row whole ("--fill" never parts as "--" and "fill"), and breaks only when it is
-   longer than the row. The boxes are inline, apart by the command's own newlines, so what is read and copied is the
-   command, character for character, blank lines included. The phone's block is the same (remote.html `.cmd`). */
+   longer than the row, filling each row it runs over. A line's first word is the line's own text, not a box (review 23,
+   R23-P2-01: a path or a URL longer than a row went on from the edge under the hook, and the next word was painted back
+   up at the first row's end): it goes on two in like any carried-over row, and the next word follows it. The boxes are
+   inline, apart by the command's own newlines, so what is read and copied is the command, character for character, the
+   blank lines inside it included (its body is trimmed at both ends, where a shell ignores them). The phone's block is
+   the same (remote.html `.cmd`). */
 .decision-cmd .tl {
   display: inline-block;
   box-sizing: border-box;
@@ -2455,6 +2459,7 @@ input[type="radio"] {
   padding-left: 2ch;
   text-indent: -2ch;
   vertical-align: top;
+  word-break: break-all;
 }
 .decision-cmd .tl::after {
   content: "";
@@ -2471,7 +2476,6 @@ input[type="radio"] {
   display: inline-block;
   max-width: 100%;
   text-indent: 0;
-  overflow-wrap: anywhere;
   vertical-align: top;
 }
 /* The bell is quieter than the time beside it until the pointer finds it. */
@@ -5329,8 +5333,9 @@ input[type="radio"] {
    the width a waiting thumbnail holds), so a strip of one picture and one gone reads as a pair (review 18, record
    only: 175 and 140 wide beside 152). A long reason keeps the frame: three lines at most, the whole of it in the
    tooltip, and a path or a code breaks only where Look.tsx allows it, never inside a word (review 19: a long reason
-   stood 110 tall beside a 96-tall picture, broken as "checko|ut"). The phone's frame is too narrow for a sentence:
-   there the words keep their own width. */
+   stood 110 tall beside a 96-tall picture, broken as "checko|ut"). The phone's capture would stand 44 wide in the strip,
+   too narrow for a sentence: its missing side takes the desktop's frame, so the frame of a side gone is one shape on
+   either tab (review 23, record only: 220×96 on the phone's tab, 154×96 on the desktop's). */
 .look-missing {
   display: flex;
   align-items: center;
@@ -5352,11 +5357,6 @@ input[type="radio"] {
 }
 .verify-item .look-missing > span {
   -webkit-line-clamp: 3;
-}
-.look-phone .look-missing {
-  width: auto;
-  min-width: 140px;
-  max-width: 220px;
 }
 .look-panel {
   width: min(1120px, 94vw);
@@ -5409,12 +5409,15 @@ input[type="radio"] {
 }
 .look-side.look-phone .look-missing {
   width: min(100%, 60vh * 390 / 844);
-  min-width: 0;
-  max-width: none;
   aspect-ratio: 390 / 844;
 }
 .look-side .look-missing > span {
   -webkit-line-clamp: 8;
+}
+/* The phone's frame stands tall and narrow: its reason runs to as many lines as the frame holds at the window's least
+   height (review 23, record only: eight lines and an ellipsis in a frame 336 tall). */
+.look-side.look-phone .look-missing > span {
+  -webkit-line-clamp: 16;
 }
 /* Laid over each other: the stage takes the "before" picture's own size (a phone page stands tall in the
    middle, a desktop page runs wide), and the "after" is fitted onto exactly that box, so the two align and

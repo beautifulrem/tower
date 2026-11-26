@@ -643,9 +643,147 @@ impl Stall {
     }
 }
 
+// ---- trace ------------------------------------------------------------------
+
+/// The trace's words for an event the desk has no row of its own for, in the language of the moment (derived on read,
+/// as the trace is): a step the verifier, the supervisor or you took, said as a sentence, never the event's own name
+/// (iteration 24: "canary_checked" and "port_block_allocated" stood in every verified goal's trace). `lang` is asked
+/// only for such an event, so an append of any other costs nothing.
+pub fn event_words(e: &crate::event::EventKind, lang: impl FnOnce() -> Lang) -> Option<String> {
+    use crate::event::EventKind as E;
+    use crate::view::CanaryState;
+    if !matches!(
+        e,
+        E::CanaryChecked { .. }
+            | E::PortBlockAllocated { .. }
+            | E::LookEvidence { .. }
+            | E::AttachmentAdded { .. }
+            | E::MemoryProposed { .. }
+            | E::MemoryRatified { .. }
+            | E::HoldoutDraftRatified { .. }
+            | E::RolledBack { .. }
+    ) {
+        return None;
+    }
+    let lang = lang();
+    Some(match e {
+        E::CanaryChecked { criterion, state, .. } => match state {
+            CanaryState::Intact => {
+                tr!(
+                    lang,
+                    "{criterion}：必然失败的测试如期失败",
+                    "{criterion}: the must-fail tests failed, as they must"
+                )
+            }
+            CanaryState::Tampered => {
+                tr!(lang, "{criterion}：一个必然失败的测试通过了", "{criterion}: a test that must fail passed")
+            }
+            CanaryState::NotChecked => tr!(
+                lang,
+                "{criterion}：没有能运行的必然失败测试，断言未检查",
+                "{criterion}: no must-fail test could run, so the assertions were not checked"
+            ),
+        },
+        E::PortBlockAllocated { base, count } => {
+            let last = u32::from(*base) + u32::from(*count).saturating_sub(1);
+            tr!(lang, "为这个目标留出端口 {base}–{last}", "Ports {base}–{last} set aside for this goal")
+        }
+        E::LookEvidence { criterion, side, console_errors, .. } => {
+            let side = if side == "base" {
+                lang.pick("改动前", "before the change")
+            } else {
+                lang.pick("改动后", "after the change")
+            };
+            match console_errors.len() {
+                0 => tr!(lang, "{criterion}（{side}）：控制台没有错误", "{criterion} ({side}): no console errors"),
+                n => {
+                    let errors = plural(n, "console error", "console errors");
+                    tr!(lang, "{criterion}（{side}）：控制台有 {n} 个错误", "{criterion} ({side}): {errors}")
+                }
+            }
+        }
+        E::AttachmentAdded { attachment } => {
+            let name = &attachment.name;
+            tr!(lang, "你添加了附件 {name}", "You attached {name}")
+        }
+        E::MemoryProposed { text, .. } => tr!(lang, "提议了一条记忆规则：{text}", "A memory rule proposed: {text}"),
+        E::MemoryRatified { approved: true, .. } => tr!(lang, "你批准了一条记忆规则", "You approved a memory rule"),
+        E::MemoryRatified { .. } => tr!(lang, "你拒绝了一条记忆规则", "You rejected a memory rule"),
+        E::HoldoutDraftRatified { file, .. } => {
+            tr!(lang, "你把 {file} 加入了保留测试", "You added {file} to the held-out tests")
+        }
+        E::RolledBack { run_no, .. } => {
+            tr!(
+                lang,
+                "你把工作区回退到第 {run_no} 次运行开始时",
+                "You rolled the workspace back to the start of run {run_no}"
+            )
+        }
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Iteration 24: an event the desk has no row for was shown by its own name ("canary_checked"). Each such event
+    /// has words in both languages, a canary's say how it went, and every other event has none (and never asks for the
+    /// language).
+    #[test]
+    fn every_event_without_a_row_has_words() {
+        use crate::event::EventKind as E;
+        use crate::view::CanaryState;
+        let canary = |state| E::CanaryChecked { criterion: "C1".into(), pin: "abc".into(), state };
+        let attachment = crate::contract::AttachmentRef {
+            id: "a".into(),
+            name: "cart.png".into(),
+            mime: "image/png".into(),
+            path: "a.png".into(),
+            size_bytes: 1,
+            created_at: 0,
+        };
+        let events = [
+            canary(CanaryState::Intact),
+            canary(CanaryState::Tampered),
+            canary(CanaryState::NotChecked),
+            E::PortBlockAllocated { base: 41000, count: 20 },
+            E::LookEvidence {
+                criterion: "C2".into(),
+                side: "base".into(),
+                pin: "abc".into(),
+                console_errors: vec!["x".into(), "y".into()],
+                mobile_file: None,
+            },
+            E::AttachmentAdded { attachment },
+            E::MemoryProposed { proposal_id: "p".into(), text: "Use pnpm".into(), taint_level: Default::default() },
+            E::MemoryRatified { proposal_id: "p".into(), approved: true },
+            E::MemoryRatified { proposal_id: "p".into(), approved: false },
+            E::HoldoutDraftRatified { file: "holdout/cart.test.ts".into(), criterion_id: None },
+            E::RolledBack { run_no: 2, saved: "s".into() },
+        ];
+        for lang in Lang::ALL {
+            let said: Vec<String> = events
+                .iter()
+                .map(|e| event_words(e, || lang).unwrap_or_else(|| panic!("{} has no words", e.name())))
+                .collect();
+            let unique: std::collections::HashSet<&String> = said.iter().collect();
+            assert_eq!(unique.len(), said.len(), "each says its own: {said:?}");
+            for (e, w) in events.iter().zip(&said) {
+                assert!(!w.contains(e.name()), "{w}");
+            }
+        }
+        assert_eq!(
+            event_words(&canary(CanaryState::Tampered), || Lang::En).unwrap(),
+            "C1: a test that must fail passed"
+        );
+        assert_eq!(event_words(&events[3], || Lang::En).unwrap(), "Ports 41000–41019 set aside for this goal");
+        assert_eq!(event_words(&events[4], || Lang::Zh).unwrap(), "C2（改动前）：控制台有 2 个错误");
+        let asked = std::cell::Cell::new(false);
+        let other = E::Note { text: "n".into() };
+        assert_eq!(event_words(&other, || (asked.set(true), Lang::En).1), None);
+        assert!(!asked.get(), "the language is read only for an event that has words");
+    }
 
     #[test]
     fn codes_round_trip() {

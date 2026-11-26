@@ -193,7 +193,8 @@ async fn check_pr(inner: &Arc<Inner>, gh: &Path, goal: &str) -> Result<()> {
             goal_id: goal.into(),
             kind: InboxKind::CiFailed,
             title: tr!(lang, "CI 未通过：{names}", "CI failed: {names}"),
-            subject: names.clone(),
+            // A line each: a name may hold ", " itself (the store's `code`).
+            subject: status.failing.join("\n"),
             body: tr!(
                 lang,
                 "可以把失败的检查和日志发给 Agent：它会在同一个工作区里修复，验证通过后由你再次验收，并推送到同一个 PR。",

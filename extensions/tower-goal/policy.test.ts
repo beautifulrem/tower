@@ -65,20 +65,40 @@ test("a path's approval reason names the write it asks for", () => {
 // the dialog's own words, so the sentence must still read as one with each of them in it.
 test("a denied write or command tells the agent what was refused, in a sentence, and the way on", () => {
 	assert.equal(
-		declinedWrite("readonly", "migrations/001.sql"),
+		declinedWrite("readonly", "migrations/001.sql", "Deny"),
 		"The human declined to let you write to a path the contract makes read-only: migrations/001.sql. Stay inside the contract's scope or ask_user.",
 	);
 	assert.equal(
-		declinedWrite("excluded", ".env"),
+		declinedWrite("excluded", ".env", "拒绝"),
 		"The human declined to let you write to a path the contract excludes: .env. Stay inside the contract's scope or ask_user.",
 	);
 	assert.equal(
-		declinedWrite("outside_scope", "docs/notes.md"),
+		declinedWrite("outside_scope", "docs/notes.md", "Deny"),
 		"The human declined to let you write to a path outside the contract's scope fence: docs/notes.md. Stay inside the contract's scope or ask_user.",
 	);
+	// Review 23 (record only): the reason holds its own brackets, so it follows a colon, never "(… (one-way door))".
 	const v = checkBash("git push origin main", "autonomous");
 	assert.ok(v.action === "ask");
-	assert.equal(declinedCommand(v.reason), "The human declined this command (push to a remote (one-way door)). Find another way or ask_user.");
+	assert.equal(
+		declinedCommand(v.reason, "Deny"),
+		"The human declined this command. Tower asked because of: push to a remote (one-way door). Find another way or ask_user.",
+	);
+});
+
+// Review 23 (record only): a dialog no one answered (Tower closed it as the run stopped, or its time ran out) was told to
+// the agent as "The human declined", a person's no that no person gave.
+test("a write or command no one answered is never told as a person's no", () => {
+	assert.equal(
+		declinedWrite("readonly", "migrations/001.sql", undefined),
+		"No one answered whether you may write to a path the contract makes read-only: migrations/001.sql, so it was not written. Stay inside the contract's scope or ask_user.",
+	);
+	const v = checkBash("npm publish", "autonomous");
+	assert.ok(v.action === "ask");
+	assert.equal(
+		declinedCommand(v.reason, undefined),
+		"No one answered whether this command may run, so it did not run. Tower asked because of: publish a package (one-way door). Find another way or ask_user.",
+	);
+	for (const said of [declinedWrite("excluded", ".env", undefined), declinedCommand(v.reason, undefined)]) assert.doesNotMatch(said, /human|declined/);
 });
 
 test("normalize resolves dot segments", () => {

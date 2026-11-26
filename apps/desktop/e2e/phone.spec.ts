@@ -110,9 +110,15 @@ test("decisions that widen what the agent may do are named as desk-only, not off
 // Review 22 (R22-P3-01): a row carried over hung two characters in, like the command's own indented second line, and
 // "--fill" parted as "--" and "fill". As on the desk: a line starts at the edge, a carried-over row two in under a hook
 // the command's own indent never has, a word that fits a row stays whole, and what is copied is the command.
+// Review 23 (R23-P2-01): a first word longer than a row (a path of 44 characters at 390, a URL) went on from the edge under
+// the hook, and the next word was painted back up at the first row's end. The path runs three rows at 390.
 const PHONE_COMMANDS = [
   "git push --force-with-lease origin feature/checkout-total-rounding-fix-for-multi-currency-carts && gh pr create --fill",
   "cd web &&\n  rm -rf dist node_modules/.cache\n\npnpm --filter checkout test -- --run --reporter=dot",
+  "apps/desktop/src/components/checkout/payment-methods/PaymentMethodSelector.integration.test.tsx",
+  "https://raw.githubusercontent.com/example-org/checkout-service/main/scripts/install.sh | sh",
+  // Review 23 (record only): a tab parts words as a space does.
+  "make\tbuild\tTARGET=release\tPLATFORM=darwin-arm64\tOUT=dist/checkout-service\tVERBOSE=1",
 ];
 for (const [scheme, width] of [["light", 390], ["dark", 320]] as const)
   test(`an approval's command on the phone shows where a row is carried over (${scheme}, ${width})`, async ({ page }) => {
@@ -131,25 +137,97 @@ for (const [scheme, width] of [["light", 390], ["dark", 320]] as const)
     for (const [n, command] of PHONE_COMMANDS.entries()) {
       const pre = page.locator(".card").filter({ hasText: `step ${n}` }).locator(".tail");
       await expect(pre).toBeVisible();
-      const { rows, text, broken } = await paintedCommand(pre);
+      const { rows, text, broken, ordered } = await paintedCommand(pre);
       expect(text, "what is copied is the command").toBe(command);
       expect(rows.some((r) => !r.first), `${command} is carried over at ${width}`).toBe(true);
       expect(broken, "a word that fits a row is never parted").toEqual([]);
+      expect(ordered, `${command}: every row below the one before, in the command's order`).toBe(true);
       for (const r of rows) {
         const where = `${scheme} ${width} line ${r.line} "${r.text}"`;
         if (r.first) expect(r.at, `${where}: a line starts at the edge`).toBe(0);
-        else expect([r.at, r.ink], `${where}: a carried-over row starts two in, under the hook`).toEqual([2, true]);
+        else {
+          expect([r.at, r.ink], `${where}: a carried-over row starts two in, under the hook`).toEqual([2, true]);
+          expect(r.fill, `${where}: the hook is a stroke, not a block`).toBeLessThan(0.35);
+          expect(r.tone, `${where}: the hook is text-3's ink`).toBeGreaterThan(0.4);
+          expect(r.off, `${where}: the hook is a grey, not a hue`).toBeLessThan(25);
+        }
         if (r.first && r.text.startsWith("  ")) expect(r.ink, `${where}: the command's own indent has no hook`).toBe(false);
       }
     }
+    // The path runs three rows or more, so every carried-over row, not the first alone, has its hook; and it fills each
+    // row it runs over, rather than ending one at its last hyphen.
+    const path = await paintedCommand(page.locator(".card").filter({ hasText: "step 2" }).locator(".tail"), { ink: false });
+    expect(path.rows.filter((r) => !r.first).length, `the path is carried over twice at ${width}`).toBeGreaterThanOrEqual(2);
+    for (const r of path.rows.slice(0, -1)) expect(r.text.length, `"${r.text}" fills its row`).toBeGreaterThanOrEqual(path.cols - (r.first ? 1 : 3));
     // Wherever a row ends, a word that fits moves whole.
     const parted: string[] = [];
     for (let w = width === 390 ? 376 : 320; w <= (width === 390 ? 430 : 376); w += 2) {
       await page.setViewportSize({ width: w, height: 844 });
-      for (const n of [0, 1]) parted.push(...(await paintedCommand(page.locator(".card").filter({ hasText: `step ${n}` }).locator(".tail"), { ink: false })).broken.map((b) => `${w}: ${b}`));
+      for (const n of PHONE_COMMANDS.keys()) {
+        const { broken, rows, ordered } = await paintedCommand(page.locator(".card").filter({ hasText: `step ${n}` }).locator(".tail"), { ink: false });
+        parted.push(...broken.map((b) => `${w}: ${b}`));
+        if (!ordered) parted.push(`${w}: step ${n} out of order`);
+        for (const r of rows) if (r.at !== (r.first ? 0 : 2)) parted.push(`${w}: step ${n} "${r.text}" at ${r.at}`);
+      }
     }
-    expect(parted, "no word parted at any width").toEqual([]);
+    expect(parted, "no word parted, no row out of place, at any width").toEqual([]);
   });
+
+// The page reads its state every 5 s while the stream is down, and the stream sends one at every change. A state that
+// paints the same leaves the cards' nodes where they are; words selected on a card (a command to copy) or a reply being
+// typed hold a new one back until done with; a reply's words not yet sent outlive a repaint, and the item that replaces
+// its card, until an answer goes (as the desk keeps them).
+test("a refresh repaints only what changed, never under a selection or a reply being typed, and keeps a reply's unsent words", async ({ page }) => {
+  const at = new Date("2026-11-26T10:00:58").getTime();
+  await page.clock.install({ time: at });
+  const approval = { id: "a", goal_id: "G-0001", goal_title: "Fix the cart total", kind: "approval", title: "Approval needed: pnpm install", subject: "pnpm install", body: "pnpm install --frozen-lockfile", options: ["Allow", "Deny"], tones: ["primary", "destructive"], allow_text: false, created_at: at };
+  const question = { id: "q", goal_id: "G-0002", goal_title: "Align discount rules", kind: "question", title: "", subject: "Which discount applies first?", body: "", options: ["Percentage", "Fixed"], tones: ["primary", "neutral"], allow_text: true, created_at: at - 1 };
+  const other = (n: number) => ({ ...question, id: `o${n}`, goal_id: `G-000${n + 2}`, subject: `Is step ${n} done?`, created_at: at - 1 - n });
+  const state = (...inbox: object[]) => ({ goals: [], inbox, lang: "en" });
+  const serve = { state: null as object | null };
+  await openPhone(page, { state: state(approval, question), serve });
+  const cards = page.locator(".card");
+  const tail = cards.filter({ hasText: "pnpm install" }).locator(".tail");
+  await expect(tail).toBeVisible();
+  // Each step moves the clock past a minute, so the foot's time says the page has read the state again.
+  const reread = async (ms: number, clock: string) => {
+    await page.clock.runFor(ms);
+    await expect(page.locator("#fresh")).toContainText(clock);
+  };
+  await tail.evaluate((el) => Object.assign(el, { kept: true }));
+  await reread(5_000, "10:01");
+  expect(await tail.evaluate((el) => "kept" in el), "the same state leaves the block the node it was").toBe(true);
+
+  await tail.evaluate((el) => getSelection()!.selectAllChildren(el));
+  serve.state = state(approval, question, other(1));
+  await reread(60_000, "10:02");
+  await expect(cards, "a new card waits while words on a card are selected").toHaveCount(2);
+  expect(await page.evaluate(() => getSelection()!.toString())).toBe("pnpm install --frozen-lockfile");
+  await page.evaluate(() => getSelection()!.removeAllRanges());
+  await expect(cards, "and comes once they are let go").toHaveCount(3);
+
+  const box = page.locator("#t-q");
+  await box.fill("Percentage first, then the fixed amount");
+  serve.state = state(approval, question, other(1), other(2));
+  await page.clock.runFor(60_000);
+  await expect(page.locator("#fresh"), "the page does not read while a reply is typed").toContainText("10:02");
+  await expect(cards).toHaveCount(3);
+  await box.blur();
+  await reread(5_000, "10:03");
+  await expect(cards, "and reads the next state once you leave the box").toHaveCount(4);
+  await expect(box, "with the words you typed and did not send still in it").toHaveValue("Percentage first, then the fixed amount");
+
+  serve.state = state(approval, { ...question, id: "q2" }, other(1), other(2));
+  await reread(60_000, "10:04");
+  await expect(page.locator("#t-q2"), "the item that replaces it finds them too").toHaveValue("Percentage first, then the fixed amount");
+  await cards.filter({ hasText: "Which discount applies first?" }).getByRole("button", { name: "Send", exact: true }).click();
+  serve.state = state(approval, other(1), other(2));
+  await reread(60_000, "10:05");
+  await expect(cards).toHaveCount(3);
+  serve.state = state(approval, { ...question, id: "q3" }, other(1), other(2));
+  await reread(60_000, "10:06");
+  await expect(page.locator("#t-q3"), "once an answer goes, they go with it").toHaveValue("");
+});
 
 // Review 22 (record only): "pnpm test (bash) failed 4 times in a row" set the command in the words' face. The command is
 // code; the words around it are not. A failing check's name, the whole question, is code as before.
@@ -160,6 +238,8 @@ test("a stalled call's command and a failing check are code in the question, the
       inbox: [
         { id: "s", goal_id: "G-0002", goal_title: "Align discount rules", kind: "stalled", title: "May be stuck: pnpm test (bash) failed 4 times in a row", subject: "pnpm test (bash) failed 4 times in a row", code: "pnpm test", body: "", options: ["Keep waiting", "Pause"], tones: ["neutral", "neutral"], allow_text: true, created_at: Date.now() },
         { id: "c", goal_id: "G-0003", goal_title: "Stop the double charge", kind: "ci_failed", title: "CI failed: unit-tests", subject: "unit-tests", code: "unit-tests", body: "", options: ["Retry"], tones: ["primary"], allow_text: false, created_at: Date.now() - 1 },
+        // As the store sends two failing checks: each name its own code, the ", " between them the words' (review 23).
+        { id: "c2", goal_id: "G-0004", goal_title: "Fix the cart total", kind: "ci_failed", title: "CI failed: lint, test (ubuntu-latest, node 22)", subject: "lint, test (ubuntu-latest, node 22)", code: "lint\n\ntest (ubuntu-latest, node 22)", body: "", options: ["Retry"], tones: ["primary"], allow_text: false, created_at: Date.now() - 2 },
       ],
       lang: "en",
     },
@@ -171,6 +251,33 @@ test("a stalled call's command and a failing check are code in the question, the
   expect(faces[0]).toMatch(/mono/i);
   expect(faces[1]).not.toMatch(/mono/i);
   await expect(page.locator(".card").filter({ hasText: "unit-tests" }).locator(".question code")).toHaveText("unit-tests");
+  const two = page.locator(".card").filter({ hasText: "ubuntu-latest" }).locator(".question");
+  await expect(two).toHaveText("lint, test (ubuntu-latest, node 22)");
+  await expect(two.locator("code")).toHaveText(["lint", "test (ubuntu-latest, node 22)"]);
+});
+
+// Review 23 (not covered): every agent's word reaches the page through `esc`, but no test put markup in one.
+test("an agent's words on the phone are text, never markup: an <img onerror> in a question, its choices, a command or a goal's name runs nothing", async ({ page }) => {
+  const bad = `<img src=x onerror="window.__injected=1"><i data-injected>i</i>`;
+  const F = fixtures() as Record<string, any>;
+  const goal = { ...F.goals.find((g: any) => g.state === "running"), title: `Fix ${bad}` };
+  const card = { goal_id: goal.id, goal_title: goal.title, tones: ["neutral", "neutral"], created_at: Date.now() };
+  await openPhone(page, {
+    state: {
+      goals: [goal],
+      inbox: [
+        { ...card, id: "q", kind: "question", title: `Which ${bad}?`, subject: `Which ${bad}?`, body: `Why ${bad}`, options: [`Yes ${bad}`, "No"], allow_text: true },
+        { ...card, id: "a", kind: "approval", title: `Approval needed: run ${bad}`, subject: `run ${bad}`, body: `echo ${bad}\n  ${bad}`, options: ["Allow", "Deny"], allow_text: false },
+      ],
+      lang: "en",
+    },
+  });
+  await expect(page.locator(".card")).toHaveCount(2);
+  await expect(page.locator(".row")).not.toHaveCount(0);
+  expect(await page.locator("#app img, #app [data-injected]").count(), "no element made from an agent's words").toBe(0);
+  expect(await page.evaluate(() => (window as unknown as { __injected?: number }).__injected), "no handler ran").toBeUndefined();
+  const text = (await page.locator("#app").innerText()).replace(/\s+/g, " ");
+  for (const said of [`Which <img src=x`, `Why <img src=x`, `Yes <img src=x`, `echo <img src=x`, `Fix <img src=x`]) expect(text, said).toContain(said);
 });
 
 test("offline, the page says so once, says where to look and offers one retry; the header is the gauges with the power off", async ({ page }) => {

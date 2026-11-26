@@ -55,7 +55,7 @@ export const enLater: DictLater = {
     evVerifyStarted: "Verification started",
     evSetupFinished: "Setup command finished",
     evVerifyFinished: "Verification finished",
-    evInboxOpened: "Added to Needs you",
+    evInboxOpened: "“{title}” added to Needs you",
     evHumanCheck: "You checked a human criterion",
     evClaimReviewed: "You reviewed an assumption",
     evCostUpdated: "Spend updated",

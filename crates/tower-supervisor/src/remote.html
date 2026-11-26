@@ -23,7 +23,7 @@
     --st-danger: oklch(0.540 0.190 25); --st-verified: oklch(0.550 0.130 155); --st-active: oklch(0.500 0.130 240);
     --verified-bg: oklch(0.960 0.025 155); --focus: oklch(0.220 0.006 70 / 0.65);
     /* The desk's hook (tokens.css --mark-hook): a row carried over. */
-    --mark-hook: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='18' fill='none' stroke='%23000' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 4.5v3a2.5 2.5 0 0 0 2.5 2.5h5M9 7.5l2.5 2.5L9 12.5'/%3E%3C/svg%3E");
+    --mark-hook: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='18' fill='none' stroke='%23000' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5v3a2.5 2.5 0 0 0 2.5 2.5H10M7.5 7.5 10 10l-2.5 2.5'/%3E%3C/svg%3E");
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -110,10 +110,13 @@
   /* Each line of the output a box the block's width, apart by the output's own newlines: what is read and copied is the
      output, blank lines included, and a row carried over goes on two characters in. An approval's command (.cmd) marks
      each carried-over row with a hook and moves a word to the next row whole (review 22, R22-P3-01: "--" and "fill" on two
-     rows, and a carried-over row indented like the command's own second line): the desk's .decision-cmd. */
+     rows, and a carried-over row indented like the command's own second line); a line's first word is the line's own
+     text, so a path or a URL longer than a row goes on two in and fills each row (review 23, R23-P2-01): the desk's
+     .decision-cmd. */
   .tail .tl { display: inline-block; box-sizing: border-box; width: 100%; position: relative; padding-left: 2ch; text-indent: -2ch; vertical-align: top; }
   .cmd .tl::after { content: ""; position: absolute; top: 18px; bottom: 0; left: 0; width: 2ch; background: var(--text-3); -webkit-mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y; mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y; }
-  .cmd .w { display: inline-block; max-width: 100%; text-indent: 0; overflow-wrap: anywhere; vertical-align: top; }
+  .cmd .tl { word-break: break-all; }
+  .cmd .w { display: inline-block; max-width: 100%; text-indent: 0; vertical-align: top; }
   .caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-1); }
   .caution svg { flex: 0 0 auto; margin-top: 3px; }
   .caution.note { color: var(--text-3); }
@@ -329,14 +332,18 @@ function heldOut(body) {
   for (const [id, list] of names) if (!failures.some((f) => f.id === id)) failures.push({ id, title: "", tail: "", names: list });
   return { prose: prose.join("\n").trim(), failures };
 }
-const tailHtml = (text, cmd) => `<pre class="tail${cmd ? " cmd" : ""}">${text.split("\n").map((l) => `<span class="tl">${cmd ? l.split(/( +)/).map((w, j) => (j % 2 ? w : w && `<span class="w">${esc(w)}</span>`)).join("") : esc(l)}</span>`).join("\n")}</pre>`;
+const tailHtml = (text, cmd) => `<pre class="tail${cmd ? " cmd" : ""}">${text.split("\n").map((l) => `<span class="tl">${cmd ? l.split(/(\s+)/).map((w, j) => (j % 2 || !j ? esc(w) : w && `<span class="w">${esc(w)}</span>`)).join("") : esc(l)}</span>`).join("\n")}</pre>`;
 const heldHtml = (h) => `<div class="heldout"><span class="label">${t("forYou")}</span>${h.failures.map((f) => `
   <div class="head"><span class="id">${esc(f.id)}</span><span>${esc(f.title)}</span></div>
   ${f.names.length ? `<div class="names"><span>${t("failing")}</span>${f.names.map((n) => `<code>${esc(n)}</code>`).join("")}</div>` : ""}
   ${f.tail ? tailHtml(f.tail) : ""}`).join("")}</div>`;
+// A reply's words not yet sent, by goal, kind and subject (as the desk keeps them): a repaint, or the item that replaces
+// this one, finds them where they were, until an answer goes.
+const drafts = {};
+const draftOf = (i) => i.goal_id + i.kind + i.subject;
 const replyHtml = (i, held) => {
   const ph = held ? t("hintPlaceholder") : i.kind === "question" ? t("answerPlaceholder") : t("notePlaceholder");
-  return `<div class="reply ${held ? "hint" : ""}"><textarea id="t-${esc(i.id)}" rows="${held ? 2 : 1}" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></textarea><button class="btn ${held ? "primary" : ""}" data-send="${esc(i.id)}">${held ? t("sendHint") : t("send")}</button></div>`;
+  return `<div class="reply ${held ? "hint" : ""}"><textarea id="t-${esc(i.id)}" data-k="${esc(draftOf(i))}" rows="${held ? 2 : 1}" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></textarea><button class="btn ${held ? "primary" : ""}" data-send="${esc(i.id)}">${held ? t("sendHint") : t("send")}</button></div>`;
 };
 // Mirrors the supervisor's `answerable_away`: privilege-widening choices stay at the desk.
 const DESK_ONLY = {
@@ -356,7 +363,8 @@ const tomorrowAt9 = () => { const d = new Date(); d.setDate(d.getDate() + 1); d.
 async function answer(id, response, danger) {
   if (danger && armed !== id + response) { armed = id + response; render(last); return; }
   armed = null;
-  try { await api("/api/answer", { inbox_id: id, response }); } catch (e) { alert(e.message); }
+  const i = last?.inbox.find((x) => x.id === id);
+  try { await api("/api/answer", { inbox_id: id, response }); if (i) delete drafts[draftOf(i)]; } catch (e) { alert(e.message); }
   load();
 }
 async function pause(goal) {
@@ -367,6 +375,8 @@ async function pause(goal) {
 }
 let last = null;
 let pendingState = null;
+// The cards' markup as last set: a state that paints the same leaves every node where it is.
+let painted = "";
 let lastOk = 0;
 let sseLive = false;
 let offline = false;
@@ -432,10 +442,16 @@ function fitOpts() {
   }
 }
 addEventListener("resize", fitOpts);
+// A reply being typed, or words selected on a card (a command to copy), hold the next state back until done with.
+const typing = () => !!document.activeElement?.matches("textarea");
+const selecting = () => {
+  const sel = getSelection();
+  return !!sel && !sel.isCollapsed && app.contains(sel.anchorNode);
+};
 function applyState(s) {
   last = s;
   lastOk = Date.now();
-  if (document.activeElement && document.activeElement.matches("textarea")) {
+  if (typing() || selecting()) {
     pendingState = s;
     showStatus();
     return;
@@ -443,9 +459,12 @@ function applyState(s) {
   pendingState = null;
   render(s);
 }
-document.addEventListener("focusout", () => {
-  if (pendingState) { const s = pendingState; pendingState = null; render(s); }
-});
+const flush = () => {
+  if (pendingState && !selecting()) { const s = pendingState; pendingState = null; render(s); }
+};
+document.addEventListener("focusout", flush);
+document.addEventListener("selectionchange", () => { if (!typing()) flush(); });
+app.addEventListener("input", (e) => { if (e.target.dataset.k) drafts[e.target.dataset.k] = e.target.value; });
 function render(s) {
   if (!s) return;
   lang = s.lang.startsWith("zh") ? "zh" : "en";
@@ -477,7 +496,7 @@ function render(s) {
       <div class="strip">${G.attn}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span><button class="bell" data-later="${esc(i.id)}" aria-label="${t("later")}" aria-expanded="${laterOpen}">${G.bell}</button></div>
       <div class="main">
         ${laterOpen ? `<div class="later"><span>${t("later")}</span><button class="btn" data-snooze="${esc(i.id)}" data-until="${Date.now() + 3_600_000}">${t("inHour")}</button><button class="btn" data-snooze="${esc(i.id)}" data-until="${tomorrowAt9()}">${t("tomorrow")}</button></div>` : ""}
-        <p class="question">${i.code ? `<code>${esc(i.code)}</code>${esc(i.subject.slice(i.code.length))}` : esc(i.subject)}</p>
+        <p class="question">${i.code ? `${i.code.split("\n\n").map((n) => `<code>${esc(n)}</code>`).join(", ")}${esc(i.subject.slice(i.code.length))}` : esc(i.subject)}</p>
         ${p.prose ? (isBlockedClaim ? `<div class="claim-box"><span class="tag">${esc(t("claim"))}</span><p class="body">${esc(p.prose)}</p></div>` : `<p class="body">${esc(p.prose)}</p>`) : ""}
         ${p.tail ? tailHtml(p.tail, i.kind === "approval") : ""}
         ${held && held.failures.length ? heldHtml(held) : ""}
@@ -529,7 +548,10 @@ function render(s) {
     h += `<div class="row">${G.state("running", moves(g))}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge${quiet ? " silent" : ""}">${badge}</span>${eng}<span class="detail">${detail}</span></div></div>
       <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
   }
-  app.innerHTML = h;
+  if (h !== painted) {
+    app.innerHTML = painted = h;
+    for (const ta of app.querySelectorAll("textarea")) ta.value = drafts[ta.dataset.k] ?? "";
+  }
   fitOpts();
   offline = false;
   showStatus();
@@ -537,6 +559,7 @@ function render(s) {
 function showOffline(err) {
   offline = true;
   sseLive = false;
+  painted = "";
   app.innerHTML = `<section class="offline" title="${esc(err.message)}"><p class="error">${G.danger}${t("offline")}</p><p class="sub">${t("offlineWhere")}</p>${lastOk ? `<p class="when num">${esc(t("lastRead")(clock(lastOk)))}</p>` : ""}<button class="btn primary" data-retry>${t("retry")}</button></section>`;
   gauges.innerHTML = `<span class="gauge dead num">${esc(t("runs")("—", "—"))}</span><span class="gauge dead">—</span>`;
   conn.className = "gauge off";
@@ -556,7 +579,7 @@ app.addEventListener("click", (e) => {
   if (b.dataset.id) answer(b.dataset.id, b.dataset.o, b.dataset.d === "true");
 });
 async function load() {
-  if (!token) { app.innerHTML = `<p class="empty">${G.ring}<span>${t("unpaired")}</span></p>`; document.getElementById("foot").textContent = t("foot"); return; }
+  if (!token) { painted = ""; app.innerHTML = `<p class="empty">${G.ring}<span>${t("unpaired")}</span></p>`; document.getElementById("foot").textContent = t("foot"); return; }
   try { applyState(await api("/api/state")); }
   catch (e) { showOffline(e); }
 }

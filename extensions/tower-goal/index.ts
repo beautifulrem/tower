@@ -256,7 +256,7 @@ export default function towerGoal(pi: ExtensionAPI) {
 			);
 			return isAllow(choice)
 				? undefined
-				: { block: true, reason: declinedWrite(verdict, rel) };
+				: { block: true, reason: declinedWrite(verdict, rel, choice) };
 		}
 
 		if (name === "bash") {
@@ -269,7 +269,7 @@ export default function towerGoal(pi: ExtensionAPI) {
 			);
 			return isAllow(choice)
 				? undefined
-				: { block: true, reason: declinedCommand(v.reason) };
+				: { block: true, reason: declinedCommand(v.reason, choice) };
 		}
 
 		return undefined;

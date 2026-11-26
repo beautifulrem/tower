@@ -202,19 +202,18 @@ async function mcpServer() {
 			writeFileSync(p, content);
 		}
 	};
-	const approve = async (tool: string, target: string, reason: string): Promise<boolean> => {
+	/** The approval's answer: none when no one answered (the question was closed, or its time ran out). */
+	const approve = async (tool: string, target: string, reason: string): Promise<string | undefined> => {
 		const r = await bridge.ask({ type: "approval", tool, target, reason });
-		return isAllow(r.answer as string | undefined);
+		return r.answer as string | undefined;
 	};
 	const gateWrite = async (tool: string, raw: string): Promise<string | null> => {
 		const abs = absolute(raw);
 		const { verdict, rel } = checkWrite(contract.scope, WORKSPACE, abs);
 		if (verdict === "allowed") return null;
 		if (verdict === "outside_workspace") return `${raw} is outside this goal's workspace (${WORKSPACE}).`;
-		const reason = TEXT[verdict];
-		return (await approve(tool, rel, reason[LANG]))
-			? null
-			: declinedWrite(verdict, rel);
+		const choice = await approve(tool, rel, TEXT[verdict][LANG]);
+		return isAllow(choice) ? null : declinedWrite(verdict, rel, choice);
 	};
 
 	async function call(name: string, args: Json): Promise<{ text: string; error?: boolean; stop?: boolean }> {
@@ -255,8 +254,9 @@ async function mcpServer() {
 			case "bash": {
 				const command = String(args.command ?? "");
 				const v = checkBash(command, contract.autonomy);
-				if (v.action === "ask" && !(await approve("bash", command, v.reason[LANG]))) {
-					return { text: declinedCommand(v.reason), error: true };
+				if (v.action === "ask") {
+					const choice = await approve("bash", command, v.reason[LANG]);
+					if (!isAllow(choice)) return { text: declinedCommand(v.reason, choice), error: true };
 				}
 				return runBash(command, Number(args.timeout ?? 120));
 			}

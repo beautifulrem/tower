@@ -49,7 +49,7 @@ vi.mock("../../lib/store", async () => {
   };
 });
 
-const { DecisionCard, ARM_MS, bodyParts, heldOutParts, refusedPaths, withoutEnvAside } = await import("../DecisionCard");
+const { DecisionCard, ARM_MS, bodyParts, chooseOption, heldOutParts, refusedPaths, withoutEnvAside } = await import("../DecisionCard");
 const nav = await import("../../lib/nav");
 
 const HELD_OUT_BODY = [
@@ -100,6 +100,34 @@ describe("DecisionCard", () => {
     expect(screen.getByText("Paused")).toBeTruthy();
     expect(screen.getByText("Stopped without submitting")).toBeTruthy();
     expect(screen.queryByText(/^Paused:/)).toBeNull();
+  });
+
+  // Review 23 (not covered): what you typed went with the card, when you opened another view or a newer item of the
+  // same goal, kind and words replaced it (D259).
+  it("keeps what you typed and did not send for the card's return or the item that replaces it, until an answer goes", async () => {
+    const box = () => screen.getByRole("textbox") as HTMLTextAreaElement;
+    const subject = "Stopped twice without submitting";
+    const first = render(() => <DecisionCard item={item({ id: "I-7", subject })} />);
+    fireEvent.input(box(), { target: { value: "check the tax first" } });
+    first.unmount();
+    const newer = render(() => <DecisionCard item={item({ id: "I-8", subject })} />);
+    expect(box().value).toBe("check the tax first");
+    newer.unmount();
+    const other = render(() => <DecisionCard item={item({ id: "I-9", subject: "Another reason" })} />);
+    expect(box().value, "another item's box is its own").toBe("");
+    other.unmount();
+    // A choice sent from the keyboard, the card not in view: the words go with it.
+    expect(await chooseOption(item({ id: "I-8", subject }), 0)).toBe(true);
+    const chosen = render(() => <DecisionCard item={item({ id: "I-10", subject })} />);
+    expect(box().value, "a choice sent, the words are gone").toBe("");
+    // A reply sent from the card: its words go too.
+    fireEvent.input(box(), { target: { value: "use the order id" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Reply/ }));
+    await vi.waitFor(() => expect(invoked.map((i) => i.cmd)).toEqual(["answer", "answer"]));
+    await new Promise((r) => setTimeout(r, 0));
+    chosen.unmount();
+    render(() => <DecisionCard item={item({ id: "I-11", subject })} />);
+    expect(box().value, "a reply sent, the words are gone").toBe("");
   });
 
   it("gives each option the tone the supervisor chose", () => {

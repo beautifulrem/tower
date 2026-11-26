@@ -44,6 +44,14 @@ const HOUR = 3_600_000;
  * Chooses option `index` on an item. Destructive options arm on the first
  * call and send on the second within two seconds. Returns true when sent.
  */
+/**
+ * What you typed in a card and have not sent, by goal, kind and words: it outlives the card (another view, or a newer item
+ * of the same goal, kind and words that replaced it, D259) while the app is open, and goes once an answer to such an
+ * item is sent (review 23, not covered: it went with the card).
+ */
+const drafts: Record<string, string> = {};
+const draftOf = (item: InboxItem) => item.goal_id + item.kind + item.subject;
+
 export async function chooseOption(item: InboxItem, index: number, text = ""): Promise<boolean> {
   const option = item.options[index];
   if (option === undefined) return false;
@@ -59,8 +67,9 @@ export async function chooseOption(item: InboxItem, index: number, text = ""): P
     clearTimeout(armTimer);
   }
   // Assumptions carry the note with either verdict.
-  if (item.kind === "assumption") return (await act(() => api.answerAssumption(item.id, approves(item, index), text.trim()))) !== undefined;
-  return (await act(() => api.answer(item.id, option))) !== undefined;
+  const ok = (await act(() => (item.kind === "assumption" ? api.answerAssumption(item.id, approves(item, index), text.trim()) : api.answer(item.id, option)))) !== undefined;
+  if (ok) delete drafts[draftOf(item)];
+  return ok;
 }
 
 /** Tomorrow at 9:00 local time, the second snooze choice. */
@@ -236,7 +245,8 @@ export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPee
 }
 
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean; ref?: (el: HTMLElement) => void }) {
-  const [text, setText] = createSignal("");
+  const draft = draftOf(props.item);
+  const [text, setText] = createSignal(drafts[draft] || "");
   const [busy, setBusy] = createSignal(false);
   const [leaving, setLeaving] = createSignal(false);
   const it = () => props.item;
@@ -270,7 +280,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
     setBusy(true);
     const ok = await run();
     setBusy(false);
-    if (ok) (setLeaving(true), toast("success", t("decision.replied"), { ttl: 2000 }));
+    if (ok) (delete drafts[draft], setLeaving(true), toast("success", t("decision.replied"), { ttl: 2000 }));
   };
   const send = (i: number) => sending(() => chooseOption(it(), i, text()));
   const reply = () => text().trim() && sending(async () => (await act(() => api.answer(it().id, text().trim()))) !== undefined);
@@ -286,7 +296,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
         aria-label={hint()}
         placeholder={hint()}
         value={text()}
-        onInput={(e) => setText(e.currentTarget.value)}
+        onInput={(e) => setText((drafts[draft] = e.currentTarget.value))}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text().trim() && !isAssumption()) {
             e.preventDefault();
@@ -367,7 +377,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <Show when={it().code} fallback={it().subject}>
                 {(c) => (
                   <>
-                    <span class="code-val">{c()}</span>
+                    {c().split("\n\n").map((n, i) => [i ? ", " : "", <span class="code-val">{n}</span>])}
                     {it().subject.slice(c().length)}
                   </>
                 )}
@@ -429,11 +439,12 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </Show>
             {/* An approval's block is the command, line for line (review 22, R22-P3-01): each line a box of its own, its
                 words whole (`.w`), so a wrapped part goes on under a hook (app.css `.decision-cmd`) and never reads as a
-                line of the command's own; the text is the command, character for character, newlines and all. */}
+                line of the command's own; the text is the command, character for character, newlines and all. A line's
+                first word is its own text, not a box, so one longer than a row hangs under the hook too (R23-P2-01). */}
             <Show when={parts().tail}>
               <pre class="output-tail decision-tail" classList={{ "decision-cmd": it().kind === "approval" }}>
                 {it().kind === "approval"
-                  ? parts().tail.split("\n").map((l, i) => [i ? "\n" : "", <span class="tl">{l.split(/( +)/).map((w, j) => (j % 2 ? w : w && <span class="w">{w}</span>))}</span>])
+                  ? parts().tail.split("\n").map((l, i) => [i ? "\n" : "", <span class="tl">{l.split(/(\s+)/).map((w, j) => (j % 2 || !j ? w : w && <span class="w">{w}</span>))}</span>])
                   : parts().tail}
               </pre>
             </Show>

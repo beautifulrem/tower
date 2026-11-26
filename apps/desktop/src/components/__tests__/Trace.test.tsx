@@ -62,15 +62,23 @@ describe("the trace", () => {
   it("never says you answered an item Tower closed", async () => {
     const closed = (seq: number, response: string, auto: boolean): TraceEntry =>
       ({ seq, goal_id: "G-0001", at: 1000 + seq, source: auto ? "system" : "human", event: { kind: "inbox_resolved", item_id: `i${seq}`, response, ...(auto ? { auto } : {}) } }) as unknown as TraceEntry;
-    trace.next = () => Promise.resolve([closed(2, "Withdrawn: The run stopped", true), closed(1, "Before", false)]);
+    const said = "Tower closed “Can I use order IDs?”: The run stopped";
+    const opened = { seq: 0, goal_id: "G-0001", at: 1000, source: "system", event: { kind: "inbox_opened", item_id: "i1", title: "Can I use order IDs?" } } as unknown as TraceEntry;
+    trace.next = () => Promise.resolve([closed(2, said, true), closed(1, "Before", false), opened]);
     const { container } = render(() => <Trace id="G-0001" />);
-    await vi.waitFor(() => expect(container.querySelectorAll(".trace-row")).toHaveLength(2));
-    const [you, tower] = [...container.querySelectorAll(".trace-row")];
-    expect(tower.textContent).toContain("Withdrawn: The run stopped");
+    await vi.waitFor(() => expect(container.querySelectorAll(".trace-row")).toHaveLength(3));
+    const rows = [...container.querySelectorAll(".trace-row")];
+    // Review 23 (record only): the item Tower added is named, as the one it closed is.
+    expect(rows.map((r) => r.textContent)).toContainEqual(expect.stringContaining("“Can I use order IDs?” added to Needs you"));
+    const [you, tower] = rows.filter((r) => !/added to Needs you/.test(r.textContent ?? ""));
+    expect(tower.textContent).toContain(said);
     expect(tower.textContent).not.toMatch(/Your answer/);
     expect(tower.classList.contains("trace-human")).toBe(false);
     expect(you.textContent).toMatch(/Your answer\s*Before/);
     expect(you.classList.contains("trace-human")).toBe(true);
+    // Review 23 (record only): Tower's closing carries Tower's mark, as what it injects does; a person's answer has none.
+    expect(tower.querySelector(".trace-content svg")).not.toBeNull();
+    expect(you.querySelector(".trace-content svg")).toBeNull();
   });
 
   it("says when the trace could not be read, and reads it again on Retry", async () => {

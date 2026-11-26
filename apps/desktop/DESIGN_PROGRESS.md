@@ -630,11 +630,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   files, the same findings, none on a changed line. `main` at `70a52e7` (#53) is merged in: its citation edits are
   applied to this branch's docs and the review rounds this branch had cited in `docs/` are gone. Not independently
   re-reviewed: the owner asked for the branch to be pushed and merged once its gates passed.
-- Review 25 and its follow-up (D304, T229). Review 25 read `744a71f` while #54's CI ran and passed it at 8.78 / 10 with
+- Review 25 and its follow-up (D304, D305, T229, T230). Review 25 read `744a71f` while #54's CI ran and passed it at 8.78 / 10 with
   no P0, P1 or P2; #54 was merged (`a0e0fa6`). Its one P3, from D288: on the phone a card held for words selected in
   it did not show what its own controls answered, so a destructive choice never read "Press again" and the bell did
   not open (R25-P3-01). A press on a block's own control now lets its selection go (D304); `phone.spec.ts` presses
   Deny and the bell on a card with its command selected, and fails on #54's page ("a press on a card with words
   selected in it is answered"). Record-only 1 corrected above: three sentences of iteration 25's entry said less
-  than the code does. The other four notes are kept as limits (DESIGN_DELIVERY §15). Checked: the phone spec 27 of 27,
-  tsc. Not independently re-reviewed.
+  than the code does. Record-only 3 fixed in the harness: `fixtures()` opens the demo's G-0002 at rest whatever
+  the dump caught, and the per-test premise is gone (D305). The other notes are kept, each with its reason
+  (DESIGN_DELIVERY §15). Checked: the phone spec 27 of 27, tsc, the remote tests, and the full e2e suite on the dump
+  that had failed it (442 passed, 0 failed, 76 shot tests skipped without SHOTS). Not independently re-reviewed.

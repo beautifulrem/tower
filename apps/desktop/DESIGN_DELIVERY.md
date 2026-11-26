@@ -389,7 +389,8 @@ Review 25 (`744a71f`, iteration 25 with `main` merged in) passed at 8.78 / 10 wi
 were done. It confirmed D288–D303 one by one and found one P3 that D288 had introduced: a card held for words
 selected in it did not show its own controls' answers, so a destructive choice never read "Press again" and the bell
 did not open (R25-P3-01, D304), with five record-only notes. The follow-up fixes it (a press on a block's own control
-lets its selection go) and corrects three sentences of DESIGN_PROGRESS that said less than the code does. The last
+lets its selection go), opens every test on the demo's G-0002 at rest whatever the dump caught (D305) and corrects
+three sentences of DESIGN_PROGRESS that said less than the code does. The last
 acceptance stands on `744a71f` (review 25); the follow-up is not independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
@@ -555,7 +556,7 @@ from its own check and D287 from its own gate run; review 24 passed it and found
 wrong build could pass (D291, D292) and eleven record-only notes. Iteration 25 fixed all of them (D288–D299, D301),
 each with a test that fails on `af6d189`'s sources or a stated mutation, kept the budget (D300), and fixed D302 and
 D303 from its own checks; review 25 passed it and found D304 (a P3 from D288) and five record-only notes. The
-follow-up fixed D304; four notes are kept as limits below.
+follow-up fixed D304 and D305; three notes and two tests outside this work are kept, with reasons, below.
 What is left:
 
 - **"Busy" has no upper bound (D151).** A run is busy while a tool call is in flight, as the supervisor's live line
@@ -589,13 +590,19 @@ What is left:
 - **The event log was changed once (D285, D289).** Migrations 24 and 25 set `source` and `auto` on older
   `inbox_resolved` events, never their words; docs/06 §6.6.2 records the exception.
 
-- **Review 25's notes that are kept** (record only, not fixed at the owner's word to stop at what matters): D291's
-  test holds by where its hook stands, so a raw read moved out of the lock with the hook left inside would pass; the
-  demo's G-0002 is still at work while the fixtures are dumped, so a dump can catch a call in flight (the silent-run
-  test states its premise; the others that need silence make their own state); on the phone a word that fits a row
-  but not the room after a deep indent leaves the indent alone on a row; a new item of the same words that comes in
-  the update a twin leaves takes that twin's unsent words. Two timed Rust tests this branch did not touch
-  (`tower-store/tests/perf.rs`, `redact.rs`) bound seconds and failed once each on a loaded machine.
+- **Review 25's record-only notes, each decided.** Fixed: the fixtures' G-0002 opens at rest whatever the dump caught
+  (D305). Kept, with the reason:
+  - D291's test holds by where its hook stands: a raw read of `stopping` moved out of the lock, with the hook left
+    inside, would pass. A test cannot see a read that does not pass its hook; binding the read to the lock by type
+    would rewrite some twenty reads in the supervisor's run code for a mutation no one has made.
+  - On the phone a word that fits a row but not the room after a deep indent leaves the indent alone on its row. That
+    is the stated rule (a word that fits is never parted, D290), and what a soft-wrapping editor does with the same
+    line.
+  - A new item of the same words that comes in the update a twin leaves takes that twin's unsent words. It is D259's
+    replacement as the store makes one; the words go nowhere until Send is pressed.
+  - Two timed Rust tests the design work never touched (`tower-store/tests/perf.rs`, `tower-verify`'s `redact.rs`)
+    bound seconds and failed once each on the reviewer's machine at a load of 60–80; they pass alone and in CI. They
+    guard the store and the redactor, outside this work's scope, and are left as they are.
 - **The bundle has 175 B left** (163,665 / 163,840 B). The budget stays; the next change that adds interface code has
   to make its own room, as iterations 17 to 21, 24 and 25 did.
 - **Merged keys couple meanings (D228).** To fit the budget, keys that said the same thing became one (D201, D216): for

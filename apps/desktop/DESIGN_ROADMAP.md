@@ -217,6 +217,8 @@ Status: Todo / Doing / Done (implemented + verified) / Accepted (passed an indep
 | T204 A failed capture says why on both tabs | D262 | — | the side's error on the phone tab too | `flows.spec.ts`; `oldsrc/look-phone-old` | Done (iteration 23) |
 | T205 The records and the tests the last round left | D260, D263, D264 | — | D250 and D237 corrected; the denial's sentences in `policy.ts` with a test; the phone's Chinese time and multi-line body tested | `policy.test.ts`, `phone.spec.ts` | Done (iteration 23) |
 | T206 The phone as the desk | D265, D266, D267 | — | Chinese times in words; the page's policy allows `data:` pictures and the tests serve it; a tail's blank line empty | `phone.spec.ts`; `oldsrc/phone-old`, `mut/csp-no-data` | Done (iteration 23) |
+| T207 Tower's closing is Tower's | D268 | — | `InboxResolved.auto`, source System; the trace shows Tower's note, never "Your answer" | `inbox.rs`, `flow.rs`, `Trace.test.tsx`; `mut/auto-source-human`, `withdraw-not-auto`, `oldsrc/trace-old` | Done (iteration 23) |
+| T208 The phone page never framed | D269 | — | `X-Frame-Options: DENY`, `frame-ancestors 'none'` and §11.10's lockdown; docs/11 states the real policy | `flow.rs`; `oldsrc/remote-rs-old` | Done (iteration 23) |
 
 Engineering gates after each batch: `tsc --noEmit`, vitest, the touched e2e suites, `shots.spec.ts` re-render,
 `tools/line-limit.sh`, `vite build` + `tools/bundle-budget.sh`, `impeccable detect --json` on changed files.

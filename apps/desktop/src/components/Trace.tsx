@@ -514,7 +514,8 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
               }}
             </Match>
             <Match when={ev().kind === "inbox_resolved" && ev()}>
-              {(x) => <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>}
+              {/* Tower's own closing (timed out, withdrawn, replaced) is its note, never "Your answer". */}
+              {(x) => ((x() as { auto?: boolean }).auto ? <span class="t2">{(x() as { response: string }).response}</span> : <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>)}
             </Match>
             <Match when={ev().kind === "pinned" && ev()}>
               {(x) => {

@@ -57,6 +57,22 @@ describe("the trace", () => {
     await vi.waitFor(() => expect(container.querySelectorAll(".trace-row")).toHaveLength(4));
   });
 
+  // Review 22 follow-up: an item Tower closed itself (withdrawn as the run stopped, timed out, replaced by a newer one)
+  // read "Your answer: Withdrawn: The run stopped" in your register. It is Tower's note; a person's answer stays theirs.
+  it("never says you answered an item Tower closed", async () => {
+    const closed = (seq: number, response: string, auto: boolean): TraceEntry =>
+      ({ seq, goal_id: "G-0001", at: 1000 + seq, source: auto ? "system" : "human", event: { kind: "inbox_resolved", item_id: `i${seq}`, response, ...(auto ? { auto } : {}) } }) as unknown as TraceEntry;
+    trace.next = () => Promise.resolve([closed(2, "Withdrawn: The run stopped", true), closed(1, "Before", false)]);
+    const { container } = render(() => <Trace id="G-0001" />);
+    await vi.waitFor(() => expect(container.querySelectorAll(".trace-row")).toHaveLength(2));
+    const [you, tower] = [...container.querySelectorAll(".trace-row")];
+    expect(tower.textContent).toContain("Withdrawn: The run stopped");
+    expect(tower.textContent).not.toMatch(/Your answer/);
+    expect(tower.classList.contains("trace-human")).toBe(false);
+    expect(you.textContent).toMatch(/Your answer\s*Before/);
+    expect(you.classList.contains("trace-human")).toBe(true);
+  });
+
   it("says when the trace could not be read, and reads it again on Retry", async () => {
     trace.calls = 0;
     trace.next = () => Promise.reject("the store is locked");

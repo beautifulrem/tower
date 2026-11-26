@@ -360,10 +360,12 @@ async fn a_dialog_whose_time_runs_out_closes_and_the_run_stops_waiting_on_you() 
     assert_eq!(g.mode, Executing, "the time ran out: the run is at its command, not waiting on you");
     assert!(!h.sup.inbox().unwrap().iter().any(|i| i.id == item), "the timed-out question has left the inbox");
     let closed = h.sup.trace(&id, None, 500).unwrap().into_iter().find_map(|e| match e.event {
-        EventKind::InboxResolved { item_id, response } if item_id == item => Some(response),
+        EventKind::InboxResolved { item_id, response, auto } if item_id == item => Some((response, auto)),
         _ => None,
     });
-    assert!(closed.expect("the question closed").contains("timed out"), "closed as timed out");
+    let (closed, auto) = closed.expect("the question closed");
+    assert!(closed.contains("timed out"), "closed as timed out");
+    assert!(auto, "closed by Tower, not answered by a person");
     // Once the question closed, the run still reads as at its command (review 19: the close could land while the
     // command's start was being recorded, and leave the run thinking with the live line stopped).
     let g = h.sup.goal(&id).unwrap().summary;
@@ -1149,6 +1151,16 @@ async fn failing_held_out_tests_go_to_the_human() {
     assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::Steered { text } if text.contains("SECRET"))));
 }
 
+/// The phone page's response head: its status line and headers.
+fn page_head(port: u16) -> String {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    write!(s, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    out.split("\r\n\r\n").next().unwrap_or_default().to_string()
+}
+
 fn http(port: u16, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, String) {
     use std::io::{Read, Write};
     let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -1188,6 +1200,14 @@ async fn the_phone_page_answers_with_the_pairing_token_only() {
     let id = create(&h).await;
     let q = wait_inbox(&h, &id, InboxKind::Question).await;
     let p = port;
+    // The page never runs inside another site's frame (docs/11 §11.9), and loads nothing it does not carry.
+    let head = tokio::task::spawn_blocking(move || page_head(p)).await.unwrap();
+    assert!(head.contains("X-Frame-Options: DENY"), "{head}");
+    for rule in
+        ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'", "img-src 'self' data:"]
+    {
+        assert!(head.contains(rule), "{rule} in {head}");
+    }
     let (status, _) = tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", None, "")).await.unwrap();
     assert_eq!(status, 401, "no token, no data");
     let (status, _) =

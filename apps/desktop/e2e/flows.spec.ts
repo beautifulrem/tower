@@ -1370,7 +1370,14 @@ for (const lang of ["en", "zh-CN"] as const)
     await row.locator(".look-strip .look-shot .look-img-btn").first().click();
     const side = page.locator(".look-side.look-phone .look-shot").nth(1).locator(".look-missing");
     await expect(side).toHaveText(why);
-    expect(await broken(side), "in the sheet").toEqual([]);
+    // The sheet's phone frame follows the window's height: narrow in a short window, it still keeps every word whole.
+    const parted: string[] = [];
+    for (let h = 900; h >= 560; h -= 20) {
+      await page.setViewportSize({ width: 1040, height: h });
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      parted.push(...(await broken(side)).map((b) => `${h}: ${b}`));
+    }
+    expect(parted, "in the sheet, at every height").toEqual([]);
   });
 
 // Review 18 (record only): a side that was gone said so in a frame of its words' width (175 in English, 140 in

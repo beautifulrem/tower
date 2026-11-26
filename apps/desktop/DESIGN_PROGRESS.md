@@ -553,3 +553,17 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   check of the approval blocks at DPR 2 (desk light 1440 and dark 1040, phone light 390 and dark 320) and the stall
   card (`/tmp/tower-design/iter23/vis`). Detector 17 against 17 on the seven touched UI files, the same findings. Not
   yet independently re-reviewed.
+- Iteration 23, second commit — what a check of the first found before review (D268, D269, T207, T208, and D262 and
+  D254 corrected). An item Tower closes (replaced by the run's next question, withdrawn, a dialog timed out) is marked
+  `auto` in the trace's event and is the system's, never "Your answer" (D268); the phone page's policy forbids framing,
+  plugins, a base and forms, with `X-Frame-Options: DENY`, and docs/11 says what it is (D269); the sheet's phone frame
+  breaks its words as the strip does, at every window height (D262); D254's mutation wording corrected. Each new test
+  fails on `864d6c3`'s sources or a stated mutation (`trace-old`, `remote-rs-old`, `auto-source-human`,
+  `withdraw-not-auto`, `phone-sheet-wide` in `/tmp/tower-design/iter23/oldsrc/` and `mut/`). Gates, again in full:
+  tsc; vitest 44 / 264; e2e 434/0 (76 shot tests skip without SHOTS); shots 69/69; perf alone (board of 50: 814 / 452 /
+  273 ms against 247 / 257 / 196 ms; switch medians about 107 against 38 ms); line limit; doc numbers; rustfmt,
+  workspace clippy and `cargo test --workspace` (29 suites, 490 tests, 2 ignored); the extension's tests (33) and
+  `tools/security-tests.mjs` (118 named tests present); the flow suite 20 of 20 (ten CPU burners, one-minute load
+  17.5–51.2); bundle 163,772 / 163,840 B. Visual check of the sheet's phone frame at 1040 wide and 900, 720 and 560
+  tall, en and zh (`/tmp/tower-design/iter23/vis2`). Detector 17 against 17 on the eight touched UI files. Not yet
+  independently re-reviewed.

@@ -147,7 +147,7 @@ impl Store {
                     params![item_id, now, tr!(lang, "（被更新的一项取代）", "(replaced by a newer one)")],
                 )?;
                 let response = tr!(lang, "被更新的一项取代", "Replaced by a newer one").to_string();
-                self.append(&n.goal_id, EventKind::InboxResolved { item_id, response })?;
+                self.append(&n.goal_id, EventKind::InboxResolved { item_id, response, auto: true })?;
             }
         }
         let id = new_id("inb");
@@ -214,7 +214,13 @@ impl Store {
         Ok(())
     }
 
+    /// A person's answer to an open item.
     pub fn resolve_inbox(&mut self, id: &str, response: &str) -> Result<Resolved> {
+        self.close_inbox(id, response, false)
+    }
+
+    /// Closes an open item with `response`; `auto` when Tower closed it and no person answered.
+    pub fn close_inbox(&mut self, id: &str, response: &str, auto: bool) -> Result<Resolved> {
         let item = self.inbox_item(id)?;
         let (resolved_at, engine_ref): (Option<i64>, Option<String>) =
             self.conn.query_row("SELECT resolved_at, engine_ref FROM inbox WHERE id = ?1", [id], |r| {
@@ -226,7 +232,7 @@ impl Store {
         let now = self.now();
         self.conn
             .execute("UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1", params![id, now, response])?;
-        self.append(&item.goal_id, EventKind::InboxResolved { item_id: id.into(), response: response.into() })?;
+        self.append(&item.goal_id, EventKind::InboxResolved { item_id: id.into(), response: response.into(), auto })?;
         Ok(Resolved { item, engine_ref })
     }
 
@@ -248,7 +254,7 @@ impl Store {
                     params![id, now, tr!(lang, "（撤回：{reason}）", "(withdrawn: {reason})")],
                 )?;
                 let response = tr!(lang, "撤回：{reason}", "Withdrawn: {reason}");
-                self.append(goal_id, EventKind::InboxResolved { item_id: id, response })?;
+                self.append(goal_id, EventKind::InboxResolved { item_id: id, response, auto: true })?;
                 n += 1;
             }
         }
@@ -336,6 +342,44 @@ mod tests {
         let open = ids(&s);
         assert!(open.contains(&a.id) && open.contains(&b.id), "{open:?}");
         assert_eq!(s.summary(&id).unwrap().needs_you, 4);
+    }
+
+    /// Review 22 follow-up: an item Tower closed (replaced by a newer one, withdrawn as the run stopped, timed out) was
+    /// in the trace as the person's answer. It is Tower's, in Tower's register; an answer a person gave stays theirs.
+    #[test]
+    fn an_item_tower_closes_is_never_a_persons_answer() {
+        let (mut s, _, id) = crate::goals::tests::seeded();
+        let note = |subject: &str| NewInboxItem {
+            subject: subject.into(),
+            engine_ref: None,
+            ..item(&id, InboxKind::CiFailed, 2)
+        };
+        let replaced = s.open_inbox(note("lint")).unwrap();
+        s.open_inbox(note("lint")).unwrap();
+        let withdrawn = s.open_inbox(item(&id, InboxKind::ReviewReady, 1)).unwrap();
+        s.withdraw_inbox(&id, &[InboxKind::ReviewReady], "the run stopped").unwrap();
+        let timed_out = s
+            .open_inbox(NewInboxItem { engine_ref: Some("ui-1".into()), ..item(&id, InboxKind::Question, 1) })
+            .unwrap();
+        s.close_inbox(&timed_out.id, "(timed out)", true).unwrap();
+        let answered = s
+            .open_inbox(NewInboxItem { engine_ref: Some("ui-2".into()), ..item(&id, InboxKind::Question, 1) })
+            .unwrap();
+        s.resolve_inbox(&answered.id, "Before").unwrap();
+        let closed: std::collections::HashMap<String, (bool, tower_core::event::Source)> = s
+            .trace(&id, None, 100)
+            .unwrap()
+            .into_iter()
+            .filter_map(|e| match e.event {
+                EventKind::InboxResolved { item_id, auto, .. } => Some((item_id, (auto, e.source))),
+                _ => None,
+            })
+            .collect();
+        use tower_core::event::Source::{Human, System};
+        for it in [&replaced, &withdrawn, &timed_out] {
+            assert_eq!(closed[&it.id], (true, System), "{}", it.subject);
+        }
+        assert_eq!(closed[&answered.id], (false, Human));
     }
 
     /// Review 22 (record only): "pnpm test (bash) failed 4 times in a row" set the command in the words' face. The item

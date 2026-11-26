@@ -41,17 +41,24 @@ export const TEXT = {
 } satisfies Record<string, Text>;
 
 /**
- * What the agent is told when the human denies a gated write: the write it asked for, in the dialog's words, the path,
+ * What the agent is told when a gated write is not allowed: the write it asked for, in the dialog's words, the path,
  * and the way on. The reasons above are verb phrases so this reads as a sentence (review 22: one copy here, not one per
- * bridge).
+ * bridge). `choice` is the dialog's answer: none when no one answered (Tower closed the question as the run stopped, or
+ * the dialog's time ran out), and then the agent is told so, never that a person said no (review 23).
  */
-export function declinedWrite(verdict: "readonly" | "excluded" | "outside_scope", rel: string): string {
-	return `The human declined to let you ${TEXT[verdict].en}: ${rel}. Stay inside the contract's scope or ask_user.`;
+export function declinedWrite(verdict: "readonly" | "excluded" | "outside_scope", rel: string, choice: string | undefined): string {
+	const what = `${TEXT[verdict].en}: ${rel}`;
+	const said = choice === undefined ? `No one answered whether you may ${what}, so it was not written` : `The human declined to let you ${what}`;
+	return `${said}. Stay inside the contract's scope or ask_user.`;
 }
 
-/** What the agent is told when the human denies a command: why it was asked about, and the way on. */
-export function declinedCommand(reason: Text): string {
-	return `The human declined this command (${reason.en}). Find another way or ask_user.`;
+/**
+ * What the agent is told when a command is not allowed: whether a person said no, why Tower asked (a reason may hold its
+ * own brackets, so it follows a colon rather than sitting in a second pair), and the way on.
+ */
+export function declinedCommand(reason: Text, choice: string | undefined): string {
+	const said = choice === undefined ? "No one answered whether this command may run, so it did not run" : "The human declined this command";
+	return `${said}. Tower asked because of: ${reason.en}. Find another way or ask_user.`;
 }
 
 /** Whether a dialog answer allows, in either language (the human may have switched). */

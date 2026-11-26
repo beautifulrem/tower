@@ -389,6 +389,11 @@ pub struct TraceEntry {
     pub at: Millis,
     pub source: Source,
     pub event: EventKind,
+    /// The trace's words for an event the desk has no row of its own for (`i18n::event_words`), filled on read and on
+    /// append; none for every other event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub words: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]

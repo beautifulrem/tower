@@ -334,6 +334,17 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE goals ADD COLUMN port_base INTEGER;
     ALTER TABLE goals ADD COLUMN escalated_model TEXT;
     "#,
+    // 24: an inbox item Tower closed before the event said so (review 23, record only: an older trace still read "Your
+    // answer: Withdrawn: The run stopped"). Its words were Tower's alone: withdrawn, replaced by a newer one, timed out.
+    r#"
+    UPDATE events SET source = 'system', payload = json_set(payload, '$.auto', json('true'))
+    WHERE kind = 'inbox_resolved' AND json_extract(payload, '$.auto') IS NULL
+      AND (json_extract(payload, '$.response') LIKE 'Withdrawn: %'
+        OR json_extract(payload, '$.response') LIKE '撤回：%'
+        OR json_extract(payload, '$.response') IN ('Replaced by a newer one', '被更新的一项取代')
+        OR json_extract(payload, '$.response') LIKE '(timed out: %'
+        OR json_extract(payload, '$.response') LIKE '（已超时：%');
+    "#,
 ];
 
 /// Brings the schema up to date. A database a newer Tower wrote (a schema
@@ -414,6 +425,49 @@ mod tests {
             [],
         )
         .unwrap();
+    }
+
+    /// Review 23 (record only): an item Tower closed before its event said so read in an older trace as your answer.
+    /// Opened by this Tower, it is Tower's; what a person answered stays theirs.
+    #[test]
+    fn an_older_trace_gives_tower_its_own_closings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tower.db");
+        v1_database(&path);
+        let conn = Connection::open(&path).unwrap();
+        let said = [
+            "Withdrawn: The run stopped",
+            "撤回：运行已停止",
+            "Replaced by a newer one",
+            "(timed out: the asker stopped waiting for an answer)",
+            "订单号",
+            "Withdrawn",
+        ];
+        for (i, response) in said.iter().enumerate() {
+            let payload =
+                serde_json::json!({"kind": "inbox_resolved", "item_id": format!("inb_{i}"), "response": response});
+            conn.execute(
+                "INSERT INTO events (goal_id, at, kind, source, payload) VALUES ('G-0001', ?1, 'inbox_resolved', 'human', ?2)",
+                params![3000 + i as i64, payload.to_string()],
+            )
+            .unwrap();
+        }
+        drop(conn);
+        let s = Store::open(&path).unwrap();
+        let closed: Vec<(String, bool, tower_core::event::Source)> = s
+            .trace("G-0001", None, 100)
+            .unwrap()
+            .into_iter()
+            .rev()
+            .filter_map(|e| match e.event {
+                EventKind::InboxResolved { response, auto, .. } => Some((response, auto, e.source)),
+                _ => None,
+            })
+            .collect();
+        use tower_core::event::Source::{Human, System};
+        let expected: Vec<_> =
+            said.iter().enumerate().map(|(i, r)| (r.to_string(), i < 4, if i < 4 { System } else { Human })).collect();
+        assert_eq!(closed, expected);
     }
 
     #[test]

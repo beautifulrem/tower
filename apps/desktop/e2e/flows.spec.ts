@@ -1367,15 +1367,31 @@ for (const lang of ["en", "zh-CN"] as const)
     await expect(missing).toHaveText(why);
     await expect(missing).toHaveAttribute("title", why);
     expect(await broken(missing), "on the row").toEqual([]);
+    // Review 23 (record only): the frame of a side gone is one shape on either tab (it was 220×96 on the phone's, 154×96
+    // on the desktop's).
+    const frame = async () => {
+      const b = (await missing.boundingBox())!;
+      return [Math.round(b.width), Math.round(b.height)];
+    };
+    const onPhone = await frame();
+    await row.locator(".look-viewports").getByRole("tab").nth(0).click();
+    await expect(row.locator(".look-strip")).not.toHaveClass(/look-phone/);
+    expect(onPhone, "the phone's tab frames a side gone as the desktop's does").toEqual(await frame());
+    await row.locator(".look-viewports").getByRole("tab").nth(1).click();
+    await expect(row.locator(".look-strip")).toHaveClass(/look-phone/);
     await row.locator(".look-strip .look-shot .look-img-btn").first().click();
     const side = page.locator(".look-side.look-phone .look-shot").nth(1).locator(".look-missing");
     await expect(side).toHaveText(why);
-    // The sheet's phone frame follows the window's height: narrow in a short window, it still keeps every word whole.
+    // The sheet's phone frame follows the window's height: narrow in a short window, it still keeps every word whole,
+    // and the whole reason shows down to the window's least height, 640 (review 23, record only: eight lines and an
+    // ellipsis in a frame 336 tall).
     const parted: string[] = [];
     for (let h = 900; h >= 560; h -= 20) {
       await page.setViewportSize({ width: 1040, height: h });
       await page.evaluate(() => new Promise(requestAnimationFrame));
       parted.push(...(await broken(side)).map((b) => `${h}: ${b}`));
+      const cut = await side.locator("span").evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+      if (h >= 640 && cut) parted.push(`${h}: the reason is cut short`);
     }
     expect(parted, "in the sheet, at every height").toEqual([]);
   });
@@ -1547,6 +1563,22 @@ for (const lang of ["en", "zh-CN"] as const)
       if (!code || !address) whole.push(`${w}: ${code ? "" : "code "}${address ? "" : "://"}`);
     }
     expect(whole, "wide, the code and :// whole at every width").toEqual([]);
+  });
+
+// Iteration 24: an event the desk has no row of its own for was shown by its name: "canary_checked" and
+// "port_block_allocated" stood in every verified goal's trace. The supervisor words them, in the language of the moment.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`no trace row is an event's own name; the verifier's must-fail check and the goal's ports are said in words (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0001", { lang });
+    await settled(page, "goal/G-0001");
+    await page.keyboard.press("w");
+    const rows = page.locator(".trace-row .trace-content");
+    await expect(rows.first()).toBeVisible();
+    const said = (await rows.allInnerTexts()).map((t) => t.trim());
+    expect(said.filter((t) => /^[a-z]+(_[a-z]+)+$/.test(t)), "a row that is an event's name").toEqual([]);
+    const words =
+      lang === "en" ? ["the must-fail tests failed, as they must", "set aside for this goal"] : ["必然失败的测试如期失败", "为这个目标留出端口"];
+    for (const w of words) expect(said.some((t) => t.includes(w)), w).toBe(true);
   });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
@@ -2111,12 +2143,53 @@ test("two approvals asked for the same reason are two items, each with its own c
   for (const c of commands) await expect(cards.locator(".decision-tail").filter({ hasText: new RegExp(`^${c.replace(/[.*]/g, "\\$&")}$`) })).toHaveCount(1);
 });
 
+// Review 22 (record only), review 23 (a gap in the tests): a machine value a question starts with is code, the words after
+// it the interface's face, on the desk as on the phone. The store marks which part (`code`); only a unit test held it here.
+test("a stalled call's command and a failing check are code in the card's question, the words around them are not", async ({ page }) => {
+  await openTower(page, "inbox", {
+    enrich: (F) => {
+      enrichCi(F);
+      const g = F.goals.find((x: { id: string }) => x.id === "G-0002");
+      F.inbox.push({
+        id: "inbox-stall", goal_id: "G-0002", goal_title: g.title, kind: "stalled", title: "May be stuck: pnpm test (bash) failed 4 times in a row",
+        subject: "pnpm test (bash) failed 4 times in a row", code: "pnpm test", body: "", options: ["Pause", "Keep going"], tones: ["primary", "neutral"],
+        allow_text: false, created_at: Date.now() - 30_000, urgency: 1, snoozed_until: null,
+      });
+      // As the store sends two failing checks: each name its own code, the ", " between them the words' (review 23).
+      F.inbox.push({
+        id: "inbox-ci-two", goal_id: "G-0002", goal_title: g.title, kind: "ci_failed", title: "CI failed: lint, e2e (webkit, shard 2)",
+        subject: "lint, e2e (webkit, shard 2)", code: "lint\n\ne2e (webkit, shard 2)", body: "", options: ["Send the failures to the agent", "Leave it"],
+        tones: ["primary", "neutral"], allow_text: true, created_at: Date.now() - 20_000, urgency: 2, snoozed_until: null,
+      });
+    },
+  });
+  const face = (l: import("@playwright/test").Locator) => l.evaluate((el) => getComputedStyle(el).fontFamily);
+  for (const [subject, code] of [["failed 4 times", "pnpm test"], ["ubuntu-latest", "test (ubuntu-latest, node 22)"]]) {
+    const q = page.locator(".decision").filter({ hasText: subject }).first().locator(".decision-question");
+    await expect(q.locator(".code-val")).toHaveText(code);
+    expect(await face(q.locator(".code-val")), `${code} is code`).toMatch(/Mono/);
+    expect(await face(q), "the question's words are not").not.toMatch(/Mono/);
+  }
+  await expect(page.locator(".decision").filter({ hasText: "failed 4 times" }).first().locator(".decision-question")).toHaveText("pnpm test (bash) failed 4 times in a row");
+  const two = page.locator(".decision").filter({ hasText: "shard 2" }).first().locator(".decision-question");
+  await expect(two).toHaveText("lint, e2e (webkit, shard 2)");
+  await expect(two.locator(".code-val")).toHaveText(["lint", "e2e (webkit, shard 2)"]);
+});
+
 // Review 22 (R22-P3-01): a row the block carried over began at its left edge, like a line of the command's own, and in a
 // shell a new line is a new command. Each line's first row starts at the edge; a carried-over row starts two characters
 // in, under a hook in that margin, which a line the command indents itself never has; a word that fits is never parted;
 // and what is copied is the command, blank line and indent included. Measured on what is painted, in both themes.
+// Review 23 (R23-P2-01): a line whose first word was longer than a row carried it over from the edge, under the hook, and
+// painted the next word back up at the first row's end; a path to approve is such a line, and so is a command that starts
+// with a URL. The hook is a stroke of text-3 on every carried-over row, never a block, a hue or a mark drawn once.
 const LONG_COMMAND = "git push --force-with-lease origin feature/checkout-total-rounding-fix-for-multi-currency-carts && gh pr create --fill";
 const LINES_COMMAND = "cd web &&\n  rm -rf dist node_modules/.cache\n\nnpx vite build --mode production --outDir ../dist/web --emptyOutDir --base /checkout/ --logLevel info --clearScreen false";
+const PATH_COMMAND = "services/checkout-api/src/test/java/com/example/checkout/pricing/rounding/currency/MultiCurrencyRoundingPolicyIntegrationTest/fixtures/carts-with-mixed-currencies-and-discounts/expected-totals-after-rounding.json";
+const URL_COMMAND = "https://raw.githubusercontent.com/example-org/checkout-service/feature/checkout-total-rounding-fix-for-multi-currency-carts/scripts/install.sh | sh";
+// Review 23 (record only): a tab parts words as a space does (the words between tabs went on as one).
+const TABS_COMMAND = "make\tbuild\tTARGET=release\tPLATFORM=darwin-arm64\tOUT=dist/checkout-service\tFEATURES=rounding,multi-currency,discounts\tVERBOSE=1\tJOBS=8\tCACHE_DIR=/tmp/checkout-cache";
+const COMMANDS = [LONG_COMMAND, LINES_COMMAND, PATH_COMMAND, URL_COMMAND, TABS_COMMAND];
 for (const [theme, width] of [["light", 1440], ["dark", 1040]] as const)
   test(`an approval's command shows where a row is carried over and where the command breaks its own line (${theme}, ${width})`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -2124,7 +2197,7 @@ for (const [theme, width] of [["light", 1440], ["dark", 1040]] as const)
       theme,
       enrich: (F) => {
         const g = F.goals.find((x: { id: string }) => x.id === "G-0001");
-        for (const [n, body] of [LONG_COMMAND, LINES_COMMAND].entries())
+        for (const [n, body] of COMMANDS.entries())
           F.inbox.push({
             id: `inbox-approval-${n}`, goal_id: "G-0001", goal_title: g.title, kind: "approval", title: `Approval needed: step ${n}`,
             subject: `step ${n}`, body, options: ["Allow", "Deny"], tones: ["primary", "destructive"], allow_text: false,
@@ -2132,30 +2205,43 @@ for (const [theme, width] of [["light", 1440], ["dark", 1040]] as const)
           });
       },
     });
-    for (const [n, command] of [LONG_COMMAND, LINES_COMMAND].entries()) {
+    for (const [n, command] of COMMANDS.entries()) {
       const pre = page.locator(".decision").filter({ hasText: `step ${n}` }).first().locator(".decision-tail");
-      await expect(pre).toBeVisible();
-      const { rows, text, broken } = await paintedCommand(pre);
+      await pre.scrollIntoViewIfNeeded();
+      const { rows, text, broken, ordered } = await paintedCommand(pre);
       expect(text, "what is copied is the command").toBe(command);
       expect(rows.some((r) => !r.first), `${command} is carried over at ${width}`).toBe(true);
       expect(broken, "a word that fits a row is never parted").toEqual([]);
+      expect(ordered, `${command}: every row below the one before, in the command's order`).toBe(true);
       for (const r of rows) {
         const where = `${theme} ${width} line ${r.line} "${r.text}"`;
         if (r.first) expect(r.at, `${where}: a line starts at the edge`).toBe(0);
-        else expect([r.at, r.ink], `${where}: a carried-over row starts two in, under the hook`).toEqual([2, true]);
+        else {
+          expect([r.at, r.ink], `${where}: a carried-over row starts two in, under the hook`).toEqual([2, true]);
+          expect(r.fill, `${where}: the hook is a stroke, not a block`).toBeLessThan(0.35);
+          expect(r.tone, `${where}: the hook is text-3's ink`).toBeGreaterThan(0.4);
+          expect(r.off, `${where}: the hook is a grey, not a hue`).toBeLessThan(25);
+        }
         if (r.first && r.text.startsWith("  ")) expect(r.ink, `${where}: the command's own indent has no hook`).toBe(false);
       }
     }
+    // The path runs three rows or more, so every carried-over row, not the first alone, has its hook; and a word longer
+    // than a row fills each row it runs over, rather than ending the first at its last hyphen ("services/checkout-").
+    const path = await paintedCommand(page.locator(".decision").filter({ hasText: "step 2" }).first().locator(".decision-tail"), { ink: false });
+    expect(path.rows.filter((r) => !r.first).length, `the path is carried over twice at ${width}`).toBeGreaterThanOrEqual(2);
+    for (const r of path.rows.slice(0, -1)) expect(r.text.length, `"${r.text}" fills its row`).toBeGreaterThanOrEqual(path.cols - (r.first ? 1 : 3));
     // Wherever a row ends, a word that fits moves whole: "--force-with-lease" and "--fill" never part at a hyphen.
     const parted: string[] = [];
     for (let w = width > 1240 ? 1240 : 1040; w <= (width > 1240 ? 1440 : 1240); w += 4) {
       await page.setViewportSize({ width: w, height: 900 });
-      for (const n of [0, 1]) {
-        const { broken } = await paintedCommand(page.locator(".decision").filter({ hasText: `step ${n}` }).first().locator(".decision-tail"), { ink: false });
+      for (const n of COMMANDS.keys()) {
+        const { broken, rows, ordered } = await paintedCommand(page.locator(".decision").filter({ hasText: `step ${n}` }).first().locator(".decision-tail"), { ink: false });
         parted.push(...broken.map((b) => `${w}: ${b}`));
+        if (!ordered) parted.push(`${w}: step ${n} out of order`);
+        for (const r of rows) if (r.at !== (r.first ? 0 : 2)) parted.push(`${w}: step ${n} "${r.text}" at ${r.at}`);
       }
     }
-    expect(parted, "no word parted at any width").toEqual([]);
+    expect(parted, "no word parted, no row out of place, at any width").toEqual([]);
   });
 
 test("a sandbox refusal is an environment problem: the card says so before its details with the refused path in view, and the criterion's base line is never red", async ({ page }) => {

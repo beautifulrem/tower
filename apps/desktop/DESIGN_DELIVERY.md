@@ -340,36 +340,66 @@ have one (D264). From its own reading: the phone says Chinese times in words (D2
 draw and its tests serve that policy (D266), and its tails copy blank lines as blank (D267); the trace no longer
 writes Tower's own closing of an item (withdrawn, timed out, replaced) as your answer (D268); and the phone page can no
 longer be framed by another site (D269). Each fix's test fails on
-`864d6c3`'s sources or a stated mutation. The last acceptance stands on `864d6c3` (review 22); iteration 23 is not yet
-independently re-reviewed.
+`864d6c3`'s sources or a stated mutation. The last acceptance stands on `864d6c3` (review 22); iteration 23 was
+re-reviewed in review 23.
+
+Review 23 (`43576b0`, iteration 23) passed at 8.56 / 10 with no P0 or P1 and one P2
+(`design-evidence/reports/review23.md`), introduced by D254: when a line's first word was longer than a row (a path
+approval; a command that starts with a URL), its carried rows began at the block's edge under the hook and a short word
+after it slid onto the first row (R23-P2-01, D270). It also found that the hook's test could not tell a hook from a
+block, an amber hook or one drawn once (D271) and that D255's lock had no test (D272), with ten record-only notes.
+Iteration 24 fixes all of them: a line's first word is the line's own text, so its carried rows hang two in under the
+hook, and a word longer than a row fills each row, on the desk and the phone (D270); any white space parts words
+(D277); the test reads the hook's fill, tone and grey and its repeat (D271), and its arrow stands clear of the next
+character (D278); a stop between the guard's check and the dialog is timed by a test (D272); the agent is told when no
+one answered rather than that a person declined (D273), the reason follows a colon (D274), and a dialog cancelled as
+the run stops is noted in the trace (D275); Tower's closings are one sentence that names the item, under Tower's mark,
+and the opening row names it too (D276), older traces included (D285); each failing check is its own code (D280); Look's
+missing frame has one shape and side by side shows its whole reason (D281); the blank lines trimmed at a command's ends
+are said so (D279); the phone page's escaping is tested (D282); a reply box's unsent words outlive the card until an
+answer goes (D283). From its own visual check: no trace row is an event's name any more ("canary_checked" stood in
+every verified goal's trace): the supervisor words the kinds the desk has no row for, and the desk's label keys are
+found from the kind, which pays for this iteration's bytes (D286). From its own full gate run: the phone page
+repaints only what changed, holds a state while words on a card are selected, and keeps a reply's unsent words as the
+desk does (D287). The budget is kept (D284). Each fix's test fails
+on `43576b0`'s sources or a stated mutation. The last acceptance stands on `43576b0` (review 23); iteration 24 is not
+yet independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 23; the gates run alone, on fixtures dumped from the supervisor under test):
+At the final commit (iteration 24; the gates run alone, on fixtures dumped from the supervisor under test):
 
-- **Type check and unit tests:** tsc clean; vitest 44 files, 264 tests (the desk's fold and its test file are gone, D259).
-- **e2e:** Playwright WebKit 434 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
+- **Type check and unit tests:** tsc clean; vitest 44 files, 265 tests.
+- **e2e:** Playwright WebKit 439 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
   supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs
-  "Importing a module script failed" lines (twenty-three at iteration 23's final run, twenty-four at its first; twenty-two at iterations 21 and 22; twenty-one at iteration 20; fifteen at iteration 19; twelve at iteration 18; eleven at iteration 17; fewer before):
+  "Importing a module script failed" lines (twenty-two at iteration 24's final run; twenty-three at iteration 23's final run, twenty-four at its first; twenty-two at iterations 21 and 22; twenty-one at iteration 20; fifteen at iteration 19; twelve at iteration 18; eleven at iteration 17; fewer before):
   pages left by a test while a view was still loading, and three tests on purpose (a view, the steer box, and the
   Chinese failure that fail to load); no test fails.
-- **Shots:** 69/69 (`/tmp/tower-design/iter23/allshots`); the harness waits for code loaded on demand, the
+- **Shots:** 69/69 (`/tmp/tower-design/iter24/allshots`); the harness waits for code loaded on demand, the
   highlighting worker and pictures (D194), and a shot fails if anything is still drawing at its 15 s cap (D208); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 163,772 / 163,840 B (68 B left), start-up 56,202 / 65,536 B, goal page
-  11,653 / 12,288 B. The budget was never raised. Iteration 17's first build was 163,953 B, over by 113: its own
+- **Bundle:** all interface JS 163,735 / 163,840 B (105 B left), start-up 56,286 / 65,536 B, goal page
+  11,651 / 12,288 B. The budget was never raised. Iteration 24's additions were paid for by finding the trace's label
+  keys from the event's kind (D286). Iteration 17's first build was 163,953 B, over by 113: its own
   additions were rewritten tighter until it fit. Iteration 18's fixes reached 164,051 B: Vite's modulepreload polyfill
   is off (238 B; WebKit preloads modules itself from Safari 17, and on an older one the start-up chunks load when the
   entry imports them, from disk) and an unused component is gone (D184). Iteration 19's reached 163,837 B: sixteen
   keys that said the same thing in both languages became one each (D201). Iteration 20's reached 163,887 B:
   twenty-nine keys that said the same thing as another became one each (D216). Iteration 21's reached 163,890 B: each
   icon is its markup as a string set into one `<svg>`, not a tree of components (D235).
-- **Performance (`perf` project, WebKit, run alone):** passes. A board of 50 goals paints in 814 / 452 / 273 ms
-  against 247 / 257 / 196 ms for the seeded board (medians 452 against 247), inside its 750 ms margin (every row measures
-  its identity column); view switches with 50 goals take 53–138 ms against 23–61 ms, their medians (about 107 against
-  38 ms) inside 150 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
+- **Performance (`perf` project, WebKit, run alone):** passes. A board of 50 goals paints in 1243 / 599 / 334 ms
+  against 320 / 348 / 310 ms for the seeded board (medians 599 against 320), inside its 750 ms margin (every row measures
+  its identity column); view switches with 50 goals take 44–205 ms against 37–115 ms, their medians (about 142 against
+  58 ms) inside 150 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
   it off (`design-evidence/reports/iter15-shimmer-cpu.md`; the old shimmer cost 33–38 %).
-- **Rust:** iteration 23 changed the supervisor (D255: a dialog to a stopping run cancelled; D266: the phone page's
+- **Rust:** iteration 24 changed the supervisor (D272, D275: a dialog's guard timed and its cancel noted; D280: each
+  failing check its own code; D270, D282, D287: the phone page), the core (D286: an event's words) and the store (D276:
+  Tower's closings name their item; D280; D285: migration 24; D286: words on append and on read), and the extension
+  (D273, D274: what the agent reads of a dialog no one answered): rustfmt, workspace clippy and `cargo test --workspace`
+  pass (29 suites, 494 tests, 2 ignored), the extension's 34 tests and `tools/security-tests.mjs` (118 named tests
+  present) pass, and the flow suite passed 20 runs of 20 with ten CPU burners held for the whole run (one-minute load
+  18.7–36.4). The flow runs came before D287's change to the phone page's script, which no flow test loads; the
+  supervisor's Rust has not changed since. Iteration 23 changed the supervisor (D255: a dialog to a stopping run cancelled; D266: the phone page's
   policy and D269 its frame headers; D254, D257, D265, D267: the phone page; D268: a dialog's timeout closed as
   Tower's), the core and the store (D257: an inbox item's `code`; D259: the fold of a note said again; D268: an item
   Tower closes marked as its own), and the extension (D264: the denial's sentences in `policy.ts`): rustfmt, workspace clippy and
@@ -409,7 +439,9 @@ At the final commit (iteration 23; the gates run alone, on fixtures dumped from 
   at `f9dd353`, the same findings. Iteration 19's: 19 against 19 at `54ba274`. Iteration 20's 6 changed UI files: 16
   against 16 at `939be97`, the same findings. Iteration 21's 6: 16 against 16 at `b6baa8a`, the same findings.
   Iteration 22's 4 (the phone page among them): 17 against 17 at `9397e07`, the same findings. Iteration 23's 8 (the
-  phone page, `tokens.css` and `Trace.tsx` among them): 17 against 17 at `864d6c3`, the same findings.
+  phone page, `tokens.css` and `Trace.tsx` among them): 17 against 17 at `864d6c3`, the same findings. Iteration 24's 5
+  (`DecisionCard.tsx`, `Trace.tsx`, `app.css`, `tokens.css` and the phone page): 17 against 17 at `43576b0`, the same
+  findings.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion
   (re-checked for the redesign: the turning marks and the shimmer hold still, `flows.spec.ts`).
@@ -441,7 +473,8 @@ iteration-18 commit `03999c0` (review 17's findings and notes, with review 17's 
 iteration-20 commit `b6baa8a` (review 19's findings and notes, with review 19's report), the iteration-21 commit
 `b59e68a` (review 20's findings and notes, with review 20's report), its follow-up `9397e07` (the header names the
 run, no mode or live line over a stop), the iteration-22 commit `864d6c3` (review 21's findings and notes, with review
-21's report) and the iteration-23 commit (review 22's findings and notes, with review 22's report).
+21's report), the iteration-23 commit `4167461` (review 22's findings and notes, with review 22's report), its
+follow-up `43576b0` (D268, D269) and the iteration-24 commit (review 23's findings and notes, with review 23's report).
 All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
@@ -473,7 +506,10 @@ from its own reading and gates; review 21 passed it and found D237–D238 and fo
 fixed all of them (D237–D240, D242–D252), each with a test that fails on `9397e07`'s sources or a stated mutation,
 and kept D241 by stated reason; review 22 passed it and found D254, eight record-only notes and three untested
 sentences. Iteration 23 fixed all of them (D254–D264), each with a test that fails on `864d6c3`'s sources or a stated
-mutation, and D265–D269 from its own reading; not yet re-reviewed.
+mutation, and D265–D269 from its own reading; review 23 passed it and found D270 (a P2 it introduced), two tests that
+could not fail where they should (D271, D272) and ten record-only notes. Iteration 24 fixed all of them (D270–D283,
+D285), each with a test that fails on `43576b0`'s sources or a stated mutation, kept the budget (D284), and fixed D286
+from its own check and D287 from its own gate run; not yet re-reviewed.
 What is left:
 
 - **"Busy" has no upper bound (D151).** A run is busy while a tool call is in flight, as the supervisor's live line
@@ -488,7 +524,8 @@ What is left:
   item and its dialog are one step under it (D218), a write the engine's reply could overtake goes before the send
   (D214), and once a run is stopping nothing writes over the mode it stops on, nor puts up a running live line (D234):
   the stop itself is marked under the lock, so a settle under way finishes before it (D239), and a dialog Pi raises
-  after it is cancelled without a card (D255).
+  after it is cancelled without a card (D255), the agent told that no one answered (D273) and the trace that Tower
+  cancelled it (D275).
 - **The phone page has no Host or Origin allow-list (D269).** docs/11 §11.9 asks for both. The API answers only to the
   pairing token in the `Authorization` header, kept in the page's own storage, so a rebinding or cross-site page gets
   401; the lists stay unbuilt until the page is served under names Tower can enumerate. Its `script-src` allows inline
@@ -497,9 +534,11 @@ What is left:
   into one item whose answer goes to every dialog it stands for. That is not built: the store folds only notes said
   again (a check failing on another push, a stall), and each dialog is its own item on the desk and the phone, so none
   hides behind another. Pi runs its hooks one at a time, so tower-goal does not raise two at once today.
+- **A reply box's unsent words live while the app is open (D283).** They are kept by the item's goal, kind and words,
+  so they come back with the card or the item that replaced it, and go once an answer is sent; a restart clears them.
 
-- **The bundle has 68 B left** (163,772 / 163,840 B). The budget stays; the next change that adds interface code has
-  to make its own room, as iterations 17 to 21 did.
+- **The bundle has 105 B left** (163,735 / 163,840 B). The budget stays; the next change that adds interface code has
+  to make its own room, as iterations 17 to 21 and 24 did.
 - **Merged keys couple meanings (D228).** To fit the budget, keys that said the same thing became one (D201, D216): for
   example `trace.output` and `settings.testCheckOutput`, `sidebar.ended` and `state.archived`, `goal.resume` and
   `goal.purposeResume` now share words. Changing one merged key's words changes every place that uses it, so such a
@@ -535,7 +574,9 @@ What is left:
   backlog head and bar, the hunk author's line style): future specs, left as written, the last now said so in §12.4.4.
   (An integrated goal merged without the verifier's pass now has a hatched core, D141: no longer colour alone.)
 - **Supervisor text is written in the language of the moment.** A goal's findings and pauses keep the words they were
-  written in; switching the interface language does not rewrite stored events. Test output and the prompts Tower sends
+  written in; switching the interface language does not rewrite stored events. The trace's words for a kind the desk
+  has no row for (D286) are the supervisor's at the moment the trace is read or the event arrives: a trace open while
+  the language changes keeps them until it is read again. Test output and the prompts Tower sends
   the agent stay as they are, by design.
 - **11px labels and 10px keycaps (D54/D85), Kept by decision.** No sentence is below 12px; the ledger's runs note
   ("said in runs 1 and 2") is 11px by design (D110), a note about the claim set apart by size as well as grey.

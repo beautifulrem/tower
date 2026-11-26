@@ -272,6 +272,7 @@ fn row_to_trace(r: &rusqlite::Row<'_>) -> rusqlite::Result<TraceEntry> {
         at: r.get("at")?,
         source: Source::parse(&source).unwrap_or(Source::System),
         event: serde_json::from_str(&payload).map_err(|e| crate::goals::bad_value("payload", &e.to_string()))?,
+        words: None,
     })
 }
 
@@ -304,7 +305,8 @@ impl Store {
         let seq = insert_event(&tx, goal_id, at, &event)?;
         project(&tx, goal_id, at, &event)?;
         tx.commit()?;
-        Ok(TraceEntry { seq, goal_id: goal_id.into(), at, source: event.source(), event })
+        let words = tower_core::i18n::event_words(&event, || self.lang());
+        Ok(TraceEntry { seq, goal_id: goal_id.into(), at, source: event.source(), event, words })
     }
 
     /// Applies a lifecycle transition through the single transition function
@@ -333,13 +335,22 @@ impl Store {
         let mut stmt =
             self.conn.prepare("SELECT * FROM events WHERE goal_id = ?1 AND seq < ?2 ORDER BY seq DESC LIMIT ?3")?;
         let rows = stmt.query_map(params![goal_id, before_seq.unwrap_or(i64::MAX), limit], row_to_trace)?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        self.worded(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn events_since(&self, goal_id: &str, since: Millis) -> Result<Vec<TraceEntry>> {
         let mut stmt = self.conn.prepare("SELECT * FROM events WHERE goal_id = ?1 AND at > ?2 ORDER BY seq")?;
         let rows = stmt.query_map(params![goal_id, since], row_to_trace)?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        self.worded(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Fills the words of the entries the desk has no row of its own for, in the language of the moment (read once).
+    fn worded(&self, mut entries: Vec<TraceEntry>) -> Result<Vec<TraceEntry>> {
+        let mut lang = None;
+        for e in &mut entries {
+            e.words = tower_core::i18n::event_words(&e.event, || *lang.get_or_insert_with(|| self.lang()));
+        }
+        Ok(entries)
     }
 
     /// Sentinel findings since the latest verification started. Titles of
@@ -420,6 +431,28 @@ mod tests {
         })
         .unwrap()
         .id
+    }
+
+    /// Iteration 24: an event with no row of its own reaches the desk with its words, read back or just appended, in
+    /// the language of the moment; any other event carries none.
+    #[test]
+    fn an_event_with_no_row_of_its_own_comes_worded() {
+        let (mut s, _) = store();
+        let id = goal(&mut s);
+        let canary = EventKind::CanaryChecked {
+            criterion: "C1".into(),
+            pin: "abc".into(),
+            state: tower_core::view::CanaryState::Intact,
+        };
+        let appended = s.append(&id, canary).unwrap();
+        let said = tower_core::i18n::event_words(&appended.event, || s.lang());
+        assert!(said.is_some());
+        assert_eq!(appended.words, said);
+        assert_eq!(s.append(&id, EventKind::Note { text: "n".into() }).unwrap().words, None);
+        let read: Vec<Option<String>> = s.trace(&id, None, 100).unwrap().into_iter().map(|e| e.words).collect();
+        assert!(read.contains(&said), "{read:?}");
+        assert_eq!(read.iter().filter(|w| w.is_some()).count(), 1, "{read:?}");
+        assert_eq!(s.events_since(&id, 0).unwrap().iter().filter(|e| e.words == said).count(), 1);
     }
 
     /// Review 18: the live line names work. A note, the hand-in and a question to you leave it on the call at work;

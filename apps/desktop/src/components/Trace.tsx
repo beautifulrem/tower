@@ -1,7 +1,8 @@
 /**
  * Trace (docs/04 §4.7): lossless and time-indexed, reachable in one key.
  * Tower's own injections are shown verbatim and labelled as injected by Tower.
- * Raw event names never reach the screen: every kind has a glyph and words.
+ * Raw event names never reach the screen: every kind has a glyph and words (for a kind with no row of its own, the
+ * supervisor's, `TraceEntry.words`).
  *
  * The list is windowed: only the newest `WINDOW` matching entries are in the
  * DOM, and scrolling to the top reveals earlier ones in steps (then asks the
@@ -219,27 +220,13 @@ export function Trace(props: { id: string; live?: boolean }) {
 
 const EMPTY_PROGRESS = { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 };
 
-/** Words for the event kinds that have no richer row below. */
-function plainLabel(kind: TraceEntry["event"]["kind"]): string {
-  const key = (
-    {
-      goal_created: "evGoalCreated",
-      contract_ratified: "evContractRatified",
-      workspace_prepared: "evWorkspacePrepared",
-      session_attached: "evSessionAttached",
-      workspace_removed: "evWorkspaceRemoved",
-      run_ended: "evRunEnded",
-      verify_started: "evVerifyStarted",
-      setup_finished: "evSetupFinished",
-      verify_finished: "evVerifyFinished",
-      inbox_opened: "evInboxOpened",
-      human_check: "evHumanCheck",
-      claim_reviewed: "evClaimReviewed",
-      cost_updated: "evCostUpdated",
-      branch_written: "evBranchWritten",
-    } as const
-  )[kind as "goal_created"];
-  return key ? t(`trace.${key}`) : kind;
+/** Words for the event kinds that have no richer row below: `trace.ev` and the kind's name in capitals ("inbox_opened"
+ *  is `evInboxOpened`), the event filling their names (an item added to Needs you says which, review 23, record only).
+ *  A kind with no such key is the supervisor's to word (`TraceEntry.words`); its name is the last resort. */
+function plainLabel(e: TraceEntry["event"]): string {
+  const key = `trace.ev${e.kind.replace(/(?:^|_)(.)/g, (_, c: string) => c.toUpperCase())}`;
+  const said = (t as (k: string, p: object) => string)(key, e);
+  return said === key ? e.kind : said;
 }
 
 const Pin = (p: { sha: string }) => <span class="col-pin"><Icon name="harness" size={10} />@{short(p.sha)}</span>;
@@ -273,7 +260,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
           {clock(props.e.at)}
         </span>
         <div class="trace-content">
-          <Switch fallback={<span class="t2">{plainLabel(ev().kind)}</span>}>
+          <Switch fallback={<span class="t2">{props.e.words ?? plainLabel(ev())}</span>}>
             {/* A tool row reads as what was done (the call: a path, a command, a question), then how it went. */}
             <Match when={ev().kind === "tool_ended" && ev()}>
               {(x) => {
@@ -514,8 +501,9 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
               }}
             </Match>
             <Match when={ev().kind === "inbox_resolved" && ev()}>
-              {/* Tower's own closing (timed out, withdrawn, replaced) is its note, never "Your answer". */}
-              {(x) => ((x() as { auto?: boolean }).auto ? <span class="t2">{(x() as { response: string }).response}</span> : <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>)}
+              {/* Tower's own closing (timed out, withdrawn, replaced) is its note under Tower's mark, as what it injects
+                  is, never "Your answer" (review 23, record only: a grey sentence with no mark). */}
+              {(x) => ((x() as { auto?: boolean }).auto ? <span class="t2 row"><Icon name="harness" size={10} />{(x() as { response: string }).response}</span> : <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>)}
             </Match>
             <Match when={ev().kind === "pinned" && ev()}>
               {(x) => {

@@ -567,3 +567,32 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   17.5–51.2); bundle 163,772 / 163,840 B. Visual check of the sheet's phone frame at 1040 wide and 900, 720 and 560
   tall, en and zh (`/tmp/tower-design/iter23/vis2`). Detector 17 against 17 on the eight touched UI files. Not yet
   independently re-reviewed.
+- Iteration 24 — review 23's P2, its two tests that could not fail, every record-only note and what it did not cover
+  (D270–D285, T209–T215), D286 from this iteration's own visual check (T216) and D287 from its own gate run (T217). A
+  line's first word in an approval's code block is the line's own text, so a path or URL longer than a row hangs its
+  carried rows two in under the hook and fills each row, the words after it in order, on the desk and the phone; a tab
+  parts words (D270, D277). The hook's test reads the ink's fill, tone and grey and its repeat (D271), and the arrow
+  stands clear of the next character (D278). A stop between the dialog guard's check and the dialog is timed by a test
+  (D272); the agent reads "No one answered…" for a dialog no person answered (D273), the reason after a colon (D274),
+  and the trace notes a dialog Tower cancelled (D275). Tower's closings are one sentence from the store naming the
+  item, under Tower's mark, the opening row names its item (D276), and migration 24 gives older traces their closings
+  back (D285). Each failing check is its own code (D280); Look's missing frame is one shape and shows its whole reason
+  side by side (D281); the trimmed blank lines at a command's ends are said (D279); the phone page's escaping is
+  tested (D282); a card's unsent words outlive it until an answer goes (D283). No trace row is an event's name: the
+  supervisor words the kinds the desk has no row for, and the desk's label keys are found from the kind, which pays
+  for this iteration's bytes (D286); the budget is kept (D284). The full gate run's one failure was a measurement that
+  read a command block after the phone page had repainted it: the page set its cards' markup whole at every read,
+  changed or not, so a selection on a card went too; it now repaints only what changed, holds a state while words on a
+  card are selected, and keeps a reply's unsent words until an answer goes, as the desk does, and the helper reads a
+  block taken out of the document again (D287). Each fix's test fails on `43576b0`'s sources or a stated mutation, all
+  re-run on the final tree with fixtures dumped from it (`/tmp/tower-design/iter24/oldsrc/`, `mut/`, 40 checks).
+  Gates, run alone on the final tree: rustfmt, workspace clippy, `cargo test --workspace` (29 suites, 494 tests, 2
+  ignored), the extension's 34 tests, security 118, the flow suite 20 of 20 under ten CPU burners (load 18.7–36.4, run
+  before D287's page change, which no flow test loads), tsc, vitest 44 files and 265 tests, build, budget (163,735 /
+  163,840 B), line limit, e2e 439 passed and 0 failed (76 shot tests skip without SHOTS), shots 69/69, perf alone
+  (board of 50: 1243 / 599 / 334 ms against 320 / 348 / 310 ms; switch medians about 142 against 58 ms), doc numbers.
+  Visual check at DPR 2 of the approval blocks (desk light 1440 and dark 1040, phone light 390 and dark 320: a 220-
+  and 95-character path, a URL piped to `sh`, a tab-separated command), the failing-checks question and the trace's
+  end (Tower's closing under its mark, the cancel note, the named opening rows, the must-fail check in words)
+  (`/tmp/tower-design/iter24/vis`). Detector: 17 against 17 at `43576b0` on the 5 changed UI files, the same findings.
+  Not yet independently re-reviewed.

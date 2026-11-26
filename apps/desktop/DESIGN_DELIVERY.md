@@ -1,6 +1,7 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, thirty-three local commits, nothing pushed, merged or deployed. Working
+Branch `design/evolution`, from `main` at `bf22cad`, with `main` at `70a52e7` merged in on 2026-11-27, then pushed and
+opened as a pull request at the owner's request; nothing deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -386,32 +387,45 @@ re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
-At the final commit (iteration 24; the gates run alone, on fixtures dumped from the supervisor under test):
+At the final commit (iteration 25; the gates run on fixtures dumped from the supervisor under test, while another
+project's builds ran on the same machine: one-minute load 16–55 throughout):
 
-- **Type check and unit tests:** tsc clean; vitest 44 files, 265 tests.
-- **e2e:** Playwright WebKit 439 passed, 0 failed (76 shot tests skip without SHOTS), Chinese tests on the Chinese
-  supervisor's views. The suite includes axe on the rich states in both themes. The dev server logs
-  "Importing a module script failed" lines (twenty-two at iteration 24's final run; twenty-three at iteration 23's final run, twenty-four at its first; twenty-two at iterations 21 and 22; twenty-one at iteration 20; fifteen at iteration 19; twelve at iteration 18; eleven at iteration 17; fewer before):
+- **Type check and unit tests:** tsc clean; vitest 45 files, 269 tests.
+- **e2e:** Playwright WebKit 441 passed, 1 failed (76 shot tests skip without SHOTS) in the full run, Chinese tests on
+  the Chinese supervisor's views. The one failure was the Chinese "the peek's head of a silent run leaves its state to
+  Now": the dump, made under that load, had caught G-0002 with a call in flight, and a call in flight is busy, never
+  silent (D151). The test now states its premise (the run at rest) and passes with its three neighbours; the full
+  suite was not run again locally after that, CI runs it. The suite includes axe on the rich states in both themes. The dev server logs
+  "Importing a module script failed" lines (twenty-one at iteration 25's run; twenty-two at iteration 24's final run; twenty-three at iteration 23's final run, twenty-four at its first; twenty-two at iterations 21 and 22; twenty-one at iteration 20; fifteen at iteration 19; twelve at iteration 18; eleven at iteration 17; fewer before):
   pages left by a test while a view was still loading, and three tests on purpose (a view, the steer box, and the
   Chinese failure that fail to load); no test fails.
-- **Shots:** 69/69 (`/tmp/tower-design/iter24/allshots`); the harness waits for code loaded on demand, the
+- **Shots:** 69/69 (`/tmp/tower-design/iter25/allshots`); the harness waits for code loaded on demand, the
   highlighting worker and pictures (D194), and a shot fails if anything is still drawing at its 15 s cap (D208); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
-- **Bundle:** all interface JS 163,735 / 163,840 B (105 B left), start-up 56,286 / 65,536 B, goal page
-  11,651 / 12,288 B. The budget was never raised. Iteration 24's additions were paid for by finding the trace's label
-  keys from the event's kind (D286). Iteration 17's first build was 163,953 B, over by 113: its own
+- **Bundle:** all interface JS 163,665 / 163,840 B (175 B left), start-up 56,201 / 65,536 B, goal page
+  11,632 / 12,288 B, the same under this iteration's budget script and `af6d189`'s (`final/gates/budget.log`,
+  `budget-oldscript.log`). The budget was never raised. Iteration 25's first build was 163,943 B, over by 103: an
+  on-demand chunk no longer lists preloads beside it, an unreachable label went and two that said the same became one
+  (D300). Iteration 24's additions were paid for by finding the trace's label keys from the event's kind (D286). Iteration 17's first build was 163,953 B, over by 113: its own
   additions were rewritten tighter until it fit. Iteration 18's fixes reached 164,051 B: Vite's modulepreload polyfill
   is off (238 B; WebKit preloads modules itself from Safari 17, and on an older one the start-up chunks load when the
   entry imports them, from disk) and an unused component is gone (D184). Iteration 19's reached 163,837 B: sixteen
   keys that said the same thing in both languages became one each (D201). Iteration 20's reached 163,887 B:
   twenty-nine keys that said the same thing as another became one each (D216). Iteration 21's reached 163,890 B: each
   icon is its markup as a string set into one `<svg>`, not a tree of components (D235).
-- **Performance (`perf` project, WebKit, run alone):** passes. A board of 50 goals paints in 1243 / 599 / 334 ms
-  against 320 / 348 / 310 ms for the seeded board (medians 599 against 320), inside its 750 ms margin (every row measures
-  its identity column); view switches with 50 goals take 44–205 ms against 37–115 ms, their medians (about 142 against
-  58 ms) inside 150 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
+- **Performance (`perf` project, WebKit, after the suite, under the same load):** passes. A board of 50 goals paints
+  in 2445 / 786 / 634 ms against 600 / 473 / 391 ms for the seeded board (medians 786 against 473), inside its 750 ms
+  margin (every row measures its identity column); view switches with 50 goals take 58–237 ms against 49–113 ms, their
+  medians (about 190 against 70 ms) inside 150 ms. On an idle machine at iteration 24: 1243 / 599 / 334 ms against
+  320 / 348 / 310 ms, switch medians about 142 against 58 ms. The running goal page at rest: about 9–11 % of a core in headless WebKit with the shimmer on, 9 % with
   it off (`design-evidence/reports/iter15-shimmer-cpu.md`; the old shimmer cost 33–38 %).
-- **Rust:** iteration 24 changed the supervisor (D272, D275: a dialog's guard timed and its cancel noted; D280: each
+- **Rust:** iteration 25 changed the supervisor (D288, D290, D299: the phone page; D291: the guard's read and its
+  hooks; D294, D295: Tower's notes; D297: the update carries the put-aside items; D301: each list's mark; D303: the
+  caches test), the core (D294: a note says who wrote it; D296: older closings read; D301) and the store (D289:
+  migration 25; D296; D301): rustfmt, workspace clippy and `cargo test --workspace` pass (29 suites, 497 tests, 2
+  ignored), the extension's 34 tests and `tools/security-tests.mjs` (118 named tests present) pass, and the flow suite
+  passed 5 runs of 5 with ten CPU burners held (one-minute load 35.6–48.1); the loop was stopped there, where earlier
+  iterations ran 20. Iteration 24 changed the supervisor (D272, D275: a dialog's guard timed and its cancel noted; D280: each
   failing check its own code; D270, D282, D287: the phone page), the core (D286: an event's words) and the store (D276:
   Tower's closings name their item; D280; D285: migration 24; D286: words on append and on read), and the extension
   (D273, D274: what the agent reads of a dialog no one answered): rustfmt, workspace clippy and `cargo test --workspace`
@@ -495,8 +509,8 @@ iteration-20 commit `b6baa8a` (review 19's findings and notes, with review 19's 
 `b59e68a` (review 20's findings and notes, with review 20's report), its follow-up `9397e07` (the header names the
 run, no mode or live line over a stop), the iteration-22 commit `864d6c3` (review 21's findings and notes, with review
 21's report), the iteration-23 commit `4167461` (review 22's findings and notes, with review 22's report), its
-follow-up `43576b0` (D268, D269), the iteration-24 commit `af6d189` (review 23's findings and notes, with review 23's report) and the iteration-25 commit (review 24's findings and notes, with review 24's report).
-All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
+follow-up `43576b0` (D268, D269), the iteration-24 commit `af6d189` (review 23's findings and notes, with review 23's report), the iteration-25 commit `ea5db26` (review 24's findings and notes, with review 24's report), the merge of `main` at `70a52e7` (`9c705a2`: #53 made the docs cite decisions and ADRs, not findings; this branch's content is kept under main's citation edits, and the review rounds it had cited in `docs/` are gone the same way) and the commit that records iteration 25's gates.
+All are on `design/evolution`, pushed on 2026-11-27 at the owner's request. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
@@ -567,8 +581,11 @@ What is left:
 - **The event log was changed once (D285, D289).** Migrations 24 and 25 set `source` and `auto` on older
   `inbox_resolved` events, never their words; docs/06 §6.6.2 records the exception.
 
-- **The bundle has 105 B left** (163,735 / 163,840 B). The budget stays; the next change that adds interface code has
-  to make its own room, as iterations 17 to 21 and 24 did.
+- **Iteration 25 was not independently re-reviewed.** The owner asked for the branch to be pushed and merged once
+  its gates passed. The last independent acceptance stands on `af6d189` (review 24, 8.66 / 10); iteration 25's fixes
+  rest on tests that fail on `af6d189`'s sources or under a stated mutation, not on a second reader.
+- **The bundle has 175 B left** (163,665 / 163,840 B). The budget stays; the next change that adds interface code has
+  to make its own room, as iterations 17 to 21, 24 and 25 did.
 - **Merged keys couple meanings (D228).** To fit the budget, keys that said the same thing became one (D201, D216): for
   example `trace.output` and `settings.testCheckOutput`, `sidebar.ended` and `state.archived`, `goal.resume` and
   `goal.purposeResume` now share words. Changing one merged key's words changes every place that uses it, so such a

@@ -1,6 +1,7 @@
 # Design evolution — progress and recovery state
 
-Branch `design/evolution`, cut from `main` at `bf22cad` (2026-11-25). Nothing is pushed.
+Branch `design/evolution`, cut from `main` at `bf22cad` (2026-11-25); `main` at `70a52e7` merged in and the branch
+pushed as a pull request on 2026-11-27, at the owner's request.
 
 ## Where things are
 
@@ -596,3 +597,36 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   end (Tower's closing under its mark, the cancel note, the named opening rows, the must-fail check in words)
   (`/tmp/tower-design/iter24/vis`). Detector: 17 against 17 at `43576b0` on the 5 changed UI files, the same findings.
   Not yet independently re-reviewed.
+- Iteration 25 — review 24's three P3 findings (D288–D290), its two notes on the tests and its record-only notes
+  (D291–D301), D302 from this iteration's own visual check and D303 from its own gate run (T218–T228). The phone page
+  holds a new state back whole while words on a card are selected, its foot's time and its gauges with it, and a card
+  answered elsewhere goes once the selection ends (D288). Migration 24 tells Tower's older closings by their exact
+  words, case and all, and docs/06 says the log was changed that once (D289). In an approval's code block a word longer
+  than a row starts where it stands, wherever it stands in its line, fills each row and goes on two in under the hook;
+  a word that fits a row is never parted (D290; desk and phone). D272's test holds the dialog right after the guard
+  reads the stop (D291); the hook's test reads how far the ink reaches across the margin and down the row and bounds
+  its tone above (D292); the CI question no longer says again what its button says, so acceptance condition 1 has its
+  room back (D293). Tower's own notes carry its mark and the engine's do not, whatever their words (D294); its cancel
+  reads as its closings do (D295); an older closing reads in today's form and in the desk's language (D296); unsent
+  words are the item's own, not shared by two cards of the same words (D297, reversing D283's key and D287's); on the
+  strip's phone tab a side gone is the phone picture's own frame with its reason whole beside it (D298, reversing
+  D281 there); a Send pressed while a state waits behind the reply box lands (D299); the budget is kept (D300); a list
+  Tower writes in a sentence is joined by the language's own mark (D301); the trace runs down, never sideways (D302);
+  the caches test compares two sizes instead of a bound in seconds (D303). Each fix's test fails on `af6d189`'s
+  sources or a stated mutation, all 74 re-run in one batch on the final tree (`/tmp/tower-design/iter25/fm/logs/`,
+  `summary.txt`; the e2e ones on the fixtures' previous dump, made before the last Rust change to the list marks).
+  Gates on the final tree, another project's builds running on the machine beside them (one-minute load 16–55):
+  rustfmt, workspace clippy, `cargo test --workspace` (29 suites, 497 tests, 2 ignored), the extension's 34 tests,
+  security 118, the flow suite 5 of 5 under ten CPU burners (load 35.6–48.1; stopped there, where earlier iterations
+  ran 20), tsc, vitest 45 files and 269 tests, build, budget (163,665 / 163,840 B, the same under `af6d189`'s script),
+  line limit, e2e 441 passed and 1 failed (76 shot tests skip without SHOTS), shots 69/69, perf (board of 50: 2445 /
+  786 / 634 ms against 600 / 473 / 391 ms; switch medians about 190 against 70 ms), doc numbers. The one e2e failure
+  was a fixture's premise: the Chinese dump, made under that load, had caught G-0002 with a call in flight, which is
+  busy and never silent (D151); the silent-run test now states its premise and passes with its neighbours (4 of 4),
+  and the full suite was not run again locally. Visual checks at DPR 2 during the work: Look's phone frame on the row
+  and in the readout with short, long and wide reasons, en and zh (`/tmp/tower-design/iter25/r5/`); the trace's
+  folded message, mark lines and Tower's line at 1024–1280 (`injected-*.png`, `marklines-1040.png`,
+  `towerline-*.png`); acceptance condition 1 (`ac1-*.png`). Detector: 17 against 17 at `af6d189` on the 9 changed UI
+  files, the same findings, none on a changed line. `main` at `70a52e7` (#53) is merged in: its citation edits are
+  applied to this branch's docs and the review rounds this branch had cited in `docs/` are gone. Not independently
+  re-reviewed: the owner asked for the branch to be pushed and merged once its gates passed.

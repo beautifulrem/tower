@@ -699,10 +699,16 @@ const g2Waiting = (F: Record<string, any>) => {
   F.inbox.push({ ...structuredClone(q), id: "ib-g2-question", goal_id: "G-0002", goal_title: title, kind: "question", subject: "Which rounding does the ledger use?" });
   for (const g of [F.goals.find((x: any) => x.id === "G-0002"), F["goal-G-0002"]?.summary]) if (g) Object.assign(g, { needs_you: 1, mode: "waiting_on_you" });
 };
+// The demo's G-0002 is still at work while its views are dumped, so a dump can catch one of its calls in flight, and a
+// call in flight is busy, never silent (D151). A silent run is a run at rest: the test says so, whatever the dump caught.
+const g2Silent = (F: Record<string, any>) => {
+  enrichRich(F);
+  for (const g of [F.goals.find((x: any) => x.id === "G-0002"), F["goal-G-0002"]?.summary]) if (g?.live_line) g.live_line.running = false;
+};
 // Silence is what the desk knows (no event for two minutes), never "Unresponsive", the supervisor's word for a host it
 // cannot hear (iteration 15 follow-up, D144).
 for (const [lang, words] of [["en", { running: "Running", silent: "Silent", waiting: "Needs you" }], ["zh-CN", { running: "运行中", silent: "已沉默", waiting: "等你" }]] as const)
-  for (const [name, enrich, now] of [["silent", enrichRich, "silent"], ["silent and waiting for your answer", g2Waiting, "waiting"]] as const)
+  for (const [name, enrich, now] of [["silent", g2Silent, "silent"], ["silent and waiting for your answer", g2Waiting, "waiting"]] as const)
     test(`the peek's head of a ${name} run leaves its state to Now (${lang})`, async ({ page }) => {
       await openTower(page, "overview", { enrich, lang });
       await settled(page, "overview");

@@ -18,6 +18,7 @@ import { type Gap, STEP, contextLines, gapsOf, revealOf, splitRows } from "../..
 import { highlight, hunkSides, languageOf } from "../../lib/highlight";
 import type { Tokens } from "../../lib/highlight.worker";
 import { t } from "../../lib/i18n";
+import { normalizeCombo } from "../../lib/keys";
 import { baseMs } from "../../lib/motion";
 import { popupActions } from "../../lib/native";
 import type { Draft } from "../../lib/reviewState";
@@ -26,9 +27,8 @@ import { VIRTUAL_THRESHOLD } from "../../lib/virtualDiff";
 import { type Range, hunkWordRanges, segment } from "../../lib/worddiff";
 import { type ExtDiffFile, type ExtHunk } from "../goal/ext";
 import { type VRow, VirtualBody, flattenBlocks, lineAnchor } from "./VirtualBody";
+import { copyLines, selectLine } from "./diffSelect";
 import { type Anchor, type Block, type Composing, type Reveals, sameAnchor } from "./types";
-
-const COLOUR_WAIT_MS = 150;
 
 export interface FileDiffProps {
   file: DiffFile;
@@ -76,8 +76,10 @@ export function FileDiff(props: FileDiffProps) {
 
   // AST semantic noise state: moved_unchanged & formatting_only hunks collapse by default, expandable per hunk.
   const [noiseExpanded, setNoiseExpanded] = createSignal<Record<number, boolean>>({});
+  // A file the change adds or deletes is new or gone line for line: none of it is folded away as moved or reformatted,
+  // whatever the hint says.
   const noiseOf = (index: number | null): "moved" | "formatting" | null => {
-    if (index === null) return null;
+    if (index === null || props.file.status === "added" || props.file.status === "deleted") return null;
     const ef = props.file as ExtDiffFile;
     const eh = props.file.hunks[index] as ExtHunk | undefined;
     if (props.movedHunks?.includes(index) || ef.moved_hunks?.includes(index) || eh?.moved_unchanged) return "moved";
@@ -109,30 +111,62 @@ export function FileDiff(props: FileDiffProps) {
   });
 
   let table!: HTMLTableElement;
+  // Tabbing into the table lands on its first line, where the arrow keys move. A press of the pointer focuses the table
+  // too, and moving focus then would drop the text you are selecting (review 15: no diff line could be selected or
+  // copied), so a focus that a press brought stays on the table; the arrow keys then start from the line pressed, and ↩
+  // comments on it, as ↩ on its number does (review 16). Focus coming in moves to the first line, from another control
+  // (Tab) or from nowhere (the first Tab on the page); focus handed back by a sheet that opened over the table and
+  // closed, or by the window coming back, keeps your place, the line pressed (review 18): the table lost it to a sheet
+  // or to nowhere, and it comes back from there. Back from there by the keyboard, the line pressed wears the ring where
+  // ↓ and ↩ act, its number marked `ln-held` (review 19, record only: the table held focus and showed none).
+  let pressed = false;
+  let away = false;
+  let pressedRow: Element | null = null;
+  const press = (e: PointerEvent) => {
+    pressed = true;
+    pressedRow = (e.target as Element).closest("tr");
+    table.querySelector(".ln-held")?.classList.remove("ln-held");
+    pressedRow?.querySelector(".ln-btn")?.classList.add("ln-held");
+    // Released anywhere, even outside the table.
+    const done = new AbortController();
+    const up = () => ((pressed = false), done.abort());
+    window.addEventListener("pointerup", up, { capture: true, signal: done.signal });
+    window.addEventListener("pointercancel", up, { capture: true, signal: done.signal });
+  };
+  const sheetOrNowhere = (e: FocusEvent) => !e.relatedTarget || !!(e.relatedTarget as Element).closest("[role=dialog]");
   const onTableFocus = (e: FocusEvent) => {
-    if (e.target !== table) return;
+    const back = away && sheetOrNowhere(e);
+    away = false;
+    if (e.target !== table || pressed || back) return;
     table.querySelector<HTMLElement>(".ln-btn")?.focus({ preventScroll: true });
   };
   const onTableKey = (e: KeyboardEvent) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    const btn = (e.target as HTMLElement).closest(".ln-btn");
-    const td = btn?.closest("td");
-    const trEl = td?.closest("tr");
-    if (!btn || !td || !trEl) return;
-    const col = [...trEl.children].indexOf(td);
-    let row = e.key === "ArrowDown" ? trEl.nextElementSibling : trEl.previousElementSibling;
-    while (row && !row.children[col]?.querySelector(".ln-btn")) row = e.key === "ArrowDown" ? row.nextElementSibling : row.previousElementSibling;
-    const target = row?.children[col]?.querySelector<HTMLElement>(".ln-btn");
-    if (!target) {
-      if (virtualized()) {
-        const pane = table.closest<HTMLElement>(".review-diff");
-        if (pane) (e.preventDefault(), pane.scrollBy({ top: e.key === "ArrowDown" ? 120 : -120 }));
-      }
-      return;
+    const down = e.key === "ArrowDown";
+    const go = (b: HTMLElement) => (e.preventDefault(), b.focus({ preventScroll: true }), b.scrollIntoView({ block: "nearest" }));
+    // Focus on the table itself: a press left it there, on the line pressed (if any).
+    const onTable = e.target === table;
+    const btn = onTable ? (pressedRow?.isConnected ? pressedRow.querySelector<HTMLElement>(".ln-btn") : null) : (e.target as HTMLElement).closest<HTMLElement>(".ln-btn");
+    // ↩ alone: with a modifier it is a shortcut of the page's (⌘⇧↩ accepts), never a comment (review 17).
+    if (e.key === "Enter") return void (onTable && btn && normalizeCombo(e) === "enter" && (go(btn), btn.click()));
+    if (!down && e.key !== "ArrowUp") return;
+    if (!btn) {
+      // No line pressed: land on the first line.
+      const first = onTable && table.querySelector<HTMLElement>(".ln-btn");
+      return void (first && go(first));
     }
-    e.preventDefault();
-    target.focus({ preventScroll: true });
-    target.scrollIntoView({ block: "nearest" });
+    const td = btn.closest("td")!;
+    const col = td.cellIndex;
+    const step = (r: Element) => (down ? r.nextElementSibling : r.previousElementSibling);
+    let row = step(td.parentElement!);
+    while (row && !row.children[col]?.querySelector(".ln-btn")) row = step(row);
+    const target = row?.children[col]?.querySelector<HTMLElement>(".ln-btn");
+    if (target) go(target);
+    // No line past the one pressed (the file's first or last): the keys land on its own number, never leave you nowhere.
+    else if (onTable) go(btn);
+    else if (virtualized()) {
+      const pane = table.closest<HTMLElement>(".review-diff");
+      if (pane) (e.preventDefault(), pane.scrollBy({ top: down ? 120 : -120 }));
+    }
   };
 
   const moreMenu = () =>
@@ -287,7 +321,7 @@ export function FileDiff(props: FileDiffProps) {
     <section class="file" aria-label={props.file.path} data-file-path={props.file.path}>
       <header class="file-head">
         <span class="file-status meta">{statusLabel(props.file.status)}</span>
-        <span class="mono ellipsis grow" title={props.file.path}>
+        <span class="file-path mono ellipsis grow" title={props.file.path}>
           <Show when={props.file.old_path}>
             <span class="t3">
               {props.file.old_path}
@@ -296,7 +330,6 @@ export function FileDiff(props: FileDiffProps) {
           </Show>
           {props.file.path}
         </span>
-        <Show when={virtualized()}><span class="vdiff-badge mono num">{flatRows().length} · virtual</span></Show>
         <span class="num meta">
           <span class="diff-add">+{props.file.additions}</span> <span class="diff-del">−{props.file.deletions}</span>
         </span>
@@ -309,11 +342,12 @@ export function FileDiff(props: FileDiffProps) {
             {t("review.wholeFile")}
           </Button>
         </Show>
-        <Button size="s" variant="ghost" aria-pressed={props.viewed} disabled={props.editing} onClick={() => props.onViewed(!props.viewed)}>
-          <Show when={props.viewed}>
+        {/* Unmarked, it says what it does; marked, what is so. The words change, so no pressed state says it twice. */}
+        <Button size="s" variant="ghost" class="file-viewed" disabled={props.editing} onClick={() => props.onViewed(!props.viewed)}>
+          <Show when={props.viewed} fallback={t("review.keyViewed")}>
             <Icon name="check" size={10} />
+            {t("review.viewed")}
           </Show>
-          {t("review.viewed")}
         </Button>
         <IconButton icon="ellipsis" size={24} label={t("review.fileMore")} aria-haspopup="menu" onClick={() => void moreMenu()} />
       </header>
@@ -337,8 +371,12 @@ export function FileDiff(props: FileDiffProps) {
           tabindex="0"
           aria-label={t("review.diffLabel", { path: props.file.path })}
           aria-describedby={helpId}
+          onPointerDown={press}
           onFocus={onTableFocus}
+          onBlur={(e) => (away = e.target === table && sheetOrNowhere(e))}
           onKeyDown={onTableKey}
+          onCopy={(e) => copyLines(table, e)}
+          onClick={selectLine}
         >
           <colgroup>
             <Show
@@ -430,7 +468,7 @@ function FoldRow(props: { height: number; cols: number; onDone: () => void }) {
 
 function UndoButton(props: { onClick: () => void }) {
   return (
-    <Button size="s" variant="ghost" class="gap-all undo-hunk" onClick={props.onClick} title={`${t("review.undoHunkTitle")} · U`}>
+    <Button size="s" variant="ghost" class="gap-all undo-hunk" onClick={props.onClick} title={`${t("review.undoHunkTitle")} (U)`}>
       <Icon name="undo" size={10} />
       {t("review.undoHunk")}
     </Button>
@@ -447,7 +485,7 @@ function AcceptButton(props: { accepted: boolean; current: boolean; lines: numbe
       aria-pressed={props.accepted}
       onClick={props.onClick}
       kbd={props.current ? (props.accepted ? "shift+a" : "a") : undefined}
-      title={`${props.accepted ? `${t("review.unacceptHunkTitle")} · ⇧A` : `${t("review.acceptHunkTitle")} · A`} — ${t("review.acceptHunkNote")}`}
+      title={`${props.accepted ? `${t("review.unacceptHunkTitle")} (⇧A)` : `${t("review.acceptHunkTitle")} (A)`} — ${t("review.acceptHunkNote")}`}
     >
       <Icon name="check" size={10} />
       {props.accepted ? t("review.hunkAccepted", { n: props.lines }) : t("review.acceptHunk")}
@@ -615,9 +653,9 @@ function LineBtn(p: { l: DiffLine | null; n: number | null; io: LineIo }) {
   );
 }
 
-function UnifiedTr(p: { l: DiffLine; io: LineIo; hunk?: number | null; commented: boolean; pending?: boolean; late?: boolean; vidx?: number; tokens?: Tokens[number]; ranges?: Range[] }) {
+function UnifiedTr(p: { l: DiffLine; io: LineIo; hunk?: number | null; commented: boolean; late?: boolean; vidx?: number; tokens?: Tokens[number]; ranges?: Range[] }) {
   return (
-    <tr class={`dl dl-${p.l.kind}`} classList={{ commented: p.commented, "code-pending": !!p.pending, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
+    <tr class={`dl dl-${p.l.kind}`} classList={{ commented: p.commented, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
       <td class="ln num"><LineBtn l={p.l} n={p.l.old_no} io={p.io} /></td>
       <td class="ln num"><LineBtn l={p.l} n={p.l.new_no} io={p.io} /></td>
       <td class="gutter"><button class="gutter-btn" onClick={() => p.io.onAnchor(lineAnchor(p.io.path(), p.l))} aria-label={t("review.comment")} tabindex="-1"><Icon name="plus" size={10} /></button></td>
@@ -626,9 +664,9 @@ function UnifiedTr(p: { l: DiffLine; io: LineIo; hunk?: number | null; commented
   );
 }
 
-function SplitTr(p: { left: DiffLine | null; right: DiffLine | null; io: LineIo; hunk?: number | null; commented: boolean; pending?: boolean; late?: boolean; vidx?: number; lTokens?: Tokens[number]; lRanges?: Range[]; rTokens?: Tokens[number]; rRanges?: Range[] }) {
+function SplitTr(p: { left: DiffLine | null; right: DiffLine | null; io: LineIo; hunk?: number | null; commented: boolean; late?: boolean; vidx?: number; lTokens?: Tokens[number]; lRanges?: Range[]; rTokens?: Tokens[number]; rRanges?: Range[] }) {
   return (
-    <tr class="dl dl-split" classList={{ commented: p.commented, "code-pending": !!p.pending, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
+    <tr class="dl dl-split" classList={{ commented: p.commented, "code-late": !!p.late }} data-hunk={p.hunk ?? undefined} data-vidx={p.vidx}>
       <td class="ln num" classList={{ "dl-del": p.left?.kind === "del" }}><LineBtn l={p.left} n={p.left?.old_no ?? null} io={p.io} /></td>
       <td class="code mono" classList={{ "dl-del": p.left?.kind === "del", "dl-blank": !p.left }}><Show when={p.left}>{(l) => <Code l={l()} tokens={p.lTokens} ranges={p.lRanges} sign={false} />}</Show></td>
       <td class="ln num" classList={{ "dl-add": p.right?.kind === "add" }}><LineBtn l={p.right} n={p.right?.new_no ?? null} io={p.io} /></td>
@@ -655,11 +693,9 @@ export function HunkRows(props: {
 }) {
   const lang = languageOf(props.path);
   const words = createMemo(() => hunkWordRanges(props.hunk.lines));
-  const [ready, setReady] = createSignal(!lang);
-  const [late, setLate] = createSignal(false);
-  let arrived = false;
-  const wait = lang ? window.setTimeout(() => (setReady(true), !arrived && setLate(true)), COLOUR_WAIT_MS) : undefined;
-  onCleanup(() => clearTimeout(wait));
+  // The code shows at once, in the plain foreground; its colours tint in when the worker sends them (120ms), so the
+  // first frame is never line numbers without their code.
+  const late = () => !!lang;
   const [tokens] = createResource(
     () => props.hunk,
     async (h) => {
@@ -670,9 +706,8 @@ export function HunkRows(props: {
         if (!n || !o) return null;
         let i = 0, j = 0;
         return h.lines.map((l) => (l.kind === "add" ? n[i++] : l.kind === "del" ? o[j++] : (j++, n[i++])));
-      } finally {
-        arrived = true;
-        setReady(true);
+      } catch {
+        return null;
       }
     },
   );
@@ -701,7 +736,7 @@ export function HunkRows(props: {
         <For each={props.hunk.lines}>
           {(l, idx) => (
             <>
-              <UnifiedTr l={l} io={io} hunk={props.index} commented={props.commentsAt(aOf(l)).length > 0} pending={!ready()} late={late()} tokens={tokens()?.[idx()]} ranges={words().get(idx())} />
+              <UnifiedTr l={l} io={io} hunk={props.index} commented={props.commentsAt(aOf(l)).length > 0} late={late()} tokens={tokens()?.[idx()]} ranges={words().get(idx())} />
               <Attached anchors={[aOf(l)]} />
             </>
           )}
@@ -715,7 +750,7 @@ export function HunkRows(props: {
           const anchors = () => [...(left()?.kind === "del" ? [aOf(left()!)] : []), ...(right() ? [aOf(right()!)] : [])];
           return (
             <>
-              <SplitTr left={left()} right={right()} io={io} hunk={props.index} commented={anchors().some((a) => props.commentsAt(a).length > 0)} pending={!ready()} late={late()} lTokens={row.left !== null ? tokens()?.[row.left] : undefined} lRanges={row.left !== null ? words().get(row.left) : undefined} rTokens={row.right !== null ? tokens()?.[row.right] : undefined} rRanges={row.right !== null ? words().get(row.right) : undefined} />
+              <SplitTr left={left()} right={right()} io={io} hunk={props.index} commented={anchors().some((a) => props.commentsAt(a).length > 0)} late={late()} lTokens={row.left !== null ? tokens()?.[row.left] : undefined} lRanges={row.left !== null ? words().get(row.left) : undefined} rTokens={row.right !== null ? tokens()?.[row.right] : undefined} rRanges={row.right !== null ? words().get(row.right) : undefined} />
               <Attached anchors={anchors()} />
             </>
           );

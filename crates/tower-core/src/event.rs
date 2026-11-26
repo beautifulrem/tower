@@ -237,6 +237,11 @@ pub enum EventKind {
     InboxResolved {
         item_id: String,
         response: String,
+        /// Tower closed it (the asker stopped waiting, the run ended, a newer item replaced it): no person answered, and
+        /// the trace never says one did (review 22 follow-up: "Your answer: Replaced by a newer one").
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[ts(as = "Option<bool>", optional)]
+        auto: bool,
     },
     Steered {
         text: String,
@@ -261,6 +266,13 @@ pub enum EventKind {
     },
     Note {
         text: String,
+        /// Tower wrote it, its own record of what happened (`EventKind::tower_note`); the trace marks it as Tower's, as it
+        /// marks Tower's closing of a card (review 24, record only 1). A `notify` from the engine (Pi, or an extension it
+        /// loaded) is not Tower's and stays unmarked, and so does a note written before this field: an unmarked line,
+        /// never a mark that may be wrong.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[ts(as = "Option<bool>", optional)]
+        tower: bool,
     },
     /// A sentinel found something in the verified snapshot that a passing
     /// test run would hide (deleted tests, skipped tests, a changed test
@@ -367,6 +379,11 @@ pub enum EventKind {
 }
 
 impl EventKind {
+    /// A note in Tower's own words: what it did or saw, or what you did through it.
+    pub fn tower_note(text: impl Into<String>) -> Self {
+        Self::Note { text: text.into(), tower: true }
+    }
+
     /// The register an event is shown in.
     pub fn source(&self) -> Source {
         match self {
@@ -374,6 +391,7 @@ impl EventKind {
                 Source::Claim
             }
             Self::Observed { .. } => Source::Observation,
+            Self::InboxResolved { auto: true, .. } => Source::System,
             Self::ContractRatified { .. }
             | Self::InboxResolved { .. }
             | Self::Steered { .. }
@@ -474,6 +492,23 @@ impl EventKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Review 24 (record only 1): the desk marks a note as Tower's by its `tower` field. Tower's own note carries it; the
+    /// engine's does not, and neither does one written before the field, which reads as not Tower's.
+    #[test]
+    fn a_note_says_whether_tower_wrote_it() {
+        let own =
+            serde_json::to_value(EventKind::tower_note("Tower cancelled “Deploy?”: The run was stopping")).unwrap();
+        assert_eq!(
+            own,
+            serde_json::json!({"kind": "note", "text": "Tower cancelled “Deploy?”: The run was stopping", "tower": true})
+        );
+        let sent = serde_json::to_value(EventKind::Note { text: "Compacting".into(), tower: false }).unwrap();
+        assert_eq!(sent, serde_json::json!({"kind": "note", "text": "Compacting"}));
+        let older: EventKind =
+            serde_json::from_value(serde_json::json!({"kind": "note", "text": "Run 2 ended"})).unwrap();
+        assert_eq!(older, EventKind::Note { text: "Run 2 ended".into(), tower: false });
+    }
 
     #[test]
     fn events_round_trip_through_json() {

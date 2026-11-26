@@ -1,8 +1,9 @@
 /**
  * Contract Studio: 5-clause editorial contract document:
- *   01 Intent (+ pasted/dropped image attachments)
- *   02 Acceptance & visual criteria (+ lazy Synthetic Holdout Drafts)
- *   03 Scope fence & ports (include/exclude/readonly + network/ports/loopback)
+ *   01 Intent (+ pasted/dropped image attachments, the optional "done when")
+ *   02 Acceptance & visual criteria (+ lazy Synthetic Holdout Drafts) — second, so the clause Tower executes is in the
+ *      first screen, not under three optional text boxes
+ *   03 Scope fence & limits (include/exclude/readonly, stop conditions, constraints)
  *   04 Engine, escalation & sandbox (trust tier, escalation_model, sandbox_tier, autonomy)
  *   05 Budget & dependencies (caps, wall clock, rework limit, depends_on picker)
  */
@@ -13,7 +14,7 @@ import { Icon, LifecycleGlyph } from "../components/Glyph";
 import { LookStepsEdit as LookSteps } from "../components/LookSteps";
 import { ContractSkeleton } from "../components/ContractSkeleton";
 import { BaseTestsNotice } from "../components/TestCheck";
-import { Button, ClauseHead, Failed, Field, IconButton, Select, Toggle } from "../components/ui";
+import { Button, ClauseHead, Failed, Field, IconButton, Select, Toggle, fitUnit } from "../components/ui";
 import type { ContractIssue } from "../gen/ContractIssue";
 import type { Criterion } from "../gen/Criterion";
 import { api } from "../lib/api";
@@ -60,6 +61,12 @@ export const parsePorts = (s: string): number[] => [
 ];
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+
+/** A title made from the purpose: its first line, cut at a word (or, in Chinese, any character) near 60, with "…" when cut. */
+export const titleFrom = (intent: string): string => {
+  const line = intent.trim().split("\n")[0];
+  return line.length > 60 ? `${line.slice(0, 60).replace(/^(.{31,})\s.*/, "$1").replace(/[\s,.;:，。；：]+$/, "")}…` : line;
+};
 
 export function ContractEditor(props: { projectId?: string; draftId?: string; amendId?: string }) {
   const editingId = props.draftId ?? props.amendId;
@@ -115,7 +122,9 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       setTitle("");
       // Words carried in from the board are yours too: the blank form is the baseline, so leaving with them asks.
       base = now();
-      if (intent) (setC("intent", intent), setTitle(intent.slice(0, 48)));
+      if (intent) (setC("intent", intent), setTitle(titleFrom(intent)));
+      // A new contract starts where you write: the intent (the title is optional, made from it), caret after any carried words.
+      queueMicrotask(() => intentEl && (intentEl.focus(), intentEl.setSelectionRange(intentEl.value.length, intentEl.value.length)));
     }
   });
 
@@ -134,11 +143,15 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const errors = () => issues().filter((i) => i.level === "error");
   const issueFor = (field: string) => (touched() ? (issues().find((i) => i.field === field)?.message ?? null) : null);
 
+  let intentEl: HTMLTextAreaElement | undefined;
+  // A criterion you add is one you are about to name: its title takes the focus.
+  let focusId: string | null = null;
   const addCriterion = (kind: Criterion["kind"]["type"]) => {
     let id = `C${c.criteria.length + 1}`;
     while (c.criteria.some((x) => x.id === id)) id = `C${Number(id.slice(1)) + 1}`;
     const k: Criterion["kind"] =
       kind === "exec" ? { type: "exec", command: "", timeout_secs: 600 } : kind === "look" ? { type: "look", start: "", url: "http://localhost:3000/", timeout_secs: 60 } : { type: "human" };
+    focusId = id;
     setC("criteria", (l) => [...l, { id, title: "", kind: k }]);
   };
   const setKind = (i: number, fn: (k: Criterion["kind"]) => void) => setC("criteria", i, "kind", produce(fn));
@@ -183,10 +196,10 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
         // A draft that failed to save must not be ratified as its old version, nor left behind with your edits.
         if (!(await act(async () => (await api.updateDraft(props.draftId!, title(), contract), true)))) return;
         markSaved();
-        if (ratify) await act(() => api.ratify(props.draftId!), t("contract.ratified"));
+        if (ratify) await act(() => api.ratify(props.draftId!), t("trace.evContractRatified"));
         go({ name: "goal", id: props.draftId });
       } else {
-        const g = await act(() => api.createGoal({ project_id: projectId(), title: title().trim() || contract.intent.slice(0, 48), contract, ratify }));
+        const g = await act(() => api.createGoal({ project_id: projectId(), title: title().trim() || titleFrom(contract.intent), contract, ratify }));
         if (g) markSaved(), go({ name: "goal", id: g.id });
       }
     } finally {
@@ -204,14 +217,13 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
       <Show when={ready()} fallback={<ContractSkeleton />}>
         <div class="editor">
           <div class="editor-main">
+            {/* What this is, then where: "New contract  shop", told apart by a gap and the project's weight (no dot: docs/12). */}
             <div class="contract-mast halt">
-              <span class="contract-mast-word">{t("contract.mast")}</span>
+              <span class="contract-mast-word">{mastState()}</span>
               <Show when={projectName()}>
                 <span class="sep" />
                 <span class="contract-mast-project">{projectName()}</span>
               </Show>
-              <span class="sep" />
-              <span class="contract-mast-state">{mastState()}</span>
             </div>
 
             <div class="editor-block">
@@ -227,6 +239,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <Show when={!editingId}><BaseTestsNotice projectId={projectId()} /></Show>
               <Field label={t("contract.intent")} error={issueFor("intent")} class="field-intent">
                 <textarea
+                  ref={intentEl}
                   rows={2}
                   class="reading"
                   value={c.intent}
@@ -258,12 +271,6 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <Field label={t("contract.doneWhen")}>
                 <textarea rows={2} value={c.done_when} onInput={(e) => setC("done_when", e.currentTarget.value)} />
               </Field>
-              <Field label={t("contract.stopConditions")}>
-                <textarea rows={2} value={c.stop_conditions.join("\n")} onInput={(e) => setC("stop_conditions", lines(e.currentTarget.value))} placeholder={t("contract.stopConditionsPlaceholder")} />
-              </Field>
-              <Field label={t("contract.constraints")}>
-                <textarea rows={2} value={c.constraints.join("\n")} onInput={(e) => setC("constraints", lines(e.currentTarget.value))} placeholder={t("contract.constraintsPlaceholder")} />
-              </Field>
             </div>
 
             <div class="editor-block">
@@ -277,11 +284,17 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                 {(cr, i) => (
                   <div class="criterion-edit" classList={{ "criterion-edit-look": cr.kind.type === "look" }}>
                     <span class="num">{cr.id}</span>
-                    <input value={cr.title} aria-label={`${cr.id} ${t("contract.criterionTitle")}`} placeholder={cr.kind.type === "look" ? t("contract.lookTitlePlaceholder") : t("contract.criterionTitle")} onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)} />
+                    <input
+                      ref={(el) => cr.id === focusId && ((focusId = null), queueMicrotask(() => el.focus()))}
+                      value={cr.title}
+                      aria-label={`${cr.id} ${t("contract.criterionTitle")}`}
+                      placeholder={cr.kind.type === "look" ? t("contract.lookTitlePlaceholder") : t("contract.criterionTitle")}
+                      onInput={(e) => setC("criteria", i(), "title", e.currentTarget.value)}
+                    />
                     <Show when={cr.kind.type !== "human"} fallback={<span class="meta">{t("contract.humanCheck")}</span>}>
-                      <span class="unit-wrap timeout" classList={{ "timeout-look": cr.kind.type === "look" }}>
+                      <span class="unit-wrap timeout" classList={{ "timeout-look": cr.kind.type === "look" }} ref={fitUnit}>
                         <input class="num" type="number" min="1" value={(cr.kind as { timeout_secs: number }).timeout_secs} title={t("contract.timeout")} aria-label={`${cr.id} ${t("contract.timeout")}`} onInput={(e) => setKind(i(), (k) => k.type !== "human" && (k.timeout_secs = Number(e.currentTarget.value) || 1))} />
-                        <span class="unit">{cr.kind.type === "look" ? t("contract.secondsReachable") : t("contract.seconds")}</span>
+                        <span class="field-unit">{cr.kind.type === "look" ? t("contract.secondsReachable") : t("contract.seconds")}</span>
                       </span>
                     </Show>
                     <IconButton icon="cross" size={24} label={t("common.delete")} onClick={() => setC("criteria", (l) => l.filter((_, j) => j !== i()))} />
@@ -322,6 +335,12 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
               <Show when={issueFor("scope.include") ?? issueFor("scope.exclude") ?? issueFor("scope.readonly")}>
                 {(err) => <p class="field-error">{err()}</p>}
               </Show>
+              <Field label={t("contract.stopConditions")}>
+                <textarea rows={2} value={c.stop_conditions.join("\n")} onInput={(e) => setC("stop_conditions", lines(e.currentTarget.value))} placeholder={t("contract.stopConditionsPlaceholder")} />
+              </Field>
+              <Field label={t("contract.constraints")}>
+                <textarea rows={2} value={c.constraints.join("\n")} onInput={(e) => setC("constraints", lines(e.currentTarget.value))} placeholder={t("contract.constraintsPlaceholder")} />
+              </Field>
             </div>
 
             <div class="editor-foot">
@@ -344,69 +363,107 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
           <aside class="editor-side">
             <div class="editor-block">
               <ClauseHead n={4} title={t("contract.engineBlock")} />
-              <Field label={t("contract.engine")} hint={t(`trust.${trustTierOf(engine())}`)}>
-                <Select value={c.engine} options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]} onChange={(v) => (setC("engine", v), setC("model", ""), setC("escalation_model", ""))} />
-              </Field>
-              <Field label={t("contract.model")}>
-                <Suspense fallback={<Select value={c.model} options={modelOptions.base()} onChange={(v) => setC("model", v)} />}>
-                  <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
-                </Suspense>
-              </Field>
-              <Show when={engine() !== "claude-code"}>
-                <Field label={t("contract.thinking")}><Select value={c.thinking} options={thinkingOptions()} onChange={(v) => setC("thinking", v)} /></Field>
-              </Show>
-              <Field label={t("settings.escalationModel")}>
-                <Suspense fallback={<Select value={c.escalation_model ?? ""} options={[{ value: "", label: t("settings.escalationOff") }]} onChange={(v) => setC("escalation_model", v)} />}>
-                  <Select value={c.escalation_model ?? ""} options={escOptions()} onChange={(v) => setC("escalation_model", v)} />
-                </Suspense>
-              </Field>
-              <Show when={c.escalation_model}>
-                <Field label={t("contract.escalateAfter")} unit={t("contract.times")}>
-                  <input class="num" type="number" min="1" max="10" value={c.escalation_after_reworks ?? 2} onInput={(e) => setC("escalation_after_reworks", Number(e.currentTarget.value) || 1)} />
+              {/* Folded to one line of what is set, the security-relevant settings (sandbox, network, autonomy) among them:
+                  a new goal rarely changes these, and the line still says them, with every setting that is not the default
+                  (a thinking level, an escalation model, ports on this Mac, an open loopback): an amendment folds nothing away. */}
+              <details class="clause-fold">
+                <summary class="clause-summary">
+                  <Icon name="chevron-right" size={10} />
+                  {/* Each setting whole; in the side column's width they wrap as settings, under the first. */}
+                  <span class="clause-summary-items">
+                    <span>{engineLabel(engine())}</span>
+                    <Show when={c.model}>
+                      <span class="mono">{c.model}</span>
+                    </Show>
+                    <span>{c.sandbox_tier === "micro_vm" ? "MicroVM" : t("contract.sandboxDefault")}</span>
+                    <Show when={engine() !== "claude-code" && c.thinking && c.thinking !== (state.settings?.default_thinking ?? "")}>
+                      <span>
+                        {t("contract.thinking")} {thinkingOptions().find((o) => o.value === c.thinking)?.label ?? c.thinking}
+                      </span>
+                    </Show>
+                    <Show when={c.escalation_model}>
+                      <span>
+                        {t("contract.escalatesTo")} <span class="mono">{c.escalation_model}</span>
+                      </span>
+                    </Show>
+                    <span>{t(c.network ? "goal.networkOn" : "goal.networkOff")}</span>
+                    <Show when={!c.network && c.ports?.length}>
+                      <span>
+                        {t("contract.portsShort")} <span class="mono">{c.ports!.join(", ")}</span>
+                      </span>
+                    </Show>
+                    <Show when={!c.network && c.loopback_open}>
+                      <span>{t("contract.loopbackShort")}</span>
+                    </Show>
+                    <span>
+                      {t("contract.autonomy")} {t(`contract.${c.autonomy}`)}
+                    </span>
+                  </span>
+                </summary>
+                <Field label={t("chrome.engine")} hint={t(`trust.${trustTierOf(engine())}`)}>
+                  <Select value={c.engine} options={[{ value: "", label: t("contract.engineDefault", { engine: engineLabel(effectiveEngine("", state.settings?.engine)) }) }, ...engineOptions()]} onChange={(v) => (setC("engine", v), setC("model", ""), setC("escalation_model", ""))} />
                 </Field>
-              </Show>
-              <div class="field">
-                <span class="field-label">{t("settings.sandboxBackend")}</span>
-                <div class="sandbox-choices" role="radiogroup" aria-label={t("settings.sandboxBackend")}>
-                  <For
-                    each={[
-                      ["default", t("contract.sandboxDefault"), "Seatbelt / Landlock", false],
-                      ["micro_vm", "MicroVM", microVmReady() ? "Apple Containerization" : t("contract.microvmReq"), !microVmReady()],
-                    ] as ["default" | "micro_vm", string, string, boolean][]}
-                  >
-                    {([id, name, desc, dis]) => (
-                      <label class="radio" classList={{ disabled: dis }}>
-                        <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === id} disabled={dis} onChange={() => setC("sandbox_tier", id)} />
-                        <b>{name}</b>
-                        <span class="radio-desc">{desc}</span>
-                      </label>
-                    )}
-                  </For>
-                </div>
-              </div>
-              <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
-              <Show when={!c.network}>
-                <Field label={t("contract.ports")}>
-                  <input class="mono" inputmode="numeric" placeholder={t("common.eg", { x: "5432, 6379" })} value={(c.ports ?? []).join(", ")} onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))} />
+                <Field label={t("contract.model")}>
+                  <Suspense fallback={<Select value={c.model} options={modelOptions.base()} onChange={(v) => setC("model", v)} />}>
+                    <Select value={c.model} options={modelOptions()} onChange={(v) => setC("model", v)} />
+                  </Suspense>
                 </Field>
-                <Toggle checked={c.loopback_open ?? false} onChange={(v) => setC("loopback_open", v)} label={t("contract.loopbackOpen")} hint={t("contract.loopbackOpenHint")} />
-              </Show>
-              <div class="field">
-                <span class="field-label">{t("contract.autonomy")}</span>
-                <div class="autonomy-choices" role="radiogroup" aria-label={t("contract.autonomy")}>
-                  <For each={["cautious", "standard", "autonomous"] as const}>
-                    {(v) => (
-                      <label class="radio" title={t(`contract.${v}Desc`)}>
-                        <input type="radio" name="autonomy" checked={c.autonomy === v} onChange={() => setC("autonomy", v)} />
-                        <b>{t(`contract.${v}`)}</b>
-                        <span class="radio-desc">{t(`contract.${v}Desc`)}</span>
-                      </label>
-                    )}
-                  </For>
+                <Show when={engine() !== "claude-code"}>
+                  <Field label={t("contract.thinking")}><Select value={c.thinking} options={thinkingOptions()} onChange={(v) => setC("thinking", v)} /></Field>
+                </Show>
+                <Field label={t("settings.escalationModel")}>
+                  <Suspense fallback={<Select value={c.escalation_model ?? ""} options={[{ value: "", label: t("settings.escalationOff") }]} onChange={(v) => setC("escalation_model", v)} />}>
+                    <Select value={c.escalation_model ?? ""} options={escOptions()} onChange={(v) => setC("escalation_model", v)} />
+                  </Suspense>
+                </Field>
+                <Show when={c.escalation_model}>
+                  <Field label={t("contract.escalateAfter")} unit={t("contract.times")}>
+                    <input class="num" type="number" min="1" max="10" value={c.escalation_after_reworks ?? 2} onInput={(e) => setC("escalation_after_reworks", Number(e.currentTarget.value) || 1)} />
+                  </Field>
+                </Show>
+                <div class="field">
+                  <span class="field-label">{t("settings.sandboxBackend")}</span>
+                  <div class="sandbox-choices" role="radiogroup" aria-label={t("settings.sandboxBackend")}>
+                    <For
+                      each={[
+                        ["default", t("contract.sandboxDefault"), "Seatbelt / Landlock", false],
+                        ["micro_vm", "MicroVM", microVmReady() ? "Apple Containerization" : t("contract.microvmReq"), !microVmReady()],
+                      ] as ["default" | "micro_vm", string, string, boolean][]}
+                    >
+                      {([id, name, desc, dis]) => (
+                        <label class="radio" classList={{ disabled: dis }}>
+                          <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === id} disabled={dis} onChange={() => setC("sandbox_tier", id)} />
+                          <b>{name}</b>
+                          <span class="radio-desc">{desc}</span>
+                        </label>
+                      )}
+                    </For>
+                  </div>
                 </div>
-                <p class="field-hint autonomy-current">{t(`contract.${c.autonomy}Desc`)}</p>
-                <p class="field-hint">{t("contract.oneWayNote")}</p>
-              </div>
+                <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
+                <Show when={!c.network}>
+                  <Field label={t("contract.ports")}>
+                    <input class="mono" inputmode="numeric" placeholder={t("common.eg", { x: "5432, 6379" })} value={(c.ports ?? []).join(", ")} onChange={(e) => setC("ports", parsePorts(e.currentTarget.value))} />
+                  </Field>
+                  <Toggle checked={c.loopback_open ?? false} onChange={(v) => setC("loopback_open", v)} label={t("contract.loopbackOpen")} hint={t("contract.loopbackOpenHint")} />
+                </Show>
+                <div class="field">
+                  <span class="field-label">{t("contract.autonomy")}</span>
+                  <div class="autonomy-choices" role="radiogroup" aria-label={t("contract.autonomy")}>
+                    <For each={["cautious", "standard", "autonomous"] as const}>
+                      {(v) => (
+                        <label class="radio" title={t(`contract.${v}Desc`)}>
+                          <input type="radio" name="autonomy" checked={c.autonomy === v} onChange={() => setC("autonomy", v)} />
+                          <b>{t(`contract.${v}`)}</b>
+                          <span class="radio-desc">{t(`contract.${v}Desc`)}</span>
+                        </label>
+                      )}
+                    </For>
+                  </div>
+                  <p class="field-hint autonomy-current">{t(`contract.${c.autonomy}Desc`)}</p>
+                  <p class="field-hint">{t("contract.oneWayNote")}</p>
+                </div>
+              </details>
             </div>
 
             <div class="editor-block">

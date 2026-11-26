@@ -213,7 +213,7 @@ impl Inner {
             return;
         }
         let lang = s.lang();
-        let title = format!("{} · {}", item.goal_id, item.goal_title);
+        let title = format!("{} {}", item.goal_id, item.goal_title);
         let body = push_sentence(item.kind, lang).to_string();
         let click = self
             .remote

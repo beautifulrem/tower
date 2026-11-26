@@ -5,10 +5,10 @@
 use tokio::sync::mpsc;
 use tower_core::contract::CriterionKind;
 use tower_core::honesty::ClaimKind;
-use tower_pi::{EngineOutput, PiEvent, UiRequest};
+use tower_pi::{EngineOutput, PiEvent};
 
 use super::*;
-use crate::api::{ToastLevel, UiUpdate};
+use crate::api::UiUpdate;
 use crate::{summarize, verify};
 
 /// Reads the engine's output until it exits. One task per run, so events of
@@ -36,14 +36,16 @@ pub(super) async fn pump(inner: Arc<Inner>, run: Arc<Run>, mut rx: mpsc::Unbound
     }
 }
 
-async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> {
+pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> {
     let g = run.goal_id.as_str();
     match e {
         PiEvent::AgentStart | PiEvent::TurnStart => {
             // A new turn is a new request: an earlier turn's provider error
             // is no longer why the agent might stop.
             run.flags().last_error = None;
-            inner.set_mode(g, Mode::Thinking)?
+            // Thinking, unless a question is open (it waits on you until answered) or a call is still at work: under
+            // the mode's lock, like every write of the mode beside the engine's events (review 20, record only).
+            settle_mode(inner, run)?
         }
         PiEvent::TextDelta { delta } => {
             let text = {
@@ -108,7 +110,8 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                 on_sandbox_denial(inner, run, target.clone());
             }
             if let Some(call) = &call {
-                let signature = format!("{tool} · {}", summarize::tool_call(&tool, &call.args, &run.workspace));
+                let on = summarize::tool_call(&tool, &call.args, &run.workspace);
+                let signature = format!("{tool} {on}");
                 if is_error {
                     let n = {
                         let mut f = run.flags();
@@ -121,7 +124,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                             inner,
                             run,
                             &format!("repeat:{signature}"),
-                            tower_core::i18n::Stall::Repeated { signature: signature.clone(), times: n },
+                            tower_core::i18n::Stall::Repeated { tool: tool.clone(), target: on, times: n },
                         );
                     }
                 } else {
@@ -132,7 +135,8 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                 observe(inner, g, &call.args, !is_error)?;
             }
             if !matches!(tool.as_str(), "ask_user") {
-                inner.set_mode(g, Mode::Thinking)?;
+                // A call still in flight (the engine ran tools in parallel) keeps the run at work on it.
+                settle_mode(inner, run)?;
             }
         }
         PiEvent::TrustGateDenied { engine, trust_level, tool, reason, attempts } => {
@@ -169,11 +173,11 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             )?;
             on_sandbox_denial(inner, run, Some(format!("{engine}:{tool}")));
         }
-        PiEvent::CompactionStart => inner.set_mode(g, Mode::Compacting)?,
-        PiEvent::CompactionEnd => inner.set_mode(g, Mode::Thinking)?,
+        PiEvent::CompactionStart => report_mode(inner, run, Mode::Compacting)?,
+        PiEvent::CompactionEnd => settle_mode(inner, run)?,
         PiEvent::RetryStart { attempt, max_attempts, error } => {
             let error = readable_error(&error);
-            inner.set_mode(g, Mode::Retrying)?;
+            report_mode(inner, run, Mode::Retrying)?;
             inner.append(
                 g,
                 EventKind::Note {
@@ -182,6 +186,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
                         "模型服务出错，第 {attempt}/{max_attempts} 次重试：{error}",
                         "Model provider error, retry {attempt}/{max_attempts}: {error}"
                     ),
+                    tower: true,
                 },
             )?;
         }
@@ -190,7 +195,7 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             if success {
                 run.flags().last_error = None;
             }
-            inner.set_mode(g, Mode::Thinking)?
+            settle_mode(inner, run)?
         }
         PiEvent::TurnEnd => check_budget(inner, run).await?,
         PiEvent::UiRequest(req) => on_ui_request(inner, run, req)?,
@@ -203,7 +208,14 @@ async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> Result<()> 
             inner.append(g, EventKind::EngineError { message })?;
         }
         PiEvent::AgentSettled { .. } => on_settled(inner, run).await?,
-        PiEvent::AgentEnd { .. } | PiEvent::Other { .. } => {}
+        // The agent's turn is over: a call it never ended is not running any more, and the live line says so.
+        PiEvent::AgentEnd { .. } => {
+            let _mode = run.lock_mode();
+            run.flags().tools.clear();
+            inner.store(|s| s.stop_live_line(g))?;
+            inner.mark_dirty(g);
+        }
+        PiEvent::Other { .. } => {}
     }
     Ok(())
 }
@@ -278,8 +290,12 @@ fn on_sandbox_denial(inner: &Arc<Inner>, run: &Arc<Run>, target: Option<String>)
             }
         }
         let lang = inner.lang();
-        let sample =
-            if recent_targets.is_empty() { String::new() } else { format!(" ({})", recent_targets.join(", ")) };
+        let sample = if recent_targets.is_empty() {
+            String::new()
+        } else {
+            let list = recent_targets.join(lang.pick("、", ", "));
+            tr!(lang, "（{list}）", " ({list})")
+        };
         let detail = tr!(
             lang,
             "持续探测沙箱边界，无实质进展：连续触发 {denials} 次沙箱拒绝且工作区无文件改动{sample}。已提前暂停交由你决定。",
@@ -291,7 +307,13 @@ fn on_sandbox_denial(inner: &Arc<Inner>, run: &Arc<Run>, target: Option<String>)
     });
 }
 
-fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: String, args: Value) -> Result<()> {
+pub(super) fn on_tool_start(
+    inner: &Arc<Inner>,
+    run: &Arc<Run>,
+    call_id: String,
+    tool: String,
+    args: Value,
+) -> Result<()> {
     let g = run.goal_id.as_str();
     // Engine call ids are unique within a run only.
     let claim_id = format!("r{}:{}", run.run_no, call_id);
@@ -372,18 +394,30 @@ fn on_tool_start(inner: &Arc<Inner>, run: &Arc<Run>, call_id: String, tool: Stri
         }
         _ => {}
     }
-    inner.append(
-        g,
-        EventKind::ToolStarted {
-            call_id: call_id.clone(),
-            tool: tool.clone(),
-            summary: summarize::tool_call(&tool, &args, &run.workspace),
-        },
-    )?;
-    if tool != "log" && tool != "submit" {
+    // Recorded whole under the mode lock: a settle from beside these events never lands between the start and the
+    // call's entry among the calls in flight (see `Run::lock_mode`).
+    let _mode = run.lock_mode();
+    let at = inner
+        .append(
+            g,
+            EventKind::ToolStarted {
+                call_id: call_id.clone(),
+                tool: tool.clone(),
+                summary: summarize::tool_call(&tool, &args, &run.workspace),
+            },
+        )?
+        .at;
+    // A note and the hand-in are not work; a call that starts while a question is open leaves the run waiting on you,
+    // and one that starts once the run is stopping leaves the stop's mode.
+    let quiet = {
+        let f = run.flags();
+        f.dialogs.is_empty() && f.stopping.is_none()
+    };
+    if tool != "log" && tool != "submit" && quiet {
         inner.set_mode(g, Mode::for_tool(&tool))?;
     }
-    run.flags().tools.insert(call_id, ToolCall { args, started: Instant::now() });
+    between(run, "call-recording");
+    run.flags().tools.insert(call_id, ToolCall { tool, args, started: Instant::now(), at });
     Ok(())
 }
 
@@ -452,82 +486,11 @@ async fn check_budget(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
     Ok(())
 }
 
-fn on_ui_request(inner: &Arc<Inner>, run: &Arc<Run>, req: UiRequest) -> Result<()> {
-    let g = run.goal_id.as_str();
-    if !req.is_dialog() {
-        if req.method == "notify"
-            && let Some(m) = req.message.filter(|m| !m.is_empty())
-        {
-            inner.append(g, EventKind::Note { text: m })?;
-        }
-        return Ok(());
-    }
-    let title = req.title.clone().unwrap_or_default();
-    let lang = inner.lang();
-    let item = match title.strip_prefix("tower:").and_then(|j| serde_json::from_str::<Value>(j).ok()) {
-        Some(p) if p.get("tower").and_then(Value::as_str) == Some("approval") => {
-            let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-            NewInboxItem {
-                goal_id: g.into(),
-                kind: InboxKind::Approval,
-                title: {
-                    let reason = s("reason");
-                    tr!(lang, "需要你批准：{reason}", "Approval needed: {reason}")
-                },
-                subject: s("reason"),
-                body: format!("{} · {}", s("tool"), s("target")),
-                options: req.options.clone(),
-                allow_text: false,
-                urgency: 0,
-                engine_ref: Some(req.id.clone()),
-            }
-        }
-        Some(p) => {
-            let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-            let options = p
-                .get("options")
-                .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
-                .unwrap_or_default();
-            NewInboxItem {
-                goal_id: g.into(),
-                kind: InboxKind::Question,
-                title: s("question"),
-                subject: s("question"),
-                body: s("why"),
-                options,
-                allow_text: true,
-                urgency: 1,
-                engine_ref: Some(req.id.clone()),
-            }
-        }
-        // A dialog from one of the user's own extensions.
-        None => NewInboxItem {
-            goal_id: g.into(),
-            kind: InboxKind::Question,
-            subject: title.clone(),
-            title: if title.is_empty() {
-                tr!(lang, "扩展请求你的输入", "An extension asks for your input")
-            } else {
-                title
-            },
-            body: req.message.clone().unwrap_or_default(),
-            options: if req.method == "confirm" {
-                Choice::labels(&[Choice::Yes, Choice::No], lang)
-            } else {
-                req.options.clone()
-            },
-            allow_text: matches!(req.method.as_str(), "input" | "editor"),
-            urgency: 1,
-            engine_ref: Some(req.id.clone()),
-        },
-    };
-    let opened = inner.open_inbox(item)?;
-    run.flags().dialogs.insert(req.id, (opened.id, req.method));
-    inner.set_mode(g, Mode::WaitingOnYou)?;
-    let title = &opened.title;
-    inner.toast(g, ToastLevel::Warning, tr!(lang, "{g} 需要你：{title}", "{g} needs you: {title}"));
-    Ok(())
+/// The run is stopping, settled: under the mode's lock, so a settle already under way lands before it, and none after.
+pub(super) fn settle_on(inner: &Inner, run: &Run, why: Stop) -> Result<()> {
+    let _mode = run.lock_mode();
+    run.flags().stopping = Some(why);
+    inner.set_mode(&run.goal_id, Mode::Settled)
 }
 
 async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
@@ -540,8 +503,7 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         return Ok(());
     }
     if let Some(blocked) = blocked_report {
-        run.flags().stopping = Some(Stop::Pause(AGENT_REPORTED_BLOCKED_PAUSE_REASON));
-        inner.set_mode(&g, Mode::Settled)?;
+        settle_on(inner, run, Stop::Pause(AGENT_REPORTED_BLOCKED_PAUSE_REASON))?;
         let inner = inner.clone();
         let run = run.clone();
         tokio::spawn(async move {
@@ -552,8 +514,7 @@ async fn on_settled(inner: &Arc<Inner>, run: &Arc<Run>) -> Result<()> {
         return Ok(());
     }
     if submitted {
-        run.flags().stopping = Some(Stop::Submitted);
-        inner.set_mode(&g, Mode::Settled)?;
+        settle_on(inner, run, Stop::Submitted)?;
         let inner = inner.clone();
         let run = run.clone();
         tokio::spawn(async move {
@@ -669,12 +630,17 @@ fn remove_run(inner: &Inner, run: &Run) {
             "运行结束时，Tower 停止了 Agent 留在后台的 {n} 个进程",
             "When the run ended, Tower stopped {n} process(es) the agent left running in the background"
         );
-        let _ = inner.append(&run.goal_id, EventKind::Note { text });
+        let _ = inner.append(&run.goal_id, EventKind::tower_note(text));
     }
 }
 
 pub(crate) async fn stop_engine(inner: &Arc<Inner>, run: &Arc<Run>, why: Stop) {
-    run.flags().stopping = Some(why);
+    // Marked under the mode's lock: a settle under way finishes before it, and none after it writes a mode or a running
+    // live line over the stop's (review 21, record only: a pause beside a settle read idle, then working).
+    {
+        let _mode = run.lock_mode();
+        run.flags().stopping = Some(why);
+    }
     let _ = tokio::time::timeout(Duration::from_secs(3), run.engine.abort()).await;
     run.engine.shutdown(Duration::from_secs(5)).await;
     remove_run(inner, run);

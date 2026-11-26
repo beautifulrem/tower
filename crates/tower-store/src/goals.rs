@@ -432,8 +432,13 @@ impl Store {
                                 (Lang::En, false) => format!("Verifier: {id} failed @{pin}"),
                             }
                         });
+                        // The agent's own words first: the pin ends the line, never a full stop after it, where it
+                        // read as part of the pin (review 21, record only: "@15085f2. The agent says").
                         let evidence = match (consistency, evidence) {
-                            (Consistency::CannotConfirm, Some(e)) => Some(format!("{e} · {admits_note}")),
+                            (Consistency::CannotConfirm, Some(e)) => Some(match lang {
+                                Lang::Zh => format!("{admits_note}；{e}"),
+                                Lang::En => format!("{admits_note}. {e}"),
+                            }),
                             (Consistency::CannotConfirm, None) => Some(admits_note.to_string()),
                             (_, e) => e,
                         };
@@ -650,6 +655,40 @@ pub(crate) mod tests {
         assert_eq!(claim.evidence.as_deref().unwrap(), "Verifier: C1 failed @aaa");
         set_lang(&mut s, "zh-CN");
         assert_eq!(s.detail(&id).unwrap().claims[0].evidence.as_deref().unwrap(), "验证器：C1 失败 @aaa");
+    }
+
+    /// A pass the agent's own words say cannot confirm its claim: the note, then the verifier's line, its pin last.
+    #[test]
+    fn a_claim_a_pass_cannot_confirm_ends_on_its_pin() {
+        let (mut s, _, id) = seeded();
+        let text = "C1 met: replaced the assertion in cart.test.ts";
+        let claim = EventKind::Claim {
+            claim_id: "c1".into(),
+            claim: ClaimKind::CriterionMet,
+            text: text.into(),
+            criterion: Some("C1".into()),
+        };
+        s.append(&id, claim).unwrap();
+        s.append(&id, EventKind::Pinned { pin: "aaa".into(), files: 1, additions: 1, deletions: 0 }).unwrap();
+        let result = EventKind::CriterionResult {
+            criterion: "C1".into(),
+            pin: "aaa".into(),
+            passed: true,
+            exit_code: Some(0),
+            duration_ms: 5,
+            output_tail: String::new(),
+            held_out: false,
+            held_out_proof: None,
+        };
+        s.append(&id, result).unwrap();
+        let claim = &s.detail(&id).unwrap().claims[0];
+        assert_eq!(claim.consistency, Consistency::CannotConfirm);
+        let en = "The agent says it changed the test machinery or the assertions: a pass cannot confirm this. \
+                  Verifier: C1 passed @aaa";
+        assert_eq!(claim.evidence.as_deref().unwrap(), en);
+        set_lang(&mut s, "zh-CN");
+        let zh = "Agent 自己说改动了测试机制或断言：通过不能确认这条说法；验证器：C1 通过 @aaa";
+        assert_eq!(s.detail(&id).unwrap().claims[0].evidence.as_deref().unwrap(), zh);
     }
 
     #[test]

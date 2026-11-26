@@ -270,6 +270,7 @@ mod tests {
             urgency: 2,
             tones: vec![],
             snoozed_until: None,
+            code: None,
         }
     }
 

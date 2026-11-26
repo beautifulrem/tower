@@ -131,6 +131,250 @@ async fn sentinels_hold_a_passing_but_suspicious_snapshot() {
     wait_for(&h, &id, |g| g.state == LifecycleState::InReview).await;
 }
 
+/// Review 16 (record only): when one of two tools in flight ended, the run went back to "thinking" while the other
+/// still ran, so the desk and the phone stopped reading it as busy. It stays at work until the last one ends.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tool_still_in_flight_keeps_the_run_at_work_when_another_ends() {
+    let h = harness("parallel").await;
+    let id = create(&h).await;
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+    let mut trace = h.sup.trace(&id, None, 500).unwrap();
+    trace.sort_by_key(|e| e.seq);
+    let at = |call: &str| {
+        trace
+            .iter()
+            .position(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == call))
+            .unwrap_or_else(|| panic!("{call} ended"))
+    };
+    let (read_end, bash_end) = (at("pa"), at("pb"));
+    assert!(read_end < bash_end);
+    let between: Vec<_> = trace[read_end..bash_end]
+        .iter()
+        .filter_map(|e| match &e.event {
+            EventKind::ModeChanged { mode } => Some(*mode),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(between, vec![], "the command still runs: no mode change, least of all to thinking");
+    let after = trace[bash_end..].iter().find_map(|e| match &e.event {
+        EventKind::ModeChanged { mode } => Some(*mode),
+        _ => None,
+    });
+    assert_eq!(after, Some(tower_core::Mode::Thinking), "the last call ended: thinking");
+}
+
+/// Review 17: the rule is one, at a start, an end and an answer: the run is at work on the newest call still in
+/// flight, and its live line says that call. Three calls tell the newest from the oldest; a question answered while
+/// two still run goes back to the command, not to thinking.
+#[tokio::test(flavor = "multi_thread")]
+async fn every_end_and_an_answer_leave_the_run_on_the_newest_call_still_in_flight() {
+    use tower_core::Mode::*;
+    let h = harness("parallel_ask").await;
+    let id = create(&h).await;
+    let mut item = None;
+    for _ in 0..100 {
+        item = h.sup.inbox().unwrap().into_iter().find(|i| i.kind == InboxKind::Question);
+        if item.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let item = item.expect("question in inbox");
+    // The listing ended while the read and the command run: the line names the command, the newest left.
+    let line = h.sup.goal(&id).unwrap().summary.live_line.expect("a live line");
+    assert_eq!(line.action, "bash", "the live line follows the call at work");
+    h.sup.answer(&item.id, "a").await.unwrap();
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+    let mut trace = h.sup.trace(&id, None, 500).unwrap();
+    trace.sort_by_key(|e| e.seq);
+    let first = trace
+        .iter()
+        .position(|e| matches!(&e.event, EventKind::ToolStarted { call_id, .. } if call_id == "pr"))
+        .expect("the read started");
+    let last = trace
+        .iter()
+        .position(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == "pr"))
+        .expect("the read ended");
+    let modes: Vec<_> = trace[first..]
+        .iter()
+        .filter_map(|e| match &e.event {
+            EventKind::ModeChanged { mode } => Some((e.seq, *mode)),
+            _ => None,
+        })
+        .take_while(|(seq, _)| *seq <= trace[last].seq + 1)
+        .map(|(_, m)| m)
+        .collect();
+    assert_eq!(
+        modes,
+        vec![Reading, Executing, Reading, Executing, WaitingOnYou, Executing, Reading, Thinking],
+        "start read, bash, ls; ls ends (the command, newest left); a question; answered (the command again); \
+         the command ends (the read); the read ends (thinking)"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn while_a_question_is_open_the_run_waits_on_you_whatever_starts_or_ends_beside_it() {
+    use tower_core::Mode::*;
+    let h = harness("ask_while_running").await;
+    let id = create(&h).await;
+    // The question is open, the command and the note have ended beside it, the read still runs.
+    let mut item = None;
+    for _ in 0..200 {
+        let ended = h
+            .sup
+            .trace(&id, None, 500)
+            .unwrap()
+            .into_iter()
+            .any(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == "wl"));
+        item = h.sup.inbox().unwrap().into_iter().find(|i| i.kind == InboxKind::Question && i.goal_id == id);
+        if ended && item.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let item = item.expect("question in inbox");
+    assert_eq!(h.sup.goal(&id).unwrap().summary.mode, WaitingOnYou, "an open question keeps the run waiting on you");
+    h.sup.answer(&item.id, "a").await.unwrap();
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+    let mut trace = h.sup.trace(&id, None, 500).unwrap();
+    trace.sort_by_key(|e| e.seq);
+    let first = trace
+        .iter()
+        .position(|e| matches!(&e.event, EventKind::ToolStarted { call_id, .. } if call_id == "wb"))
+        .expect("the command started");
+    let last = trace
+        .iter()
+        .position(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == "wr"))
+        .expect("the read ended");
+    let modes: Vec<_> = trace[first..]
+        .iter()
+        .filter_map(|e| match &e.event {
+            EventKind::ModeChanged { mode } => Some((e.seq, *mode)),
+            _ => None,
+        })
+        .take_while(|(seq, _)| *seq <= trace[last].seq + 1)
+        .map(|(_, m)| m)
+        .collect();
+    assert_eq!(
+        modes,
+        vec![Executing, WaitingOnYou, Reading, Thinking],
+        "the command; the question (a read starting, the command and a note ending leave it waiting); answered (the \
+         read, the newest call left); the read ends (thinking)"
+    );
+}
+
+/// Review 18: a command running beside an open question is busy, on the phone as on the desk. A question is not work,
+/// so the live line stays on the command (the newest call at work, never the question) and says it is in flight;
+/// once the last call has ended it keeps the command's words and says none is.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_command_beside_an_open_question_stays_in_flight_on_the_live_line_until_it_ends() {
+    use tower_core::Mode::*;
+    let h = harness("ask_beside_command").await;
+    let id = create(&h).await;
+    let question = |not: Option<&str>| {
+        h.sup
+            .inbox()
+            .unwrap()
+            .into_iter()
+            .find(|i| i.kind == InboxKind::Question && i.goal_id == id && Some(i.id.as_str()) != not)
+    };
+    // The question is open and the read has ended beside it; the command still runs.
+    let mut first = None;
+    for _ in 0..200 {
+        let read_ended = h
+            .sup
+            .trace(&id, None, 500)
+            .unwrap()
+            .into_iter()
+            .any(|e| matches!(&e.event, EventKind::ToolEnded { call_id, .. } if call_id == "cr"));
+        first = question(None);
+        if read_ended && first.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let first = first.expect("question in inbox");
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!(g.mode, WaitingOnYou, "an open question keeps the run waiting on you");
+    let line = g.live_line.expect("a live line");
+    assert_eq!((line.action.as_str(), line.running), ("bash", true), "the command, in flight beside the question");
+    h.sup.answer(&first.id, "a").await.unwrap();
+    // The second question comes once the ask and the command have ended: nothing is in flight.
+    let mut second = None;
+    for _ in 0..200 {
+        second = question(Some(&first.id));
+        if second.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let second = second.expect("a second question");
+    let line = h.sup.goal(&id).unwrap().summary.live_line.expect("the last call's words");
+    assert_eq!((line.action.as_str(), line.running), ("bash", false), "every call has ended: none in flight");
+    h.sup.answer(&second.id, "a").await.unwrap();
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+}
+
+// Review 18 (record only): Pi answers a dialog whose time runs out by itself and says nothing, so the question stayed
+// open and the run waited on you while the agent went on working.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_dialog_whose_time_runs_out_closes_and_the_run_stops_waiting_on_you() {
+    use tower_core::Mode::*;
+    let h = harness("extension_timeout").await;
+    let id = create(&h).await;
+    let asked = |h: &Harness| {
+        h.sup.trace(&id, None, 500).unwrap().into_iter().find_map(|e| match e.event {
+            EventKind::InboxOpened { item_id, .. } => Some(item_id),
+            _ => None,
+        })
+    };
+    let mut item = None;
+    for _ in 0..500 {
+        item = asked(&h);
+        if item.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let item = item.expect("the extension's question in the inbox");
+    // The time runs out and the command starts; while it runs (until the test lets it end), the question is closed
+    // and the run is at work.
+    let mut seen = None;
+    for _ in 0..500 {
+        let g = h.sup.goal(&id).unwrap().summary;
+        if g.live_line.as_ref().is_some_and(|l| l.action == "bash" && l.running) {
+            seen = Some(g);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let mut g = seen.expect("the command in flight");
+    // The start is two writes (its live line, then the mode), so a read may fall between them: wait for the mode.
+    for _ in 0..250 {
+        if g.mode == Executing {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        g = h.sup.goal(&id).unwrap().summary;
+    }
+    assert_eq!(g.mode, Executing, "the time ran out: the run is at its command, not waiting on you");
+    assert!(!h.sup.inbox().unwrap().iter().any(|i| i.id == item), "the timed-out question has left the inbox");
+    let closed = h.sup.trace(&id, None, 500).unwrap().into_iter().find_map(|e| match e.event {
+        EventKind::InboxResolved { item_id, response, auto } if item_id == item => Some((response, auto)),
+        _ => None,
+    });
+    let (closed, auto) = closed.expect("the question closed");
+    assert!(closed.contains("timed out"), "closed as timed out");
+    assert!(auto, "closed by Tower, not answered by a person");
+    // Once the question closed, the run still reads as at its command (review 19: the close could land while the
+    // command's start was being recorded, and leave the run thinking with the live line stopped).
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!(g.mode, Executing, "still at its command");
+    assert!(g.live_line.as_ref().is_some_and(|l| l.action == "bash" && l.running), "{:?}", g.live_line);
+    std::fs::write(h._tmp.path().join("home/release"), "").unwrap();
+    wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn repeated_failures_raise_a_stall_without_stopping_the_run() {
     let h = harness("flaky").await;
@@ -907,6 +1151,16 @@ async fn failing_held_out_tests_go_to_the_human() {
     assert!(!trace.iter().any(|e| matches!(&e.event, EventKind::Steered { text } if text.contains("SECRET"))));
 }
 
+/// The phone page's response head: its status line and headers.
+fn page_head(port: u16) -> String {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    write!(s, "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n").unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    out.split("\r\n\r\n").next().unwrap_or_default().to_string()
+}
+
 fn http(port: u16, method: &str, path: &str, token: Option<&str>, body: &str) -> (u16, String) {
     use std::io::{Read, Write};
     let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -946,6 +1200,14 @@ async fn the_phone_page_answers_with_the_pairing_token_only() {
     let id = create(&h).await;
     let q = wait_inbox(&h, &id, InboxKind::Question).await;
     let p = port;
+    // The page never runs inside another site's frame (docs/11 §11.9), and loads nothing it does not carry.
+    let head = tokio::task::spawn_blocking(move || page_head(p)).await.unwrap();
+    assert!(head.contains("X-Frame-Options: DENY"), "{head}");
+    for rule in
+        ["frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'", "img-src 'self' data:"]
+    {
+        assert!(head.contains(rule), "{rule} in {head}");
+    }
     let (status, _) = tokio::task::spawn_blocking(move || http(p, "GET", "/api/state", None, "")).await.unwrap();
     assert_eq!(status, 401, "no token, no data");
     let (status, _) =
@@ -1113,10 +1375,14 @@ async fn blocking_items_are_pushed_to_the_configured_topic() {
 async fn verification_leaves_nothing_running() {
     let h = harness("pass").await;
     let mut c = contract();
+    // A length of this run's own, so a process from another run of the suite (another checkout's, at the same time) is
+    // never counted as this one's (review 20, record only).
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos();
+    let mark = format!("4321.{}{nanos}", std::process::id());
     c.criteria[0].kind = CriterionKind::Exec {
-        command:
-            "(perl -e 'use POSIX; setsid(); exec \"sleep\", \"4321\"' >/dev/null 2>&1 &) ; sleep 1; test -f done.txt"
-                .into(),
+        command: format!(
+            "(perl -e 'use POSIX; setsid(); exec \"sleep\", \"{mark}\"' >/dev/null 2>&1 &) ; sleep 1; test -f done.txt"
+        ),
         timeout_secs: 30,
     };
     let id = create_with(&h, c).await;
@@ -1124,7 +1390,7 @@ async fn verification_leaves_nothing_running() {
     assert_eq!(g.state, LifecycleState::InReview);
     tokio::time::sleep(Duration::from_millis(300)).await;
     let ps = Command::new("/bin/ps").args(["-axww", "-o", "command="]).output().unwrap();
-    let left = String::from_utf8_lossy(&ps.stdout).lines().filter(|l| l.trim() == "sleep 4321").count();
+    let left = String::from_utf8_lossy(&ps.stdout).lines().filter(|l| l.trim() == format!("sleep {mark}")).count();
     assert_eq!(left, 0, "a process from the verification survived it");
 }
 
@@ -1480,7 +1746,7 @@ async fn wait_preparing(h: &Harness, except: &[&str]) -> String {
 fn start_ended(h: &Harness, id: &str) -> bool {
     h.sup.trace(id, None, 500).unwrap().iter().any(|e| match &e.event {
         EventKind::RunStarted { .. } => true,
-        EventKind::Note { text } => text.contains("did not start"),
+        EventKind::Note { text, tower: true } => text.contains("did not start"),
         _ => false,
     })
 }

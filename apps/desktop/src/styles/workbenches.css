@@ -42,8 +42,6 @@
   max-width: 240px;
 }
 .att-thumb { width: 22px; height: 22px; object-fit: cover; border-radius: 2px; flex: 0 0 auto; }
-.att-chip .icon-btn,
-.holdout-panel .icon-btn { width: 20px; height: 20px; font-size: 13px; line-height: 1; }
 
 :is(.goal-page, .review, .verify-item) .prov-frame {
   padding: 2px 0;
@@ -55,12 +53,9 @@
 /* ---------- 1. GoalPage — Quiet Precision Supervision Sheet ---------- */
 
 .goal-page .goal-identity { gap: 2px 0; }
-.goal-page .goal-identity > :not(.wb-exception):not(.over-wall) + :not(.wb-exception):not(.over-wall)::before {
-  content: "·";
-  font-family: var(--font-ui);
-  color: var(--text-3);
-  margin: 0 0.42em;
-  font-weight: 400;
+/* Identity fields are told apart by a gap, not a dot: the middle dot belongs to the instrument lines (docs/12). */
+.goal-page .goal-identity > :not(.wb-exception):not(.over-wall) + :not(.wb-exception):not(.over-wall) {
+  margin-left: var(--sp-3);
 }
 .goal-page .goal-identity .over-wall { margin-left: var(--sp-2); }
 
@@ -93,16 +88,19 @@
 }
 
 /* Verification bench notes under a criterion: quiet inline text, frame exceptions only */
+/* A criterion's sub-lines all start where its title does: the row's 14px mark, its 2.5em id column (in the row's own
+   body size, not the line's), and the two gaps — the strip, the held-out files and the sentence lines share one edge. */
 .ev-strip {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px 0;
-  margin: 1px 0 3px calc(14px + 2.5em + var(--sp-2) * 2);
-  font-size: var(--fs-hint);
-  line-height: var(--lh-hint);
+  gap: 2px var(--sp-3);
+  margin: 1px 0 3px calc(14px + 2.5 * var(--fs-body) + var(--sp-2) * 2);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-3);
 }
+
 .ev-pill {
   display: inline-flex;
   align-items: center;
@@ -110,20 +108,20 @@
   color: var(--text-3);
   white-space: nowrap;
 }
-.ev-strip > .ev-pill + .ev-pill::before {
-  content: "·";
-  font-family: var(--font-ui);
-  color: var(--text-3);
-  margin: 0 0.45em;
-}
+/* A held or flagged reading is a status tag (Geist's subtle badge): its tone's ground, ink words, and a chip's 4px
+   corners (it holds words, so it is no capsule). No hairline of its tone: the row's mark already says it in that tone,
+   and two or three rings of it under one row read as noise (review 19, the criteria rows). Its ground hangs 6px left of
+   its words, so on every line the strip wraps to its words keep the shared edge. Readings are a gap apart (Primer's
+   label group); the reading before a tag gives the hang back on its trailing side, which never rides a wrap (review 15:
+   a leading margin did, and the second line started 18px right of the first). */
 .ev-pill-attn,
 .ev-pill-danger {
-  padding: 0 5px;
-  margin-left: 6px;
-  border-radius: var(--radius-xs);
+  padding: 0 6px;
+  margin-left: -6px;
+  border-radius: var(--radius-s);
   color: var(--text-1);
 }
-.ev-strip > :is(.ev-pill-attn, .ev-pill-danger)::before { content: none; margin: 0; }
+.ev-strip > :has(+ :is(.ev-pill-attn, .ev-pill-danger)) { margin-right: 6px; }
 .ev-pill-attn { background: var(--attention-bg); }
 .ev-pill-danger { background: var(--danger-bg); }
 
@@ -132,22 +130,16 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 8px;
-  margin: 1px 0 3px calc(14px + 2.5em + var(--sp-2) * 2);
-  font-size: var(--fs-hint);
-  line-height: var(--lh-hint);
+  margin: 1px 0 3px calc(14px + 2.5 * var(--fs-body) + var(--sp-2) * 2);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-3);
 }
 .ev-hf {
   font-family: var(--font-mono);
   font-feature-settings: var(--font-features-mono);
-  font-size: 11px;
+  font-size: var(--fs-meta);
   color: var(--text-2);
-}
-.ev-hf-miss {
-  padding: 0 5px;
-  border-radius: var(--radius-xs);
-  background: var(--attention-bg);
-  color: var(--text-1);
 }
 
 /* Look console errors: crisp flat list inside criterion detail */
@@ -192,6 +184,7 @@
 }
 .ledger-claim-cell { font-size: var(--fs-meta); line-height: 18px; color: var(--text-2); min-width: 0; }
 .ledger-claim-cell.dim { color: var(--text-3); }
+.ledger-runs { display: block; font-size: var(--fs-hint); line-height: var(--lh-hint); }
 .ledger-link { text-align: center; color: var(--text-4); font-family: var(--font-mono); font-size: 11px; }
 .ledger-fact-cell {
   display: flex;
@@ -270,6 +263,9 @@
   background: var(--bg-raised);
   box-shadow: var(--card-lift);
 }
+/* Beside the rail (wider than 1280), the box is the main column's last block (GoalPage.tsx), so the rail beside it is
+   never under it: a rail sized to stop short of the box could not know how far down the page it starts (review 17).
+   Folded, or while watching (no rail), it spans the page. */
 .steer-console.drag-over { border-color: var(--border-strong); background: var(--bg-hover); }
 .steer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: var(--fs-meta); color: var(--text-3); }
 .steer-title { font-size: var(--fs-meta); font-weight: 500; color: var(--text-2); }
@@ -327,18 +323,47 @@
   font-weight: 500;
   box-shadow: inset 0 -1.5px 0 var(--text-1);
 }
-.timeline-compare { display: inline-flex; align-items: center; gap: 5px; }
-.timeline-select {
+.timeline-compare { display: inline-flex; align-items: center; gap: 4px; }
+/* A run picker is its face (the run, then its pin, then the caret) with the native select laid over it, unseen: the
+   select is what you press, type at and hear; the face sizes to the run it names, never to the longest option. */
+.timeline-pick { position: relative; display: inline-flex; }
+.timeline-pick-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   height: 22px;
-  padding: 0 6px;
+  padding: 0 4px 0 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
   background: var(--bg-raised);
   color: var(--text-1);
   font-family: var(--font-mono);
   font-size: 11px;
-  max-width: 150px;
+  white-space: nowrap;
 }
+.timeline-pick-face > .icon { color: var(--text-3); }
+.timeline-pick-pin { color: var(--text-2); }
+.timeline-pick:hover .timeline-pick-face { border-color: var(--border-strong); }
+.timeline-pick:has(.timeline-select:focus-visible) .timeline-pick-face {
+  outline: 1.5px solid var(--focus);
+  outline-offset: -1px;
+  border-color: var(--text-3);
+}
+.timeline-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font-size: 11px;
+}
+/* Short of room for the verdict, the pickers keep the runs' names and let their pins go whole. */
+.review-stats.short-picks .timeline-pick-pin { display: none; }
+.review-stats.short-picks .timeline-pick-gone .timeline-pick-pin { display: inline; }
+/* Only if the verdict still lacks room: a gone end says its short word before its pin ("Gone @15085f2"), never its
+   words without the pin, so two gone ends still read apart (the tooltip and the option keep the whole name). */
+.review-stats.gone-short .timeline-pick-gone .timeline-pick-run > span { display: none; }
+.review-stats.gone-short .timeline-pick-gone .timeline-pick-run::before { content: attr(data-short); }
 
 .file {
   content-visibility: auto;
@@ -354,7 +379,6 @@
 
 .diff tbody > tr.hunk-head:not(:first-child) td { border-top: 1px solid var(--border-subtle); }
 .vdiff-spacer td { padding: 0 !important; border: 0 !important; background: transparent !important; pointer-events: none; }
-.vdiff-badge { font-size: 11px; color: var(--text-3); white-space: nowrap; }
 
 .semantic-fold td { padding: 3px 8px 3px 12px !important; background: var(--bg-app); border-top: 1px solid var(--border-subtle); }
 .semantic-fold-bar { display: flex; align-items: center; gap: 8px; min-height: 22px; font-family: var(--font-ui); font-size: var(--fs-meta); color: var(--text-2); }
@@ -379,19 +403,17 @@
 .unit-narrative-text { margin: 0; color: var(--text-2); line-height: 18px; max-width: var(--measure); }
 .unit-risk-badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .risk-badge { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-hint); color: var(--text-2); }
-.risk-badge::before { content: "◆"; color: var(--st-attention); }
+/* The badge's mark is the shared one (app.css): ! for a risk, × for a danger; the flex gap spaces it. */
+.risk-badge::before { margin-inline-end: 0; }
 .risk-badge-danger { color: var(--text-1); }
-.risk-badge-danger::before { content: "■"; color: var(--st-danger); }
 
 /* Acceptance Seal 4-point pre-flight checklist: unboxed 2x2 glyph readout */
 .seal-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px var(--sp-4); margin-top: var(--sp-1); }
 @media (max-width: 540px) { .seal-checks { grid-template-columns: 1fr; } }
 .seal-check { display: flex; align-items: center; gap: 6px; min-height: 20px; font-size: var(--fs-meta); color: var(--text-2); }
-.seal-check-ok::before { content: "✓"; color: var(--st-verified); font-weight: 600; }
-.seal-check-warn { color: var(--text-1); }
-.seal-check-warn::before { content: "◆"; color: var(--st-attention); }
+.seal-check-ok .icon { color: var(--text-3); }
+.seal-check-warn,
 .seal-check-danger { color: var(--text-1); }
-.seal-check-danger::before { content: "■"; color: var(--st-danger); }
 
 /* Steering Dispatch Tray */
 .dispatch-head { display: flex; align-items: center; gap: 8px; padding-bottom: var(--sp-2); border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-meta); color: var(--text-2); }
@@ -401,9 +423,9 @@
 
 /* Concise bottom status rail */
 .review-status { gap: var(--sp-3); }
-.review-keys { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; }
+.review-keys { display: inline-flex; align-items: center; column-gap: var(--sp-4); min-width: 0; overflow: hidden; }
 .review-keys > span { display: inline-flex; align-items: center; gap: 4px; }
-.review-keys > span + span::before { content: "·"; font-family: var(--font-ui); color: var(--text-3); margin: 0 0.55em; }
+/* Hints are spaced like the board's key bar, without a dot between them. */
 .review-status .kbd { height: auto; padding: 0; background: transparent; color: var(--text-2); font-size: 10px; }
 .review-status .unit-counter { color: var(--text-2); }
 
@@ -425,7 +447,9 @@
 .editor .att-list { margin: calc(-1 * var(--sp-2)) 0 var(--sp-4); }
 
 .editor-side .radio b { color: var(--text-1); font-weight: 500; }
-.editor-side .radio.disabled { opacity: 0.5; }
+/* A tier this Mac cannot run: the control greys out, but the line saying why stays readable (muted, not faded). */
+.editor-side .radio.disabled input { opacity: 0.5; }
+.editor-side .radio.disabled b { color: var(--text-3); font-weight: 400; }
 @media (max-width: 1280px) {
   .sandbox-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
 }

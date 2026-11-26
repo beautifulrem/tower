@@ -1,8 +1,10 @@
 /**
  * DecisionCard (docs/04 §4.8.2): one actionable question and its ways out.
  * Amber lives only in the 28px header strip — the ECAM title-bar idea — so
- * a page of decisions does not become a page of amber. In lists, only the
- * focused card lights its strip; the others stay quiet with their ◆.
+ * a page of decisions does not become a page of amber. In a queue every card
+ * needs you, so amber cannot say which one you are on: there each strip is
+ * quiet with its one ! mark, and the focused card's strip takes the neutral
+ * selection ground.
  *
  * The strip says the kind (`item.kind`), the question line says only the
  * variable part (`item.subject`); both arrive in the interface language.
@@ -18,13 +20,15 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { InboxItem } from "../gen/InboxItem";
 import { api } from "../lib/api";
 import { autogrow } from "../lib/autogrow";
+import { refit } from "../lib/refit";
 import { ago, clock, count } from "../lib/format";
 import { t } from "../lib/i18n";
-import { approves, optionTone } from "../lib/labels";
+import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
+import { approves, optionTone, statusWord } from "../lib/labels";
 import { popupActions } from "../lib/native";
 import { go, goProjectSetting } from "../lib/nav";
-import { act, state, toast } from "../lib/store";
-import { Icon, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
+import { act, drafts, state, toast } from "../lib/store";
+import { Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { Claim, CriteriaBar } from "./HonestyCore";
 import { PrLine } from "./Pr";
 import { Button, IconButton, Kbd, Prose } from "./ui";
@@ -36,6 +40,12 @@ const [armed, setArmed] = createSignal<{ item: string; option: number; until: nu
 let armTimer: number | undefined;
 export const ARM_MS = 2000;
 const HOUR = 3_600_000;
+
+/** A command's word longer than a row is the row's own text, found by measure: its box, kept to the row's width, runs over
+ * (app.css `.decision-cmd .wl`; review 24, R24-P3-03). */
+const fitWords = (pre: HTMLElement) => {
+  for (const w of pre.querySelectorAll<HTMLElement>(".w")) (w.className = "w"), w.scrollWidth > w.clientWidth + 1 && (w.className = "w wl");
+};
 
 /**
  * Chooses option `index` on an item. Destructive options arm on the first
@@ -56,8 +66,9 @@ export async function chooseOption(item: InboxItem, index: number, text = ""): P
     clearTimeout(armTimer);
   }
   // Assumptions carry the note with either verdict.
-  if (item.kind === "assumption") return (await act(() => api.answerAssumption(item.id, approves(item, index), text.trim()))) !== undefined;
-  return (await act(() => api.answer(item.id, option))) !== undefined;
+  const ok = (await act(() => (item.kind === "assumption" ? api.answerAssumption(item.id, approves(item, index), text.trim()) : api.answer(item.id, option)))) !== undefined;
+  if (ok) delete drafts[item.id];
+  return ok;
 }
 
 /** Tomorrow at 9:00 local time, the second snooze choice. */
@@ -88,6 +99,18 @@ export async function snoozeMenu(item: InboxItem) {
 const submitClaim = (item: InboxItem): string | null => item.body.trim() || null;
 
 /** A line that came out of a machine: an installer, a test runner, a path, a command, the sandbox refusing one. */
+/** A question whose first characters are a machine value: the code lies over them, its words set as code and its line
+ * breaks standing for the question's own characters there (the list mark between failing checks, ", " or "、"), and the
+ * question goes on after it. Worked out whole at each read, so a card given a new item starts again from its start. */
+const codeOver = (subject: string, code: string) => {
+  let at = 0;
+  const parts = code.split(/(\n+)/).map((p, i) => {
+    const own = subject.slice(at, (at += p.length));
+    return i % 2 ? own : <span class="code-val">{p}</span>;
+  });
+  return [...parts, subject.slice(at)];
+};
+
 const MACHINE_LINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d|sandbox-exec|[~/][\w@.+-]*(\/[\w@.+-]+)+)/;
 const DENIAL = /deny\(1\)|operation not permitted|\bEPERM\b|\bEACCES\b/i;
 export const isMachineLine = (line: string): boolean => MACHINE_LINE.test(line) || DENIAL.test(line);
@@ -170,57 +193,77 @@ export function heldOutParts(body: string): { prose: string; failures: HeldOutFa
 }
 
 /**
- * A decision on the overview: one line on the board's own grid — ◆ in the
+ * A decision on the overview: one line on the board's own grid — the ! in the
  * glyph column, the goal where every goal's name is, then what it asks (its
  * kind and question across the live, criteria, change and spend columns),
  * its age and identity under the rows' own. The overview is the whole board
  * at a glance, not a second inbox: selecting the line (j/k, a click, Tab)
  * opens the card in its place, and Needs you keeps every card open.
  */
-export function DecisionLine(props: { item: InboxItem; onOpen: () => void }) {
+export function DecisionLine(props: { item: InboxItem; onOpen: () => void; onPeek?: () => void }) {
   const it = () => props.item;
   const goal = () => state.goals[it().goal_id];
+  // The identity column names the goal's project only when there is more than one; with nothing to name, the question
+  // takes the column (styles: `.decision-line-unnamed`).
+  const named = () => !!goal() && state.projects.length > 1;
   return (
-    <div class="g-row decision-line" data-line={it().id} onClick={() => props.onOpen()}>
+    <div class="g-row decision-line" classList={{ "decision-line-unnamed": !named() }} data-line={it().id} onClick={() => props.onOpen()}>
+      {/* The goal's own glyph, as in the sidebar beside it; the section's title already says "Needs you". */}
       <span class="g-glyph">
-        <NeedsYouMark />
+        <Show when={goal()} fallback={<NeedsYouMark />}>
+          {(g) => <LifecycleGlyph goal={g()} />}
+        </Show>
       </span>
-      <button
-        class="g-title"
-        aria-expanded="false"
-        aria-label={`${kindLabel(it().kind)}: ${it().subject}. ${it().goal_title}`}
-        title={it().goal_title}
-        onClick={(e) => {
-          e.stopPropagation();
-          props.onOpen();
-        }}
-      >
-        <span class="ellipsis">{it().goal_title}</span>
-      </button>
+      <div class="g-title-cell">
+        <button
+          class="g-title"
+          aria-expanded="false"
+          aria-label={`${kindLabel(it().kind)}: ${it().subject}. ${it().goal_title}`}
+          title={it().goal_title}
+          // Space peeks, as on every board row; only Enter or a click opens the card (the button would take Space as a click).
+          onKeyDown={(e) => {
+            if (e.key === " " && props.onPeek) (e.preventDefault(), e.stopPropagation(), props.onPeek());
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onOpen();
+          }}
+        >
+          <span class="ellipsis">{it().goal_title}</span>
+        </button>
+        <span class="code-val t2 g-goal-id">{it().goal_id}</span>
+      </div>
       <span class="decision-line-ask">
-        <span class="decision-kind">{kindLabel(it().kind)}</span>
+        {/* The first slot is one width on every line, so what follows starts on one line: a goal waiting for acceptance
+            puts its verdict there, in the goal page's words (what you would be accepting), and its question after it. */}
+        <Show when={goal()?.state === "in_review"} fallback={<span class="decision-kind decision-line-slot">{kindLabel(it().kind)}</span>}>
+          <span class="t2 decision-line-slot">{statusWord(goal()!)}</span>
+          <span class="decision-kind">{kindLabel(it().kind)}</span>
+        </Show>
         <span class="ellipsis t2" classList={{ "code-val": it().kind === "ci_failed" }} title={it().subject}>
           {it().subject}
         </span>
       </span>
       {/* The board's one age format and its one identity grammar, as on every goal row under it. */}
       <span class="g-age num meta halt">{ago(it().created_at, state.now)}</span>
-      <span class="g-id meta halt">
-        <Show when={goal() && state.projects.length > 1}>
+      <Show when={named()}>
+        <span class="g-id meta halt">
           <span class="t3 ellipsis g-project">{goal()!.project_name}</span>
-        </Show>
-        <span class="code-val t2 g-goal-id">{it().goal_id}</span>
-      </span>
+        </span>
+      </Show>
     </div>
   );
 }
 
 export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?: boolean; showGoal?: boolean; ref?: (el: HTMLElement) => void }) {
-  const [text, setText] = createSignal("");
+  const draft = props.item.id;
+  const [text, setText] = createSignal(drafts[draft] || "");
   const [busy, setBusy] = createSignal(false);
   const [leaving, setLeaving] = createSignal(false);
   const it = () => props.item;
   const goal = () => state.goals[it().goal_id];
+  // A goal waiting for acceptance is named by its verdict ("Passed, doesn't count" too), never "Ready to accept" alone.
+  const head = () => (it().kind === "review_ready" && goal() ? statusWord(goal()!) : kindLabel(it().kind));
   // Arrived just now: play the amber decay once.
   const fresh = Date.now() - props.item.created_at < 5000;
   const [tick, setTick] = createSignal(Date.now());
@@ -243,45 +286,28 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
   const parts = () => bodyParts(it());
   const held = () => heldOutParts(it().body);
 
-  const send = async (i: number) => {
+  /** Busy while `run` is out; a reply that landed lets the card leave and says so. */
+  const sending = async (run: () => Promise<boolean>) => {
     setBusy(true);
-    const sent = await chooseOption(it(), i, text());
+    const ok = await run();
     setBusy(false);
-    if (sent) {
-      setLeaving(true);
-      toast("success", t("decision.replied"), { ttl: 2000 });
-    }
+    if (ok) (delete drafts[draft], setLeaving(true), toast("success", t("decision.replied"), { ttl: 2000 }));
   };
-  const reply = async () => {
-    if (!text().trim()) return;
-    setBusy(true);
-    const ok = await act(() => api.answer(it().id, text().trim()));
-    setBusy(false);
-    if (ok !== undefined) {
-      setLeaving(true);
-      toast("success", t("decision.replied"), { ttl: 2000 });
-    }
-  };
+  const send = (i: number) => sending(() => chooseOption(it(), i, text()));
+  const reply = () => text().trim() && sending(async () => (await act(() => api.answer(it().id, text().trim()))) !== undefined);
   const isAssumption = () => it().kind === "assumption";
 
   /** The free-text field and its button: the usual note under the options, or a held-out card's hint — its primary path. */
+  const hint = () => t(heldOut() ? "decision.hintPlaceholder" : isAssumption() ? "decision.assumptionNotePlaceholder" : it().kind === "question" ? "decision.answerPlaceholder" : "decision.notePlaceholder");
   const TextBox = () => (
     <div class="decision-text">
       <textarea
         ref={(el) => autogrow(el, 1, 6)}
         rows={1}
-        aria-label={heldOut() ? t("decision.hintPlaceholder") : isAssumption() ? t("decision.assumptionNotePlaceholder") : it().kind === "question" ? t("decision.answerPlaceholder") : t("decision.notePlaceholder")}
-        placeholder={
-          heldOut()
-            ? t("decision.hintPlaceholder")
-            : isAssumption()
-              ? t("decision.assumptionNotePlaceholder")
-              : it().kind === "question"
-                ? t("decision.answerPlaceholder")
-                : t("decision.notePlaceholder")
-        }
+        aria-label={hint()}
+        placeholder={hint()}
         value={text()}
-        onInput={(e) => setText(e.currentTarget.value)}
+        onInput={(e) => setText((drafts[draft] = e.currentTarget.value))}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && text().trim() && !isAssumption()) {
             e.preventDefault();
@@ -301,27 +327,21 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
     <article
       ref={props.ref}
       class="decision"
-      classList={{ focused: !!props.focused, quiet: !!props.quiet && !props.focused, leaving: leaving(), "decision-heldout": heldOut() }}
+      classList={{ focused: !!props.focused, listed: !!props.quiet, quiet: !!props.quiet && !props.focused, leaving: leaving(), "decision-heldout": heldOut() }}
       data-new={fresh ? "true" : undefined}
       tabindex="-1"
-      aria-label={`${kindLabel(it().kind)} · ${it().goal_id} · ${it().subject}`}
+      aria-label={`${head()}, ${it().goal_id}, ${it().subject}`}
     >
       <header class="decision-head halt">
         <NeedsYouMark />
-        <span class="decision-kind">{kindLabel(it().kind)}</span>
+        <span class="decision-kind">{head()}</span>
         <Show when={props.showGoal !== false}>
-          <button class="link-quiet ellipsis" onClick={() => go({ name: "goal", id: it().goal_id })}>
+          <button class="link-quiet ellipsis" title={it().goal_title} onClick={() => go({ name: "goal", id: it().goal_id })}>
             <span class="code-val t2">{it().goal_id}</span> {it().goal_title}
           </button>
         </Show>
         {/* The PR reading belongs with the goal's name; the right edge is the time's alone. On the goal's own page the identity line already carries it. */}
-        <Show when={it().kind === "ci_failed" && props.showGoal !== false && goal()?.pr}>
-          {(pr) => (
-            <>
-              <PrLine pr={pr()} compact />
-            </>
-          )}
-        </Show>
+        <Show when={it().kind === "ci_failed" && props.showGoal !== false && goal()?.pr}>{(pr) => <PrLine pr={pr()} compact />}</Show>
         <span class="grow" />
         <span class="meta num">{ago(it().created_at, state.now)}</span>
         <IconButton icon="bell" size={22} label={t("decision.snooze")} title={`${t("decision.snooze")} H`} aria-haspopup="menu" class="decision-snooze" onClick={() => void snoozeMenu(it())} />
@@ -334,7 +354,8 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
               <Show when={goal()} fallback={<p class="decision-question">{it().subject}</p>}>
                 {(g) => (
                   <div class="decision-readout decision-readout-main halt">
-                    <Seal pin={g().verified_pin} large />
+                    {/* The head already says the verdict: a withheld seal keeps its ! and pin, not the words again. */}
+                    <Seal pin={g().verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} text={notEvidence(g()) || caveats(g()).length ? "" : undefined} />
                     <Show when={g().diffstat}>
                       <span class="sep" />
                       <span class="num">
@@ -345,7 +366,7 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                       <span class="num">{t("common.files", { n: g().diffstat!.files })}</span>
                     </Show>
                     <span class="sep" />
-                    <CriteriaBar progress={g().progress} compact />
+                    <CriteriaBar progress={g().progress} id={g().id} compact />
                   </div>
                 )}
               </Show>
@@ -359,12 +380,16 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
             </>
           }
         >
-          {/* A failing check's name is a machine value inside the question, not the question's typeface. */}
-          <p class="decision-question">
-            <Show when={it().kind === "ci_failed"} fallback={it().subject}>
-              <span class="code-val">{it().subject}</span>
-            </Show>
-          </p>
+          {/* A machine value the question starts with (a failing check's name, a stalled call's command) is code, not the
+              question's typeface (review 22, record only: "pnpm test (bash) failed 4 times in a row" read as prose). On the
+              goal's own page the PR line just above already names the failing checks, so the card does not say them again. */}
+          <Show when={!(it().kind === "ci_failed" && props.showGoal === false && goal()?.pr)}>
+            <p class="decision-question">
+              <Show when={it().code} fallback={it().subject}>
+                {(c) => <>{codeOver(it().subject, c())}</>}
+              </Show>
+            </p>
+          </Show>
           <Show when={!heldOut()}>
             {/* An environment problem is said as one before its details: the environment mark, not the red of a failed test. */}
             <Show when={envProblem()}>
@@ -418,8 +443,18 @@ export function DecisionCard(props: { item: InboxItem; focused?: boolean; quiet?
                 </p>
               )}
             </Show>
+            {/* An approval's block is the command, line for line (review 22, R22-P3-01): each line a box of its own, its
+                words whole (`.w`), so a wrapped part goes on under a hook (app.css `.decision-cmd`) and never reads as a
+                line of the command's own; the text is the command, character for character, newlines and all. A word
+                found longer than a row is the row's own text again (`fitWords`), wherever it stands: it starts in place
+                and fills each row it runs over, under the hook (R23-P2-01: a path or a URL that began a line; R24-P3-03:
+                one after an indent or as a third word went down a row whole and left the row above it blank or short). */}
             <Show when={parts().tail}>
-              <pre class="output-tail decision-tail">{parts().tail}</pre>
+              <pre class="output-tail decision-tail" classList={{ "decision-cmd": it().kind === "approval" }} ref={(el) => refit(el, () => fitWords(el), true)}>
+                {it().kind === "approval"
+                  ? parts().tail.split("\n").map((l, i) => [i ? "\n" : "", <span class="tl">{l.split(/(\s+)/).map((w, j) => (j % 2 ? w : w && <span class="w">{w}</span>))}</span>])
+                  : parts().tail}
+              </pre>
             </Show>
           </Show>
           {/* Held-out: the sentence, then the output in your register — a solid rule, "for you only" in the source gutter — then the hint field first. */}

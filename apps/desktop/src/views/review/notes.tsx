@@ -19,7 +19,12 @@ export interface ReviewNote {
   action?: { label: string; run: () => void };
   /** One of the sentinels: open, the band names them once as a group, so no line repeats "Sentinel". */
   sentinel?: boolean;
+  /** A high sentinel's own words: the first prose line of its detail is said under its title, as on the goal page. */
+  detail?: string;
 }
+
+// A detail line that starts with a path and a colon is a machine line (the code it found), not the explanation.
+const why = (detail?: string) => detail?.split("\n").find((l) => l.trim() && !/^\s*[\w@~.-]*[/.][\w@./-]*:\s/.test(l));
 
 /** Hanging-gutter Claim row for a review unit's agent-claimed rationale alongside inline risk notes. */
 export function UnitNarrative(props: { claim?: string | null; riskReasons?: string[]; highSentinels?: string[] }) {
@@ -63,6 +68,7 @@ export function ReviewNotes(props: { notes: ReviewNote[] }) {
       <Mark danger={p.n.danger} />
       <span class="review-note-text">
         <Prose text={p.n.text} />
+        <Show when={why(p.n.detail)}>{(w) => <span class="review-note-why">{w()}</span>}</Show>
       </span>
       <Show when={p.n.action}>
         {(a) => (

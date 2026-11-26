@@ -4,11 +4,13 @@ import { expect, test } from "@playwright/test";
 import {
   enrichCanary,
   enrichCi,
+  enrichConsole,
   enrichEngines,
   enrichHeldOut,
   enrichHeldOutPartly,
   enrichHeldOutTests,
   enrichLook,
+  enrichTallLook,
   enrichPhone,
   enrichPhoneProblem,
   enrichPushes,
@@ -19,13 +21,57 @@ import {
   enrichSecondReady,
   enrichSnoozed,
 } from "./rich";
-import { criterion, openTower, settled } from "./tauri";
+import { paintedCommand } from "./command";
+import { criterion, openReadings, openSourceUnit, openTower, settled } from "./tauri";
 
 const calls = (page: import("@playwright/test").Page) => page.evaluate(() => (window as unknown as { __towerCalls: Array<[string, unknown]> }).__towerCalls);
 
 test("every decision card offers to be put aside", async ({ page }) => {
   const { fixtures } = await openTower(page, "inbox");
   await expect(page.getByRole("button", { name: "Remind me later" })).toHaveCount((fixtures.inbox as unknown[]).length);
+});
+
+test("R on a board goal with nothing changed yet opens its page, not an empty review", async ({ page }) => {
+  await openTower(page, "overview", { enrich: enrichRich });
+  const row = page.locator('.board-rows [data-goal="G-0002"]');
+  await expect(row).toBeVisible();
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect.poll(async () => {
+    if (!/selected/.test((await row.getAttribute("class")) ?? "")) await page.keyboard.press("j");
+    return (await row.getAttribute("class")) ?? "";
+  }, { intervals: [100, 250, 500] }).toMatch(/selected/);
+  await page.keyboard.press("r");
+  await expect(page.locator(".goal-page")).toBeVisible();
+  await expect(page.locator(".review")).toHaveCount(0);
+});
+
+test("in the inbox amber says only 'needs you': the focused card is told by the neutral selection ground, each card keeps one ! mark, and a sidebar row under Needs you adds none", async ({ page }) => {
+  await openTower(page, "inbox", { enrich: enrichRich });
+  const cards = page.locator(".inbox .decision");
+  await expect(cards.first()).toHaveClass(/focused/);
+  const ground = (i: number) => cards.nth(i).locator(".decision-head").evaluate((el) => getComputedStyle(el).backgroundColor);
+  const tokens = await page.evaluate(() => {
+    const probe = document.createElement("i");
+    document.body.append(probe);
+    const read = (v: string) => ((probe.style.backgroundColor = `var(${v})`), getComputedStyle(probe).backgroundColor);
+    const out = { selected: read("--bg-selected"), attention: read("--attention-bg") };
+    probe.remove();
+    return out;
+  });
+  expect(await ground(0)).toBe(tokens.selected);
+  for (let i = 0; i < (await cards.count()); i++) {
+    expect(await ground(i)).not.toBe(tokens.attention);
+    await expect(cards.nth(i).locator(".decision-head .mark-attention")).toHaveCount(1);
+  }
+  await page.keyboard.press("j");
+  await expect(cards.nth(1)).toHaveClass(/focused/);
+  expect(await ground(1)).toBe(tokens.selected);
+  expect(await ground(0)).not.toBe(tokens.selected);
+  // The sidebar's Needs-you group says it once, in its title; its rows add no trailing ! mark (a row's lifecycle glyph may be one).
+  const rows = page.locator(".sidebar .side-group").filter({ hasText: "Needs you" }).locator(".side-goal");
+  expect(await rows.count()).toBeGreaterThan(0);
+  await expect(rows.locator(":scope > .mark-attention")).toHaveCount(0);
+  for (let i = 0; i < (await rows.count()); i++) expect(await rows.nth(i).locator(".mark-attention").count()).toBeLessThanOrEqual(1);
 });
 
 test("answering a card closes the loop: the card sits in a folding slot that folds with it, and the receipt rises in with your rule", async ({ page }) => {
@@ -52,7 +98,7 @@ test("answering a card closes the loop: the card sits in a folding slot that fol
   await expect.poll(async () => slot.evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
 });
 
-test("a queue has one filled primary at a time, on the focused card, and it follows j/k; the overview's decisions are lines until one is selected", async ({ page }) => {
+test("a queue has one filled primary at a time, on the focused card, and it follows j/k; the overview's decisions are lines until one is opened", async ({ page }) => {
   await openTower(page, "inbox", { enrich: enrichCi });
   const cards = page.locator(".decision-slot .decision");
   await expect(cards.nth(1)).toBeVisible();
@@ -96,12 +142,30 @@ test("a queue has one filled primary at a time, on the focused card, and it foll
   // One right edge: the lines end where the board's rows end.
   const right = async (sel: string) => page.locator(sel).first().evaluate((el) => Math.round(el.getBoundingClientRect().right));
   expect(await right(".board-queue .decision-line")).toBe(await right(".board-rows [data-goal]"));
-  // j opens the first line into its card, which takes the keyboard and the one black button; Esc folds it back.
+  // j selects the first line and the board does not move: the line stays a line, highlighted, and the row below it
+  // keeps its place. Enter opens it into its card, which takes the keyboard and the one black button; Esc folds it back.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const below = async () => Math.round((await firstRow.boundingBox())!.y);
+  const before = await below();
   await expect.poll(async () => {
-    if (!(await page.locator(".board-queue .decision").count())) await page.keyboard.press("j");
-    return page.locator(".board-queue .decision").count();
+    if (!(await page.locator(".board-queue .decision-slot.selected").count())) await page.keyboard.press("j");
+    return page.locator(".board-queue .decision-slot.selected").count();
   }, { intervals: [250, 500, 1000] }).toBe(1);
+  await page.keyboard.press("j");
+  await expect(page.locator(".board-queue .decision")).toHaveCount(0);
+  expect(await below()).toBe(before);
+  await page.keyboard.press("k");
+  await expect(lines.first().locator(".g-title")).toBeFocused();
+  // Space on a selected decision line peeks at its goal, as on every board row: no card opens and nothing moves.
+  await page.keyboard.press("Space");
+  await expect(page.locator(".peek-drawer")).toHaveCount(1);
+  await expect(page.locator(".board-queue .decision")).toHaveCount(0);
+  expect(await below()).toBe(before);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".peek-drawer")).toHaveCount(0);
+  await expect(lines.first().locator(".g-title")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".board-queue .decision")).toHaveCount(1);
   const open = page.locator(".board-queue .decision");
   await expect(open).toHaveClass(/focused/);
   await expect(open).toBeFocused();
@@ -146,7 +210,7 @@ test("the review queue steps through every ready goal", async ({ page }) => {
   });
   const ready = (fixtures.inbox as Array<{ kind: string; goal_id: string }>).filter((i) => i.kind === "review_ready");
   expect(ready.length).toBe(2);
-  await page.getByRole("button", { name: /Review every ready goal/ }).click();
+  await page.getByRole("button", { name: /Review each goal in turn/ }).click();
   await expect(page.getByText("Queue 1 / 2")).toBeVisible();
   await expect(page.locator("table").first()).toBeVisible();
   // Accepting the first opens the second.
@@ -166,10 +230,14 @@ test("the review sidebar names each file once, grouped by unit", async ({ page }
   await expect(aside.locator(".tree-file")).toHaveCount(3);
   await expect(aside.locator(".unit")).toHaveCount(2);
   await expect(aside.getByText("money.js")).toHaveCount(1);
-  // The second unit's row carries its risk; clicking it switches the diff.
+  // The review opens on the riskiest unit, and its row says why it is risky in words, not only in a tooltip.
+  await expect(page.getByText("Unit 1 / 2")).toBeVisible();
+  await expect(aside.locator(".unit").first().locator(".unit-why")).toHaveText("test harness: runner config, setup or mocks");
+  await expect(page.locator(".review-notes")).toContainText("test harness");
+  // A unit with no risk says nothing more; clicking it switches the diff.
+  await expect(aside.locator(".unit").nth(1).locator(".unit-why")).toHaveCount(0);
   await aside.locator(".unit").nth(1).click();
   await expect(page.getByText("Unit 2 / 2")).toBeVisible();
-  await expect(page.locator(".review-notes")).toContainText("test harness");
 });
 
 for (const scheme of ["light", "dark"] as const) {
@@ -206,25 +274,355 @@ function secondProject(F: Record<string, any>) {
   F.projects = [...F.projects, { ...structuredClone(F.projects[0]), id: "p-lib", name: "lib", root: "/tmp/lib" }];
 }
 
-test("the board's identity says the engine in words, leaves the only project unsaid, and every line's last word ends on the board's edge", async ({ page }) => {
+test("a decision line with no project to name gives its question the identity column and ends on its age; naming one, it keeps the board's columns", async ({ page }) => {
+  // Review 12 (record only): from 1561 the identity column widens for an engine's name, and an English question was cut
+  // beside its empty room (1241–1900 on the rich board). The question now takes that room.
+  const lines = async () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".board-queue .decision-line")].map((l) => {
+        const q = l.querySelector<HTMLElement>(".decision-line-ask .ellipsis")!;
+        const [ask, age, row] = [l.querySelector(".decision-line-ask")!, l.querySelector(".g-age")!, l].map((e) => e.getBoundingClientRect());
+        return { cut: q.scrollWidth > q.clientWidth, clear: ask.right <= age.left + 0.5, ageRight: Math.round(age.right), rowRight: Math.round(row.right), project: !!l.querySelector(".g-project") };
+      }),
+    );
+  for (const lang of ["en", "zh-CN"] as const) {
+    await openTower(page, "overview", { lang, enrich: enrichRich });
+    await settled(page, "overview");
+    const goalAge = page.locator(".board-rows [data-goal] .g-age").first();
+    for (const w of [1440, 1561, 1800]) {
+      await page.setViewportSize({ width: w, height: 1000 });
+      await expect.poll(async () => (await lines()).some((l) => l.cut), `a question cut at ${w} (${lang})`).toBe(false);
+      for (const l of await lines()) {
+        expect(l.clear, `the question clear of its age at ${w} (${lang})`).toBe(true);
+        // The age ends the line, flush with the board's right edge less the row's own padding, past a goal row's age.
+        expect(l.rowRight - l.ageRight).toBe(8);
+        expect(l.ageRight).toBeGreaterThan(Math.round((await goalAge.boundingBox())!.x + (await goalAge.boundingBox())!.width));
+        expect(l.project).toBe(false);
+      }
+    }
+  }
+  // Two projects: the line names its goal's project in the identity column, and its age stands in the board's age column.
+  await openTower(page, "overview", { enrich: (F) => (enrichRich(F), secondProject(F)) });
+  await settled(page, "overview");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const named = page.locator(".board-queue .decision-line").first();
+  await expect(named.locator(".g-id .g-project")).toBeVisible();
+  const goalAge = (await page.locator(".board-rows [data-goal] .g-age").first().boundingBox())!;
+  const lineAge = (await named.locator(".g-age").boundingBox())!;
+  expect(Math.round(lineAge.x + lineAge.width)).toBe(Math.round(goalAge.x + goalAge.width));
+});
+
+test("the board's identity says the engine in words, leaves the only project unsaid, every id stands right after its title, and no line runs past the board's edge", async ({ page }) => {
   await openTower(page, "overview", { enrich: enrichEngines });
   const row = page.locator('.g-row[data-goal="G-0002"]');
   await expect(row.locator(".g-engine")).toHaveText("Claude Code");
   await expect(row.locator(".g-project")).toHaveCount(0);
   await expect(row.locator(".g-id .sep")).toHaveCount(0);
-  // One right edge: the ids of the decision lines and the goal rows end together, a row's padding in from the hairlines.
+  // A goal's id is read with its title (D23): it stands one gap after the title, on decision lines and goal rows alike,
+  // at every width, rather than across the row at the board's edge (300 px away at 1800).
   for (const width of [1040, 1440, 1800]) {
     await page.setViewportSize({ width, height: 900 });
     const edges = await page.locator(".overview").evaluate((board) => {
       const right = board.querySelector(".board-rows")!.getBoundingClientRect().right;
       const rows = [...board.querySelectorAll<HTMLElement>(".board-rows .g-row")].map((r) => r.getBoundingClientRect().right);
-      const ids = [...board.querySelectorAll<HTMLElement>(".board-rows .g-goal-id")].filter((e) => e.offsetParent).map((e) => e.getBoundingClientRect().right);
-      return { right, rows, ids };
+      const gaps = [...board.querySelectorAll<HTMLElement>(".board-rows .g-goal-id")]
+        .filter((e) => e.offsetParent)
+        .map((e) => e.getBoundingClientRect().left - e.parentElement!.querySelector(".g-title")!.getBoundingClientRect().right);
+      return { right, rows, gaps };
     });
     for (const r of edges.rows) expect(r, `row at ${width}`).toBeLessThanOrEqual(edges.right + 0.5);
-    for (const id of edges.ids) expect(edges.right - id, `id at ${width}`).toBeLessThanOrEqual(9);
+    expect(edges.gaps.length, `ids at ${width}`).toBeGreaterThan(0);
+    for (const g of edges.gaps) expect(g, `id beside its title at ${width}`).toBeGreaterThanOrEqual(0);
+    for (const g of edges.gaps) expect(g, `id beside its title at ${width}`).toBeLessThanOrEqual(12);
   }
 });
+
+// Review 9, R9-P3-06: with the id moved beside the title, the identity column held only "ⓘ G-0003" on G-0001's row —
+// another goal's id where this row's own used to stand. The overlap is said in words, after the row's own id; below
+// 1241 it leaves with the identity column, and the title's tooltip keeps it.
+// Review 10, R10-P2-01: the words took the title's room — "Fi…" at 1241, 143px of a 252px title at 1440 — while the
+// window 1px narrower gave the title 251px. The note gives way first: the title keeps all of a short title and 12em of
+// a long one at every width, the note keeps its ⓘ alone when it must, and its words stay in its text and tooltips.
+// Review 11, R11-P3-01: the note was decided as if the peek button were always shown, so at 1440 (zh) and 1728 (en) a
+// row with room for the words showed the ⓘ alone, and one row of the pair said the words while the other did not. The
+// note is decided on the row at rest and gives way a step at a time — the words, then "ⓘ G-0003", then the ⓘ — saying
+// as much as leaves the title its room. Both rows of the pair are on the board here.
+const LONG_TITLE = { en: "Fix the cart total rounding when a discount and the tax apply together", "zh-CN": "修复折扣和税同时生效时购物车总价的舍入错误" };
+const OVERLAP_WORDS = { en: (id: string) => `Overlaps ${id}`, "zh-CN": (id: string) => `与 ${id} 改动重叠` };
+for (const lang of ["en", "zh-CN"] as const)
+  for (const long of [false, true])
+    test(`a goal row says an overlap beside its own id, giving way a step at a time so the title keeps its room (${lang}${long ? ", long title" : ""})`, async ({ page }) => {
+      await openTower(page, "overview", {
+        lang,
+        enrich: (F) => {
+          F.inbox = F.inbox.filter((i: any) => i.goal_id !== "G-0003");
+          if (long) for (const g of F.goals) if (g.id === "G-0001") g.title = LONG_TITLE[lang];
+        },
+      });
+      await settled(page, "overview");
+      const step: Record<string, Record<number, number>> = { "G-0001": {}, "G-0003": {} };
+      const widths = [1241, 1280, 1366, 1440, 1505, 1560, 1561, 1600, 1728, 1800];
+      for (const width of widths) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        for (const [id, other] of [["G-0001", "G-0003"], ["G-0003", "G-0001"]]) {
+          const at = `${id} at ${width}`;
+          const row = page.locator(`.board-rows .g-row[data-goal="${id}"]`);
+          const overlap = row.locator(".g-title-cell .g-overlap");
+          await expect(overlap, at).toBeVisible();
+          await expect(overlap).toHaveText(OVERLAP_WORDS[lang](other));
+          expect(await overlap.evaluate((e) => e.getClientRects().length), `whole, ${at}`).toBe(1);
+          const [cell, o, own] = await Promise.all([row.locator(".g-title-cell"), overlap, row.locator(".g-goal-id")].map((l) => l.boundingBox()));
+          expect(o!.x, `after the row's own id, ${at}`).toBeGreaterThanOrEqual(own!.x + own!.width);
+          expect(o!.x + o!.width, `inside the title cell, ${at}`).toBeLessThanOrEqual(cell!.x + cell!.width + 0.5);
+          // The title's room with the note at each step (the words, "ⓘ G-0003", the ⓘ), measured on the row at rest.
+          const m = await row.evaluate((r) => {
+            const title = r.querySelector<HTMLElement>(".g-title .ellipsis")!;
+            const words = r.querySelector<HTMLElement>(".g-overlap-words")!;
+            const said = [...r.querySelectorAll<HTMLElement>(".g-overlap-say")];
+            const was = [words, ...said].map((e) => e.classList.contains("sr-only"));
+            const shown = was[0] ? 2 : was.slice(1).some(Boolean) ? 1 : 0;
+            const rooms = [0, 1, 2].map((n) => {
+              for (const e of said) e.classList.toggle("sr-only", n === 1);
+              words.classList.toggle("sr-only", n === 2);
+              return title.clientWidth;
+            });
+            [words, ...said].forEach((e, i) => e.classList.toggle("sr-only", was[i]));
+            const note = r.querySelector<HTMLElement>(".g-overlap")!;
+            return { shown, rooms, whole: title.scrollWidth, em: parseFloat(getComputedStyle(title).fontSize), fits: note.scrollWidth <= note.getBoundingClientRect().width + 0.5 };
+          });
+          const need = Math.min(m.whole, 12 * m.em);
+          // The title keeps all of a short title and 12em of a longer one, or, where the column is narrower than that,
+          // all the column gives it with the note at its smallest; and the note says as much as leaves it that room.
+          expect(m.rooms[m.shown], `title's room, ${at} (${JSON.stringify(m)})`).toBeGreaterThanOrEqual(Math.min(need, m.rooms[2]) - 1);
+          if (m.shown > 0) expect(m.rooms[m.shown - 1], `a step more would cost the title, ${at} (${JSON.stringify(m)})`).toBeLessThan(need);
+          expect(m.fits, `note never cut, ${at}`).toBe(true);
+          if (m.shown === 1) await expect(overlap.locator(".code-val"), `the other goal's id stays, ${at}`).toBeVisible();
+          step[id][width] = m.shown;
+          // The pointer brings the peek button; the note is decided on the row at rest, so hovering never changes it.
+          await row.hover();
+          await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+          const hovered = await row.evaluate((r) => {
+            const words = r.querySelector<HTMLElement>(".g-overlap-words")!;
+            return words.classList.contains("sr-only") ? 2 : [...r.querySelectorAll(".g-overlap-say")].some((e) => e.classList.contains("sr-only")) ? 1 : 0;
+          });
+          expect(hovered, `note unchanged on hover, ${at}`).toBe(m.shown);
+          await page.mouse.move(0, 0);
+          // The identity column names no other goal.
+          await expect(row.locator(".g-id")).not.toContainText(other);
+        }
+      }
+      // A wider window never says less, across the 1560/1561 step too.
+      for (const id of ["G-0001", "G-0003"])
+        widths.slice(1).forEach((w, i) => expect(step[id][w], `${id} says no less at ${w} than at ${widths[i]}`).toBeLessThanOrEqual(step[id][widths[i]]));
+      // The common laptop widths have the room for the words beside a short title.
+      if (!long) {
+        expect(step["G-0001"][1440], "G-0001 words at 1440").toBe(0);
+        expect(step["G-0003"][1728], "G-0003 words at 1728").toBe(0);
+        expect(step["G-0001"][1800], "G-0001 words at 1800").toBe(0);
+      }
+      const row = page.locator('.board-rows .g-row[data-goal="G-0001"]');
+      await expect(row.locator(".g-overlap")).toHaveAttribute("title", new RegExp(`${OVERLAP_WORDS[lang]("G-0003")}: src/`));
+      await page.setViewportSize({ width: 1100, height: 900 });
+      await expect(row.locator(".g-overlap")).toBeHidden();
+      await expect(row.locator(".g-title")).toHaveAttribute("title", new RegExp(OVERLAP_WORDS[lang]("G-0003")));
+    });
+
+// Review 18 (record only): GitHub's failing check and the merge queue's conflict wore the verifier's red disc, outside
+// docs/12 §12.4.3's list. Both are failures observed (GitHub's ✓ beside them was already neutral): ink, a cross.
+test("a failing GitHub check and a merge conflict are said in ink, never the verifier's red", async ({ page }) => {
+  await openTower(page, "goal/G-0001", { enrich: enrichCi });
+  const failed = page.locator(".pr-line .pr-failed").first();
+  await expect(failed).toHaveText("1");
+  const ink = (q: string) => page.locator(q).first().evaluate((el) => [getComputedStyle(el.querySelector("svg")!).color, getComputedStyle(el).color, !!el.querySelector(".mark-danger")]);
+  const [mark, words, red] = await ink(".pr-line .pr-failed");
+  expect([mark, red]).toEqual([words, false]);
+  await openTower(page, "operations", { enrich: enrichConsole });
+  const conflict = page.locator(".mq-row.mq-conflict .mq-status").first();
+  await expect(conflict).toBeVisible();
+  const [cmark, cwords, cred] = await ink(".mq-row.mq-conflict .mq-status");
+  expect([cmark, cred]).toEqual([cwords, false]);
+  // The sidebar's operations icon, with a conflict in the queue, gives way to the notice mark in text-1 beside its count,
+  // named for what it is: never red, and a shape of its own, not only a darker ink (review 19, record only).
+  const icon = page.locator(".side-row .side-icon.side-icon-notice");
+  await expect(icon).toHaveCount(1);
+  await expect(icon.locator("svg.mark-notice")).toHaveAttribute("aria-label", "Merge conflict");
+  await expect(icon.locator("svg:not(.mark-notice)")).toHaveCount(0);
+  const [iconInk, one, danger] = await icon.evaluate((el) => [getComputedStyle(el).color, getComputedStyle(document.documentElement).getPropertyValue("--text-1").trim(), getComputedStyle(document.documentElement).getPropertyValue("--st-danger").trim()]);
+  expect(iconInk).not.toBe(danger);
+  expect(await page.evaluate(([a, b]) => { const p = document.createElement("i"); document.body.append(p); p.style.color = b; const c = getComputedStyle(p).color; p.remove(); return c === a; }, [iconInk, one])).toBe(true);
+  // Its count too, the conflicts in ink like the mark (review 21, record only: untested).
+  const count = icon.locator("xpath=ancestor::*[contains(@class,'side-row')][1]").locator(".side-count");
+  expect(await count.evaluate((el) => getComputedStyle(el).color)).toBe(iconInk);
+});
+
+// Review 18: reloaded while a command had run for five minutes, the desk had seen no call start and read the run as
+// silent ("silent for 5m" and the hint mark) while the phone said the command ran. The supervisor's live line says a
+// call is in flight; the title bar and the badge read it so, and a line whose call has ended is silence again.
+test("reloaded mid-command, the title bar reads the command still running, never silence", async ({ page }) => {
+  for (const running of [true, false]) {
+    await openTower(page, "overview", {
+      enrich: (F) => {
+        const five = Date.now() - 5 * 60_000;
+        for (const g of F.goals) {
+          g.updated_at = five;
+          if (g.state === "running") g.live_line = { mode: "executing", action: "bash", target: "npm test", at: five, running };
+        }
+      },
+    });
+    const hb = page.locator(".titlebar-gauges .gauge.num").filter({ hasText: /running for|silent for/ });
+    await expect(hb).toHaveText(running ? "bash running for 5m" : "silent for 5m");
+    await expect(hb.locator("svg")).toHaveCount(running ? 0 : 1);
+  }
+});
+
+// Review 19 (R19-P3-03): a call that had ended (the live line keeps its words with `running` off) was still written as
+// what the run was doing — "Thinking  bash pnpm test --filter checkout" — on the goal page, the board and the phone,
+// and the shimmer ran over the finished command. Ended, the detail says which run (on the board) or how long it has
+// gone (on the goal page, whose header names the run); gone quiet, it keeps the last call.
+test("a call that has ended is not written as what the run is doing; gone quiet, its words stay", async ({ page }) => {
+  const cases = [[true, 20, "bash", "bash"], [false, 20, "elapsed 5m", "Run 1"], [false, 300, "bash", "bash"]] as const;
+  for (const [running, quietFor, onPage, onBoard] of cases) {
+    const enrich = (F: Record<string, any>) => {
+      const at = Date.now() - quietFor * 1000;
+      for (const g of F.goals) {
+        if (g.id !== "G-0002") continue;
+        Object.assign(g, { mode: "thinking", needs_you: 0, run_no: 1, run_started_at: Date.now() - 5 * 60_000 - 5_000, updated_at: at });
+        g.live_line = { mode: "executing", action: "bash", target: "pnpm test --filter checkout", at, running };
+      }
+    };
+    await openTower(page, "goal/G-0002", { enrich });
+    const line = page.locator(".annunciator .live-line-large");
+    await expect(line.locator(".live-action")).toHaveText(onPage);
+    await expect(line.locator(".live-target")).toHaveCount(onPage === "bash" ? 1 : 0);
+    // Review 20 (record only): the run was named twice, in the header and on the live line just under it. The header
+    // names it, whatever the line says (a call in flight hid it there for a moment otherwise); the line never repeats it.
+    await expect(page.locator(".goal-identity")).toContainText("Run 1");
+    await expect(line).not.toContainText("Run 1");
+    // The shimmer runs over the call at work, or over the run's time while the agent thinks: never over a finished command.
+    await expect(line).toHaveClass(quietFor > 120 ? /^(?!.*live-moving)/ : /live-moving/);
+    await openTower(page, "overview", { enrich });
+    await expect(page.locator('.g-row[data-goal="G-0002"] .live-action')).toHaveText(onBoard);
+  }
+  // Review 20 (record only): beside the run, the time was the finished call's start (10m ago) though the run moved just
+  // now. It is the last movement.
+  await openTower(page, "goal/G-0002", {
+    enrich: (F) => {
+      const g = F.goals.find((x: { id: string }) => x.id === "G-0002");
+      Object.assign(g, { mode: "thinking", needs_you: 0, run_no: 1, run_started_at: Date.now() - 30 * 60_000 - 5_000, updated_at: Date.now() });
+      g.live_line = { mode: "executing", action: "bash", target: "pnpm test", at: Date.now() - 10 * 60_000, running: false };
+    },
+  });
+  const line = page.locator(".annunciator .live-line-large");
+  await expect(line.locator(".live-action")).toHaveText("elapsed 30m");
+  await expect(line.locator(".live-age")).toHaveText("just now");
+});
+
+// Review 20 (R20-P3-02): on the board the run's elapsed time rode after the detail and jumped (up to 148px) as calls came
+// and went, the detail flipping between the call and "Run 1" twice a call. The time now follows the run's name only,
+// which holds still, never a call's words (where it read as the call's own time); and a call that has just ended keeps
+// its words a beat, so the detail changes once a call.
+test("a board row's elapsed time holds still while calls come and go, its detail changing once a call", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      for (const g of F.goals) {
+        if (g.id !== "G-0002") continue;
+        Object.assign(g, { state: "running", mode: "thinking", needs_you: 0, run_no: 1, run_started_at: Date.now() - 2 * 3600_000, updated_at: Date.now() });
+        g.live_line = { mode: "reading", action: "read", target: "src/money.ts", at: Date.now() - 5000, running: false };
+      }
+    },
+  });
+  const row = page.locator('.board-rows .g-row[data-goal="G-0002"]');
+  await expect(row.locator(".live-elapsed")).toHaveText(/^elapsed 2h/);
+  await expect(row.locator(".live-detail")).toHaveAttribute("title", /^elapsed 2h/);
+  const files = ["src/cart.ts", "src/checkout/total.ts", "test/money.test.ts", "src/money.ts"];
+  const samples = await page.evaluate(async (files) => {
+    const w = window as any;
+    const g0 = w.__towerFixtures.goals.find((g: any) => g.id === "G-0002");
+    const out: { detail: string; badge: string; title: string; from: number; time: string | null; left: number | null }[] = [];
+    const take = () => {
+      const line = document.querySelector('.board-rows .g-row[data-goal="G-0002"] .live-line')!;
+      const time = line.querySelector(".live-elapsed") as HTMLElement | null;
+      const detail = line.querySelector(".live-detail")!;
+      const words = [".live-action", ".live-target"].map((sel) => line.querySelector(sel)?.textContent ?? "");
+      out.push({
+        detail: words.filter(Boolean).join(" "),
+        badge: line.querySelector(".mode-badge")!.textContent!,
+        title: detail.getAttribute("title") ?? "",
+        from: detail.getBoundingClientRect().left,
+        time: time?.textContent ?? null,
+        left: time ? time.getBoundingClientRect().left : null,
+      });
+    };
+    // Sampled once the fonts are in: a face swapping in moves the line, and that is not a call coming or going.
+    await document.fonts.ready;
+    const timer = setInterval(take, 50);
+    const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const call = (target: string, at: number, running: boolean) =>
+      w.__towerEmit("tower://update", { type: "goal", goal: { ...g0, mode: running ? "reading" : "thinking", updated_at: Date.now(), live_line: { mode: "reading", action: "read", target, at, running } } });
+    await pause(200);
+    for (const file of files) {
+      const at = Date.now();
+      call(file, at, true);
+      await pause(300);
+      call(file, at, false);
+      await pause(300);
+    }
+    await pause(1300);
+    clearInterval(timer);
+    return out;
+  }, files);
+  expect(samples.length).toBeGreaterThan(40);
+  // The detail: which run, then each call once, in order, then which run again once the last has ended for a beat.
+  const details = samples.map((s) => s.detail).filter((d, i, all) => i === 0 || d !== all[i - 1]);
+  expect(details).toEqual(["Run 1", ...files.map((f) => `read ${f}`), "Run 1"]);
+  // The time: after the run's name only, and in one place whenever it is there.
+  for (const s of samples) expect(s.time === null, `${s.detail}: ${s.time}`).toBe(s.detail !== "Run 1");
+  const at = samples.filter((s) => s.left !== null).map((s) => Math.round(s.left!));
+  expect(new Set(at).size, JSON.stringify(at)).toBe(1);
+  // Review 21 (record only): the row changes as one. While a call's words stay, the badge keeps its mode (it read
+  // "Thinking  read src/…" for a second); the detail starts at one x whichever word the badge says ("Thinking" is wider
+  // than "Working"); and the tooltip puts the run's time with the run's name, never after a command as if it were its own.
+  for (const s of samples) expect(s.badge, s.detail).toBe(s.detail === "Run 1" ? "Thinking" : "Working");
+  expect(Math.max(...samples.map((s) => s.from)) - Math.min(...samples.map((s) => s.from)), "the detail's x").toBeLessThan(0.5);
+  // Review 22 (record only): "Run 1 elapsed 2h 3m" ran the run's name into its time; they read as a sentence.
+  for (const s of samples) expect(s.title, s.detail).toMatch(s.detail === "Run 1" ? /^elapsed 2h \d+m$/ : /^(src|test)\/\S+\nRun 1, elapsed 2h \d+m$/);
+});
+
+// Review 20 (record only): at 1241 the time was cut ("runnin…", "已…"), and in Chinese at 1440 too ("21 小时 3…"), a cut
+// number reading as another. It is whole or set aside, and set aside it is in the detail's tooltip.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a board row's elapsed time is whole or set aside, never cut (${lang})`, async ({ page }) => {
+    const seen: string[] = [];
+    for (const width of [1241, 1440, 1800]) {
+      await page.setViewportSize({ width, height: 900 });
+      await openTower(page, "overview", {
+        lang,
+        enrich: (F) => {
+          for (const g of F.goals) {
+            if (g.id !== "G-0002") continue;
+            Object.assign(g, { state: "running", mode: "thinking", needs_you: 0, run_no: 2, run_started_at: Date.now() - (21 * 60 + 33) * 60_000, updated_at: Date.now() });
+            g.live_line = { mode: "reading", action: "read", target: "src/money.ts", at: Date.now() - 20_000, running: false };
+          }
+        },
+      });
+      const detail = page.locator('.board-rows .g-row[data-goal="G-0002"] .live-detail');
+      const time = detail.locator(".live-elapsed");
+      await expect(time).toHaveText(lang === "en" ? /^elapsed 21h 33m$/ : /^已进行 21 小时 33/);
+      const words = (await time.textContent())!;
+      const fit = await detail.evaluate((el) => ({
+        cut: el.scrollWidth > el.clientWidth + 0.5,
+        aside: el.querySelector(".live-elapsed")!.classList.contains("sr-only"),
+        sep: el.querySelector(".live-elapsed-sep")!.classList.contains("sr-only"),
+      }));
+      expect(fit.cut, `${width}: the detail is cut`).toBe(false);
+      expect(fit.sep, `${width}: the separator goes with the time`).toBe(fit.aside);
+      await expect(detail).toHaveAttribute("title", new RegExp(words));
+      seen.push(fit.aside ? "aside" : "whole");
+    }
+    expect(seen[0], "at 1241 the run's name keeps the room").toBe("aside");
+    expect(seen.at(-1), "at 1800 the time is whole").toBe("whole");
+  });
 
 test("the board writes one age format, decisions and goals alike", async ({ page }) => {
   await openTower(page, "overview", {
@@ -249,13 +647,19 @@ test("on a crowded row the engine's name is whole or gone, never clipped; the ag
   };
   await openTower(page, "overview", { enrich: crowd });
   const row = page.locator('.g-row[data-goal="G-0002"]');
-  await expect(row).toHaveAttribute("data-crowded", "true");
+  await expect(row).toHaveAttribute("data-crowded", "engine");
   // 1440: rework, Claude Code, shop and the id would not fit whole, so the engine's name leaves and the project name stays legible.
-  await expect(row.locator(".g-engine")).toBeHidden();
+  // Set aside for the eye (a 1px box), still read: the title's tooltip says it too.
+  expect(await row.locator(".g-engine").evaluate((e) => e.getBoundingClientRect().width)).toBeLessThanOrEqual(1);
+  await expect(row.locator(".g-engine")).toHaveText("Claude Code");
   const project = row.locator(".g-project");
   await expect(project).toHaveText("shop");
   expect(await project.evaluate((el) => el.getBoundingClientRect().width >= el.scrollWidth - 1)).toBe(true);
   await expect(row.locator(".g-title")).toHaveAttribute("title", /Claude Code/);
+  // Review 13 (record only): the rework was read twice, its mark's name and then the bare count. Said once, in words.
+  const said = await row.locator(".g-id").ariaSnapshot();
+  expect(said.match(/1\s*\/\s*3/g) ?? [], `rework said once: ${said}`).toHaveLength(1);
+  expect(said).toContain("Rework 1 / 3");
   const age = page.locator('.g-row[data-goal="G-0001"] .g-age');
   await expect(age).toHaveText("1h 40m ago");
   expect(await age.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -264,6 +668,207 @@ test("on a crowded row the engine's name is whole or gone, never clipped; the ag
   await expect(row.locator(".g-engine")).toHaveText("Claude Code");
   expect(await row.locator(".g-id").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
 });
+
+// Review 11, R11-P3-04: the live column cut the seal to "Verifi" (en ≤1417, zh ≤1281), its pin gone; the identity
+// column was cut from the left on a row with an engine, a PR and rework ("en" of the engine's name at 1800, the PR gone
+// at 1241), since the engine left by a count of readings, below 1560 only. Both give way by measure now, and nothing is
+// cut: the seal's word, then the seal (green never without its pin); in the identity, step by step.
+// Review 12, R12-P3-01/02: a merged or closed PR kept its state at every step, so with rework the last step still ran
+// off the end ("⟳3/" at 1440); the PR readings a step set aside were nowhere, not in the tooltip nor the button's name;
+// a short project name held 3.5em. The steps now end in one that always fits; what they set aside is still read and is
+// in the title's tooltip; a project name takes its own width. Two boards: PRs open, and PRs merged or closed.
+const PR_WORDS = {
+  en: { open: "open", merged: "merged", closed: "closed", passed: "passed", failed: "failing", pending: "pending", sep: ", ", head: ": ", n: (n: number, w: string) => `${n} ${w}` },
+  "zh-CN": { open: "开启中", merged: "已合并", closed: "已关闭", passed: "通过", failed: "失败", pending: "等待中", sep: "，", head: "：", n: (n: number, w: string) => `${n} 项${w}` },
+} as const;
+const prSaid = (lang: "en" | "zh-CN", st: { state: "open" | "merged" | "closed"; passed: number; failed: number; pending: number }) => {
+  const w = PR_WORDS[lang];
+  const checks = (["passed", "failed", "pending"] as const).filter((k) => st[k] > 0).map((k) => w.n(st[k], w[k]));
+  return `PR ${w[st.state]}${checks.length ? w.head + checks.join(w.sep) : ""}`;
+};
+type PrState = { state: "open" | "merged" | "closed"; passed: number; failed: number; pending: number };
+const CROWDS: Record<string, Record<string, { pr?: PrState; rework?: number; max?: number; engine?: boolean; muted?: boolean; project?: Record<"en" | "zh-CN", string> }>> = {
+  open: {
+    "G-0001": { pr: { state: "open", passed: 3, failed: 1, pending: 0 }, rework: 2, muted: true },
+    "G-0002": { project: { en: "lib", "zh-CN": "lib" } },
+    "G-0003": { pr: { state: "open", passed: 3, failed: 1, pending: 0 }, rework: 1, engine: true },
+  },
+  settled: {
+    "G-0001": { pr: { state: "merged", passed: 0, failed: 2, pending: 0 }, rework: 2, muted: true },
+    "G-0002": { pr: { state: "merged", passed: 4, failed: 0, pending: 0 }, rework: 1, project: { en: "lib", "zh-CN": "lib" } },
+    "G-0003": { pr: { state: "closed", passed: 0, failed: 1, pending: 0 }, rework: 3, engine: true, muted: true, project: { en: "storefront-payments", "zh-CN": "店面支付服务" } },
+  },
+  // Review 13's no-PR row (its G-0015): rework, muted, an engine and a long name; the old code shortened the name while
+  // "muted" stayed ("Muted ⟳3/3 storef…" at en 1440).
+  nopr: {
+    "G-0003": { rework: 3, engine: true, muted: true, project: { en: "storefront-payments", "zh-CN": "店面支付服务" } },
+  },
+  // Review 13's stress row: every reading at its longest, so the identity folds into the tooltip above 1241 too.
+  stress: {
+    "G-0003": { pr: { state: "closed", passed: 0, failed: 1234, pending: 0 }, rework: 99, max: 99, engine: true, muted: true, project: { en: "storefront-payments", "zh-CN": "店面支付服务" } },
+  },
+};
+for (const lang of ["en", "zh-CN"] as const)
+  for (const [name, crowd] of Object.entries(CROWDS))
+    test(`the live and identity columns give way by measure and cut nothing (${lang}, PRs ${name})`, async ({ page }) => {
+      // Some 330 widths, each measured: the time of the other sweeps (layout.spec.ts), not of one view.
+      test.setTimeout(120_000);
+      await openTower(page, "overview", {
+        lang,
+        enrich: (F) => {
+          enrichEngines(F);
+          secondProject(F);
+          F.inbox = F.inbox.filter((i: any) => i.goal_id !== "G-0003");
+          F.settings.muted_goals = [];
+          for (const g of F.goals) {
+            const c = crowd[g.id];
+            if (!c) continue;
+            if (c.pr) g.pr = { url: "https://github.com/acme/shop/pull/42", status: { ...c.pr, failing: c.pr.failed ? ["test"] : [] } };
+            if (c.rework) g.rework_cycles = c.rework;
+            if (c.max) g.max_rework = c.max;
+            if (c.engine) g.engine = "claude-code";
+            if (c.muted) F.settings.muted_goals.push(g.id);
+            if (c.project) g.project_name = c.project[lang];
+          }
+        },
+      });
+      await settled(page, "overview");
+      // Review 13 (record only): entering or leaving the folded step reported a ResizeObserver loop. Counted over the sweep.
+      await page.evaluate(() => {
+        (window as any).__roLoops = 0;
+        addEventListener("error", (e) => {
+          if (/ResizeObserver loop/.test(e.message)) (window as any).__roLoops++;
+        });
+      });
+      const seen: Record<string, number> = { engineGone: 0, engineShown: 0, wordGone: 0, wordShown: 0 };
+      // Review 13, R13-P3-01: a step's edge can be a 1–2 px band, so every pixel where the column's width moves (1241–1561;
+      // above it the column is a fixed 12.5em), and the screen-reader names at the earlier thirteen widths.
+      const NAMED = new Set([1241, 1260, 1277, 1320, 1366, 1417, 1440, 1500, 1560, 1561, 1600, 1728, 1800]);
+      const ORDER = [null, "engine", "readings", "quiet", "project", "pr-state", "folded"];
+      const lastStep: Record<string, number> = {};
+      for (const width of [...Array.from({ length: 1561 - 1241 + 1 }, (_, i) => 1241 + i), 1600, 1728, 1800]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        const rows = await page.locator(".board-rows .g-row[data-goal]").evaluateAll((rows) =>
+          rows.map((r) => {
+            const id = r.querySelector<HTMLElement>(".g-id")!;
+            // Cut means any overflow the browser would end in an ellipsis or clip: the measure GoalRow itself uses (half a pixel).
+            const cut = (e: Element | null) => !!e && e.scrollWidth > e.clientWidth + 0.5;
+            // On the line, to the eye: a step sets a reading aside to a 1px box a screen reader still reads.
+            const shown = (e: Element | null) => !!e && getComputedStyle(e).display !== "none" && e.getBoundingClientRect().width > 1 && !e.closest(".sr-only");
+            const engine = id.querySelector(".g-engine"), project = id.querySelector<HTMLElement>(".g-project");
+            const em = project ? parseFloat(getComputedStyle(project).fontSize) : 12;
+            // The project's name is set aside by a step, and shown at every step before: shown is the step's word, not a
+            // width, since flex can squeeze a shown name to nothing (and that is a cut).
+            const asideAt = (step: string | null) => ["project", "pr-state", "folded"].includes(step ?? "");
+            const illegible = (step: string | null) => !!project && !asideAt(step) && cut(project) && project.clientWidth < Math.min(project.scrollWidth, 3.5 * em) - 0.5;
+            const crowd = r.getAttribute("data-crowded");
+            // What a step more would have cost: the step before put back, measured, and set aside again. Before "muted"
+            // goes (the quiet step), a shortened name is one that did not fit.
+            const back = (to: string | null) => {
+              if (to === null) r.removeAttribute("data-crowded");
+              else r.setAttribute("data-crowded", to);
+              const over = id.scrollWidth > id.clientWidth + 0.5 || illegible(to) || (["", "engine", "readings"].includes(to ?? "") && cut(project));
+              if (crowd === null) r.removeAttribute("data-crowded");
+              else r.setAttribute("data-crowded", crowd);
+              return over;
+            };
+            const before: Record<string, string | null> = { engine: null, readings: "engine", quiet: "readings", project: "quiet", "pr-state": "project", folded: "pr-state" };
+            const detail = r.querySelector<HTMLElement>(".g-live .live-detail");
+            const seal = detail?.querySelector<HTMLElement>(".seal") ?? null, word = seal?.querySelector<HTMLElement>(".seal-word") ?? null;
+            const sealBack = (wordToo: boolean) => {
+              const was = [seal!.classList.contains("sr-only"), word!.classList.contains("sr-only")];
+              seal!.classList.remove("sr-only");
+              word!.classList.toggle("sr-only", !wordToo);
+              const over = detail!.scrollWidth > detail!.clientWidth + 0.5;
+              seal!.classList.toggle("sr-only", was[0]);
+              word!.classList.toggle("sr-only", was[1]);
+              return over;
+            };
+            const text = project ? document.createRange() : null;
+            text?.selectNodeContents(project!);
+            return {
+              goal: r.getAttribute("data-goal")!,
+              idShown: getComputedStyle(id).display !== "none",
+              idOver: id.scrollWidth > id.clientWidth + 0.5,
+              children: [...id.children].filter((c) => shown(c) && !c.classList.contains("g-project")).map((c) => [c.textContent, cut(c)] as const),
+              prFailedShown: [...id.querySelectorAll(".pr-line .pr-failed")].every((m) => shown(m.parentElement)),
+              prState: id.querySelector(".pr-line")?.getAttribute("data-state") ?? null,
+              prStateShown: shown(id.querySelector(".pr-line .pr-state")),
+              prTab: id.querySelector<HTMLElement>(".pr-line")?.tabIndex ?? null,
+              rework: id.querySelector("[title]:not(.pr-line):not(.g-project)")?.getAttribute("title") ?? null,
+              projectName: project?.textContent ?? null,
+              project: project && !asideAt(crowd) ? { width: project.getBoundingClientRect().width, text: text!.getBoundingClientRect().width, em, shortened: cut(project) } : null,
+              engineShown: shown(engine),
+              hasEngine: !!engine,
+              mutedWord: id.querySelector(".g-muted")?.textContent ?? null,
+              crowd,
+              stepBackOver: crowd ? back(before[crowd]) : null,
+              tip: r.querySelector(".g-title")!.getAttribute("title") ?? "",
+              liveOver: !!detail && detail.scrollWidth > detail.clientWidth + 0.5,
+              seal: seal ? { shown: shown(seal), wordShown: shown(word) && !!word!.textContent, hasWord: !!word?.textContent, pinShown: shown(seal.querySelector(".seal-pin")) } : null,
+              sealStepBackOver: seal && !shown(seal) ? sealBack(false) : seal && word?.textContent && !shown(word) ? sealBack(true) : null,
+            };
+          }),
+        );
+        for (const r of rows) {
+          const at = `${r.goal} at ${width}: ${JSON.stringify(r)}`;
+          // A live line with a seal is never cut (words end in an ellipsis, a seal has none): the seal keeps its pin, or
+          // gives way whole, and only as far as it must.
+          if (r.seal) {
+            expect(r.liveOver, `seal cut, ${at}`).toBe(false);
+            if (r.seal.shown) expect(r.seal.pinShown, `seal without its pin, ${at}`).toBe(true);
+            if (r.sealStepBackOver !== null) expect(r.sealStepBackOver, `the seal gave way where it fit, ${at}`).toBe(true);
+            if (r.seal.hasWord) r.seal.wordShown ? seen.wordShown++ : seen.wordGone++;
+          }
+          // The title's tooltip says the whole identity at every width, and the PR's button its every reading.
+          const c = crowd[r.goal];
+          if (c?.pr && NAMED.has(width)) {
+            // Its name is its own text (no label laid over what it shows, axe's label-content-name-mismatch), every reading.
+            const button = page.locator(`.board-rows .g-row[data-goal="${r.goal}"] .g-id .pr-line`);
+            await expect(button, `the PR's name, ${at}`).toHaveAccessibleName(prSaid(lang, c.pr));
+            expect(await button.getAttribute("aria-label"), `no label over the PR's text, ${at}`).toBeNull();
+            expect(r.tip, `the PR in the title's tooltip, ${at}`).toContain(prSaid(lang, c.pr));
+          }
+          if (r.rework) expect(r.tip, `rework in the title's tooltip, ${at}`).toContain(r.rework);
+          if (r.mutedWord) expect(r.tip, `"muted" in the title's tooltip, ${at}`).toContain(r.mutedWord);
+          if (r.projectName) expect(r.tip, `the project in the title's tooltip, ${at}`).toContain(r.projectName);
+          if (r.hasEngine) expect(r.tip, `the engine's name in the title's tooltip, ${at}`).toContain("Claude Code");
+          if (!r.idShown) continue;
+          // The identity is never cut: every reading whole; the project's name its own width, or shortened to no less than
+          // 3.5em and never beside the engine's name; each step taken only where the one before did not fit.
+          expect(r.idOver, `identity cut, ${at}`).toBe(false);
+          for (const [text, cut] of r.children) expect(cut, `"${text}" cut, ${at}`).toBe(false);
+          // Shown, the name is whole, or shortened to no less than 3.5em; a name shorter than that is never shortened.
+          if (r.project) expect(r.project.width, `project shown and legible, ${at}`).toBeGreaterThanOrEqual(Math.min(r.project.text, 3.5 * r.project.em) - 0.5);
+          if (r.project && !r.project.shortened) expect(r.project.width, `project as wide as its name, ${at}`).toBeLessThanOrEqual(r.project.text + 1);
+          if (r.engineShown && r.project) expect(r.project.shortened, `the engine stays while the project's name shortens, ${at}`).toBe(false);
+          if (r.stepBackOver !== null) expect(r.stepBackOver, `a step taken where the one before fit, ${at}`).toBe(true);
+          // A wider window never takes a later step.
+          const step = ORDER.indexOf(r.crowd);
+          if (r.goal in lastStep) expect(step, `a later step on a wider window, ${at}`).toBeLessThanOrEqual(lastStep[r.goal]);
+          lastStep[r.goal] = step;
+          // A failing check stays on the line until the PR keeps one reading; then an open PR keeps its failing count and a
+          // merged or closed one its state (review 13: "PR ×1" read as an open PR), until the whole identity folds.
+          if (r.crowd !== "folded" && r.crowd !== "pr-state") expect(r.prFailedShown, `the PR's failing check, ${at}`).toBe(true);
+          if (r.crowd === "pr-state" && r.prState === "open") expect(r.prFailedShown, `an open PR's failing check, ${at}`).toBe(true);
+          if (r.crowd !== "folded" && r.prState && r.prState !== "open") expect(r.prStateShown, `a merged or closed PR's state, ${at}`).toBe(true);
+          // Review 13 (record only): the project's name shortened while "muted" and the PR's readings stayed ("Muted ⟳3/3
+          // storef…"). It shortens only once "muted" is set aside: before that, every reading is whole.
+          if (r.project?.shortened) expect(step, `the project's name shortened before "muted" went, ${at}`).toBeGreaterThanOrEqual(ORDER.indexOf("quiet"));
+          // Review 13 (record only): folded, the PR's button leaves the eye and the Tab order, not a screen reader.
+          if (r.prTab !== null) expect(r.prTab, `the PR a Tab stop only while on the line, ${at}`).toBe(r.crowd === "folded" ? -1 : 0);
+          if (c && r.crowd !== "folded") seen.unfolded = (seen.unfolded ?? 0) + 1;
+          if (r.crowd) seen[r.crowd] = (seen[r.crowd] ?? 0) + 1;
+          if (r.hasEngine) r.engineShown ? seen.engineShown++ : seen.engineGone++;
+        }
+      }
+      // The sweep saw both sides of the give-ways it is about, so the checks above checked something.
+      const want =
+        name === "open" ? ["engineGone", "engineShown", "wordShown", "wordGone", "readings", "quiet"] : name === "settled" ? ["engineGone", "wordShown", "wordGone", "project"] : name === "nopr" ? ["engine", "quiet"] : ["folded", "unfolded", "pr-state"];
+      for (const k of want) expect(seen[k] ?? 0, `${k} seen: ${JSON.stringify(seen)}`).toBeGreaterThan(0);
+      expect(await page.evaluate(() => (window as any).__roLoops), "ResizeObserver loop notices over the sweep").toBe(0);
+    });
 
 test("in a half-screen window the live line keeps its verb and lets the elapsed time go, with no two words touching", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 900 });
@@ -288,23 +893,305 @@ test("with a decision card on a ready-to-accept goal, the card's first option is
   await expect(primaries).toHaveText(/Send the failures to the agent/);
 });
 
-test("the title bar's runs gauge fills the ring by the slots in use, and silence beats once", async ({ page }) => {
-  await openTower(page, "overview", {
-    enrich: (F) => {
-      F.settings = { ...F.settings, max_concurrent: 4 };
-      // One goal has been silent for twenty minutes: the hollow square shows, and beats once as it appears.
-      for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now() - 20 * 60_000;
-    },
-  });
+test("the title bar's runs gauge is the running mark, turning while a run moves; silence is the hint mark in the reading's ink", async ({ page }) => {
+  const heard = (ago: number) => (F: Record<string, any>) => {
+    F.settings = { ...F.settings, max_concurrent: 4 };
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now() - ago;
+  };
+  // A run heard from just now: work in motion, the faint ring and its arc, the whole mark turning without end — never a
+  // filled wedge.
+  await openTower(page, "overview", { enrich: heard(0) });
   const gauge = page.locator(".gauge-runs");
   await expect(gauge).toBeVisible();
-  // One of four running: a quarter wedge, counter-clockwise from the top to the left.
-  await expect(gauge.locator("path")).toHaveAttribute("d", "M5 5 L5 1 A4 4 0 0 0 1 5 Z");
+  await expect(gauge).toHaveClass(/glyph-spin/);
+  expect(await gauge.locator("[fill]:not([fill='none'])").count()).toBe(0);
+  expect(await gauge.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).animationIterationCount])).toEqual(["spin", "infinite"]);
+  // The one run has been silent for twenty minutes: nothing is moving, so the arc holds still (review 14).
+  await openTower(page, "overview", { enrich: heard(20 * 60_000) });
+  await expect(gauge).toBeVisible();
+  await expect(gauge).not.toHaveClass(/glyph-spin/);
+  expect(await gauge.evaluate((el) => el.getAnimations().length)).toBe(0);
+  await expect(gauge.locator("path")).toHaveAttribute("d", "M5 1a4 4 0 0 1 4 4");
   await expect(page.locator(".gauge-active")).toContainText("1/4");
-  const hollow = page.locator(".gauge-dot.hollow");
-  await expect(hollow).toBeVisible();
-  expect(await hollow.evaluate((el) => getComputedStyle(el).animationName)).toBe("beat");
-  expect(await hollow.evaluate((el) => getComputedStyle(el).animationIterationCount)).toBe("1");
+  // Silence is worth a look, not a failure (docs/12 §12.4.3, docs/08 §8.6.3): the hint mark in the reading's own ink, never
+  // the red ring it was (iteration 15), and it does not move.
+  const beat = page.locator(".gauge-stale");
+  await expect(beat).toContainText(/silent for/);
+  const hint = beat.locator("svg.mark-notice");
+  await expect(hint).toBeVisible();
+  // The runs mark is the size of the hint mark beside it (review 15: 10px beside 12px).
+  expect(await gauge.evaluate((s) => [s.getAttribute("width"), s.getAttribute("height")])).toEqual(["12", "12"]);
+  expect(await hint.getAttribute("width")).toBe("12");
+  expect(await beat.evaluate((g) => [getComputedStyle(g.querySelector("svg")!).color === getComputedStyle(g).color, g.querySelectorAll("svg").length, g.getAnimations({ subtree: true }).length])).toEqual([true, 1, 0]);
+  const danger = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--st-danger").trim());
+  expect(await beat.evaluate((g, d) => {
+    const probe = document.createElement("i");
+    document.body.append(probe);
+    probe.style.color = d;
+    const red = getComputedStyle(probe).color;
+    probe.remove();
+    return [...g.querySelectorAll("*")].some((el) => [getComputedStyle(el).color, getComputedStyle(el).borderTopColor, getComputedStyle(el).backgroundColor].includes(red));
+  }, danger), "a red in the heartbeat").toBe(false);
+  // The silent goal's own words do not shimmer: nothing is moving.
+  await expect(page.locator(".live-moving")).toHaveCount(0);
+});
+
+test("the goal in view that is moving shimmers its words; on the board its row keeps still words and only turns its mark; with motion reduced all holds still", async ({ page }) => {
+  const fresh = (F: Record<string, any>) => {
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
+  };
+  await openTower(page, "overview", { enrich: fresh });
+  // The board: a running row turns its mark, and its words stay ink, however many goals run.
+  const marks = page.locator(".board-rows .g-row .g-glyph svg.glyph-spin");
+  await expect(marks.first()).toBeVisible();
+  await expect(page.locator(".board-rows .live-moving")).toHaveCount(0);
+  const row = page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first();
+  expect(await row.locator(".live-action").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+  // The goal in view: its live line shimmers. The light is a band of the page's own ground laid over the words' own ink,
+  // clipped to the words, and it moves by transform alone (review 14: a background-clip text shimmer repainted the words
+  // every frame and cost a quarter of a core). Its peak is that ground at 60% (review 16).
+  const id = await row.getAttribute("data-goal");
+  await openTower(page, `goal/${id}`, { enrich: fresh });
+  const words = page.locator(".annunciator .live-moving .live-action");
+  await expect(words).toBeVisible();
+  const light = await words.evaluate((el) => {
+    const band = getComputedStyle(el, "::after");
+    let ground = el.parentElement!;
+    while (getComputedStyle(ground).backgroundColor === "rgba(0, 0, 0, 0)" && ground.parentElement) ground = ground.parentElement;
+    const keys = [...document.styleSheets].flatMap((s) => [...s.cssRules]).find((r): r is CSSKeyframesRule => r instanceof CSSKeyframesRule && r.name === band.animationName);
+    const props = new Set(keys ? [...keys.cssRules].flatMap((k) => [...(k as CSSKeyframeRule).style]) : []);
+    const rgba = (c: string) => {
+      const x = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d")!;
+      x.fillStyle = c;
+      x.fillRect(0, 0, 1, 1);
+      return [...x.getImageData(0, 0, 1, 1).data];
+    };
+    const peak = rgba(band.backgroundImage.match(/,\s*([a-z]+\([^()]*\))\s+50%/)?.[1] ?? "#f00");
+    const floor = rgba(getComputedStyle(ground).backgroundColor);
+    return {
+      animation: [band.animationName, band.animationIterationCount],
+      animates: [...props].sort(),
+      ink: getComputedStyle(el).color === "rgba(0, 0, 0, 0)" ? "transparent" : "ink",
+      clipped: getComputedStyle(el).clipPath,
+      band: peak.slice(0, 3).every((v, i) => Math.abs(v - floor[i]) <= 3) && Math.abs(peak[3] - 153) <= 4,
+    };
+  });
+  expect(light).toEqual({ animation: ["shimmer", "infinite"], animates: ["transform"], ink: "ink", clipped: "inset(0px)", band: true });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await words.evaluate((el) => [getComputedStyle(el, "::after").animationName, getComputedStyle(el).color === "rgba(0, 0, 0, 0)"])).toEqual(["none", false]);
+  await openTower(page, "overview", { enrich: fresh });
+  expect(await page.locator(".board-rows .g-glyph svg.glyph-spin").first().evaluate((el) => getComputedStyle(el).animationDuration)).toBe("0s");
+});
+
+// Review 15 (record only): the light was 5em across whatever the words, so a short action word ("bash") sat inside it
+// whole and the line read as dimming, not as a light passing. Frozen at its midpoint the light covers the middle of the
+// word, not all of it; over one pass it still crosses every column.
+test("the shimmer's light passes over a short action word, it does not dim the word whole, and no letter goes out under it", async ({ page }) => {
+  const fresh = (F: Record<string, any>) => {
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
+  };
+  await openTower(page, "overview", { enrich: fresh });
+  const id = await page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first().getAttribute("data-goal");
+  await openTower(page, `goal/${id}`, { enrich: fresh });
+  const words = page.locator(".annunciator .live-moving .live-action");
+  await expect(words).toBeVisible();
+  // The word's columns that hold ink, and of those the ones the light changes, with the light frozen at `t` ms of 2400.
+  const lit = async (t: number | null) => {
+    await words.evaluate((el, t) => {
+      el.textContent = "bash";
+      const band = document.getAnimations().find((a) => (a.effect as KeyframeEffect)?.pseudoElement === "::after" && (a.effect as KeyframeEffect).target === el)!;
+      band.pause();
+      band.currentTime = t ?? 0;
+      el.classList.toggle("tmp-no-band", t === null);
+    }, t);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return (await words.screenshot()).toString("base64");
+  };
+  await page.addStyleTag({ content: ".tmp-no-band::after { visibility: hidden !important; }" });
+  const plain = await lit(null);
+  const shots = [];
+  for (const t of [1200, 0, 300, 600, 900, 1500, 1800, 2100]) shots.push(await lit(t));
+  const cols = await page.evaluate(
+    async ([plain, shots]) => {
+      const load = async (s: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${s}`;
+        await img.decode();
+        const c = document.createElement("canvas");
+        [c.width, c.height] = [img.width, img.height];
+        const x = c.getContext("2d")!;
+        x.drawImage(img, 0, 0);
+        return x.getImageData(0, 0, c.width, c.height);
+      };
+      const B = await load(plain);
+      const px = (D: ImageData, x: number, y: number) => [0, 1, 2].map((k) => D.data[(y * D.width + x) * 4 + k]);
+      const dist = (p: number[], q: number[]) => p.reduce((s, v, i) => s + Math.abs(v - q[i]), 0);
+      const ink = [...Array(B.width).keys()].filter((x) => [...Array(B.height).keys()].some((y) => dist(px(B, x, y), px(B, 0, 0)) > 90));
+      const out: number[][] = [];
+      // How much of a column's ink stands off the ground under the light, against without it: its least, over the word.
+      const ground = px(B, 0, 0);
+      const stand = (D: ImageData, x: number) => Math.max(...[...Array(D.height).keys()].map((y) => dist(px(D, x, y), ground)));
+      let least = 1;
+      for (const s of shots) {
+        const A = await load(s);
+        out.push(ink.filter((x) => [...Array(B.height).keys()].some((y) => dist(px(A, x, y), px(B, x, y)) > 30)));
+        for (const x of ink) least = Math.min(least, stand(A, x) / stand(B, x));
+      }
+      return { ink: ink.length, lit: out, least };
+    },
+    [plain, shots] as const,
+  );
+  expect(cols.ink, "the word has ink").toBeGreaterThan(10);
+  expect(cols.lit[0].length / cols.ink, `at its midpoint the light covers ${cols.lit[0].length} of ${cols.ink} columns`).toBeLessThanOrEqual(0.6);
+  expect(new Set(cols.lit.flat()).size / cols.ink, "over one pass the light crosses the whole word").toBeGreaterThanOrEqual(0.95);
+  // Review 16 (record only): at its peak the light was the ground itself, and the letters under it went out.
+  expect(cols.least, `under the light a letter keeps ${Math.round(cols.least * 100)}% of its ink`).toBeGreaterThanOrEqual(0.3);
+});
+
+// Review 17 (record only): in the dark theme the ground is darker than the words, so a band of it passing read as the
+// words dimming. There the light is the gap in a veil of the ground: the words rest a little under it, and where the
+// light passes they stand at their full ink, so the line brightens as it is lit.
+test("in the dark theme the shimmer's light brightens the words it passes: they rest under a veil and stand whole in the light", async ({ page }) => {
+  const fresh = (F: Record<string, any>) => {
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
+  };
+  await page.emulateMedia({ colorScheme: "dark" });
+  await openTower(page, "overview", { enrich: fresh });
+  const id = await page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first().getAttribute("data-goal");
+  await openTower(page, `goal/${id}`, { enrich: fresh });
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
+  const words = page.locator(".annunciator .live-moving .live-action");
+  await expect(words).toBeVisible();
+  const shot = async (t: number | null) => {
+    await words.evaluate((el, t) => {
+      el.textContent = "bash";
+      const band = document.getAnimations().find((a) => (a.effect as KeyframeEffect)?.pseudoElement === "::after" && (a.effect as KeyframeEffect).target === el)!;
+      band.pause();
+      band.currentTime = t ?? 0;
+      el.classList.toggle("tmp-no-band", t === null);
+    }, t);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return (await words.screenshot()).toString("base64");
+  };
+  await page.addStyleTag({ content: ".tmp-no-band::after { visibility: hidden !important; }" });
+  const plain = await shot(null);
+  const times = Array.from({ length: 16 }, (_, i) => i * 150);
+  const shots = [];
+  for (const t of times) shots.push(await shot(t));
+  // For each frozen moment, each ink column's ink against without the band: 1 is its full ink.
+  const inkOf = await page.evaluate(
+    async ([plain, shots]) => {
+      const load = async (s: string) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${s}`;
+        await img.decode();
+        const c = document.createElement("canvas");
+        [c.width, c.height] = [img.width, img.height];
+        const x = c.getContext("2d")!;
+        x.drawImage(img, 0, 0);
+        return x.getImageData(0, 0, c.width, c.height);
+      };
+      const B = await load(plain);
+      const px = (D: ImageData, x: number, y: number) => [0, 1, 2].map((k) => D.data[(y * D.width + x) * 4 + k]);
+      const dist = (p: number[], q: number[]) => p.reduce((s, v, i) => s + Math.abs(v - q[i]), 0);
+      const ground = px(B, 0, 0);
+      const stand = (D: ImageData, x: number) => Math.max(...[...Array(D.height).keys()].map((y) => dist(px(D, x, y), ground)));
+      const ink = [...Array(B.width).keys()].filter((x) => stand(B, x) > 90);
+      const out: number[][] = [];
+      for (const s of shots) {
+        const A = await load(s);
+        out.push(ink.map((x) => stand(A, x) / stand(B, x)));
+      }
+      return out;
+    },
+    [plain, shots] as const,
+  );
+  const cols = inkOf[0].length;
+  expect(cols, "the word has ink").toBeGreaterThan(10);
+  // With the light off the word, every letter rests under the veil, dimmed and never out.
+  expect(Math.max(...inkOf[0]), "at rest the word is under the veil").toBeLessThan(0.85);
+  expect(Math.min(...inkOf.flat()), "no letter goes below half its ink").toBeGreaterThanOrEqual(0.5);
+  // At its midpoint the light is a band: some columns stand whole, others still rest.
+  const mid = inkOf[times.indexOf(1200)];
+  expect(mid.filter((r) => r >= 0.95).length, "the light stands some columns whole").toBeGreaterThan(0);
+  expect(mid.filter((r) => r < 0.85).length, "the light does not take the whole word").toBeGreaterThan(0);
+  // Over one pass the light crosses the whole word: every column stands whole at some moment.
+  const reached = [...Array(cols).keys()].filter((x) => Math.max(...inkOf.map((s) => s[x])) >= 0.95).length;
+  expect(reached / cols, "over one pass the light crosses the whole word").toBeGreaterThanOrEqual(0.95);
+});
+
+// Review 18 (record only): in the dark theme the words rest under the veil at 65% of their ink, and the band left with
+// the run's motion, so the moment the run went still they leapt to full ink. The band fades out (and in) instead, and
+// holds still while it goes.
+test("when the run goes still, the shimmer's band fades away rather than leaving the words at once (light and dark)", async ({ page }) => {
+  const fresh = (F: Record<string, any>) => {
+    for (const g of F.goals) if (g.state === "running") g.updated_at = Date.now();
+  };
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await openTower(page, "overview", { enrich: fresh });
+    const id = await page.locator(".board-rows .g-row").filter({ has: page.locator(".g-glyph svg.glyph-spin") }).first().getAttribute("data-goal");
+    await openTower(page, `goal/${id}`, { enrich: fresh });
+    const words = page.locator(".annunciator .live-moving .live-action");
+    await expect(words).toBeVisible();
+    await expect.poll(() => words.evaluate((el) => getComputedStyle(el, "::after").opacity), { message: `${scheme}: the band has faded in` }).toBe("1");
+    const fade = await words.evaluate(async (el) => {
+      const band = () => getComputedStyle(el, "::after");
+      const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      el.closest(".live-moving")!.classList.remove("live-moving");
+      await frames();
+      const soon = { content: band().content, opacity: Number(band().opacity), held: band().animationPlayState };
+      await new Promise((r) => setTimeout(r, 900));
+      return { soon, later: Number(band().opacity) };
+    });
+    expect(fade.soon.content, `${scheme}: the band stays while it fades`).not.toBe("none");
+    expect(fade.soon.opacity, `${scheme}: just after the run went still the band is still there`).toBeGreaterThan(0.5);
+    expect(fade.soon.held, `${scheme}: the band holds where it is as it fades`).toBe("paused");
+    expect(fade.later, `${scheme}: then it is gone`).toBe(0);
+  }
+});
+
+test("with motion reduced, a criteria segment takes its new count at once: its fill (an ::after) does not grow along the bar", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openTower(page, "goal/G-0002");
+  await settled(page, "goal/G-0002");
+  // Review 14: the global rule reached every box but not its ::after, so the fill still grew for 465 ms. The component
+  // keeps a segment's element when a count changes and swaps its class, so the test does the same.
+  const fill = await page.evaluate(async () => {
+    const s = [...document.querySelectorAll<HTMLElement>(".seg")].find((x) => x.classList.contains("seg-empty"))!;
+    const at = () => getComputedStyle(s, "::after").transform;
+    s.className = "seg seg-verified";
+    await new Promise((r) => setTimeout(r, 60));
+    const early = at();
+    await new Promise((r) => setTimeout(r, 600));
+    return { early, settled: at(), duration: getComputedStyle(s, "::after").transitionDuration };
+  });
+  expect(fill.early, JSON.stringify(fill)).toBe(fill.settled);
+  expect(fill.duration.split(",").every((d) => parseFloat(d) === 0), fill.duration).toBe(true);
+});
+
+test("on the board only a run that moves turns its mark; one waiting on you or gone quiet, and every list you move through, holds it still", async ({ page }) => {
+  await openTower(page, "overview", {
+    enrich: (F) => {
+      const base = F.goals.find((g: any) => g.id === "G-0002");
+      base.updated_at = Date.now();
+      // Review 14's rows: a run waiting on your answer, and one silent for twenty minutes.
+      F.goals.push({ ...structuredClone(base), id: "G-0005", title: "Ask before dropping the legacy coupon table", mode: "waiting_on_you", needs_you: 1 });
+      F.goals.push({ ...structuredClone(base), id: "G-0006", title: "Rebuild the search index", updated_at: Date.now() - 20 * 60_000 });
+    },
+  });
+  await settled(page, "overview");
+  const mark = (id: string) => page.locator(`.board-rows .g-row[data-goal="${id}"] .g-glyph svg`);
+  await expect(mark("G-0002")).toHaveClass(/glyph-spin/);
+  expect(await mark("G-0002").evaluate((el) => el.getAnimations().length)).toBe(1);
+  for (const id of ["G-0005", "G-0006"]) {
+    await expect(mark(id)).not.toHaveClass(/glyph-spin/);
+    expect(await mark(id).evaluate((el) => el.getAnimations().length), `${id}'s mark`).toBe(0);
+  }
+  // The sidebar is a list you move through: each running mark is there, and none of them turns.
+  const side = page.locator(".sidebar .side-goal svg.glyph");
+  await expect(side.first()).toBeVisible();
+  expect(await side.evaluateAll((els) => els.filter((e) => e.getAnimations().length > 0).length)).toBe(0);
 });
 
 test("the title bar's bell is a 22pt target, and a half-screen window drops a healthy engine's label rather than hanging it empty", async ({ page }) => {
@@ -351,7 +1238,8 @@ test("rolling back is not only for the pointer: a run you can roll back to is a 
 });
 
 test("the look comparison answers the keyboard: modes, slider, held space", async ({ page }) => {
-  await openTower(page, "goal/G-0001", { enrich: enrichLook });
+  await openTower(page, "goal/G-0001", { enrich: enrichTallLook });
+  await openReadings(page);
   await expect(page.getByText("couldn't check on")).toBeVisible();
   // The reason is on the line, not only in its tooltip.
   await expect(page.locator(".criterion-obs .base-why").first()).toBeVisible();
@@ -384,7 +1272,7 @@ test("the look comparison answers the keyboard: modes, slider, held space", asyn
 });
 
 test("a look thumbnail is as tall as its frame and no wider than its page; the verification sheet says when there is more below", async ({ page }) => {
-  await openTower(page, "goal/G-0001", { enrich: enrichLook });
+  await openTower(page, "goal/G-0001", { enrich: enrichTallLook });
   const img = page.locator(".look-img").first();
   await expect(img).toBeVisible();
   const box = await img.boundingBox();
@@ -400,6 +1288,391 @@ test("a look thumbnail is as tall as its frame and no wider than its page; the v
   await dialog.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
   await expect(dialog).not.toHaveAttribute("data-more");
 });
+
+// Review 16 (record only): before an image decoded it had no width of its own, and the two thumbnails sat as two 2px
+// lines; until then each holds a page's frame. Review 17 (record only): a 3:4 frame jumped to the image's own width
+// when it came. The frame is Tower's capture's own (the desktop's 1280×800, the phone's 390×844), so a capture lands in
+// the box it waited in.
+test("a look thumbnail that has not decoded yet holds a page's frame, not a sliver", async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  await page.route("**/tmp-held/*", async (route) => {
+    await held;
+    // Captures in Tower's proportions: the desktop's 16:10, the phone's 390×844.
+    if (route.request().url().includes("-m-")) return route.fulfill({ status: 200, contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844"><rect width="390" height="844" fill="#ccc"/></svg>' });
+    await route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAABAAAAAKCAIAAAAy3EnLAAAAFElEQVR42mP49uU9SYhhVMPQ1AAAK/bHsKIeVYgAAAAASUVORK5CYII=", "base64") });
+  });
+  await openTower(page, "goal/G-0001", {
+    enrich: (F) => {
+      enrichLook(F);
+      const look = F["goal-G-0001"].criteria.at(-1).look;
+      Object.assign(look, { mobile_base: "looks/G-0001/C4-m-base.svg", mobile_pin: "looks/G-0001/C4-m-pin.svg" });
+      F.lookImages["looks/G-0001/C4-m-base.svg"] = F.lookImages["looks/G-0001/C4-m-pin.svg"] = "";
+      for (const k of Object.keys(F.lookImages)) F.lookImages[k] = `/tmp-held/${k.split("/").pop()}`;
+    },
+  });
+  const imgs = page.locator(".criterion .look-img");
+  await expect(imgs).toHaveCount(2);
+  const widths = async () => (await imgs.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width))));
+  const waiting = await widths();
+  for (const w of waiting) expect(w, "a waiting thumbnail is a page's frame, 96 tall and 16:10").toBe(152);
+  // The phone's captures wait in the phone's frame: 96 tall, 390:844 inside the 1px border.
+  await page.locator(".criterion .look-viewports").getByRole("tab").nth(1).click();
+  await expect.poll(() => widths()).toEqual([45, 45]);
+  release();
+  await expect.poll(() => imgs.evaluateAll((els) => els.every((e) => (e as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  expect(await widths(), "the phone's capture lands in the box it waited in").toEqual([45, 45]);
+  await page.locator(".criterion .look-viewports").getByRole("tab").nth(0).click();
+  await expect.poll(() => imgs.evaluateAll((els) => els.every((e) => (e as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  expect(await widths(), "the desktop's capture lands in the box it waited in").toEqual(waiting);
+});
+
+// Review 22, note 8: a side's capture is one browser session for both viewports, but only the desktop tab said why it
+// failed; the phone's said "Not captured". Both say the reason, in the phone's frame on the row and in the sheet, its
+// words whole.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a capture that failed says why on the phone's tab too, words whole (${lang})`, async ({ page }) => {
+    const why = { en: "The page did not open: net::ERR_CONNECTION_REFUSED at http://localhost:3000/checkout", "zh-CN": "页面没有打开：net::ERR_CONNECTION_REFUSED，http://localhost:3000/checkout" }[lang];
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        enrichLook(F);
+        const look = F["goal-G-0001"].criteria.at(-1).look;
+        Object.assign(look, { pin: null, pin_error: why, mobile_base: "looks/G-0001/C4-m-base.svg" });
+        F.lookImages["looks/G-0001/C4-m-base.svg"] = F.lookImages["looks/G-0001/C4-base.png"];
+      },
+    });
+    const broken = (l: import("@playwright/test").Locator) =>
+      l.evaluate((el) => {
+        const out: string[] = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode())
+          for (const m of (n.textContent ?? "").matchAll(/[A-Za-z0-9]+/g)) {
+            const tops = new Set<number>();
+            for (let i = m.index!; i < m.index! + m[0].length; i++) {
+              const r = document.createRange();
+              r.setStart(n, i);
+              r.setEnd(n, i + 1);
+              const rect = r.getClientRects()[0];
+              if (rect) tops.add(Math.round(rect.top));
+            }
+            if (tops.size > 1) out.push(m[0]);
+          }
+        return out;
+      });
+    const row = page.locator(".criterion .look-wrap").last();
+    await row.locator(".look-viewports").getByRole("tab").nth(1).click();
+    await expect(row.locator(".look-strip")).toHaveClass(/look-phone/);
+    const missing = row.locator(".look-strip .look-shot").nth(1).locator(".look-missing");
+    await expect(missing).toHaveText(why);
+    await expect(missing).toHaveAttribute("title", why);
+    expect(await broken(missing), "on the row").toEqual([]);
+    // On the phone's tab the frame of a side gone is the box a phone's capture waits in, 45×96 (the test of a thumbnail
+    // not yet decoded pins it), and its reason stands beside it, whole; on the desktop's tab the frame is the desktop's,
+    // 154×96, and holds its words (review 24, record only 5: the desktop's frame beside a phone's picture, its reason cut
+    // after five lines; review 23, record only: 220×96 on the phone's tab was neither shape).
+    const box = (l: import("@playwright/test").Locator) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+    expect(await box(missing.locator(".look-frame")), "a phone's frame").toEqual([45, 96]);
+    expect(await missing.locator("span").evaluate((el) => el.scrollHeight <= el.clientHeight + 1), "the reason whole beside it").toBe(true);
+    await row.locator(".look-viewports").getByRole("tab").nth(0).click();
+    await expect(row.locator(".look-strip")).not.toHaveClass(/look-phone/);
+    expect(await box(missing), "the desktop's frame").toEqual([154, 96]);
+    await expect(missing.locator(".look-frame")).toBeHidden();
+    await row.locator(".look-viewports").getByRole("tab").nth(1).click();
+    await expect(row.locator(".look-strip")).toHaveClass(/look-phone/);
+    await row.locator(".look-strip .look-shot .look-img-btn").first().click();
+    const side = page.locator(".look-side.look-phone .look-shot").nth(1).locator(".look-missing");
+    await expect(side).toHaveText(why);
+    // The sheet's phone frame follows the window's height: narrow in a short window, it still keeps every word whole,
+    // and the whole reason shows down to the window's least height, 640 (review 23, record only: eight lines and an
+    // ellipsis in a frame 336 tall).
+    const parted: string[] = [];
+    for (let h = 900; h >= 560; h -= 20) {
+      await page.setViewportSize({ width: 1040, height: h });
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      parted.push(...(await broken(side)).map((b) => `${h}: ${b}`));
+      const cut = await side.locator("span").evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+      if (h >= 640 && cut) parted.push(`${h}: the reason is cut short`);
+    }
+    expect(parted, "in the sheet, at every height").toEqual([]);
+  });
+
+// Review 24 (record only 5): on the phone's tab a side gone is a phone's frame with its reason beside it, wherever it
+// stands: the "after" gone, or the "before" (its words between the two frames), on the row at the narrowest window and
+// a wide one, and in the readout's shorter strip. The frame is the box of the picture beside it, the reason whole (the
+// long reasons below too: beside the frame the words have its whole height), the captions level, nothing past the row.
+// Both sides gone, no phone capture exists and there is no phone tab: the two frames are the desktop's and hold their
+// words.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`on the phone's tab a side gone is the picture's frame with its reason beside it, before or after, on the row and in the readout (${lang})`, async ({ page }) => {
+    test.setTimeout(120_000);
+    const why = { en: "The page did not open: net::ERR_CONNECTION_REFUSED at http://localhost:3000/checkout", "zh-CN": "页面没有打开：net::ERR_CONNECTION_REFUSED，http://localhost:3000/checkout" }[lang];
+    const phone = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844"><rect width="390" height="844" fill="#ccc"/></svg>')}`;
+    const enrich = (gone: readonly ("base" | "pin")[], why: string) => (F: Parameters<typeof enrichLook>[0]) => {
+      enrichLook(F);
+      const look = F["goal-G-0001"].criteria.at(-1).look;
+      Object.assign(look, { mobile_base: "looks/G-0001/C4-m-base.svg", mobile_pin: "looks/G-0001/C4-m-pin.svg" });
+      F.lookImages["looks/G-0001/C4-m-base.svg"] = F.lookImages["looks/G-0001/C4-m-pin.svg"] = phone;
+      // A side's capture is one browser session for both viewports: gone, it is gone on both.
+      for (const side of gone) Object.assign(look, { [side]: null, [`mobile_${side}`]: null, [`${side}_error`]: why });
+    };
+    const box = (l: import("@playwright/test").Locator) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), Math.round(r.right)]; });
+    const check = async (wrap: import("@playwright/test").Locator, where: string, picture: number[], why: string, whole = true) => {
+      await wrap.locator(".look-viewports").getByRole("tab").nth(1).click();
+      const strip = wrap.locator(".look-strip");
+      await expect(strip).toHaveClass(/look-phone/);
+      const shots = strip.locator(".look-shot");
+      await expect(shots.locator(".look-missing")).toHaveCount(1);
+      await expect.poll(() => shots.locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+      const [pw, ph] = await box(shots.locator(".look-img"));
+      expect([pw, ph], `${where}: the phone's picture`).toEqual(picture);
+      const [fw, fh] = await box(shots.locator(".look-frame"));
+      expect([fw, fh], `${where}: the frame is the picture's box`).toEqual([pw, ph]);
+      const reason = shots.locator(".look-missing > span");
+      await expect(reason).toHaveText(why);
+      await expect(shots.locator(".look-missing")).toHaveAttribute("title", why);
+      // As many lines as the frame's height holds, never fewer: six in the row's 96, four in the readout's 72.
+      const { lines, shown, lh } = await reason.evaluate((el) => {
+        const lh = parseFloat(getComputedStyle(el).lineHeight);
+        return { lines: Math.round(el.scrollHeight / lh), shown: Math.round(el.clientHeight / lh), lh };
+      });
+      expect(shown, `${where}: as many lines as the frame's height holds`).toBe(Math.min(lines, Math.floor(fh / lh)));
+      if (whole) expect(lines, `${where}: the reason whole`).toBeLessThanOrEqual(Math.floor(fh / lh));
+      const captions = await shots.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+      expect(new Set(captions).size, `${where}: the captions level`).toBe(1);
+      const [across, , edge] = await box(wrap);
+      // A note beside the frame, a few short lines: one line across the row would part "before" from "after".
+      expect((await box(reason))[0], `${where}: the reason a note beside the frame, not a line across the row`).toBeLessThanOrEqual(across / 2);
+      const rights = await Promise.all((await shots.all()).map(box));
+      expect(Math.max(...rights.map((r) => r[2])), `${where}: nothing past the row`).toBeLessThanOrEqual(edge);
+    };
+    const readout = async (gone: readonly ("base" | "pin")[], reason: string, where: string, shot: string, whole = true) => {
+      // The readout's strip is 72 tall: the frame is the phone's at that height, as the picture is.
+      await page.setViewportSize({ width: 1040, height: 900 });
+      await openTower(page, "review/G-0001", { lang, enrich: enrich(gone, reason) });
+      await expect(page.locator("table").first()).toBeVisible();
+      await page.keyboard.press("e");
+      const item = page.getByRole("dialog").locator(".verify-item").filter({ has: page.locator(".look-strip") }).first();
+      await check(item.locator(".look-wrap"), where, [34, 72], reason, whole);
+      await item.screenshot({ path: test.info().outputPath(shot) });
+    };
+    for (const gone of [["pin"], ["base"]] as const) {
+      for (const width of [1040, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        await openTower(page, "goal/G-0001", { lang, enrich: enrich(gone, why) });
+        const row = page.locator(".criterion .look-wrap").last();
+        await check(row, `${gone[0]} gone, on the row at ${width}`, [45, 96], why);
+        await row.screenshot({ path: test.info().outputPath(`look-phone-${gone[0]}-gone-${width}.png`) });
+      }
+      await readout(gone, why, `${gone[0]} gone, in the readout`, `look-phone-${gone[0]}-gone-readout.png`);
+    }
+    // A long reason and a longer one, whole on the row and in the readout (review 24, record only 5: cut after five lines
+    // beside a phone's picture); the longer is four lines at 44ch, all a readout's 72 holds. One longer than the frame's
+    // height shows the lines it holds, the whole in the tooltip.
+    const longest = {
+      en: `${wideWhy.en}. Tower tried twice more, restarting the dev server between tries, and each time the port was taken by another program, so neither viewport has a picture of this side.`,
+      "zh-CN": `${wideWhy["zh-CN"]}。Tower 又试了两次，每次之间都重启了开发服务器，端口仍被别的程序占用，所以这一侧两个视口都没有截图。`,
+    }[lang];
+    for (const [name, reason, whole] of [["long", longWhy[lang], true], ["wide", wideWhy[lang], true], ["longest", longest, false]] as const) {
+      await page.setViewportSize({ width: 1040, height: 900 });
+      await openTower(page, "goal/G-0001", { lang, enrich: enrich(["base"], reason) });
+      await check(page.locator(".criterion .look-wrap").last(), `the ${name} reason on the row`, [45, 96], reason, whole);
+      await readout(["pin"], reason, `the ${name} reason in the readout`, `look-phone-${name}-readout.png`, whole);
+    }
+    await openTower(page, "goal/G-0001", { lang, enrich: enrich(["base", "pin"], why) });
+    const row = page.locator(".criterion .look-wrap").last();
+    await expect(row.locator(".look-missing")).toHaveCount(2);
+    await expect(row.locator(".look-viewports")).toHaveCount(0);
+    for (const frame of await row.locator(".look-missing").all()) {
+      expect((await box(frame)).slice(0, 2), "both gone: the desktop's frame").toEqual([154, 96]);
+      await expect(frame.locator(".look-frame")).toBeHidden();
+    }
+  });
+
+// Review 18 (record only): a side that was gone said so in a frame of its words' width (175 in English, 140 in
+// Chinese) beside a 152-wide picture. It says it in the frame a capture has, in either language.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a missing side says why in the frame its capture would have had (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        enrichLook(F);
+        const look = F["goal-G-0001"].criteria.at(-1).look;
+        look.pin = "looks/G-0001/C4-gone.png";
+      },
+    });
+    const shots = page.locator(".criterion .look-strip .look-shot");
+    await expect(shots).toHaveCount(2);
+    await expect(shots.nth(1).locator(".look-missing")).toHaveText(lang === "en" ? "The screenshot file is gone" : "截图文件已不在");
+    await expect.poll(() => shots.nth(0).locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const [picture, gone] = await Promise.all([shots.nth(0).locator(".look-img"), shots.nth(1).locator(".look-missing")].map((l) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })));
+    expect(Math.abs(gone[0] - picture[0]), `gone ${gone} beside the picture ${picture}`).toBeLessThanOrEqual(2);
+    expect(gone[1]).toBe(picture[1]);
+  });
+
+// Review 19 (R19-P3-02): a long reason stood 110 tall beside a 96-tall picture, broken inside words ("checko|ut",
+// "CONNECTIO|N_REFUSED"); large, side by side, a missing side was a 192×227 frame beside a 532×333 picture, its
+// caption halfway down. The frame keeps the picture's box in both, the captions stay level, and words stay whole.
+const longWhy = {
+  en: "The page did not open: net::ERR_CONNECTION_REFUSED at http://localhost:3000/checkout, still no answer after 60 seconds",
+  "zh-CN": "页面没有打开：net::ERR_CONNECTION_REFUSED，http://localhost:3000/checkout 在 60 秒后仍无响应",
+} as const;
+const wideWhy = {
+  en: "The capture waited sixty seconds for the checkout page to load its scripts, its styles, its fonts and its pictures, and stopped on net::ERR_CONNECTION_REFUSED at http://localhost:3000/checkout",
+  "zh-CN": "截图等了六十秒，结账页面的脚本、样式和图片一直没有加载完，开发服务器可能没有启动，或者端口被别的程序占用了，最后停在 net::ERR_CONNECTION_REFUSED，地址是 http://localhost:3000/checkout",
+} as const;
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a missing side keeps the picture's frame with a long reason and side by side, words whole, captions level (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        enrichLook(F);
+        F["goal-G-0001"].criteria.at(-1).look.pin_error = longWhy[lang];
+      },
+    });
+    const box = (l: import("@playwright/test").Locator) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [r.width, r.height, r.top, r.bottom]; });
+    // Every run of letters and digits sits on one line: a break falls only after a separator, or between CJK characters.
+    const wordsWhole = (l: import("@playwright/test").Locator) =>
+      l.evaluate((el) => {
+        const broken: string[] = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const text = n.textContent ?? "";
+          for (const m of text.matchAll(/[A-Za-z0-9]+/g)) {
+            const tops = new Set<number>();
+            for (let i = m.index!; i < m.index! + m[0].length; i++) {
+              const r = document.createRange();
+              r.setStart(n, i);
+              r.setEnd(n, i + 1);
+              const rect = r.getClientRects()[0];
+              if (rect) tops.add(Math.round(rect.top));
+            }
+            if (tops.size > 1) broken.push(m[0]);
+          }
+        }
+        return broken;
+      });
+    // Whether each of `texts` stands on one line; and the reason's characters the clamp leaves in view.
+    const sameLine = (l: import("@playwright/test").Locator, texts: string[]) =>
+      l.evaluate((el, texts) => {
+        const chars: { n: Node; i: number }[] = [];
+        let all = "";
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode())
+          for (let i = 0; i < (n.textContent ?? "").length; i++) (chars.push({ n, i }), (all += n.textContent![i]));
+        const top = ({ n, i }: { n: Node; i: number }) => {
+          const r = document.createRange();
+          r.setStart(n, i);
+          r.setEnd(n, i + 1);
+          return Math.round(r.getClientRects()[0]?.top ?? -1);
+        };
+        return texts.map((t) => {
+          const k = all.indexOf(t);
+          return k >= 0 && new Set(chars.slice(k, k + t.length).map(top)).size === 1;
+        });
+      }, texts);
+    // Each break the reason offers: the characters either side of it.
+    const breaks = (l: import("@playwright/test").Locator) =>
+      l.evaluate((el) => {
+        let text = "";
+        const at: number[] = [];
+        const walk = (n: Node) => {
+          if (n.nodeType === Node.TEXT_NODE) text += n.textContent;
+          else if ((n as Element).localName === "wbr") at.push(text.length);
+          n.childNodes.forEach(walk);
+        };
+        walk(el);
+        return at.map((i) => text.slice(i - 1, i + 1));
+      });
+    const shown = (l: import("@playwright/test").Locator) =>
+      l.locator("span").first().evaluate((el) => {
+        const bottom = el.getBoundingClientRect().bottom;
+        let out = "";
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode())
+          for (let i = 0; i < (n.textContent ?? "").length; i++) {
+            const r = document.createRange();
+            r.setStart(n, i);
+            r.setEnd(n, i + 1);
+            const rect = r.getClientRects()[0];
+            if (rect && rect.bottom <= bottom + 0.5) out += n.textContent![i];
+          }
+        return out;
+      });
+    const shots = page.locator(".criterion .look-strip .look-shot");
+    await expect(shots).toHaveCount(2);
+    await expect.poll(() => shots.nth(0).locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const gone = shots.nth(1).locator(".look-missing");
+    await expect(gone).toHaveAttribute("title", longWhy[lang]);
+    const [pw, ph] = await box(shots.nth(0).locator(".look-img"));
+    const [gw, gh] = await box(gone);
+    expect(Math.abs(gw - pw), `gone ${gw}×${gh} beside the picture ${pw}×${ph}`).toBeLessThanOrEqual(2);
+    expect(gh).toBe(ph);
+    const lines = await gone.locator("span").first().evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)));
+    expect(lines, "five lines at most, in the picture's height").toBeLessThanOrEqual(5);
+    expect(await wordsWhole(gone)).toEqual([]);
+    // Review 20 (record only): clamped to three lines, the reason lost its code's end and its address to the ellipsis, and
+    // `net::` broke between its colons. Now the frame shows them, and `::` and `://` stay whole.
+    expect(await shown(gone), "the code and the address are in the frame").toEqual(expect.stringMatching(/REFUSED.*localhost/s));
+    expect(await sameLine(gone, ["net::", "http://"])).toEqual([true, true]);
+    const offered = await breaks(gone);
+    expect(offered.filter((b) => /^(::|:\/|\/\/)$/.test(b)), "no break inside :: or ://").toEqual([]);
+    expect(offered.filter((b) => b.startsWith("_")).length, "in the strip a code may break after its _").toBeGreaterThan(0);
+    const captions = await shots.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(captions[1], "the captions level").toBe(captions[0]);
+
+    // Large, side by side.
+    await shots.nth(0).locator(".look-img-btn").click();
+    const sheet = page.getByRole("dialog").locator(".look-side");
+    await expect(sheet).toBeVisible();
+    const big = sheet.locator(".look-shot");
+    await expect.poll(() => big.nth(0).locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const [bw, bh] = await box(big.nth(0).locator(".look-img"));
+    const [mw, mh] = await box(big.nth(1).locator(".look-missing"));
+    expect(Math.abs(mw - bw), `gone ${mw}×${mh} beside the picture ${bw}×${bh}`).toBeLessThanOrEqual(2);
+    expect(Math.abs(mh - bh)).toBeLessThanOrEqual(2);
+    expect(await wordsWhole(big.nth(1).locator(".look-missing"))).toEqual([]);
+    const bigCaptions = await big.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(bigCaptions[1], "the captions level").toBe(bigCaptions[0]);
+    // Wide, a line holds the code: it keeps whole wherever the line ends fall. Review 21: measured on screen, with the
+    // code at the end of a line, it broke after its `_` ("net::ERR_ / CONNECTION_REFUSED") with a nowrap rule in place.
+    // A reason that puts the code near the end of its second line, and a frame narrowing from 532px to 460px, move the
+    // line's end across the whole code.
+    await page.keyboard.press("Escape");
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        enrichLook(F);
+        F["goal-G-0001"].criteria.at(-1).look.pin_error = wideWhy[lang];
+      },
+    });
+    await page.locator(".criterion .look-strip .look-shot .look-img-btn").first().click();
+    await expect(big.nth(1).locator(".look-missing")).toHaveAttribute("title", wideWhy[lang]);
+    const whole: string[] = [];
+    for (let w = 1200; w >= 1040; w -= 2) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      const [code, address] = await sameLine(big.nth(1).locator(".look-missing"), ["net::ERR_CONNECTION_REFUSED", "http://"]);
+      if (!code || !address) whole.push(`${w}: ${code ? "" : "code "}${address ? "" : "://"}`);
+    }
+    expect(whole, "wide, the code and :// whole at every width").toEqual([]);
+  });
+
+// Iteration 24: an event the desk has no row of its own for was shown by its name: "canary_checked" and
+// "port_block_allocated" stood in every verified goal's trace. The supervisor words them, in the language of the moment.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`no trace row is an event's own name; the verifier's must-fail check and the goal's ports are said in words (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0001", { lang });
+    await settled(page, "goal/G-0001");
+    await page.keyboard.press("w");
+    const rows = page.locator(".trace-row .trace-content");
+    await expect(rows.first()).toBeVisible();
+    const said = (await rows.allInnerTexts()).map((t) => t.trim());
+    expect(said.filter((t) => /^[a-z]+(_[a-z]+)+$/.test(t)), "a row that is an event's name").toEqual([]);
+    const words =
+      lang === "en" ? ["the must-fail tests failed, as they must", "set aside for this goal"] : ["必然失败的测试如期失败", "为这个目标留出端口"];
+    for (const w of words) expect(said.some((t) => t.includes(w)), w).toBe(true);
+  });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {
   await openTower(page, "goal/G-0002");
@@ -441,6 +1714,7 @@ test("⌘P jumps to a file by path", async ({ page }) => {
 
 test("A accepts the current hunk as a reading mark: it folds to its header, the review moves on, the count says so, and the mark is kept with the review", async ({ page }) => {
   await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await openSourceUnit(page);
   await expect(page.locator("table").first()).toBeVisible();
   const heads = page.locator(".hunk-head[data-hunk-index]");
   const before = await heads.count();
@@ -448,7 +1722,7 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   const linesBefore = await page.locator(".dl").count();
   // Undo and accept stand together on a hunk's header while the workspace is yours.
   await expect(heads.first().getByRole("button", { name: "Revert hunk" })).toBeVisible();
-  const accept = heads.first().getByRole("button", { name: "Accept this hunk" });
+  const accept = heads.first().getByRole("button", { name: "Mark read" });
   await expect(accept).toHaveAttribute("title", /workspace is unchanged/);
   // The hunk closes rather than vanishes: its place stands at the lines' height and shrinks over 160ms, eased in.
   // (Read the moment the fold row is added: on a busy machine it can be gone before a separate round trip lands.)
@@ -467,29 +1741,37 @@ test("A accepts the current hunk as a reading mark: it folds to its header, the 
   await expect(page.locator(".hunk-fold-inner")).toHaveCount(0);
   const marked = page.locator(".hunk-head.hunk-accepted");
   await expect(marked).toHaveCount(1);
-  await expect(marked.getByRole("button", { name: /Accepted, \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(marked.getByRole("button", { name: /^Read, \d+ lines? folded/ })).toHaveAttribute("aria-pressed", "true");
   await expect(marked.getByRole("button", { name: "Revert hunk" })).toHaveCount(0);
   expect(await page.locator(".dl").count()).toBeLessThan(linesBefore);
   // Your register: the solid rule, not green.
   expect(await marked.locator("td").first().evaluate((el) => getComputedStyle(el).boxShadow)).toMatch(/inset/);
   const status = page.locator(".review-accepted");
-  await expect(status).toHaveText(/1\/\d+ hunks accepted/);
+  await expect(status).toHaveText(/1\/\d+ hunks read/);
   await expect(status).toHaveAttribute("title", /reading mark/);
   // Kept with the review, for this diff, never sent to the agent.
   await expect.poll(async () => (await calls(page)).find(([cmd, args]) => cmd === "set_ui_state" && (args as { key: string }).key === "accepted")?.[1]).toMatchObject({ key: "accepted", value: expect.stringMatching(/"range":".+\.\..+"/) });
   // Taken back by its button: the hunk unfolds.
-  await marked.getByRole("button", { name: /Accepted/ }).click();
+  await marked.getByRole("button", { name: /^Read, / }).click();
   await expect(page.locator(".hunk-head.hunk-accepted")).toHaveCount(0);
   expect(await page.locator(".dl").count()).toBe(linesBefore);
-  // Every hunk of a file accepted: the file is viewed.
+  // Every hunk of a file read: the file is marked reviewed.
   const file = page.locator(".file").first();
   const fileHunks = await file.locator(".hunk-head[data-hunk-index]").count();
   for (let i = 0; i < fileHunks; i++) await file.locator(".accept-hunk").nth(i).click();
-  await expect(file.getByRole("button", { name: /Viewed/ })).toHaveAttribute("aria-pressed", "true");
-  // Every hunk of the unit accepted: the status bar says so, and where to go next (V, the next unit).
+  await expect(file.locator(".file-viewed")).toHaveText("Reviewed");
+  // Every hunk of the unit accepted: the status bar says so, and where to go next. This is the last unit, so the goal's accept.
   const all = page.locator(".review-diff .accept-hunk");
-  for (let i = 0; i < (await all.count()); i++) if ((await all.nth(i).getAttribute("aria-pressed")) !== "true") await all.nth(i).click();
-  await expect(status).toHaveText(/All \d+ hunks accepted/);
+  const acceptAll = async () => {
+    for (let i = 0; i < (await all.count()); i++) if ((await all.nth(i).getAttribute("aria-pressed")) !== "true") await all.nth(i).click();
+  };
+  await acceptAll();
+  await expect(status).toHaveText(/All \d+ hunks read/);
+  await expect(status.locator("kbd")).toHaveText("⌘⇧↩");
+  // On a unit with another after it, V and the next unit.
+  await page.locator(".review-units .unit").first().click();
+  await acceptAll();
+  await expect(status).toHaveText(/All \d+ hunks? read/);
   await expect(status.locator("kbd")).toHaveText("V");
   await expect(status).toContainText("next unit");
 });
@@ -579,7 +1861,7 @@ test("with the phone page on, each link is named by its network", async ({ page 
   await expect(page.locator(".phone-links")).not.toContainText("http://");
 });
 
-test("an empty board shows its own grid: column heads and three hollow lines, no pretend data", async ({ page }) => {
+test("an empty board says so and draws no ghost rows: a loaded board is not a loading one", async ({ page }) => {
   await openTower(page, "overview", {
     enrich: (F) => {
       F.goals = [];
@@ -587,20 +1869,7 @@ test("an empty board shows its own grid: column heads and three hollow lines, no
     },
   });
   await expect(page.getByText("No active goals")).toBeVisible();
-  const ghost = page.locator(".board-ghost");
-  await expect(ghost).toBeVisible();
-  await expect(ghost.locator(".g-row")).toHaveCount(4);
-  await expect(ghost.locator(".board-ghost-head")).toContainText("Goal");
-  await expect(ghost.locator(".board-ghost-row .seg")).toHaveCount(9);
-  // Hollow: no digits, no words in the rows.
-  expect(await ghost.locator(".board-ghost-row").allInnerTexts()).toEqual(["", "", ""]);
-  // The heads sit in the same columns the rows use (the title's and the live line's left edges, the age's right edge).
-  for (const [i, edge] of [[1, "x"], [2, "x"], [6, "right"]] as const) {
-    const h = await ghost.locator(".board-ghost-head > span").nth(i).boundingBox();
-    const r = await ghost.locator(".board-ghost-row").first().locator("> span").nth(i).boundingBox();
-    const at = (b: { x: number; width: number }) => (edge === "x" ? b.x : b.x + b.width);
-    expect(Math.abs(at(h!) - at(r!))).toBeLessThan(1);
-  }
+  await expect(page.locator(".overview .ghost-bar, .overview .g-row")).toHaveCount(0);
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/overview-empty-ghost.png` });
 });
 
@@ -639,14 +1908,29 @@ test("the phone page switched on but not served says why, with its way out, and 
   const gauge = page.locator(".gauge-phone");
   await expect(gauge).toHaveText(/Phone page off/);
   await expect(gauge).toHaveAttribute("title", /Tailscale is not connected/);
+  // Review 16 (record only): it read in text-2 (a button's inherited ink), a step quieter than the error count; a gauge
+  // with a mark reads in text-1, and so does the engine's when it is not ready.
+  const ink = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).color);
+  const t1 = await page.evaluate(() => {
+    const p = document.createElement("i");
+    p.style.color = "var(--text-1)";
+    document.body.append(p);
+    const c = getComputedStyle(p).color;
+    p.remove();
+    return c;
+  });
+  expect(await ink(".gauge-phone")).toBe(t1);
+  await openTower(page, "settings", { enrich: (F) => (F.environment = { ...F.environment, pi_version: null }) });
+  await expect(page.locator(".gauge-down")).toHaveText(/not ready/);
+  expect(await ink(".gauge-down")).toBe(t1);
 });
 
 test("quiet hours are a daily window with two edges, and the last push's failure is a line with its time and reason", async ({ page }) => {
   await openTower(page, "settings", { enrich: enrichPushes });
   await expect(page.getByRole("heading", { name: "Notifications and pushes" })).toBeVisible();
-  const from = page.getByLabel("Quiet hours · From");
+  const from = page.getByLabel("Quiet hours, From");
   await expect(from).toHaveValue("22:00");
-  await expect(page.getByLabel("Quiet hours · to")).toHaveValue("08:00");
+  await expect(page.getByLabel("Quiet hours, to")).toHaveValue("08:00");
   await from.fill("23:30");
   await from.blur();
   await expect.poll(async () => (await calls(page)).some(([cmd, args]) => cmd === "save_settings" && (args as { settings: { quiet_hours: { start: number } | null } }).settings.quiet_hours?.start === 23 * 60 + 30)).toBe(true);
@@ -715,6 +1999,7 @@ test("under the Chinese seed the enriched cards speak Chinese too: the held-out 
 
 test("a result produced with the held-out tests present is marked for you only, on the goal page and in the verification sheet", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichHeldOut });
+  await openReadings(page);
   const chips = page.locator(".chip-you");
   await expect(chips).toHaveCount(1);
   await expect(chips).toHaveText("held-out tests, for you only");
@@ -730,6 +2015,7 @@ test("a result produced with the held-out tests present is marked for you only, 
 
 test("the held-out mark follows the proof: m of n with the rest named, and a result none ran is never labelled held-out", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichHeldOutPartly });
+  await openReadings(page);
   const chips = page.locator(".goal-page .chip-you");
   await expect(chips).toHaveCount(1);
   await expect(chips).toHaveText("held-out tests: 1 of 2 ran, for you only");
@@ -746,6 +2032,12 @@ test("the held-out mark follows the proof: m of n with the rest named, and a res
   const [a, b] = [(await files.nth(0).boundingBox())!, (await files.nth(1).boundingBox())!];
   if (Math.abs(a.y - b.y) < 2) expect(b.x - (a.x + a.width)).toBeLessThan(10);
   expect(await c1.locator(".held-out-text").textContent()).toMatch(/\.js, \S/);
+  // In Chinese the full-width colon carries its own space: none after it, and "、" between the names.
+  await openTower(page, "goal/G-0001", { lang: "zh-CN", enrich: enrichHeldOutPartly });
+  await openReadings(page);
+  const zh = (await criterion(page, "C1").locator(".held-out-text").textContent())!;
+  expect(zh).toMatch(/：test\//);
+  expect(zh).toMatch(/\.js、\S/);
 });
 
 test("what the canary saw stands under each criterion, quietly or in the attention register, on the goal page and in the readout; the two newer sentinels read as sentence and list", async ({ page }) => {
@@ -756,6 +2048,7 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
       enrichLook(F);
     },
   });
+  await openReadings(page);
   const lines = page.locator(".goal-page .canary-line");
   await expect(lines).toHaveCount(3);
   // C2 was run with the held-out tests present too: its own line, one register to a line, every note starting under the title.
@@ -781,17 +2074,30 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   expect(await c4.innerText()).not.toMatch(/red → green/);
   // C2 failed on the base and passed with an unchecked canary: it still says red → green (C1's base could not run in this fixture).
   await expect(page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C2$/ }) }).first()).toContainText("red → green");
-  // The totals say the same thing as the line: the pass leaves the verified count, takes an amber segment, and the header's seal is withheld.
-  const bar = page.locator(".goal-page .section .criteria-bar").first();
-  await expect(bar).toContainText("Verified 2/3");
-  await expect(bar).toContainText("1 doesn't count");
-  await expect(bar.locator(".seg-discounted")).toHaveCount(1);
+  // The totals say what the supervisor counts: the two high sentinels of this verification hold every pass, so none is
+  // verified, the three passes take the amber segment, and the header's seal is withheld (summaries.rs `progress`).
+  const bar = page.locator(".goal-page .goal-verdict .criteria-bar").first();
+  await expect(bar).toContainText("Verified 0/3");
+  await expect(bar).toContainText("3 don't count");
+  await expect(bar.locator(".seg-discounted")).toHaveCount(3);
   const seal = page.locator(".goal-head .seal");
   await expect(seal).toHaveClass(/seal-tampered/);
-  await expect(seal).toContainText("Passed, not evidence");
+  await expect(seal).toContainText("Passed, doesn't count");
   await expect(seal.locator(".mark-attention")).toBeVisible();
-  await expect(page.locator(".goal-page .section-cta .meta")).toContainText("not evidence");
-  // The sentinels: the high ones are squares, the medium ones hollow diamonds; the probing detail is a sentence over a list of paths.
+  await expect(page.locator(".goal-page .goal-verdict .seal")).toContainText("doesn't count");
+  // The high sentinels stand above the decisions, whole; the medium ones fold to one line under the criteria that still
+  // names the most sensitive path one of them touched, and open on a click.
+  await expect(page.locator(".sentinels-high .sentinel")).toHaveCount(2);
+  // A high sentinel's explanation is whole on the page, not clipped to a line and left to a hover tooltip.
+  const highProse = page.locator(".sentinels-high .sentinel-prose").first();
+  await expect(highProse).toContainText("Check yourself that these tests really test");
+  expect(await highProse.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && getComputedStyle(el).webkitLineClamp !== "1")).toBe(true);
+  await expect(highProse).not.toHaveAttribute("title");
+  const fold = page.locator(".sentinel-fold");
+  // Folded, the read at the held-out tests is named before the dotfile: it bears on whether the evidence holds.
+  await expect(fold.locator("code")).toHaveText("test/holdout/rounding.test.js");
+  await page.locator(".section").filter({ has: fold }).locator("button[aria-expanded]").click();
+  // The sentinels: the high ones wear the red ×, the medium ones the outlined i; the probing detail is a sentence over a list of paths.
   const sentinels = page.locator(".sentinel");
   await expect(sentinels).toHaveCount(4);
   const probing = sentinels.filter({ hasText: "outside its workspace" });
@@ -804,13 +2110,16 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   // Rewriting test machinery (high) beside reaching into it (medium): both details are `path: line` machine lines, whole and unclipped.
   const patches = sentinels.filter({ hasText: "rewrites assertion functions" });
   await expect(patches.locator(".mark-danger")).toBeVisible();
-  await expect(patches).toContainText("Needs your confirmation");
+  // Which register a sentinel stands in is said once, at its section's head, not again on every row.
+  await expect(page.locator(".sentinels-high .section-head")).toContainText("Needs your confirmation");
+  await expect(patches).not.toContainText("Needs your confirmation");
   await expect(patches.locator(".sentinel-machine")).toHaveCount(2);
   await expect(patches.locator(".sentinel-prose")).toHaveCount(0);
   expect(await patches.locator(".sentinel-machine").first().evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   const touches = sentinels.filter({ hasText: "reaches into assertion libraries" });
   await expect(touches.locator(".mark-danger")).toHaveCount(0);
-  await expect(touches).toContainText("Check during review");
+  await expect(page.locator(".section").filter({ has: touches }).last()).toContainText("Check during review");
+  await expect(touches).not.toContainText("Check during review");
   await expect(touches.locator(".sentinel-machine")).toHaveCount(1);
   // Held-out tests ran on this goal, so nothing on the page says there are none.
   await expect(page.locator(".goal-page .held-out-none")).toHaveCount(0);
@@ -819,8 +2128,12 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   await expect(page.locator("table").first()).toBeVisible();
   await page.locator(".review-notes-head").click();
   await expect(page.locator(".review-notes .review-note").filter({ hasText: "No held-out tests" })).toHaveCount(0);
+  // In the review's notes a high sentinel carries its explanation too, read without hovering; a code line is not it.
+  const highNote = page.locator(".review-notes .review-note").filter({ hasText: "assertions could not be checked" });
+  await expect(highNote.locator(".review-note-why")).toContainText("Check yourself that these tests really test");
+  await expect(page.locator(".review-notes .review-note").filter({ hasText: "rewrites assertion functions" }).locator(".review-note-why")).toHaveCount(0);
   await expect(page.locator(".review-head .seal")).toHaveClass(/seal-tampered/);
-  await expect(page.locator(".review-head .criteria-bar")).toContainText("1 doesn't count");
+  await expect(page.locator(".review-head .criteria-bar")).toContainText("3 don't count");
   await page.keyboard.press("e");
   const readout = page.getByRole("dialog");
   await expect(readout.locator(".canary-line")).toHaveCount(3);
@@ -832,10 +2145,11 @@ test("what the canary saw stands under each criterion, quietly or in the attenti
   const sheet = (await readout.boundingBox())!;
   expect(strip.y + strip.height).toBeLessThan(sheet.y + sheet.height);
   await page.keyboard.press("Escape");
-  // The accept sheet: the pass counts for nothing, and the criterion heads what is still open.
+  // The accept sheet counts as the supervisor does: while the high findings stand no pass counts (not "2 of 3 count"
+  // over two red sentinels), and the tampered criterion heads what is still open.
   await page.keyboard.press("Meta+Shift+Enter");
   const accept = page.getByRole("dialog");
-  await expect(accept).toContainText("2 of 3 machine criteria count as evidence; 1 passed with a tampered canary");
+  await expect(accept).toContainText("3 machine criteria passed; none counts while a high-severity finding stands");
   await expect(accept.locator(".panel-section .row.meta").first()).toContainText("C4: a test that must fail passed");
 });
 
@@ -878,6 +2192,179 @@ test("with held-out tests set, nothing is said about their absence", async ({ pa
   await expect(page.locator(".held-out-none")).toHaveCount(0);
 });
 
+// Review 21 (R21-P3-02): the approval's code block read "bash rm -rf dist", a command no one asked to run. The supervisor
+// now sends the command alone (`asks.rs`, tested there) and what it does in words: the card shows them as sent.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`an approval's code block is the command it allows, alone, every line of it (${lang})`, async ({ page }) => {
+    const command = "cd web &&\n  rm -rf dist node_modules/.cache";
+    const reason = lang === "en" ? "delete recursively" : "递归删除";
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        const g = F.goals.find((x: { id: string }) => x.id === "G-0001");
+        F.inbox.push({
+          id: "inbox-approval-G-0001", goal_id: "G-0001", goal_title: g.title, kind: "approval",
+          title: lang === "en" ? `Approval needed: ${reason}` : `需要你批准：${reason}`, subject: reason, body: command,
+          options: lang === "en" ? ["Allow", "Deny"] : ["允许", "拒绝"], tones: ["primary", "destructive"], allow_text: false,
+          created_at: Date.now() - 60_000, urgency: 0, snoozed_until: null,
+        });
+      },
+    });
+    const card = page.locator(".decision").filter({ hasText: reason }).first();
+    await expect(card).toBeVisible();
+    expect(await card.locator(".decision-tail").innerText()).toBe(command);
+  });
+
+// Review 22, note 5: the desk folded items alike in goal, kind and subject into the newest, so of two approvals asked for
+// the same reason it showed one while the phone showed both, and the other could be answered from nowhere. The store
+// folds a note said again (tested there); each question the agent waits on is its own item, on every surface.
+test("two approvals asked for the same reason are two items, each with its own command", async ({ page }) => {
+  const commands = ["rm -rf dist", "rm -rf node_modules/.cache"];
+  await openTower(page, "inbox", {
+    enrich: (F) => {
+      const g = F.goals.find((x: { id: string }) => x.id === "G-0001");
+      for (const [n, body] of commands.entries())
+        F.inbox.push({
+          id: `inbox-approval-same-${n}`, goal_id: "G-0001", goal_title: g.title, kind: "approval", title: "Approval needed: delete recursively",
+          subject: "delete recursively", body, options: ["Allow", "Deny"], tones: ["primary", "destructive"], allow_text: false,
+          created_at: Date.now() - 60_000 * (n + 1), urgency: 0, snoozed_until: null,
+        });
+    },
+  });
+  const cards = page.locator(".decision").filter({ hasText: "delete recursively" });
+  await expect(cards).toHaveCount(2);
+  for (const c of commands) await expect(cards.locator(".decision-tail").filter({ hasText: new RegExp(`^${c.replace(/[.*]/g, "\\$&")}$`) })).toHaveCount(1);
+});
+
+// Review 22 (record only), review 23 (a gap in the tests): a machine value a question starts with is code, the words after
+// it the interface's face, on the desk as on the phone. The store marks which part (`code`); only a unit test held it here.
+test("a stalled call's command and a failing check are code in the card's question, the words around them are not", async ({ page }) => {
+  await openTower(page, "inbox", {
+    enrich: (F) => {
+      enrichCi(F);
+      const g = F.goals.find((x: { id: string }) => x.id === "G-0002");
+      F.inbox.push({
+        id: "inbox-stall", goal_id: "G-0002", goal_title: g.title, kind: "stalled", title: "May be stuck: pnpm test (bash) failed 4 times in a row",
+        subject: "pnpm test (bash) failed 4 times in a row", code: "pnpm test", body: "", options: ["Pause", "Keep going"], tones: ["primary", "neutral"],
+        allow_text: false, created_at: Date.now() - 30_000, urgency: 1, snoozed_until: null,
+      });
+      // As the store sends two failing checks: each name its own code, the ", " between them the words' (review 23).
+      F.inbox.push({
+        id: "inbox-ci-two", goal_id: "G-0002", goal_title: g.title, kind: "ci_failed", title: "CI failed: lint, e2e (webkit, shard 2)",
+        subject: "lint, e2e (webkit, shard 2)", code: "lint\n\ne2e (webkit, shard 2)", body: "", options: ["Send the failures to the agent", "Leave it"],
+        tones: ["primary", "neutral"], allow_text: true, created_at: Date.now() - 20_000, urgency: 2, snoozed_until: null,
+      });
+    },
+  });
+  const face = (l: import("@playwright/test").Locator) => l.evaluate((el) => getComputedStyle(el).fontFamily);
+  for (const [subject, code] of [["failed 4 times", "pnpm test"], ["ubuntu-latest", "test (ubuntu-latest, node 22)"]]) {
+    const q = page.locator(".decision").filter({ hasText: subject }).first().locator(".decision-question");
+    await expect(q.locator(".code-val")).toHaveText(code);
+    expect(await face(q.locator(".code-val")), `${code} is code`).toMatch(/Mono/);
+    expect(await face(q), "the question's words are not").not.toMatch(/Mono/);
+  }
+  await expect(page.locator(".decision").filter({ hasText: "failed 4 times" }).first().locator(".decision-question")).toHaveText("pnpm test (bash) failed 4 times in a row");
+  const two = page.locator(".decision").filter({ hasText: "shard 2" }).first().locator(".decision-question");
+  await expect(two).toHaveText("lint, e2e (webkit, shard 2)");
+  await expect(two.locator(".code-val")).toHaveText(["lint", "e2e (webkit, shard 2)"]);
+});
+
+// Review 22 (R22-P3-01): a row the block carried over began at its left edge, like a line of the command's own, and in a
+// shell a new line is a new command. Each line's first row starts at the edge; a carried-over row starts two characters
+// in, under a hook in that margin, which a line the command indents itself never has; a word that fits is never parted;
+// and what is copied is the command, blank line and indent included. Measured on what is painted, in both themes.
+// Review 23 (R23-P2-01): a line whose first word was longer than a row carried it over from the edge, under the hook, and
+// painted the next word back up at the first row's end; a path to approve is such a line, and so is a command that starts
+// with a URL. The hook is a stroke of text-3 on every carried-over row, never a block, a hue or a mark drawn once.
+const LONG_COMMAND = "git push --force-with-lease origin feature/checkout-total-rounding-fix-for-multi-currency-carts && gh pr create --fill";
+const LINES_COMMAND = "cd web &&\n  rm -rf dist node_modules/.cache\n\nnpx vite build --mode production --outDir ../dist/web --emptyOutDir --base /checkout/ --logLevel info --clearScreen false";
+const PATH_COMMAND = "services/checkout-api/src/test/java/com/example/checkout/pricing/rounding/currency/MultiCurrencyRoundingPolicyIntegrationTest/fixtures/carts-with-mixed-currencies-and-discounts/expected-totals-after-rounding.json";
+const URL_COMMAND = "https://raw.githubusercontent.com/example-org/checkout-service/feature/checkout-total-rounding-fix-for-multi-currency-carts/scripts/install.sh | sh";
+// Review 23 (record only): a tab parts words as a space does (the words between tabs went on as one).
+const TABS_COMMAND = "make\tbuild\tTARGET=release\tPLATFORM=darwin-arm64\tOUT=dist/checkout-service\tFEATURES=rounding,multi-currency,discounts\tVERBOSE=1\tJOBS=8\tCACHE_DIR=/tmp/checkout-cache";
+// Review 24 (R24-P3-03): a URL longer than a row after a line's indent went down a row and left the indent alone above it,
+// and one as a line's third word left the row before it short. Either starts in place.
+const INDENTED_URL_COMMAND = "curl -fsSL \\\n    https://raw.githubusercontent.com/example-org/checkout-service/feature/checkout-total-rounding-fix-for-multi-currency-carts/scripts/install.sh \\\n  | sh -s -- --yes";
+const THIRD_URL_COMMAND = "curl -fsSL https://raw.githubusercontent.com/example-org/checkout-service/feature/checkout-total-rounding-fix-for-multi-currency-carts/scripts/install.sh -o /tmp/install.sh";
+// A word that fits a row but not the room its indent leaves (95 characters after 8 spaces, in a row of 101 at both
+// widths below) goes down whole, and the indent stands alone above it: a word that fits is never parted.
+const WINDOW_WORD = "--filename=deploy/overlays/production/checkout-api/rounding-fix/multi-currency-carts-patch.yaml";
+const WINDOW_COMMAND = `kubectl apply \\\n        ${WINDOW_WORD} \\\n        --dry-run=server`;
+const COMMANDS = [LONG_COMMAND, LINES_COMMAND, PATH_COMMAND, URL_COMMAND, TABS_COMMAND, INDENTED_URL_COMMAND, THIRD_URL_COMMAND, WINDOW_COMMAND];
+for (const [theme, width] of [["light", 1440], ["dark", 1040]] as const)
+  test(`an approval's command shows where a row is carried over and where the command breaks its own line (${theme}, ${width})`, async ({ page }) => {
+    // Eight commands read at 51 widths, each character's box by itself.
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width, height: 900 });
+    // The block measures its words again as its width moves (`refit`), which moves its own height: never a ResizeObserver
+    // loop notice for it (review 13's rule for the board's rows), from the first frame through the sweep below.
+    await page.addInitScript(() => {
+      (window as any).__roLoops = 0;
+      addEventListener("error", (e) => {
+        if (/ResizeObserver loop/.test(e.message)) (window as any).__roLoops++;
+      });
+    });
+    await openTower(page, "goal/G-0001", {
+      theme,
+      enrich: (F) => {
+        const g = F.goals.find((x: { id: string }) => x.id === "G-0001");
+        for (const [n, body] of COMMANDS.entries())
+          F.inbox.push({
+            id: `inbox-approval-${n}`, goal_id: "G-0001", goal_title: g.title, kind: "approval", title: `Approval needed: step ${n}`,
+            subject: `step ${n}`, body, options: ["Allow", "Deny"], tones: ["primary", "destructive"], allow_text: false,
+            created_at: Date.now() - 60_000 * (n + 1), urgency: 0, snoozed_until: null,
+          });
+      },
+    });
+    for (const [n, command] of COMMANDS.entries()) {
+      const pre = page.locator(".decision").filter({ hasText: `step ${n}` }).first().locator(".decision-tail");
+      await pre.scrollIntoViewIfNeeded();
+      const { rows, text, broken, ordered, early, blank, over } = await paintedCommand(pre);
+      expect(text, "what is copied is the command").toBe(command);
+      expect(rows.some((r) => !r.first), `${command} is carried over at ${width}`).toBe(true);
+      expect(broken, "a word that fits a row is never parted").toEqual([]);
+      expect([...early, ...blank, ...over], `${command}: no row ends early, no indent stands alone above a word longer than a row, nothing past the edge`).toEqual([]);
+      expect(ordered, `${command}: every row below the one before, in the command's order`).toBe(true);
+      if (command === WINDOW_COMMAND) {
+        const [indent, next] = rows.filter((r) => r.line === 1);
+        expect(indent.text, `the indent stands alone at ${width}, the row holding no part of the word`).toBe("        ");
+        expect([next.at, next.text.split(" ")[0]], "the word goes down whole, under the hook").toEqual([2, WINDOW_WORD]);
+      }
+      for (const r of rows) {
+        const where = `${theme} ${width} line ${r.line} "${r.text}"`;
+        if (r.first) expect(r.at, `${where}: a line starts at the edge`).toBe(0);
+        else {
+          expect([r.at, r.ink], `${where}: a carried-over row starts two in, under the hook`).toEqual([2, true]);
+          expect(r.fill, `${where}: the hook is a stroke, not a block`).toBeLessThan(0.35);
+          expect(r.tone, `${where}: the hook is text-3's ink`).toBeGreaterThan(0.4);
+          expect(r.tone, `${where}: the hook is text-3's ink, not text-1's`).toBeLessThan(1.1);
+          expect(r.span, `${where}: the hook runs across the margin, not a bar down it`).toBeGreaterThan(1);
+          expect(r.depth, `${where}: the hook runs down the row, not a rule across it`).toBeGreaterThan(0.3);
+          expect(r.off, `${where}: the hook is a grey, not a hue`).toBeLessThan(25);
+        }
+        if (r.first && r.text.startsWith("  ")) expect(r.ink, `${where}: the command's own indent has no hook`).toBe(false);
+      }
+    }
+    // The path runs three rows or more, so every carried-over row, not the first alone, has its hook; and a word longer
+    // than a row fills each row it runs over, rather than ending the first at its last hyphen ("services/checkout-").
+    const path = await paintedCommand(page.locator(".decision").filter({ hasText: "step 2" }).first().locator(".decision-tail"), { ink: false });
+    expect(path.rows.filter((r) => !r.first).length, `the path is carried over twice at ${width}`).toBeGreaterThanOrEqual(2);
+    for (const r of path.rows.slice(0, -1)) expect(r.text.length, `"${r.text}" fills its row`).toBeGreaterThanOrEqual(path.cols - (r.first ? 1 : 3));
+    // Wherever a row ends, a word that fits moves whole: "--force-with-lease" and "--fill" never part at a hyphen.
+    const parted: string[] = [];
+    for (let w = width > 1240 ? 1240 : 1040; w <= (width > 1240 ? 1440 : 1240); w += 4) {
+      await page.setViewportSize({ width: w, height: 900 });
+      for (const n of COMMANDS.keys()) {
+        const { broken, rows, ordered, early, blank, over } = await paintedCommand(page.locator(".decision").filter({ hasText: `step ${n}` }).first().locator(".decision-tail"), { ink: false });
+        parted.push(...broken.map((b) => `${w}: ${b}`), ...[...early, ...blank, ...over].map((e) => `${w}: step ${n} ${e}`));
+        if (!ordered) parted.push(`${w}: step ${n} out of order`);
+        for (const r of rows) if (r.at !== (r.first ? 0 : 2)) parted.push(`${w}: step ${n} "${r.text}" at ${r.at}`);
+      }
+    }
+    expect(parted, "no word parted, no row out of place or ended early, at any width").toEqual([]);
+    expect(await page.evaluate(() => (window as any).__roLoops), "ResizeObserver loop notices").toBe(0);
+  });
+
 test("a sandbox refusal is an environment problem: the card says so before its details with the refused path in view, and the criterion's base line is never red", async ({ page }) => {
   await openTower(page, "goal/G-0004", { enrich: enrichSandboxRefused });
   const card = page.locator(".decision").first();
@@ -905,6 +2392,7 @@ test("a sandbox refusal is an environment problem: the card says so before its d
   await expect(page.locator(".project [data-field='test']")).toBeFocused();
   // On the goal page the criterion's base line: the environment mark, the sentence, the refused lines as machine values; no red, no "red → green".
   await openTower(page, "goal/G-0001", { enrich: enrichSandboxRefused });
+  await openReadings(page);
   const c1 = page.locator(".goal-page .criterion").filter({ has: page.locator(".num", { hasText: /^C1$/ }) }).first();
   const line = c1.locator(".env-line");
   await expect(line).toHaveCount(1);
@@ -949,6 +2437,27 @@ test("on the welcome screen a red check's fix is the one primary action, then Ch
   await expect(page.locator(".welcome-actions .btn-primary")).toHaveText("Add a git repository");
 });
 
+// Review baseline, R-P3-06 (D22): the welcome page read as a landing page (a slogan, a lede, two columns). It is a setup
+// page now: one column, titled for what it does, the checks first, their actions, and then how a goal ends.
+for (const [lang, title, how] of [["en", "Set up Tower", "How a goal ends"], ["zh-CN", "开始使用 Tower", "一个目标怎样结束"]] as const)
+  test(`the welcome page is one column of setup: the title, the checks, their actions, then how a goal ends (${lang})`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openTower(page, "overview", { lang, enrich: (F) => ((F.projects = []), (F.goals = []), (F.inbox = [])) });
+    const welcome = page.locator(".welcome");
+    await expect(welcome.locator("h1")).toHaveText(title);
+    await expect(welcome.locator(".welcome-how .section-title")).toHaveText(how);
+    expect((await welcome.boundingBox())!.width).toBeLessThanOrEqual(600);
+    const order = [".welcome-title", ".checks", ".welcome-actions", ".welcome-how"];
+    const boxes = await Promise.all(order.map((sel) => welcome.locator(sel).first().boundingBox()));
+    // One column: each part starts below the one before it, at the same left edge.
+    for (let i = 1; i < boxes.length; i++) {
+      expect(boxes[i]!.y, `${order[i]} below ${order[i - 1]}`).toBeGreaterThanOrEqual(boxes[i - 1]!.y + boxes[i - 1]!.height - 0.5);
+      expect(Math.abs(boxes[i]!.x - boxes[0]!.x), order[i]).toBeLessThan(1);
+    }
+    // No slogan or lede over the checks: the page says what to do.
+    expect(await welcome.locator(".welcome-lede, .lede").count()).toBe(0);
+  });
+
 test("a missing git identity is a check on the welcome screen and in Settings, its two-command fix whole and copyable", async ({ page }) => {
   const identity = (F: Record<string, any>) => {
     // The dumping supervisor may itself lack an identity: one row either way.
@@ -990,7 +2499,7 @@ test("a missing git identity is a check on the welcome screen and in Settings, i
   await expect(settingsRow.getByRole("button", { name: "Set in git" })).toBeVisible();
   // With projects, where to write it is a choice: every repository, or one of them.
   await expect(settingsRow.getByRole("button", { name: /^Where: Every repository/ })).toBeVisible();
-  // Settings › Environment is a gauge strip: one line of readings, the missing identity wearing the ◇ its check row wears
+  // Settings › Environment is a gauge strip: one line of readings, the missing identity wearing the i mark its check row wears
   // (it blocks a branch, not a run), the problem spelled out under it.
   const gauges = page.locator(".env-gauges .env-gauge");
   await expect(gauges).toHaveCount(4);
@@ -1121,18 +2630,21 @@ test("in review the receipt rises above the status bar, never onto its top line"
   expect(t.y + t.height).toBeLessThanOrEqual(s.y - 4);
 });
 
-test("a review with nothing to review is a poster in the middle of the page, and the status bar stays at the foot", async ({ page }) => {
+test("a review with nothing to review says so on the title's line, with no wordmark, and the status bar stays at the foot", async ({ page }) => {
   await openTower(page, "review/G-0002", {
     enrich: (F) => {
       F["review-G-0002"] = { ...F["review-G-0001"], units: [], files: [], stat: { files: 0, additions: 0, deletions: 0 } };
     },
   });
-  const poster = page.locator(".review .empty-poster");
-  await expect(poster).toBeVisible();
-  await expect(poster).toContainText("No changes");
-  const box = (await poster.boundingBox())!;
-  expect(box.x).toBeGreaterThan(24);
-  expect(box.y).toBeGreaterThan(150);
+  const empty = page.locator(".review .page-loading > .empty");
+  await expect(empty).toBeVisible();
+  await expect(empty).toContainText("No changes");
+  await expect(empty.locator(".wordmark")).toHaveCount(0);
+  // The words start where the title starts: one left edge down the page.
+  const words = (await empty.locator(".empty-title").boundingBox())!;
+  const title = (await page.locator(".review-title").boundingBox())!;
+  expect(Math.abs(words.x - title.x)).toBeLessThanOrEqual(1);
+  expect(words.y).toBeGreaterThan(150);
   const status = (await page.locator(".review-status").boundingBox())!;
   expect(Math.round(status.y + status.height)).toBe(900);
   await expect(page.getByRole("button", { name: "Open the goal page" })).toHaveClass(/btn-default/);
@@ -1178,6 +2690,8 @@ test("in Settings the phone's problem stands under its switch and above the port
 
 test("the contract editor's switch is 28×18 with a 32×24 target", async ({ page }) => {
   await openTower(page, "new");
+  // The switch is in the folded clause 04 (D92): opened by its summary first.
+  await page.locator(".clause-summary").click();
   const toggle = page.getByRole("switch", { name: /Allow network/ });
   await expect(toggle).toBeVisible();
   const box = (await toggle.boundingBox())!;
@@ -1187,9 +2701,12 @@ test("the contract editor's switch is 28×18 with a 32×24 target", async ({ pag
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   // Measured right before each press: the page may still be settling (fonts, the sheet's entrance).
   const at = async () => {
-    // A view transition lays its own layers over the page while it plays.
+    // A view transition lays its own layers over the page while it plays. Every animation with an end has ended (a
+    // running goal's mark turns without one, by design).
     await page.waitForFunction(
-      () => !document.documentElement.dataset.transition && document.getAnimations().every((a) => a.playState !== "running"),
+      () =>
+        !document.documentElement.dataset.transition &&
+        document.getAnimations().every((a) => a.effect?.getComputedTiming().iterations === Infinity || a.playState !== "running"),
     );
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     return (await toggle.boundingBox())!;
@@ -1216,18 +2733,22 @@ test("the goal page folds its rail under the main column in a half-screen window
   expect(await rail.evaluate((el) => getComputedStyle(el).display)).toBe("grid");
 });
 
-test("the goal page's rail starts under the header, level with the decision card, and stays in sight as the page scrolls", async ({ page }) => {
+test("the goal page's rail starts under the header, level with the main column's first block, and stays in sight as the page scrolls", async ({ page }) => {
   await openTower(page, "goal/G-0001", { enrich: enrichCi });
   const card = page.locator(".goal-decisions .decision").first();
   const rail = page.locator(".goal-rail");
   await expect(card).toBeVisible();
   await expect(rail.locator(".rail")).toBeVisible();
+  // A high sentinel stands above the decisions (it makes the evidence itself doubtful); the rail starts level with it.
+  const first = (await page.locator(".goal-main > :first-child").boundingBox())!;
   const [c, r] = [(await card.boundingBox())!, (await rail.boundingBox())!];
-  expect(Math.abs(c.y - r.y)).toBeLessThan(2);
+  expect(Math.abs(first.y - r.y)).toBeLessThan(2);
   // The card is the main column's width, not the page's: it ends where the blocks under it end.
   const main = (await page.locator(".goal-main").boundingBox())!;
   expect(Math.abs(c.x + c.width - (main.x + main.width))).toBeLessThan(1);
-  // Scrolled to the end of a long page, the rail is still at the top of the view.
+  // Scrolled to the end of a long page, the rail is still at the top of the view. (The page folds its detail now, so a
+  // shorter window makes it long enough to scroll past where the rail starts.)
+  await page.setViewportSize({ width: 1440, height: 640 });
   const view = page.locator(".view");
   const scrolled = await view.evaluate((el) => (el.scrollTo({ top: el.scrollHeight }), el.scrollTop));
   expect(scrolled).toBeGreaterThan(r.y);
@@ -1235,7 +2756,7 @@ test("the goal page's rail starts under the header, level with the decision card
   await expect.poll(async () => Math.abs((await rail.boundingBox())!.y - (await view.boundingBox())!.y)).toBeLessThanOrEqual(21);
 });
 
-for (const route of ["overview", "inbox", "goal/G-0001", "goal/G-0002", "review/G-0003", "settings", "new"]) {
+for (const route of ["overview", "inbox", "goal/G-0001", "goal/G-0002", "review/G-0003", "settings", "new", "operations", "learning"]) {
   test(`the middle dot stands only on the instrument lines, the criteria scale and the budget (${route})`, async ({ page }) => {
     await openTower(page, route, { enrich: enrichRich });
     await settled(page, route);
@@ -1246,9 +2767,15 @@ for (const route of ["overview", "inbox", "goal/G-0001", "goal/G-0002", "review/
         if (!n.textContent?.includes("·")) continue;
         const el = n.parentElement!;
         // The instruments keep it; the supervisor's and the agent's own words are quoted as written.
-        if (el.closest(".criteria-bar, .budget-line, pre, code, .mono, .sentinel-prose, .decision-body, .claim-text, [aria-hidden='true']")) continue;
+        // (Hidden from a screen reader is not hidden from the eye: an aria-hidden dot counts.)
+        if (el.closest(".criteria-bar, .budget-line, pre, code, .mono, .sentinel-prose, .decision-body, .claim-text")) continue;
         if (!el.getClientRects().length) continue;
         out.push(`${el.className}: ${n.textContent.trim().slice(0, 60)}`);
+      }
+      // A dot drawn by CSS between items is the same dot.
+      for (const el of document.body.querySelectorAll("*")) {
+        if (!el.getClientRects().length || el.closest(".criteria-bar, .budget-line")) continue;
+        for (const pseudo of ["::before", "::after"]) if (getComputedStyle(el, pseudo).content.includes("·")) out.push(`${el.className}${pseudo}`);
       }
       return out;
     });
@@ -1269,4 +2796,52 @@ test("a card's text field grows with its lines and stops at six, then scrolls", 
   const six = (await area.boundingBox())!.height;
   expect(six).toBeLessThan(one * 7);
   expect(await area.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
+});
+
+// Review 16 (found in passing): the goal rail made room for the steer box under a class the box no longer had. Review
+// 17: a rail sized to stop short of the box still ran 58px under it before the page scrolled (it starts below the
+// goal's head). The box keeps to the main column beside the rail; measured, they never meet, before and after a
+// scroll, in a short window and a tall one; and the rail stays in the window.
+// Beside the page (from 1281) the rail is sticky too: the two must never cover each other. Folded under the page (to
+// 1280) the rail is page content like the criteria above it: it passes under the sticky box as the page scrolls, and
+// at the end the box covers none of it.
+// Review 18: scrolled to the end of a short window, the rail stood 52 to 104px up under the title bar (its row ended
+// where the box began); beside the page it now keeps its sticky top at the end too, with a one-line box and a
+// six-line one.
+test("the goal rail and the steer box never cover each other", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 560 });
+  const { fixtures } = await openTower(page, "overview");
+  const running = (fixtures.goals as Array<{ id: string; state: string }>).find((g) => g.state === "running")!;
+  await openTower(page, `goal/${running.id}`);
+  await expect(page.locator(".steer-console textarea")).toBeVisible();
+  await expect(page.locator(".goal-rail .rail")).toBeVisible();
+  const measure = async (width: number, height: number, lines: number) => {
+    await page.setViewportSize({ width, height });
+    for (const end of [false, true]) {
+      await page.evaluate((end) => {
+        let pane = document.querySelector<HTMLElement>(".goal-page")!;
+        while (pane.parentElement && !/auto|scroll/.test(getComputedStyle(pane).overflowY)) pane = pane.parentElement;
+        pane.scrollTop = end ? pane.scrollHeight : 0;
+      }, end);
+      await page.waitForTimeout(50);
+      const m = await page.evaluate(() => {
+        const [r, b] = [".goal-rail", ".steer-console"].map((q) => document.querySelector(q)!.getBoundingClientRect());
+        const w = Math.min(r.right, b.right) - Math.max(r.left, b.left);
+        const h = Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top);
+        const view = document.querySelector<HTMLElement>(".view")!;
+        const stickyTop = view.getBoundingClientRect().top + parseFloat(getComputedStyle(view).paddingTop);
+        return { overlap: w > 0 && h > 0 ? Math.round(w * h) : 0, railTop: Math.round(r.top), stickyTop: Math.round(stickyTop), railBottom: Math.round(r.bottom), box: Math.round(b.top), boxHeight: Math.round(b.height), window: innerHeight };
+      });
+      const at = `${width}×${height}, ${lines} line(s), ${end ? "scrolled to the end" : "at the top"}: ${JSON.stringify(m)}`;
+      if (width > 1280 || end) expect(m.overlap, at).toBe(0);
+      if (end) expect(m.railBottom, `the rail stays in the window; ${at}`).toBeLessThanOrEqual(m.window);
+      // Beside the page, never above its sticky top (the view's padding under the title bar), at the top or the end.
+      if (width > 1280) expect(m.railTop, `the rail's head stays in sight; ${at}`).toBeGreaterThanOrEqual(m.stickyTop);
+    }
+  };
+  // Either side of 1281, where the rail moves beside the page, and the default width.
+  for (const [width, height] of [[1440, 560], [1440, 640], [1440, 900], [1281, 560], [1281, 640], [1280, 640], [1280, 900]]) await measure(width, height, 1);
+  // A box grown to six lines: the rail's room is the window's, not the box's.
+  await page.locator(".steer-console textarea").fill(Array.from({ length: 6 }, (_, i) => `line ${i + 1}`).join("\n"));
+  for (const [width, height] of [[1440, 560], [1281, 640], [1280, 640]]) await measure(width, height, 6);
 });

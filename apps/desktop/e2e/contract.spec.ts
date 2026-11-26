@@ -6,7 +6,7 @@
 import { expect, test } from "@playwright/test";
 
 import { enrichLook } from "./rich";
-import { criterion, openTower } from "./tauri";
+import { criterion, openTower, settled } from "./tauri";
 
 test("in the editor a look criterion takes steps line by line: Enter opens the next, ⌫ on an empty one closes it, a refused line is marked", async ({ page }) => {
   await openTower(page, "new");
@@ -119,3 +119,106 @@ test("a contract left as it opened leaves without a question", async ({ page }) 
   await expect(page.locator(".view .overview")).toBeVisible();
   expect(await page.evaluate(() => (window as any).__towerCalls.filter(([c]: [string]) => c === "plugin:dialog|message").length)).toBe(0);
 });
+
+// Review 7, P3-04: the clause numbers follow the reading order. Beside the form the schedule (engine, budget) is read
+// alongside 01, so it goes unnumbered there; folded under the form it reads after 03 and numbers on, 04 and 05.
+test("the contract's clauses are numbered in the order they are read, at both layouts", async ({ page }) => {
+  for (const [w, nums] of [[1440, ["01", "02", "03"]], [1100, ["01", "02", "03", "04", "05"]]] as const) {
+    await page.goto("about:blank");
+    await page.setViewportSize({ width: w, height: 900 });
+    await openTower(page, "new");
+    await settled(page, "new");
+    const shown = await page.locator(".editor .clause-no").evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => e.textContent!.trim()));
+    expect(shown, `at ${w}`).toEqual(nums);
+  }
+});
+
+// Review 7, P3-04 residue (D92): the engine clause was open on every new goal. It is folded to one line that still says
+// what is set — the engine, the sandbox, the network and the autonomy — and opens on a click.
+for (const w of [1440, 1100])
+  test(`the engine clause opens folded to what is set, each setting whole, and unfolds on a click (${w})`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 900 });
+    await openTower(page, "new");
+    await settled(page, "new");
+    const fold = page.locator(".editor details.clause-fold");
+    await expect(fold).not.toHaveAttribute("open");
+    const summary = fold.locator("summary.clause-summary");
+    await expect(summary).toBeVisible();
+    const line = await summary.innerText();
+    for (const said of ["Pi", "Default OS Sandbox", "No network", "Autonomy"]) expect(line).toContain(said);
+    // Each setting whole, never broken inside itself; the side column (under 300 px) takes them on two lines at most,
+    // a wrapped line starting under the first setting, not under the chevron.
+    const items = await summary.locator(".clause-summary-items > span").evaluateAll((els) =>
+      els.map((e) => ({ text: e.textContent, lines: e.getClientRects().length, left: Math.round(e.getBoundingClientRect().left), top: Math.round(e.getBoundingClientRect().top) })),
+    );
+    for (const i of items) expect(i.lines, `"${i.text}" whole`).toBe(1);
+    expect(new Set(items.map((i) => i.top)).size).toBeLessThanOrEqual(2);
+    const firstOfLines = items.filter((i, n) => n === 0 || i.top !== items[n - 1].top);
+    for (const i of firstOfLines) expect(i.left, `"${i.text}" hangs under the first setting`).toBe(items[0].left);
+    await expect(fold.getByText("Engine", { exact: true })).toBeHidden();
+    await summary.click();
+    await expect(fold).toHaveAttribute("open", "");
+    await expect(fold.getByText("Engine", { exact: true })).toBeVisible();
+  });
+
+// Review 9, R9-P3-05: amending a contract, the folded clause hid what had been set away from the defaults — a thinking
+// level, an escalation model, ports on this Mac, an open loopback. The line names each of them, whole, as it names the
+// engine; a setting at its default stays off it.
+for (const [lang, said] of [
+  ["en", ["Thinking level high", "Escalates to anthropic/claude-opus-4", "Ports 5432, 6379", "Loopback open"]],
+  ["zh-CN", ["思考强度 high", "升级到 anthropic/claude-opus-4", "端口 5432, 6379", "本机回环已放开"]],
+] as const)
+  test(`amending a contract, the folded engine clause names every setting that is not the default (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        Object.assign(F["goal-G-0001"].contract, { thinking: "high", escalation_model: "anthropic/claude-opus-4", network: false, ports: [5432, 6379], loopback_open: true });
+      },
+    });
+    await settled(page, "goal/G-0001");
+    await page.keyboard.press("Shift+E");
+    const summary = page.locator(".editor details.clause-fold summary.clause-summary");
+    await expect(summary).toBeVisible();
+    await expect(page.locator(".editor details.clause-fold")).not.toHaveAttribute("open");
+    const items = await summary.locator(".clause-summary-items > span").evaluateAll((els) => els.map((e) => ({ text: e.textContent!.replace(/\s+/g, " ").trim(), lines: e.getClientRects().length })));
+    for (const s of said) expect(items.map((i) => i.text)).toContain(s);
+    for (const i of items) expect(i.lines, `"${i.text}" whole`).toBe(1);
+  });
+
+test("a new contract at its defaults names no thinking level, escalation, ports or loopback on its folded line", async ({ page }) => {
+  await openTower(page, "new");
+  await settled(page, "new");
+  const line = await page.locator(".editor summary.clause-summary").innerText();
+  for (const s of ["Thinking", "Escalates", "Ports", "Loopback"]) expect(line).not.toContain(s);
+});
+
+// Review 9, R9-P3-07: the budget's "$" stood on its digits. The field's unit borrowed the review sidebar's `.unit` row
+// class, whose 8px padding pushed every unit inward. A unit sits in the field's padding, clear of the text, on either side.
+// (Review 10: the English settings page has no field with a unit, so that case checked nothing; the Chinese one has "个".
+// Each case now has to find a unit to check.)
+for (const [route, lang] of [["new", "en"], ["new", "zh-CN"], ["settings", "zh-CN"]] as const)
+  test(`a field's unit stays clear of the value it measures (${route}, ${lang})`, async ({ page }) => {
+    await openTower(page, route, { lang });
+    await settled(page, route);
+    const shown = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".unit-wrap")].filter((w) => w.offsetParent).length);
+    expect(shown, "fields with a unit on the page").toBeGreaterThan(0);
+    const clash = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>(".unit-wrap")]
+        .filter((w) => w.offsetParent)
+        .flatMap((w) => {
+          const input = w.querySelector("input")!;
+          const unit = w.querySelector<HTMLElement>(".field-unit");
+          if (!unit) return [`${w.className}: no unit`];
+          const cs = getComputedStyle(input);
+          const r = input.getBoundingClientRect();
+          // Where the text may run: inside the border and the padding.
+          const textL = r.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
+          const textR = r.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight);
+          const range = document.createRange();
+          range.selectNodeContents(unit);
+          const u = range.getBoundingClientRect();
+          return u.right <= textL + 0.5 || u.left >= textR - 0.5 ? [] : [`"${unit.textContent}" ${Math.round(u.left)}..${Math.round(u.right)} over text ${Math.round(textL)}..${Math.round(textR)}`];
+        }),
+    );
+    expect(clash).toEqual([]);
+  });

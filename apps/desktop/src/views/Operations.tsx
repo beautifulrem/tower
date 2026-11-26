@@ -5,14 +5,16 @@
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 
 import { ALL, DataTable, MeterCell, ProjectFilter, SecHead, SmBtn, inPlace } from "../components/Console";
-import { DangerMark, Icon, LifecycleGlyph, NoticeMark } from "../components/Glyph";
+import { Icon, LifecycleGlyph, NoticeMark } from "../components/Glyph";
 import { Select, Toggle, settled } from "../components/ui";
 import type { Contract } from "../gen/Contract";
 import { api } from "../lib/api";
 import type { MergeQueueEntry, ScheduledGoal, StorageInventory } from "../lib/apiTypes";
+import { notEvidence } from "../lib/discounted";
 import { bytes, dayClock } from "../lib/format";
+import { cronWords } from "../lib/cron";
 import { t } from "../lib/i18n";
-import { stateLabel } from "../lib/labels";
+import { stateLabel, statusWord } from "../lib/labels";
 import { ask } from "../lib/native";
 import { go } from "../lib/nav";
 import { act, goalList, refreshConsoleMeta, state } from "../lib/store";
@@ -86,7 +88,8 @@ export function Operations() {
     }
   };
 
-  const maxBytes = createMemo(() => Math.max(1, ...inv().goals.map((g) => g.total_bytes)));
+  // Each bar is the goal's share of everything Tower keeps, so two equal goals are two half bars, not two full ones.
+  const maxBytes = createMemo(() => Math.max(1, inv().total_bytes));
   const reclaimIds = createMemo(() => inv().goals.filter((g) => g.reclaimable).map((g) => g.goal_id));
 
   return (
@@ -99,7 +102,8 @@ export function Operations() {
               <>
                 <span class="meta num t2">{schedList().filter((s) => s.enabled).length}</span>
                 <span class="meta t3">{t("ops.schedulesNote")}</span>
-                <span class="meta t3">{t("ops.cronUtc")}</span>
+                {/* The zone is said once: here only until the table's Cron column is there to say it. */}
+                <span class="meta t3" hidden={schedList().length > 0}>{t("ops.cronUtc")}</span>
               </>
             }
           />
@@ -112,7 +116,7 @@ export function Operations() {
             </form>
           </Show>
           <DataTable
-            headers={[[t("ops.schedulesTitle")], [t("ops.cronUtc")], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
+            headers={[[t("ops.schedulesTitle")], [t("ops.colWhen")], [t("ops.colPosture")], [t("ops.colNextRun")], ["", true]]}
             empty={t("ops.schedulesEmpty")}
             items={schedList()}
             error={schedules.error}
@@ -125,7 +129,11 @@ export function Operations() {
                     <span class="meta t3" hidden={state.projects.length <= 1}>{projName(s.project_id)}</span>
                   </div>
                 </td>
-                <td><code class="code-val">{s.cron_expr}</code></td>
+                <td class="ops-when">
+                  {/* The words for a common shape, and always the expression as written (it is what you type and edit). */}
+                  <Show when={cronWords(s.cron_expr)}>{(w) => <><span class="t1">{w()}</span>{" "}</>}</Show>
+                  <code class="code-val" classList={{ t3: !!cronWords(s.cron_expr) }}>{s.cron_expr}</code>
+                </td>
                 <td class="meta t2">{t(s.unattended_strict ? "ops.unattendedStrict" : "contract.standard")}</td>
                 <td class="meta t2">
                   {s.next_run_at ? dayClock(s.next_run_at) : "—"}
@@ -155,7 +163,7 @@ export function Operations() {
             <For each={acceptedNotQueued()}>{(g) => <SmBtn onClick={() => void run(() => api.enqueueMerge(g.id), rfQueue)}>+ {g.id}</SmBtn>}</For>
           </div>
           <DataTable
-            headers={[["#"], [t("overview.colGoal")], [t("ops.colPosture")], ["", true]]}
+            headers={[["#"], [t("overview.colGoal")], [t("ops.colMerge")], ["", true]]}
             empty={t("ops.mergeQueueEmpty")}
             items={mqList()}
             error={queue.error}
@@ -167,19 +175,29 @@ export function Operations() {
                   <div class="col">
                     <div class="row">
                       <button type="button" class="link-quiet code-val t2" onClick={() => go({ name: "goal", id: entry.goal_id })}>{entry.goal_id}</button>
-                      <span class="t1 ellipsis">{entry.goal_title}</span>
+                      <span class="t1 ellipsis" title={entry.goal_title}>{entry.goal_title}</span>
                       <code class="code-val meta t3" hidden={!entry.branch} title={entry.branch ?? undefined}>{entry.branch}</code>
                     </div>
                     <div class="mq-conflicts meta t3" hidden={!entry.conflict_files.length}>
-                      <code class="code-val t2">{entry.conflict_files.join(" · ")}</code>
+                      <code class="code-val t2">{entry.conflict_files.join(", ")}</code>
                     </div>
                   </div>
                 </td>
                 <td>
                   <span class="mq-status meta halt" classList={{ t1: entry.status === "conflict", t2: entry.status !== "conflict" }}>
-                    {entry.status === "conflict" && <DangerMark />}
+                    {/* git's word on the merge, observed: ink and a cross, never the verifier's red (docs/12 §12.4.3, review 18). */}
+                    {entry.status === "conflict" && <Icon name="cross" size={10} />}
                     <span>{t(`ops.mq_${entry.status}` as Parameters<typeof t>[0])}</span>
                   </span>
+                  {/* Merging cleanly is git's word; whether the pass counts is the verifier's, said beside it. */}
+                  <Show when={notEvidence(state.goals[entry.goal_id]) && state.goals[entry.goal_id]}>
+                    {(g) => (
+                      <span class="mq-status meta halt t1">
+                        <LifecycleGlyph goal={g()} />
+                        <span>{statusWord(g())}</span>
+                      </span>
+                    )}
+                  </Show>
                 </td>
                 <td class="col-r">
                   <div class="row row-end">
@@ -223,10 +241,10 @@ export function Operations() {
               <tr>
                 <td>
                   <div class="row">
-                    <LifecycleGlyph goal={{ state: g.state, progress: ZERO_P, verified_pin: null }} />
+                    <LifecycleGlyph goal={state.goals[g.goal_id] ?? { state: g.state, progress: ZERO_P, verified_pin: null }} />
                     <code class="code-val t2">{g.goal_id}</code>
-                    <span class="ellipsis t1">{g.title}</span>
-                    <span class="meta t3">{stateLabel(g.state)}</span>
+                    <span class="ellipsis t1" title={g.title}>{g.title}</span>
+                    <span class="meta t3">{state.goals[g.goal_id] ? statusWord(state.goals[g.goal_id]) : stateLabel(g.state)}</span>
                   </div>
                 </td>
                 <td class="col-r meta">{bytes(g.workspace_bytes)}</td>

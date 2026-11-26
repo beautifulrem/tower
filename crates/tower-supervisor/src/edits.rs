@@ -63,7 +63,7 @@ pub async fn undo_rollback(inner: &Arc<Inner>, goal: &str) -> Result<()> {
         _ => return Err(invalid(tr!(lang, "没有可以撤销的回退", "There is no rollback to undo"))),
     };
     restore(inner, goal, &ws, &saved).await?;
-    inner.append(goal, EventKind::Note { text: tr!(lang, "你撤销了上一次回退", "You undid the last rollback") })?;
+    inner.append(goal, EventKind::tower_note(tr!(lang, "你撤销了上一次回退", "You undid the last rollback")))?;
     inner.emit_goal_now(goal);
     Ok(())
 }

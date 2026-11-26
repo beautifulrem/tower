@@ -1,7 +1,9 @@
 /**
- * First run: what Tower is, the grammar shown on a sample card, an
- * environment check that says how to fix each problem, and adding a
- * repository. Two columns: the idea on the left, the checklist on the right.
+ * First run, as a setup page rather than a pitch: the environment check
+ * that says how to fix each problem, adding a repository, and under them
+ * how a goal ends — Tower's own route of glyphs and a sample card, with the
+ * one rule that matters (only the verifier turns anything green). One
+ * column at a page's measure, like Settings.
  *
  * While a check is red, fixing it is the one primary action (copy its
  * command, or open Pi to log in; then check again); with everything in
@@ -62,22 +64,19 @@ function Check(props: { ok: boolean | null; blocking?: boolean; title: string; d
   );
 }
 
-/** The six stations of a goal's life, in the order the board shows them; the last two are verified, so they are green. */
-const LIFE: Array<{ state: LifecycleState; verified: boolean }> = [
-  { state: "draft", verified: false },
-  { state: "running", verified: false },
-  { state: "claimed", verified: false },
-  { state: "verifying", verified: false },
-  { state: "in_review", verified: true },
-  { state: "accepted", verified: true },
-];
+/**
+ * The six stations of a goal's life, in the order the board shows them, all in the neutral chain: a station is a step,
+ * not a verifier's result, and accepting does not need a verified pass. The sample seal under the line is where green
+ * is shown, on the verifier's word.
+ */
+const LIFE: LifecycleState[] = ["draft", "running", "claimed", "verifying", "in_review", "accepted"];
 
 /**
- * A goal's life in Tower's own glyphs: ring, half-disc, dashed claim, the
+ * A goal's life in Tower's own glyphs: ring, turning arc, dashed claim, the
  * verifier filling it in, the check, the seal — each with its word, joined
  * by hairlines like a route. The one picture that says what Tower does
  * without a sentence: the agent's "done" is the dashed station in the
- * middle, and green begins only after the verifier.
+ * middle, and the verifier comes after it.
  */
 function LifeLine() {
   return (
@@ -85,8 +84,8 @@ function LifeLine() {
       <For each={LIFE}>
         {(s) => (
           <li class="welcome-station">
-            <LifecycleGlyph goal={{ state: s.state, progress: { verified: s.verified ? 1 : 0, observed: 0, machine: 1, human: 0, human_done: 0 }, verified_pin: s.verified ? "a4a90b2" : null }} size={14} />
-            <span class="welcome-station-word">{stateLabel(s.state)}</span>
+            <LifecycleGlyph goal={{ state: s, progress: { verified: 0, observed: 0, machine: 1, human: 0, human_done: 0 }, verified_pin: null }} size={14} />
+            <span class="welcome-station-word">{stateLabel(s)}</span>
           </li>
         )}
       </For>
@@ -147,141 +146,126 @@ export function Welcome() {
 
   return (
     <div class="welcome">
-      <div class="welcome-main">
-        <Wordmark />
-        <h1 class="welcome-title">{t("welcome.title")}</h1>
-        <p class="welcome-lede">{t("welcome.lede")}</p>
+      <Wordmark />
+      <h1 class="welcome-title">{t("welcome.title")}</h1>
+      <section class="checks">
+        <h2 class="section-title">{t("welcome.envCheck")}</h2>
+        <Check
+          ok={piOk()}
+          title={piOk() ? `Pi ${env()?.pi_version ?? ""}` : piIssue() ? envIssueLabel(piIssue()!, env()) : t("envIssue.pi_missing")}
+          detail={piOk() ? (piNote() ? envIssueLabel(piNote()!, env()) : env()?.pi_path ?? undefined) : state.settings?.engine === "claude-code" ? t("welcome.piNotEngine") : t("welcome.piWhat")}
+          fix={piOk() === false ? (fixFor(piIssue()) ?? "npm i -g @earendil-works/pi-coding-agent") : undefined}
+        />
+        <Show when={piOk()}>
+          <Check
+            ok={modelCount() === null ? null : modelCount()! > 0}
+            title={
+              modelCount() === null
+                ? t("welcome.modelsLoading")
+                : modelCount()! > 0
+                  ? t("welcome.models", { n: modelCount()! })
+                  : t("welcome.noModels")
+            }
+            detail={modelCount() === 0 ? t("welcome.noModelsHint") : undefined}
+            action={
+              modelCount() === 0 ? (
+                <>
+                  <Button size="s" onClick={openPiLogin}>
+                    {t("welcome.openPiLogin")}
+                  </Button>
+                  <span>{t("welcome.openPiLoginHint")}</span>
+                </>
+              ) : undefined
+            }
+          />
+        </Show>
+        {/* Claude Code as the chosen engine: its own check, with the trust model in one line. */}
+        <Show when={state.settings?.engine === "claude-code"}>
+          <Check
+            ok={env() ? !claudeIssue() : null}
+            title={claudeIssue() ? envIssueLabel(claudeIssue()!, env()) : t("welcome.claudeOk")}
+            detail={t("settings.engineTrust")}
+            fix={claudeIssue()?.fix ?? undefined}
+          />
+        </Show>
+        <Check
+          ok={env() ? !!env()!.git_version : null}
+          title={env()?.git_version ?? t("envIssue.git_missing")}
+          fix={env() && !env()!.git_version ? (fixFor(issues().find((i) => i.kind === "git_missing")) ?? "xcode-select --install") : undefined}
+        />
+        <Check
+          ok={sandbox()}
+          blocking={false}
+          title={sandbox() ? t("welcome.sandboxOk") : t("welcome.sandboxMissing")}
+          detail={sandbox() ? t("welcome.sandboxOkDetail") : t("welcome.sandboxMissingDetail")}
+        />
+        {/* A missing git identity can be set right here; every other issue keeps its command. */}
+        <For each={other()}>
+          {(i) => <Check ok={false} blocking={i.blocking} title={envIssueLabel(i, env())} fix={i.fix} action={i.kind === "git_identity_missing" ? <GitIdentityForm /> : undefined} />}
+        </For>
+        <Show when={demoMissing().length}>
+          <Check
+            ok={false}
+            blocking={false}
+            title={t("welcome.demoNeeds", { tools: demoMissing().join(", ") })}
+            fix={demoMissing().map(installHint).join(" && ")}
+          />
+        </Show>
+      </section>
+      <div class="welcome-actions">
+        <Show when={!(redFix() && copied())}>
+          <Button variant="ghost" onClick={() => void recheck()}>
+            {t("welcome.recheck")}
+          </Button>
+        </Show>
+        <span class="row">
+          <Show
+            when={redFix()}
+            fallback={
+              <>
+                <DemoButton variant="ghost" />
+                <Button variant="primary" onClick={pickProject}>
+                  {t("welcome.addRepo")}
+                </Button>
+              </>
+            }
+          >
+            {(fix) => (
+              <>
+                <DemoButton variant="ghost" />
+                <Button variant="ghost" onClick={pickProject}>
+                  {t("welcome.addRepo")}
+                </Button>
+                <Show
+                  when={copied()}
+                  fallback={
+                    "login" in fix() ? (
+                      <Button variant="primary" onClick={() => (openPiLogin(), setCopied(true))}>
+                        {t("welcome.openPiLogin")}
+                      </Button>
+                    ) : (
+                      <Button variant="primary" title={(fix() as { cmd: string }).cmd} onClick={() => copyFix((fix() as { cmd: string }).cmd)}>
+                        {t("welcome.copyFix")}
+                      </Button>
+                    )
+                  }
+                >
+                  <Button variant="primary" onClick={() => void recheck()}>
+                    {t("welcome.recheck")}
+                  </Button>
+                </Show>
+              </>
+            )}
+          </Show>
+        </span>
+      </div>
+      <p class="meta welcome-note">{t("welcome.repoBody")}</p>
+      <section class="welcome-how">
+        <h2 class="section-title">{t("welcome.howTitle")}</h2>
         <LifeLine />
         <SampleCard />
-        <div class="welcome-points">
-          <div>
-            <b>{t("welcome.factsTitle")}</b>
-            <span>{t("welcome.factsBody")}</span>
-          </div>
-          <div>
-            <b>{t("welcome.quietTitle")}</b>
-            <span>{t("welcome.quietBody")}</span>
-          </div>
-          <div>
-            <b>{t("welcome.repoTitle")}</b>
-            <span>{t("welcome.repoBody")}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="welcome-side">
-        <section class="checks">
-          <h2 class="section-title">{t("welcome.envCheck")}</h2>
-          <Check
-            ok={piOk()}
-            title={piOk() ? `Pi ${env()?.pi_version ?? ""}` : piIssue() ? envIssueLabel(piIssue()!, env()) : t("welcome.piMissing")}
-            detail={piOk() ? (piNote() ? envIssueLabel(piNote()!, env()) : env()?.pi_path ?? undefined) : state.settings?.engine === "claude-code" ? t("welcome.piNotEngine") : t("welcome.piWhat")}
-            fix={piOk() === false ? (fixFor(piIssue()) ?? "npm i -g @earendil-works/pi-coding-agent") : undefined}
-          />
-          <Show when={piOk()}>
-            <Check
-              ok={modelCount() === null ? null : modelCount()! > 0}
-              title={
-                modelCount() === null
-                  ? t("welcome.modelsLoading")
-                  : modelCount()! > 0
-                    ? t("welcome.models", { n: modelCount()! })
-                    : t("welcome.noModels")
-              }
-              detail={modelCount() === 0 ? t("welcome.noModelsHint") : undefined}
-              action={
-                modelCount() === 0 ? (
-                  <>
-                    <Button size="s" onClick={openPiLogin}>
-                      {t("welcome.openPiLogin")}
-                    </Button>
-                    <span>{t("welcome.openPiLoginHint")}</span>
-                  </>
-                ) : undefined
-              }
-            />
-          </Show>
-          {/* Claude Code as the chosen engine: its own check, with the trust model in one line. */}
-          <Show when={state.settings?.engine === "claude-code"}>
-            <Check
-              ok={env() ? !claudeIssue() : null}
-              title={claudeIssue() ? envIssueLabel(claudeIssue()!, env()) : t("welcome.claudeOk")}
-              detail={t("settings.engineTrust")}
-              fix={claudeIssue()?.fix ?? undefined}
-            />
-          </Show>
-          <Check
-            ok={env() ? !!env()!.git_version : null}
-            title={env()?.git_version ?? t("welcome.gitMissing")}
-            fix={env() && !env()!.git_version ? (fixFor(issues().find((i) => i.kind === "git_missing")) ?? "xcode-select --install") : undefined}
-          />
-          <Check
-            ok={sandbox()}
-            blocking={false}
-            title={sandbox() ? t("welcome.sandboxOk") : t("welcome.sandboxMissing")}
-            detail={sandbox() ? t("welcome.sandboxOkDetail") : t("welcome.sandboxMissingDetail")}
-          />
-          {/* A missing git identity can be set right here; every other issue keeps its command. */}
-          <For each={other()}>
-            {(i) => <Check ok={false} blocking={i.blocking} title={envIssueLabel(i, env())} fix={i.fix} action={i.kind === "git_identity_missing" ? <GitIdentityForm /> : undefined} />}
-          </For>
-          <Show when={demoMissing().length}>
-            <Check
-              ok={false}
-              blocking={false}
-              title={t("welcome.demoNeeds", { tools: demoMissing().join(", ") })}
-              fix={demoMissing().map(installHint).join(" && ")}
-            />
-          </Show>
-        </section>
-        <div class="welcome-actions">
-          <Show when={!(redFix() && copied())}>
-            <Button variant="ghost" onClick={() => void recheck()}>
-              {t("welcome.recheck")}
-            </Button>
-          </Show>
-          <span class="row">
-            <Show
-              when={redFix()}
-              fallback={
-                <>
-                  <DemoButton variant="ghost" />
-                  <Button variant="primary" onClick={pickProject}>
-                    {t("welcome.addRepo")}
-                  </Button>
-                </>
-              }
-            >
-              {(fix) => (
-                <>
-                  <DemoButton variant="ghost" />
-                  <Button variant="ghost" onClick={pickProject}>
-                    {t("welcome.addRepo")}
-                  </Button>
-                  <Show
-                    when={copied()}
-                    fallback={
-                      "login" in fix() ? (
-                        <Button variant="primary" onClick={() => (openPiLogin(), setCopied(true))}>
-                          {t("welcome.openPiLogin")}
-                        </Button>
-                      ) : (
-                        <Button variant="primary" title={(fix() as { cmd: string }).cmd} onClick={() => copyFix((fix() as { cmd: string }).cmd)}>
-                          {t("welcome.copyFix")}
-                        </Button>
-                      )
-                    }
-                  >
-                    <Button variant="primary" onClick={() => void recheck()}>
-                      {t("welcome.recheck")}
-                    </Button>
-                  </Show>
-                </>
-              )}
-            </Show>
-          </span>
-        </div>
-      </div>
+        <p class="meta welcome-note">{t("welcome.factsBody")}</p>
+      </section>
     </div>
   );
 }

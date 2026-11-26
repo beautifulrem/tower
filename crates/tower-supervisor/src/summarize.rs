@@ -1,5 +1,5 @@
 //! One-line summaries of tool calls for the live line and trace. They must be
-//! steerable details ("bash · pnpm test"), never "working…".
+//! steerable details ("bash pnpm test"), never "working…".
 
 use serde_json::Value;
 

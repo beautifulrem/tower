@@ -24,26 +24,32 @@
   background: transparent;
   min-width: 0;
 }
+/* Who said it is read, not skimmed: the source label is meta size (12px), never the 11px hint register. */
 .prov-head {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  font-size: var(--fs-hint);
+  font-size: var(--fs-meta);
   line-height: var(--lh-body);
   color: var(--text-3);
   min-width: 0;
 }
+/* A long source ("Agent says  Run trace") wraps under itself in the gutter rather than being clipped to a fragment. */
 .prov-badge {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 5px;
   font-weight: 400;
   color: var(--text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .prov-badge .icon { color: var(--text-3); }
+.prov-words {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: 5px;
+  min-width: 0;
+}
+.prov-badge .nw { white-space: nowrap; }
 .prov-meta {
   font-size: var(--fs-hint);
   line-height: var(--lh-hint);
@@ -131,9 +137,9 @@
   border-radius: 1px;
   background: var(--text-3);
 }
-.meter-micro-fill.verified { background: var(--st-verified); }
+/* Statistics are neutral: green is a fresh verifier pass and red a failure, never a rate. Amber marks spend over its
+   soft cap, which is a decision coming. */
 .meter-micro-fill.over { background: var(--st-attention); }
-.meter-micro-fill.danger { background: var(--st-danger); }
 .meter-micro-tick {
   position: absolute;
   top: -1.5px;
@@ -187,11 +193,11 @@
   color: var(--text-1);
   transition-duration: 0ms;
 }
+/* Sandbox off: a badge in ink with the hint mark — worth a look, no decision (docs/12 §12.6.6), so no amber ground. */
 .gauge-sandbox.warn {
   margin: 0;
   padding: 0 7px;
   border: 1px solid var(--border-strong);
-  background: var(--attention-bg);
   color: var(--text-1);
   font-weight: 500;
 }
@@ -239,11 +245,6 @@
   justify-content: flex-end;
   text-align: right;
 }
-.seg-observed {
-  border-style: dashed;
-  border-color: var(--text-2);
-  background: transparent;
-}
 .g-spend-cell {
   display: grid;
   gap: 2px;
@@ -253,18 +254,28 @@
 }
 .g-spend-text { line-height: 14px; }
 .g-spend-cell .meter-micro { width: 56px; }
-/* At the low end of this range the fixed columns add up to more than the board: the identity column gives first. */
+/* At the low end of this range the fixed columns add up to more than the board: the identity column gives first. The id
+   is beside the title, so the title's column carries it (a larger share, and a floor of 12em of title beside the id and
+   an overlap's i mark) and the identity is the readings, the engine and the project (less room than with the id). */
 @media (min-width: 1241px) and (max-width: 1560px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.2fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(12em, 15.5em);
+    grid-template-columns: 14px minmax(16em, 1.4fr) minmax(11em, 1.05fr) 11em 4.5em 7em 6.5em minmax(8em, 10em);
   }
 }
 .g-overlap {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 3px;
   color: var(--text-2);
   font-size: var(--fs-hint);
+  white-space: nowrap;
+}
+.g-overlap-mark,
+.g-overlap-words {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .g-title-cell {
   display: flex;
@@ -272,7 +283,9 @@
   gap: 6px;
   min-width: 0;
 }
-.g-title-cell .g-title { flex: 1 1 auto; }
+/* The title takes what it needs and gives way first; its id stays whole beside it. */
+.g-title-cell .g-title { flex: 0 1 auto; min-width: 0; }
+.g-title-cell .g-goal-id { flex: none; }
 .g-peek-btn {
   display: none;
   align-items: center;
@@ -319,7 +332,7 @@
   border-left: 1px solid var(--border);
   box-shadow: var(--shadow-drawer);
   outline: none;
-  animation: peek-in var(--dur-base) var(--ease-out);
+  animation: peek-in var(--spring-soft);
 }
 .peek-backdrop.instant .peek-drawer { animation: none; }
 @keyframes peek-in {
@@ -528,13 +541,9 @@
   align-items: center;
   min-width: 0;
 }
-.meta-inline > :not([hidden]) ~ :not([hidden])::before {
-  content: "·";
-  padding: 0 0.35em;
-  font-family: var(--font-ui);
-  font-size: var(--fs-meta);
-  font-weight: 400;
-  color: var(--text-3);
+/* Groups in a meta line are told apart by a gap, not a dot: the middle dot belongs to the instrument lines (docs/12). */
+.meta-inline > :not([hidden]) ~ :not([hidden]) {
+  margin-left: var(--sp-3);
 }
 .console-tabs {
   display: inline-flex;
@@ -607,6 +616,7 @@
   line-height: var(--lh-reading);
   color: var(--text-1);
   max-width: var(--measure);
+  -webkit-user-select: text;
   user-select: text;
 }
 .proposal-copy .prov-frame {
@@ -666,8 +676,38 @@
   background: var(--bg-hover);
   transition-duration: 0ms;
 }
-.data-table .col-r { text-align: right; }
+.data-table .col-r {
+  text-align: right;
+  white-space: nowrap;
+}
+/* A reading cell — a cron expression, an approval mode, a time and its goal — is one token on one line ("0 2 * * 1-5",
+   never "1-" over "5"); a schedule's title is the column that wraps. A schedule's time in words is one token too, and
+   when the table is narrow its cron goes under it rather than the table past its frame. */
+.data-table td > code,
+.data-table td.meta,
+.data-table td.ops-when > span {
+  white-space: nowrap;
+}
+/* A goal cell (a name that truncates) takes what the other columns leave, and never more: max-width 0 lets the cell
+   give way instead of the table growing past its frame. The id and the verdict are one token each on their one line;
+   the title, and then a branch, end in an ellipsis (each whole in its tooltip). Storage and the merge queue alike. */
+.data-table td:has(.ellipsis) {
+  width: 100%;
+  max-width: 0;
+}
+.data-table td:has(.ellipsis) .row > :not(.ellipsis) {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.data-table td:has(.ellipsis) .row > code.meta {
+  flex: 0 3 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .data-table .toggle-row {
+  /* The state word keeps its width: in a narrow actions cell "On" must not run into the button after it. */
+  flex: none;
   margin-bottom: 0;
   align-items: center;
   gap: 6px;
@@ -701,26 +741,9 @@
   font-feature-settings: var(--font-features-num);
   color: var(--text-3);
 }
-/* The goal column takes what the others leave (max-width 0 lets the cell give way instead of the table growing): the
-   id is one token, the title and then the branch end in an ellipsis on their one line (the branch whole in its title). */
-.mq-row > td:nth-child(2) {
-  width: 100%;
-  max-width: 0;
-}
-.mq-row > td:nth-child(2) .row > * {
-  white-space: nowrap;
-}
-.mq-row > td:nth-child(2) .row > button {
-  flex: none;
-}
-.mq-row > td:nth-child(2) .row > code {
-  flex: 0 3 auto;
-  min-width: 4em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* One reading per line: the merge, then (when it doesn't count) the verdict. */
 .mq-status {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;

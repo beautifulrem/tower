@@ -169,7 +169,7 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
                 "你确认了哨兵命中的改动，目标进入评审",
                 "You confirmed the changes the sentinels flagged; the goal goes to review"
             );
-            inner.append(goal, EventKind::Note { text })?;
+            inner.append(goal, EventKind::tower_note(text))?;
             inner.transition(goal, Transition::VerifyStarted, None, "")?;
             let note = tr!(lang, "哨兵命中已由你确认", "Sentinel hits confirmed by you");
             inner.transition(goal, Transition::VerifyPassed, None, &note)?;
@@ -203,7 +203,7 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
                 "你确认这是真的测试失败，按改动前失败记录",
                 "You confirmed it is a real test failure; recorded as failing before the change"
             );
-            inner.append(goal, EventKind::Note { text })?;
+            inner.append(goal, EventKind::tower_note(text))?;
             run::resume(inner, goal).await
         }
         Some(Choice::TellFailingNames) => {
@@ -212,7 +212,7 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
                 "你只把失败的保留测试名称告诉了 Agent",
                 "You told the agent only the names of the failing held-out tests"
             );
-            inner.append(goal, EventKind::Note { text })?;
+            inner.append(goal, EventKind::tower_note(text))?;
             let failing: Vec<(String, String, Vec<String>)> = last_failures(inner, &rec, true)?
                 .into_iter()
                 .map(|f| (f.id, f.title, prompts::failing_tests(&f.output_tail)))
@@ -228,7 +228,7 @@ async fn on_pause_choice(inner: &Arc<Inner>, goal: &str, response: &str) -> Resu
             // The human's call: the agent sees the held-out failures, and so
             // learns about those tests. On record.
             let text = tr!(lang, "你把保留测试的失败输出给了 Agent", "You showed the agent the held-out test failures");
-            inner.append(goal, EventKind::Note { text })?;
+            inner.append(goal, EventKind::tower_note(text))?;
             let failures = last_failures(inner, &rec, true)?;
             let msg =
                 prompts::rework(rec.rework_cycles + 1, rec.contract.max_rework.max(rec.rework_cycles + 1), &failures);
@@ -458,6 +458,7 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
                     "验收时还有 {n} 条假设没有确认：{list}",
                     "Accepted with {n} unconfirmed assumption(s): {list}"
                 ),
+                tower: true,
             },
         )?;
     }
@@ -479,13 +480,13 @@ pub async fn accept(inner: &Arc<Inner>, goal: &str) -> Result<String> {
         && !files.is_empty()
     {
         let n = files.len();
-        let list = files.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+        let list = files.iter().take(5).cloned().collect::<Vec<_>>().join(lang.pick("、", ", "));
         let text = tr!(
             lang,
             "{written} 与当前的 {base_branch} 会有 {n} 个文件冲突：{list}",
             "{written} will conflict with the current {base_branch} in {n} file(s): {list}"
         );
-        inner.append(goal, EventKind::Note { text: text.clone() })?;
+        inner.append(goal, EventKind::tower_note(text.clone()))?;
         inner.toast(goal, ToastLevel::Warning, text);
     }
     Ok(written)

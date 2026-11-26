@@ -15,7 +15,7 @@ const mockSummary: GoalSummaryExt = {
     state: "running",
     mode: "editing",
     pause_reason: null,
-    live_line: { mode: "editing", action: "run", target: "pnpm test", at: Date.now() - 10_000 },
+    live_line: { mode: "editing", action: "run", target: "pnpm test", at: Date.now() - 10_000, running: true },
     run_no: 2,
     rework_cycles: 1,
     max_rework: 3,
@@ -132,7 +132,7 @@ vi.mock("../../lib/store", async () => {
     state: "paused",
     pause_reason: "agent_reported_blocked" as GoalSummary["pause_reason"],
   };
-  const [state] = createStore({
+  const [state, setState] = createStore({
     settings: { language: "en", max_concurrent: 4, engine: "pi", remote_enabled: true, muted_goals: [] as string[], quiet_until: null },
     env: { pi_version: "1.0.0", pi_path: "/opt/bin/pi", issues: [] },
     goals: { "G-0001": g1, "G-0009": gBlocked } as Record<string, GoalSummary>,
@@ -162,6 +162,8 @@ vi.mock("../../lib/store", async () => {
   });
   return {
     state,
+    __setState: setState,
+    drafts: {} as Record<string, string>,
     toast: vi.fn(),
     act: async <T,>(fn: () => Promise<T>) => fn(),
     goalList: () => Object.values(state.goals),
@@ -173,7 +175,6 @@ vi.mock("../../lib/store", async () => {
 });
 
 const { ProvenanceFrame, TrustPill, TaintPill } = await import("../ProvenanceFrame");
-const { FlakyLine } = await import("../Honesty");
 const { TelemetryStrip } = await import("../TelemetryStrip");
 const { LookStrip } = await import("../Look");
 const { matches } = await import("../Trace");
@@ -197,26 +198,24 @@ describe("Four-Provenance physical frames & pills", () => {
     expect(h.container.querySelector(".prov-frame.prov-human")).not.toBeNull();
   });
 
-  it("renders TrustPill, TaintPill and FlakyLine", () => {
+  it("renders TrustPill and TaintPill", () => {
     const { container } = render(() => (
       <>
         <TrustPill tier="full_s2" label="Full S2" />
         <TrustPill tier="restricted_s2" label="Restricted S2" />
         <TrustPill tier="experimental" label="Experimental" />
         <TaintPill level="high" label="Taint: high" />
-        <FlakyLine c={mockGoalDetail.criteria[0]} />
       </>
     ));
     expect(container.querySelector(".trust-pill.trust-full")).not.toBeNull();
     expect(container.querySelector(".trust-pill.trust-restricted")).not.toBeNull();
     expect(container.querySelector(".trust-pill.trust-experimental")).not.toBeNull();
     expect(container.querySelector(".taint-pill.taint-high")).not.toBeNull();
-    expect(container.querySelector(".flaky-line")?.textContent).toContain("Flaky");
   });
 });
 
 describe("TelemetryStrip", () => {
-  it("renders swept RunsGauge, borderless blocking Needs-You count and sandbox posture", () => {
+  it("renders the turning runs mark, borderless blocking Needs-You count and sandbox posture", () => {
     const { container } = render(() => <TelemetryStrip />);
     expect(container.querySelector(".gauge-runs")).not.toBeNull();
     expect(container.querySelector(".gauge-active")?.textContent).toContain("1/4 running");
@@ -224,6 +223,37 @@ describe("TelemetryStrip", () => {
     expect(container.querySelector(".gauge-sandbox")?.textContent).toContain("S2 Seatbelt");
     expect(container.querySelector(".gauge-sandbox.warn")).toBeNull();
     expect(container.querySelector(".gauge-phone-ok")).not.toBeNull();
+  });
+
+  it("says the sandbox is off in ink with the uncoloured hint mark, never the amber ! (review 15: S0 is no decision of yours)", async () => {
+    const set = ((await import("../../lib/store")) as unknown as { __setState: (k: string, v: unknown) => void }).__setState;
+    set("env", { pi_version: "1.0.0", pi_path: "/opt/bin/pi", issues: [{ kind: "no_sandbox", blocking: false, text: "", fix: null }] });
+    set("sandboxPosture", null);
+    try {
+      const { container } = render(() => <TelemetryStrip />);
+      const gauge = container.querySelector(".gauge-sandbox.warn")!;
+      expect(gauge.textContent).toContain("No sandbox");
+      expect(gauge.querySelector("svg.mark-notice")).not.toBeNull();
+      expect(gauge.querySelector(".mark-attention")).toBeNull();
+    } finally {
+      set("env", { pi_version: "1.0.0", pi_path: "/opt/bin/pi", issues: [] });
+      set("sandboxPosture", { backend: "seatbelt", backend_name: "S2 Seatbelt", available: true, microvm_available: true, warnings: [] });
+    }
+  });
+
+  it("says unseen errors with the mark family's red ×, not a red dot (review 14: the title bar mixed the two)", async () => {
+    const set = ((await import("../../lib/store")) as unknown as { __setState: (k: string, v: number) => void }).__setState;
+    set("unseenActivity", 2);
+    try {
+      const { container } = render(() => <TelemetryStrip />);
+      expect(container.querySelector(".gauge-errors svg.mark-danger")).not.toBeNull();
+      expect(container.querySelector(".gauge-errors .gauge-dot")).toBeNull();
+      // Review 16 (record only): the engine's name stood behind a 6px grey dot that said nothing; the name stands alone.
+      expect(container.querySelector(".gauge-engine")?.textContent).toBe("Pi");
+      expect(container.querySelector(".gauge-dot")).toBeNull();
+    } finally {
+      set("unseenActivity", 0);
+    }
   });
 });
 

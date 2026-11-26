@@ -6,12 +6,14 @@ import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
 import { TitleBar, Toasts } from "./components/Chrome";
 import { Sidebar } from "./components/Sidebar";
+import { DangerMark } from "./components/Glyph";
 import { Button, Empty, Failed, IconButton, Loading } from "./components/ui";
 import { api } from "./lib/api";
 import { useKeys } from "./lib/keys";
 import { activityOpen, openActivity, openPalette, openShortcuts, paletteOpen, shortcutsOpen, toggleActivity, togglePalette, toggleShortcuts } from "./lib/layers";
 import { useMenu } from "./lib/menu";
 import { type Route, back, go, route } from "./lib/nav";
+import { reviewEach } from "./lib/reviewQueue";
 import { t, withLater } from "./lib/i18n";
 import { prewarmReviews } from "./lib/prewarm";
 import { act, init, state, toast } from "./lib/store";
@@ -88,13 +90,12 @@ function BootFailed() {
       <div class="boot-failed">
         <div class="boot-gauges num halt" aria-hidden="true">
           <span class="gauge gauge-errors">
-            <span class="gauge-dot down" />
+            <DangerMark />
             {t("chrome.errorsShort", { n: 1 })}
           </span>
           <span class="gauge gauge-dead">{t("chrome.runningShort", { n: "—", max: "—" })}</span>
           <span class="gauge gauge-dead">—</span>
           <span class="gauge gauge-dead">
-            <span class="gauge-dot" />
             {t("chrome.engine")} <span class="t3">—</span>
           </span>
         </div>
@@ -173,7 +174,8 @@ export function App() {
       { key: "mod+,", run: () => go({ name: "settings" }), inInputs: true, desc: () => t("chrome.openSettings") },
       { key: "escape", run: back, desc: () => t("keys.back"), hint: "escape / mod+[" },
       { key: "mod+[", run: back, inInputs: true },
-      { key: "mod+k", run: togglePalette, inInputs: true, desc: () => t("keys.palette") },
+      { key: "mod+k", run: togglePalette, inInputs: true, desc: () => t("chrome.search") },
+      { key: "shift+r", run: reviewEach, desc: () => t("inbox.reviewAll") },
       { key: "?", run: toggleShortcuts, desc: () => t("keys.shortcuts") },
       { key: "mod+shift+l", run: toggleActivity, inInputs: true, desc: () => t("keys.activity") },
     ],

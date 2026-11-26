@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { InboxItem } from "../../gen/InboxItem";
@@ -44,12 +45,13 @@ vi.mock("../../lib/store", async () => {
   });
   return {
     state,
+    drafts: {} as Record<string, string>,
     toast: vi.fn(),
     act: async <T,>(fn: () => Promise<T>) => fn(),
   };
 });
 
-const { DecisionCard, ARM_MS, bodyParts, heldOutParts, refusedPaths, withoutEnvAside } = await import("../DecisionCard");
+const { DecisionCard, ARM_MS, bodyParts, chooseOption, heldOutParts, refusedPaths, withoutEnvAside } = await import("../DecisionCard");
 const nav = await import("../../lib/nav");
 
 const HELD_OUT_BODY = [
@@ -100,6 +102,38 @@ describe("DecisionCard", () => {
     expect(screen.getByText("Paused")).toBeTruthy();
     expect(screen.getByText("Stopped without submitting")).toBeTruthy();
     expect(screen.queryByText(/^Paused:/)).toBeNull();
+  });
+
+  // Review 23 (not covered): what you typed went with the card when you opened another view. Review 24 (record only 4):
+  // it is the item's, not its words': another item of the same goal, kind and words open beside it has a box of its
+  // own (the store hands a replaced item's words to the item that replaced it, `lib/__tests__/drafts.test.ts`).
+  it("keeps what you typed and did not send for the card's return, its own and no other item's, until an answer goes", async () => {
+    const box = () => screen.getByRole("textbox") as HTMLTextAreaElement;
+    const subject = "Stopped twice without submitting";
+    const first = render(() => <DecisionCard item={item({ id: "I-7", subject })} />);
+    fireEvent.input(box(), { target: { value: "check the tax first" } });
+    first.unmount();
+    const back = render(() => <DecisionCard item={item({ id: "I-7", subject })} />);
+    expect(box().value).toBe("check the tax first");
+    back.unmount();
+    const twin = render(() => <DecisionCard item={item({ id: "I-8", subject })} />);
+    expect(box().value, "another item of the same words has a box of its own").toBe("");
+    twin.unmount();
+    const other = render(() => <DecisionCard item={item({ id: "I-9", subject: "Another reason" })} />);
+    expect(box().value, "another item's box is its own").toBe("");
+    other.unmount();
+    // A choice sent from the keyboard, the card not in view: the words go with it.
+    expect(await chooseOption(item({ id: "I-7", subject }), 0)).toBe(true);
+    const chosen = render(() => <DecisionCard item={item({ id: "I-7", subject })} />);
+    expect(box().value, "a choice sent, the words are gone").toBe("");
+    // A reply sent from the card: its words go too.
+    fireEvent.input(box(), { target: { value: "use the order id" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Reply/ }));
+    await vi.waitFor(() => expect(invoked.map((i) => i.cmd)).toEqual(["answer", "answer"]));
+    await new Promise((r) => setTimeout(r, 0));
+    chosen.unmount();
+    render(() => <DecisionCard item={item({ id: "I-7", subject })} />);
+    expect(box().value, "a reply sent, the words are gone").toBe("");
   });
 
   it("gives each option the tone the supervisor chose", () => {
@@ -201,9 +235,52 @@ describe("DecisionCard", () => {
   });
 
   it("sets a failing check's name as a machine value and keeps the explanation as prose", () => {
-    render(() => <DecisionCard item={item({ kind: "ci_failed", subject: "test (ubuntu-latest, node 22)", body: "You can send the failing check to the agent.", options: ["Send to the agent", "Leave it"], tones: ["primary", "neutral"] })} />);
+    // As the supervisor sends it: the machine value the subject starts with, whole here (`code`).
+    const subject = "test (ubuntu-latest, node 22)";
+    render(() => <DecisionCard item={item({ kind: "ci_failed", subject, code: subject, body: "You can send the failing check to the agent.", options: ["Send to the agent", "Leave it"], tones: ["primary", "neutral"] })} />);
     expect(screen.getByText("test (ubuntu-latest, node 22)").className).toContain("code-val");
     expect(screen.getByText(/send the failing check/).className).not.toContain("code-val");
+  });
+
+  // Review 24 (record only 11): two failing checks, as the store sends them in each language: each name its own code, the
+  // mark between them the question's own, ", " or "、", standing in the code as as many line breaks.
+  it("sets each failing check's name as code and the list mark between them as the question's own, in either language", () => {
+    for (const [subject, code] of [
+      ["lint, test (ubuntu-latest, node 22)", "lint\n\ntest (ubuntu-latest, node 22)"],
+      ["lint、test (ubuntu-latest, node 22)", "lint\ntest (ubuntu-latest, node 22)"],
+    ]) {
+      const { container, unmount } = render(() => <DecisionCard item={item({ kind: "ci_failed", subject, code, body: "", options: ["Leave it"], tones: ["neutral"] })} />);
+      const question = container.querySelector(".decision-question")!;
+      expect(question.textContent).toBe(subject);
+      expect([...question.querySelectorAll(".code-val")].map((c) => c.textContent)).toEqual(["lint", "test (ubuntu-latest, node 22)"]);
+      unmount();
+    }
+  });
+
+  // The same card given a new item (the language changed; a stall said again of another call) reads the new question
+  // from its start: the code's place is worked out whole each time, never carried on from the last.
+  it("reads a new item's question from its start when the same card is given it", () => {
+    const [shown, show] = createSignal(item({ kind: "ci_failed", subject: "lint, test (ubuntu-latest, node 22)", code: "lint\n\ntest (ubuntu-latest, node 22)", body: "", options: ["Leave it"], tones: ["neutral"] }));
+    const { container } = render(() => <DecisionCard item={shown()} />);
+    const question = () => container.querySelector(".decision-question")!;
+    const codes = () => [...question().querySelectorAll(".code-val")].map((c) => c.textContent);
+    show({ ...shown(), subject: "lint、test (ubuntu-latest, node 22)", code: "lint\ntest (ubuntu-latest, node 22)" });
+    expect(question().textContent).toBe("lint、test (ubuntu-latest, node 22)");
+    expect(codes()).toEqual(["lint", "test (ubuntu-latest, node 22)"]);
+    show({ ...shown(), kind: "stalled", subject: "pnpm test (bash) failed 4 times in a row", code: "pnpm test" });
+    expect(question().textContent).toBe("pnpm test (bash) failed 4 times in a row");
+    expect(codes()).toEqual(["pnpm test"]);
+  });
+
+  // Review 22 (record only): "pnpm test (bash) failed 4 times in a row" set the command in the words' face.
+  it("sets a stalled call's command as a machine value and the words after it as words", () => {
+    const { container } = render(() => (
+      <DecisionCard item={item({ kind: "stalled", subject: "pnpm test (bash) failed 4 times in a row", code: "pnpm test", body: "", options: ["Keep waiting", "Pause"], tones: ["neutral", "neutral"] })} />
+    ));
+    const question = container.querySelector(".decision-question")!;
+    expect(question.textContent).toBe("pnpm test (bash) failed 4 times in a row");
+    expect([...question.querySelectorAll(".code-val")].map((c) => c.textContent)).toEqual(["pnpm test"]);
+    expect(question.className).not.toContain("code-val");
   });
 
   it("offers to put a decision aside", async () => {

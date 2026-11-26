@@ -25,7 +25,7 @@ test("a decision card is an article named by its kind, goal and question, with n
   const cards = page.getByRole("article");
   const first = cards.first();
   await expect(first).toBeVisible();
-  await expect(first).toHaveAccessibleName(/· G-\d{4} ·/);
+  await expect(first).toHaveAccessibleName(/, G-\d{4}, /);
   // Every button on a card says what it does (no icon-only button without a name).
   for (const b of await first.getByRole("button").all()) {
     expect((await b.getAttribute("aria-label")) ?? (await b.innerText())).not.toEqual("");

@@ -36,6 +36,7 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
     let body: String = r.get("body")?;
     // System-written titles follow the current language; the agent's and
     // extensions' words stay as written.
+    let mut code = None;
     let (title, subject) = match kind {
         InboxKind::Paused => match opt_enum_col::<PauseReason>(r, "goal_pause_reason")? {
             Some(reason) => {
@@ -51,10 +52,24 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
             (tr!(lang, "Agent 的假设待你确认", "An assumption by the agent needs your confirmation"), body.clone())
         }
         InboxKind::Stalled if !subject.is_empty() => {
-            let subject = tower_core::i18n::Stall::decode(&subject).map_or(subject, |s| s.text(lang));
+            let stall = tower_core::i18n::Stall::decode(&subject);
+            code = stall.as_ref().and_then(|s| s.code()).map(String::from);
+            let subject = stall.map_or(subject, |s| s.text(lang));
             (tr!(lang, "可能卡住：{subject}", "May be stuck: {subject}"), subject)
         }
-        InboxKind::CiFailed => (tr!(lang, "CI 未通过：{subject}", "CI failed: {subject}"), subject),
+        InboxKind::CiFailed => {
+            // Each failing check's name is code, whole, the names apart by the language's list mark in the words' face,
+            // ", " or "、" (review 23, record only: "unit-tests, lint" was one code, its comma too, and a name may hold
+            // ", " itself, as a matrix job's "test (ubuntu-latest, node 22)" does; review 24, record only 11: Chinese
+            // had the English mark). Stored a line each (an older item: one line, read as one name). In `code` the
+            // names stand apart by as many line breaks as the mark has characters: a client reads the question's own
+            // characters there, and what follows the code in the question starts where it always did.
+            let names: Vec<&str> = subject.lines().collect();
+            let mark = lang.pick("、", ", ");
+            code = Some(names.join(&"\n".repeat(mark.encode_utf16().count()))).filter(|s| !s.is_empty());
+            let subject = names.join(mark);
+            (tr!(lang, "CI 未通过：{subject}", "CI failed: {subject}"), subject)
+        }
         InboxKind::Approval if !subject.is_empty() => {
             (tr!(lang, "需要你批准：{subject}", "Approval needed: {subject}"), subject)
         }
@@ -91,6 +106,7 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
     Ok(InboxItem {
         tones,
         snoozed_until: r.get("snoozed_until")?,
+        code,
         title,
         subject,
         goal_title,
@@ -118,6 +134,30 @@ impl Store {
     }
 
     fn insert_inbox(&mut self, n: NewInboxItem) -> Result<InboxItem> {
+        // The same thing said again (a check failing on another push) is one card, on the desk and the phone alike: it
+        // replaces the goal's open item of its kind and words (review 22, record only: the desk kept the newest of each
+        // by itself and the phone showed both). Never an engine's dialog: each is a question the agent waits on, and is
+        // answered on its own.
+        if n.engine_ref.is_none() {
+            let older: Vec<String> = self
+                .conn
+                .prepare(
+                    "SELECT id FROM inbox WHERE goal_id = ?1 AND kind = ?2 AND subject = ?3 AND engine_ref IS NULL
+                     AND resolved_at IS NULL",
+                )?
+                .query_map(params![n.goal_id, enum_str(&n.kind), n.subject], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            let lang = self.lang();
+            for item_id in older {
+                let response = self.closed_by_tower(&item_id, &tower_core::i18n::replaced_why(lang))?;
+                let now = self.now();
+                self.conn.execute(
+                    "UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1",
+                    params![item_id, now, tr!(lang, "（被更新的一项取代）", "(replaced by a newer one)")],
+                )?;
+                self.append(&n.goal_id, EventKind::InboxResolved { item_id, response, auto: true })?;
+            }
+        }
         let id = new_id("inb");
         let now = self.now();
         self.conn.execute(
@@ -182,7 +222,14 @@ impl Store {
         Ok(())
     }
 
+    /// A person's answer to an open item.
     pub fn resolve_inbox(&mut self, id: &str, response: &str) -> Result<Resolved> {
+        self.close_inbox(id, response, None)
+    }
+
+    /// Closes an open item with `response`. `tower` is why, when Tower closed it and no person answered: the trace then
+    /// says so in Tower's words (`closed_by_tower`), and the item keeps `response`.
+    pub fn close_inbox(&mut self, id: &str, response: &str, tower: Option<&str>) -> Result<Resolved> {
         let item = self.inbox_item(id)?;
         let (resolved_at, engine_ref): (Option<i64>, Option<String>) =
             self.conn.query_row("SELECT resolved_at, engine_ref FROM inbox WHERE id = ?1", [id], |r| {
@@ -192,10 +239,33 @@ impl Store {
             return Err(StoreError::Conflict(tr!(self.lang(), "这一项已经处理过了", "This item was already handled")));
         }
         let now = self.now();
+        let said = match tower {
+            Some(why) => self.closed_by_tower(id, why)?,
+            None => response.into(),
+        };
         self.conn
             .execute("UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1", params![id, now, response])?;
-        self.append(&item.goal_id, EventKind::InboxResolved { item_id: id.into(), response: response.into() })?;
+        let auto = tower.is_some();
+        self.append(&item.goal_id, EventKind::InboxResolved { item_id: id.into(), response: said, auto })?;
         Ok(Resolved { item, engine_ref })
+    }
+
+    /// What the trace says when Tower closes an item no person answered (`tower_core::i18n::tower_closed`; review 23,
+    /// record only: "Withdrawn: The run stopped", "(timed out: …)" and "Replaced by a newer one", three ways of saying it
+    /// and none of them saying what).
+    fn closed_by_tower(&self, id: &str, why: &str) -> Result<String> {
+        let lang = self.lang();
+        Ok(tower_core::i18n::tower_closed(lang, &self.item_name(id, lang)?, why))
+    }
+
+    /// An item as a closing names it, in `lang`: its title, or what it is about when it has none.
+    pub(crate) fn item_name(&self, id: &str, lang: Lang) -> Result<String> {
+        let item = self
+            .conn
+            .query_row(&format!("{ITEM_SQL} WHERE i.id = ?1"), [id], |r| row_to_item(r, lang))
+            .optional()?
+            .ok_or_else(|| StoreError::NotFound(format!("inbox item {id}")))?;
+        Ok(if item.title.is_empty() { item.subject } else { item.title })
     }
 
     /// Withdraws open items of the given kinds for a goal, e.g. engine
@@ -210,13 +280,13 @@ impl Store {
         let mut n = 0;
         for (id, kind) in open {
             if kinds.contains(&kind) {
+                let response = self.closed_by_tower(&id, reason)?;
                 let now = self.now();
                 self.conn.execute(
                     "UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1",
                     params![id, now, tr!(lang, "（撤回：{reason}）", "(withdrawn: {reason})")],
                 )?;
-                let response = tr!(lang, "撤回：{reason}", "Withdrawn: {reason}");
-                self.append(goal_id, EventKind::InboxResolved { item_id: id, response })?;
+                self.append(goal_id, EventKind::InboxResolved { item_id: id, response, auto: true })?;
                 n += 1;
             }
         }
@@ -275,6 +345,136 @@ mod tests {
         clock.advance(61_000);
         assert_eq!(s.open_inbox_items().unwrap().len(), 1);
         assert!(s.snoozed_inbox_items().unwrap().is_empty());
+    }
+
+    /// Review 22 (record only): the same thing said again was one card on the desk, which kept the newest of each by
+    /// itself, and two on the phone. The supervisor's list is the one both read: the newer item replaces the older, and
+    /// the goal needs you once. Two dialogs with the same words are two questions the agent waits on: both stay.
+    #[test]
+    fn the_same_thing_said_again_is_one_item_but_every_dialog_stays() {
+        let (mut s, _, id) = crate::goals::tests::seeded();
+        let ci = |subject: &str| NewInboxItem {
+            kind: InboxKind::CiFailed,
+            subject: subject.into(),
+            engine_ref: None,
+            ..item(&id, InboxKind::CiFailed, 2)
+        };
+        let first = s.open_inbox(ci("unit-tests")).unwrap();
+        let other = s.open_inbox(ci("lint")).unwrap();
+        let again = s.open_inbox(ci("unit-tests")).unwrap();
+        let ids = |s: &crate::Store| s.open_inbox_items().unwrap().into_iter().map(|i| i.id).collect::<Vec<_>>();
+        assert_eq!(ids(&s), vec![other.id.clone(), again.id.clone()]);
+        // A failing check's name is code, whole (review 22, record only).
+        assert_eq!(again.code.as_deref(), Some("unit-tests"));
+        // Review 23 (record only): two failing checks are two codes, the ", " between them the words' (a name may hold
+        // ", " itself); the code is as long as the names it stands for in the question.
+        let two = s.open_inbox(ci("unit-tests\ntest (ubuntu-latest, node 22)")).unwrap();
+        assert_eq!(two.subject, "unit-tests, test (ubuntu-latest, node 22)");
+        assert_eq!(two.code.as_deref(), Some("unit-tests\n\ntest (ubuntu-latest, node 22)"));
+        assert_eq!(two.code.as_ref().unwrap().len(), two.subject.len());
+        assert!(two.title.ends_with("unit-tests, test (ubuntu-latest, node 22)"), "{}", two.title);
+        // Review 24 (record only 11): in Chinese the names are apart by "、", and in the code by one line break, as long.
+        let speak = |s: &mut crate::Store, code: &str| {
+            let mut cfg = s.settings().unwrap();
+            cfg.language = code.into();
+            s.save_settings(&cfg).unwrap();
+        };
+        speak(&mut s, "zh-CN");
+        let zh = s.open_inbox_items().unwrap().into_iter().find(|i| i.id == two.id).unwrap();
+        assert_eq!(zh.subject, "unit-tests、test (ubuntu-latest, node 22)");
+        assert_eq!(zh.code.as_deref(), Some("unit-tests\ntest (ubuntu-latest, node 22)"));
+        assert_eq!(zh.code.as_ref().unwrap().encode_utf16().count(), zh.subject.encode_utf16().count());
+        assert_eq!(zh.title, "CI 未通过：unit-tests、test (ubuntu-latest, node 22)");
+        speak(&mut s, "en");
+        s.resolve_inbox(&two.id, "Leave it").unwrap();
+        assert_eq!(s.summary(&id).unwrap().needs_you, 2);
+        assert!(s.resolve_inbox(&first.id, "late").is_err(), "the older one is closed, not left to answer");
+
+        let ask = |ui: &str| NewInboxItem { engine_ref: Some(ui.into()), ..item(&id, InboxKind::Approval, 0) };
+        let (a, b) = (s.open_inbox(ask("ui-1")).unwrap(), s.open_inbox(ask("ui-2")).unwrap());
+        let open = ids(&s);
+        assert!(open.contains(&a.id) && open.contains(&b.id), "{open:?}");
+        assert_eq!(s.summary(&id).unwrap().needs_you, 4);
+    }
+
+    /// Review 22 follow-up: an item Tower closed (replaced by a newer one, withdrawn as the run stopped, timed out) was
+    /// in the trace as the person's answer. It is Tower's, in Tower's register; an answer a person gave stays theirs.
+    #[test]
+    fn an_item_tower_closes_is_never_a_persons_answer() {
+        let (mut s, _, id) = crate::goals::tests::seeded();
+        let note = |subject: &str| NewInboxItem {
+            subject: subject.into(),
+            engine_ref: None,
+            ..item(&id, InboxKind::CiFailed, 2)
+        };
+        let replaced = s.open_inbox(note("lint")).unwrap();
+        s.open_inbox(note("lint")).unwrap();
+        let withdrawn = s.open_inbox(item(&id, InboxKind::ReviewReady, 1)).unwrap();
+        s.withdraw_inbox(&id, &[InboxKind::ReviewReady], "the run stopped").unwrap();
+        let timed_out = s
+            .open_inbox(NewInboxItem { engine_ref: Some("ui-1".into()), ..item(&id, InboxKind::Question, 1) })
+            .unwrap();
+        s.close_inbox(&timed_out.id, "(timed out)", Some("The asker stopped waiting for an answer")).unwrap();
+        let answered = s
+            .open_inbox(NewInboxItem { engine_ref: Some("ui-2".into()), ..item(&id, InboxKind::Question, 1) })
+            .unwrap();
+        s.resolve_inbox(&answered.id, "Before").unwrap();
+        let closed: std::collections::HashMap<String, (bool, tower_core::event::Source, String)> = s
+            .trace(&id, None, 100)
+            .unwrap()
+            .into_iter()
+            .filter_map(|e| match e.event {
+                EventKind::InboxResolved { item_id, auto, response } => Some((item_id, (auto, e.source, response))),
+                _ => None,
+            })
+            .collect();
+        use tower_core::event::Source::{Human, System};
+        // Review 23 (record only): each said one way, Tower's, naming the item and why it went.
+        let said = |it: &InboxItem, why: &str| {
+            tr!(s.lang(), "Tower 关闭了“{t}”：{why}", "Tower closed “{t}”: {why}", t = it.title)
+        };
+        let replaced_why = tower_core::i18n::replaced_why(s.lang());
+        for (it, why) in [
+            (&replaced, replaced_why.as_str()),
+            (&withdrawn, "the run stopped"),
+            (&timed_out, "The asker stopped waiting for an answer"),
+        ] {
+            assert_eq!(closed[&it.id], (true, System, said(it, why)), "{}", it.subject);
+        }
+        assert_eq!(closed[&answered.id], (false, Human, "Before".into()));
+        // The item itself keeps what it was closed with.
+        let kept: String =
+            s.conn.query_row("SELECT response FROM inbox WHERE id = ?1", [&timed_out.id], |r| r.get(0)).unwrap();
+        assert_eq!(kept, "(timed out)");
+    }
+
+    /// Review 22 (record only): "pnpm test (bash) failed 4 times in a row" set the command in the words' face. The item
+    /// says which part is code, in the language it is read in; the clients set it so.
+    #[test]
+    fn a_stalls_command_is_code_in_either_language() {
+        let (mut s, _, id) = crate::goals::tests::seeded();
+        let stall = tower_core::i18n::Stall::Repeated { tool: "bash".into(), target: "pnpm test".into(), times: 4 };
+        s.open_inbox(NewInboxItem {
+            kind: InboxKind::Stalled,
+            subject: stall.encode(),
+            engine_ref: None,
+            ..item(&id, InboxKind::Stalled, 2)
+        })
+        .unwrap();
+        for (lang, subject) in
+            [("en", "pnpm test (bash) failed 4 times in a row"), ("zh-CN", "pnpm test（bash）连续失败 4 次")]
+        {
+            let mut cfg = s.settings().unwrap();
+            cfg.language = lang.into();
+            s.save_settings(&cfg).unwrap();
+            let it = s.open_inbox_items().unwrap().pop().unwrap();
+            assert_eq!((it.subject.as_str(), it.code.as_deref()), (subject, Some("pnpm test")));
+        }
+        let quiet = tower_core::i18n::Stall::NoProgress { minutes: 12 };
+        let it = s
+            .open_inbox(NewInboxItem { subject: quiet.encode(), engine_ref: None, ..item(&id, InboxKind::Stalled, 2) })
+            .unwrap();
+        assert_eq!(it.code, None);
     }
 
     #[test]

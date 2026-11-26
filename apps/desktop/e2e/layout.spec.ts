@@ -4,7 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { enrichRich } from "./rich";
+import { enrichConsole, enrichRich } from "./rich";
 import { openTower, settled } from "./tauri";
 
 for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0003", "settings", "learning", "operations", "new"]) {
@@ -36,8 +36,70 @@ for (const route of ["overview", "inbox", "goal/G-0001", "review/G-0003", "setti
   });
 }
 
+// The trace scrolls down, never sideways (iteration 25's own finding, before review 25: the folded first line of a
+// message Tower injected ran 73 px past the trace's edge at 1040 px, taking its "for the agent" note out of view, and a
+// hash in a note ran past it at every width). A word with nowhere to break breaks at its line's edge, in every row that
+// carries words from elsewhere: a note, Tower's own line, an answer, what the agent says, claims, is blocked on and
+// submits, an error, a sentinel's finding, a stall and a reopened criterion. A folded message ends in an ellipsis with
+// its note beside it; a row's short cells (a tool's duration) never break for it.
+test("the trace runs down, never sideways, at every desktop width", async ({ page }) => {
+  const token = `sha256:${"0123456789abcdef".repeat(8)}`;
+  await openTower(page, "goal/G-0002", {
+    enrich: (F) => {
+      const t = F["trace-G-0002"] as Array<{ seq: number; at: number }>;
+      const [seq, at] = [t[0].seq, t[0].at];
+      const e = (n: number, source: string, event: object) => ({ seq: seq + n, goal_id: "G-0002", at: at + n * 1000, source, event });
+      t.unshift(
+        e(13, "engine", { kind: "claim", claim_id: "c9", claim: "cause", text: `The lockfile pins ${token}` }),
+        e(12, "engine", { kind: "agent_blocked", reason: `Cannot fetch ${token}`, evidence: `GET ${token} 403` }),
+        e(11, "engine", { kind: "submitted", summary: `Done; the cache key is ${token}` }),
+        e(10, "system", { kind: "engine_error", message: `spawn failed: ${token}` }),
+        e(9, "system", { kind: "sentinel_hit", sentinel: "secrets", severity: 3, title: `A key in ${token}`, detail: `line 3: ${token}` }),
+        e(8, "system", { kind: "stalled", detector: "silence", detail: `No output since ${token}` }),
+        e(7, "system", { kind: "loopback_opened", criterion: "C1", command: "npm test", why: `It read ${token}` }),
+        e(4, "human", { kind: "inbox_resolved", item_id: "y", response: `Use ${token}` }),
+        e(3, "system", { kind: "note", text: `The engine read ${token}` }),
+        e(2, "system", { kind: "note", text: `Tower retried: ${token} could not be read`, tower: true }),
+        e(1, "system", { kind: "inbox_resolved", item_id: "x", response: `Tower closed “${token}”: The run stopped`, auto: true }),
+      );
+    },
+  });
+  await settled(page, "goal/G-0002");
+  await page.keyboard.press("w");
+  await expect(page.locator(".trace-row", { hasText: "Tower retried" })).toBeVisible();
+  const out: string[] = [];
+  let folded = 0;
+  for (const w of [1040, 1240, 1283, 1440, 1800]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const seen = await page.locator(".trace-scroll").evaluate((s) => {
+      const found: string[] = [];
+      if (s.scrollWidth > s.clientWidth + 1) found.push(`it scrolls sideways (${s.scrollWidth} > ${s.clientWidth})`);
+      const edge = s.getBoundingClientRect().right;
+      let cut = 0;
+      for (const f of s.querySelectorAll(".injected-fold")) {
+        const line = f.querySelector(".ellipsis")!;
+        if (line.scrollWidth > line.clientWidth) cut++;
+        const note = f.querySelector(".t4")!.getBoundingClientRect();
+        if (note.width === 0 || note.right > edge + 1) found.push(`a folded message's note is out of view (${Math.round(note.right)} > ${Math.round(edge)})`);
+      }
+      for (const d of s.querySelectorAll(".trace-tool ~ .meta")) {
+        const r = document.createRange();
+        r.selectNodeContents(d);
+        if (new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size > 1) found.push(`a duration on two lines (${d.textContent})`);
+      }
+      return { found, cut };
+    });
+    folded += seen.cut;
+    if (seen.found.length) out.push(`${w}: ${seen.found.join(" | ")}`);
+  }
+  expect(out).toEqual([]);
+  expect(folded, "a folded message long enough to be cut").toBeGreaterThan(0);
+});
+
 // The review header is one line of stats: when they don't fit, a whole stat goes (the least needed first), and no
-// word is cut through its letters ("2 revi") — a clipped word reads as a different word.
+// word is cut through its letters ("2 revi") — a clipped word reads as a different word. Nor is a stat's dot left
+// behind at the line's end when the stat after it goes ("观测 0/3 ·"): it reads as a cut.
 const statModes = [
   { lang: "en", compare: false },
   { lang: "en", compare: true },
@@ -45,7 +107,7 @@ const statModes = [
   { lang: "zh-CN", compare: true },
 ] as const;
 for (const route of ["review/G-0003", "review/G-0001"]) for (const mode of statModes) {
-  test(`${route} (${mode.lang}${mode.compare ? ", comparing runs" : ""}): the header's stats drop whole, never cut a word, at every desktop width`, async ({ page }) => {
+  test(`${route} (${mode.lang}${mode.compare ? ", comparing runs" : ""}): the header's stats drop whole, never cut a word or leave a dot, at every desktop width`, async ({ page }) => {
     await openTower(page, route, { lang: mode.lang, enrich: enrichRich });
     await settled(page, route);
     if (mode.compare) {
@@ -60,6 +122,7 @@ for (const route of ["review/G-0003", "review/G-0001"]) for (const mode of statM
       const cut = await page.evaluate(() => {
         const stats = document.querySelector(".review-stats")!;
         const found: string[] = [];
+        const shown: { text: string; top: number }[] = [];
         const walker = document.createTreeWalker(stats, NodeFilter.SHOW_TEXT);
         for (let n = walker.nextNode(); n; n = walker.nextNode()) {
           if (!n.textContent!.trim() || n.parentElement!.closest(".sr-only")) continue;
@@ -88,7 +151,11 @@ for (const route of ["review/G-0003", "review/G-0001"]) for (const mode of statM
           const outside = r.right <= left + 0.5 || r.left >= right - 0.5 || r.bottom <= top + 0.5 || r.top >= bottom - 0.5;
           const inside = r.left >= left - 0.5 && r.right <= right + 0.5 && r.top >= top - 0.5 && r.bottom <= bottom + 0.5;
           if (!outside && !inside && !ellipsis) found.push(`"${n.textContent!.trim()}" ${Math.round(r.left)}..${Math.round(r.right)} in ${Math.round(left)}..${Math.round(right)}`);
+          if (inside) shown.push({ text: n.textContent!.trim(), top: r.top });
         }
+        shown.forEach((s, i) => {
+          if (s.text === "·" && !(shown[i + 1] && Math.abs(shown[i + 1].top - s.top) < 4)) found.push(`a "·" with nothing after it`);
+        });
         return found;
       });
       if (cut.length) out.push(`${w}: ${cut.join(" | ")}`);
@@ -285,3 +352,115 @@ for (const route of ["inbox", "goal/G-0001", "goal/G-0004", "goal/G-0005"]) {
     expect(same).toEqual([]);
   });
 }
+
+// A long goal title gives way, and nothing beside it does: in a card's head, the review's header (under the accept sheet
+// too) and Operations' tables, a kind, a time, a PR reading, an id, a verdict and a size each keep their one line, the
+// tables stay inside their frame, and a title cut short says itself whole in its tooltip. Three lengths: at the quick
+// start's cap (56 columns), mid, and far past it, as a goal written in the new-goal form can be; from the window's minimum
+// width (1040, `tauri.conf.json`), where Operations' schedule table once broke its cron as "1-" over "5".
+const LONG_TITLES = {
+  en: [
+    "Make checkout totals agree with the ledger for every curr",
+    "Make checkout totals and tax rounding agree with the ledger export",
+    "Make checkout totals, discounts and tax rounding agree with the finance team's ledger export for every currency and every retry path",
+  ],
+  "zh-CN": [
+    "让结账总额与财务导出的账本在每种货币下一致并补测",
+    "让结账总额和税额的四舍五入与财务导出的账本一致",
+    "让结账总额、折扣和税额的四舍五入在每种货币和每条重试路径下都与财务团队导出的账本完全一致，并补上缺失的边界测试",
+  ],
+};
+for (const lang of ["en", "zh-CN"] as const)
+  for (const [n, title] of LONG_TITLES[lang].entries())
+    test(`a ${["capped", "mid", "long"][n]} goal title (${lang}) is the only thing cut short, at every desktop width`, async ({ page }) => {
+      test.setTimeout(120_000);
+      const retitle = (F: Record<string, any>) => {
+        enrichRich(F);
+        enrichConsole(F);
+        const ids = ["G-0001", "G-0003"];
+        for (const g of F.goals) if (ids.includes(g.id)) g.title = title;
+        for (const id of ids) if (F[`goal-${id}`]) F[`goal-${id}`].summary.title = title;
+        for (const i of F.inbox) if (ids.includes(i.goal_id)) i.goal_title = title;
+        for (const q of F.mergeQueue ?? []) if (ids.includes(q.goal_id)) q.goal_title = title;
+        for (const s of F.storageInventory?.goals ?? []) if (ids.includes(s.goal_id)) s.title = title;
+      };
+      const out: string[] = [];
+      for (const route of ["inbox", "review/G-0001", "review/G-0003", "operations"]) {
+        await page.goto("about:blank");
+        await page.setViewportSize({ width: 1100, height: 900 });
+        await openTower(page, route, { lang, enrich: retitle });
+        await settled(page, route);
+        for (const w of [1040, 1100, 1240, 1440, 1800]) {
+          await page.setViewportSize({ width: w, height: 900 });
+          await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+          const bad = await page.evaluate((title) => {
+            const found: string[] = [];
+            const range = document.createRange();
+            for (const el of document.querySelectorAll<HTMLElement>(".content *")) {
+              if (!el.getClientRects().length || el.closest(".sr-only")) continue;
+              const texts = [...el.childNodes].filter((c) => c.nodeType === 3 && c.textContent?.trim());
+              const own = texts.map((c) => c.textContent).join("").trim();
+              // A short label (a kind, a time, an id, a size, a verdict): one line, however long the title beside it.
+              if (own && own.length <= 14 && !/^[\s\d,.]+$/.test(own)) {
+                const tops = texts.flatMap((c) => (range.selectNodeContents(c), [...range.getClientRects()])).filter((r) => r.width > 0).map((r) => r.top).sort((a, b) => a - b);
+                if (tops.some((t, i) => i > 0 && t - tops[i - 1] > 6)) found.push(`"${own}" (${el.className}) on ${new Set(tops.map(Math.round)).size} lines`);
+              }
+              // A title cut short says itself whole on hover.
+              if (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).textOverflow === "ellipsis" && el.textContent!.includes(title.slice(0, 12)) && el.closest("[title]")?.getAttribute("title") !== title)
+                found.push(`cut title in ${el.tagName.toLowerCase()}.${el.classList[0]} has no tooltip`);
+            }
+            for (const wrap of document.querySelectorAll<HTMLElement>(".data-table-wrap"))
+              if (wrap.scrollWidth > wrap.clientWidth + 1) found.push(`table runs past its frame (${wrap.scrollWidth} > ${wrap.clientWidth})`);
+            return found;
+          }, title);
+          out.push(...bad.map((b) => `${route} @${w}: ${b}`));
+        }
+      }
+      expect([...new Set(out)]).toEqual([]);
+    });
+
+// Review 8, R8-P3-04 (D96), and review 9, R9-P3-01: comparing runs at the window's smaller widths put the run pickers on
+// the header's line and pushed the verdict off it — at 1024–1096 and again just past the 1240 band. The verdict is what
+// the header is for: comparing, it stays whole on the line you see at every width, for a pass that counts (G-0003) and
+// for the longer verdict of one that doesn't (G-0001), while what gives way first is the pin pair, the counts, the gaps
+// and the pickers' pins — the runs' names stay.
+for (const lang of ["en", "zh-CN"] as const)
+  for (const id of ["G-0003", "G-0001"])
+    test(`comparing runs keeps the review header's verdict whole on its line at every width from 1024 to 1400 (${id}, ${lang})`, async ({ page }) => {
+      await openTower(page, `review/${id}`, { lang, enrich: enrichRich });
+      await settled(page, `review/${id}`);
+      await page.locator(".review-stats .scope-switch .tab").last().click();
+      await expect(page.locator(".review-stats .timeline-compare")).toBeVisible();
+      const lost: number[] = [];
+      for (let w = 1024; w <= 1400; w += 8) {
+        await page.setViewportSize({ width: w, height: 900 });
+        await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+        const whole = await page.evaluate(() => {
+          const seal = document.querySelector(".review-stats .review-verify .seal");
+          const group = document.querySelector(".review-stats .review-verify");
+          const line = document.querySelector(".review-stats")!;
+          if (!seal || !group) return false;
+          const [s, g, l] = [seal, group, line].map((e) => e.getBoundingClientRect());
+          // Whole, inside the group's clip and the line's, and on the line you see (not wrapped onto the hidden one).
+          return s.width > 0 && s.left >= l.left - 0.5 && s.right <= Math.min(g.right, l.right) + 0.5 && s.top >= g.top - 0.5 && s.bottom <= g.bottom + 0.5;
+        });
+        if (!whole) lost.push(w);
+      }
+      expect(lost, "widths where the verdict is not whole").toEqual([]);
+      // Each run is still named: the pickers keep the runs' names even when their pins go.
+      for (const face of await page.locator(".review-stats .timeline-pick-face").all()) expect((await face.innerText()).trim()).not.toBe("");
+    });
+
+// Review 9, R9-P3-02: the buttons' key caps go only when the verdict needs their room, never for want of a media query;
+// and where they go, the button's tooltip still says the shortcut.
+test("the review header keeps its buttons' key caps while the verdict has room, and their tooltips always say them", async ({ page }) => {
+  await openTower(page, "review/G-0003", { enrich: enrichRich });
+  await settled(page, "review/G-0003");
+  for (const w of [1024, 1100, 1240]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    await expect(page.locator(".review-head > .btn .kbd").first(), `at ${w}`).toBeVisible();
+  }
+  await expect(page.locator(".review-head > .btn", { hasText: "Request changes" })).toHaveAttribute("title", /Request changes C$/);
+  await expect(page.locator(".review-head > .btn", { hasText: "Accept" })).toHaveAttribute("title", /Accept ⌘⇧↩$/);
+});

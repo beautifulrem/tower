@@ -2,4 +2,9 @@
 import type { EventKind } from "./EventKind";
 import type { Source } from "./Source";
 
-export type TraceEntry = { seq: number, goal_id: string, at: number, source: Source, event: EventKind, };
+export type TraceEntry = { seq: number, goal_id: string, at: number, source: Source, event: EventKind, 
+/**
+ * The trace's words for an event the desk has no row of its own for (`i18n::event_words`), filled on read and on
+ * append; none for every other event.
+ */
+words?: string, };

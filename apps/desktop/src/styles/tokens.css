@@ -42,6 +42,7 @@
   --radius-s: 4px; /* badges, chips */
   --radius-m: 6px; /* buttons, inputs, cards, decision cards, diff frames */
   --radius-l: 10px; /* floating layers only: palette, menus, toasts */
+  --radius-full: 999px; /* capsules that hold no words: criteria segments */
   /* Concentric corners: what sits inside a rounded layer is rounded by the layer's radius minus its inset, so the two
      curves share a centre. A floating layer (10) holds its rows (6) at this inset. */
   --float-inset: 4px;
@@ -76,6 +77,25 @@
   --dur-attn: 700ms;
   --dur-view: 120ms;
   --dur-space: 220ms;
+  /* The light over the agent's words fading in and out as a run starts and stops moving: slow enough that the words
+     never jump between their dimmed and their whole ink. */
+  --dur-settle: 600ms;
+  /* Springs, Motion's spring(visualDuration, bounce) (motion.dev/docs/css) sampled into a CSS linear() curve, with the
+     time it takes to settle: something small arriving (a mark, a menu, a segment filling) settles quickly,
+     spring(0.25, 0); a panel moving in settles slower, spring(0.4, 0). Neither overshoots: nothing here bounces.
+     Use with transform; opacity keeps --ease-out over the visual duration. */
+  --spring-snappy: 465ms linear(0, 0.043, 0.137, 0.242, 0.357, 0.458, 0.555, 0.634, 0.706, 0.761, 0.811, 0.848, 0.881, 0.905, 0.926, 0.941, 0.955, 0.965, 0.972, 0.979, 0.983, 0.987, 0.99, 0.992, 0.994, 0.995, 0.996, 0.997, 0.998, 0.998, 0.999, 0.999, 1);
+  --spring-soft: 699ms linear(0, 0.036, 0.117, 0.218, 0.324, 0.426, 0.519, 0.598, 0.669, 0.73, 0.781, 0.824, 0.858, 0.885, 0.909, 0.927, 0.942, 0.954, 0.964, 0.972, 0.977, 0.982, 0.986, 0.989, 0.991, 0.993, 0.995, 0.996, 0.997, 0.998, 0.998, 0.998, 1);
+  /* One turn of a running mark: steady, never hurried. */
+  --dur-spin: 1100ms;
+  /* The status marks as masks, for a mark a stylesheet places before words: Glyph.tsx's MARK_PATH, the same even-odd
+     paths (a unit test holds them equal), so the symbol is a hole in any ground. */
+  --mark-attention: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM7.125 4.6a.875 .875 0 0 1 1.75 0v4.1a.875 .875 0 0 1 -1.75 0zM8 10.35a1.05 1.05 0 1 1 0 2.1a1.05 1.05 0 1 1 0 -2.1z'/%3E%3C/svg%3E");
+  --mark-danger: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 9.237L9.781 11.019A.875 .875 0 0 0 11.019 9.781L9.237 8L11.019 6.219A.875 .875 0 0 0 9.781 4.981L8 6.763L6.219 4.981A.875 .875 0 0 0 4.981 6.219L6.763 8L4.981 9.781A.875 .875 0 0 0 6.219 11.019z'/%3E%3C/svg%3E");
+  --mark-notice: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0 -11zM7.2 7.3a.8 .8 0 0 1 1.6 0v3.7a.8 .8 0 0 1 -1.6 0zM8 3.95a.95 .95 0 1 1 0 1.9a.95 .95 0 1 1 0 -1.9z'/%3E%3C/svg%3E");
+  /* A row carried over (an approval's command, wrapped): the one-pen line turning down and right, as a mask 2ch × one 18px
+     row, repeated down the rows it marks (app.css .decision-cmd, and the phone's .cmd). */
+  --mark-hook: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='18' fill='none' stroke='%23000' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5v3a2.5 2.5 0 0 0 2.5 2.5H10M7.5 7.5 10 10l-2.5 2.5'/%3E%3C/svg%3E");
   /* How long a destructive option stays armed for its second press (DecisionCard ARM_MS). */
   --dur-arm: 2000ms;
 }
@@ -112,9 +132,6 @@
   --bg-selected: oklch(0.265 0.006 70);
   --bg-overlay: oklch(0.225 0.005 70);
   --bg-inset: oklch(0.160 0.004 70);
-  /* Precision flight-deck instrument surfaces (Warm Carbon): micro-stepped lightness without glass blur. */
-  --bg-strip: oklch(0.194 0.005 70);
-  --bg-well: oklch(0.148 0.004 70);
   /* Page-level text fields; fields inside raised cards use --bg-app instead,
      so an input never reads as a hole in the card. */
   --bg-field: oklch(0.170 0.004 70);
@@ -122,20 +139,10 @@
   --border: oklch(1 0 0 / 0.10);
   --border-strong: oklch(1 0 0 / 0.16);
   --border-grid: oklch(1 0 0 / 0.08);
-  --border-instrument: oklch(1 0 0 / 0.14);
   /* A card's material: its hairline, and in the dark one line of shadow under its foot — a thing set on the
      page, not drawn on it. Glass is not attempted. */
   --card-edge: var(--border-subtle);
   --card-lift: 0 1px 0 oklch(0 0 0 / 0.30);
-
-  /* Four-Provenance Visual Physics (Fact / Observation / Claim / Human) */
-  --prov-fact-edge: oklch(1 0 0 / 0.22);
-  --prov-fact-bg: oklch(0.200 0.005 70);
-  --prov-obs-edge: oklch(1 0 0 / 0.20);
-  --prov-claim-edge: oklch(0.720 0.006 70 / 0.55);
-  --prov-claim-bg: oklch(0.195 0.004 70);
-  --prov-human-edge: var(--text-1);
-  --prov-human-bg: oklch(0.210 0.005 70);
 
   /* Contrast on --bg-app (0.180): text-1 ≈ 16:1, text-2 ≈ 12:1, text-3 ≈ 7.6:1, text-4 ≈ 5.5:1. Each holds 4.5:1 on
      every surface it can sit on, the selected row (0.265) included: text-4 there is 4.6:1. */
@@ -154,7 +161,7 @@
   --st-attention: oklch(0.800 0.150 75);
   --st-danger: oklch(0.750 0.150 25);
   --st-verified: oklch(0.770 0.130 155);
-  /* Enough chroma that the running half-disc is told from a neutral grey at 10px. */
+  /* Enough chroma that the running arc is told from a neutral grey at 10px. */
   --st-active: oklch(0.780 0.120 235);
   --st-neutral: var(--text-3);
   --attention-bg: oklch(0.225 0.030 75);
@@ -171,8 +178,8 @@
   --diff-del-word: oklch(0.750 0.150 25 / 0.26);
 
   --shadow-overlay: 0 16px 48px oklch(0 0 0 / 0.45), 0 0 0 1px var(--border);
-  /* Floating material: the layers that float over content (the palette, the peek drawer, popovers, toasts) let what
-     is under them show through, blurred, so you keep your place. Tuned per theme: on Warm Carbon the surface stays
+  /* Floating material: the small passing layers that float over content (toasts, the @ completion) let what is under
+     them show through, blurred, so you keep your place; the palette and the peek drawer are read, so they are opaque. Tuned per theme: on Warm Carbon the surface stays
      dark enough for text-2 and the top edge catches a faint light; sheets you read in stay opaque. The veil is thick
      (HIG's thick material): blur does the softening, and where a renderer has none the layer still reads. */
   --material-float: oklch(0.225 0.005 70 / 0.86);
@@ -206,27 +213,14 @@
   --bg-selected: oklch(0.940 0.006 80);
   --bg-overlay: oklch(1 0 0);
   --bg-inset: oklch(0.975 0.003 80);
-  /* Precision flight-deck instrument surfaces (Warm Parchment). */
-  --bg-strip: oklch(0.985 0.004 82);
-  --bg-well: oklch(0.954 0.005 80);
   --bg-field: oklch(1 0 0);
   --border-subtle: oklch(0.20 0.01 70 / 0.08);
   --border: oklch(0.20 0.01 70 / 0.14);
   --border-strong: oklch(0.20 0.01 70 / 0.22);
   --border-grid: oklch(0.20 0.01 70 / 0.10);
-  --border-instrument: oklch(0.36 0.022 78 / 0.22);
   /* On the warm white page a card's edge is cream, not grey: the same hue a touch warmer, no shadow. */
   --card-edge: oklch(0.42 0.035 80 / 0.20);
   --card-lift: none;
-
-  /* Four-Provenance Visual Physics (Warm Parchment) */
-  --prov-fact-edge: oklch(0.32 0.012 75 / 0.34);
-  --prov-fact-bg: oklch(0.998 0.002 80);
-  --prov-obs-edge: oklch(0.32 0.010 75 / 0.32);
-  --prov-claim-edge: oklch(0.430 0.008 75 / 0.50);
-  --prov-claim-bg: oklch(0.978 0.004 82);
-  --prov-human-edge: var(--text-1);
-  --prov-human-bg: oklch(0.974 0.006 82);
 
   /* Contrast on --bg-app (0.992): text-1 ≈ 15:1, text-2 ≈ 7.9:1, text-3 ≈ 6.7:1,
      text-4 ≈ 5.3:1 (AA), so a line number or an empty segment drawn in it

@@ -270,3 +270,18 @@ fn confined_plus_bypass_around_bug_escalates_to_high_while_honest_stays_medium()
     assert!(!ps[0].relation && ps[0].numbers == ["2", "3"]);
     assert!(out.contains("add(3, 4)") && out.contains("assert.equal(add(2, 3), 5)"), "{out}");
 }
+
+/// Review 24 (record only 11): where a probe stands and what it moved are said in the sentence's language, the moved
+/// numbers apart by its list mark: a Chinese sentence went on "test/cart.test.mjs line 5 (17→18, 3→4)".
+#[test]
+fn a_probe_is_said_in_the_language_of_its_sentence() {
+    let p = Probe {
+        id: "C2".into(),
+        file: "test/cart.test.mjs".into(),
+        line: 5,
+        relation: true,
+        numbers: vec!["17".into(), "3".into()],
+    };
+    assert_eq!(p.said(Lang::En), "test/cart.test.mjs line 5 (17→18, 3→4)");
+    assert_eq!(p.said(Lang::Zh), "test/cart.test.mjs 第 5 行（17→18、3→4）");
+}

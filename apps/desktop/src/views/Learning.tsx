@@ -44,7 +44,6 @@ function ProposalRow(props: { p: MemoryProposal; onChanged: () => void }) {
   const high = () => props.p.taint_level === "high";
   const edited = () => draft().trim() !== props.p.text.trim() && draft().trim().length > 0;
   const unlocked = () => !high() || edited() || phrase().trim().toUpperCase() === PHRASE;
-  const provLabel = () => (props.p.origin.includes(" ") ? props.p.origin.split(" · ")[0] : t(props.p.taint_level === "none" ? "learning.cleanSource" : "learning.taintedSource"));
 
   const run = async (fn: () => Promise<unknown>, msg: string) => {
     setBusy(true);
@@ -74,10 +73,11 @@ function ProposalRow(props: { p: MemoryProposal; onChanged: () => void }) {
             <textarea rows={2} aria-label={t("common.edit")} value={draft()} onInput={(e) => setDraft(e.currentTarget.value)} />
           </Show>
 
-          <ProvBox kind={props.p.taint_level === "none" ? "human" : "claim"} badge={provLabel()}>
+          {/* A tainted rule came through the agent: its frame says "Agent says", once; the taint is named in the line above. */}
+          <ProvBox kind={props.p.taint_level === "none" ? "human" : "claim"} badge={props.p.taint_level === "none" ? t("learning.cleanSource") : undefined}>
             <span class="meta-inline">
               <span class="pre" hidden={!props.p.detail}>{props.p.detail}</span>
-              <code class="code-val t3" hidden={!props.p.evidence.length}>{props.p.evidence.join(" · ")}</code>
+              <code class="code-val t3" hidden={!props.p.evidence.length}>{props.p.evidence.join(", ")}</code>
             </span>
           </ProvBox>
         </div>
@@ -85,7 +85,7 @@ function ProposalRow(props: { p: MemoryProposal; onChanged: () => void }) {
         <Show when={props.p.status === "pending"}>
           <div class="proposal-actions">
             <SmBtn
-              variant="primary"
+              variant="default"
               disabled={busy() || !unlocked()}
               onClick={() => unlocked() && void run(() => api.approveProposal(props.p.id, edited() ? draft().trim() : null, high() && !edited() ? phrase().trim() : null), t("learning.status_approved"))}
             >
@@ -157,9 +157,9 @@ export function Learning() {
         <DataTable
           headers={[
             [t("learning.colEngineModel")],
-            [t("learning.colGoals"), true],
+            [t("sidebar.label"), true],
             [t("learning.colFirstPass"), true],
-            [t("learning.colSentinel"), true],
+            [t("trace.sentinel"), true],
             [t("learning.colReworks"), true],
             [t("learning.colBlocked"), true],
             [t("overview.colSpend"), true],
@@ -180,8 +180,8 @@ export function Learning() {
                 </div>
               </td>
               <td class="col-r">{r.goals_total}</td>
-              <td class="col-r"><MeterCell label={pct(r.first_pass_rate)} width={pct(r.first_pass_rate)} cls="verified" /></td>
-              <td class="col-r"><MeterCell label={pct(r.high_sentinel_rate)} width={pct(r.high_sentinel_rate)} cls="danger" /></td>
+              <td class="col-r"><MeterCell label={pct(r.first_pass_rate)} width={pct(r.first_pass_rate)} /></td>
+              <td class="col-r"><MeterCell label={pct(r.high_sentinel_rate)} width={pct(r.high_sentinel_rate)} /></td>
               <td class="col-r">{r.avg_reworks.toFixed(1)}</td>
               <td class="col-r">{pct(r.blocked_rate)}</td>
               <td class="col-r">{usd(r.avg_cost_usd)}</td>

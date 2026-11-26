@@ -13,20 +13,21 @@ import { ARM_MS } from "../../components/DecisionCard";
 import { GitIdentityForm } from "../../components/GitIdentity";
 import { DangerMark, Icon, NeedsYouMark, NotEvidenceMark, NoticeMark, ResultMark, Seal, Stamp } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, HeldOutLine, LoopbackLine, ObsChip } from "../../components/Honesty";
-import { CriteriaBar, discountedOf } from "../../components/HonestyCore";
+import { CriteriaBar } from "../../components/HonestyCore";
 import { LookStrip } from "../../components/Look";
 import { Button, Empty, IconButton, Loading, Overlay, Prose } from "../../components/ui";
 import type { CriterionView } from "../../gen/CriterionView";
 import type { GoalDetail } from "../../gen/GoalDetail";
 import { api } from "../../lib/api";
 import { ago, duration, short } from "../../lib/format";
-import { t } from "../../lib/i18n";
+import { caveatList, caveats, heldOrTampered, notEvidence, wasAccepted } from "../../lib/discounted";
+import { locale, t } from "../../lib/i18n";
 import { hasIssue } from "../../lib/labels";
 import { back } from "../../lib/nav";
 import type { Draft } from "../../lib/reviewState";
 import { suggestionOf, withoutSuggestion } from "../../lib/suggest";
 import { act, state, toast } from "../../lib/store";
-import { type ExtCriterionView } from "../goal/ext";
+import { type ExtCriterionView, qualifiers } from "../goal/ext";
 import { toComment } from "./types";
 
 const TAIL_LINES = 4;
@@ -70,7 +71,7 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
       <div class="verify-head">
         <div class="row">
           <Show when={g()?.verified_pin} fallback={<span class="meta">{t("review.noMachine")}</span>}>
-            <Seal pin={g()!.verified_pin} large tampered={discountedOf(criteria()) > 0} />
+            <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} />
           </Show>
           <span class="grow" />
           <Show when={g()}>
@@ -84,12 +85,12 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
           <For each={criteria()} fallback={<Empty title={t("goal.noCriteria")} inline />}>
             {(raw) => {
               const c = raw as ExtCriterionView;
-              const errs = () => c.verified?.console_errors ?? c.look?.console_errors ?? [];
+              const pills = () => qualifiers(c, props.detail?.sentinels, criteria().map((x) => x.criterion.id)).filter((p) => !p[3]);
               return (
                 <div class="verify-item">
                   <div class="criterion-row">
                     <Show when={c.criterion.kind.type === "exec"} fallback={<ResultMark kind={c.human_checked ? "obs-pass" : "pending"} title={c.human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")} />}>
-                      <Show when={c.canary === "tampered" && mark(c) === "pass"} fallback={<ResultMark kind={mark(c)} />}>
+                      <Show when={heldOrTampered(c, props.detail?.sentinels) && mark(c) === "pass"} fallback={<ResultMark kind={mark(c)} />}>
                         <NotEvidenceMark />
                       </Show>
                     </Show>
@@ -126,10 +127,10 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
                       )}
                     </Show>
                   </div>
-                  <Show when={c.verified?.flaky || errs().length > 0}>
+                  {/* What qualifies the reading, as the goal page's open row says it: the pills whose fact has no line of its own below. */}
+                  <Show when={pills().length}>
                     <div class="ev-strip">
-                      <Show when={c.verified?.flaky}><span class="ev-pill ev-pill-obs">{t("goal.evFlaky")}</span></Show>
-                      <Show when={errs().length > 0}><span class="ev-pill ev-pill-danger" title={errs().join("\n")}>{t("look.consoleErrors", { n: errs().length })}</span></Show>
+                      <For each={pills()}>{([tone, label, title]) => <span class={`ev-pill ev-pill-${tone}`} data-mark={tone} title={title}>{label}</span>}</For>
                     </div>
                   </Show>
                   <BaselineLine c={c} base={props.detail?.base_commit} />
@@ -169,6 +170,8 @@ export function VerifyPanel(props: { id: string; detail: GoalDetail | undefined;
 interface OpenItem {
   danger?: boolean;
   notEvidence?: boolean;
+  /** A counted pass with caveats: a judgement (the ! mark), so Accept asks twice, but not a withheld seal. */
+  qualified?: boolean;
   text: string;
   sentinel?: boolean;
 }
@@ -184,6 +187,10 @@ export interface AcceptPanelProps {
   onFinish?: () => void;
 }
 
+// A clear check is neutral: green is the verifier's word, and these are Tower's own checks and yours. An overlap is
+// worth noticing (the i mark, as on the goal page), not a decision.
+const SEAL_MARK = { ok: () => <Icon name="check" size={10} />, warn: () => <NeedsYouMark />, notice: () => <NoticeMark />, danger: () => <DangerMark /> };
+
 export function AcceptPanel(props: AcceptPanelProps) {
   const [busy, setBusy] = createSignal(false);
   const g = () => state.goals[props.id];
@@ -197,9 +204,23 @@ export function AcceptPanel(props: AcceptPanelProps) {
     return b;
   };
   const blocked = () => blockers().length > 0 || unchecked() > 0;
+  const uncheckedIds = () => humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ");
+  /** Why the button is disabled, said beside it — not only in its tooltip — and one click from the first thing to fix. */
+  const reasons = () => [
+    ...(g()?.state !== "in_review" ? [t("review.notInReview")] : []),
+    ...(identityMissing() ? [t("review.identityShort")] : []),
+    ...(unchecked() ? [t("review.humanUnchecked", { id: uncheckedIds() })] : []),
+  ];
+  const toBlocker = () => {
+    const el = document.querySelector<HTMLElement>(".panel .panel-blockers input, .panel .fact-row input:not(:checked)");
+    el?.scrollIntoView({ block: "center" });
+    el?.focus();
+  };
   const tampered = () => props.detail?.criteria.filter((c) => c.canary === "tampered") ?? [];
-  const counted = () => Math.max(0, (g()?.progress.machine ?? 0) - tampered().length);
   const highSentinels = () => (props.detail?.sentinels ?? []).filter((h) => h.severity >= 3);
+  // As the supervisor counts: a high finding of this verification holds every pass until it is dealt with.
+  const counted = () => (highSentinels().length ? 0 : Math.max(0, (g()?.progress.machine ?? 0) - tampered().length));
+  const withheld = () => tampered().length > 0 || highSentinels().length > 0 || notEvidence(g());
   const staleCount = () => (props.detail?.criteria ?? []).filter((c) => c.verified?.stale).length;
   const overlaps = () => g()?.overlaps ?? [];
   const snapshotFresh = () => !!g()?.verified_pin && staleCount() === 0 && tampered().length === 0;
@@ -207,22 +228,25 @@ export function AcceptPanel(props: AcceptPanelProps) {
   const open = () => {
     const items: OpenItem[] = [];
     for (const c of tampered()) items.push({ danger: true, notEvidence: true, text: t("review.openTampered", { id: c.criterion.id }) });
+    const why = caveats(g());
+    if (why.length && g()?.verified_pin) items.push({ danger: true, qualified: true, text: t("honesty.qualifiedTitle", { pin: g()!.verified_pin!.slice(0, 7), why: caveatList(why) }) });
     for (const c of props.detail?.claims ?? []) if (c.kind === "assumption" && c.approved === null) items.push({ text: t("review.openAssumption", { text: c.text }) });
     if (props.total - props.viewed > 0) items.push({ text: t("review.openUnviewed", { n: props.total - props.viewed }) });
     for (const h of props.detail?.sentinels ?? []) items.push({ danger: h.severity >= 3, text: h.title, sentinel: true });
     return items;
   };
-  const OpenList = (p: { items: OpenItem[]; danger: boolean }) => (
+  // "Sentinels" is said once in the sheet, over the first group that has any (the high ones, when there are).
+  const OpenList = (p: { items: OpenItem[]; danger: boolean; named?: boolean }) => (
     <For each={p.items}>
       {(o, i) => (
         <>
-          <Show when={i() === p.items.findIndex((x) => x.sentinel)}>
+          <Show when={!p.named && i() === p.items.findIndex((x) => x.sentinel)}>
             <div class="open-kind">{t("review.sentinels")}</div>
           </Show>
           <div class="row meta t1">
             <Show when={p.danger} fallback={<NoticeMark />}>
-              <Show when={o.notEvidence} fallback={<DangerMark />}>
-                <NeedsYouMark title={t("honesty.notEvidence")} />
+              <Show when={o.notEvidence || o.qualified} fallback={<DangerMark />}>
+                <NeedsYouMark title={t(o.qualified ? "honesty.qualified" : "honesty.notEvidence")} />
               </Show>
             </Show>
             <span class="grow">
@@ -264,6 +288,42 @@ export function AcceptPanel(props: AcceptPanelProps) {
   };
   return (
     <Overlay onClose={props.onClose} label={t("review.acceptTitle", { id: props.id })} title={t("review.acceptTitle", { id: props.id })} instant initialFocus="panel">
+      <Show when={blockers().length}>
+        <div class="panel-blockers" role="alert">
+          <For each={blockers()}>
+            {(b) => (
+              <div class="panel-blocker">
+                <NoticeMark />
+                <span>{b}</span>
+              </div>
+            )}
+          </For>
+          <Show when={identityMissing() && g()}>
+            {(goal) => <GitIdentityForm projectId={goal().project_id} projectName={goal().project_name} />}
+          </Show>
+        </div>
+      </Show>
+      {/* Everything that stands between you and Accept comes first, together: git's identity, then the checks only you
+          can tick (with their screenshots); the stamp and what it rests on follow. */}
+      <Show when={humans().length}>
+        <div class="panel-section panel-humans">
+          <For each={humans()}>
+            {(h) => (
+              <>
+                <label class="fact-row">
+                  <input type="checkbox" checked={h.human_checked} onChange={(e) => props.onHumanCheck(h.criterion.id, e.currentTarget.checked)} />
+                  <span class="num t3">{h.criterion.id}</span>
+                  <span class="grow">{h.criterion.title}</span>
+                  <Show when={!h.human_checked}>
+                    <span class="meta t3 panel-awaiting">{t("goal.awaitingCheck")}</span>
+                  </Show>
+                </label>
+                <Show when={h.look}>{(l) => <LookStrip look={l()} title={`${h.criterion.id} ${h.criterion.title}`} />}</Show>
+              </>
+            )}
+          </For>
+        </div>
+      </Show>
       <div class="panel-section">
         <div class="accept-verdict">
           <Show
@@ -280,12 +340,16 @@ export function AcceptPanel(props: AcceptPanelProps) {
             <Show when={g()!.verified_pin}>
               {(pin) => (
                 <span class="accept-stamp">
-                  <Stamp pin={pin()} tampered={tampered().length > 0} press />
+                  <Stamp pin={pin()} tampered={withheld()} qualified={caveats(g())} press />
                 </span>
               )}
             </Show>
             <span class="meta accept-basis">
-              {tampered().length > 0 ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length }) : t("review.allPassed", { n: g()!.progress.machine })}
+              {highSentinels().length
+                ? t("review.allPassedHeld", { n: g()!.progress.machine })
+                : tampered().length > 0
+                  ? t("review.allPassedDiscounted", { v: counted(), n: g()!.progress.machine, d: tampered().length })
+                  : t("review.allPassed", { n: g()!.progress.machine })}
               <Show when={props.total > 0 && props.viewed === props.total}>
                 <span class="num accept-viewed">{t("review.viewedAll", { n: props.total })}</span>
               </Show>
@@ -298,28 +362,18 @@ export function AcceptPanel(props: AcceptPanelProps) {
                 [snapshotFresh() ? "ok" : "warn", t(snapshotFresh() ? "review.sealFresh" : tampered().length ? "review.sealWithheld" : "review.sealStale")],
                 [highSentinels().length ? "danger" : "ok", highSentinels().length ? t("review.sealSentinelsHit", { n: highSentinels().length }) : t("review.sealSentinelsOk")],
                 [unchecked() ? "warn" : "ok", unchecked() ? t("review.sealHumanLeft", { n: unchecked() }) : t("review.sealHumanOk")],
-                [overlaps().length ? "warn" : "ok", overlaps().length ? t("goal.overlaps", { id: overlaps().map((o) => o.goal_id).join(", ") }) : t("review.sealMergeOk")],
-              ] as [string, string][]}
+                [overlaps().length ? "notice" : "ok", overlaps().length ? t("goal.overlaps", { id: overlaps().map((o) => o.goal_id).join(", ") }) : t("review.sealMergeOk")],
+              ] as [keyof typeof SEAL_MARK, string][]}
             >
-              {([cls, text]) => <div class={`seal-check seal-check-${cls}`}>{text}</div>}
+              {([cls, text]) => (
+                <div class={`seal-check seal-check-${cls}`}>
+                  {SEAL_MARK[cls]()}
+                  {text}
+                </div>
+              )}
             </For>
           </div>
         </div>
-        <For each={humans()}>
-          {(h) => (
-            <>
-              <label class="fact-row">
-                <input type="checkbox" checked={h.human_checked} onChange={(e) => props.onHumanCheck(h.criterion.id, e.currentTarget.checked)} />
-                <span class="num t3">{h.criterion.id}</span>
-                <span class="grow">{h.criterion.title}</span>
-                <Show when={!h.human_checked}>
-                  <span class="meta t3 panel-awaiting">{t("goal.awaitingCheck")}</span>
-                </Show>
-              </label>
-              <Show when={h.look}>{(l) => <LookStrip look={l()} title={`${h.criterion.id} ${h.criterion.title}`} />}</Show>
-            </>
-          )}
-        </For>
       </div>
       <Show when={judgement().length}>
         <div class="panel-section open-judgement">
@@ -330,13 +384,13 @@ export function AcceptPanel(props: AcceptPanelProps) {
       <Show when={notice().length}>
         <div class="panel-section open-notice">
           <div class="meta t3">{judgement().length ? t("review.openNoticeTitle") : t("review.stillOpen")}</div>
-          <OpenList items={notice()} danger={false} />
+          <OpenList items={notice()} danger={false} named={judgement().some((o) => o.sentinel)} />
         </div>
       </Show>
       <div class="panel-section meta">
         <p>{updating() ? t("review.acceptUpdateExplain") : t("review.acceptExplain")}</p>
         <dl class="panel-branch">
-          <dt>{t("goal.branch")}</dt>
+          <dt>{t("live.branch")}</dt>
           <dd>
             <Show when={branchName()} fallback={<span class="t3">{t("review.branchNote")}</span>}>
               {(name) => (
@@ -357,22 +411,13 @@ export function AcceptPanel(props: AcceptPanelProps) {
           </dd>
         </dl>
       </div>
-      <Show when={blockers().length}>
-        <div class="panel-blockers" role="alert">
-          <For each={blockers()}>
-            {(b) => (
-              <div class="panel-blocker">
-                <NoticeMark />
-                <span>{b}</span>
-              </div>
-            )}
-          </For>
-          <Show when={identityMissing() && g()}>
-            {(goal) => <GitIdentityForm projectId={goal().project_id} projectName={goal().project_name} />}
-          </Show>
-        </div>
-      </Show>
       <div class="panel-actions">
+        <Show when={blocked()}>
+          <button type="button" class="link-quiet text-btn panel-reason" onClick={toBlocker}>
+            {/* Reasons are words, so they are joined as words: the middle dot belongs to the instrument lines (docs/12). */}
+            {reasons().join(locale() === "zh-CN" ? "；" : "; ")}
+          </button>
+        </Show>
         <Button variant="ghost" onClick={props.onClose}>
           {t("common.cancel")}
         </Button>
@@ -381,7 +426,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
           class={armedLeft() ? "armed" : ""}
           busy={busy()}
           disabled={blocked()}
-          title={unchecked() > 0 ? t("review.humanUnchecked", { id: humans().filter((h) => !h.human_checked).map((h) => h.criterion.id).join(", ") }) : judgement().length ? t("decision.pressTwice") : undefined}
+          title={unchecked() > 0 ? t("review.humanUnchecked", { id: uncheckedIds() }) : judgement().length ? t("decision.pressTwice") : undefined}
           aria-live={armedLeft() ? "polite" : undefined}
           onClick={press}
         >
@@ -443,7 +488,8 @@ export function ChangesPanel(props: { id: string; comments: Draft[]; onClose: ()
               <span class="grow">
                 {withoutSuggestion(c.text) || c.text}
                 <Show when={suggestionOf(c.text) !== null}>
-                  <span class="t3"> · {t("review.suggestion")}</span>
+                  <span class="sep" />
+                  <span class="t3">{t("review.suggestion")}</span>
                 </Show>
               </span>
               <IconButton icon="cross" size={22} label={t("common.delete")} onClick={() => props.onRemove(i())} />

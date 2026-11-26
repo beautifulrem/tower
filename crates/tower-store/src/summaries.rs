@@ -227,10 +227,21 @@ impl Store {
         let mut p = Progress { machine: machine.len() as u32, human: human.len() as u32, ..Default::default() };
         // A pass under a high-severity finding of the latest verification
         // is not evidence until you have looked (the seal says so too).
-        let held = self.sentinel_hits(&rec.id)?.iter().any(|h| h.severity >= tower_core::sentinel::HIGH);
+        let hits = self.sentinel_hits(&rec.id)?;
+        let held = hits.iter().any(|h| h.severity >= tower_core::sentinel::HIGH);
+        // Below that severity a finding on the test machinery qualifies a
+        // pass instead (`07` §7.10.3): it counts, with the caveat said.
+        let mut q = tower_core::honesty::Qualified::default();
+        for h in hits.iter().filter(|h| h.severity < tower_core::sentinel::HIGH) {
+            match h.sentinel.as_str() {
+                "source_patches_tests" | "source_touches_tests" | "runner_patched" => q.test_machinery = true,
+                "assertions_unchecked" | "assertion_identity_unchecked" => q.assertions_unchecked = true,
+                _ => {}
+            }
+        }
         // A pass whose must-fail canary passed too is not evidence.
         let mut stmt = self.conn.prepare_cached(
-            "SELECT r.criterion, r.passed, r.pin, c.state, c.pin FROM criterion_results r
+            "SELECT r.criterion, r.passed, r.pin, c.state, c.pin, r.flaky FROM criterion_results r
              LEFT JOIN canary_results c ON c.goal_id = r.goal_id AND c.criterion = r.criterion
              WHERE r.goal_id = ?1",
         )?;
@@ -241,9 +252,10 @@ impl Store {
                 r.get::<_, String>(2)?,
                 r.get::<_, Option<String>>(3)?,
                 r.get::<_, Option<String>>(4)?,
+                r.get::<_, bool>(5)?,
             ))
         })? {
-            let (c, passed, pin, canary, canary_pin) = row?;
+            let (c, passed, pin, canary, canary_pin, flaky) = row?;
             let tampered = canary.as_deref() == Some("tampered") && canary_pin.as_deref() == Some(pin.as_str());
             if passed && (tampered || held) && rec.pin.as_deref() == Some(pin.as_str()) {
                 p.not_evidence = Some(true);
@@ -251,7 +263,13 @@ impl Store {
             if passed && !tampered && !held && machine.contains(&c.as_str()) && rec.pin.as_deref() == Some(pin.as_str())
             {
                 p.verified += 1;
+                q.flaky |= flaky;
+                q.assertions_unchecked |=
+                    canary.as_deref() == Some("not_checked") && canary_pin.as_deref() == Some(pin.as_str());
             }
+        }
+        if p.verified > 0 && p.not_evidence.is_none() && q.any() {
+            p.qualified = Some(q);
         }
         let mut stmt = self.conn.prepare_cached("SELECT criterion, passed FROM observations WHERE goal_id = ?1")?;
         for row in stmt.query_map([&rec.id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)))? {
@@ -333,7 +351,9 @@ mod tests {
         id
     }
 
+    /// An agent's question: each one a dialog of its own, as the engine's are.
     fn question(s: &mut Store, goal: &str) -> String {
+        let n = s.open_inbox_items().unwrap().len();
         let item = NewInboxItem {
             goal_id: goal.into(),
             kind: InboxKind::Question,
@@ -343,9 +363,61 @@ mod tests {
             options: Vec::new(),
             allow_text: true,
             urgency: 1,
-            engine_ref: None,
+            engine_ref: Some(format!("ui-{n}")),
         };
         s.open_inbox(item).unwrap().id
+    }
+
+    #[test]
+    fn a_pass_the_guards_cannot_fully_vouch_for_counts_with_its_caveats_and_a_high_finding_holds_it() {
+        use tower_core::honesty::Qualified;
+        let (mut s, _) = store();
+        let root =
+            NewProject { name: "web".into(), root: "/r/web".into(), base_branch: "main".into(), test_command: None };
+        let p = s.add_project(root).unwrap().id;
+        let id = goal(&mut s, &p, "g", &[], &[]);
+        let pin = || "abc1234".to_string();
+        s.append(&id, EventKind::Pinned { pin: pin(), files: 1, additions: 1, deletions: 0 }).unwrap();
+        s.append(&id, EventKind::VerifyStarted { pin: pin() }).unwrap();
+        let result = EventKind::CriterionResult {
+            criterion: "C1".into(),
+            pin: pin(),
+            passed: true,
+            exit_code: Some(0),
+            duration_ms: 1,
+            output_tail: String::new(),
+            held_out: false,
+            held_out_proof: None,
+        };
+        s.append(&id, result).unwrap();
+        let read = |s: &Store| {
+            let p = s.summary(&id).unwrap().progress;
+            (p.verified, p.not_evidence, p.qualified)
+        };
+        assert_eq!(read(&s), (1, None, None), "a clean pass");
+
+        let state = tower_core::view::CanaryState::NotChecked;
+        s.append(&id, EventKind::CanaryChecked { criterion: "C1".into(), pin: pin(), state }).unwrap();
+        let unchecked = Qualified { assertions_unchecked: true, ..Default::default() };
+        assert_eq!(read(&s), (1, None, Some(unchecked)), "still counted, with the caveat");
+
+        let hit = |sentinel: &str, severity| EventKind::SentinelHit {
+            sentinel: sentinel.into(),
+            severity,
+            title: String::new(),
+            detail: String::new(),
+        };
+        s.append(&id, hit("source_touches_tests", 2)).unwrap();
+        s.append(
+            &id,
+            EventKind::CriterionFlaky { criterion: "C1".into(), pin: pin(), first_output_tail: String::new() },
+        )
+        .unwrap();
+        let all = Qualified { test_machinery: true, assertions_unchecked: true, flaky: true };
+        assert_eq!(read(&s), (1, None, Some(all)));
+
+        s.append(&id, hit("source_patches_tests", 3)).unwrap();
+        assert_eq!(read(&s), (0, Some(true), None), "held: not evidence, and no caveat said beside it");
     }
 
     #[test]

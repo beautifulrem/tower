@@ -2,16 +2,19 @@
  * Sidebar (docs/04 §4.3.2): goals and the Needs-You inbox, nothing else.
  * Sessions are traces inside goals, never a list of their own. Counts are
  * split the way the attention ladder is: "Needs you" is what blocks a run;
- * "To review" is what merely waits for your acceptance.
+ * "To review" is what merely waits for your review. The "Review queue" entry
+ * counts every goal with a review card (some also in Needs you) and steps
+ * through them; one name, one set.
  */
 import { For, Show, createMemo, createSignal } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
-import { type Group, groupLabel, groupOf, isBlocking } from "../lib/labels";
+import { type Group, groupLabel, groupOf, isBlocking, statusWord } from "../lib/labels";
+import { reviewEach, toReviewIds } from "../lib/reviewQueue";
 import { t } from "../lib/i18n";
 import { go, route } from "../lib/nav";
 import { goalList, state } from "../lib/store";
-import { Icon, LifecycleGlyph, NeedsYouMark } from "./Glyph";
+import { Icon, LifecycleGlyph, NoticeMark } from "./Glyph";
 import { Kbd } from "./ui";
 
 const ORDER: Group[] = ["needs_you", "running", "verifying", "review", "ready", "paused", "done"];
@@ -39,28 +42,30 @@ export function Sidebar() {
   const groupAt = (k: Group) => groups().find((g) => g.key === k) ?? { key: k, goals: [] as GoalSummary[], count: 0 };
   const ended = createMemo(() => goalList().filter(isEnded));
   const blocking = () => blockingItems().length;
-  const toReview = () => state.inbox.length - blocking();
+  // Goals waiting for your review: the row starts the review queue over them (⇧R), not a second door to Needs you.
+  const toReview = () => toReviewIds().length;
   const activeId = () => {
     const r = route();
     return r.name === "goal" || r.name === "review" ? r.id : null;
   };
 
-  const GoalRow = (props: { g: GoalSummary }) => (
+  // Under "Needs you" the group's title already says it: a row there carries no ! mark of its own (its glyph may be one);
+  // nor does a pass that doesn't count, whose glyph is the ! mark. One ! to a row.
+  const GoalRow = (props: { g: GoalSummary; inNeedsYou?: boolean }) => (
     <button
       class="side-row side-goal"
       classList={{ active: activeId() === props.g.id, ended: isEnded(props.g) }}
       aria-current={activeId() === props.g.id ? "page" : undefined}
       onClick={() => go({ name: "goal", id: props.g.id })}
       title={`${props.g.id} ${props.g.title}`}
-      aria-label={`${props.g.title}, ${t(`state.${props.g.state}`)}${props.g.needs_you > 0 ? `, ${t("common.needsYou")}` : ""}`}
+      aria-label={`${props.g.title}, ${statusWord(props.g)}${props.inNeedsYou ? `, ${t("common.needsYou")}` : ""}`}
     >
       <span class="side-icon">
         <LifecycleGlyph goal={props.g} />
       </span>
+      {/* Needs you is the group's word, as on the board: a goal filed elsewhere (waiting in To review) is not said to
+          need you, in its label or by a ! mark after its title. */}
       <span class="ellipsis grow">{props.g.title}</span>
-      <Show when={props.g.needs_you > 0}>
-        <NeedsYouMark />
-      </Show>
     </button>
   );
 
@@ -98,7 +103,7 @@ export function Sidebar() {
           </span>
         </button>
         <Show when={toReview() > 0}>
-          <button class="side-row" onClick={() => go({ name: "inbox" })}>
+          <button class="side-row" classList={{ active: route().name === "review" }} onClick={reviewEach}>
             <span class="side-icon">
               <Icon name="ring-check" size={14} />
             </span>
@@ -116,8 +121,13 @@ export function Sidebar() {
           </Show>
         </button>
         <button class="side-row" classList={{ active: route().name === "operations" }} aria-current={route().name === "operations" ? "page" : undefined} onClick={() => go({ name: "operations" })}>
-          <span class="side-icon" classList={{ "side-icon-danger": state.mergeConflicts > 0 }}>
-            <Icon name="operations" size={14} label={state.mergeConflicts > 0 ? t("common.problem") : undefined} />
+          {/* A merge conflict, observed (git's word, not the verifier's): the row's icon gives way to the notice mark, in ink,
+              named for what it is, beside the conflicts' count; never red (docs/12 §12.4.3). A shape of its own, not only a
+              darker ink, which hover and the row you are on give every icon (review 19, record only). */}
+          <span class="side-icon" classList={{ "side-icon-notice": state.mergeConflicts > 0 }}>
+            <Show when={state.mergeConflicts > 0} fallback={<Icon name="operations" size={14} />}>
+              <NoticeMark title={t("sidebar.mergeConflict")} />
+            </Show>
           </span>
           <span class="grow">{t("app.operations")}</span>
           <Show when={state.mergeConflicts > 0 || state.activeSchedules > 0} fallback={<Kbd k="mod+4" />}>
@@ -150,7 +160,7 @@ export function Sidebar() {
                   </button>
                 </Show>
                 <Show when={grp().key !== "done" || doneOpen() || grp().goals.some((g) => activeId() === g.id)}>
-                  <For each={grp().goals}>{(g) => <GoalRow g={g} />}</For>
+                  <For each={grp().goals}>{(g) => <GoalRow g={g} inNeedsYou={key === "needs_you"} />}</For>
                 </Show>
               </div>
             );
@@ -166,7 +176,7 @@ export function Sidebar() {
             >
               <span>
                 <Icon name={endedOpen() ? "caret-down" : "caret-right"} size={10} />
-                {t("sidebar.ended")}
+                {t("state.archived")}
               </span>
               <span class="num">{ended().length}</span>
             </button>

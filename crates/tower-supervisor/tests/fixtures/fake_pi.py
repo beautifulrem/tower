@@ -134,6 +134,100 @@ def run(message):
         tool("bash", {"command": "touch done.txt"})
         open("done.txt", "w").write("ok\n")
         tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
+    elif scenario == "parallel":
+        # Two tools in flight at once; the read ends first, while the command still runs.
+        out({"type": "tool_execution_start", "toolCallId": "pa", "toolName": "read", "args": {"path": "README.md"}})
+        out({"type": "tool_execution_start", "toolCallId": "pb", "toolName": "bash", "args": {"command": "touch done.txt"}})
+        out({"type": "tool_execution_end", "toolCallId": "pa", "toolName": "read",
+             "result": {"content": [{"type": "text", "text": "hello"}]}, "isError": False})
+        open("done.txt", "w").write("ok\n")
+        out({"type": "tool_execution_end", "toolCallId": "pb", "toolName": "bash",
+             "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
+        tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
+    elif scenario == "parallel_ask":
+        # Three calls in flight (a read, a command, a listing), the newest ends first; a question while two still
+        # run; then the command, then the read. Each end, and the answer, leaves the run on the newest call left.
+        def start(cid, name, args):
+            out({"type": "tool_execution_start", "toolCallId": cid, "toolName": name, "args": args})
+        def end(cid, name):
+            out({"type": "tool_execution_end", "toolCallId": cid, "toolName": name,
+                 "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
+        start("pr", "read", {"path": "README.md"})
+        start("pb", "bash", {"command": "touch done.txt"})
+        start("pl", "ls", {"path": "."})
+        end("pl", "ls")
+        dialog('tower:' + json.dumps({"tower": "question", "question": "继续吗？", "options": ["a", "b"], "why": ""}))
+        open("done.txt", "w").write("ok\n")
+        end("pb", "bash")
+        end("pr", "read")
+        tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
+    elif scenario == "ask_while_running":
+        # A command runs; the agent asks (an ask_user call and its dialog); a read starts while the question is open;
+        # the command and a note end while it is open; then the answer, the end of the ask, and the read.
+        def start(cid, name, args):
+            out({"type": "tool_execution_start", "toolCallId": cid, "toolName": name, "args": args})
+        def end(cid, name):
+            out({"type": "tool_execution_end", "toolCallId": cid, "toolName": name,
+                 "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
+        start("wb", "bash", {"command": "touch done.txt"})
+        start("wa", "ask_user", {"question": "继续吗？"})
+        ev = threading.Event()
+        rid = f"ui{prompts[0]}"
+        pending[rid] = {"event": ev}
+        out({"type": "extension_ui_request", "id": rid, "method": "input",
+             "title": 'tower:' + json.dumps({"tower": "question", "question": "继续吗？", "options": ["a", "b"], "why": ""})})
+        start("wr", "read", {"path": "README.md"})
+        open("done.txt", "w").write("ok\n")
+        end("wb", "bash")
+        start("wl", "log", {"cause": "the read is still going"})
+        end("wl", "log")
+        ev.wait(10)
+        pending.pop(rid, None)
+        end("wa", "ask_user")
+        end("wr", "read")
+        tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
+    elif scenario == "ask_beside_command":
+        # A read and a command run; the agent asks beside them (an ask_user call and its dialog); the read ends while
+        # the question is open; answered, the ask ends, then the command; then a second question with no call in
+        # flight, and the hand-in.
+        def start(cid, name, args):
+            out({"type": "tool_execution_start", "toolCallId": cid, "toolName": name, "args": args})
+        def end(cid, name):
+            out({"type": "tool_execution_end", "toolCallId": cid, "toolName": name,
+                 "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
+        start("cr", "read", {"path": "README.md"})
+        start("cb", "bash", {"command": "touch done.txt"})
+        start("ca", "ask_user", {"question": "继续吗？"})
+        ev = threading.Event()
+        rid = f"ui{prompts[0]}"
+        pending[rid] = {"event": ev}
+        out({"type": "extension_ui_request", "id": rid, "method": "input",
+             "title": 'tower:' + json.dumps({"tower": "question", "question": "继续吗？", "options": ["a", "b"], "why": ""})})
+        end("cr", "read")
+        ev.wait(10)
+        pending.pop(rid, None)
+        end("ca", "ask_user")
+        open("done.txt", "w").write("ok\n")
+        end("cb", "bash")
+        dialog('tower:' + json.dumps({"tower": "question", "question": "提交吗？", "options": ["a", "b"], "why": ""}))
+        tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
+    elif scenario == "extension_timeout":
+        # One of the user's own extensions asks with a time limit and nobody answers: Pi answers it itself when the
+        # time runs out (the call gets nothing back) and tells no one; the agent goes on with a command, which runs
+        # until the test lets it end ($HOME/release), then hands in.
+        import time
+        out({"type": "extension_ui_request", "id": f"ui{prompts[0]}", "method": "confirm", "title": "Deploy now?", "timeout": 400})
+        time.sleep(0.4)
+        out({"type": "tool_execution_start", "toolCallId": "tb", "toolName": "bash", "args": {"command": "touch done.txt"}})
+        open("done.txt", "w").write("ok\n")
+        release = os.path.join(os.environ.get("HOME", "/tmp"), "release")
+        for _ in range(600):
+            if os.path.exists(release):
+                break
+            time.sleep(0.05)
+        out({"type": "tool_execution_end", "toolCallId": "tb", "toolName": "bash",
+             "result": {"content": [{"type": "text", "text": "ok"}]}, "isError": False})
+        tool("submit", {"summary": "创建了 done.txt", "criteria": [{"id": "C1", "met": True, "evidence": "ls 看到了"}]})
     elif scenario == "pass_touch":
         # As "pass", and touches a module a test loads (so the perturbation
         # step has something to probe).

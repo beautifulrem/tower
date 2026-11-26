@@ -1,22 +1,24 @@
 /**
  * Title bar instrument strip (docs/19 §19.2):
  * Borderless Airbus/Linear lights-out readings — blocking Needs-You count,
- * swept RunsGauge, heartbeat, spend, sandbox posture (framed only on warning),
+ * the running mark (its arc turning), heartbeat, spend, sandbox posture (framed only on warning),
  * quiet hours, remote phone posture, and active engine.
  */
 import { Show } from "solid-js";
 
 import { clock, usd } from "../lib/format";
 import { t } from "../lib/i18n";
-import { engineLabel, hasIssue, isBlocking } from "../lib/labels";
+import { engineLabel, hasIssue, isBlocking, moving } from "../lib/labels";
 import { openActivity } from "../lib/layers";
 import { go } from "../lib/nav";
 import { goalList, quietNow, quietUntil, state } from "../lib/store";
-import { Heartbeat, RunsGauge, pickQuiet } from "./Chrome";
-import { Icon, NeedsYouMark } from "./Glyph";
+import { Heartbeat, pickQuiet } from "./Chrome";
+import { DangerMark, Icon, NeedsYouMark, NoticeMark, Spinner } from "./Glyph";
 
 export function TelemetryStrip() {
   const running = () => goalList().filter((g) => g.state === "running").length;
+  // The gauge's arc turns while some running goal moves; when every one waits on you or has gone quiet it holds still.
+  const moves = () => goalList().some((g) => g.state === "running" && moving(g, state.now));
   const spent = () => goalList().reduce((s, g) => s + g.cost_usd, 0);
   const max = () => state.settings?.max_concurrent ?? 3;
   const blocking = () => state.inbox.filter(isBlocking).length;
@@ -38,11 +40,11 @@ export function TelemetryStrip() {
     const e = engine();
     if (e === "claude-code") {
       const cmd = state.settings?.claude_acp_command || "claude-agent-acp";
-      return { title: `${t("chrome.engine")}: Claude Code · ${cmd}`, label: "Claude Code" };
+      return { title: `${t("chrome.engine")}: Claude Code, ${cmd}`, label: "Claude Code" };
     }
     if (e === "pi") {
       const v = state.env?.pi_version ?? "";
-      return { title: `${t("chrome.engine")}: Pi ${v} · ${state.env?.pi_path ?? ""}`, label: "Pi" };
+      return { title: `${t("chrome.engine")}: Pi ${v}, ${state.env?.pi_path ?? ""}`, label: "Pi" };
     }
     const lbl = engineLabel(e);
     return { title: `${t("chrome.engine")}: ${lbl}`, label: lbl };
@@ -57,19 +59,20 @@ export function TelemetryStrip() {
           aria-label={t("chrome.unseenErrors", { n: state.unseenActivity })}
           title={t("chrome.unseenErrors", { n: state.unseenActivity })}
         >
-          <span class="gauge-dot down" />
+          <DangerMark />
           {t("chrome.errorsShort", { n: state.unseenActivity })}
         </button>
       </Show>
       <Show when={blocking() > 0}>
-        <button class="tel-blocking" onClick={() => go({ name: "inbox" })} title={t("chrome.openInbox")} aria-label={`${t("common.needsYou")} ${blocking()}`}>
+        <button class="tel-blocking" onClick={() => go({ name: "inbox" })} title={t("chrome.openInbox")}>
+          {/* Said in words: the count is what is in Needs you, not every amber ! on the board (a pass that doesn't count wears one too). */}
           <NeedsYouMark />
-          <span>{blocking()}</span>
+          <span>{t("chrome.needYou", { n: blocking() })}</span>
         </button>
       </Show>
       <Show when={running() > 0}>
         <span class="gauge gauge-active" title={t("chrome.running", { n: running(), max: max() })}>
-          <RunsGauge n={running()} max={max()} />
+          <Spinner class="gauge-runs" size={12} still={!moves()} />
           {t("chrome.runningShort", { n: running(), max: max() })}
         </span>
       </Show>
@@ -81,8 +84,10 @@ export function TelemetryStrip() {
         onClick={() => go({ name: "operations" })}
         title={t("chrome.sandboxTitle")}
       >
+        {/* S0 is a real risk but no decision of yours (docs/12 §12.6.6): ink words and the uncoloured hint mark. The amber
+            ! is for the S0 grant card, the one place it asks you (review 15). */}
         <Show when={sandboxWarn()}>
-          <NeedsYouMark />
+          <NoticeMark />
         </Show>
         <span>{sandboxLabel()}</span>
       </button>
@@ -113,13 +118,13 @@ export function TelemetryStrip() {
         when={engineOk()}
         fallback={
           <button class="gauge gauge-down link-plain" onClick={() => go({ name: "settings" })}>
-            <span class="gauge-dot down" />
+            <DangerMark />
             {engine() === "claude-code" ? t("chrome.claudeNotReady") : t("chrome.piNotReady")}
           </button>
         }
       >
+        {/* The engine's name alone: a grey dot before it said nothing (review 16); a problem is the red × above. */}
         <span class="gauge gauge-engine" title={engineMeta().title}>
-          <span class="gauge-dot" />
           <span>{engineMeta().label}</span>
         </span>
       </Show>

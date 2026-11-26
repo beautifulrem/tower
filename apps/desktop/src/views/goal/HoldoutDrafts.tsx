@@ -2,7 +2,7 @@
 import { For, Show, createSignal, onMount } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
-import { Button } from "../../components/ui";
+import { Button, IconButton } from "../../components/ui";
 import { api, errorText } from "../../lib/api";
 import { t } from "../../lib/i18n";
 import { toast } from "../../lib/store";
@@ -48,7 +48,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
         <span class="unit-claim-tag">{t("contract.holdoutDraftTag")}</span>
         <span class="grow" />
         <Button size="s" variant="ghost" onClick={() => void load()}>{t("contract.regenerate")}</Button>
-        <button type="button" class="icon-btn" aria-label={t("common.close")} onClick={props.onClose}>×</button>
+        <IconButton type="button" icon="cross" size={24} label={t("common.close")} onClick={props.onClose} />
       </div>
       <Show when={none()}>{(why) => <span class="meta t3">{why()}</span>}</Show>
       <For each={drafts()}>
@@ -60,7 +60,7 @@ export function HoldoutDrafts(props: { projectId: string; intent: string; onClos
                 <input class="mono grow" aria-label={t("contract.holdoutFilename")} value={d.filename} disabled={ok()} onInput={(e) => patch(d.id, { filename: e.currentTarget.value })} />
                 <Show when={!ok()} fallback={<span class="human-stamp meta"><Icon name="check" size={10} />{t("contract.holdoutRatifiedStamp")}</span>}>
                   <Button size="s" variant="primary" busy={busy() === d.id} onClick={() => void ratify(d)}>{t("contract.holdoutRatify")}</Button>
-                  <button type="button" class="icon-btn" aria-label={t("common.remove")} onClick={() => setDrafts((l) => l.filter((x) => x.id !== d.id))}>×</button>
+                  <IconButton type="button" icon="cross" size={24} label={t("common.remove")} onClick={() => setDrafts((l) => l.filter((x) => x.id !== d.id))} />
                 </Show>
               </div>
               <span class="meta t3">{d.rationale}</span>

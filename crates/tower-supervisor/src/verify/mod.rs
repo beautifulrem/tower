@@ -398,7 +398,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
             let ids = if unchecked.is_empty() {
                 tr!(lang, "受守卫的运行器进程", "guarded runner processes")
             } else {
-                unchecked.join(", ")
+                unchecked.join(lang.pick("、", ", "))
             };
             let detail = tr!(
                 lang,
@@ -442,7 +442,7 @@ async fn verify(inner: &Arc<Inner>, goal: &str, cancel: &Cancel) -> Result<()> {
                     "The contract keeps the network off and setup failed offline on the agent's snapshot; running it with the network would execute content the agent changed.\n{tail}"
                 )
             } else {
-                let list = changed.join(", ");
+                let list = changed.join(lang.pick("、", ", "));
                 tr!(
                     lang,
                     "Agent 改了 {list}。合同不允许联网，离线准备失败；联网安装会运行这些改动选择的代码。\n{tail}",

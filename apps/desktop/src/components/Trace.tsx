@@ -1,7 +1,8 @@
 /**
  * Trace (docs/04 §4.7): lossless and time-indexed, reachable in one key.
  * Tower's own injections are shown verbatim and labelled as injected by Tower.
- * Raw event names never reach the screen: every kind has a glyph and words.
+ * Raw event names never reach the screen: every kind has a glyph and words (for a kind with no row of its own, the
+ * supervisor's, `TraceEntry.words`).
  *
  * The list is windowed: only the newest `WINDOW` matching entries are in the
  * DOM, and scrolling to the top reveals earlier ones in steps (then asks the
@@ -219,30 +220,19 @@ export function Trace(props: { id: string; live?: boolean }) {
 
 const EMPTY_PROGRESS = { verified: 0, observed: 0, machine: 0, human: 0, human_done: 0 };
 
-/** Words for the event kinds that have no richer row below. */
-function plainLabel(kind: TraceEntry["event"]["kind"]): string {
-  const key = (
-    {
-      goal_created: "evGoalCreated",
-      contract_ratified: "evContractRatified",
-      workspace_prepared: "evWorkspacePrepared",
-      session_attached: "evSessionAttached",
-      workspace_removed: "evWorkspaceRemoved",
-      run_ended: "evRunEnded",
-      verify_started: "evVerifyStarted",
-      setup_finished: "evSetupFinished",
-      verify_finished: "evVerifyFinished",
-      inbox_opened: "evInboxOpened",
-      human_check: "evHumanCheck",
-      claim_reviewed: "evClaimReviewed",
-      cost_updated: "evCostUpdated",
-      branch_written: "evBranchWritten",
-    } as const
-  )[kind as "goal_created"];
-  return key ? t(`trace.${key}`) : kind;
+/** Words for the event kinds that have no richer row below: `trace.ev` and the kind's name in capitals ("inbox_opened"
+ *  is `evInboxOpened`), the event filling their names (an item added to Needs you says which, review 23, record only).
+ *  A kind with no such key is the supervisor's to word (`TraceEntry.words`); its name is the last resort. */
+function plainLabel(e: TraceEntry["event"]): string {
+  const key = `trace.ev${e.kind.replace(/(?:^|_)(.)/g, (_, c: string) => c.toUpperCase())}`;
+  const said = (t as (k: string, p: object) => string)(key, e);
+  return said === key ? e.kind : said;
 }
 
 const Pin = (p: { sha: string }) => <span class="col-pin"><Icon name="harness" size={10} />@{short(p.sha)}</span>;
+/** A line in Tower's own words (a note of its own, its closing of a card): under Tower's mark, which stands by the first
+ * line of a long one (app.css `.mark-line`). */
+const TowerLine = (p: { text: string }) => <span class="t2 mark-line"><Icon name="harness" size={10} />{p.text}</span>;
 const HumanRow = (p: { stamp: string; cls?: string; children: import("solid-js").JSX.Element }) => (
   <div class={`human-line${p.cls ? ` ${p.cls}` : ""}`}><span class="human-stamp">{p.stamp}</span>{p.children}</div>
 );
@@ -273,7 +263,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
           {clock(props.e.at)}
         </span>
         <div class="trace-content">
-          <Switch fallback={<span class="t2">{plainLabel(ev().kind)}</span>}>
+          <Switch fallback={<span class="t2">{props.e.words ?? plainLabel(ev())}</span>}>
             {/* A tool row reads as what was done (the call: a path, a command, a question), then how it went. */}
             <Match when={ev().kind === "tool_ended" && ev()}>
               {(x) => {
@@ -333,7 +323,8 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 const c = x() as Extract<TraceEntry["event"], { kind: "look_captured" }>;
                 return (
                   <div class="trace-cols">
-                    <ResultMark kind={c.error ? "fail" : "pass"} title={c.error ?? undefined} />
+                    {/* A picture taken is a step, not the verifier's pass: a neutral check, the red × only when it failed. */}
+                    {c.error ? <ResultMark kind="fail" title={c.error} /> : <span class="result"><Icon name="check" size={10} /></span>}
                     <span class="ellipsis">
                       {t("trace.lookCaptured", { criterion: c.criterion, side: c.side === "base" ? t("look.before") : t("look.after") })}
                       <Show when={c.error}><span class="t3"><span class="sep" />{c.error}</span></Show>
@@ -369,7 +360,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       <Icon name={open() ? "caret-down" : "caret-right"} size={10} />
                     </button>
                     {/* The text is for the agent, in its language: the fold says so, so English in a Chinese interface is not a gap. */}
-                    <Show when={open()} fallback={<span class="t3 ellipsis">{c.text.split("\n")[0]} <span class="t4">{t("trace.forAgent")}</span></span>}>
+                    <Show when={open()} fallback={<span class="injected-fold"><span class="t3 ellipsis">{c.text.split("\n")[0]}</span><span class="t4">{t("trace.forAgent")}</span></span>}>
                       <pre class="output-tail">{c.text}</pre>
                     </Show>
                   </div>
@@ -390,7 +381,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       <span class="col-dur">{duration(c.duration_ms)}</span>
                       <Pin sha={c.pin} />
                       <button class="link meta" onClick={() => setOpen((o) => !o)} aria-expanded={open()}>
-                        {open() ? t("trace.hideOutput") : t("trace.output")}
+                        {open() ? t("trace.hideOutput") : t("settings.testCheckOutput")}
                       </button>
                     </div>
                     <Show when={open()}>
@@ -461,14 +452,14 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 const c = x() as Extract<TraceEntry["event"], { kind: "sentinel_hit" }>;
                 return (
                   <div class="col">
-                    <span class="t1 row">{c.severity >= 3 ? <DangerMark /> : <NoticeMark />}{t("trace.sentinel")}<span class="sep" />{c.title}</span>
+                    <span class="t1 mark-line">{c.severity >= 3 ? <DangerMark /> : <NoticeMark />}<span>{t("trace.sentinel")}<span class="sep" />{c.title}</span></span>
                     <span class="meta mono pre">{c.detail}</span>
                   </div>
                 );
               }}
             </Match>
             <Match when={ev().kind === "stalled" && ev()}>
-              {(x) => <span class="t1 row"><NoticeMark /> {t("trace.stalled")}<span class="sep" />{(x() as { detail: string }).detail}</span>}
+              {(x) => <span class="t1 mark-line"><NoticeMark /><span>{t("trace.stalled")}<span class="sep" />{(x() as { detail: string }).detail}</span></span>}
             </Match>
             <Match when={ev().kind === "human_edited" && ev()}>
               {(x) => <HumanRow stamp={t("trace.youEdited")}> <span class="mono t2">{(x() as { files: string[] }).files.join("  ")}</span></HumanRow>}
@@ -513,7 +504,9 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
               }}
             </Match>
             <Match when={ev().kind === "inbox_resolved" && ev()}>
-              {(x) => <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>}
+              {/* Tower's own closing (timed out, withdrawn, replaced) is its line under Tower's mark, as what it injects
+                  is, never "Your answer" (review 23, record only: a grey sentence with no mark). */}
+              {(x) => ((x() as { auto?: boolean }).auto ? <TowerLine text={(x() as { response: string }).response} /> : <HumanRow stamp={t("trace.yourAnswer")}> {(x() as { response: string }).response}</HumanRow>)}
             </Match>
             <Match when={ev().kind === "pinned" && ev()}>
               {(x) => {
@@ -527,7 +520,9 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                 return <span class="t2">{t("trace.loopbackOpened", { id: c.criterion, why: c.why })}</span>;
               }}
             </Match>
-            <Match when={ev().kind === "note" && ev()}>{(x) => <span class="t2">{(x() as { text: string }).text}</span>}</Match>
+            {/* A note in Tower's own words is under its mark, as its closing of a card is (review 24, record only: "Tower
+                cancelled …" with no mark); one the engine sent (`notify`) is not Tower's, and stays a plain line. */}
+            <Match when={ev().kind === "note" && ev()}>{(x) => ((x() as { tower?: boolean }).tower ? <TowerLine text={(x() as { text: string }).text} /> : <span class="t2">{(x() as { text: string }).text}</span>)}</Match>
             <Match when={(ev() as { kind: string }).kind === "model_escalated" && ev()}>
               {(x) => {
                 const c = x() as unknown as { from_model: string; to_model: string; rework_cycle: number };

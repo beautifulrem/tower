@@ -71,7 +71,7 @@ fn wal_readers_run_concurrently_without_blocking_on_writer() {
 
     // Hammer the single writer concurrently while 4 reader threads query continuously.
     for i in 0..150 {
-        writer.append(&goal.id, EventKind::Note { text: format!("event {i}") }).unwrap();
+        writer.append(&goal.id, EventKind::tower_note(format!("event {i}"))).unwrap();
     }
     done.store(true, Ordering::Relaxed);
     for h in handles {

@@ -5,10 +5,12 @@
  * your stamp — is in `Honesty.tsx`, which only on-demand views load (and
  * which re-exports these, so either import works there).
  */
-import { type JSX, Show } from "solid-js";
+import { Index, type JSX, Show, createEffect } from "solid-js";
 
 import type { CriterionView } from "../gen/CriterionView";
 import type { Progress } from "../gen/Progress";
+import { api } from "../lib/api";
+import { discountedIn, discountedN, firstAsk } from "../lib/discounted";
 import { t } from "../lib/i18n";
 
 /**
@@ -17,18 +19,26 @@ import { t } from "../lib/i18n";
  * layer is enough: the gutter says the kind (cause, next step…) when there
  * is one, and "Agent 称" otherwise. The text column starts clean.
  */
+/**
+ * The agent's words. The label column always names the speaker ("Agent says"), so no claim reads as Tower's own
+ * line at a glance; what kind of claim it is (summary, cause, assumption) leads its text, a step quieter.
+ */
 export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX.Element; bare?: boolean; dim?: boolean }) {
-  const kind = () => props.kind ?? t("honesty.agentSaysPlain");
   return (
     <div class="claim" classList={{ "claim-dim": !!props.dim }}>
-      <span class="claim-label halt" title={props.kind ? `${kind()} · ${t("honesty.agentSaysPlain")}` : t("honesty.agentSaysPlain")}>
+      <span class="claim-label halt">
         <span class="claim-rule" aria-hidden="true">
           ┆
         </span>
         <span class="sr-only">{t("honesty.srClaim")} </span>
-        <span class="claim-kind">{kind()}</span>
+        <span class="claim-kind">{t("honesty.agentSaysPlain")}</span>
       </span>
-      <div class="claim-text">{props.children}</div>
+      <div class="claim-text">
+        <Show when={props.kind}>
+          <span class="claim-sub">{props.kind} </span>
+        </Show>
+        {props.children}
+      </div>
       <Show when={props.aside}>
         <div class="claim-aside">{props.aside}</div>
       </Show>
@@ -36,14 +46,8 @@ export function Claim(props: { children: JSX.Element; kind?: string; aside?: JSX
   );
 }
 
-/**
- * Machine criteria whose must-fail canary passed: the command passed, and
- * that pass is not evidence (the assertions or the runner were tampered
- * with). Derived from the criteria themselves, never from the summary's
- * count, so the line under a criterion and the total above it say the
- * same thing.
- */
-export const discountedOf = (criteria: readonly CriterionView[] | null | undefined): number => (criteria ?? []).filter((c) => c.canary === "tampered").length;
+/** Machine criteria whose pass is not evidence (`discountedIn`): a canary passed too, or a high finding holds the pass. */
+export const discountedOf = (criteria: readonly CriterionView[] | null | undefined, p?: Progress | null): number => discountedIn(criteria, p);
 
 /**
  * Two-track progress (ADR-020): verified segments are facts and may be
@@ -52,10 +56,15 @@ export const discountedOf = (criteria: readonly CriterionView[] | null | undefin
  * the criteria at hand the bar says so instead of leaving a gap — an amber
  * segment of its own and "verified 2/3 · 1 doesn't count".
  */
-export function CriteriaBar(props: { progress: Progress; criteria?: readonly CriterionView[] | null; compact?: boolean; tiny?: boolean }) {
+export function CriteriaBar(props: { progress: Progress; criteria?: readonly CriterionView[] | null; id?: string; compact?: boolean; tiny?: boolean }) {
   const p = () => props.progress;
   const verified = () => p().verified;
-  const discounted = () => Math.max(0, Math.min(discountedOf(props.criteria), p().machine - verified()));
+  // Without the criteria at hand (a board row, a card) the bar asks by goal: a goal the supervisor flags reads its
+  // detail once, so every bar of it says which pass doesn't count, as the goal page does.
+  createEffect(() => {
+    if (props.id && p().not_evidence && firstAsk(props.id)) void api.goal(props.id).catch(() => {});
+  });
+  const discounted = () => Math.max(0, Math.min(props.criteria ? discountedOf(props.criteria, p()) : discountedN(props.id), p().machine - verified()));
   const segs = () =>
     Array.from({ length: p().machine }, (_, i) =>
       i < verified() ? "verified" : i < verified() + discounted() ? "discounted" : i < Math.max(verified() + discounted(), p().observed) ? "observed" : "empty",
@@ -72,17 +81,18 @@ export function CriteriaBar(props: { progress: Progress; criteria?: readonly Cri
       <span class="sr-only">{full()}</span>
       <Show when={p().machine > 0} fallback={<span class="meta" aria-hidden="true">{props.tiny ? t("honesty.noMachineShort") : t("honesty.notMachineVerified")}</span>}>
         <span class="segs" aria-hidden="true">
-          {segs().map((s) => (
-            <span class={`seg seg-${s}`} />
-          ))}
+          {/* By position, so a segment that changes keeps its element and fills on its transition. */}
+          <Index each={segs()}>{(s) => <span class={`seg seg-${s()}`} />}</Index>
         </span>
         <span class="meta num halt" aria-hidden="true">
           <Show
             when={!props.tiny}
             fallback={
-              <>
-                {verified()}/{p().machine}
-              </>
+              // On a board line the segments already count the passes: when one doesn't count, the words say that instead
+              // of "2/3", so the cell's 11em holds them whole.
+              <Show when={discounted() > 0} fallback={<>{verified()}/{p().machine}</>}>
+                <span class="discounted">{t("honesty.discounted", { n: discounted() })}</span>
+              </Show>
             }
           >
             {t("honesty.verified", { v: verified(), m: p().machine })}
@@ -96,8 +106,9 @@ export function CriteriaBar(props: { progress: Progress; criteria?: readonly Cri
         </span>
       </Show>
       <Show when={p().human > 0}>
-        <span class="sep crit-human" aria-hidden="true">·</span>
+        {/* The dot travels with its count: short of room they drop together, never leaving a "·" at the line's end. */}
         <span class="meta num crit-human" aria-hidden="true">
+          <span class="sep">·</span>
           {props.tiny ? t("honesty.humanShort", { d: p().human_done, n: p().human }) : t("honesty.human", { d: p().human_done, n: p().human })}
         </span>
       </Show>

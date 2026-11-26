@@ -630,7 +630,7 @@ impl<'a> Bench<'a> {
                     lang,
                     "{ids} 刚刚通过，但加入必然失败的测试后同一命令没能跑完（被拒绝或被终止），断言没能检查。",
                     "{ids} had just passed, but with the must-fail tests added the same command could not finish (refused or stopped), so its assertions were not checked.",
-                    ids = refused.join(", ")
+                    ids = refused.join(lang.pick("、", ", "))
                 );
                 let hit = sentinel_hit("assertions_unchecked", detail, lang);
                 append_hit(inner, goal, &hit)?;
@@ -641,7 +641,7 @@ impl<'a> Bench<'a> {
                     lang,
                     "Tower 在测试文件里加了必然失败的断言（用的是测试自己用的那些断言），{ids} 运行时它们没有失败，或者命令仍然报告通过。断言、测试框架或结果报告在运行时被改动了，这次验证的“通过”都不能当作事实。",
                     "Tower added assertions that must fail to the test files (the same assertions the tests use), and while {ids} ran they did not fail, or the command still reported success. Assertions, the test runner or its reporting were altered at run time; none of this verification's passes count as evidence.",
-                    ids = tripped.join(", ")
+                    ids = tripped.join(lang.pick("、", ", "))
                 );
                 let hit = sentinel_hit("assertions_disabled", detail, lang);
                 append_hit(inner, goal, &hit)?;

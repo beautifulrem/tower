@@ -8,18 +8,22 @@
  * red), by activity (blue-grey) or by a decision waiting for you (amber).
  *
  * Shape vocabulary: a ring is a goal; dashes are the claim register ("said,
- * not proven"); a check inside a ring is the verifier's word; a solid disc
- * is sealed. There are no warning triangles: a sentinel's finding is the
- * danger square, an environment problem the sandbox's open box, one glyph
- * per fact wherever the fact is said.
+ * not proven"); an arc turning on a faint ring is work in motion; a check
+ * inside a ring is the verifier's word; a solid disc is sealed. The status
+ * marks are one disc with a symbol cut out of it (after Primer's -fill status
+ * icons): ! needs you (amber), × something is wrong (red); the notice is the
+ * same disc drawn as a line, uncoloured, with an i. The symbol, not the
+ * colour, tells them apart. There are no warning triangles: an environment
+ * problem is the sandbox's open box, one glyph per fact wherever the fact is said.
  */
 import { type JSX, Match, Show, Switch } from "solid-js";
 
 import type { GoalSummary } from "../gen/GoalSummary";
 import type { LifecycleState } from "../gen/LifecycleState";
 import { t } from "../lib/i18n";
-import { isDiscounted } from "../lib/discounted";
-import { machineVerified } from "../lib/labels";
+import { caveatList, caveats, notEvidence } from "../lib/discounted";
+import { machineVerified, moving } from "../lib/labels";
+import { state } from "../lib/store";
 
 type Tone = "neutral" | "active" | "verified" | "faint";
 
@@ -48,25 +52,28 @@ const color: Record<Tone, string> = {
 
 const DASH = "1.7 1.45";
 
-export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin"> & { id?: string }; size?: number }) {
+export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progress" | "verified_pin"> & { id?: string }; size?: number; turn?: boolean }) {
   const verified = () => machineVerified(props.goal as GoalSummary);
-  // Ready or accepted with a pass that is not evidence: the seal's amber ◆ stands where the green check would, so the
+  // Ready or accepted with a pass that is not evidence: the seal's amber ! stands where the green check would, so the
   // title, the sidebar and the board never draw green on a goal whose header says "Passed, not evidence".
   const discounted = () =>
-    (props.goal.state === "in_review" || props.goal.state === "accepted") && (!!props.goal.progress?.not_evidence || isDiscounted(props.goal.id));
+    (props.goal.state === "in_review" || props.goal.state === "accepted") && notEvidence(props.goal);
   const c = () => color[toneOf(props.goal.state, verified())];
-  const s = () => props.size ?? 10;
-  const svg = (children: JSX.Element) => (
+  const s = () => props.size ?? 12;
+  // Verified, with caveats: the ring keeps a gap at its lower right (docs/12 §12.5.2's notch), the check still green; the
+  // accepted disc and the merged ring keep the same cut, so a goal's caveats stay on its mark after you took it.
+  const qualified = () => ["in_review", "accepted", "integrated"].includes(props.goal.state) && verified() && caveats(props.goal).length > 0;
+  const svg = (children: JSX.Element, spin?: boolean) => (
     <svg
-      class="glyph"
+      class={spin ? "glyph glyph-spin" : "glyph"}
       width={s()}
       height={s()}
       viewBox="0 0 10 10"
       fill="none"
       stroke={c()}
-      stroke-width="1.25"
+      stroke-width="1.1"
       role="img"
-      aria-label={t(`state.${props.goal.state}`)}
+      aria-label={qualified() ? (props.goal.state === "in_review" ? t("honesty.qualified") : `${t(`state.${props.goal.state}`)}, ${t("honesty.qualified")}`) : t(`state.${props.goal.state}`)}
     >
       {children}
     </svg>
@@ -75,11 +82,17 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   // The claim register's dashes keep square ends: round ones would turn the ring into a string of beads.
   const dashedRing = () => <circle cx="5" cy="5" r="4" stroke-dasharray={DASH} stroke-linecap="butt" />;
   const check = (stroke?: string) => <path d="M3.1 5.2 L4.5 6.6 L7 3.7" stroke={stroke} />;
+  // In motion: a quarter arc turning on the ring (the whole mark turns, so it stays on the compositor). It turns only
+  // where you watch the work (`turn`: a board row, the goal's page, its peek) and only while the work moves (labels
+  // `moving`); elsewhere (the sidebar, a list, a history), and while it waits on you or has gone quiet, the arc holds
+  // still at the top right, as under reduced motion.
+  const arc = () => <path d="M5 1a4 4 0 0 1 4 4" />;
+  const turns = () => !!props.turn && "mode" in props.goal && moving(props.goal as GoalSummary, state.now);
   return (
     <Switch>
       <Match when={discounted()}>
-        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" role="img" aria-label={`${t(`state.${props.goal.state}`)} · ${t("honesty.sealTampered")}`}>
-          <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+        <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 16 16" role="img" aria-label={props.goal.state === "in_review" ? t("honesty.sealTampered") : `${t(`state.${props.goal.state}`)}, ${t("honesty.sealTampered")}`}>
+          {attnDisc()}
         </svg>
       </Match>
       <Match when={props.goal.state === "draft"}>{svg(ring())}</Match>
@@ -94,35 +107,39 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
       <Match when={props.goal.state === "running"}>
         {svg(
           <>
-            {ring()}
-            <path d="M5 1 A4 4 0 0 0 5 9 Z" fill={c()} stroke="none" />
+            <circle cx="5" cy="5" r="4" stroke-opacity=".28" />
+            {arc()}
           </>,
+          turns(),
         )}
       </Match>
+      {/* Paused: the goal's ring held, two bars inside it. */}
       <Match when={props.goal.state === "paused"}>
         {svg(
           <>
-            <line x1="3.3" y1="1.5" x2="3.3" y2="8.5" />
-            <line x1="6.7" y1="1.5" x2="6.7" y2="8.5" />
+            {ring()}
+            <path d="M4 3.6v2.8M6 3.6v2.8" />
           </>,
         )}
       </Match>
       {/* Claimed done: the claim register's dashes around an empty goal. */}
       <Match when={props.goal.state === "claimed"}>{svg(dashedRing())}</Match>
-      {/* Verifying: the verifier is filling the claim in. */}
+      {/* Verifying: the verifier's arc going round the claim's dashes. */}
       <Match when={props.goal.state === "verifying"}>
         {svg(
           <>
             {dashedRing()}
-            <path d="M5 1 A4 4 0 0 0 5 9 Z" fill={c()} stroke="none" />
+            {arc()}
           </>,
+          turns(),
         )}
       </Match>
       {/* Ready to accept: the verifier's check inside the ring — green only with a pin. */}
       <Match when={props.goal.state === "in_review" && verified()}>
         {svg(
           <>
-            {ring()}
+            {/* The gap is centred on the lower right: dashes start 4.94 along a ring of 25.13 and leave 3.6 open. */}
+            <circle cx="5" cy="5" r="4" stroke-dasharray={qualified() ? "21.53 3.6" : undefined} stroke-dashoffset={qualified() ? "-4.94" : undefined} />
             {check()}
           </>,
         )}
@@ -135,11 +152,13 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
           </>,
         )}
       </Match>
-      {/* Accepted: sealed. Verified seals are solid; unverified ones stay hatched. */}
+      {/* Accepted: sealed. Verified seals are solid (cut at the lower right when accepted with caveats, ●*); unverified ones stay hatched. */}
       <Match when={props.goal.state === "accepted" && verified()}>
         {svg(
           <>
-            <circle cx="5" cy="5" r="4.25" fill={c()} stroke="none" />
+            <Show when={qualified()} fallback={<circle cx="5" cy="5" r="4.25" fill={c()} stroke="none" />}>
+              <path d="M9.25 5.15A4.25 4.25 0 1 0 5.15 9.25Z" fill={c()} stroke="none" />
+            </Show>
             {check("var(--bg-app)")}
           </>,
         )}
@@ -152,11 +171,15 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
           </>,
         )}
       </Match>
+      {/* Merged: the ring around the sealed core; with caveats the ring keeps the in-review gap (◉*), scaled to its radius.
+          Merged unverified, the core is hatched as an unverified seal is: told apart by shape, not by colour alone. */}
       <Match when={props.goal.state === "integrated"}>
         {svg(
           <>
-            <circle cx="5" cy="5" r="4.2" stroke-width="1" />
-            <circle cx="5" cy="5" r="2.4" fill={c()} stroke="none" />
+            <circle cx="5" cy="5" r="4.2" stroke-width="1" stroke-dasharray={qualified() ? "22.61 3.78" : undefined} stroke-dashoffset={qualified() ? "-5.19" : undefined} />
+            <Show when={verified()} fallback={<path d="M3.3 6.7L6.7 3.3M4.4 7.3L7.3 4.4M2.7 5.6L5.6 2.7" stroke-width="0.8" />}>
+              <circle cx="5" cy="5" r="2.4" fill={c()} stroke="none" />
+            </Show>
           </>,
         )}
       </Match>
@@ -173,29 +196,59 @@ export function LifecycleGlyph(props: { goal: Pick<GoalSummary, "state" | "progr
   );
 }
 
-/** ◆: something needs your decision. The only attention mark. */
+/** The page's own ground: a status mark's symbol is cut out of its disc, so it holds in either theme. */
+/*
+ * The status marks on the icons' 16-unit grid, each one even-odd path: the symbol is a hole in the disc, so it shows
+ * whatever ground the mark sits on (a selected row, a raised sheet), never a guessed one. tokens.css draws the same
+ * paths as masks for marks a stylesheet places; a unit test holds the two equal.
+ */
+export const MARK_PATH = {
+  attention: "M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM7.125 4.6a.875 .875 0 0 1 1.75 0v4.1a.875 .875 0 0 1 -1.75 0zM8 10.35a1.05 1.05 0 1 1 0 2.1a1.05 1.05 0 1 1 0 -2.1z",
+  danger: "M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 9.237L9.781 11.019A.875 .875 0 0 0 11.019 9.781L9.237 8L11.019 6.219A.875 .875 0 0 0 9.781 4.981L8 6.763L6.219 4.981A.875 .875 0 0 0 4.981 6.219L6.763 8L4.981 9.781A.875 .875 0 0 0 6.219 11.019z",
+  notice: "M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0 -11zM7.2 7.3a.8 .8 0 0 1 1.6 0v3.7a.8 .8 0 0 1 -1.6 0zM8 3.95a.95 .95 0 1 1 0 1.9a.95 .95 0 1 1 0 -1.9z",
+} as const;
+
+/** The ! cut out of an amber disc: needs you, or a pass that doesn't count (which needs you to look). */
+const attnDisc = () => <path d={MARK_PATH.attention} fill="var(--st-attention)" fill-rule="evenodd" />;
+
+/** A status mark: 12px, on the icons' 16-unit grid. */
+const Mark = (p: { cls: string; label: string; children: JSX.Element }) => (
+  <svg class={`glyph ${p.cls}`} width="12" height="12" viewBox="0 0 16 16" role="img" aria-label={p.label}>
+    {p.children}
+  </svg>
+);
+
+/** Needs you: an amber disc with a !. The only attention mark. */
 export function NeedsYouMark(props: { title?: string }) {
-  return (
-    <svg class="glyph mark-attention" width="9" height="9" viewBox="0 0 10 10" role="img" aria-label={props.title ?? t("common.needsYou")}>
-      <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
-    </svg>
-  );
+  return <Mark cls="mark-attention" label={props.title ?? t("common.needsYou")}>{attnDisc()}</Mark>;
 }
 
-/** ◇: worth noticing, no decision needed. Never coloured. */
+/** Worth noticing, no decision needed: the disc as a line, with an i. Never coloured. */
 export function NoticeMark(props: { title?: string }) {
   return (
-    <svg class="glyph" width="9" height="9" viewBox="0 0 10 10" role="img" aria-label={props.title ?? t("common.notice")}>
-      <path d="M5 1 L9 5 L5 9 L1 5 Z" fill="none" stroke="currentColor" stroke-width="1.2" />
-    </svg>
+    <Mark cls="mark-notice" label={props.title ?? t("common.notice")}>
+      <path d={MARK_PATH.notice} fill="currentColor" fill-rule="evenodd" />
+    </Mark>
   );
 }
 
-/** ■: the verifier or a sentinel found something wrong. */
+/** Something is wrong by the verifier's own reading (a failure, a sentinel, a block): a red disc with a ×. A failure
+ * only observed (a GitHub check, a merge conflict) is said in ink, never this (docs/12 §12.4.3, review 18). */
 export function DangerMark(props: { title?: string }) {
   return (
-    <svg class="glyph mark-danger" width="9" height="9" viewBox="0 0 10 10" role="img" aria-label={props.title ?? t("common.problem")}>
-      <rect x="1" y="1" width="8" height="8" fill="currentColor" />
+    <Mark cls="mark-danger" label={props.title ?? t("common.problem")}>
+      <path d={MARK_PATH.danger} fill="currentColor" fill-rule="evenodd" />
+    </Mark>
+  );
+}
+
+/** Work in motion with no glyph of its own (a load, the runs gauge): a faint ring and the turning arc; `still` holds the
+ *  arc where it is (the runs gauge while nothing running moves: each goal waits on you or has gone quiet). */
+export function Spinner(props: { size?: number; class?: string; still?: boolean }) {
+  return (
+    <svg class={`glyph${props.still ? "" : " glyph-spin"} ${props.class ?? ""}`} width={props.size ?? 10} height={props.size ?? 10} viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true">
+      <circle cx="5" cy="5" r="4" stroke-opacity=".28" />
+      <path d="M5 1a4 4 0 0 1 4 4" />
     </svg>
   );
 }
@@ -240,110 +293,51 @@ export type IconName =
 /* Drawn on a 16-unit grid with a 2.5-unit margin, in the line style docs/12 §12.9 names: round caps and joins, corners
    rounded, open space between strokes. The pen's width is set per size in CSS (`.icon`), so a 10px icon is not drawn
    hairline. */
-const PATHS: Record<IconName, () => JSX.Element> = {
-  plus: () => <path d="M8 3.5v9M3.5 8h9" />,
-  grid: () => (
-    <>
-      <rect x="2.5" y="2.5" width="4" height="4" rx="1" />
-      <rect x="9.5" y="2.5" width="4" height="4" rx="1" />
-      <rect x="2.5" y="9.5" width="4" height="4" rx="1" />
-      <rect x="9.5" y="9.5" width="4" height="4" rx="1" />
-    </>
-  ),
+const PATHS: Record<IconName, string> = {
+  plus: '<path d="M8 3.5v9M3.5 8h9"/>',
+  grid: '<rect x="2.5" y="2.5" width="4" height="4" rx="1"/><rect x="9.5" y="2.5" width="4" height="4" rx="1"/><rect x="2.5" y="9.5" width="4" height="4" rx="1"/><rect x="9.5" y="9.5" width="4" height="4" rx="1"/>',
   /* The tray things wait in for you. */
-  inbox: () => <path d="M2.5 8.5h3l1 2h3l1-2h3M2.5 8.5l1.7-4.7a1 1 0 0 1 .9-.8h5.8a1 1 0 0 1 .9.8l1.7 4.7V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12z" />,
-  "chevron-left": () => <path d="M10 3.5 5.5 8l4.5 4.5" />,
-  "chevron-right": () => <path d="M6 3.5l4.5 4.5L6 12.5" />,
-  "caret-down": () => <path d="M4 6l4 4 4-4" />,
-  "caret-right": () => <path d="M6 4l4 4-4 4" />,
-  ellipsis: () => <path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.5" />,
-  search: () => (
-    <>
-      <circle cx="7" cy="7" r="4.5" />
-      <path d="M10.25 10.25 13.5 13.5" />
-    </>
-  ),
+  inbox: '<path d="M2.5 8.5h3l1 2h3l1-2h3M2.5 8.5l1.7-4.7a1 1 0 0 1 .9-.8h5.8a1 1 0 0 1 .9.8l1.7 4.7V12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12z"/>',
+  "chevron-left": '<path d="M10 3.5 5.5 8l4.5 4.5"/>',
+  "chevron-right": '<path d="M6 3.5l4.5 4.5L6 12.5"/>',
+  "caret-down": '<path d="M4 6l4 4 4-4"/>',
+  "caret-right": '<path d="M6 4l4 4-4 4"/>',
+  ellipsis: '<path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.5"/>',
+  search: '<circle cx="7" cy="7" r="4.5"/><path d="M10.25 10.25 13.5 13.5"/>',
   /* A scale: Tower measured it. Replaces the gear, which reads as "settings". */
-  harness: () => <path d="M2.5 13h11M5 13V9.5M8 13V3.5M11 13V9.5" />,
-  check: () => <path d="M3 8.5l3.25 3.25L13 5" />,
-  cross: () => <path d="M4 4l8 8m0-8-8 8" />,
-  stale: () => <path d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M12 1.75V4.5H9.25" />,
-  "ring-check": () => (
-    <>
-      <circle cx="8" cy="8" r="5.75" />
-      <path d="M5.5 8.25l1.75 1.75 3.25-3.75" />
-    </>
-  ),
-  "ring-cross": () => (
-    <>
-      <circle cx="8" cy="8" r="5.75" />
-      <path d="M6 6l4 4m0-4-4 4" />
-    </>
-  ),
+  harness: '<path d="M2.5 13h11M5 13V9.5M8 13V3.5M11 13V9.5"/>',
+  check: '<path d="M3 8.5l3.25 3.25L13 5"/>',
+  cross: '<path d="M4 4l8 8m0-8-8 8"/>',
+  stale: '<path d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M12 1.75V4.5H9.25"/>',
+  "ring-check": '<circle cx="8" cy="8" r="5.75"/><path d="M5.5 8.25l1.75 1.75 3.25-3.75"/>',
+  "ring-cross": '<circle cx="8" cy="8" r="5.75"/><path d="M6 6l4 4m0-4-4 4"/>',
   /* The environment: the sandbox's box, its wall broken where something tried to pass. Not a warning triangle — an
-     environment problem is nobody's failure — and not ◇ or ◆, which belong to notices and decisions. */
-  sandbox: () => <path d="M5.25 2.5H4A1.5 1.5 0 0 0 2.5 4v8A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5V4A1.5 1.5 0 0 0 12 2.5h-1.25" />,
-  return: () => <path d="M3 2.5v5a2 2 0 0 0 2 2h8m-3-3 3 3-3 3" />,
-  sliders: () => (
-    <>
-      <path d="M2.5 5h6m4 0h1m-11 6h1m4 0h6" />
-      <circle cx="10.5" cy="5" r="2" />
-      <circle cx="5.5" cy="11" r="2" />
-    </>
-  ),
-  dot: () => <circle cx="8" cy="8" r="1.75" fill="currentColor" stroke="none" />,
-  network: () => (
-    <>
-      <circle cx="8" cy="8" r="5.75" />
-      <ellipse cx="8" cy="8" rx="2.5" ry="5.75" />
-      <path d="M2.25 8h11.5" />
-    </>
-  ),
-  copy: () => (
-    <>
-      <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-      <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" />
-    </>
-  ),
-  "arrow-up": () => <path d="M8 13V3M4 7l4-4 4 4" />,
-  "arrow-down": () => <path d="M8 3v10M4 9l4 4 4-4" />,
-  columns: () => (
-    <>
-      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-      <path d="M8 2.5v11" />
-    </>
-  ),
-  keyboard: () => (
-    <>
-      <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" />
-      <path d="M4.5 6.5h1m2 0h1m2 0h1m-6 3h5" />
-    </>
-  ),
-  list: () => <path d="M2.5 4h11M2.5 8h11M2.5 12h7" />,
-  expand: () => <path d="M8 2.5v11M5 5.5l3-3 3 3M5 10.5l3 3 3-3" />,
-  "arrow-right": () => <path d="M3 8h10M9 4l4 4-4 4" />,
+     environment problem is nobody's failure — and not the i or the !, which belong to notices and decisions. */
+  sandbox: '<path d="M5.25 2.5H4A1.5 1.5 0 0 0 2.5 4v8A1.5 1.5 0 0 0 4 13.5h8a1.5 1.5 0 0 0 1.5-1.5V4A1.5 1.5 0 0 0 12 2.5h-1.25"/>',
+  return: '<path d="M3 2.5v5a2 2 0 0 0 2 2h8m-3-3 3 3-3 3"/>',
+  sliders: '<path d="M2.5 5h6m4 0h1m-11 6h1m4 0h6"/><circle cx="10.5" cy="5" r="2"/><circle cx="5.5" cy="11" r="2"/>',
+  dot: '<circle cx="8" cy="8" r="1.75" fill="currentColor" stroke="none"/>',
+  network: '<circle cx="8" cy="8" r="5.75"/><ellipse cx="8" cy="8" rx="2.5" ry="5.75"/><path d="M2.25 8h11.5"/>',
+  copy: '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/>',
+  "arrow-up": '<path d="M8 13V3M4 7l4-4 4 4"/>',
+  "arrow-down": '<path d="M8 3v10M4 9l4 4 4-4"/>',
+  columns: '<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M8 2.5v11"/>',
+  keyboard: '<rect x="1.5" y="3.5" width="13" height="9" rx="1.5"/><path d="M4.5 6.5h1m2 0h1m2 0h1m-6 3h5"/>',
+  list: '<path d="M2.5 4h11M2.5 8h11M2.5 12h7"/>',
+  expand: '<path d="M8 2.5v11M5 5.5l3-3 3 3M5 10.5l3 3 3-3"/>',
+  "arrow-right": '<path d="M3 8h10M9 4l4 4-4 4"/>',
   /* Rework: two arcs chasing each other — distinct from `stale`, which is one arc and a return. */
-  rework: () => <path d="M3 8a5 5 0 0 1 8.5-3.55M11.75 1.75v3h-3M13 8a5 5 0 0 1-8.5 3.55M4.25 14.25v-3h3" />,
+  rework: '<path d="M3 8a5 5 0 0 1 8.5-3.55M11.75 1.75v3h-3M13 8a5 5 0 0 1-8.5 3.55M4.25 14.25v-3h3"/>',
   /* A hollow ring: not yet measured. */
-  ring: () => <circle cx="8" cy="8" r="4" />,
-  bell: () => <path d="M4 10.5v-4a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3" />,
-  undo: () => <path d="M5.5 3.5l-3 3 3 3M2.5 6.5h7.25a3.5 3.5 0 0 1 0 7H8" />,
+  ring: '<circle cx="8" cy="8" r="4"/>',
+  bell: '<path d="M4 10.5v-4a4 4 0 0 1 8 0v4l1.5 1.5h-11zM6.5 14h3"/>',
+  undo: '<path d="M5.5 3.5l-3 3 3 3M2.5 6.5h7.25a3.5 3.5 0 0 1 0 7H8"/>',
   /* Learning: an open book, the rules you have taught. */
-  learning: () => <path d="M8 4.5C6.75 3.5 5 3 2.5 3v9.5c2.5 0 4.25.5 5.5 1.5 1.25-1 3-1.5 5.5-1.5V3C11 3 9.25 3.5 8 4.5zm0 0V14" />,
+  learning: '<path d="M8 4.5C6.75 3.5 5 3 2.5 3v9.5c2.5 0 4.25.5 5.5 1.5 1.25-1 3-1.5 5.5-1.5V3C11 3 9.25 3.5 8 4.5zm0 0V14"/>',
   /* Operations: the schedule's dial. */
-  operations: () => (
-    <>
-      <circle cx="8" cy="8" r="5.75" />
-      <path d="M8 5v3.25l2 1.25" />
-    </>
-  ),
+  operations: '<circle cx="8" cy="8" r="5.75"/><path d="M8 5v3.25l2 1.25"/>',
   /* Slide-over quick peek drawer. */
-  peek: () => (
-    <>
-      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-      <path d="M9.5 2.5v11" />
-    </>
-  ),
+  peek: '<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M9.5 2.5v11"/>',
 };
 
 /** One of Tower's own line icons; 12px by default, 14px in the sidebar, 16px for toolbar buttons. */
@@ -359,8 +353,9 @@ export function Icon(props: { name: IconName; size?: 10 | 12 | 14 | 16; class?: 
       role={props.label ? "img" : undefined}
       aria-label={props.label}
       aria-hidden={props.label ? undefined : "true"}
+      // Tower's own drawings, constant markup: no input of anyone's reaches it.
+      innerHTML={PATHS[props.name]}
     >
-      {PATHS[props.name]()}
     </svg>
   );
 }
@@ -388,8 +383,8 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
       pass: t("common.passed"),
       fail: t("common.failed"),
       stale: t("honesty.stale"),
-      "obs-pass": `${t("honesty.observation")} · ${t("common.passed")}`,
-      "obs-fail": `${t("honesty.observation")} · ${t("common.failed")}`,
+      "obs-pass": `${t("honesty.observation")}, ${t("common.passed")}`,
+      "obs-fail": `${t("honesty.observation")}, ${t("common.failed")}`,
       pending: t("goal.awaitingVerify"),
       env: t("pause.verify_env_error"),
     })[props.kind];
@@ -400,7 +395,7 @@ export function ResultMark(props: { kind: ResultKind; title?: string }) {
   );
 }
 
-/** A criterion's mark when it passed but its must-fail canary passed too: the seal's ◆, never the green check. */
+/** A criterion's mark when it passed but its must-fail canary passed too: the seal's amber !, never the green check. */
 export function NotEvidenceMark() {
   return (
     <span class="result result-tampered" title={t("honesty.sealTampered")}>
@@ -409,6 +404,18 @@ export function NotEvidenceMark() {
   );
 }
 
+/** A seal's or stamp's tooltip: the verifier's run, its caveats, or why that pass doesn't count (the bar's words). */
+const sealTitle = (tampered: boolean | undefined, pin: string, why?: string[], done?: boolean) =>
+  tampered
+    ? `@${pin} ${t("honesty.discountedTitle")}`
+    : why?.length
+      ? t(done ? "honesty.qualifiedDoneTitle" : "honesty.qualifiedTitle", { pin, why: caveatList(why) })
+      : t("honesty.sealTitle", { pin });
+
+/** The verified disc, whole, or with its lower right cut off when the pass carries caveats (docs/12 §12.5.2). */
+const Disc = (p: { cut?: boolean }) =>
+  p.cut ? <path d="M9.25 5.15A4.25 4.25 0 1 0 5.15 9.25Z" fill="var(--st-verified)" /> : <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />;
+
 /**
  * The stamp: the seal set as Tower's one signature, where a verdict is the
  * point of the screen — the accept sheet's masthead, and the head of a goal
@@ -416,33 +423,33 @@ export function NotEvidenceMark() {
  * word in the display cut, the largest type in the interface) and the pin it
  * was measured on (mono, tabular), divided by the frame's own rule. A pass
  * that is not evidence is the seal withheld: the frame is dashed — the claim
- * register's line, "said, not proven" — and the ◆ stands where the disc
+ * register's line, "said, not proven" — and the amber ! stands where the disc
  * would. `press` plays the impression once, as the sheet opens.
  */
-export function Stamp(props: { pin: string; tampered?: boolean; press?: boolean; size?: "l" | "m" }) {
+export function Stamp(props: { pin: string; tampered?: boolean; qualified?: string[]; press?: boolean; size?: "l" | "m"; accepted?: boolean }) {
   const pin = () => props.pin.slice(0, 7);
   return (
     <span
       class={`stamp stamp-${props.size ?? "l"}`}
       classList={{ "stamp-tampered": !!props.tampered, "stamp-press": !!props.press }}
-      title={props.tampered ? t("honesty.sealTamperedTitle", { pin: pin() }) : t("honesty.sealTitle", { pin: pin() })}
+      title={sealTitle(props.tampered, pin(), props.qualified, props.accepted)}
     >
       <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
       <span class="stamp-verdict">
         <Show
           when={!props.tampered}
           fallback={
-            <svg class="glyph stamp-glyph" viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+            <svg class="glyph stamp-glyph" viewBox="0 0 16 16" aria-hidden="true">
+              {attnDisc()}
             </svg>
           }
         >
           <svg class="glyph stamp-glyph" viewBox="0 0 10 10" aria-hidden="true">
-            <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
+            <Disc cut={!!props.qualified?.length} />
             <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.1" />
           </svg>
         </Show>
-        <span class="stamp-word">{props.tampered ? t("honesty.sealTampered") : t("goal.verified")}</span>
+        <span class="stamp-word">{props.tampered ? t("honesty.sealTampered") : props.qualified?.length ? t("honesty.qualified") : t("goal.verified")}</span>
       </span>
       <span class="stamp-pin code-val num">@{pin()}</span>
     </span>
@@ -454,9 +461,9 @@ export function Stamp(props: { pin: string; tampered?: boolean; press?: boolean;
  * was measured on. One component, used everywhere the verdict is shown.
  * `tampered` is the seal withheld: every command passed on this pin, but a
  * must-fail canary passed too, so the pass is not evidence — the attention
- * register's ◆ stands where the green disc would, and the words say so.
+ * register's amber ! stands where the green disc would, and the words say so.
  */
-export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean; tampered?: boolean }) {
+export function Seal(props: { pin: string | null | undefined; text?: string; compact?: boolean; large?: boolean; tampered?: boolean; qualified?: string[]; accepted?: boolean }) {
   const s = () => (props.large ? 12 : 10);
   const pin = () => props.pin!.slice(0, 7);
   return (
@@ -464,23 +471,23 @@ export function Seal(props: { pin: string | null | undefined; text?: string; com
       <span
         class="seal"
         classList={{ "seal-compact": !!props.compact, "seal-large": !!props.large, "seal-tampered": !!props.tampered }}
-        title={props.tampered ? t("honesty.sealTamperedTitle", { pin: pin() }) : t("honesty.sealTitle", { pin: pin() })}
+        title={sealTitle(props.tampered, pin(), props.qualified, props.accepted)}
       >
         <span class="sr-only">{props.tampered ? t("honesty.srTampered") : t("honesty.srVerified")} </span>
         <Show
           when={!props.tampered}
           fallback={
-            <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 10 10" aria-hidden="true">
-              <path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)" />
+            <svg class="glyph mark-attention" width={s()} height={s()} viewBox="0 0 16 16" aria-hidden="true">
+              {attnDisc()}
             </svg>
           }
         >
           <svg class="glyph" width={s()} height={s()} viewBox="0 0 10 10" aria-hidden="true">
-            <circle cx="5" cy="5" r="4.25" fill="var(--st-verified)" />
+            <Disc cut={!!props.qualified?.length} />
             <path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg-app)" stroke-width="1.25" />
           </svg>
         </Show>
-        <span class="seal-word">{props.text ?? (props.tampered ? t("honesty.sealTampered") : t("goal.verified"))}</span>
+        <span class="seal-word">{props.text ?? (props.tampered ? t("honesty.sealTampered") : props.qualified?.length ? t("honesty.qualified") : t("goal.verified"))}</span>
         <span class="code-val seal-pin">@{pin()}</span>
       </span>
     </Show>

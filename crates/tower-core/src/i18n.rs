@@ -588,8 +588,8 @@ impl PauseNote {
 pub enum Stall {
     /// No tool call for a while.
     NoProgress { minutes: u64 },
-    /// The same call failed again and again.
-    Repeated { signature: String, times: u32 },
+    /// The same call failed again and again: the tool, and what it was called on (a command, a path).
+    Repeated { tool: String, target: String, times: u32 },
 }
 
 impl Stall {
@@ -598,7 +598,7 @@ impl Stall {
     pub fn encode(&self) -> String {
         match self {
             Stall::NoProgress { minutes } => format!("{}no_progress {minutes}", Self::MARK),
-            Stall::Repeated { signature, times } => format!("{}repeated {times} {signature}", Self::MARK),
+            Stall::Repeated { tool, target, times } => format!("{}repeated {times} {tool} {target}", Self::MARK),
         }
     }
 
@@ -608,10 +608,22 @@ impl Stall {
         match kind {
             "no_progress" => Some(Stall::NoProgress { minutes: rest.parse().ok()? }),
             "repeated" => {
-                let (times, signature) = rest.split_once(' ')?;
-                Some(Stall::Repeated { signature: signature.into(), times: times.parse().ok()? })
+                let (times, call) = rest.split_once(' ')?;
+                let (tool, target) = call.split_once(' ').unwrap_or((call, ""));
+                // Stored before iteration 21 as "bash · npm test".
+                let target = target.strip_prefix("· ").unwrap_or(target);
+                Some(Stall::Repeated { tool: tool.into(), target: target.into(), times: times.parse().ok()? })
             }
             _ => None,
+        }
+    }
+
+    /// The machine value `text` starts with, in either language: what was run, else the tool that ran it.
+    pub fn code(&self) -> Option<&str> {
+        match self {
+            Stall::NoProgress { .. } => None,
+            Stall::Repeated { target, .. } if !target.is_empty() => Some(target),
+            Stall::Repeated { tool, .. } => Some(tool),
         }
     }
 
@@ -620,16 +632,194 @@ impl Stall {
             Stall::NoProgress { minutes } => {
                 tr!(lang, "{minutes} 分钟没有任何工具调用", "No tool calls for {minutes} minutes")
             }
-            Stall::Repeated { signature, times } => {
-                tr!(lang, "{signature} 连续失败 {times} 次", "{signature} failed {times} times in a row")
+            // What was run, then the tool that ran it, apart (review 21: "bash npm test failed" ran the two together).
+            Stall::Repeated { tool, target, times } if !target.is_empty() => {
+                tr!(lang, "{target}（{tool}）连续失败 {times} 次", "{target} ({tool}) failed {times} times in a row")
+            }
+            Stall::Repeated { tool, times, .. } => {
+                tr!(lang, "{tool} 连续失败 {times} 次", "{tool} failed {times} times in a row")
             }
         }
     }
 }
 
+// ---- trace ------------------------------------------------------------------
+
+/// What the trace says when Tower closes an item no person answered: one sentence for every way it happens (the run
+/// stopped, a newer item replaced it, its time ran out), naming the item, so it never reads as a person's answer and
+/// never leaves you to guess which item went (review 23, record only).
+pub fn tower_closed(lang: Lang, what: &str, why: &str) -> String {
+    tr!(lang, "Tower 关闭了“{what}”：{why}", "Tower closed “{what}”: {why}")
+}
+
+/// Why Tower closed an item a newer one of the same words replaced.
+pub fn replaced_why(lang: Lang) -> String {
+    tr!(lang, "被更新的一项取代", "A newer one replaced it")
+}
+
+/// Why Tower closed a question whose asker stopped waiting.
+pub fn timed_out_why(lang: Lang) -> String {
+    tr!(lang, "已超时，提问的一方不再等这个回答", "It timed out; the asker stopped waiting for an answer")
+}
+
+/// Tower's closing in the form a Tower before the sentence above wrote it ("Withdrawn: The run stopped", "(timed out:
+/// …)", "Replaced by a newer one"; review 24, record 3): the language it was written in and why, to be said in that
+/// sentence. Matched exactly as Tower wrote it, case and all; anything else is `None`.
+pub fn older_closing(response: &str) -> Option<(Lang, String)> {
+    if let Some(why) = response.strip_prefix("Withdrawn: ") {
+        return Some((Lang::En, why.into()));
+    }
+    if let Some(why) = response.strip_prefix("撤回：") {
+        return Some((Lang::Zh, why.into()));
+    }
+    match response {
+        "Replaced by a newer one" => Some((Lang::En, replaced_why(Lang::En))),
+        "被更新的一项取代" => Some((Lang::Zh, replaced_why(Lang::Zh))),
+        "(timed out: the asker stopped waiting for an answer)" => Some((Lang::En, timed_out_why(Lang::En))),
+        "（已超时：提问的一方不再等这个回答）" => Some((Lang::Zh, timed_out_why(Lang::Zh))),
+        _ => None,
+    }
+}
+
+/// The trace's words for an event the desk has no row of its own for, in the language of the moment (derived on read,
+/// as the trace is): a step the verifier, the supervisor or you took, said as a sentence, never the event's own name
+/// (iteration 24: "canary_checked" and "port_block_allocated" stood in every verified goal's trace). `lang` is asked
+/// only for such an event, so an append of any other costs nothing.
+pub fn event_words(e: &crate::event::EventKind, lang: impl FnOnce() -> Lang) -> Option<String> {
+    use crate::event::EventKind as E;
+    use crate::view::CanaryState;
+    if !matches!(
+        e,
+        E::CanaryChecked { .. }
+            | E::PortBlockAllocated { .. }
+            | E::LookEvidence { .. }
+            | E::AttachmentAdded { .. }
+            | E::MemoryProposed { .. }
+            | E::MemoryRatified { .. }
+            | E::HoldoutDraftRatified { .. }
+            | E::RolledBack { .. }
+    ) {
+        return None;
+    }
+    let lang = lang();
+    Some(match e {
+        E::CanaryChecked { criterion, state, .. } => match state {
+            CanaryState::Intact => {
+                tr!(
+                    lang,
+                    "{criterion}：必然失败的测试如期失败",
+                    "{criterion}: the must-fail tests failed, as they must"
+                )
+            }
+            CanaryState::Tampered => {
+                tr!(lang, "{criterion}：一个必然失败的测试通过了", "{criterion}: a test that must fail passed")
+            }
+            CanaryState::NotChecked => tr!(
+                lang,
+                "{criterion}：没有能运行的必然失败测试，断言未检查",
+                "{criterion}: no must-fail test could run, so the assertions were not checked"
+            ),
+        },
+        E::PortBlockAllocated { base, count } => {
+            let last = u32::from(*base) + u32::from(*count).saturating_sub(1);
+            tr!(lang, "为这个目标留出端口 {base}–{last}", "Ports {base}–{last} set aside for this goal")
+        }
+        E::LookEvidence { criterion, side, console_errors, .. } => {
+            let side = if side == "base" {
+                lang.pick("改动前", "before the change")
+            } else {
+                lang.pick("改动后", "after the change")
+            };
+            match console_errors.len() {
+                0 => tr!(lang, "{criterion}（{side}）：控制台没有错误", "{criterion} ({side}): no console errors"),
+                n => {
+                    let errors = plural(n, "console error", "console errors");
+                    tr!(lang, "{criterion}（{side}）：控制台有 {n} 个错误", "{criterion} ({side}): {errors}")
+                }
+            }
+        }
+        E::AttachmentAdded { attachment } => {
+            let name = &attachment.name;
+            tr!(lang, "你添加了附件 {name}", "You attached {name}")
+        }
+        E::MemoryProposed { text, .. } => tr!(lang, "提议了一条记忆规则：{text}", "A memory rule proposed: {text}"),
+        E::MemoryRatified { approved: true, .. } => tr!(lang, "你批准了一条记忆规则", "You approved a memory rule"),
+        E::MemoryRatified { .. } => tr!(lang, "你拒绝了一条记忆规则", "You rejected a memory rule"),
+        E::HoldoutDraftRatified { file, .. } => {
+            tr!(lang, "你把 {file} 加入了保留测试", "You added {file} to the held-out tests")
+        }
+        E::RolledBack { run_no, .. } => {
+            tr!(
+                lang,
+                "你把工作区回退到第 {run_no} 次运行开始时",
+                "You rolled the workspace back to the start of run {run_no}"
+            )
+        }
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Iteration 24: an event the desk has no row for was shown by its own name ("canary_checked"). Each such event
+    /// has words in both languages, a canary's say how it went, and every other event has none (and never asks for the
+    /// language).
+    #[test]
+    fn every_event_without_a_row_has_words() {
+        use crate::event::EventKind as E;
+        use crate::view::CanaryState;
+        let canary = |state| E::CanaryChecked { criterion: "C1".into(), pin: "abc".into(), state };
+        let attachment = crate::contract::AttachmentRef {
+            id: "a".into(),
+            name: "cart.png".into(),
+            mime: "image/png".into(),
+            path: "a.png".into(),
+            size_bytes: 1,
+            created_at: 0,
+        };
+        let events = [
+            canary(CanaryState::Intact),
+            canary(CanaryState::Tampered),
+            canary(CanaryState::NotChecked),
+            E::PortBlockAllocated { base: 41000, count: 20 },
+            E::LookEvidence {
+                criterion: "C2".into(),
+                side: "base".into(),
+                pin: "abc".into(),
+                console_errors: vec!["x".into(), "y".into()],
+                mobile_file: None,
+            },
+            E::AttachmentAdded { attachment },
+            E::MemoryProposed { proposal_id: "p".into(), text: "Use pnpm".into(), taint_level: Default::default() },
+            E::MemoryRatified { proposal_id: "p".into(), approved: true },
+            E::MemoryRatified { proposal_id: "p".into(), approved: false },
+            E::HoldoutDraftRatified { file: "holdout/cart.test.ts".into(), criterion_id: None },
+            E::RolledBack { run_no: 2, saved: "s".into() },
+        ];
+        for lang in Lang::ALL {
+            let said: Vec<String> = events
+                .iter()
+                .map(|e| event_words(e, || lang).unwrap_or_else(|| panic!("{} has no words", e.name())))
+                .collect();
+            let unique: std::collections::HashSet<&String> = said.iter().collect();
+            assert_eq!(unique.len(), said.len(), "each says its own: {said:?}");
+            for (e, w) in events.iter().zip(&said) {
+                assert!(!w.contains(e.name()), "{w}");
+            }
+        }
+        assert_eq!(
+            event_words(&canary(CanaryState::Tampered), || Lang::En).unwrap(),
+            "C1: a test that must fail passed"
+        );
+        assert_eq!(event_words(&events[3], || Lang::En).unwrap(), "Ports 41000–41019 set aside for this goal");
+        assert_eq!(event_words(&events[4], || Lang::Zh).unwrap(), "C2（改动前）：控制台有 2 个错误");
+        let asked = std::cell::Cell::new(false);
+        let other = E::tower_note("n");
+        assert_eq!(event_words(&other, || (asked.set(true), Lang::En).1), None);
+        assert!(!asked.get(), "the language is read only for an event that has words");
+    }
 
     #[test]
     fn codes_round_trip() {
@@ -675,10 +865,10 @@ mod tests {
         let en = PauseNote::render(&stored, Lang::En);
         assert!(en.starts_with("Tower tried the acceptance criteria"), "{en}");
         assert!(en.ends_with(
-            "C1 · Tests pass: refused by the verification sandbox on the base (exit code 1): deny(1) file-read-data /x"
+            "C1 Tests pass: refused by the verification sandbox on the base (exit code 1): deny(1) file-read-data /x"
         ));
         let zh = PauseNote::render(&stored, Lang::Zh);
-        assert!(zh.ends_with("C1 · Tests pass: 在基线上被验证沙箱拒绝（退出码 1）：deny(1) file-read-data /x"), "{zh}");
+        assert!(zh.ends_with("C1 Tests pass: 在基线上被验证沙箱拒绝（退出码 1）：deny(1) file-read-data /x"), "{zh}");
         // Setup failing on the base, inside the preflight and on its own.
         let setup = PauseNote::SetupFails(SetupFails { setup: "npm ci".into(), tail: "ERR".into() }).encode();
         let n = PauseNote::CannotRunOnBase(Preflight { setup: Some(setup.clone()), criteria: vec![] });
@@ -699,7 +889,7 @@ mod tests {
         assert!(PauseNote::render(&n.encode(), Lang::Zh).starts_with("端口 17010 上已经有别的程序在监听"));
         let n = PauseNote::Blocked {
             cause: crate::env_cause::EnvCause::Loopback(5432),
-            problem: "C1 · `npm test`\nError: connect EPERM 127.0.0.1:5432".into(),
+            problem: "C1 `npm test`\nError: connect EPERM 127.0.0.1:5432".into(),
         };
         assert_eq!(PauseNote::decode(&n.encode()), Some(n.clone()));
         let en = PauseNote::render(&n.encode(), Lang::En);
@@ -709,10 +899,25 @@ mod tests {
 
     #[test]
     fn stalls_are_put_into_words_on_read() {
-        let s = Stall::Repeated { signature: "bash · npm test".into(), times: 3 };
+        let s = Stall::Repeated { tool: "bash".into(), target: "npm test -- --run".into(), times: 3 };
         let back = Stall::decode(&s.encode()).unwrap();
         assert_eq!(back, s);
-        assert_eq!(back.text(Lang::En), "bash · npm test failed 3 times in a row");
+        assert_eq!(back.text(Lang::En), "npm test -- --run (bash) failed 3 times in a row");
+        assert_eq!(back.text(Lang::Zh), "npm test -- --run（bash）连续失败 3 次");
+        // What was run, set as code where the words are shown (review 22, record only: the command read as prose), or
+        // the tool when nothing names it: in either language, what the words start with.
+        let bare = Stall::Repeated { tool: "read".into(), target: String::new(), times: 2 };
+        for (stall, code) in [(&back, "npm test -- --run"), (&bare, "read")] {
+            assert_eq!(stall.code(), Some(code));
+            for l in Lang::ALL {
+                assert!(stall.text(l).starts_with(code), "{}", stall.text(l));
+            }
+        }
+        assert_eq!(Stall::NoProgress { minutes: 12 }.code(), None);
+        // As iteration 21 and the iterations before it stored them.
+        for old in ["\u{1f}repeated 3 bash npm test -- --run", "\u{1f}repeated 3 bash · npm test -- --run"] {
+            assert_eq!(Stall::decode(old), Some(s.clone()), "{old}");
+        }
         assert_eq!(
             Stall::decode(&Stall::NoProgress { minutes: 12 }.encode()).unwrap().text(Lang::Zh),
             "12 分钟没有任何工具调用"

@@ -31,6 +31,8 @@ const LANGS: Record<string, () => Promise<unknown>> = {
 
 let highlighter: Promise<HighlighterCore> | null = null;
 const loaded = new Set<string>();
+/** Whether the time limit cut a line of the pass in hand short (vscode-textmate's `stoppedEarly`). */
+let cut = false;
 
 function get(): Promise<HighlighterCore> {
   highlighter ??= createHighlighterCore({ themes: [theme], langs: [], engine: createJavaScriptRegexEngine() });
@@ -54,9 +56,22 @@ self.onmessage = async (e: MessageEvent<Request>) => {
       const load = LANGS[lang];
       if (!load) throw new Error(`unsupported ${lang}`);
       await h.loadLanguage((await load()) as never);
+      const grammar = h.getLanguage(lang) as unknown as { tokenizeLine2: (...a: unknown[]) => { stoppedEarly: boolean } };
+      const line = grammar.tokenizeLine2.bind(grammar);
+      grammar.tokenizeLine2 = (...a) => {
+        const r = line(...a);
+        cut ||= r.stoppedEarly;
+        return r;
+      };
       loaded.add(lang);
     }
-    const { tokens } = h.codeToTokens(code, { lang, theme: "tower" });
+    // Shiki gives a line 500 ms; one that runs over ends there, the rest of it a single token in one colour. On a cold
+    // worker on a busy machine the time goes to compiling the patterns the code reaches, not to the line: a pass that cut
+    // a line short is run again, warm, so a review's first hunk is not left coarse for the session (review 18, record
+    // only). Only such a pass: one that was merely long, a big hunk, is not paid for twice (review 19, record only).
+    cut = false;
+    let { tokens } = h.codeToTokens(code, { lang, theme: "tower" });
+    if (cut) ({ tokens } = h.codeToTokens(code, { lang, theme: "tower" }));
     const out: Tokens = tokens.map((line) => line.map((t) => [t.content, t.color, t.fontStyle]));
     self.postMessage({ id, tokens: out });
   } catch {

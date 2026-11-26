@@ -241,7 +241,7 @@ impl Report {
                     if f[5] == "replaced" {
                         let what = f.get(6).copied().unwrap_or("-");
                         for entry in what.split(',').filter(|e| !e.is_empty() && *e != "-") {
-                            let named = format!("{} · {entry}", f[2]);
+                            let named = format!("{entry} ({})", f[2]);
                             if !report.replaced.contains(&named) {
                                 report.replaced.push(named);
                             }
@@ -403,7 +403,7 @@ mod tests {
 
         let caught = format!("{}{}", line("start", "bb", "40"), line("end", "bb", "replaced assert.equal"));
         let r = Report::parse(&caught);
-        assert!(r.broken() && r.replaced == ["node · assert.equal"]);
+        assert!(r.broken() && r.replaced == ["assert.equal (node)"]);
         assert!(r.detail(Lang::En).contains("no longer the library's own"));
 
         // A verdict nothing committed to: the check was worked around.

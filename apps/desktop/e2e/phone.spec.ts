@@ -242,6 +242,19 @@ test("a refresh repaints only what changed and keeps what you are doing: a selec
   await expect(tail, "let go, it is the state's").toHaveText("pnpm install --frozen-lockfile --prefer-offline");
   await expect(foot).toHaveText("Read at 10:03, again every 5 s");
 
+  // A press on the card's own control lets its selection go, so the card answers the press: a destructive choice asks to
+  // be pressed again, and the bell opens its two times (review 25, R25-P3-01: held for its selection, the card showed
+  // neither, and a second press sent "Deny" unseen).
+  const approvalCard = cards.filter({ hasText: "pnpm install" });
+  await selectCommand();
+  await approvalCard.getByRole("button", { name: "Deny" }).click();
+  await expect(approvalCard.getByRole("button", { name: "Press again" }), "a press on a card with words selected in it is answered").toBeVisible();
+  await selectCommand();
+  await approvalCard.locator(".bell").click();
+  await expect(approvalCard.locator(".later"), "the bell opens on a card with words selected in it").toBeVisible();
+  await approvalCard.locator(".bell").click();
+  expect(answers, "nothing was sent by the first press").toEqual([]);
+
   // Answering the card the selection is in takes it away: its item is gone.
   await cards.filter({ hasText: "Is step 1 done?" }).locator(".question").evaluate((el) => getSelection()!.selectAllChildren(el));
   serve.state = state({ ...approval, body: "pnpm install --frozen-lockfile --prefer-offline" }, question);

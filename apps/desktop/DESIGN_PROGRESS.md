@@ -1,7 +1,7 @@
 # Design evolution — progress and recovery state
 
 Branch `design/evolution`, cut from `main` at `bf22cad` (2026-11-25); `main` at `70a52e7` merged in and the branch
-pushed as a pull request on 2026-11-27, at the owner's request.
+merged into `main` as #54 on 2026-11-27, at the owner's request; review 25's follow-up is a pull request of its own.
 
 ## Where things are
 
@@ -599,15 +599,15 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   Not yet independently re-reviewed.
 - Iteration 25 — review 24's three P3 findings (D288–D290), its two notes on the tests and its record-only notes
   (D291–D301), D302 from this iteration's own visual check and D303 from its own gate run (T218–T228). The phone page
-  holds a new state back whole while words on a card are selected, its foot's time and its gauges with it, and a card
-  answered elsewhere goes once the selection ends (D288). Migration 24 tells Tower's older closings by their exact
-  words, case and all, and docs/06 says the log was changed that once (D289). In an approval's code block a word longer
+  patches block by block: only the card that holds your selection waits, and the foot says so; the foot's time and
+  the gauges are those of the state shown; a card whose item is gone goes at once (D288). Migration 25 gives back the
+  answers migration 24 took, told by the item's own row, and docs/06 says the log was changed that once (D289). In an approval's code block a word longer
   than a row starts where it stands, wherever it stands in its line, fills each row and goes on two in under the hook;
   a word that fits a row is never parted (D290; desk and phone). D272's test holds the dialog right after the guard
   reads the stop (D291); the hook's test reads how far the ink reaches across the margin and down the row and bounds
   its tone above (D292); the CI question no longer says again what its button says, so acceptance condition 1 has its
   room back (D293). Tower's own notes carry its mark and the engine's do not, whatever their words (D294); its cancel
-  reads as its closings do (D295); an older closing reads in today's form and in the desk's language (D296); unsent
+  reads as its closings do (D295); an older closing reads in today's form, in the language it was written in (D296); unsent
   words are the item's own, not shared by two cards of the same words (D297, reversing D283's key and D287's); on the
   strip's phone tab a side gone is the phone picture's own frame with its reason whole beside it (D298, reversing
   D281 there); a Send pressed while a state waits behind the reply box lands (D299); the budget is kept (D300); a list
@@ -630,3 +630,11 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   files, the same findings, none on a changed line. `main` at `70a52e7` (#53) is merged in: its citation edits are
   applied to this branch's docs and the review rounds this branch had cited in `docs/` are gone. Not independently
   re-reviewed: the owner asked for the branch to be pushed and merged once its gates passed.
+- Review 25 and its follow-up (D304, T229). Review 25 read `744a71f` while #54's CI ran and passed it at 8.78 / 10 with
+  no P0, P1 or P2; #54 was merged (`a0e0fa6`). Its one P3, from D288: on the phone a card held for words selected in
+  it did not show what its own controls answered, so a destructive choice never read "Press again" and the bell did
+  not open (R25-P3-01). A press on a block's own control now lets its selection go (D304); `phone.spec.ts` presses
+  Deny and the bell on a card with its command selected, and fails on #54's page ("a press on a card with words
+  selected in it is answered"). Record-only 1 corrected above: three sentences of iteration 25's entry said less
+  than the code does. The other four notes are kept as limits (DESIGN_DELIVERY §15). Checked: the phone spec 27 of 27,
+  tsc. Not independently re-reviewed.

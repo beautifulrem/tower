@@ -1,7 +1,7 @@
 # Design evolution — final delivery
 
 Branch `design/evolution`, from `main` at `bf22cad`, with `main` at `70a52e7` merged in on 2026-11-27, then pushed and
-opened as a pull request at the owner's request; nothing deployed. Working
+merged as #54 at the owner's request, with a follow-up for review 25's finding (D304); nothing deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -382,8 +382,15 @@ today's sentence (D296); unsent words are the item's (D297); a side gone on the 
 its reason beside it, D281 reversed there (D298); a Send pressed with a state waiting is sent (D299); and each list
 Tower writes takes its language's mark (D301). From its own checks: the trace runs down, never sideways (D302), and
 the caches test is timed against itself (D303). The budget is kept (D300). Each fix's test fails on `af6d189`'s sources
-or a stated mutation. The last acceptance stands on `af6d189` (review 24); iteration 25 is not yet independently
-re-reviewed.
+or a stated mutation.
+
+Review 25 (`744a71f`, iteration 25 with `main` merged in) passed at 8.78 / 10 with no P0, P1 or P2
+(`design-evidence/reports/review25.md`), read while the pull request's CI ran; the branch was merged as #54 once both
+were done. It confirmed D288–D303 one by one and found one P3 that D288 had introduced: a card held for words
+selected in it did not show its own controls' answers, so a destructive choice never read "Press again" and the bell
+did not open (R25-P3-01, D304), with five record-only notes. The follow-up fixes it (a press on a block's own control
+lets its selection go) and corrects three sentences of DESIGN_PROGRESS that said less than the code does. The last
+acceptance stands on `744a71f` (review 25); the follow-up is not independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
@@ -509,8 +516,8 @@ iteration-20 commit `b6baa8a` (review 19's findings and notes, with review 19's 
 `b59e68a` (review 20's findings and notes, with review 20's report), its follow-up `9397e07` (the header names the
 run, no mode or live line over a stop), the iteration-22 commit `864d6c3` (review 21's findings and notes, with review
 21's report), the iteration-23 commit `4167461` (review 22's findings and notes, with review 22's report), its
-follow-up `43576b0` (D268, D269), the iteration-24 commit `af6d189` (review 23's findings and notes, with review 23's report), the iteration-25 commit `ea5db26` (review 24's findings and notes, with review 24's report), the merge of `main` at `70a52e7` (`9c705a2`: #53 made the docs cite decisions and ADRs, not findings; this branch's content is kept under main's citation edits, and the review rounds it had cited in `docs/` are gone the same way) and the commit that records iteration 25's gates.
-All are on `design/evolution`, pushed on 2026-11-27 at the owner's request. The user's untracked `.claude/` was never added.
+follow-up `43576b0` (D268, D269), the iteration-24 commit `af6d189` (review 23's findings and notes, with review 23's report), the iteration-25 commit `ea5db26` (review 24's findings and notes, with review 24's report), the merge of `main` at `70a52e7` (`9c705a2`: #53 made the docs cite decisions and ADRs, not findings; this branch's content is kept under main's citation edits, and the review rounds it had cited in `docs/` are gone the same way) and the commit that records iteration 25's gates (`744a71f`).
+All were on `design/evolution`, merged into `main` as #54 (`a0e0fa6`) on 2026-11-27 at the owner's request; the review-25 follow-up (D304, review 25's report) is a pull request of its own. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
@@ -547,7 +554,8 @@ D285), each with a test that fails on `43576b0`'s sources or a stated mutation, 
 from its own check and D287 from its own gate run; review 24 passed it and found D288–D290 (three P3s), two tests a
 wrong build could pass (D291, D292) and eleven record-only notes. Iteration 25 fixed all of them (D288–D299, D301),
 each with a test that fails on `af6d189`'s sources or a stated mutation, kept the budget (D300), and fixed D302 and
-D303 from its own checks; not yet re-reviewed.
+D303 from its own checks; review 25 passed it and found D304 (a P3 from D288) and five record-only notes. The
+follow-up fixed D304; four notes are kept as limits below.
 What is left:
 
 - **"Busy" has no upper bound (D151).** A run is busy while a tool call is in flight, as the supervisor's live line
@@ -581,9 +589,13 @@ What is left:
 - **The event log was changed once (D285, D289).** Migrations 24 and 25 set `source` and `auto` on older
   `inbox_resolved` events, never their words; docs/06 §6.6.2 records the exception.
 
-- **Iteration 25 was not independently re-reviewed.** The owner asked for the branch to be pushed and merged once
-  its gates passed. The last independent acceptance stands on `af6d189` (review 24, 8.66 / 10); iteration 25's fixes
-  rest on tests that fail on `af6d189`'s sources or under a stated mutation, not on a second reader.
+- **Review 25's notes that are kept** (record only, not fixed at the owner's word to stop at what matters): D291's
+  test holds by where its hook stands, so a raw read moved out of the lock with the hook left inside would pass; the
+  demo's G-0002 is still at work while the fixtures are dumped, so a dump can catch a call in flight (the silent-run
+  test states its premise; the others that need silence make their own state); on the phone a word that fits a row
+  but not the room after a deep indent leaves the indent alone on a row; a new item of the same words that comes in
+  the update a twin leaves takes that twin's unsent words. Two timed Rust tests this branch did not touch
+  (`tower-store/tests/perf.rs`, `redact.rs`) bound seconds and failed once each on a loaded machine.
 - **The bundle has 175 B left** (163,665 / 163,840 B). The budget stays; the next change that adds interface code has
   to make its own room, as iterations 17 to 21, 24 and 25 did.
 - **Merged keys couple meanings (D228).** To fit the budget, keys that said the same thing became one (D201, D216): for

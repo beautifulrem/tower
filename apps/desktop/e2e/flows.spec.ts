@@ -441,9 +441,12 @@ test("a failing GitHub check and a merge conflict are said in ink, never the ver
   await expect(conflict).toBeVisible();
   const [cmark, cwords, cred] = await ink(".mq-row.mq-conflict .mq-status");
   expect([cmark, cred]).toEqual([cwords, false]);
-  // The sidebar's operations icon, with a conflict in the queue, lifts to text-1 beside its count: never red.
+  // The sidebar's operations icon, with a conflict in the queue, gives way to the notice mark in text-1 beside its count,
+  // named for what it is: never red, and a shape of its own, not only a darker ink (review 19, record only).
   const icon = page.locator(".side-row .side-icon.side-icon-notice");
   await expect(icon).toHaveCount(1);
+  await expect(icon.locator("svg.mark-notice")).toHaveAttribute("aria-label", "Merge conflict");
+  await expect(icon.locator("svg:not(.mark-notice)")).toHaveCount(0);
   const [iconInk, one, danger] = await icon.evaluate((el) => [getComputedStyle(el).color, getComputedStyle(document.documentElement).getPropertyValue("--text-1").trim(), getComputedStyle(document.documentElement).getPropertyValue("--st-danger").trim()]);
   expect(iconInk).not.toBe(danger);
   expect(await page.evaluate(([a, b]) => { const p = document.createElement("i"); document.body.append(p); p.style.color = b; const c = getComputedStyle(p).color; p.remove(); return c === a; }, [iconInk, one])).toBe(true);
@@ -466,6 +469,30 @@ test("reloaded mid-command, the title bar reads the command still running, never
     const hb = page.locator(".titlebar-gauges .gauge.num").filter({ hasText: /running for|silent for/ });
     await expect(hb).toHaveText(running ? "bash running for 5m" : "silent for 5m");
     await expect(hb.locator("svg")).toHaveCount(running ? 0 : 1);
+  }
+});
+
+// Review 19 (R19-P3-03): a call that had ended (the live line keeps its words with `running` off) was still written as
+// what the run was doing — "Thinking  bash pnpm test --filter checkout" — on the goal page, the board and the phone,
+// and the shimmer ran over the finished command. Ended, the detail says which run; gone quiet, it keeps the last call.
+test("a call that has ended is not written as what the run is doing; gone quiet, its words stay", async ({ page }) => {
+  for (const [running, quietFor, words] of [[true, 20, "bash"], [false, 20, "Run 1"], [false, 300, "bash"]] as const) {
+    const enrich = (F: Record<string, any>) => {
+      const at = Date.now() - quietFor * 1000;
+      for (const g of F.goals) {
+        if (g.id !== "G-0002") continue;
+        Object.assign(g, { mode: "thinking", needs_you: 0, run_no: 1, updated_at: at });
+        g.live_line = { mode: "executing", action: "bash", target: "pnpm test --filter checkout", at, running };
+      }
+    };
+    await openTower(page, "goal/G-0002", { enrich });
+    const line = page.locator(".annunciator .live-line-large");
+    await expect(line.locator(".live-action")).toHaveText(words);
+    await expect(line.locator(".live-target")).toHaveCount(words === "bash" ? 1 : 0);
+    // The shimmer runs over the call at work, or over which run while the agent thinks: never over a finished command.
+    await expect(line).toHaveClass(quietFor > 120 ? /^(?!.*live-moving)/ : /live-moving/);
+    await openTower(page, "overview", { enrich });
+    await expect(page.locator('.g-row[data-goal="G-0002"] .live-action')).toHaveText(words);
   }
 });
 
@@ -1191,6 +1218,74 @@ for (const lang of ["en", "zh-CN"] as const)
     const [picture, gone] = await Promise.all([shots.nth(0).locator(".look-img"), shots.nth(1).locator(".look-missing")].map((l) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })));
     expect(Math.abs(gone[0] - picture[0]), `gone ${gone} beside the picture ${picture}`).toBeLessThanOrEqual(2);
     expect(gone[1]).toBe(picture[1]);
+  });
+
+// Review 19 (R19-P3-02): a long reason stood 110 tall beside a 96-tall picture, broken inside words ("checko|ut",
+// "CONNECTIO|N_REFUSED"); large, side by side, a missing side was a 192×227 frame beside a 532×333 picture, its
+// caption halfway down. The frame keeps the picture's box in both, the captions stay level, and words stay whole.
+const longWhy = {
+  en: "The page did not open: net::ERR_CONNECTION_REFUSED at http://localhost:3000/checkout, still no answer after 60 seconds",
+  "zh-CN": "页面没有打开：net::ERR_CONNECTION_REFUSED，http://localhost:3000/checkout 在 60 秒后仍无响应",
+} as const;
+for (const lang of ["en", "zh-CN"] as const)
+  test(`a missing side keeps the picture's frame with a long reason and side by side, words whole, captions level (${lang})`, async ({ page }) => {
+    await openTower(page, "goal/G-0001", {
+      lang,
+      enrich: (F) => {
+        enrichLook(F);
+        F["goal-G-0001"].criteria.at(-1).look.pin_error = longWhy[lang];
+      },
+    });
+    const box = (l: import("@playwright/test").Locator) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [r.width, r.height, r.top, r.bottom]; });
+    // Every run of letters and digits sits on one line: a break falls only after a separator, or between CJK characters.
+    const wordsWhole = (l: import("@playwright/test").Locator) =>
+      l.evaluate((el) => {
+        const broken: string[] = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+          const text = n.textContent ?? "";
+          for (const m of text.matchAll(/[A-Za-z0-9]+/g)) {
+            const tops = new Set<number>();
+            for (let i = m.index!; i < m.index! + m[0].length; i++) {
+              const r = document.createRange();
+              r.setStart(n, i);
+              r.setEnd(n, i + 1);
+              const rect = r.getClientRects()[0];
+              if (rect) tops.add(Math.round(rect.top));
+            }
+            if (tops.size > 1) broken.push(m[0]);
+          }
+        }
+        return broken;
+      });
+    const shots = page.locator(".criterion .look-strip .look-shot");
+    await expect(shots).toHaveCount(2);
+    await expect.poll(() => shots.nth(0).locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const gone = shots.nth(1).locator(".look-missing");
+    await expect(gone).toHaveAttribute("title", longWhy[lang]);
+    const [pw, ph] = await box(shots.nth(0).locator(".look-img"));
+    const [gw, gh] = await box(gone);
+    expect(Math.abs(gw - pw), `gone ${gw}×${gh} beside the picture ${pw}×${ph}`).toBeLessThanOrEqual(2);
+    expect(gh).toBe(ph);
+    const lines = await gone.locator("span").evaluate((e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight)));
+    expect(lines, "three lines at most").toBeLessThanOrEqual(3);
+    expect(await wordsWhole(gone)).toEqual([]);
+    const captions = await shots.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(captions[1], "the captions level").toBe(captions[0]);
+
+    // Large, side by side.
+    await shots.nth(0).locator(".look-img-btn").click();
+    const sheet = page.getByRole("dialog").locator(".look-side");
+    await expect(sheet).toBeVisible();
+    const big = sheet.locator(".look-shot");
+    await expect.poll(() => big.nth(0).locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const [bw, bh] = await box(big.nth(0).locator(".look-img"));
+    const [mw, mh] = await box(big.nth(1).locator(".look-missing"));
+    expect(Math.abs(mw - bw), `gone ${mw}×${mh} beside the picture ${bw}×${bh}`).toBeLessThanOrEqual(2);
+    expect(Math.abs(mh - bh)).toBeLessThanOrEqual(2);
+    expect(await wordsWhole(big.nth(1).locator(".look-missing"))).toEqual([]);
+    const bigCaptions = await big.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(bigCaptions[1], "the captions level").toBe(bigCaptions[0]);
   });
 
 test("the trace writes a minute once; a sheet's text area takes focus in its border, not a ring", async ({ page }) => {

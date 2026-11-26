@@ -391,7 +391,7 @@ function TraceRow(props: { e: TraceEntry; calls?: Map<string, string>; repeat?: 
                       <span class="col-dur">{duration(c.duration_ms)}</span>
                       <Pin sha={c.pin} />
                       <button class="link meta" onClick={() => setOpen((o) => !o)} aria-expanded={open()}>
-                        {open() ? t("trace.hideOutput") : t("trace.output")}
+                        {open() ? t("trace.hideOutput") : t("settings.testCheckOutput")}
                       </button>
                     </div>
                     <Show when={open()}>

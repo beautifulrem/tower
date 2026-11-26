@@ -157,9 +157,9 @@ export function Learning() {
         <DataTable
           headers={[
             [t("learning.colEngineModel")],
-            [t("learning.colGoals"), true],
+            [t("sidebar.label"), true],
             [t("learning.colFirstPass"), true],
-            [t("learning.colSentinel"), true],
+            [t("trace.sentinel"), true],
             [t("learning.colReworks"), true],
             [t("learning.colBlocked"), true],
             [t("overview.colSpend"), true],

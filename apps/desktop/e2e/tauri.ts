@@ -48,7 +48,7 @@ const LANDMARK: Array<[RegExp, string]> = [
 ];
 
 /** The page's requests still in flight (code loaded on demand, pictures), counted from `openTower` on. */
-const inflight = new WeakMap<Page, Set<object>>();
+const inflight = new WeakMap<Page, Set<Request>>();
 
 /**
  * Waits until `route`'s own content is drawn, the fonts are in and every finite animation has run out — instead of a
@@ -58,16 +58,28 @@ const inflight = new WeakMap<Page, Set<object>>();
  * Drawn means no code still loading on demand (the steer box's chunk), no colours still due from the highlighting
  * worker and every picture in and decoded: twice over, two frames apart, as one load can start the next (review 18,
  * record only: a shot caught the goal page without its steer box, a look's pictures not yet in, a diff untinted). A
- * request a test holds back is waited on for 5 s at most, and a picture still loading is not decoded.
+ * request a test holds back is waited on for `cap` (5 s) at most, and a picture still loading is not decoded.
+ *
+ * Returns null once the page was quiet; at the cap, what was still pending, also written to the test's output (review
+ * 19, record only: the cap was silent, and 3 of 36 probes returned with five answers still owed). A shot fails on it.
  */
-export async function settled(page: Page, route?: string) {
+export async function settled(page: Page, route?: string, cap = 5_000): Promise<string | null> {
   const landmark = route && LANDMARK.find(([re]) => re.test(route))?.[1];
   if (landmark) await page.locator(landmark).first().waitFor();
   const frames = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-  for (let quiet = 0, end = Date.now() + 5_000; quiet < 2 && Date.now() < end; ) {
+  let quiet = 0;
+  for (const end = Date.now() + cap; quiet < 2 && Date.now() < end; ) {
     const idle = !inflight.get(page)?.size && (await page.evaluate(() => !(window as any).__towerBusy?.() && [...document.images].every((i) => i.complete)));
     quiet = idle ? quiet + 1 : 0;
     await frames();
+  }
+  let pending: string | null = null;
+  if (quiet < 2) {
+    const open = [...(inflight.get(page) ?? [])].map((r) => r.url());
+    const [owed, pictures] = await page.evaluate(() => [(window as any).__towerBusy?.() ?? 0, [...document.images].filter((i) => !i.complete).length]);
+    const what = [open.length && `${open.length} request(s): ${open.join(", ")}`, owed && `${owed} worker answer(s)`, pictures && `${pictures} picture(s) loading`];
+    pending = what.filter(Boolean).join("; ") || null;
+    if (pending) console.warn(`settled: still drawing after ${cap} ms on ${route ?? page.url()}: ${pending}`);
   }
   await page.evaluate(async () => {
     await Promise.all([...document.images].filter((i) => i.complete).map((i) => i.decode().catch(() => undefined)));
@@ -76,6 +88,7 @@ export async function settled(page: Page, route?: string) {
     await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
+  return pending;
 }
 
 export const FIXTURES = process.env.E2E_FIXTURES ?? "/tmp/e2e-fixtures";
@@ -257,16 +270,25 @@ export async function openTower(
         },
       };
       (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
-      // The highlighting worker answers each request once: `settled` waits until every request has its answer.
+      // The highlighting worker answers each request once: `settled` waits until every request has its answer. A worker
+      // that failed to load or broke answers nothing more: what it owed is let go.
+      // Each `openTower` adds this script again, so a page opened twice wraps the wrapper: each wrap keeps its own count.
       const Native = window.Worker;
       let busy = 0;
+      const owed = new WeakMap<Worker, number>();
       (window as any).__towerBusy = () => busy;
       window.Worker = class extends Native {
         constructor(url: string | URL, opts?: WorkerOptions) {
           super(url, opts);
-          this.addEventListener("message", () => void busy--);
+          owed.set(this, 0);
+          this.addEventListener("message", () => {
+            const n = owed.get(this)!;
+            if (n > 0) (owed.set(this, n - 1), busy--);
+          });
+          this.addEventListener("error", () => void ((busy -= owed.get(this)!), owed.set(this, 0)));
         }
         postMessage(message: unknown, transfer?: any) {
+          owed.set(this, owed.get(this)! + 1);
           busy++;
           super.postMessage(message, transfer);
         }

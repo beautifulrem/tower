@@ -117,13 +117,16 @@ export function FileDiff(props: FileDiffProps) {
   // comments on it, as ↩ on its number does (review 16). Focus coming in moves to the first line, from another control
   // (Tab) or from nowhere (the first Tab on the page); focus handed back by a sheet that opened over the table and
   // closed, or by the window coming back, keeps your place, the line pressed (review 18): the table lost it to a sheet
-  // or to nowhere, and it comes back from there.
+  // or to nowhere, and it comes back from there. Back from there by the keyboard, the line pressed wears the ring where
+  // ↓ and ↩ act, its number marked `ln-held` (review 19, record only: the table held focus and showed none).
   let pressed = false;
   let away = false;
   let pressedRow: Element | null = null;
   const press = (e: PointerEvent) => {
     pressed = true;
     pressedRow = (e.target as Element).closest("tr");
+    table.querySelector(".ln-held")?.classList.remove("ln-held");
+    pressedRow?.querySelector(".ln-btn")?.classList.add("ln-held");
     // Released anywhere, even outside the table.
     const done = new AbortController();
     const up = () => ((pressed = false), done.abort());

@@ -296,7 +296,7 @@ function BoardCols(props: { class: string }) {
       <span />
       <span>{t("overview.colGoal")}</span>
       <span>{t("overview.colLive")}</span>
-      <span>{t("overview.colCriteria")}</span>
+      <span>{t("live.criteria")}</span>
       <span class="g-diff">{t("overview.colChange")}</span>
       <span class="g-spend">{t("overview.colSpend")}</span>
       <span class="g-age">{t("overview.colAge")}</span>

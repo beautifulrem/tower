@@ -74,7 +74,7 @@ export function CommandPalette() {
       { id: "learning", title: t("chrome.openLearning"), hint: "mod+3", icon: "learning", run: () => go({ name: "learning" }) },
       { id: "operations", title: t("chrome.openOperations"), hint: "mod+4", icon: "operations", run: () => go({ name: "operations" }) },
       { id: "settings", title: t("chrome.openSettings"), hint: "mod+,", icon: "sliders", run: () => go({ name: "settings" }) },
-      { id: "activity", title: t("activity.title"), hint: "mod+shift+l", icon: "list", run: () => openActivity() },
+      { id: "activity", title: t("keys.activity"), hint: "mod+shift+l", icon: "list", run: () => openActivity() },
       { id: "shortcuts", title: t("keys.title"), hint: "?", icon: "keyboard", run: () => openShortcuts() },
       { id: "quiet", title: quietNow() ? t("quiet.off") : t("quiet.forHour"), icon: "bell", run: () => void (quietNow() ? patchSettings({ quiet_until: null }) : patchSettings({ quiet_until: Date.now() + HOUR })) },
       { id: "integration", title: t("chrome.checkIntegration"), icon: "harness", run: () => void act(api.checkIntegration, t("chrome.checked")) },
@@ -142,7 +142,7 @@ export function CommandPalette() {
       const goals = list.filter((s) => s.c.goalId);
       return [
         { title: t("chrome.groupCommands"), items: cmds, offset: 0 },
-        { title: t("chrome.groupGoals"), items: goals, offset: cmds.length },
+        { title: t("sidebar.label"), items: goals, offset: cmds.length },
       ].filter((g) => g.items.length);
     }
     const recent = list.filter((s) => s.recent > 0).sort((a, b) => b.recent - a.recent).slice(0, 4);
@@ -152,7 +152,7 @@ export function CommandPalette() {
     const out = [
       { title: t("chrome.groupRecent"), items: recent, offset: 0 },
       { title: t("chrome.groupCommands"), items: cmds, offset: recent.length },
-      { title: t("chrome.groupGoals"), items: goals, offset: recent.length + cmds.length },
+      { title: t("sidebar.label"), items: goals, offset: recent.length + cmds.length },
     ];
     return out.filter((g) => g.items.length);
   });

@@ -188,7 +188,7 @@ export function GoalBlocks(props: { d: ExtGoalDetail; hasDecision: boolean; undo
       {/* What the agent says caused it. The failed criteria are not repeated here: the list above shows each one failed,
           with its output, and a failed check is the effect, not a cause. */}
       <Show when={causes().shown.length}>
-        <Section title={t("goal.cause")}>
+        <Section title={t("claimKind.cause")}>
           <For each={causes().shown}>{(c) => <Claim bare>{c.text}</Claim>}</For>
           <Show when={causes().hidden > 0}>
             <div class="claim">
@@ -273,7 +273,7 @@ export function HighSentinels(props: { d: ExtGoalDetail }) {
   const high = () => props.d.sentinels.filter((h) => h.severity >= 3);
   return (
     <Show when={high().length}>
-      <Section title={t("goal.sentinels")} class="sentinels-high" aside={<span class="meta">{t("goal.needsConfirm")}</span>}>
+      <Section title={t("review.sentinels")} class="sentinels-high" aside={<span class="meta">{t("goal.needsConfirm")}</span>}>
         <For each={high()}>{(h) => <SentinelItem h={h} />}</For>
       </Section>
     </Show>
@@ -400,7 +400,7 @@ function DecisionClaim(props: { goalId: string; c: ClaimView }) {
             </Show>
           }
         >
-          <HumanStamp at={props.c.at}> {props.c.approved ? t("goal.approved") : t("goal.rejected")}</HumanStamp>
+          <HumanStamp at={props.c.at}> {props.c.approved ? t("learning.status_approved") : t("learning.status_rejected")}</HumanStamp>
         </Show>
       }
     >

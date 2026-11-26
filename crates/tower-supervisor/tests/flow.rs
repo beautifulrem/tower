@@ -349,8 +349,9 @@ async fn a_dialog_whose_time_runs_out_closes_and_the_run_stops_waiting_on_you() 
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     let mut g = seen.expect("the command in flight");
+    // The start is two writes (its live line, then the mode), so a read may fall between them: wait for the mode.
     for _ in 0..250 {
-        if g.mode != WaitingOnYou {
+        if g.mode == Executing {
             break;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -363,6 +364,11 @@ async fn a_dialog_whose_time_runs_out_closes_and_the_run_stops_waiting_on_you() 
         _ => None,
     });
     assert!(closed.expect("the question closed").contains("timed out"), "closed as timed out");
+    // Once the question closed, the run still reads as at its command (review 19: the close could land while the
+    // command's start was being recorded, and leave the run thinking with the live line stopped).
+    let g = h.sup.goal(&id).unwrap().summary;
+    assert_eq!(g.mode, Executing, "still at its command");
+    assert!(g.live_line.as_ref().is_some_and(|l| l.action == "bash" && l.running), "{:?}", g.live_line);
     std::fs::write(h._tmp.path().join("home/release"), "").unwrap();
     wait_for(&h, &id, |g| matches!(g.state, LifecycleState::InReview | LifecycleState::Verifying)).await;
 }

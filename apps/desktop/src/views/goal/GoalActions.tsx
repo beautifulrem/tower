@@ -57,7 +57,7 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
         },
         enabled: !!props.goal.branch,
       },
-      { label: t("goal.archive"), run: () => void act(() => api.archive(id()), t("goal.archived")), enabled: ["accepted", "integrated", "in_review"].includes(s()) },
+      { label: t("goal.archive"), run: () => void act(() => api.archive(id()), t("state.archived")), enabled: ["accepted", "integrated", "in_review"].includes(s()) },
       {
         label: t("goal.removeWorkspace"),
         run: async () => {
@@ -95,7 +95,7 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
       <Switch>
         <Match when={s() === "paused" && !props.hasDecision}>
           <Button size="s" variant="primary" kbd="p" onClick={props.onPause}>
-            {t("goal.resume")}
+            {t("goal.purposeResume")}
           </Button>
         </Match>
         <Match when={s() === "draft"}>

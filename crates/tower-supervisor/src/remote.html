@@ -199,7 +199,7 @@ const T = {
         offline: "Can't reach Tower on your Mac", offlineWhere: "Is the Mac awake, and is this phone on its Tailscale or Wi-Fi?",
         retry: "Retry", you: "you", atDesk: "At your Mac: ", listSep: ", ", offGauge: "Offline", liveStream: "Live",
         lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, freshLive: (c) => `Live stream, updated ${c}`, stale: (a) => `updated ${a}`,
-        runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, toolFor: (tool, d) => `${tool} running for ${d}`, silent: "Silent", spent: (u) => `Spent ${u}`,
+        runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, runN: (n) => `Run ${n}`, toolFor: (tool, d) => `${tool} running for ${d}`, silent: "Silent", spent: (u) => `Spent ${u}`,
         later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
         runningFor: (d) => `running ${d}`,
@@ -217,7 +217,7 @@ const T = {
         offline: "连不上你 Mac 上的 Tower", offlineWhere: "Mac 是否醒着？这台手机是否连着同一个 Tailscale 或 Wi-Fi？",
         retry: "重试", you: "你", atDesk: "在电脑上：", listSep: "、", offGauge: "离线", liveStream: "实时",
         lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, freshLive: (c) => `实时流，${c} 更新`, stale: (a) => `更新于 ${a}`,
-        runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `已沉默 ${d}`, toolFor: (tool, d) => `${tool} 已运行 ${d}`, silent: "已沉默", spent: (u) => `累计 ${u}`,
+        runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `已沉默 ${d}`, runN: (n) => `第 ${n} 次运行`, toolFor: (tool, d) => `${tool} 已运行 ${d}`, silent: "已沉默", spent: (u) => `累计 ${u}`,
         later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
         runningFor: (d) => `已运行 ${d}`,
@@ -503,7 +503,9 @@ function render(s) {
     const quiet = !waits(g) && silentRun(g);
     const badge = waits(g) ? `${G.attn}${esc(t("modes").waiting_on_you)}` : quiet ? esc(t("silent")) : esc(t("modes")[g.mode] ?? g.mode);
     // The action, then its target after a real space (copied and read aloud as two words), as the desk's live line says it: no dot between them.
-    const detail = l ? `${esc(l.action)}${l.target ? ` <span class="target${machine(l.target) ? " code" : ""}">${esc(l.target)}</span>` : ""}` : "";
+    // The call in flight, or the last one once the run has gone quiet; a call that has ended is not what the run is doing,
+    // so the detail says which run instead, as the desk's does (review 19).
+    const detail = l && (l.running !== false || quiet) ? `${esc(l.action)}${l.target ? ` <span class="target${machine(l.target) ? " code" : ""}">${esc(l.target)}</span>` : ""}` : l && g.run_no ? esc(t("runN")(g.run_no)) : "";
     const ran = g.run_started_at ? dur(Math.max(0, Date.now() - g.run_started_at)) : "";
     const elapsed = ran ? `<span class="elapsed num" title="${esc(t("runningFor")(ran))}"><span class="sr">${esc(t("runningFor")(""))}</span>${esc(ran)}</span>` : "";
     const eng = g.engine ? `<span class="pill">${esc(g.engine)}</span>` : "";

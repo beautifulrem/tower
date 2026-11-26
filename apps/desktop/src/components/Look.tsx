@@ -18,6 +18,16 @@ import { DangerMark, Icon } from "./Glyph";
 import { ProvenanceFrame } from "./ProvenanceFrame";
 import { Button, Kbd, Overlay } from "./ui";
 
+/**
+ * Why a side is missing, in the frame its capture would have had: a path or a code breaks only after / . _ : ? & =, never
+ * inside a word, in at most three lines, and the whole reason is the frame's tooltip (review 19: "CONNECTIO|N_REFUSED").
+ */
+const Why = (p: { text: string }) => (
+  <div class="look-missing meta t3" title={p.text}>
+    <span>{p.text.split(/([/._:?&=])/).map((s, i) => (i % 2 ? [s, <wbr />] : s))}</span>
+  </div>
+);
+
 function Shot(props: { file: string | null; error: string | null; label: string; onOpen?: (from: HTMLElement) => void }) {
   const [src] = createResource(
     () => props.file,
@@ -27,8 +37,8 @@ function Shot(props: { file: string | null; error: string | null; label: string;
   const [broken, setBroken] = createSignal<string | null>(null);
   return (
     <figure class="look-shot">
-      <Show when={props.file && !props.error} fallback={<div class="look-missing meta t3">{props.error ?? t("look.notCaptured")}</div>}>
-        <Show when={src() && broken() !== src()} fallback={<div class="look-missing meta t3">{src.loading ? t("common.loading") : t("look.gone")}</div>}>
+      <Show when={props.file && !props.error} fallback={<Why text={props.error ?? t("look.notCaptured")} />}>
+        <Show when={src() && broken() !== src()} fallback={<Why text={src.loading ? t("common.loading") : t("look.gone")} />}>
           <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label}, ${t("look.enlarge")}`}>
             {/* Until it has decoded, it holds the frame of Tower's capture, desktop or phone (`.look-img`), never a 2px line (review 16). */}
             <img class="look-img" src={src()!} alt={props.label} onError={() => setBroken(src() ?? null)} />

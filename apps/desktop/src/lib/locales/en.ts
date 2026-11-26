@@ -169,8 +169,8 @@ export const en: DictNow = {
   },
   sidebar: {
     label: "Goals",
-    ended: "Archived",
     toReview: "Review queue",
+    mergeConflict: "Merge conflict",
   },
   decision: {
     answerPlaceholder: "Write your answer…",
@@ -230,8 +230,6 @@ export const en: DictNow = {
   },
   live: {
     approval: "Approval",
-    question: "Question",
-    ciFailed: "CI failed",
     starting: "Starting",
     runN: "Run {n}",
     getStarted: "Getting started",
@@ -244,7 +242,6 @@ export const en: DictNow = {
     merged: "Merged into the local base",
     queued: "Queued",
     waitingSlot: "Waiting for a run slot",
-    draft: "Draft",
     unratified: "Contract not approved",
     runningFor: "running {d}",
     lastMove: "last activity {d}",
@@ -255,7 +252,6 @@ export const en: DictNow = {
   overview: {
     colGoal: "Goal",
     colLive: "Live",
-    colCriteria: "Criteria",
     colChange: "Change",
     colSpend: "Spend",
     colAge: "Updated",
@@ -319,7 +315,6 @@ export const en: DictNow = {
     gaugeSandbox: "Sandbox",
     gaugeOn: "on",
     gaugeNone: "none",
-    gaugeIdentity: "Identity",
     gaugeSet: "set",
     gaugeUnset: "not set",
     testCheckPass: "Tests pass on {base} in {dur}",

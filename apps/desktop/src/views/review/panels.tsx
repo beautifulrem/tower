@@ -390,7 +390,7 @@ export function AcceptPanel(props: AcceptPanelProps) {
       <div class="panel-section meta">
         <p>{updating() ? t("review.acceptUpdateExplain") : t("review.acceptExplain")}</p>
         <dl class="panel-branch">
-          <dt>{t("goal.branch")}</dt>
+          <dt>{t("live.branch")}</dt>
           <dd>
             <Show when={branchName()} fallback={<span class="t3">{t("review.branchNote")}</span>}>
               {(name) => (

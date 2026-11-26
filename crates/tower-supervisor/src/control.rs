@@ -309,12 +309,13 @@ pub fn answer_dialog(inner: &Arc<Inner>, goal: &str, ui_id: &str, response: &str
         _ if response.is_empty() => UiAnswer::Cancelled,
         _ => UiAnswer::Value(response.into()),
     };
+    // Answered: back to the call still at work, if one runs beside the question (review 17), else thinking. Written
+    // before the answer goes, so what the engine does with it (a call ending at once) is always recorded after it:
+    // sent first, a call that ended in the meantime was skipped over (iteration 20, one flow run in ten). The answer
+    // goes even if the mode could not be written: Pi is waiting on it.
+    let settled = if run.flags().dialogs.is_empty() { crate::run::settle_mode(inner, &run) } else { Ok(()) };
     run.engine.answer(ui_id, &answer)?;
-    if run.flags().dialogs.is_empty() {
-        // Answered: back to the call still at work, if one runs beside the question (review 17), else thinking.
-        crate::run::settle_mode(inner, &run)?;
-    }
-    Ok(())
+    settled
 }
 
 #[cfg(test)]

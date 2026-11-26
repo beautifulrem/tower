@@ -255,7 +255,7 @@ export function envGauges(env: EnvironmentStatus | null | undefined, engine: str
   if (env.git_version) {
     const unset = hasIssue(env, "git_identity_missing");
     // The i mark, as in the check list under it and on the welcome page: a missing identity blocks writing a branch, not a run, so it is not the amber !.
-    out.push({ key: "identity", label: t("settings.gaugeIdentity"), mark: unset ? "notice" : "ok", value: unset ? t("settings.gaugeUnset") : t("settings.gaugeSet") });
+    out.push({ key: "identity", label: t("overview.colIdentity"), mark: unset ? "notice" : "ok", value: unset ? t("settings.gaugeUnset") : t("settings.gaugeSet") });
   }
   return out;
 }

@@ -76,6 +76,11 @@ pub struct LiveLine {
     pub action: String,
     pub target: String,
     pub at: Millis,
+    /// Whether the call it names is still in flight. A start sets it; once no call is at work the line keeps the last
+    /// call's words with this off, so the desk and the phone read a command still running as busy, never as silence,
+    /// and a finished one as nothing in flight (review 18). Lines stored before it read as not in flight.
+    #[serde(default)]
+    pub running: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -384,6 +389,11 @@ pub struct TraceEntry {
     pub at: Millis,
     pub source: Source,
     pub event: EventKind,
+    /// The trace's words for an event the desk has no row of its own for (`i18n::event_words`), filled on read and on
+    /// append; none for every other event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub words: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
@@ -430,6 +440,11 @@ pub struct InboxItem {
     pub tones: Vec<OptionTone>,
     /// Set while the item is put aside ("remind me later"), until when.
     pub snoozed_until: Option<Millis>,
+    /// Where `subject` starts with a machine value (a stalled call's command, a failing check), that value, set as code
+    /// where the subject is shown: the words around it stay in the interface's face.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]

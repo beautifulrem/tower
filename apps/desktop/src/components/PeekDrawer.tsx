@@ -1,6 +1,6 @@
 /**
  * Space-key Quick Peek slide-over instrument sheet (docs/19 §19.4):
- * Live telemetry, dual-track criteria + sentinels + latest claim, budget & next step.
+ * Now (the live line), evidence (dual-track criteria + sentinels + latest claim), budget and next step.
  */
 import { For, Show, createEffect, createResource, onCleanup, onMount } from "solid-js";
 
@@ -10,16 +10,18 @@ import type { CriterionResultExt, GoalDetailExt, GoalSummaryExt } from "../lib/a
 import { ago, duration, short, usd, usdLimit } from "../lib/format";
 import { t } from "../lib/i18n";
 import { useKeys } from "../lib/keys";
-import { effectiveEngine, engineLabel, engineTrustTier, stateLabel } from "../lib/labels";
+import { caveats, heldOrTampered, notEvidence, wasAccepted } from "../lib/discounted";
+import { effectiveEngine, engineLabel, engineTrustTier, statusWord } from "../lib/labels";
 import { go } from "../lib/nav";
+import { reviewEach } from "../lib/reviewQueue";
 import { act, state } from "../lib/store";
 import { ProvBox } from "./Console";
 import { DangerMark, Icon, LifecycleGlyph, NeedsYouMark, NoticeMark, ResultMark, Seal } from "./Glyph";
 import { ConsistencyBadge } from "./Honesty";
 import { CriteriaBar } from "./HonestyCore";
-import { LiveLine } from "./Live";
+import { LiveLine, liveDetail } from "./Live";
 import { TrustPill } from "./ProvenanceFrame";
-import { Button } from "./ui";
+import { Button, trapTab } from "./ui";
 
 const pct = (v: number, m: number) => (m > 0 ? Math.min(100, (v / m) * 100) : 0);
 
@@ -35,24 +37,31 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
 
   const canPause = () => g()?.state === "running";
   const canToggle = () => g()?.state === "running" || g()?.state === "paused";
-  const canReview = () => !!g()?.diffstat;
+  const canReview = () => !!g()?.diffstat?.files;
   const toggleRun = () => { const s = g(); if (s) void act(() => (s.state === "running" ? api.pause(s.id) : api.resume(s.id))); };
-  const openTo = (name: "goal" | "review") => (props.onClose(), go({ name, id: props.goalId }));
+  // The id first: closing unmounts the drawer, and its props die with it.
+  const openTo = (name: "goal" | "review") => {
+    const id = props.goalId;
+    props.onClose();
+    go({ name, id });
+  };
 
   useKeys(
     [
       { key: "escape", run: props.onClose, inInputs: true },
       { key: "space", run: props.onClose, desc: () => t("common.close") },
-      { key: "p", run: toggleRun, when: canToggle, desc: () => t(canPause() ? "goal.pause" : "goal.resume") },
+      { key: "p", run: toggleRun, when: canToggle, desc: () => t(canPause() ? "goal.pause" : "goal.purposeResume") },
       { key: "r", run: () => canReview() && openTo("review"), when: canReview, desc: () => t("goal.review") },
       { key: "enter", run: () => openTo("goal"), desc: () => t("review.openGoal") },
+      // The board's ⇧R, from inside the peek too: close it and start the review queue.
+      { key: "shift+r", run: () => (props.onClose(), reviewEach()), desc: () => t("inbox.reviewAll") },
     ],
     () => t("peek.scope"),
     { modal: true },
   );
 
   const engine = () => effectiveEngine(g()?.engine, state.settings?.engine);
-  const tier = () => state.engines.find((e) => e.id === engine())?.trust_tier ?? engineTrustTier(engine());
+  const tier = () => engineTrustTier(engine());
   const nextClaim = () => detail()?.claims?.find((c) => c.kind === "next") ?? null;
   const latestClaim = () => detail()?.claims?.filter((c) => c.kind !== "next").at(-1) ?? null;
   const nextText = () => nextClaim()?.text ?? detail()?.submit_summary ?? "";
@@ -70,17 +79,25 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
   };
 
   return (
-    <div class="peek-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
+    <div class="peek-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()} onKeyDown={trapTab(() => panel)}>
       <aside ref={panel} class="peek-drawer" role="dialog" aria-modal="true" aria-label={g() ? `${g()!.id} ${g()!.title}` : props.goalId} tabindex="-1">
         <Show when={g()}>
           {(s) => (
             <>
               <header class="peek-head">
                 <div class="peek-head-top">
-                  <LifecycleGlyph goal={s() as GoalSummary} size={12} />
+                  <LifecycleGlyph goal={s() as GoalSummary} size={12} turn />
                   <span class="code-val t2">{s().id}</span>
-                  <span class="meta t3">{stateLabel(s().state)}</span>
-                  <Seal pin={s().verified_pin} compact />
+                  {/* A running goal's state is said once, by "Now" under the head (needs you, silent, or what it is doing):
+                      a second word here could only lag it or contradict it. */}
+                  <Show when={!(s().state === "in_review" && s().verified_pin) && s().state !== "running"}>
+                    <span class="meta t3">{statusWord(s() as GoalSummary)}</span>
+                  </Show>
+                  {/* The verdict and its pin, once: when "Now" draws the seal (in review), the head leaves it to it; a pass
+                      that doesn't count is marked here by the glyph alone. */}
+                  <Show when={!notEvidence(s()) && !liveDetail(s() as GoalSummary).seal}>
+                    <Seal pin={s().verified_pin} compact qualified={caveats(s())} accepted={wasAccepted(s())} />
+                  </Show>
                   <span class="grow" />
                   <button class="icon-btn peek-close" aria-label={t("common.close")} onClick={props.onClose}><Icon name="cross" size={12} /></button>
                 </div>
@@ -102,7 +119,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                   <h3 class="peek-band-head halt">{t("peek.l1")}</h3>
                   <LiveLine goal={s() as GoalSummary} large />
                   <div class="meta-inline meta halt">
-                    <span class="num t2">{t("goal.runN", { n: Math.max(1, s().run_no) })}</span>
+                    <span class="num t2">{t("live.runN", { n: Math.max(1, s().run_no) })}</span>
                     <span class="t3 num" hidden={!s().rework_cycles}>{t("card.rework", { n: s().rework_cycles, max: s().max_rework })}</span>
                     <code class="code-val t2" hidden={!detail()?.escalated_model}>{detail()?.escalated_model}</code>
                   </div>
@@ -118,7 +135,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                     <For each={detail()?.criteria ?? []}>
                       {(c) => {
                         const ver = c.verified as CriterionResultExt | null;
-                        const kind = c.canary === "tampered" ? "tampered" : ver ? (ver.passed ? "pass" : "fail") : c.observed ? (c.observed.passed ? "obs-pass" : "obs-fail") : "pending";
+                        const kind = c.canary === "tampered" || (ver?.passed && !ver.stale && heldOrTampered(c, detail()?.sentinels)) ? "tampered" : ver ? (ver.passed ? "pass" : "fail") : c.observed ? (c.observed.passed ? "obs-pass" : "obs-fail") : "pending";
                         return (
                           <div class="peek-crit-item">
                             {kind === "tampered" ? <NeedsYouMark /> : <ResultMark kind={kind} />}
@@ -131,7 +148,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                     </For>
                   </div>
                   <Show when={detail()?.sentinels?.length}>
-                    <ProvBox kind="fact" badge={t("goal.sentinels")} danger>
+                    <ProvBox kind="fact" badge={t("review.sentinels")} danger>
                       <For each={detail()!.sentinels}>{(sn) => <div class="row meta t1">{sn.severity >= 3 ? <DangerMark /> : <NoticeMark />}<span class="ellipsis">{sn.title}</span></div>}</For>
                     </ProvBox>
                   </Show>
@@ -166,7 +183,7 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
               </div>
 
               <footer class="peek-foot">
-                <Show when={canToggle()}><Button size="s" kbd="p" onClick={toggleRun}>{t(canPause() ? "goal.pause" : "goal.resume")}</Button></Show>
+                <Show when={canToggle()}><Button size="s" kbd="p" onClick={toggleRun}>{t(canPause() ? "goal.pause" : "goal.purposeResume")}</Button></Show>
                 <Show when={canReview()}><Button size="s" kbd="r" onClick={() => openTo("review")}>{t("goal.review")}</Button></Show>
                 <span class="grow" />
                 <Button size="s" variant="primary" kbd="enter" onClick={() => openTo("goal")}>{t("review.openGoal")}</Button>

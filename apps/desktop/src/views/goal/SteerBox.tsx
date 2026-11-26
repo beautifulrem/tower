@@ -5,7 +5,7 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
 
 import { Icon } from "../../components/Glyph";
-import { Button } from "../../components/ui";
+import { Button, IconButton } from "../../components/ui";
 import { api, errorText } from "../../lib/api";
 import { matchText } from "../../lib/fuzzy";
 import { t } from "../../lib/i18n";
@@ -52,7 +52,7 @@ export function AttachChips(props: { items: AttachmentRef[]; onRemove: (a: Attac
             <span class="att-chip">
               <Show when={a.preview}><img class="att-thumb" src={a.preview} alt={a.name} /></Show>
               <span class="ellipsis mono">{a.name}</span>
-              <button type="button" class="icon-btn" aria-label={t("common.remove")} onClick={() => props.onRemove(a)}>×</button>
+              <IconButton type="button" icon="cross" size={22} label={t("common.remove")} onClick={() => props.onRemove(a)} />
             </span>
           )}
         </For>

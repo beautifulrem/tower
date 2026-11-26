@@ -1,0 +1,842 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-25T16:13:25+00:00",
+  "title": "Design System: Tower",
+  "extensions": {
+    "colorMeta": {
+      "parchment-sidebar": {
+        "role": "neutral",
+        "displayName": "Parchment Sidebar",
+        "canonical": "oklch(0.965 0.004 80)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 80)",
+          "oklch(0.264 0.002 80)",
+          "oklch(0.379 0.004 80)",
+          "oklch(0.493 0.004 80)",
+          "oklch(0.607 0.004 80)",
+          "oklch(0.721 0.004 80)",
+          "oklch(0.836 0.002 80)",
+          "oklch(0.950 0.001 80)"
+        ]
+      },
+      "parchment-page": {
+        "role": "neutral",
+        "displayName": "Warm Parchment",
+        "canonical": "oklch(0.992 0.002 80)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 80)",
+          "oklch(0.264 0.001 80)",
+          "oklch(0.379 0.002 80)",
+          "oklch(0.493 0.002 80)",
+          "oklch(0.607 0.002 80)",
+          "oklch(0.721 0.002 80)",
+          "oklch(0.836 0.001 80)",
+          "oklch(0.950 0.001 80)"
+        ]
+      },
+      "parchment-raised": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "oklch(0.150 0.0 0)",
+          "oklch(0.264 0.0 0)",
+          "oklch(0.379 0.0 0)",
+          "oklch(0.493 0.0 0)",
+          "oklch(0.607 0.0 0)",
+          "oklch(0.721 0.0 0)",
+          "oklch(0.836 0.0 0)",
+          "oklch(0.950 0.0 0)"
+        ]
+      },
+      "parchment-hover": {
+        "role": "neutral",
+        "displayName": "Parchment Hover",
+        "canonical": "oklch(0.955 0.004 80)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 80)",
+          "oklch(0.264 0.002 80)",
+          "oklch(0.379 0.004 80)",
+          "oklch(0.493 0.004 80)",
+          "oklch(0.607 0.004 80)",
+          "oklch(0.721 0.004 80)",
+          "oklch(0.836 0.002 80)",
+          "oklch(0.950 0.001 80)"
+        ]
+      },
+      "parchment-selected": {
+        "role": "neutral",
+        "displayName": "Parchment Selected",
+        "canonical": "oklch(0.940 0.006 80)",
+        "tonalRamp": [
+          "oklch(0.150 0.002 80)",
+          "oklch(0.264 0.004 80)",
+          "oklch(0.379 0.006 80)",
+          "oklch(0.493 0.006 80)",
+          "oklch(0.607 0.006 80)",
+          "oklch(0.721 0.006 80)",
+          "oklch(0.836 0.004 80)",
+          "oklch(0.950 0.002 80)"
+        ]
+      },
+      "parchment-hairline": {
+        "role": "neutral",
+        "displayName": "Parchment Hairline",
+        "canonical": "oklch(0.20 0.01 70 / 0.14)",
+        "tonalRamp": [
+          "oklch(0.150 0.003 70)",
+          "oklch(0.264 0.006 70)",
+          "oklch(0.379 0.01 70)",
+          "oklch(0.493 0.01 70)",
+          "oklch(0.607 0.01 70)",
+          "oklch(0.721 0.01 70)",
+          "oklch(0.836 0.006 70)",
+          "oklch(0.950 0.003 70)"
+        ]
+      },
+      "parchment-hairline-subtle": {
+        "role": "neutral",
+        "displayName": "Parchment Hairline Subtle",
+        "canonical": "oklch(0.20 0.01 70 / 0.08)",
+        "tonalRamp": [
+          "oklch(0.150 0.003 70)",
+          "oklch(0.264 0.006 70)",
+          "oklch(0.379 0.01 70)",
+          "oklch(0.493 0.01 70)",
+          "oklch(0.607 0.01 70)",
+          "oklch(0.721 0.01 70)",
+          "oklch(0.836 0.006 70)",
+          "oklch(0.950 0.003 70)"
+        ]
+      },
+      "ink-1": {
+        "role": "primary",
+        "displayName": "Ink",
+        "canonical": "oklch(0.230 0.006 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.002 70)",
+          "oklch(0.264 0.004 70)",
+          "oklch(0.379 0.006 70)",
+          "oklch(0.493 0.006 70)",
+          "oklch(0.607 0.006 70)",
+          "oklch(0.721 0.006 70)",
+          "oklch(0.836 0.004 70)",
+          "oklch(0.950 0.002 70)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink Secondary",
+        "canonical": "oklch(0.430 0.006 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.002 70)",
+          "oklch(0.264 0.004 70)",
+          "oklch(0.379 0.006 70)",
+          "oklch(0.493 0.006 70)",
+          "oklch(0.607 0.006 70)",
+          "oklch(0.721 0.006 70)",
+          "oklch(0.836 0.004 70)",
+          "oklch(0.950 0.002 70)"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink Label",
+        "canonical": "oklch(0.470 0.006 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.002 70)",
+          "oklch(0.264 0.004 70)",
+          "oklch(0.379 0.006 70)",
+          "oklch(0.493 0.006 70)",
+          "oklch(0.607 0.006 70)",
+          "oklch(0.721 0.006 70)",
+          "oklch(0.836 0.004 70)",
+          "oklch(0.950 0.002 70)"
+        ]
+      },
+      "ink-4": {
+        "role": "neutral",
+        "displayName": "Ink Faint",
+        "canonical": "oklch(0.525 0.005 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 70)",
+          "oklch(0.264 0.003 70)",
+          "oklch(0.379 0.005 70)",
+          "oklch(0.493 0.005 70)",
+          "oklch(0.607 0.005 70)",
+          "oklch(0.721 0.005 70)",
+          "oklch(0.836 0.003 70)",
+          "oklch(0.950 0.001 70)"
+        ]
+      },
+      "decision-amber": {
+        "role": "status",
+        "displayName": "Decision Amber",
+        "canonical": "oklch(0.600 0.150 65)",
+        "tonalRamp": [
+          "oklch(0.150 0.037 65)",
+          "oklch(0.264 0.088 65)",
+          "oklch(0.379 0.149 65)",
+          "oklch(0.493 0.15 65)",
+          "oklch(0.607 0.15 65)",
+          "oklch(0.721 0.149 65)",
+          "oklch(0.836 0.088 65)",
+          "oklch(0.950 0.037 65)"
+        ]
+      },
+      "decision-amber-ground": {
+        "role": "status",
+        "displayName": "Decision Amber Ground",
+        "canonical": "oklch(0.962 0.034 85)",
+        "tonalRamp": [
+          "oklch(0.150 0.009 85)",
+          "oklch(0.264 0.02 85)",
+          "oklch(0.379 0.034 85)",
+          "oklch(0.493 0.034 85)",
+          "oklch(0.607 0.034 85)",
+          "oklch(0.721 0.034 85)",
+          "oklch(0.836 0.02 85)",
+          "oklch(0.950 0.009 85)"
+        ]
+      },
+      "verifier-green": {
+        "role": "status",
+        "displayName": "Verifier Green",
+        "canonical": "oklch(0.550 0.130 155)",
+        "tonalRamp": [
+          "oklch(0.150 0.033 155)",
+          "oklch(0.264 0.076 155)",
+          "oklch(0.379 0.129 155)",
+          "oklch(0.493 0.13 155)",
+          "oklch(0.607 0.13 155)",
+          "oklch(0.721 0.129 155)",
+          "oklch(0.836 0.076 155)",
+          "oklch(0.950 0.033 155)"
+        ]
+      },
+      "danger-red": {
+        "role": "status",
+        "displayName": "Danger Red",
+        "canonical": "oklch(0.540 0.190 25)",
+        "tonalRamp": [
+          "oklch(0.150 0.048 25)",
+          "oklch(0.264 0.111 25)",
+          "oklch(0.379 0.188 25)",
+          "oklch(0.493 0.19 25)",
+          "oklch(0.607 0.19 25)",
+          "oklch(0.721 0.188 25)",
+          "oklch(0.836 0.111 25)",
+          "oklch(0.950 0.048 25)"
+        ]
+      },
+      "danger-red-ground": {
+        "role": "status",
+        "displayName": "Danger Red Ground",
+        "canonical": "oklch(0.965 0.025 25)",
+        "tonalRamp": [
+          "oklch(0.150 0.006 25)",
+          "oklch(0.264 0.015 25)",
+          "oklch(0.379 0.025 25)",
+          "oklch(0.493 0.025 25)",
+          "oklch(0.607 0.025 25)",
+          "oklch(0.721 0.025 25)",
+          "oklch(0.836 0.015 25)",
+          "oklch(0.950 0.006 25)"
+        ]
+      },
+      "running-blue": {
+        "role": "status",
+        "displayName": "Running Blue",
+        "canonical": "oklch(0.500 0.130 240)",
+        "tonalRamp": [
+          "oklch(0.150 0.033 240)",
+          "oklch(0.264 0.076 240)",
+          "oklch(0.379 0.129 240)",
+          "oklch(0.493 0.13 240)",
+          "oklch(0.607 0.13 240)",
+          "oklch(0.721 0.129 240)",
+          "oklch(0.836 0.076 240)",
+          "oklch(0.950 0.033 240)"
+        ]
+      },
+      "carbon-sidebar": {
+        "role": "neutral",
+        "displayName": "Carbon Sidebar",
+        "canonical": "oklch(0.155 0.004 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 70)",
+          "oklch(0.264 0.002 70)",
+          "oklch(0.379 0.004 70)",
+          "oklch(0.493 0.004 70)",
+          "oklch(0.607 0.004 70)",
+          "oklch(0.721 0.004 70)",
+          "oklch(0.836 0.002 70)",
+          "oklch(0.950 0.001 70)"
+        ]
+      },
+      "carbon-page": {
+        "role": "neutral",
+        "displayName": "Carbon Page",
+        "canonical": "oklch(0.180 0.004 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 70)",
+          "oklch(0.264 0.002 70)",
+          "oklch(0.379 0.004 70)",
+          "oklch(0.493 0.004 70)",
+          "oklch(0.607 0.004 70)",
+          "oklch(0.721 0.004 70)",
+          "oklch(0.836 0.002 70)",
+          "oklch(0.950 0.001 70)"
+        ]
+      },
+      "carbon-raised": {
+        "role": "neutral",
+        "displayName": "Carbon Raised",
+        "canonical": "oklch(0.215 0.005 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 70)",
+          "oklch(0.264 0.003 70)",
+          "oklch(0.379 0.005 70)",
+          "oklch(0.493 0.005 70)",
+          "oklch(0.607 0.005 70)",
+          "oklch(0.721 0.005 70)",
+          "oklch(0.836 0.003 70)",
+          "oklch(0.950 0.001 70)"
+        ]
+      },
+      "carbon-hover": {
+        "role": "neutral",
+        "displayName": "Carbon Hover",
+        "canonical": "oklch(0.235 0.005 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 70)",
+          "oklch(0.264 0.003 70)",
+          "oklch(0.379 0.005 70)",
+          "oklch(0.493 0.005 70)",
+          "oklch(0.607 0.005 70)",
+          "oklch(0.721 0.005 70)",
+          "oklch(0.836 0.003 70)",
+          "oklch(0.950 0.001 70)"
+        ]
+      },
+      "carbon-selected": {
+        "role": "neutral",
+        "displayName": "Carbon Selected",
+        "canonical": "oklch(0.265 0.006 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.002 70)",
+          "oklch(0.264 0.004 70)",
+          "oklch(0.379 0.006 70)",
+          "oklch(0.493 0.006 70)",
+          "oklch(0.607 0.006 70)",
+          "oklch(0.721 0.006 70)",
+          "oklch(0.836 0.004 70)",
+          "oklch(0.950 0.002 70)"
+        ]
+      },
+      "carbon-hairline": {
+        "role": "neutral",
+        "displayName": "Carbon Hairline",
+        "canonical": "oklch(1 0 0 / 0.10)",
+        "tonalRamp": [
+          "oklch(0.150 0.0 0)",
+          "oklch(0.264 0.0 0)",
+          "oklch(0.379 0.0 0)",
+          "oklch(0.493 0.0 0)",
+          "oklch(0.607 0.0 0)",
+          "oklch(0.721 0.0 0)",
+          "oklch(0.836 0.0 0)",
+          "oklch(0.950 0.0 0)"
+        ]
+      },
+      "carbon-hairline-subtle": {
+        "role": "neutral",
+        "displayName": "Carbon Hairline Subtle",
+        "canonical": "oklch(1 0 0 / 0.06)",
+        "tonalRamp": [
+          "oklch(0.150 0.0 0)",
+          "oklch(0.264 0.0 0)",
+          "oklch(0.379 0.0 0)",
+          "oklch(0.493 0.0 0)",
+          "oklch(0.607 0.0 0)",
+          "oklch(0.721 0.0 0)",
+          "oklch(0.836 0.0 0)",
+          "oklch(0.950 0.0 0)"
+        ]
+      },
+      "carbon-ink-1": {
+        "role": "primary",
+        "displayName": "Carbon Ink",
+        "canonical": "oklch(0.945 0.003 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 70)",
+          "oklch(0.264 0.002 70)",
+          "oklch(0.379 0.003 70)",
+          "oklch(0.493 0.003 70)",
+          "oklch(0.607 0.003 70)",
+          "oklch(0.721 0.003 70)",
+          "oklch(0.836 0.002 70)",
+          "oklch(0.950 0.001 70)"
+        ]
+      },
+      "carbon-ink-2": {
+        "role": "neutral",
+        "displayName": "Carbon Ink Secondary",
+        "canonical": "oklch(0.860 0.005 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.001 70)",
+          "oklch(0.264 0.003 70)",
+          "oklch(0.379 0.005 70)",
+          "oklch(0.493 0.005 70)",
+          "oklch(0.607 0.005 70)",
+          "oklch(0.721 0.005 70)",
+          "oklch(0.836 0.003 70)",
+          "oklch(0.950 0.001 70)"
+        ]
+      },
+      "carbon-ink-3": {
+        "role": "neutral",
+        "displayName": "Carbon Ink Label",
+        "canonical": "oklch(0.720 0.006 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.002 70)",
+          "oklch(0.264 0.004 70)",
+          "oklch(0.379 0.006 70)",
+          "oklch(0.493 0.006 70)",
+          "oklch(0.607 0.006 70)",
+          "oklch(0.721 0.006 70)",
+          "oklch(0.836 0.004 70)",
+          "oklch(0.950 0.002 70)"
+        ]
+      },
+      "carbon-ink-4": {
+        "role": "neutral",
+        "displayName": "Carbon Ink Faint",
+        "canonical": "oklch(0.645 0.006 70)",
+        "tonalRamp": [
+          "oklch(0.150 0.002 70)",
+          "oklch(0.264 0.004 70)",
+          "oklch(0.379 0.006 70)",
+          "oklch(0.493 0.006 70)",
+          "oklch(0.607 0.006 70)",
+          "oklch(0.721 0.006 70)",
+          "oklch(0.836 0.004 70)",
+          "oklch(0.950 0.002 70)"
+        ]
+      },
+      "carbon-decision-amber": {
+        "role": "status",
+        "displayName": "Carbon Decision Amber",
+        "canonical": "oklch(0.800 0.150 75)",
+        "tonalRamp": [
+          "oklch(0.150 0.037 75)",
+          "oklch(0.264 0.088 75)",
+          "oklch(0.379 0.149 75)",
+          "oklch(0.493 0.15 75)",
+          "oklch(0.607 0.15 75)",
+          "oklch(0.721 0.149 75)",
+          "oklch(0.836 0.088 75)",
+          "oklch(0.950 0.037 75)"
+        ]
+      },
+      "carbon-decision-amber-ground": {
+        "role": "status",
+        "displayName": "Carbon Decision Amber Ground",
+        "canonical": "oklch(0.225 0.030 75)",
+        "tonalRamp": [
+          "oklch(0.150 0.007 75)",
+          "oklch(0.264 0.018 75)",
+          "oklch(0.379 0.03 75)",
+          "oklch(0.493 0.03 75)",
+          "oklch(0.607 0.03 75)",
+          "oklch(0.721 0.03 75)",
+          "oklch(0.836 0.018 75)",
+          "oklch(0.950 0.007 75)"
+        ]
+      },
+      "carbon-verifier-green": {
+        "role": "status",
+        "displayName": "Carbon Verifier Green",
+        "canonical": "oklch(0.770 0.130 155)",
+        "tonalRamp": [
+          "oklch(0.150 0.033 155)",
+          "oklch(0.264 0.076 155)",
+          "oklch(0.379 0.129 155)",
+          "oklch(0.493 0.13 155)",
+          "oklch(0.607 0.13 155)",
+          "oklch(0.721 0.129 155)",
+          "oklch(0.836 0.076 155)",
+          "oklch(0.950 0.033 155)"
+        ]
+      },
+      "carbon-danger-red": {
+        "role": "status",
+        "displayName": "Carbon Danger Red",
+        "canonical": "oklch(0.750 0.150 25)",
+        "tonalRamp": [
+          "oklch(0.150 0.037 25)",
+          "oklch(0.264 0.088 25)",
+          "oklch(0.379 0.149 25)",
+          "oklch(0.493 0.15 25)",
+          "oklch(0.607 0.15 25)",
+          "oklch(0.721 0.149 25)",
+          "oklch(0.836 0.088 25)",
+          "oklch(0.950 0.037 25)"
+        ]
+      },
+      "carbon-danger-red-ground": {
+        "role": "status",
+        "displayName": "Carbon Danger Red Ground",
+        "canonical": "oklch(0.215 0.030 25)",
+        "tonalRamp": [
+          "oklch(0.150 0.007 25)",
+          "oklch(0.264 0.018 25)",
+          "oklch(0.379 0.03 25)",
+          "oklch(0.493 0.03 25)",
+          "oklch(0.607 0.03 25)",
+          "oklch(0.721 0.03 25)",
+          "oklch(0.836 0.018 25)",
+          "oklch(0.950 0.007 25)"
+        ]
+      },
+      "carbon-running-blue": {
+        "role": "status",
+        "displayName": "Carbon Running Blue",
+        "canonical": "oklch(0.780 0.120 235)",
+        "tonalRamp": [
+          "oklch(0.150 0.03 235)",
+          "oklch(0.264 0.07 235)",
+          "oklch(0.379 0.119 235)",
+          "oklch(0.493 0.12 235)",
+          "oklch(0.607 0.12 235)",
+          "oklch(0.721 0.119 235)",
+          "oklch(0.836 0.07 235)",
+          "oklch(0.950 0.03 235)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "stamp": {
+        "displayName": "Stamp",
+        "purpose": "The acceptance verdict inside the stamp; the interface's largest type."
+      },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Empty states and the Welcome title only."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Goal title; medium stamp."
+      },
+      "question": {
+        "displayName": "Question",
+        "purpose": "The decision card's one-sentence question; sheet headings."
+      },
+      "reading": {
+        "displayName": "Reading",
+        "purpose": "Prose you read; 72ch / 40em measure."
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "Section titles, ink-1, no uppercase or tracking; also the button label weight."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default UI text, rows, claims."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Times, counts, field labels, live line on the board."
+      },
+      "hint": {
+        "displayName": "Hint",
+        "purpose": "Mono shortcut hints, provenance gutter labels, chips."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Diffs, logs, command output; tabular, no ligatures."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card-lift",
+        "value": "0 1px 0 oklch(0 0 0 / 0.30)",
+        "purpose": "Dark theme only: one line under a card's foot. Light theme: none."
+      },
+      {
+        "name": "shadow-overlay-dark",
+        "value": "0 16px 48px oklch(0 0 0 / 0.45), 0 0 0 1px var(--border)",
+        "purpose": "Palette, panels, sheets, toasts (Warm Carbon)."
+      },
+      {
+        "name": "shadow-overlay-light",
+        "value": "0 16px 48px oklch(0.2 0.01 70 / 0.18), 0 0 0 1px var(--border)",
+        "purpose": "Palette, panels, sheets, toasts (Warm Parchment)."
+      },
+      {
+        "name": "material-edge",
+        "value": "inset 0 0.5px 0 oklch(1 0 0 / 0.07)",
+        "purpose": "Top edge of floating palette and toasts (0.9 alpha on light)."
+      },
+      {
+        "name": "shadow-drawer",
+        "value": "-12px 0 36px oklch(0 0 0 / 0.40)",
+        "purpose": "Peek drawer's left side (0.12 warm on light)."
+      },
+      {
+        "name": "ink-pen",
+        "value": "inset 2px 0 0 var(--text-1)",
+        "purpose": "Your register, the accepted hunk; text-3 for current hunk; st-attention for a commented line."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Entering layers, the amber decay, the stamp press."
+      },
+      {
+        "name": "ease-in",
+        "value": "cubic-bezier(0.55, 0.055, 0.675, 0.19)",
+        "purpose": "Leaving layers; a decision slot folding away."
+      },
+      {
+        "name": "dur-hover-out",
+        "value": "150ms",
+        "purpose": "Hover leaving (arrival is 0ms)."
+      },
+      {
+        "name": "dur-fast",
+        "value": "100ms",
+        "purpose": "Glyph crossfade, mode-badge swap, the switch's thumb, a toast leaving."
+      },
+      {
+        "name": "dur-base",
+        "value": "160ms",
+        "purpose": "A card leaving and its slot folding; a segment's ground changing."
+      },
+      {
+        "name": "dur-view",
+        "value": "120ms",
+        "purpose": "View-change crossfade."
+      },
+      {
+        "name": "dur-space",
+        "value": "220ms",
+        "purpose": "Entering review; the stamp's impression."
+      },
+      {
+        "name": "dur-attn",
+        "value": "700ms",
+        "purpose": "One-shot amber arrival flash on a decision card; never loops."
+      },
+      {
+        "name": "dur-arm",
+        "value": "2000ms",
+        "purpose": "Armed destructive button's second-press window (draining rule)."
+      },
+      {
+        "name": "spring-snappy",
+        "value": "465ms linear(…) — Motion spring(0.25, 0)",
+        "purpose": "Something small arriving or giving: a pointer-opened layer lifting, a toast rising, a new board row, a segment filling, a button coming back from a press. Never overshoots."
+      },
+      {
+        "name": "spring-soft",
+        "value": "699ms linear(…) — Motion spring(0.4, 0)",
+        "purpose": "A panel moving in: the peek drawer. Never overshoots."
+      },
+      {
+        "name": "dur-settle",
+        "value": "600ms",
+        "purpose": "The live line's shimmer fading in and out as the run starts and stops moving, so the words never jump."
+      },
+      {
+        "name": "dur-spin",
+        "value": "1100ms linear, infinite",
+        "purpose": "A running or verifying mark turning (and the runs gauge, the same mark). Held still under reduced motion."
+      },
+      {
+        "name": "shimmer",
+        "value": "2400ms linear, infinite",
+        "purpose": "The live line of the goal in view while its agent is moving; never on the board. Plain ink under reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "half-screen",
+        "value": "1200px"
+      },
+      {
+        "name": "board-compress",
+        "value": "1560px"
+      },
+      {
+        "name": "gauges-compress",
+        "value": "1320px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled action on a surface: inverted ink, never coloured.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Accept <kbd class=\"ds-kbd\">⌘↩</kbd></button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:var(--radius-m,6px);border:1px solid var(--border,oklch(0.20 0.01 70 / 0.14));background:var(--bg-raised,#fff);color:var(--text-1,oklch(0.230 0.006 70));font:500 13px/20px 'Inter Variable',-apple-system,sans-serif;cursor:default;transition:background-color 150ms linear,border-color 150ms linear}.ds-btn-primary{background:var(--text-1,oklch(0.230 0.006 70));border-color:var(--text-1,oklch(0.230 0.006 70));color:var(--bg-app,oklch(0.992 0.002 80))}.ds-btn-primary:hover{background:var(--text-2,oklch(0.430 0.006 70));border-color:var(--text-2,oklch(0.430 0.006 70));transition-duration:0ms}.ds-btn:focus-visible{outline:1.5px solid var(--focus,oklch(0.230 0.006 70 / 0.65));outline-offset:2px}.ds-btn:active{transform:translateY(0.5px)}.ds-kbd{font:500 10px/16px 'JetBrains Mono Variable',ui-monospace,monospace;opacity:0.8}"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Every other action: raised surface, hairline frame.",
+      "html": "<button class=\"ds-btn2\">Request changes</button>",
+      "css": ".ds-btn2{display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:6px;border:1px solid var(--border,oklch(0.20 0.01 70 / 0.14));background:var(--bg-raised,#fff);color:var(--text-1,oklch(0.230 0.006 70));font:500 13px/20px 'Inter Variable',-apple-system,sans-serif;cursor:default;transition:background-color 150ms linear,border-color 150ms linear}.ds-btn2:hover{background:var(--bg-hover,oklch(0.955 0.004 80));border-color:var(--border-strong,oklch(0.20 0.01 70 / 0.22));transition-duration:0ms}.ds-btn2:active{background:var(--bg-selected,oklch(0.940 0.006 80));transform:translateY(0.5px)}.ds-btn2:focus-visible{outline:1.5px solid var(--focus,oklch(0.230 0.006 70 / 0.65));outline-offset:2px}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary actions in a row: words only, ground on hover.",
+      "html": "<button class=\"ds-ghost\">Later</button>",
+      "css": ".ds-ghost{height:26px;padding:0 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-2,oklch(0.430 0.006 70));font:500 13px/20px 'Inter Variable',-apple-system,sans-serif;cursor:default;transition:background-color 150ms linear}.ds-ghost:hover{background:var(--bg-hover,oklch(0.955 0.004 80));color:var(--text-1,oklch(0.230 0.006 70));transition-duration:0ms}.ds-ghost:focus-visible{outline:1.5px solid var(--focus,oklch(0.230 0.006 70 / 0.65));outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "28px field; the focus ring replaces the edge, never doubles it.",
+      "html": "<input class=\"ds-input\" placeholder=\"e.g. Fix the cart total\">",
+      "css": ".ds-input{height:28px;padding:4px 8px;border-radius:6px;border:1px solid var(--border,oklch(0.20 0.01 70 / 0.14));background:var(--bg-field,#fff);color:var(--text-1,oklch(0.230 0.006 70));font:400 13px/20px 'Inter Variable',-apple-system,sans-serif;outline:none;transition:border-color 150ms linear}.ds-input::placeholder{color:var(--text-4,oklch(0.525 0.005 70))}.ds-input:hover{border-color:var(--border-strong,oklch(0.20 0.01 70 / 0.22));transition-duration:0ms}.ds-input:focus-visible{outline:1.5px solid var(--focus,oklch(0.230 0.006 70 / 0.65));outline-offset:-1px;border-color:var(--text-3,oklch(0.470 0.006 70))}"
+    },
+    {
+      "name": "Sidebar",
+      "kind": "nav",
+      "refersTo": "sidebar-row",
+      "description": "28px rows; here is a ground, never a stripe; the needs-you icon keeps amber.",
+      "html": "<nav class=\"ds-side\"><div class=\"ds-row ds-active\">Overview</div><div class=\"ds-row\"><svg width=\"9\" height=\"9\" viewBox=\"0 0 10 10\"><path d=\"M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z\" fill=\"var(--st-attention,oklch(0.600 0.150 65))\"/></svg>Needs you<span class=\"ds-count\">4</span></div><div class=\"ds-row\">Learning</div></nav>",
+      "css": ".ds-side{width:232px;padding:8px;background:var(--bg-sidebar,oklch(0.965 0.004 80));font:400 13px/20px 'Inter Variable',-apple-system,sans-serif}.ds-row{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;color:var(--text-2,oklch(0.430 0.006 70));transition:background-color 150ms linear,color 150ms linear}.ds-row:hover{background:var(--bg-hover,oklch(0.955 0.004 80));color:var(--text-1,oklch(0.230 0.006 70));transition-duration:0ms}.ds-active{background:var(--bg-selected,oklch(0.940 0.006 80));color:var(--text-1,oklch(0.230 0.006 70))}.ds-count{margin-left:auto;font-size:12px;color:var(--text-3,oklch(0.470 0.006 70));font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Provenance Chips",
+      "kind": "chip",
+      "refersTo": "chip-fact",
+      "description": "Solid frame = measured, dashed = observed, left ink rule = you.",
+      "html": "<span class=\"ds-chip ds-fact\">@9f3e1a 6m ago</span> <span class=\"ds-chip ds-obs\">Observation @9f3e1a</span> <span class=\"ds-chip ds-you\">You 14:20</span>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 5px;border-radius:3px;font:500 11px/16px 'JetBrains Mono Variable',ui-monospace,monospace;font-feature-settings:'liga' 0,'calt' 0,'zero' 1;color:var(--text-2,oklch(0.430 0.006 70))}.ds-fact{border:1px solid var(--border,oklch(0.20 0.01 70 / 0.14))}.ds-obs{border:1px dashed var(--border-strong,oklch(0.20 0.01 70 / 0.22))}.ds-you{padding-left:6px;border-left:2px solid var(--text-1,oklch(0.230 0.006 70));border-radius:0;color:var(--text-1,oklch(0.230 0.006 70))}"
+    },
+    {
+      "name": "Decision Card",
+      "kind": "card",
+      "refersTo": "decision-card",
+      "description": "The one recurring card: amber head strip (decays once), question, one primary.",
+      "html": "<div class=\"ds-dc\"><div class=\"ds-dc-head\"><svg width=\"9\" height=\"9\" viewBox=\"0 0 10 10\"><path d=\"M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z\" fill=\"var(--st-attention,oklch(0.600 0.150 65))\"/></svg><b>CI failed</b><span style=\"margin-left:auto\">39m ago</span></div><div class=\"ds-dc-main\"><div class=\"ds-dc-q\">test (ubuntu-latest, node 22)</div><p class=\"ds-dc-body\">You can send the failing check to the agent.</p><div><button class=\"ds-dc-p\">Send failure to agent</button> <button class=\"ds-dc-d\">Later</button></div></div></div>",
+      "css": ".ds-dc{max-width:560px;border:1px solid var(--card-edge,oklch(0.42 0.035 80 / 0.20));border-radius:6px;background:var(--bg-raised,#fff);overflow:hidden;font:400 13px/20px 'Inter Variable',-apple-system,sans-serif;color:var(--text-1,oklch(0.230 0.006 70))}.ds-dc-head{display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;background:var(--attention-bg,oklch(0.962 0.034 85));font-size:12px;color:var(--text-2,oklch(0.430 0.006 70));animation:ds-attn 700ms cubic-bezier(0.23,1,0.32,1) 1}.ds-dc-head b{color:var(--text-1,oklch(0.230 0.006 70));font-weight:500}@keyframes ds-attn{from{background-color:var(--attention-flash,oklch(0.600 0.150 65 / 0.18))}}.ds-dc-main{display:grid;gap:8px;padding:10px 12px 12px}.ds-dc-q{font:500 16px/24px 'JetBrains Mono Variable',ui-monospace,monospace}.ds-dc-body{margin:0;color:var(--text-2,oklch(0.430 0.006 70));max-width:72ch}.ds-dc-p,.ds-dc-d{height:26px;padding:0 10px;border-radius:6px;font:500 13px/20px 'Inter Variable',sans-serif;cursor:default}.ds-dc-p{background:var(--text-1,oklch(0.230 0.006 70));border:1px solid var(--text-1,oklch(0.230 0.006 70));color:var(--bg-app,oklch(0.992 0.002 80))}.ds-dc-p:hover{background:var(--text-2,oklch(0.430 0.006 70))}.ds-dc-d{background:var(--bg-raised,#fff);border:1px solid var(--border,oklch(0.20 0.01 70 / 0.14));color:var(--text-1,oklch(0.230 0.006 70))}.ds-dc-d:hover{background:var(--bg-hover,oklch(0.955 0.004 80))}@media (prefers-reduced-motion:reduce){.ds-dc-head{animation:none}}"
+    },
+    {
+      "name": "Provenance Gutter",
+      "kind": "custom",
+      "description": "Hanging source column naming whose statement each line is; no box per line.",
+      "html": "<div class=\"ds-pv\"><div class=\"ds-pv-src\">Measured</div><div>npm test passed in 406ms <span class=\"ds-mono\">@5f72710</span></div><div class=\"ds-pv-src\">Agent says</div><div class=\"ds-pv-claim\">Every quantity in the test data is 1.</div><div class=\"ds-pv-src ds-pv-you\">You 14:20</div><div>Checked the total by hand.</div></div>",
+      "css": ".ds-pv{display:grid;grid-template-columns:minmax(6.5em,8.5em) minmax(0,1fr);column-gap:12px;row-gap:6px;align-items:baseline;max-width:640px;font:400 13px/20px 'Inter Variable',-apple-system,sans-serif;color:var(--text-1,oklch(0.230 0.006 70))}.ds-pv-src{font-size:11px;color:var(--text-3,oklch(0.470 0.006 70))}.ds-pv-you{font-weight:500;color:var(--text-2,oklch(0.430 0.006 70))}.ds-pv-claim{color:var(--text-2,oklch(0.430 0.006 70))}.ds-mono{font:400 12px 'JetBrains Mono Variable',ui-monospace,monospace;color:var(--text-2,oklch(0.430 0.006 70))}"
+    },
+    {
+      "name": "Acceptance Stamp",
+      "kind": "custom",
+      "description": "Die-cut verdict frame: display-cut verdict and mono pin; dashed when withheld.",
+      "html": "<span class=\"ds-stamp\"><span class=\"ds-stamp-v\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"var(--st-verified,oklch(0.550 0.130 155))\" stroke-width=\"1.4\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"6.5\"/><path d=\"M5 8.2 L7.2 10.3 L11 6\"/></svg>Verified</span><span class=\"ds-stamp-pin\">@5f72710</span></span>",
+      "css": ".ds-stamp{--ink:color-mix(in oklch,var(--text-1,oklch(0.230 0.006 70)) 82%,transparent);display:inline-flex;align-items:stretch;border:1px solid var(--ink);border-radius:3px;color:var(--text-1,oklch(0.230 0.006 70));white-space:nowrap;animation:ds-press 220ms cubic-bezier(0.23,1,0.32,1) both}.ds-stamp-v{display:inline-flex;align-items:center;gap:0.36em;padding:0.16em 0.5em 0.2em 0.42em;font:580 28px/36px 'Inter Variable',-apple-system,sans-serif;letter-spacing:-0.022em;font-variation-settings:'opsz' 32}.ds-stamp-pin{display:inline-flex;align-items:center;padding:0 0.7rem;border-left:1px solid var(--ink);font:400 13px 'JetBrains Mono Variable',ui-monospace,monospace;color:var(--text-2,oklch(0.430 0.006 70))}@keyframes ds-press{from{box-shadow:0 0 0 0.75px var(--ink);transform:scale(1.015)}}@media (prefers-reduced-motion:reduce){.ds-stamp{animation:none}}"
+    },
+    {
+      "name": "Criteria Scale",
+      "kind": "custom",
+      "description": "Two-track instrument line: segments, then Verified V/M · Observed O/M · Human.",
+      "html": "<span class=\"ds-cs\"><span class=\"ds-segs\"><i class=\"ds-seg ds-v\"></i><i class=\"ds-seg ds-v\"></i><i class=\"ds-seg ds-d\"></i><i class=\"ds-seg ds-o\"></i><i class=\"ds-seg\"></i></span>Verified 2/3 · 1 doesn't count · Observed 1/3 · Human 0/2</span>",
+      "css": ".ds-cs{display:inline-flex;align-items:center;gap:8px;font:400 12px/16px 'Inter Variable',-apple-system,sans-serif;font-variant-numeric:tabular-nums;color:var(--text-2,oklch(0.430 0.006 70))}.ds-segs{display:inline-flex;gap:2px}.ds-seg{width:12px;height:4px;border-radius:999px;background:color-mix(in oklch,var(--text-4,oklch(0.525 0.005 70)) 55%,transparent)}.ds-v{border:0;background:var(--st-verified,oklch(0.550 0.130 155))}.ds-d{border:0;background:var(--st-attention,oklch(0.600 0.150 65))}.ds-o{background:repeating-linear-gradient(-45deg,var(--text-3,oklch(0.48 0.006 70)) 0 1.5px,transparent 1.5px 3px)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Control Tower at Night",
+    "overview": "Tower is a supervision desk, not a chat. One engineer watches several coding agents the way a tower controller watches traffic: a board of flight strips, a row of instrument readouts along the title bar, and a logbook where every line says whose it is. Normal work is grey, and it moves only in its own small mark: a running goal's mark turns slowly, like a status light on a rack. Colour turns up only when a decision is waiting for you, a verifier has ruled, or something has gone wrong. That is a product rule as much as a style. The long-form doctrine lives in `docs/12-visual-design-system.md` (§12.1 direction, §12.5 honesty grammar, §12.6 glyphs, §12.7 motion) and `docs/19-anti-chat-console-design.md`. This file records what the shipped code does; `tokens.css` is the source of truth for values.\n\nThe density is Operate-mode macOS: 13px body, 28px sidebar rows, 40px board rows, hairlines in place of boxes, and very few cards. The decision card is the one recurring card. Hierarchy comes from size, weight and four steps of warm grey ink, not from frames or icons. Two themes share one hue family (h≈70–80): **Warm Parchment** (light) and **Warm Carbon** (dark). Each surface step is a lightness step, so the eye finds the layer before it finds the hairline.\n\nThe signature devices are the **provenance gutter**, a hanging left column that names the source of every statement (Measured / Observation / Agent says / You), and the **stamp**, a 1px die-cut frame that carries the acceptance verdict and the commit pin in the interface's largest type. The agent is never personified: no avatar, no name, no face.",
+    "keyCharacteristics": [
+      "Warm near-neutral ramp; no accent hue. Primary actions are inverted ink, and selection and focus are carried by lightness.",
+      "Five status colours with exclusive meanings: amber = needs your decision, green = verifier pass, red = danger, blue = running, grey = everything else.",
+      "Glyph shape carries state before colour does: lifecycle rings (a turning arc while running), the ! disc for needs you, the outlined i for a notice, the × disc for danger.",
+      "Mono only for machine text (ids, commands, paths, hashes, figures), set with ligatures off and a slashed zero.",
+      "Opaque reading sheets (palette, peek drawer, accept sheet); blur only on small passing layers (toasts, the @ completion).",
+      "Keyboard-opened layers appear instantly. Only work in motion loops: a running mark turns, and the live line of the goal in view shimmers. Everything else moves once, on a spring that never overshoots, and all of it stands still under reduced motion."
+    ],
+    "rules": [
+      {
+        "name": "The Amber Is a Question Rule",
+        "body": "Amber means one thing: a human decision is waiting. Something worth noticing that needs no decision gets the outlined i and ink-1 text, with no colour. Amber is never a selection colour. In a queue of decision cards the heads go neutral, and the focused card takes `--bg-selected`.",
+        "section": "colors"
+      },
+      {
+        "name": "The Green Is the Verifier's Word Rule",
+        "body": "Green appears only beside a verifier result or a verified goal glyph. A count, a percentage, a plan step, an agent's claim or your own tick is never green. A pass that does not count (tampered canary) is drawn solid amber, never green.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Accent Rule",
+        "body": "There is no brand hue. Focus is a 1.5px ink ring at 65–70% alpha, links underline in translucent ink, and the primary button is inverted ink.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Is Evidence Rule",
+        "body": "Monospace is for ids, commands, paths, hashes and figures, never for prose labels. Counts in the UI face use tabular figures.",
+        "section": "typography"
+      },
+      {
+        "name": "The Middle Dot Rule",
+        "body": "\" · \" belongs to the two instrument lines only: the criteria scale (\"Verified 2/3 · 1 doesn't count · Observed 0/3 · Human 0/2\") and the budget line. Everywhere else, groups are told apart by a gap and a change of weight or ink (`.sep:empty` is just space).",
+        "section": "typography"
+      },
+      {
+        "name": "The Medium Weight Rule",
+        "body": "Emphasis is 500, and it always comes with an ink step up (ink-2 → ink-1) or a size step, because a CJK 500 may fall back to 400. Heavier cuts are reserved for the verdict: the large seal's word (600) and the stamp (580).",
+        "section": "typography"
+      },
+      {
+        "name": "The Read vs Instrument Rule",
+        "body": "Text you read stops at 840px and 72ch. Instruments use the whole width.",
+        "section": "layout"
+      },
+      {
+        "name": "The One Primary Rule",
+        "body": "Each surface has one filled primary button. In a queue of decision cards, only the focused card's primary is filled. The others drop to the default frame and keep their key hint.",
+        "section": "layout"
+      },
+      {
+        "name": "The Opaque Sheet Rule",
+        "body": "Anything you read word by word (palette, peek drawer, accept sheet) sits on the opaque `--bg-overlay`. Translucent `--material-float` with a 24px blur is only for small passing layers (toasts, the @ completion), and it falls back to opaque under reduced transparency.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the semantic tokens only (`--bg-*`, `--text-*`, `--st-*`, `--sp-*`, `--radius-*`); values live in `src/styles/tokens.css`.",
+      "Do carry state in glyph shape first (ring, turning arc, the ! disc, the outlined i, the × disc), so status reads in greyscale.",
+      "Do put the source of every statement in the provenance gutter: Measured, Observation, Agent says, You.",
+      "Do keep one filled primary per surface. In a decision queue, only the focused card's primary is filled.",
+      "Do make hover arrive instantly (0ms) and leave over 150ms. Entering layers settle on a spring that never overshoots (`--spring-snappy` for small things, `--spring-soft` for panels), and leaving ones ease in.",
+      "Do open keyboard-triggered layers (palette, panels) with no animation.",
+      "Do set ids, commands, paths, hashes and figures in mono or tabular figures.",
+      "Do hold reading text to 840px and 72ch (40em in Chinese), and let instruments run full width.",
+      "Do keep sheets you read in opaque."
+    ],
+    "donts": [
+      "Don't add an accent or brand hue; selection, focus and the primary action are ink and lightness.",
+      "Don't use amber for warnings, staleness or \"might be a problem\". Use the outlined i with ink-1 text.",
+      "Don't colour a statistic, aggregate, plan step, claim, observation or human check green.",
+      "Don't colour small text with a status colour; status colours belong to glyphs, segments and grounds.",
+      "Don't use \" · \" outside the criteria scale and the budget line.",
+      "Don't use uppercase or tracked labels, KPI stat-card rows, pill soup, or boxes nested inside boxes.",
+      "Don't put a coloured stripe down the edge of a card or an active nav item. The 2px ink pen is reserved for your own register, the current hunk and commented diff lines.",
+      "Don't loop anything that is not work in motion: no pulses, breathing lights, celebration or decorative shimmer. The turning running mark and the in-view live line's shimmer are the only loops, and the one-shot amber decay is the only flash.",
+      "Don't bounce. Springs here settle without overshoot.",
+      "Don't draw a status with a text character (■ ◆ ◇) or an emoji; status is the mark family.",
+      "Don't personify the agent (no avatar, name or face), and don't set claims in italics.",
+      "Don't use a hand cursor on controls; this is a desktop app."
+    ]
+  }
+}

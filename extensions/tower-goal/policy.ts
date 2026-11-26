@@ -34,10 +34,32 @@ export function langOf(code: string | undefined): Lang {
 export const TEXT = {
 	allow: { zh: "允许", en: "Allow" },
 	deny: { zh: "拒绝", en: "Deny" },
-	readonly: { zh: "合同把这个路径设为只读", en: "the contract makes this path read-only" },
-	excluded: { zh: "合同排除了这个路径", en: "the contract excludes this path" },
-	outside_scope: { zh: "这个路径在合同的范围围栏之外", en: "this path is outside the contract's scope fence" },
+	// What the agent asks to do, in words (as the commands' reasons below are): the approval's code block is the path alone.
+	readonly: { zh: "写入合同设为只读的路径", en: "write to a path the contract makes read-only" },
+	excluded: { zh: "写入合同排除的路径", en: "write to a path the contract excludes" },
+	outside_scope: { zh: "写入合同范围围栏之外的路径", en: "write to a path outside the contract's scope fence" },
 } satisfies Record<string, Text>;
+
+/**
+ * What the agent is told when a gated write is not allowed: the write it asked for, in the dialog's words, the path,
+ * and the way on. The reasons above are verb phrases so this reads as a sentence (review 22: one copy here, not one per
+ * bridge). `choice` is the dialog's answer: none when no one answered (Tower closed the question as the run stopped, or
+ * the dialog's time ran out), and then the agent is told so, never that a person said no (review 23).
+ */
+export function declinedWrite(verdict: "readonly" | "excluded" | "outside_scope", rel: string, choice: string | undefined): string {
+	const what = `${TEXT[verdict].en}: ${rel}`;
+	const said = choice === undefined ? `No one answered whether you may ${what}, so it was not written` : `The human declined to let you ${what}`;
+	return `${said}. Stay inside the contract's scope or ask_user.`;
+}
+
+/**
+ * What the agent is told when a command is not allowed: whether a person said no, why Tower asked (a reason may hold its
+ * own brackets, so it follows a colon rather than sitting in a second pair), and the way on.
+ */
+export function declinedCommand(reason: Text, choice: string | undefined): string {
+	const said = choice === undefined ? "No one answered whether this command may run, so it did not run" : "The human declined this command";
+	return `${said}. Tower asked because of: ${reason.en}. Find another way or ask_user.`;
+}
 
 /** Whether a dialog answer allows, in either language (the human may have switched). */
 export function isAllow(choice: string | undefined): boolean {

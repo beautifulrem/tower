@@ -8,17 +8,15 @@ import { Icon, NotEvidenceMark, ResultMark } from "../../components/Glyph";
 import { BaselineLine, CanaryLine, HeldOutLine, LoopbackLine, ObsChip } from "../../components/Honesty";
 import type { SentinelHit } from "../../gen/SentinelHit";
 import { api } from "../../lib/api";
+import { heldOrTampered } from "../../lib/discounted";
 import { ago, duration, short } from "../../lib/format";
 import { t, withLater } from "../../lib/i18n";
 import { act, state } from "../../lib/store";
-import { type ExtCriterionView } from "./ext";
+import { type ExtCriterionView, qualifiers } from "./ext";
 
 const LookStrip = lazy(withLater(() => import("../Learning").then((m) => ({ default: m.LookStrip }))));
 
-const GUARD_RE = /assertion|guard|source_patches_tests/;
-const BYPASS_RE = /bypass|perturb|rust_test_branch|expectations_changed/;
-
-export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state: string; base?: string | null; sentinels?: SentinelHit[] }) {
+export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state: string; base?: string | null; sentinels?: SentinelHit[]; ids?: string[]; told?: boolean }) {
   const c = () => props.c;
   const v = () => c().verified;
   const [open, setOpen] = createSignal(false);
@@ -29,39 +27,16 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
   const mark = () => (!v() ? "pending" : v()!.stale ? "stale" : v()!.passed ? "pass" : "fail");
   const proof = () => v()?.held_out_proof ?? null;
 
-  const pills = createMemo<[string, string, string?][]>(() => {
-    const ver = v();
-    if (human() || !ver) return [];
-    const cur = c(), sents = props.sentinels ?? [], out: [string, string, string?][] = [];
-    const okC = cur.canary !== "tampered";
-    if (ver.passed && cur.passed_on_base === false && cur.passes_with_source_only !== false && okC) out.push(["ok", t("goal.evRedGreen")]);
-    if (cur.passes_with_source_only === true && okC) out.push(["fact", t("goal.evSourceOnly")]);
-    else if (cur.passes_with_source_only === false) out.push(["attn", t("goal.dependsOnEditedTests")]);
-    if (cur.canary === "intact") out.push(["fact", t("goal.evCanaryOk")]);
-    else if (cur.canary === "tampered") out.push(["attn", t("goal.canaryTampered")]);
-    else if (cur.canary === "not_checked") out.push(["obs", t("goal.canaryNotChecked")]);
-    const forCur = (h: SentinelHit) => !h.detail || h.detail.includes(cur.criterion.id) || !/\bC\d+\b/.test(h.detail);
-    const gh = sents.find((h) => GUARD_RE.test(h.sentinel) && forCur(h));
-    if (gh) out.push([gh.severity >= 3 ? "danger" : "attn", /guard|unchecked/.test(gh.sentinel) ? t("goal.evGuardGap") : t("goal.evAssertTamper"), gh.detail || gh.title]);
-    else if (ver.passed && cur.canary === "intact") out.push(["fact", t("goal.evGuardOk")]);
-    if (ver.flaky) out.push(["obs", t("goal.evFlaky")]);
-    if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? t("goal.evLoopbackBase") : t("goal.evLoopbackProject")]);
-    const bh = sents.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
-    if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? t("goal.evBypass") : bh.sentinel.includes("perturb") ? t("goal.evPerturb") : t("goal.evTestExpectation"), bh.detail || bh.title]);
-    const errs = ver.console_errors ?? cur.look?.console_errors ?? [];
-    if (errs.length) out.push(["danger", t("look.consoleErrors", { n: errs.length }), errs.join("\n")]);
-    return out;
-  });
+  // What qualifies the reading, each fact once: the same list the verification readout draws.
+  const shown = createMemo(() => qualifiers(c(), props.sentinels, props.ids));
+  // Folded, a criterion is its verdict and at most one line of what qualifies it — warnings only; the confirmations,
+  // the held-out files, the baseline and canary readings and the output are one click away.
+  const strip = () => (open() ? shown().filter((p) => !p[3]) : shown().filter(([tone]) => tone !== "ok" && tone !== "fact"));
 
-  const hoItems = createMemo<[string, string][]>(() => {
-    const p = proof();
-    if (!p?.ran.length) return [];
-    return [
-      ...p.ran.map((f): [string, string] => ["ev-hf ev-hf-ran", `✓ ${f}`]),
-      ...p.not_ran.map((f): [string, string] => ["ev-hf ev-hf-miss", `✕ ${f}`]),
-      ...p.unprovable.map((f): [string, string] => ["ev-hf", `◇ ${f}`]),
-    ];
-  });
+  // The files that ran, after the line that counts them ("held-out tests: 1 of 2 ran"). The ones that did not run and
+  // the ones nothing can prove are named in words on their own lines above, so no file is said twice and none wears a
+  // character for its state.
+  const ran = () => proof()?.ran ?? [];
 
   return (
     <div class="criterion" classList={{ stale: !!v()?.stale }}>
@@ -74,7 +49,7 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
             </label>
           }
         >
-          <Show when={c().canary === "tampered" && mark() === "pass"} fallback={<ResultMark kind={mark()} />}>
+          <Show when={heldOrTampered(c(), props.sentinels) && mark() === "pass"} fallback={<ResultMark kind={mark()} />}>
             <NotEvidenceMark />
           </Show>
         </Show>
@@ -94,7 +69,7 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
           when={v()}
           fallback={<span class="col-span t3">{human() ? (c().human_checked ? t("goal.youChecked") : t("goal.awaitingCheck")) : t("goal.awaitingVerify")}</span>}
         >
-          <button class="col-click col-result" onClick={() => setOpen((o) => !o)} title={`${t("goal.viewOutput")} · ${duration(v()!.duration_ms)} · @${short(v()!.pin)}`} aria-expanded={open()}>
+          <button class="col-click col-result" onClick={() => setOpen((o) => !o)} title={`${t("goal.viewOutput")}, ${duration(v()!.duration_ms)}, @${short(v()!.pin)}`} aria-expanded={open()}>
             <span class="sr-only">{t("honesty.srVerified")} </span>
             {v()!.passed ? t("common.passed") : t("common.failed")}
           </button>
@@ -104,23 +79,26 @@ export function CriterionRow(props: { goalId: string; c: ExtCriterionView; state
         </Show>
       </div>
 
-      <Show when={pills().length}>
-        <div class="ev-strip" aria-label={t("goal.evidence")}>
-          <For each={pills()}>{([tone, label, title]) => <span class={`ev-pill ev-pill-${tone}`} data-mark={tone} title={title}>{label}</span>}</For>
+      <Show when={strip().length}>
+        <div class="ev-strip" aria-label={t("goal.evidence")} onClick={() => v() && setOpen(true)}>
+          <For each={strip()}>{([tone, label, title]) => <span class={`ev-pill ev-pill-${tone}`} data-mark={tone} title={title}>{label}</span>}</For>
         </div>
       </Show>
 
-      <Show when={hoItems().length}>
-        <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
-          <span class="meta t2">{t("goal.heldOut")}</span>
-          <For each={hoItems()}>{([cls, text]) => <span class={cls}>{text}</span>}</For>
-        </div>
+      <Show when={open() || !v()}>
+        <BaselineLine c={c()} base={props.base} told={props.told} />
+        <CanaryLine c={c()} />
+        {/* The held-out line counts them ("held-out tests: 1 of 2 ran"); the files that ran sit right under it, before the
+            line that names the ones that did not run (review 15: after it, a ran file read as one more that did not). */}
+        <HeldOutLine c={c()}>
+          <Show when={ran().length}>
+            <div class="ev-holdout-files" title={t("goal.heldOutLong")}>
+              <For each={ran()}>{(f) => <span class="ev-hf">{f}</span>}</For>
+            </div>
+          </Show>
+        </HeldOutLine>
+        <LoopbackLine c={c()} />
       </Show>
-
-      <BaselineLine c={c()} base={props.base} />
-      <CanaryLine c={c()} />
-      <HeldOutLine c={c()} />
-      <LoopbackLine c={c()} />
       <Show when={stepsOpen() && steps().length}>
         <ol class="look-step-list look-step-list-read">
           <For each={steps()}>{(s, i) => <li class="look-step"><span class="look-step-no num" aria-hidden="true">{String(i() + 1).padStart(2, "0")}</span><code class="code-val">{s}</code></li>}</For>

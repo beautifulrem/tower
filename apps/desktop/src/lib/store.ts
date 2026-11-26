@@ -48,8 +48,11 @@ export const ACTIVITY_MAX = 200;
 export interface Pulse {
   /** When the goal's event stream last moved (ms since the epoch). */
   at: number;
-  /** The tool call in flight, if one started and has not ended. */
+  /** The newest tool call still in flight, if any: the one the run is at work on. */
   tool: { name: string; since: number } | null;
+  /** Every call in flight, by its id: an engine may run tools side by side, and one ending leaves the others running
+   *  (review 16: a single slot read the run as idle while its command still ran). */
+  calls?: Record<string, { name: string; since: number }>;
 }
 
 interface State {
@@ -72,7 +75,7 @@ interface State {
    * The engine's pulse per goal: when its event stream last moved (a trace
    * entry or streamed text) and the tool call still in flight, if any. The
    * heartbeat reads this, so a long tool run is "a tool running for 3m",
-   * not "unresponsive".
+   * not "silent".
    */
   pulse: Record<string, Pulse>;
   toasts: Toast[];
@@ -176,21 +179,6 @@ export function dismissToast(id: number) {
   setTimeout(() => setState("toasts", (t) => t.filter((x) => x.id !== id)), 110);
 }
 
-/**
- * The same question asked twice (a pause event the supervisor sent again)
- * is one card: the newest of each (goal, kind, subject) stands, in the
- * original order. Insurance on the reading side; the fix belongs upstream.
- */
-export function dedupeInbox(items: InboxItem[]): InboxItem[] {
-  const newest = new Map<string, InboxItem>();
-  for (const i of items) {
-    const k = `${i.goal_id}\u0000${i.kind}\u0000${i.subject.trim()}`;
-    const have = newest.get(k);
-    if (!have || i.created_at >= have.created_at) newest.set(k, i);
-  }
-  return items.filter((i) => newest.get(`${i.goal_id}\u0000${i.kind}\u0000${i.subject.trim()}`) === i);
-}
-
 /** Runs an action, surfacing failures as an error toast. */
 export async function act<T>(fn: () => Promise<T>, success?: string): Promise<T | undefined> {
   try {
@@ -292,6 +280,27 @@ let subscribed: Promise<unknown> | null = null;
 /** What live updates set while the first snapshot was still loading: newer than the snapshot, so it must not overwrite them. */
 const fresh = { goals: new Set<string>(), inbox: false, projects: false };
 
+/**
+ * What you typed in a card and have not sent, by item (`DecisionCard`): it outlives the card (another view) while the app
+ * is open, and goes once an answer to the item is sent. An item that leaves takes it along (answered on the phone,
+ * withdrawn), unless a new item of its goal, kind and words comes in its place in the same update (D259 replaces one so):
+ * that one finds it. Two such items open at once (two dialogs asking the same) each have their own (review 24, record
+ * only 4). Put aside, an item is still open, and so is what you typed in it. Only live updates carry drafts: a card is
+ * first shown after the first snapshot, and a snapshot is loaded again only after it failed (Retry), with none shown.
+ */
+export const drafts: Record<string, string> = {};
+function carryDrafts(now: InboxItem[]) {
+  const was = [...state.inbox, ...state.snoozed];
+  const key = (i?: InboxItem) => i && i.goal_id + i.kind + i.subject;
+  for (const id in drafts)
+    if (!now.some((i) => i.id === id)) {
+      const k = key(was.find((i) => i.id === id));
+      const heir = now.find((i) => key(i) === k && !was.some((w) => w.id === i.id));
+      if (heir) drafts[heir.id] = drafts[id];
+      delete drafts[id];
+    }
+}
+
 function subscribe() {
   if (subscribed) return subscribed;
   subscribed = onUpdate((u) => {
@@ -302,7 +311,9 @@ function subscribe() {
         break;
       case "inbox":
         fresh.inbox = true;
-        setState("inbox", reconcile(dedupeInbox(u.items), { key: "id" }));
+        // Before the cards: a new one reads its draft as it is made.
+        carryDrafts([...u.items, ...(u.snoozed ?? [])]);
+        setState("inbox", reconcile(u.items, { key: "id" }));
         setState("snoozed", reconcile(u.snoozed ?? [], { key: "id" }));
         break;
       case "projects":
@@ -341,8 +352,15 @@ export function beat(goalId: string, event: TraceEntry["event"] | null, now = Da
     produce((s) => {
       const p = s.pulse[goalId] ?? { at: 0, tool: null };
       p.at = now;
-      if (event?.kind === "tool_started") p.tool = { name: event.tool, since: now };
-      else if (event?.kind === "tool_ended" || event?.kind === "run_ended" || event?.kind === "engine_error") p.tool = null;
+      const calls = (p.calls ??= {});
+      // Work, as the supervisor counts it: not a note (log), the hand-in (submit) or a question to you.
+      if (event?.kind === "tool_started" && !/^(log|submit|ask_user)$/.test(event.tool)) calls[event.call_id] = { name: event.tool, since: now };
+      else if (event?.kind === "tool_ended") delete calls[event.call_id];
+      else if (event?.kind === "run_ended") p.calls = {};
+      // At work on the newest call still in flight, as the supervisor's mode and live line say (review 17); of two
+      // started in the same millisecond, the later (the calls keep their order: an engine's ids are not numbers).
+      const work = Object.values(p.calls).reduce<Pulse["tool"]>((w, c) => (w && w.since > c.since ? w : c), null);
+      p.tool = work && { ...work };
       s.pulse[goalId] = p;
     }),
   );
@@ -350,11 +368,14 @@ export function beat(goalId: string, event: TraceEntry["event"] | null, now = Da
 
 /**
  * How alive a running goal's engine is: when it last moved (the newer of
- * its event stream and its summary) and the tool it is inside, if any.
+ * its event stream and its summary) and the tool it is inside, if any. The
+ * supervisor's live line has the last word on whether a call is in flight:
+ * after a reload the desk has seen no call start, and a turn that ends
+ * leaves calls whose end never comes (review 18).
  */
 export function livenessOf(g: GoalSummary): { at: number; tool: Pulse["tool"] } {
-  const p = state.pulse[g.id];
-  return { at: Math.max(g.updated_at, p?.at ?? 0), tool: p?.tool ?? null };
+  const p = state.pulse[g.id], l = g.live_line;
+  return { at: Math.max(g.updated_at, p?.at ?? 0), tool: l?.running === false ? null : p?.tool ?? (l?.running ? { name: l.action, since: l.at } : null) };
 }
 
 /** Loads the replica. Safe to call again after a failure (the Retry button). */
@@ -383,7 +404,7 @@ export async function init() {
         s.goals = Object.fromEntries(goals.map((g) => [g.id, fresh.goals.has(g.id) ? live[g.id] : g]));
         for (const id of fresh.goals) if (!s.goals[id] && live[id]) s.goals[id] = live[id];
         if (!fresh.inbox) {
-          s.inbox = dedupeInbox(inbox);
+          s.inbox = inbox;
           s.snoozed = snoozed;
         }
         if (!fresh.projects) s.projects = projects;

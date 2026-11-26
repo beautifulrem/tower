@@ -18,17 +18,39 @@ import { DangerMark, Icon } from "./Glyph";
 import { ProvenanceFrame } from "./ProvenanceFrame";
 import { Button, Kbd, Overlay } from "./ui";
 
-function Shot(props: { file: string | null; error: string | null; label: string; onOpen?: (from: HTMLElement) => void }) {
+/**
+ * Why a side is missing, in the frame its capture would have had: a path or a code breaks only after / . _ : :: :// ? & =,
+ * never inside a word (review 19: "CONNECTIO|N_REFUSED") nor between the marks of `::` and `://` (review 20: "net:|:ERR"),
+ * in as many lines as the frame holds, and the whole reason is its tooltip. Large, side by side (`wide`), a line holds
+ * any code, so a code keeps whole: only an address breaks, after `://` or a `/` (review 21: a nowrap span around `_<wbr>`
+ * still broke "ERR_|CONNECTION" in WebKit). In the strip on the phone's tab the frame is the box a phone's capture waits
+ * in (`.look-frame`), too narrow for words, and they stand beside it (app.css).
+ */
+const Why = (p: { text: string; wide?: boolean }) => (
+  <div class="look-missing meta t3" title={p.text}>
+    <i class="look-frame" />
+    <span>{p.text.split(p.wide ? /(:\/\/|\/)/ : /(:\/\/|::|[/._:?&=])/).map((s, i) => (i % 2 ? [s, <wbr />] : s))}</span>
+  </div>
+);
+
+/**
+ * A side's capture is one browser session for both viewports: when it fails, its reason is the phone's as much as the
+ * desktop's (review 22, record only: the phone's frame said "Not captured" and nothing more).
+ */
+function Shot(props: { file: string | null; error: string | null; label: string; onOpen?: (from: HTMLElement) => void; wide?: boolean }) {
   const [src] = createResource(
     () => props.file,
     (f) => (f ? api.lookImage(f).catch(() => null) : Promise.resolve(null)),
   );
+  // An image the webview cannot decode is gone too: said in words in the frame, never a 2px sliver of border.
+  const [broken, setBroken] = createSignal<string | null>(null);
   return (
     <figure class="look-shot">
-      <Show when={props.file && !props.error} fallback={<div class="look-missing meta t3">{props.error ?? t("look.notCaptured")}</div>}>
-        <Show when={src()} fallback={<div class="look-missing meta t3">{src.loading ? t("common.loading") : t("look.gone")}</div>}>
-          <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label} · ${t("look.enlarge")}`}>
-            <img class="look-img" src={src()!} alt={props.label} />
+      <Show when={props.file && !props.error} fallback={<Why text={props.error ?? t("look.notCaptured")} wide={props.wide} />}>
+        <Show when={src() && broken() !== src()} fallback={<Why text={src.loading ? t("common.loading") : t("look.gone")} wide={props.wide} />}>
+          <button class="look-img-btn" onClick={(e) => props.onOpen?.(e.currentTarget)} title={t("look.enlarge")} aria-label={`${props.label}, ${t("look.enlarge")}`}>
+            {/* Until it has decoded, it holds the frame of Tower's capture, desktop or phone (`.look-img`), never a 2px line (review 16). */}
+            <img class="look-img" src={src()!} alt={props.label} onError={() => setBroken(src() ?? null)} />
           </button>
         </Show>
       </Show>
@@ -100,9 +122,9 @@ export function LookStrip(props: { look: LookView; title: string }) {
       <Show when={hasMobile()}>
         <div class="look-viewports"><ViewportTabs value={vp()} onChange={setVp} /></div>
       </Show>
-      <div class="look-strip">
-        <Shot file={activeBase()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} onOpen={openFrom} />
-        <Shot file={activePin()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} onOpen={openFrom} />
+      <div class="look-strip" classList={{ "look-phone": vp() === "mobile" }}>
+        <Shot file={activeBase()} error={props.look.base_error} label={t("look.before")} onOpen={openFrom} />
+        <Shot file={activePin()} error={props.look.pin_error} label={t("look.after")} onOpen={openFrom} />
       </div>
       <ConsoleErrorsBlock errors={ext().console_errors} inline />
       <Show when={open()}>
@@ -204,9 +226,10 @@ function LookCompare(props: { look: LookViewExt; title: string; initialViewport?
           </div>
         }
       >
-        <div class="look-side">
-          <Shot file={baseFile()} error={vp() === "desktop" ? props.look.base_error : null} label={t("look.before")} />
-          <Shot file={pinFile()} error={vp() === "desktop" ? props.look.pin_error : null} label={t("look.after")} />
+        <div class="look-side" classList={{ "look-phone": vp() === "mobile" }}>
+          {/* The phone's frame follows the window's height and is narrow in a short one: it breaks as the strip does. */}
+          <Shot file={baseFile()} error={props.look.base_error} label={t("look.before")} wide={vp() === "desktop"} />
+          <Shot file={pinFile()} error={props.look.pin_error} label={t("look.after")} wide={vp() === "desktop"} />
         </div>
       </Show>
       <ConsoleErrorsBlock errors={props.look.console_errors} />

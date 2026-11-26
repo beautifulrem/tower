@@ -33,7 +33,7 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
   const scopeRows = () => [
     [t("goal.include"), c().scope.include, ""],
     ...(c().scope.exclude.length ? [[t("goal.exclude"), c().scope.exclude, "rail-paths-exclude"]] : []),
-    ...(c().scope.readonly.length ? [[t("goal.readonly"), c().scope.readonly, ""]] : []),
+    ...(c().scope.readonly.length ? [[t("contract.readonly"), c().scope.readonly, ""]] : []),
   ] as [string, string[], string][];
 
   return (
@@ -62,7 +62,7 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
               </>
             )}
           </For>
-          <Show when={g().port_base != null}><dt>{t("contract.ports")}</dt><dd class="code-val t2">{g().port_base}–{g().port_base! + 9}</dd></Show>
+          <Show when={g().port_base != null}><dt title={t("contract.ports")}>{t("contract.portsShort")}</dt><dd class="code-val t2">{g().port_base}–{g().port_base! + 9}</dd></Show>
         </dl>
       </div>
 
@@ -87,19 +87,19 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
       </div>
 
       <div class="rail-block">
-        <div class="rail-head">{t("goal.autonomy")}</div>
+        <div class="rail-head">{t("contract.autonomy")}</div>
         <dl class="rail-dl">
           <dt>{t("goal.autonomyLevel")}</dt><dd>{t(`contract.${c().autonomy}`)}</dd>
           <dt>{t("goal.oneWayShort")}</dt><dd title={t("goal.oneWayDoors")}>{t("goal.askFirst")}</dd>
-          <dt>{t("goal.sandboxShort")}</dt><dd>{sandboxTag(tier(), hasIssue(state.env, "no_sandbox"))}<span class="sep" aria-hidden="true">·</span>{c().network ? t("goal.networkOn") : t("goal.networkOff")}</dd>
+          <dt>{t("settings.gaugeSandbox")}</dt><dd>{sandboxTag(tier(), hasIssue(state.env, "no_sandbox"))}<span class="sep" />{c().network ? t("goal.networkOn") : t("goal.networkOff")}</dd>
         </dl>
       </div>
 
       <div class="rail-block">
-        <div class="rail-head"><span>{t("goal.engine")}</span><span class="grow" /><span class="meta t3">{trustLabel(trustTierOf(eng()))}</span></div>
+        <div class="rail-head"><span>{t("chrome.engine")}</span><span class="grow" /><span class="meta t3">{trustLabel(trustTierOf(eng()))}</span></div>
         <dl class="rail-dl">
           <Show when={c().engine && c().engine !== effectiveEngine("", state.settings?.engine)}><dt>{t("goal.engineName")}</dt><dd>{engineLabel(c().engine)}</dd></Show>
-          <dt>{t("goal.model")}</dt><dd classList={{ mono: /^[\w.-]+\/[\w.:-]+$/.test(model()) }}>{model() || t("common.engineDefault", { engine: engineLabel(eng()) })}</dd>
+          <dt>{t("contract.model")}</dt><dd classList={{ mono: /^[\w.-]+\/[\w.:-]+$/.test(model()) }}>{model() || t("common.engineDefault", { engine: engineLabel(eng()) })}</dd>
           <Show when={escModel()}>
             <dt>{t("settings.escalationModel")}</dt>
             <dd class="row" style={{ gap: "4px", "flex-wrap": "wrap" }}><span class="mono">{escModel()}</span><span class={escOn() ? "esc-active" : "meta t3"}>{escOn() ? t("quiet.on") : `${escAfter()}×`}</span></dd>
@@ -113,9 +113,9 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
             </dd>
           </Show>
           <Show when={mqPos() !== null}><dt>{t("ops.mergeQueueTitle")}</dt><dd class="num">#{mqPos()}</dd></Show>
-          <Show when={props.d.local_files.length}><dt>{t("goal.localFiles")}</dt><dd class="rail-paths code-val">{props.d.local_files.join(", ")}</dd></Show>
+          <Show when={props.d.local_files.length}><dt>{t("settings.localFiles")}</dt><dd class="rail-paths code-val">{props.d.local_files.join(", ")}</dd></Show>
           <Show when={g().branch}>
-            <dt>{t("goal.branch")}</dt>
+            <dt>{t("live.branch")}</dt>
             <dd class="mono break">{g().branch}<IconButton icon="copy" size={22} label={t("goal.copyBranch")} onClick={() => (void navigator.clipboard.writeText(g().branch!), toast("success", t("common.copied")))} /></dd>
           </Show>
         </dl>

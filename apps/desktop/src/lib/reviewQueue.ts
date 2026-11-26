@@ -6,6 +6,10 @@
  */
 import { createSignal } from "solid-js";
 
+import { isBlocking } from "./labels";
+import { go } from "./nav";
+import { state } from "./store";
+
 const KEY = "tower.reviewQueue";
 
 const read = (): string[] => {
@@ -55,4 +59,13 @@ export function advanceQueue(id: string): string | null {
 
 export function clearQueue() {
   write([]);
+}
+
+/** Every goal waiting for your review, in the inbox's order: one queue, whether it starts from the sidebar, the palette, the inbox or ⇧R. */
+export const toReviewIds = (): string[] => state.inbox.filter((i) => !isBlocking(i)).map((i) => i.goal_id);
+
+/** Starts the queue over every goal to review and opens the first. */
+export function reviewEach() {
+  const first = startQueue(toReviewIds());
+  if (first) go({ name: "review", id: first });
 }

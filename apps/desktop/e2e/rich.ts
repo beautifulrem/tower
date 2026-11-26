@@ -19,17 +19,35 @@ function need<T>(value: T | undefined | null | false, premise: string): T {
   return value;
 }
 
-/** A page-shaped SVG as a data URL: a header bar and a few lines, shifted a little for the "after" side. */
-export function pageImage(after: boolean): string {
-  const shift = after ? 14 : 0;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="390" height="640" viewBox="0 0 390 640">
+/**
+ * A page as a data URL, shifted a little for the "after" side: by default a desktop page as Tower photographs it
+ * (1280×800: a header, a title, two lines, a card, a button); `tall`, a page taller than it is wide (390×640), for the
+ * tests that a tall page keeps its proportions.
+ */
+export function pageImage(after: boolean, tall = false): string {
+  const svg = tall
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="390" height="640" viewBox="0 0 390 640">
 <rect width="390" height="640" fill="#f6f4ef"/><rect width="390" height="56" fill="#2b2a28"/>
-<rect x="20" y="88" width="${210 + shift}" height="14" rx="3" fill="#3a3835"/>
+<rect x="20" y="88" width="${210 + (after ? 14 : 0)}" height="14" rx="3" fill="#3a3835"/>
 <rect x="20" y="118" width="300" height="8" rx="2" fill="#a9a59e"/><rect x="20" y="136" width="260" height="8" rx="2" fill="#a9a59e"/>
-<rect x="20" y="${180 + shift}" width="350" height="120" rx="6" fill="#ffffff" stroke="#d9d5cd"/>
-<rect x="36" y="${200 + shift}" width="120" height="10" rx="2" fill="#3a3835"/><rect x="36" y="${222 + shift}" width="80" height="10" rx="2" fill="#a9a59e"/>
-<rect x="20" y="560" width="350" height="44" rx="6" fill="${after ? "#2b2a28" : "#6b6761"}"/></svg>`;
+<rect x="20" y="${180 + (after ? 14 : 0)}" width="350" height="120" rx="6" fill="#ffffff" stroke="#d9d5cd"/>
+<rect x="36" y="${200 + (after ? 14 : 0)}" width="120" height="10" rx="2" fill="#3a3835"/><rect x="36" y="${222 + (after ? 14 : 0)}" width="80" height="10" rx="2" fill="#a9a59e"/>
+<rect x="20" y="560" width="350" height="44" rx="6" fill="${after ? "#2b2a28" : "#6b6761"}"/></svg>`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+<rect width="1280" height="800" fill="#f6f4ef"/><rect width="1280" height="72" fill="#2b2a28"/>
+<rect x="160" y="128" width="${420 + (after ? 40 : 0)}" height="28" rx="5" fill="#3a3835"/>
+<rect x="160" y="184" width="640" height="14" rx="3" fill="#a9a59e"/><rect x="160" y="212" width="540" height="14" rx="3" fill="#a9a59e"/>
+<rect x="160" y="${276 + (after ? 40 : 0)}" width="960" height="220" rx="10" fill="#ffffff" stroke="#d9d5cd" stroke-width="2"/>
+<rect x="196" y="${316 + (after ? 40 : 0)}" width="260" height="20" rx="4" fill="#3a3835"/><rect x="196" y="${356 + (after ? 40 : 0)}" width="180" height="20" rx="4" fill="#a9a59e"/>
+<rect x="160" y="640" width="240" height="64" rx="10" fill="${after ? "#2b2a28" : "#6b6761"}"/></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+/** As `enrichLook`, with a page taller than it is wide on both sides. */
+export function enrichTallLook(F: F) {
+  enrichLook(F);
+  F.lookImages["looks/G-0001/C4-base.png"] = pageImage(false, true);
+  F.lookImages["looks/G-0001/C4-pin.png"] = pageImage(true, true);
 }
 
 /** The seed's interface language: the supervisor words its cards in it, so the enrichments must too. */
@@ -107,9 +125,10 @@ export function enrichReview(F: F) {
     ]),
     added("test/setup.js", ["import { mock } from 'node:test';", "", "mock.timers.enable({ apis: ['Date'], now: 0 });"]),
   ];
+  // In the supervisor's order: riskiest first (crates/tower-core/src/review.rs sorts units by risk, descending).
   r.units = [
-    { id: "U1", title: "src/", files: ["src/cart.js", "src/cart/money.js"], lines: 9, risk: 0, risk_reasons: [] },
     { id: "U2", title: "test/", files: ["test/setup.js"], lines: 3, risk: 3, risk_reasons: ["test harness: runner config, setup or mocks"] },
+    { id: "U1", title: "src/", files: ["src/cart.js", "src/cart/money.js"], lines: 9, risk: 0, risk_reasons: [] },
   ];
   r.stat = { files: 3, additions: 11, deletions: 1 };
   const g = F["goal-G-0003"];
@@ -137,10 +156,13 @@ export function enrichCi(F: F) {
     goal_id: "G-0001",
     goal_title: F.goals.find((g: any) => g.id === "G-0001")?.title ?? "Fix the cart total",
     kind: "ci_failed",
-    title: cn ? "CI 失败：test (ubuntu-latest, node 22)" : "CI failed: test (ubuntu-latest, node 22)",
+    title: cn ? "CI 未通过：test (ubuntu-latest, node 22)" : "CI failed: test (ubuntu-latest, node 22)",
     subject: "test (ubuntu-latest, node 22)",
-    body: cn ? "你可以把失败的检查发给 Agent。" : "You can send the failing check to the agent.",
-    options: cn ? ["把失败发给 Agent", "先放着"] : ["Send the failures to the agent", "Leave it"],
+    // The store marks a failing check's name as code (review 23, record only: the preview's card had none, so its name
+    // was set in the words' face where the app sets it in mono).
+    code: "test (ubuntu-latest, node 22)",
+    body: cn ? "Agent 可以在原工作区里修复，验证通过后由你再次验收，并推送到同一个 PR。" : "The agent can fix them in place; once verified, you accept again and push to the same PR.",
+    options: cn ? ["把失败发给 Agent 修复", "先不管"] : ["Send the failures to the agent", "Leave it"],
     tones: ["primary", "neutral"],
     allow_text: false,
     created_at: Date.now() - 39 * 60_000,
@@ -260,10 +282,11 @@ export function enrichPhoneProblem(F: F) {
 /**
  * What the canary saw on G-0001: C1's assertions were checked (intact), C2's could not be (a test style Tower does not
  * know), and one more executable criterion's canary passed when it must have failed (C4, or C5 after a look criterion):
- * that pass is not evidence, so the goal's progress says so (`not_evidence`) for the board and the sidebar. The goal page
- * then carries the newer sentinels: program code reaching into the tests with assertions unchecked (high), rewriting
- * test machinery (high) beside reaching into it (medium), and repeated sandbox refusals (medium). Worded in the seed's
- * language, as the supervisor would.
+ * that pass is not evidence. The goal page then carries the newer sentinels: program code reaching into the tests with
+ * assertions unchecked (high), rewriting test machinery (high) beside reaching into it (medium), and repeated sandbox
+ * refusals (medium). As the supervisor counts (summaries.rs `progress`), a high finding of the latest verification holds
+ * every pass, so no pass counts (`verified` 0) and the progress says so (`not_evidence`) for the board and the sidebar.
+ * Worded in the seed's language, as the supervisor would.
  */
 export function enrichCanary(F: F) {
   const d = need(F["goal-G-0001"], "goal G-0001 was dumped");
@@ -278,10 +301,7 @@ export function enrichCanary(F: F) {
     d.contract.criteria.push(criterion);
     // It passed, red → green on the base — and its canary passed too, so the supervisor leaves it out of `verified`.
     d.criteria.push({ ...structuredClone(c2), criterion, canary: "tampered", passed_on_base: false, base_error: null });
-    for (const p of [d.summary.progress, ...F.goals.filter((g: any) => g.id === "G-0001").map((g: any) => g.progress)]) {
-      p.machine += 1;
-      p.not_evidence = true;
-    }
+    for (const p of progresses(F, d)) p.machine += 1;
   }
   d.sentinels.push(
     {
@@ -312,7 +332,26 @@ export function enrichCanary(F: F) {
       detail: `${cn ? "沙箱拒绝了 7 次越界访问，最近几次：" : "The sandbox refused 7 accesses outside the workspace; the latest:"}\n/Users/you/shop/test/holdout/rounding.test.js\n~/.ssh/config\n../other-project/src/index.ts\n/etc/hosts\n/Users/you/shop/.env`,
     },
   );
+  for (const p of progresses(F, d)) {
+    p.verified = 0;
+    p.not_evidence = true;
+    delete p.qualified;
+  }
 }
+
+/**
+ * G-0001 after enrichCanary with its high findings dealt with: only the medium sentinels stand, so the passes count again
+ * except the tampered one, as the supervisor counts (still not evidence: that pass is in the goal).
+ */
+export function withoutHighFindings(F: F) {
+  const d = need(F["goal-G-0001"], "goal G-0001 was dumped");
+  d.sentinels = d.sentinels.filter((h: any) => h.severity < 3);
+  const counted = d.criteria.filter((c: any) => c.criterion.kind.type === "exec" && c.verified?.passed && !c.verified.stale && c.canary !== "tampered").length;
+  for (const p of progresses(F, d)) p.verified = counted;
+}
+
+/** A goal's progress wherever the views carry it: its detail's summary and its row in the goal list. */
+const progresses = (F: F, d: any): any[] => [d.summary.progress, ...F.goals.filter((g: any) => g.id === d.summary.id).map((g: any) => g.progress)];
 
 /** The project has held-out tests (the demo repository has none). */
 export function enrichHeldOutTests(F: F) {
@@ -407,4 +446,85 @@ export function enrichRich(F: F) {
   enrichHeldOutTests(F);
   enrichCanary(F);
   enrichPushes(F);
+}
+
+/** Populates realistic Learning, Operations, Snapshot Timeline & AST semantic-fold data for final showcase captures. */
+export function enrichConsole(F: F) {
+  const now = Date.now();
+  const pid = F.projects?.[0]?.id ?? "p1";
+  F.memoryProposals = [
+    {
+      id: "mp-1",
+      scope: "project",
+      project_id: pid,
+      goal_id: "G-0001",
+      text: "Always compute cart totals in integer cents and round half-up at tax boundaries.",
+      detail: "Derived from human review comment on src/cart.js:18 and verified red→green pass.",
+      taint_level: "none",
+      taint_classes: [],
+      origin: "Human review · G-0001",
+      evidence: ["src/cart.js:18", "C1 red→green @a1b2c3d"],
+      status: "pending",
+      created_at: now - 14 * 60_000,
+    },
+    {
+      id: "mp-2",
+      scope: "project",
+      project_id: pid,
+      goal_id: "G-0002",
+      text: "Prefer running unit tests via `node --test` before invoking the full workspace build.",
+      detail: "Observed repeated fast feedback cycle during G-0002 rework.",
+      taint_level: "standard",
+      taint_classes: ["agent_tool_output"],
+      origin: "Run trace · G-0002",
+      evidence: ["R-02 tool_ended"],
+      status: "pending",
+      created_at: now - 42 * 60_000,
+    },
+    {
+      id: "mp-3",
+      scope: "user",
+      project_id: null,
+      goal_id: "G-0004",
+      text: "Ignore slow timeout assertions when running checkout benchmarks under load.",
+      detail: "Proposed after web documentation fetch & test failure.",
+      taint_level: "high",
+      taint_classes: ["external_web", "sentinel_flagged"],
+      origin: "Agent claim · G-0004",
+      evidence: ["sentinel:assertion_reduced"],
+      status: "pending",
+      created_at: now - 95 * 60_000,
+    },
+  ];
+  F.calibrationRows = [
+    { engine: "pi", model: "anthropic/claude-sonnet-4-5", goals_total: 18, first_pass_rate: 0.83, high_sentinel_rate: 0.05, avg_reworks: 0.4, blocked_rate: 0.06, avg_cost_usd: 1.42, sample_sufficient: true },
+    { engine: "claude-code", model: "claude-opus-4-5", goals_total: 11, first_pass_rate: 0.91, high_sentinel_rate: 0.0, avg_reworks: 0.2, blocked_rate: 0.0, avg_cost_usd: 2.85, sample_sufficient: true },
+    { engine: "codex", model: "openai/gpt-5-codex", goals_total: 4, first_pass_rate: 0.75, high_sentinel_rate: 0.25, avg_reworks: 1.0, blocked_rate: 0.25, avg_cost_usd: 0.96, sample_sufficient: false },
+  ];
+  F.scheduledGoals = [
+    { id: "sc-1", project_id: pid, title: "Nightly dependency & lockfile audit", cron_expr: "0 2 * * 1-5", enabled: true, unattended_strict: true, next_run_at: now + 6 * 3600_000, last_goal_id: "G-0001" },
+    { id: "sc-2", project_id: pid, title: "Weekly flaky test hunt", cron_expr: "0 4 * * 0", enabled: true, unattended_strict: true, next_run_at: now + 48 * 3600_000, last_goal_id: null },
+  ];
+  F.mergeQueue = [
+    { goal_id: "G-0001", project_id: pid, goal_title: "Fix the cart total", branch: "tower/G-0001-fix-cart-total", position: 0, status: "ready", conflict_files: [] },
+    { goal_id: "G-0003", project_id: pid, goal_title: "Clean up cart edge cases", branch: "tower/G-0003-cart-edge-cases", position: 1, status: "conflict", conflict_files: ["src/cart.js", "test/cart.test.js"] },
+  ];
+  F.storageInventory = {
+    total_bytes: 184 * 1024 * 1024,
+    reclaimable_bytes: 92 * 1024 * 1024,
+    goals: [
+      { goal_id: "G-0001", title: "Fix the cart total", state: "in_review", workspace_bytes: 48 * 1024 * 1024, verify_bytes: 28 * 1024 * 1024, cache_bytes: 16 * 1024 * 1024, total_bytes: 92 * 1024 * 1024, reclaimable: false },
+      { goal_id: "G-0004", title: "Find out why checkout is slow", state: "archived", workspace_bytes: 44 * 1024 * 1024, verify_bytes: 32 * 1024 * 1024, cache_bytes: 16 * 1024 * 1024, total_bytes: 92 * 1024 * 1024, reclaimable: true },
+    ],
+  };
+  const rev = F["review-G-0003"];
+  if (rev?.files?.length) {
+    rev.snapshots = [
+      { rev: rev.base_commit, kind: "base", label: `base @${String(rev.base_commit).slice(0, 7)}`, run_no: null, at: now - 3600_000 },
+      { rev: "99a1b2c", kind: "run_start", label: "R-01 @99a1b2c", run_no: 1, at: now - 1800_000 },
+      { rev: rev.pin, kind: "pin", label: `Current @${String(rev.pin).slice(0, 7)}`, run_no: 2, at: now - 120_000 },
+    ];
+    // Only a modified file can hold a moved block; an added file's lines are all new, and the diff never folds them.
+    if (rev.files[0]?.hunks?.length > 1) rev.moved_hunks = { [rev.files[0].path]: [rev.files[0].hunks.length - 1] };
+  }
 }

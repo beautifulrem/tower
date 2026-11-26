@@ -4,11 +4,12 @@
  * Honesty Ledger, precision Contract Rail, lazy-loaded Multimodal Steering
  * Console, and Flight Recorder escape hatch (W).
  */
-import { For, Show, Suspense, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
+import { ErrorBoundary, For, Show, Suspense, createEffect, createMemo, createResource, createSignal, lazy, on, onCleanup } from "solid-js";
 
 import { DecisionCard, snoozeMenu } from "../components/DecisionCard";
 import { LifecycleGlyph, NoticeMark, Seal, Stamp } from "../components/Glyph";
-import { Claim, CriteriaBar, discountedOf } from "../components/HonestyCore";
+import { Claim, CriteriaBar } from "../components/HonestyCore";
+import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
 import { LiveLine } from "../components/Live";
 import { PrLine } from "../components/Pr";
 import { Button, Empty, Failed, Loading, Section, settled } from "../components/ui";
@@ -23,7 +24,7 @@ import { go } from "../lib/nav";
 import { act, onTrace, state, toast } from "../lib/store";
 import { ContractRail } from "./goal/ContractRail";
 import { GoalActions } from "./goal/GoalActions";
-import { GoalBlocks } from "./goal/GoalBlocks";
+import { GoalBlocks, HighSentinels } from "./goal/GoalBlocks";
 import { type ExtGoalDetail, type ExtGoalSummary, trustTierOf } from "./goal/ext";
 
 const Trace = lazy(withLater(() => import("./Learning").then((m) => ({ default: m.Trace }))));
@@ -76,7 +77,7 @@ export function GoalPage(props: { id: string }) {
       if ((await act(() => api.pause(props.id))) !== undefined)
         toast("info", t("goal.pausedToast", { id: props.id }), {
           goalId: props.id,
-          action: { label: t("goal.resume"), run: () => void act(() => api.resume(props.id)) },
+          action: { label: t("goal.purposeResume"), run: () => void act(() => api.resume(props.id)) },
         });
     } else if (s === "paused") void act(() => api.resume(props.id));
   };
@@ -91,7 +92,7 @@ export function GoalPage(props: { id: string }) {
   useKeys(
     [
       { key: "w", run: () => setWatch((w) => !w), desc: () => t("keys.watch") },
-      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review"), when: () => !!summary()?.diffstat },
+      { key: "r", run: () => go({ name: "review", id: props.id }), desc: () => t("keys.review"), when: () => !!summary()?.diffstat?.files },
       { key: "p", run: () => togglePause(), desc: () => t("keys.pauseResume") },
       { key: "shift+e", run: () => go({ name: "new", amendId: props.id }), desc: () => t("goal.amend") },
       { key: "h", run: () => inbox()[0] && void snoozeMenu(inbox()[0]), desc: () => t("keys.snooze"), when: () => inbox().length > 0 },
@@ -129,17 +130,36 @@ export function GoalPage(props: { id: string }) {
           <header class="goal-head">
             <div class="goal-head-main">
               <div class="row">
-                <LifecycleGlyph goal={g()} size={14} />
-                <h1 class="goal-title ellipsis">{g().title}</h1>
+                <LifecycleGlyph goal={g()} size={14} turn />
+                <h1 class="goal-title ellipsis" title={g().title}>{g().title}</h1>
+              </div>
+              {/* The verdict and what it stands on, on the title's own reading path: the seal (or its withholding) and the
+                  two tracks — how far from done, and on what evidence — before who, where and which run. */}
+              <div class="goal-verdict halt">
+                <Show when={!["accepted", "integrated"].includes(g().state)}>
+                  <Seal pin={g().verified_pin} tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} />
+                </Show>
+                {/* R is always here and always "Review n files", whatever the state: the changes, after what they rest on. The
+                    bar and its button wrap together, so a narrow window never leaves the button on a line of its own. */}
+                <span class="goal-verdict-track">
+                  <CriteriaBar progress={g().progress} criteria={detailOk()?.criteria} />
+                  <Show when={g().diffstat?.files}>
+                    {/* Primary only when accepting is the next step: not over a decision, a pass that doesn't count, or a stale one (Verify again leads). */}
+                    <Button size="s" class="goal-verdict-act" variant={g().state !== "in_review" || inbox().length || !g().verified_pin || notEvidence(g()) || detailOk()?.criteria.some((c) => c.verified?.stale) ? "default" : "primary"} kbd="r" onClick={() => go({ name: "review", id: g().id })}>
+                      {t("goal.reviewUnits", { n: g().diffstat!.files })}
+                    </Button>
+                  </Show>
+                </span>
               </div>
               <div class="goal-sub meta halt">
                 <div class="goal-identity">
                   <span class="code-val t2">{g().id}</span>
                   <span>{g().project_name}</span>
                   <Show when={extDetail()?.contract}><span>{t("goal.contractV", { v: extDetail()!.contract.version })}</span></Show>
+                  {/* The run, always: the live line below never repeats it (review 20, record only). */}
                   <Show when={g().run_no > 0}>
                     <span>
-                      {t("goal.runN", { n: g().run_no })}
+                      {t("live.runN", { n: g().run_no })}
                       <Show when={g().rework_cycles > 0}>{t("goal.reworkParen", { n: g().rework_cycles, max: g().max_rework })}</Show>
                     </span>
                   </Show>
@@ -147,7 +167,7 @@ export function GoalPage(props: { id: string }) {
                   <Show when={showStateWord(g())}>
                     <span class="t1">{stateLabel(g().state)}</span>
                     <Show when={g().pause_reason && g().state === "paused" && inbox().length === 0}><span>{pauseLabel(g().pause_reason!)}</span></Show>
-                    <Show when={g().state === "in_review" && !g().verified_pin}><span>{t("live.notMachineVerified")}</span></Show>
+                    <Show when={g().state === "in_review" && !g().verified_pin}><span>{t("honesty.notMachineVerified")}</span></Show>
                   </Show>
                   <Show when={state.settings?.muted_goals.includes(g().id)}><span class="t3">{t("quiet.muted")}</span></Show>
                   <Show when={trustTierOf(eng()) === "experimental"}><span class="wb-exception wb-exception-danger">{t("trust.experimental")}</span></Show>
@@ -177,8 +197,8 @@ export function GoalPage(props: { id: string }) {
               <div class="goal-actions">
                 <GoalActions goal={g()} onWatch={() => setWatch((w) => !w)} watching={watch()} onPause={togglePause} hasDecision={inbox().length > 0} />
               </div>
-              <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin} fallback={<Seal pin={g().verified_pin} large tampered={discountedOf(detailOk()?.criteria) > 0} />}>
-                {(pin) => <Stamp pin={pin()} size="m" tampered={discountedOf(detailOk()?.criteria) > 0} />}
+              <Show when={["accepted", "integrated"].includes(g().state) && g().verified_pin}>
+                {(pin) => <Stamp pin={pin()} size="m" tampered={notEvidence(g())} qualified={caveats(g())} accepted />}
               </Show>
             </div>
           </header>
@@ -196,6 +216,8 @@ export function GoalPage(props: { id: string }) {
               <Show when={["running", "claimed", "verifying"].includes(g().state)}>
                 <div class="annunciator"><LiveLine goal={g()} large hideTarget={inbox().length > 0} /></div>
               </Show>
+              {/* What makes the evidence itself doubtful comes before any decision: a high sentinel, with its lines. */}
+              <Show when={!watch() && extDetail()}>{(d) => <HighSentinels d={d()} />}</Show>
               <Show when={shownInbox.list().length > 0}>
                 <div class="goal-decisions">
                   <For each={shownInbox.list()}>
@@ -208,6 +230,15 @@ export function GoalPage(props: { id: string }) {
                   {(d) => <GoalBlocks d={d()} hasDecision={inbox().length > 0} undoable={undoable()} onUndoRollback={undoRollback} />}
                 </Show>
               </Show>
+              {/* The steer box ends the main column, so the column (and the rail's row beside it) runs to the page's foot:
+                  the sticky rail is never pushed up under the title bar as the page ends (review 18). Folded, it moves
+                  after the rail (app.css). Its code comes on demand: a load that fails says so in its place, with Retry
+                  (which loads it again), and never takes the goal page down with it (review 16, record only). */}
+              <Show when={g().state === "running" || (g().state === "paused" && inbox().length === 0)}>
+                <ErrorBoundary fallback={(err, reset) => <div class="steer-console steer-failed"><Failed inline error={err} onRetry={reset} /></div>}>
+                  <Suspense><SteerBox id={props.id} running={g().state === "running"} files={knownFiles()} /></Suspense>
+                </ErrorBoundary>
+              </Show>
             </div>
             <Show when={!watch()}>
               <aside class="goal-rail">
@@ -215,10 +246,6 @@ export function GoalPage(props: { id: string }) {
               </aside>
             </Show>
           </div>
-
-          <Show when={g().state === "running" || (g().state === "paused" && inbox().length === 0)}>
-            <Suspense><SteerBox id={props.id} running={g().state === "running"} files={knownFiles()} /></Suspense>
-          </Show>
         </div>
       )}
     </Show>

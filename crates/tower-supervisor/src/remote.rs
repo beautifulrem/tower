@@ -78,6 +78,9 @@ impl std::fmt::Debug for Remote {
 struct State {
     goals: Vec<GoalSummary>,
     inbox: Vec<InboxItem>,
+    /// Put aside ("remind me later"): not shown, but still open, so a reply's words typed in one stay for its return
+    /// (review 24, record only 4).
+    snoozed: Vec<InboxItem>,
     lang: String,
     /// How many goals may run at once: the page's runs gauge reads `1/4`, as the desk's title bar does.
     max_running: u32,
@@ -299,6 +302,7 @@ fn state(inner: &Inner) -> crate::Result<State> {
     Ok(State {
         goals: inner.read_store(|st| st.summaries())?,
         inbox: inner.read_store(|st| st.open_inbox_items())?,
+        snoozed: inner.read_store(|st| st.snoozed_inbox_items())?,
         lang: inner.lang().code().to_string(),
         max_running: inner.settings().max_concurrent,
     })
@@ -336,13 +340,17 @@ async fn handle_async(
     if path == "/" && method == tiny_http::Method::Get {
         let mut r = tiny_http::Response::from_data(PAGE.as_bytes().to_vec());
         r.add_header(tiny_http::Header::from_bytes("Content-Type", "text/html; charset=utf-8").expect("static header"));
+        // docs/11 §11.9: the page is one file, its script and styles inline; pictures only from itself or drawn in it
+        // (`data:`, the marks its stylesheet draws); no plug-ins, no base, no form posts, and never inside another
+        // site's frame, where its Deny and Pause could be clicked through a disguise.
         r.add_header(
             tiny_http::Header::from_bytes(
                 "Content-Security-Policy",
-                "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+                "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             )
             .expect("static header"),
         );
+        r.add_header(tiny_http::Header::from_bytes("X-Frame-Options", "DENY").expect("static header"));
         let _ = tokio::task::spawn_blocking(move || req.respond(r)).await;
         return;
     }
@@ -608,6 +616,7 @@ mod tests {
             urgency: 0,
             tones: vec![],
             snoozed_until: None,
+            code: None,
         }
     }
 

@@ -4,7 +4,7 @@ import { type JSX, type Resource, Show, createUniqueId, onCleanup, onMount, spli
 import { errorText } from "../lib/api";
 import { t } from "../lib/i18n";
 import { type Binding, KeyLayer, keyHint, useKeys } from "../lib/keys";
-import { DangerMark, Icon, type IconName } from "./Glyph";
+import { DangerMark, Icon, type IconName, Spinner } from "./Glyph";
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "default" | "ghost" | "danger";
@@ -62,6 +62,18 @@ export function IconButton(
  * alias ("n / mod+n") puts a slash between its caps, so two caps never
  * mean "either" and "both" with the same picture.
  */
+/**
+ * Sizes a field's padding to its unit (`--unit-w`), so a value never runs under "rounds", "分钟" or "$" in any language:
+ * the unit is measured, not guessed per string.
+ */
+export function fitUnit(wrap: HTMLElement) {
+  const unit = wrap.querySelector<HTMLElement>(".field-unit");
+  if (!unit) return;
+  const ro = new ResizeObserver(() => wrap.style.setProperty("--unit-w", `${Math.ceil(unit.getBoundingClientRect().width)}px`));
+  ro.observe(unit);
+  onCleanup(() => ro.disconnect());
+}
+
 export function Kbd(props: { k: string }) {
   const parts = () => props.k.split(" ");
   return (
@@ -116,9 +128,9 @@ export function Field(props: {
     <label class={`field ${props.class ?? ""}`}>
       <span class="field-label">{props.label}</span>
       <Show when={props.unit} fallback={props.children}>
-        <span class="unit-wrap" classList={{ "unit-left": !!props.unitLeft }}>
+        <span class="unit-wrap" classList={{ "unit-left": !!props.unitLeft }} ref={fitUnit}>
           {props.children}
-          <span class="unit">{props.unit}</span>
+          <span class="field-unit">{props.unit}</span>
         </span>
       </Show>
       <Show when={props.error}>
@@ -189,8 +201,8 @@ export function Toggle(props: {
 /**
  * An empty, loading or failed state: one statement where the content would
  * be, a specific reason underneath, and at most one way forward. `kind`
- * picks the mark: a hollow ring (nothing here), a dot (waiting), a square
- * (an error, in the danger colour).
+ * picks the mark: a hollow ring (nothing here), the turning arc (waiting),
+ * the red disc with its × (an error).
  */
 /**
  * A resource's value, or undefined once its load has failed: reading the resource itself would throw the error. While
@@ -201,11 +213,14 @@ export const settled = <T,>(r: Resource<T>): T | undefined =>
   r.error !== undefined && !r.loading ? undefined : r.state === "refreshing" ? r.latest : r();
 
 /** What a failed load says, with a way to try again; `pending` shows while there is no error. */
+/** Code that did not load (each engine words it its own way, in English): said in your language, not the engine's. */
+const codeMissing = (e: unknown) => e instanceof Error && /imported module|module script|Unable to preload/i.test(e.message);
+
 export function Failed(props: { title?: string; error: unknown; onRetry: () => void; inline?: boolean; pending?: JSX.Element }) {
   return (
     <Show when={props.error} fallback={props.pending}>
       <Empty title={props.title ?? t("common.loadFailed")} kind="error" inline={props.inline} action={<Button size="s" onClick={props.onRetry}>{t("common.retry")}</Button>}>
-        {errorText(props.error)}
+        {codeMissing(props.error) ? t("common.codeMissing") : errorText(props.error)}
       </Empty>
     </Show>
   );
@@ -238,7 +253,7 @@ export function Empty(props: {
             <Icon name="ring" size={12} />
           </Show>
           <Show when={kind() === "loading"}>
-            <Icon name="dot" size={10} />
+            <Spinner />
           </Show>
           <Show when={kind() === "error"}>
             <DangerMark />
@@ -314,6 +329,23 @@ const FOCUSABLE =
   'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([tabindex="-1"]), [href], summary, [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])';
 
 /**
+ * Tab walks a modal layer's own controls and wraps (a sheet, the peek): WebKit's own walk skips buttons unless macOS
+ * Full Keyboard Access is on, and from the last field it would leave the layer for the board behind it — where the
+ * next key lands in the quick-start field instead of the layer that says what it does.
+ */
+export const trapTab = (panel: () => HTMLElement) => (e: KeyboardEvent) => {
+  // A sheet opened inside another (Look in Verify) is drawn inside it: the innermost one moves focus, once.
+  if (e.key !== "Tab" || e.defaultPrevented) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const p = panel();
+  const items = [...p.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+  if (!items.length) return p.focus();
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  items[at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length].focus();
+};
+
+/**
  * A modal layer: dialog semantics, focus moved in, kept in (Tab wraps) and
  * restored on close; Esc closes it before any view binding sees the key.
  * `instant` layers (opened from the keyboard) do not animate (§12.7).
@@ -371,19 +403,7 @@ export function Overlay(props: {
     (first ?? panel).focus({ preventScroll: true });
   });
   onCleanup(() => previous?.focus?.({ preventScroll: true }));
-  // Tab walks the sheet's own controls and wraps: WebKit's own walk skips buttons unless macOS Full Keyboard Access
-  // is on, and from the last field it would leave the modal sheet for the board behind it.
-  const trap = (e: KeyboardEvent) => {
-    // A sheet opened inside another (Look in Verify) is drawn inside it: the innermost one moves focus, once.
-    if (e.key !== "Tab" || e.defaultPrevented) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
-    if (!items.length) return panel.focus();
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
-    items[next].focus();
-  };
+  const trap = trapTab(() => panel);
   return (
     <div
       class="overlay"

@@ -28,6 +28,10 @@ import { createEffect, createRoot, createSignal } from "solid-js";
 import type { Dict, DictNow } from "./locales/zh-CN";
 import type { DictLater } from "./locales/zh-CN.later";
 import { state } from "./store";
+// The first half's key list (plugins/localeKeys.ts: a dictionary ships as its values) is fetched with the start-up
+// modules in dev, so the first paint's dictionary never waits on a second fetch. The build drops this import (the list
+// runs nothing) and preloads the list beside the dictionary's chunk instead.
+import "virtual:locale-keys-now";
 
 export type { Dict };
 export type Locale = "zh-CN" | "en";

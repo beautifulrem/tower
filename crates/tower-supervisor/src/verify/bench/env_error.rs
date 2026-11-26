@@ -15,7 +15,7 @@ impl Bench<'_> {
         let tail = tail_lines(&r.output_tail, 20);
         if let Some(port) = crate::sandbox::loopback_refusal(&r.output_tail).filter(|_| !r.denied) {
             let cause = tower_core::env_cause::EnvCause::Loopback(port);
-            let problem = format!("{id} · `{command}`\n{tail}");
+            let problem = format!("{id} `{command}`\n{tail}");
             return Outcome::EnvError(tower_core::i18n::PauseNote::Blocked { cause, problem }.encode());
         }
         // What happened, once: the pause itself ("the criteria cannot run in the verification sandbox") and the

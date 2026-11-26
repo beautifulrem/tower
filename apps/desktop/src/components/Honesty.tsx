@@ -29,15 +29,6 @@ function ObsRow(props: { cls?: string; spanCls?: string; spanList?: Record<strin
   );
 }
 
-/** Flaky criterion annotation: failed on first run and passed on automatic rerun (neutral Harness Fact). */
-export function FlakyLine(props: { c: CriterionView }) {
-  return (
-    <Show when={!!(props.c.verified as { flaky?: boolean } | null)?.flaky}>
-      <ObsRow cls="flaky-line" spanCls="t2"><NoticeMark /><span>{t("goal.criterionFlaky")}</span></ObsRow>
-    </Show>
-  );
-}
-
 /** The first line of why a base could not be checked, without its trailing colon or backticks, at most 120 characters. */
 export function baseReason(error: string | null | undefined): string | null {
   const first = (error ?? "").split("\n").find((l) => l.trim())?.trim();
@@ -74,7 +65,7 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
   return (
     <span class={`consistency consistency-${props.value}`} title={props.evidence ?? undefined}>
       {/* Only a refutation wears the failure's red ×. A claim the agent's own words keep a pass from confirming is not
-          refuted, it is not evidence: the ◆ a tampered pass wears, read as firmly. */}
+          refuted, it is not evidence: the amber ! a tampered pass wears, read as firmly. */}
       <Show when={props.value === "contradicted"}>
         <ResultMark kind="fail" />
       </Show>
@@ -83,6 +74,10 @@ export function ConsistencyBadge(props: { value: Consistency; evidence?: string 
       </Show>
       <Show when={props.value === "stale"}>
         <ResultMark kind="stale" />
+      </Show>
+      {/* No fact supports the claim: worth a look, not a decision — the outlined i in body ink (docs/12 §12.6.2). */}
+      <Show when={props.value === "unsupported"}>
+        <NoticeMark />
       </Show>
       {text()}
     </span>
@@ -107,20 +102,12 @@ export function HeldOutChip(props: { ran?: number; total?: number }) {
 
 /**
  * Held-out files, one by one, as code — names only you see — read as the end of a sentence: the separator ("," in
- * English, "、" in Chinese) sits against the name before it, inside the same run of text.
+ * English, "、" in Chinese) sits against the name before it, inside the same run of text. The list selects as one, its
+ * separators with it, so a copy of it is the names apart (review 16), not the words before it.
  */
 function HeldOutFiles(props: { files: string[] }) {
   const sep = () => (locale() === "zh-CN" ? "、" : ", ");
-  return (
-    <For each={props.files}>
-      {(f, i) => (
-        <>
-          {i() > 0 ? sep() : " "}
-          <code class="code-val held-out-file">{f}</code>
-        </>
-      )}
-    </For>
-  );
+  return <span class="held-out-files">{props.files.map((f, i) => [i ? sep() : "", <code class="code-val held-out-file">{f}</code>])}</span>;
 }
 
 /**
@@ -132,21 +119,24 @@ function HeldOutFiles(props: { files: string[] }) {
  * all did), then the files that did not run and those Tower cannot prove,
  * by name. None ran: no chip, only that line — never both.
  */
-export function HeldOutLine(props: { c: CriterionView }) {
+/** `children`: the files that ran, set right under the line that counts them, before the ones that did not run. */
+export function HeldOutLine(props: { c: CriterionView; children?: JSX.Element }) {
   const v = () => props.c.verified;
   const proof = () => v()?.held_out_proof ?? null;
   const total = () => {
     const p = proof();
     return p ? p.ran.length + p.not_ran.length + p.unprovable.length : undefined;
   };
+  // The words end on a colon; English sets a space after it, Chinese's full-width colon carries its own.
   const note = (cls: string, title: string, words: string, files: string[]) => (
     <ObsRow cls={cls} spanCls="t3" title={title}>
-      <span class="held-out-text">{words}<HeldOutFiles files={files} /></span>
+      <span class="held-out-text">{words}{locale() === "zh-CN" ? "" : " "}<HeldOutFiles files={files} /></span>
     </ObsRow>
   );
   return (
     <>
       <Show when={v()?.held_out}><ObsRow><HeldOutChip ran={proof()?.ran.length} total={total()} /></ObsRow></Show>
+      {props.children}
       <Show when={proof()?.not_ran.length}>
         {note("held-out-missing", t("goal.heldOutNotRunLong"), v()?.held_out ? t("goal.heldOutNotRun") : t("goal.heldOutNoneRan"), proof()!.not_ran)}
       </Show>
@@ -182,11 +172,11 @@ export function CanaryLine(props: { c: CriterionView }) {
             <span title={t("goal.canaryIntactLong")}>{t("goal.canaryIntact")}</span>
           </Match>
           <Match when={state() === "not_checked"}>
-            <span title={t("goal.canaryNotCheckedLong")}>{t("goal.canaryNotChecked")}<span class="t4">{t("goal.canaryNotCheckedWhy")}</span></span>
+            <span title={t("goal.canaryNotCheckedLong")}>{t("honesty.cavAsserts")}<span class="t4">{t("goal.canaryNotCheckedWhy")}</span></span>
           </Match>
           <Match when={state() === "tampered"}>
-            <NeedsYouMark title={t("goal.canaryTamperedLong")} />
-            <span class="attn-word" title={t("goal.canaryTamperedLong")}>{t("goal.canaryTampered")}</span>
+            <NeedsYouMark title={t("honesty.discountedTitle")} />
+            <span class="attn-word" title={t("honesty.discountedTitle")}>{t("goal.canaryTampered")}</span>
           </Match>
         </Switch>
       </ObsRow>
@@ -194,15 +184,15 @@ export function CanaryLine(props: { c: CriterionView }) {
   );
 }
 
-/** A base that could not be checked because the sandbox refused the command something: the words before the colon, and the refused lines after it. */
-export function refusedOnBase(error: string | null | undefined): { why: string; lines: string[] } | null {
-  if (!error || !/refused/i.test(error)) return null;
-  const i = error.indexOf(": ");
-  const lines = (i < 0 ? "" : error.slice(i + 2))
+/** A base that could not be checked because the sandbox refused the command something: the refused lines, after the colon. */
+export function refusedOnBase(error: string | null | undefined): string[] | null {
+  // The supervisor's words (tower-core reasons.rs `BaseError::Refused`): "refused by …: tail" / "…被验证沙箱拒绝（…）：tail".
+  if (!error || !/refused|拒绝/i.test(error)) return null;
+  const m = /: |：/.exec(error);
+  return (m ? error.slice(m.index + m[0].length) : "")
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  return { why: i < 0 ? error : error.slice(0, i), lines };
 }
 
 /**
@@ -214,7 +204,8 @@ export function refusedOnBase(error: string | null | undefined): { why: string; 
  * evidence. A base the sandbox refused is an environment problem, said as
  * one, with the refused lines in view; never red.
  */
-export function BaselineLine(props: { c: CriterionView; base?: string | null }) {
+/** `told`: the goal's open pause card already prints this refusal's output, so the line points there instead of repeating it. */
+export function BaselineLine(props: { c: CriterionView; base?: string | null; told?: boolean }) {
   const c = () => props.c;
   const passed = () => !!c().verified?.passed;
   const dependent = () => c().passes_with_source_only === false;
@@ -242,8 +233,11 @@ export function BaselineLine(props: { c: CriterionView; base?: string | null }) 
             {(r) => (
               <>
                 <ResultMark kind="env" title={t("goal.baseRefused")} />
-                <span class="t2" title={c().base_error ?? undefined}>{t("goal.baseRefused", { base: short(props.base) })}</span>
-                <For each={r().lines}>{(line) => <code class="code-val t1 env-refused">{line}</code>}</For>
+                {/* Told by the pause card, the line drops its "— an environment problem…" (both languages set it after a dash): the card says it. */}
+                <span class="t2" title={c().base_error ?? undefined}>{props.told ? t("goal.baseRefused", { base: short(props.base) }).split(/\s*—/)[0] : t("goal.baseRefused", { base: short(props.base) })}</span>
+                <Show when={!props.told} fallback={<span class="t3">{t("goal.refusedAbove")}</span>}>
+                  <For each={r()}>{(line) => <code class="code-val t1 env-refused">{line}</code>}</For>
+                </Show>
               </>
             )}
           </Match>

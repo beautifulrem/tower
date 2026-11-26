@@ -138,49 +138,22 @@
 .gauge .glyph {
   vertical-align: 0;
 }
-.gauge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-3);
-}
-.gauge-dot.down {
-  border-radius: 1px;
-  background: var(--st-danger);
-}
-/* Silence is worth a look, not a failure: a hollow square, so the strip never shows two ■. The moment it
-   appears it beats once — 700ms, like a new card's amber — and then holds still; a heartbeat that stopped. */
-.gauge-dot.hollow {
-  border-radius: 1px;
-  background: transparent;
-  box-sizing: border-box;
-  border: 1px solid var(--st-danger);
-  animation: beat var(--dur-attn) var(--ease-out) 1;
-}
-@keyframes beat {
-  0% {
-    transform: scale(1);
-    opacity: 0.4;
-  }
-  35% {
-    transform: scale(1.5);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-/* The runs gauge fills the running glyph's ring by the slots in use: it is the same family of shape, one reading richer. */
+/* The runs gauge is the running goals' own mark, turning while some run moves. */
 .gauge-runs {
   vertical-align: -1px;
+  color: var(--st-active);
 }
 .gauge-busy {
   color: var(--text-2);
 }
-.gauge-down {
+/* A gauge that carries a mark reads in text-1, the error count's ink; doubled, so a button's `.link-plain` (which
+   inherits the strip's text-2 and comes later) does not undo it (review 16: "Pi not ready" and "Phone page off" read
+   a step quieter than the error count beside them). */
+.gauge.gauge-down {
   color: var(--text-1);
 }
-/* The engine heartbeat: quiet while recent, text-1 past 30 s, a danger square past 2 min. */
+/* The engine heartbeat: quiet while recent, text-1 past 30 s, and past 2 min the hint mark, drawn in the reading's own
+   ink (docs/12 §12.4.3, docs/08 §8.6.3): silence is worth a look, not a failure, so it wears no status colour. */
 .gauge-stale {
   color: var(--text-1);
 }
@@ -326,8 +299,10 @@
 .side-row .side-icon.side-icon-attention {
   color: var(--st-attention);
 }
-.side-row .side-icon.side-icon-danger {
-  color: var(--st-danger);
+/* A merge conflict, observed (git's word, not the verifier's): the notice mark in text-1 beside its count, never red
+   (docs/12 §12.4.3, review 18 and 19). */
+.side-row .side-icon.side-icon-notice {
+  color: var(--text-1);
 }
 .side-row .kbd {
   opacity: 0;
@@ -338,6 +313,11 @@
 .side-count {
   font-size: var(--fs-meta);
   color: var(--text-3);
+}
+/* A count of what waits on you (the inbox, the merge conflicts) is read in ink, beside its tinted or marked icon (review
+   20, record only: the rule above had taken `t1` back to text-3). */
+.side-count.t1 {
+  color: var(--text-1);
 }
 .side-scroll {
   flex: 1;
@@ -406,6 +386,86 @@
 }
 .mark-danger {
   color: var(--st-danger);
+}
+/* A 12px status mark sits on the text's x-height, not its baseline. */
+:is(.mark-attention, .mark-danger, .mark-notice)[width="12"] {
+  vertical-align: -2px;
+}
+/* Work in motion: the mark turns as a whole (a transform on the svg box stays on the compositor), steady and slow —
+   Geist's building dot and GitHub's in-progress ring are the models. Where motion is reduced it holds still, its arc
+   at the top right. */
+.glyph-spin {
+  animation: spin var(--dur-spin) linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+/* The agent's own words while it works: a light passes over them (AI Elements' Shimmer), so a line that is moving
+   reads as moving. Only for a running goal that is moving, and only where motion is welcome: elsewhere the words are
+   plain. The light is a band of the line's own ground laid over the words, so they fade toward the ground and back,
+   never to a colour; the words keep their ink and the band moves by transform alone, so it stays on the compositor.
+   The words clip the band: it never passes over the target beside them. The band is 5em across, or a fifth of the
+   ::after (half the words) when that is narrower, so a short word ("bash") sees a light pass over it rather than
+   dimming whole (review 15). At its peak the band is the ground at 60%, so a letter under it dims and never goes out
+   (review 16: a full-ground peak erased a short word's letters one by one). The band stays on the goal in view and
+   fades in and out over --dur-settle as the run starts and stops moving, so the words never jump (review 18: in dark they
+   leapt from the veil's 65% to full ink the moment the run went still); still, it holds where it is. */
+.live-line {
+  --live-ground: var(--bg-app);
+}
+.peek-drawer .live-line {
+  --live-ground: var(--bg-overlay);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .live-line-large .live-action {
+    position: relative;
+    clip-path: inset(0);
+  }
+  .live-line-large .live-action::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -75%;
+    width: 250%;
+    background: linear-gradient(
+      90deg,
+      #0000 calc(50% - min(2.5em, 10%)),
+      color-mix(in oklab, var(--live-ground) 60%, transparent) 50%,
+      #0000 calc(50% + min(2.5em, 10%))
+    );
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-settle);
+    animation: shimmer 2.4s linear infinite paused;
+  }
+  .live-moving .live-action::after {
+    opacity: 1;
+    animation-play-state: running;
+  }
+  /* Dark: the ground is darker than the words, so a band of it read as the words dimming (review 17). There the light
+     is a gap in a veil of the ground: under the veil the words keep 65% of their ink, and in the light (up to 2em
+     across) they stand whole, so the line brightens as it is lit. The same band of the ground, moved by transform alone. */
+  :root[data-theme="dark"] .live-line-large .live-action::after {
+    --veil: color-mix(in oklab, var(--live-ground) 35%, transparent);
+    background: linear-gradient(
+      90deg,
+      var(--veil) calc(50% - min(2.5em, 10%)),
+      #0000 calc(50% - min(1em, 4%)),
+      #0000 calc(50% + min(1em, 4%)),
+      var(--veil) calc(50% + min(2.5em, 10%))
+    );
+  }
+}
+@keyframes shimmer {
+  from {
+    transform: translateX(-30%);
+  }
+  to {
+    transform: translateX(30%);
+  }
 }
 
 .result {
@@ -498,6 +558,13 @@
 }
 .live-age {
   color: var(--text-3);
+}
+/* A silent engine's last movement is the reading to look at: text-1 and the hint mark, no status colour. */
+.live-age-silent {
+  color: var(--text-1);
+}
+.live-age-silent .mark-notice {
+  margin-right: 4px;
 }
 
 /* ======================================================================
@@ -627,8 +694,14 @@
 }
 .claim-text {
   color: var(--text-2);
+  -webkit-user-select: text;
   user-select: text;
   min-width: 0;
+}
+/* The claim's kind leads its text, in the label's grey: the speaker is in the column, the kind is part of what they said. */
+.claim-sub {
+  color: var(--text-3);
+  margin-right: 0.25em;
 }
 .claim-aside {
   justify-self: end;
@@ -668,7 +741,7 @@
   color: var(--text-1);
 }
 .consistency-unsupported {
-  color: var(--text-3);
+  color: var(--text-1);
 }
 /* The agent's own words say a pass cannot confirm the claim: read as
    firmly as a refutation, not dimmed like a claim without evidence. */
@@ -692,31 +765,50 @@
 .criteria-bar .sep {
   padding: 0 0.3em;
 }
+/* The human count's dot sits as close to the count before it as the scale's other dots do. */
+.criteria-bar > .crit-human > .sep {
+  margin-left: calc(-1 * var(--sp-2));
+}
 .segs {
   display: inline-flex;
   gap: 2px;
 }
-/* An empty segment is drawn, not hinted: "not yet" has to be as visible as "done". */
+/* One rounded track per criterion. An empty segment is drawn, not hinted — a track as visible as the fill, since "not
+   yet" has to read as clearly as "done"; an observed one is hatched in grey (seen, not measured: the unverified seal's
+   hatching); a verified one in the verifier's green. A segment that changes fills from its left on a spring, so the
+   bar moves the way the count does. */
 .seg {
+  position: relative;
+  overflow: hidden;
   width: 12px;
   height: 4px;
-  border-radius: 1px;
-  box-sizing: border-box;
-  border: 1px solid var(--text-4);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--text-4) 55%, transparent);
+}
+.seg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform var(--spring-snappy), background-color var(--dur-base) var(--ease-out);
 }
 .compact .seg {
   width: 9px;
 }
-.seg-verified {
-  border: 0;
+.seg-verified::after {
+  transform: none;
   background: var(--st-verified);
 }
-.seg-observed {
-  border: 1px solid var(--text-3);
+.seg-observed::after {
+  transform: none;
+  background: repeating-linear-gradient(-45deg, var(--text-3) 0 1.5px, transparent 1.5px 3px);
 }
 /* A pass with a tampered canary: solid like a fact, amber like a question — it happened, and it does not count. */
-.seg-discounted {
-  border: 0;
+.seg-discounted::after {
+  transform: none;
   background: var(--st-attention);
 }
 .criteria-bar .discounted {
@@ -752,19 +844,22 @@
   font-size: var(--fs-body);
   font-weight: 500;
   white-space: nowrap;
+  /* A press gives a little and springs back on release (the transform first, so a rule that keeps only it keeps its
+     spring); the ground arrives at once and leaves slowly. */
   transition:
+    transform var(--spring-snappy),
     background-color var(--dur-hover-out) linear,
-    border-color var(--dur-hover-out) linear,
-    transform var(--dur-fast) var(--ease-out);
+    border-color var(--dur-hover-out) linear;
 }
 .btn:hover:not(:disabled) {
   background: var(--bg-hover);
   border-color: var(--border-strong);
-  transition-duration: 0ms;
+  transition-property: transform;
 }
 .btn:active:not(:disabled) {
   background: var(--bg-selected);
-  transform: translateY(0.5px);
+  transform: scale(0.98);
+  transition: transform 90ms var(--ease-out);
 }
 /* Disabled like AppKit: the frame stays, only the words step back. */
 .btn:disabled {
@@ -1057,7 +1152,7 @@ input[type="radio"] {
   display: block;
 }
 /* The unit stands where the field's text does: its padding plus the 1px border. */
-.unit-wrap .unit {
+.unit-wrap .field-unit {
   position: absolute;
   right: calc(var(--sp-2) + 1px);
   top: 0;
@@ -1068,15 +1163,16 @@ input[type="radio"] {
   color: var(--text-3);
   pointer-events: none;
 }
+/* The text stops a gap short of the unit, however wide its word is (`fitUnit` measures it into --unit-w). */
 .unit-wrap input {
-  padding-right: 28px !important;
+  padding-right: calc(var(--unit-w, 16px) + var(--sp-2) + var(--sp-1)) !important;
 }
-.unit-wrap.unit-left .unit {
+.unit-wrap.unit-left .field-unit {
   right: auto;
   left: calc(var(--sp-2) + 1px);
 }
 .unit-wrap.unit-left input {
-  padding-left: var(--sp-5) !important;
+  padding-left: calc(var(--unit-w, 8px) + var(--sp-2) + var(--sp-1)) !important;
   padding-right: var(--sp-2) !important;
 }
 
@@ -1102,17 +1198,10 @@ input[type="radio"] {
   font-size: var(--fs-meta);
   color: var(--text-1);
 }
-.field-error::before {
-  content: "■ ";
-  color: var(--st-danger);
-}
 .field-warn {
   font-size: var(--fs-meta);
   color: var(--text-1);
   margin: 6px 0 var(--sp-3);
-}
-.field-warn::before {
-  content: "◇ ";
 }
 
 .check,
@@ -1421,10 +1510,6 @@ input[type="radio"] {
 .briefing-item {
   color: var(--text-2);
 }
-.briefing-item::before {
-  content: "· ";
-  color: var(--text-3);
-}
 .briefing-claim::before {
   content: "┆ ";
 }
@@ -1433,52 +1518,29 @@ input[type="radio"] {
    Welcome
    ====================================================================== */
 
+/* First run reads as a setup page at a page's measure, not a landing: the page title at the title size, the check
+   list and its actions first, then how a goal ends. */
 .welcome {
   display: grid;
-  grid-template-columns: minmax(0, 440px) minmax(300px, 400px);
-  gap: var(--sp-10) var(--sp-10);
-  max-width: 920px;
-  margin: 9vh auto 0;
-  align-items: start;
-}
-@media (max-width: 1100px) {
-  .welcome {
-    grid-template-columns: minmax(0, 560px);
-  }
-}
-.welcome-main {
-  display: grid;
   gap: var(--sp-5);
+  max-width: 600px;
+  margin: var(--sp-8) auto 0;
 }
 .welcome-title {
-  font-size: var(--fs-display);
-  line-height: var(--lh-display);
-  letter-spacing: -0.016em;
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+  letter-spacing: -0.012em;
   font-weight: 500;
-  font-variation-settings: var(--opsz-display);
+  margin-top: calc(-1 * var(--sp-2));
 }
-.welcome-lede {
-  font-size: var(--fs-reading);
-  line-height: 24px;
-  color: var(--text-2);
+.welcome-note {
+  margin: calc(-1 * var(--sp-2)) 0 0;
 }
-.welcome-points {
+.welcome-how {
   display: grid;
-  gap: var(--sp-3);
-  padding: var(--sp-3) 0;
+  gap: var(--sp-4);
+  padding-top: var(--sp-5);
   border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.welcome-points > div {
-  display: grid;
-  grid-template-columns: 9em 1fr;
-  gap: var(--sp-3);
-}
-.welcome-points b {
-  font-weight: 500;
-}
-.welcome-points span {
-  color: var(--text-2);
 }
 /* A goal's life as a route: six stations, each a glyph over its word, joined by hairlines. The glyphs are the
    board's own at 14px; the words the wordmark's small tracked voice. Green starts at the verifier's station. */
@@ -1536,15 +1598,6 @@ input[type="radio"] {
   padding: 0;
   min-height: 20px;
 }
-/* The side column's first line sits on the wordmark's line: both 12px tall, both at the top. */
-.welcome-side {
-  display: grid;
-  gap: var(--sp-4);
-  padding-top: 0;
-}
-.checks .section-title {
-  line-height: 12px;
-}
 /* The wordmark: Tower's own mark and its name set as a name — the display cut, a touch tight — above the first
    sentence. Capitals tracked wide are kept for one place only, the contract's masthead. */
 .wordmark {
@@ -1557,7 +1610,6 @@ input[type="radio"] {
   font-weight: 600;
   font-variation-settings: "opsz" 28;
   color: var(--text-2);
-  margin-bottom: calc(-1 * var(--sp-2));
 }
 .wordmark svg {
   display: block;
@@ -1567,7 +1619,6 @@ input[type="radio"] {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
-  padding-top: var(--sp-3);
 }
 
 /* ======================================================================
@@ -1597,6 +1648,44 @@ input[type="radio"] {
   font-variation-settings: var(--opsz-display);
 }
 /* Identity on the left, the seal on the right. */
+/* The verdict line: the seal (or its withholding) and the two tracks, in body size on the title's reading path —
+   the first thing read after the goal's name, before who and where. */
+.goal-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  margin-top: var(--sp-1);
+  min-height: 24px;
+}
+.goal-verdict .seal {
+  font-size: var(--fs-body);
+}
+/* The goal's one primary action ends the verdict line, right after what it rests on. */
+.goal-verdict-track {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.goal-verdict-act {
+  margin-left: var(--sp-2);
+}
+/* Low sentinels folded to one line: the mark, then each title with the sensitive path it touched just before it (those
+   first), so a path is never read as another sentinel's. */
+.sentinel-fold {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.sentinel-fold > * {
+  flex: 0 0 auto;
+}
+.sentinel-fold > .ellipsis {
+  flex: 0 1 auto;
+  min-width: 0;
+}
 .goal-sub {
   margin-top: 2px;
   display: flex;
@@ -1653,6 +1742,11 @@ input[type="radio"] {
   margin-bottom: var(--sp-3);
   border-bottom: 1px solid var(--border-subtle);
 }
+/* A section under it draws its own top rule: one line between them, never two with nothing between. */
+.annunciator:has(+ .section) {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
 /* The card stands in the main column, as wide as the blocks under it (its sentences keep their own 72ch), so the
    page has one right edge for the main column and one for the rail. */
 .goal-decisions {
@@ -1671,26 +1765,43 @@ input[type="radio"] {
   grid-template-columns: minmax(0, 1fr);
 }
 /* The rail starts on the main column's first line and stays in sight as the page scrolls: the contract is what every
-   block on the left is measured against. Taller than the window, it scrolls itself; it stops short of the steer box. */
+   block on the left is measured against. Taller than the window, it scrolls itself. It fits inside the view's own
+   padding (20 above, 40 below), and the steer box ends the main column beside it (GoalPage.tsx), so the rail's row
+   runs to the page's foot: at the end of the page the rail still stands at its sticky top, never under the title
+   bar, and nothing covers it (review 18). */
 .goal-rail {
   position: sticky;
   top: 0;
-  max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - var(--sp-5));
+  max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - var(--sp-10));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
-.goal-page:has(.steer) .goal-rail {
-  max-height: calc(100vh - var(--titlebar-h) - var(--sp-5) - 112px);
+/* The column stands as tall as its row, so on a short page the steer box still sits at the foot of the window. */
+.goal-main {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
 }
-/* A half-screen window: the rail folds under the main column (its own rule follows the rail's base rule below). */
+.goal-main > .steer-console { margin-top: auto; }
+/* 24 above the box, from whatever stands just above it: the main column's last block beside the rail or while
+   watching, the folded rail otherwise. */
+.goal-body.watching .goal-main > :has(+ .steer-console) { margin-bottom: var(--sp-6); }
+@media (min-width: 1281px) {
+  .goal-main > :has(+ .steer-console) { margin-bottom: var(--sp-6); }
+}
+/* A half-screen window: the rail folds under the main column (its own rule follows the rail's base rule below), and
+   the steer box comes after it, at the foot of the page as before: the main column's blocks and the rail stand in
+   one column, the box last. */
 @media (max-width: 1280px) {
   .goal-body {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
   }
-  .goal-rail,
-  .goal-page:has(.steer) .goal-rail {
+  .goal-main { display: contents; }
+  .goal-main > .steer-console { order: 1; }
+  .goal-body:has(.steer-console) > .goal-rail { margin-bottom: var(--sp-6); }
+  .goal-rail {
     position: static;
     max-height: none;
     overflow: visible;
@@ -1834,7 +1945,7 @@ input[type="radio"] {
   grid-column: 3 / -1;
   justify-content: flex-start;
 }
-/* A note's leading mark (◆, the scale, the environment's ◫) hangs in the id column, so every note's words start on
+/* A note's leading mark (the amber !, the scale, the environment's ◫) hangs in the id column, so every note's words start on
    the title's edge, marked or not. */
 .criterion-row.criterion-obs .col-span > :is(svg.glyph, .icon, .result):first-child {
   flex: 0 0 10px;
@@ -1933,6 +2044,7 @@ input[type="radio"] {
   color: var(--text-2);
   white-space: pre-wrap;
   word-break: break-word;
+  -webkit-user-select: text;
   user-select: text;
 }
 
@@ -1948,6 +2060,7 @@ input[type="radio"] {
   font-size: 12px;
   line-height: 18px;
   color: var(--text-2);
+  -webkit-user-select: text;
   user-select: text;
 }
 .sentinel-prose {
@@ -2143,17 +2256,6 @@ input[type="radio"] {
   word-break: break-all;
 }
 
-.steer {
-  position: sticky;
-  bottom: calc(-1 * var(--sp-10));
-  display: flex;
-  align-items: flex-end;
-  gap: var(--sp-2);
-  margin-top: var(--sp-6);
-  padding: var(--sp-3) 0 var(--sp-4);
-  background: var(--bg-app);
-  border-top: 1px solid var(--border-subtle);
-}
 
 /* ======================================================================
    Decision cards — amber only in the header strip, and it decays once
@@ -2207,10 +2309,16 @@ input[type="radio"] {
     background-color: var(--attention-flash);
   }
 }
-.decision.quiet .decision-head {
+.decision.listed .decision-head {
   background: transparent;
   border-bottom: 1px solid var(--border-subtle);
+}
+.decision.quiet .decision-head {
   animation: none;
+}
+/* Where you are in a queue is selection, not attention: the neutral ground, as a selected row on the board. */
+.decision.listed.focused .decision-head {
+  background: var(--bg-selected);
 }
 .decision.focused {
   border-color: var(--border-strong);
@@ -2247,6 +2355,14 @@ input[type="radio"] {
 .decision-head .sep {
   padding: 0;
 }
+/* The kind, the PR reading and the time keep one line; the goal's name is the one that gives way. */
+.decision-head > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.decision-head > .ellipsis {
+  flex-shrink: 1;
+}
 .decision-kind {
   color: var(--text-1);
   font-weight: 500;
@@ -2261,10 +2377,12 @@ input[type="radio"] {
   line-height: var(--lh-question);
   letter-spacing: var(--tr-16);
   font-weight: 500;
+  -webkit-user-select: text;
   user-select: text;
 }
 .decision-body {
   color: var(--text-2);
+  -webkit-user-select: text;
   user-select: text;
   white-space: pre-wrap;
   word-break: break-word;
@@ -2307,8 +2425,8 @@ input[type="radio"] {
   align-items: flex-end;
 }
 .decision-note {
-  font-size: var(--fs-hint);
-  line-height: var(--lh-hint);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-3);
   text-wrap: pretty;
 }
@@ -2321,6 +2439,56 @@ input[type="radio"] {
 .decision-tail {
   margin: 0;
   max-height: 200px;
+}
+/* An approval's block is the command it allows, line for line (review 22, R22-P3-01: a wrapped part began at the left
+   edge like a line of the command's own, and in a shell a new line is a new command). Each of the command's lines is a
+   box the width of the block, its first row at the edge; a row the block's width carried over goes on two characters in,
+   under a hook in that margin (the one-pen line, text-3), so a carried-over row and a line the command indents itself never
+   look alike. A word moves to the next row whole ("--fill" never parts as "--" and "fill"), and breaks only when it is
+   longer than the row, filling each row it runs over: a word found longer than a row (`.wl`, by measure) is the row's own
+   text again, wherever it stands, starting in place and going on two in like any carried-over row, the next word
+   following it (review 23, R23-P2-01: a path or a URL that began a line went on from the edge under the hook, and the
+   next word was painted back up at the first row's end; review 24, R24-P3-03: one after an indent or as a third word
+   went down a row whole and left the row above it blank or short). A word that fits a row but not the room its line's
+   indent leaves goes down whole, its indent alone above it: a word that fits is never parted. The boxes are
+   inline, apart by the command's own newlines, so what is read and copied is the command, character for character, the
+   blank lines inside it included (its body is trimmed at both ends, where a shell ignores them). The phone's block is
+   the same (remote.html `.cmd`). */
+.decision-cmd .tl {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 100%;
+  position: relative;
+  padding-left: 2ch;
+  text-indent: -2ch;
+  vertical-align: top;
+  word-break: break-all;
+}
+.decision-cmd .tl::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  left: 0;
+  width: 2ch;
+  background: var(--text-3);
+  -webkit-mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y;
+  mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y;
+}
+.decision-cmd .w {
+  display: inline-block;
+  max-width: 100%;
+  text-indent: 0;
+  vertical-align: top;
+  white-space: nowrap;
+}
+/* A word longer than a row (found by measure: its box runs over, DecisionCard `fitWords`) is the row's own text again:
+   it starts where it stands, breaks at each row's end and fills it, and the next word follows it on its last row
+   (review 24, R24-P3-03: such a word went to a row of its own, an indent before it stood alone on a row like a blank line
+   of the command, and the next word began yet another). */
+.decision-cmd .wl {
+  display: inline;
+  white-space: inherit;
 }
 /* The bell is quieter than the time beside it until the pointer finds it. */
 .decision-snooze {
@@ -2375,10 +2543,11 @@ input[type="radio"] {
   line-height: 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
+  -webkit-user-select: text;
   user-select: text;
 }
 /* The note reads at the card's own width (the card is already a reading width; a 60ch cap left one word on a
-   second line in English), and its ◇ sits on the first line, never between two. */
+   second line in English), and its ⓘ sits on the first line, never between two. */
 .heldout-note {
   display: flex;
   gap: 6px;
@@ -2576,9 +2745,29 @@ input[type="radio"] {
 .trace-row:hover .trace-time.repeat {
   color: var(--text-4);
 }
+/* The trace scrolls down, never sideways: a hash, a token or a path with nowhere to break (a retry's error, Tower's
+   closing of a card titled with one) breaks where it meets its line's edge instead of running past it. Only there:
+   `anywhere` would let a row's short cells shrink to a letter too, and a duration read "1" over "s". */
 .trace-content {
   min-width: 0;
   line-height: 20px;
+  overflow-wrap: break-word;
+}
+/* A mark beside words that can run long (Trace.tsx: Tower's own line, a stall, a sentinel's finding): the mark stands
+   by the first line, centred on its 20px, not beside the middle of a long one (a retry's error, a flaky criterion's
+   two outputs), and the words take the column's width and no more, so a word with nowhere to break breaks at its edge
+   (a flex row's words were as wide as their longest word). */
+.mark-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--sp-2);
+  align-items: start;
+}
+.mark-line > .icon {
+  margin-top: 5px;
+}
+.mark-line > .glyph {
+  margin-top: 4px;
 }
 .trace-tool {
   font-family: var(--font-mono);
@@ -2589,10 +2778,6 @@ input[type="radio"] {
 }
 .trace-error {
   color: var(--text-1);
-}
-.trace-error::before {
-  content: "■ ";
-  color: var(--st-danger);
 }
 /* A run boundary: one full-width rule with the time inline, not a row in the grid. */
 .trace-divider {
@@ -2640,6 +2825,16 @@ input[type="radio"] {
   gap: 4px;
   align-items: flex-start;
 }
+/* Folded, its first line ends in an ellipsis at the column's edge and the note that the text is for the agent stays
+   beside it: sized to its text, the line ran past the edge and took the note with it. */
+.injected-fold {
+  display: flex;
+  column-gap: var(--sp-1);
+  max-width: 100%;
+}
+.injected-fold > .t4 {
+  flex: none;
+}
 
 /* ======================================================================
    Review
@@ -2658,8 +2853,11 @@ input[type="radio"] {
   overflow: auto;
   padding: var(--sp-6) var(--sp-8);
 }
-.review .page-loading .empty-poster {
-  margin-top: clamp(80px, 22vh, 260px);
+/* A review with nothing in it is a page of the review, not the app's emptiest screen: no wordmark, and its words start
+   on the title's line (84px past the traffic lights, the 24px back button, its gap), the 14px ring and the same gap
+   hanging in front of them, a fifth of the way down. */
+.review .page-loading > .empty {
+  margin: clamp(48px, 18vh, 200px) 0 0 calc(84px + 24px - 14px - var(--sp-8));
 }
 /* Full width: the traffic lights sit in the first 80px, so the header starts after them. */
 .review-head {
@@ -2682,6 +2880,11 @@ input[type="radio"] {
   line-height: 20px;
   letter-spacing: var(--tr-14);
   font-weight: 500;
+}
+/* A long title gives way, never the id or the queue place beside it. */
+.review-head-text > .row > :not(.ellipsis) {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 /* The header is always two lines: the stats never wrap; short of room they drop whole, the pin pair first. */
 .review-stats {
@@ -2746,13 +2949,27 @@ input[type="radio"] {
   align-items: center;
   gap: 6px;
 }
-/* The pin pair goes first, and only for want of room (the seal carries the verified pin): the review hides it
-   (`pins-off`) when, with it, the verification group would drop a part. */
-.review-stats.pins-off .review-stat-pins {
+/* The verdict is the last thing the header gives up. Short of room for it, the review (`fitStats`) lets go, in order
+   and each only while the verdict still lacks the room: the pin pair (the seal carries the verified pin); comparing
+   two runs, the line and file counts (the pickers name the range); the gaps, which close up; comparing, the pickers'
+   pins (their runs' names stay); then, only while the seal or a criteria segment is cut, a gone end's words, for a
+   short word before its pin (workbenches.css), and last the buttons' key caps (their tooltips and the shortcut sheet
+   keep them). */
+.review-stats.pins-off .review-stat-pins,
+.review-stats.counts-off > .review-stat-group:first-child {
   display: none;
 }
-/* In the narrow band the pins and the file and unit counts go outright: the file tree heads with its count and the
-   status line says "Unit 1 / 2". */
+.review-stats.tight {
+  gap: var(--sp-3);
+}
+.review-stats.tight .scope-switch {
+  gap: var(--sp-2);
+}
+.review-head.keys-off > .btn .kbd {
+  display: none;
+}
+/* In the narrow band the file and unit counts go outright: the file tree heads with its count and the status line
+   says "Unit 1 / 2". */
 @media (max-width: 1240px) {
   .review-stats > .review-stat-group:first-child > :not(:first-child) {
     display: none;
@@ -2815,6 +3032,21 @@ input[type="radio"] {
 }
 .unit-group .unit {
   width: 100%;
+}
+.unit:has(.unit-why) {
+  height: auto;
+  padding-block: 4px;
+}
+.unit-why {
+  grid-column: 1 / -1;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-2);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .unit-lines {
   font-size: var(--fs-hint);
@@ -2901,6 +3133,15 @@ input[type="radio"] {
 .review-note-text {
   min-width: 0;
   color: var(--text-1);
+}
+/* A high sentinel's explanation, whole, under its title: what to check is never only in a tooltip. */
+.review-note-why {
+  display: block;
+  max-width: var(--measure);
+  color: var(--text-2);
+}
+.review-note:has(.review-note-why) {
+  align-items: flex-start;
 }
 .review-notes.open .review-note {
   padding-left: 16px;
@@ -2993,8 +3234,10 @@ input[type="radio"] {
 .col-ln {
   width: 44px;
 }
+/* 24px, the "+" 16px in it: 4px either side, so a ring on the number beside it stands clear of it (review 21, record
+   only: 2px, the two touched). */
 .col-gutter {
-  width: 20px;
+  width: 24px;
 }
 .hunk-head td {
   padding: 4px 12px;
@@ -3007,6 +3250,7 @@ input[type="radio"] {
   text-align: right;
   color: var(--text-3);
   font-size: 11.5px;
+  -webkit-user-select: none;
   user-select: none;
 }
 /* The comment affordance: a "+" that appears on hover of the row. The glyph stays 16px (the row is 20); what
@@ -3015,12 +3259,13 @@ input[type="radio"] {
   position: relative;
   padding: 0 !important;
   text-align: center;
+  -webkit-user-select: none;
   user-select: none;
 }
 .gutter-btn::before {
   content: "";
   position: absolute;
-  inset: -4px -2px;
+  inset: -4px;
 }
 .gutter-btn {
   position: relative;
@@ -3047,13 +3292,10 @@ input[type="radio"] {
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--code-foreground);
+  -webkit-user-select: text;
   user-select: text;
 }
-/* Rows wait, hidden, for their colours (at most 150ms) so code never flashes from grey to coloured. */
-.code-pending .code > * {
-  visibility: hidden;
-}
-/* Colours later than the wait arrive as a 120ms tint from the plain foreground, never a snap (reduced motion: at once). */
+/* Code shows at once in the plain foreground; its colours arrive as a 120ms tint, never a snap (reduced motion: at once). */
 .code-late .code > span:not(.sign) {
   animation: tint-in var(--dur-view) var(--ease-out);
 }
@@ -3066,6 +3308,7 @@ input[type="radio"] {
   display: inline-block;
   width: 14px;
   color: var(--text-3);
+  -webkit-user-select: none;
   user-select: none;
 }
 .dl-add {
@@ -3095,6 +3338,7 @@ input[type="radio"] {
   background: var(--attention-bg);
   font-family: var(--font-ui);
   color: var(--text-1);
+  -webkit-user-select: text;
   user-select: text;
 }
 .inline-comment-text {
@@ -3139,29 +3383,29 @@ input[type="radio"] {
     opacity: 0;
   }
 }
-/* Floating material (tokens.css): the layers over content, never the sheets you read in. Without backdrop blur, or
-   when the system asks for less transparency, they are the opaque overlay surface. */
+/* Floating material (tokens.css) is for small, passing layers only: a toast, the @ completion. The palette and the peek
+   drawer are lists you read word by word — through a 14% veil the board's own lines sat inside their rows wherever the
+   blur was not composited — so they are opaque, like every sheet you read in. Without backdrop blur, or when the system
+   asks for less transparency, the material is the opaque overlay surface too. */
 .palette,
-.toast,
-.steer-at-pop,
 .peek-drawer {
+  background: var(--bg-overlay);
+}
+.toast,
+.steer-at-pop {
   background: var(--material-float);
   -webkit-backdrop-filter: var(--material-filter);
   backdrop-filter: var(--material-filter);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .palette,
   .toast,
-  .steer-at-pop,
-  .peek-drawer {
+  .steer-at-pop {
     background: var(--bg-overlay);
   }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .palette,
   .toast,
-  .steer-at-pop,
-  .peek-drawer {
+  .steer-at-pop {
     background: var(--bg-overlay);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
@@ -3182,9 +3426,9 @@ input[type="radio"] {
   box-shadow: var(--shadow-overlay);
   overflow: hidden;
   outline: none;
-  animation: lift var(--dur-base) var(--ease-out);
+  animation: lift var(--spring-snappy);
 }
-/* The palette floats on the material: its top edge catches the light (a sheet you read in has no such edge). */
+/* The palette floats over the page: its top edge catches the light (a sheet you read in has no such edge). */
 .palette {
   box-shadow: var(--material-edge), var(--shadow-overlay);
 }
@@ -3261,7 +3505,7 @@ input[type="radio"] {
   color: var(--text-1);
   font-weight: 500;
 }
-/* The ◆ modifies the state word, so it sits next to it. */
+/* The ! mark modifies the state word, so it sits next to it. */
 .palette-state {
   display: inline-flex;
   align-items: center;
@@ -3434,7 +3678,16 @@ input[type="radio"] {
 .panel-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: var(--sp-2);
+}
+/* Why the primary action is disabled, beside it in body ink; a click goes to the first thing to fix. */
+.panel-reason {
+  margin-right: auto;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-1);
+  text-align: left;
 }
 .panel-branch {
   display: grid;
@@ -3480,8 +3733,9 @@ input[type="radio"] {
   border-radius: var(--radius-l);
   box-shadow: var(--material-edge), var(--shadow-overlay);
   color: var(--text-1);
-  animation: rise var(--dur-base) var(--ease-out);
+  animation: rise var(--spring-snappy);
   transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
+  -webkit-user-select: text;
   user-select: text;
 }
 .toast::before {
@@ -3513,13 +3767,31 @@ input[type="radio"] {
 .toast-text {
   min-width: 0;
 }
-.toast-error .toast-text::before {
-  content: "■ ";
-  color: var(--st-danger);
+/* A mark a stylesheet places before words (a field's error or warning, a toast, a failed trace step, a risk): the
+   mark family drawn as a mask (tokens.css), 12px on the x-height like the components' marks. */
+:where(.field-error, .field-warn, .trace-error, .toast-error .toast-text, .toast-warning .toast-text, .risk-badge)::before {
+  content: "";
+  display: inline-block;
+  inline-size: 12px;
+  block-size: 12px;
+  margin-inline-end: 6px;
+  vertical-align: -2px;
+  background-color: var(--mark-ink, currentColor);
+  -webkit-mask: var(--mark) center / contain no-repeat;
+  mask: var(--mark) center / contain no-repeat;
 }
-.toast-warning .toast-text::before {
-  content: "◆ ";
-  color: var(--st-attention);
+/* Weightless, and danger after attention: a danger badge is a badge too, and says ×. */
+:where(.toast-warning .toast-text, .risk-badge) {
+  --mark: var(--mark-attention);
+  --mark-ink: var(--st-attention);
+}
+:where(.field-error, .trace-error, .toast-error .toast-text, .risk-badge-danger) {
+  --mark: var(--mark-danger);
+  --mark-ink: var(--st-danger);
+}
+/* Worth noticing: the outlined i, in the words' own ink. */
+:where(.field-warn) {
+  --mark: var(--mark-notice);
 }
 /* Success wears a quiet check; information has no prefix: three shapes for three kinds. */
 .toast-success .icon {
@@ -3564,39 +3836,26 @@ input[type="radio"] {
   min-width: 0;
   padding-bottom: 56px;
 }
-/* The contract reads as a contract: a masthead — what this is, whose, in which state — in the one voice of tracked
-   capitals the app keeps (CJK tracked a little, never upper-cased), then numbered clauses, each head a two-digit
-   number in tabular figures, the title a sentence-case heading, and a hairline to the edge in place of a rule above
-   the block. The schedule on the right numbers on from the clauses. The fields under each head keep the form's own
-   grammar. */
+/* The contract reads as a contract: a masthead — what this is, whose, in which state — in quiet sentence-case meta
+   (the app keeps no tracked capitals: they shout at a glance and read slowly), then numbered clauses, each head a
+   two-digit number in tabular figures, the title a sentence-case heading, and a hairline to the edge in place of a
+   rule above the block. The schedule on the right numbers on from the clauses. The fields under each head keep the
+   form's own grammar. */
 .contract-mast {
   display: flex;
   align-items: center;
   min-height: 20px;
   margin-bottom: var(--sp-5);
-  font-size: 11px;
-  line-height: 16px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-weight: 500;
-  font-variation-settings: var(--opsz-display);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
   color: var(--text-3);
 }
 .contract-mast .sep {
-  letter-spacing: 0;
-  padding: 0 0.6em;
+  padding: 0 0.5em;
 }
 .contract-mast-project {
   color: var(--text-1);
-}
-:root[lang="zh-CN"] .contract-mast {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: none;
-}
-/* In the Chinese masthead the tracking is for the characters: the project's Latin name (shop-zh) keeps its own. */
-:root[lang="zh-CN"] .contract-mast-project {
-  letter-spacing: 0.02em;
+  font-weight: 500;
 }
 .editor-block {
   padding: var(--sp-6) 0 var(--sp-2);
@@ -3629,6 +3888,43 @@ input[type="radio"] {
 .contract-mast + .editor-block {
   padding-top: 0;
 }
+/* A folded clause: one line of what is set (each value told apart by a gap), a chevron that turns when open. The line
+   stays when the clause opens, as its summary. */
+/* The chevron, then the settings: each whole, told apart by the gap, a wrapped line hanging under the first setting
+   (the side column is under 300 px wide at every layout, too narrow for all four on one line). */
+.clause-summary {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  column-gap: var(--sp-2);
+  align-items: start;
+  padding-block: 6px;
+  font-size: var(--fs-meta);
+  line-height: var(--lh-meta);
+  color: var(--text-2);
+  list-style: none;
+  cursor: pointer;
+}
+.clause-summary::-webkit-details-marker {
+  display: none;
+}
+.clause-summary > .icon {
+  margin-top: 3px;
+  color: var(--text-3);
+}
+.clause-summary-items {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--sp-4);
+}
+.clause-summary-items > span {
+  white-space: nowrap;
+}
+.clause-fold[open] > .clause-summary {
+  margin-bottom: var(--sp-3);
+}
+.clause-fold[open] > .clause-summary > .icon {
+  transform: rotate(90deg);
+}
 .clause-head {
   display: flex;
   align-items: center;
@@ -3643,6 +3939,13 @@ input[type="radio"] {
   font-size: 11px;
   line-height: 16px;
   color: var(--text-4);
+}
+/* Beside the form the schedule is read alongside 01, before 03: a number there would contradict the reading order.
+   Folded under the form (≤1280) it reads after 03, and numbers on. */
+@media (min-width: 1281px) {
+  .editor-side .clause-no {
+    display: none;
+  }
 }
 .clause-title {
   font-size: var(--fs-section);
@@ -3688,9 +3991,6 @@ input[type="radio"] {
 /* A look criterion's unit is a phrase ("秒内可访问"); the field widens to carry it. */
 .criterion-edit .timeout-look {
   width: 15ch;
-}
-.criterion-edit .timeout-look input {
-  padding-right: 9ch !important;
 }
 .editor-grid2 {
   display: grid;
@@ -3847,9 +4147,6 @@ input[type="radio"] {
 .settings-form .field-narrow .unit-wrap {
   width: max-content;
 }
-.settings-form .field-narrow .unit-wrap input {
-  padding-right: 24px !important;
-}
 .settings-form .form-row.check {
   margin-bottom: 0;
 }
@@ -3886,6 +4183,7 @@ input[type="radio"] {
   align-items: baseline;
   gap: 2px 6px;
   margin-bottom: var(--sp-3);
+  -webkit-user-select: text;
   user-select: text;
 }
 .env-paths .code-val + .t3 {
@@ -3926,6 +4224,8 @@ input[type="radio"] {
   gap: 6px var(--sp-3);
   padding: 6px 0;
   min-width: 0;
+  /* No word, and no single Chinese character, left alone on a check's last line. */
+  text-wrap: pretty;
 }
 .check-row > .fix,
 .check-row > .check-action {
@@ -4095,47 +4395,10 @@ input[type="radio"] {
 .inbox > .empty-poster {
   margin-top: 24vh;
 }
-/* The empty board: the poster sits higher, and under it the board's own grid waits — heads, then three hollow lines. */
+/* The empty board: the poster sits higher, alone. A loaded board with no goals draws no ghost rows — they read as
+   loading; the loading skeletons keep the ghost bars. */
 .overview > .empty-poster {
   margin-top: clamp(72px, 14vh, 180px);
-}
-.board-ghost {
-  margin-top: var(--sp-10);
-}
-.board-ghost .g-row {
-  pointer-events: none;
-}
-.board-ghost .g-row > span {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.board-ghost .g-diff,
-.board-ghost .g-spend,
-.board-ghost .g-age,
-.board-ghost .g-id {
-  justify-content: flex-end;
-  text-align: right;
-}
-/* The heads: the wordmark's voice — small, tracked, the quietest grey — one line above the hairline.
-   The size goes on the cells, not the row: the row's em-sized tracks must stay the rows' own. */
-.board-ghost-head {
-  height: 24px;
-  border-bottom-color: var(--border);
-}
-.board-ghost-head > span {
-  overflow: visible;
-  white-space: nowrap;
-  font-size: var(--fs-hint);
-  line-height: 12px;
-  font-weight: 500;
-  color: var(--text-4);
-}
-.board-ghost-row .g-glyph {
-  color: var(--text-4);
-}
-.board-ghost-row .seg {
-  border-color: var(--border-strong);
 }
 /* Where a reading will be: a 6px rule in the selection grey, never a word. */
 .ghost-bar {
@@ -4173,12 +4436,35 @@ input[type="radio"] {
   min-width: 0;
   white-space: nowrap;
 }
-.decision-line-ask .decision-kind {
+.decision-line-ask > :not(.ellipsis) {
   flex: 0 0 auto;
+}
+.decision-line-ask > .decision-line-slot {
+  min-width: 11.5em;
+}
+.decision-line-ask .decision-kind {
   font-weight: 400;
 }
 .decision-line-ask .ellipsis {
   min-width: 0;
+}
+/* With one project there is nothing to name in the identity column: the question takes it, and the age ends the line
+   where the hairline does, as an identity would. (From 1561 that column widens for an engine's name, which a decision
+   line never has; the question was cut there beside the empty room.) Below 1241 the column is gone anyway. */
+@media (min-width: 1241px) {
+  .decision-line-unnamed .decision-line-ask {
+    grid-column: 3 / 8;
+  }
+  .decision-line-unnamed .g-age {
+    grid-column: 8;
+  }
+}
+/* A selected line is highlighted like a selected goal row and stays a line: the board does not move under j/k. */
+.decision-slot.selected > .decision-line {
+  background: var(--bg-selected);
+}
+.decision-slot.selected > .decision-line .g-title:focus-visible {
+  outline: none;
 }
 .board-queue .decision-slot.open {
   padding: var(--sp-2) 0;
@@ -4187,13 +4473,14 @@ input[type="radio"] {
 
 /* One goal per line. Columns, left to right: glyph, title, live line,
    criteria, change, spend, age, identity. Fixed widths keep every reading
-   under the one above it; the identity is set flush right, so the last word
-   on every line ends where the hairlines do. No column waits for an action
-   most rows do not have. */
+   under the one above it; the id sits beside its title, and the identity
+   (engine, project, readings) is set flush right, so the last word on every
+   line ends where the hairlines do. No column waits for an action most rows
+   do not have. */
 .g-row {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 12.5em;
+  grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 8.5em;
   column-gap: var(--sp-3);
   align-items: center;
   height: var(--row-goal-h);
@@ -4209,12 +4496,12 @@ input[type="radio"] {
   background: var(--bg-selected);
 }
 .g-row[data-new="true"] {
-  animation: arrive var(--dur-base) var(--ease-out) 1;
+  animation: arrive var(--spring-snappy) 1;
 }
 @keyframes arrive {
   from {
     opacity: 0;
-    transform: translateY(-2px);
+    transform: translateY(-4px);
   }
 }
 .g-glyph {
@@ -4247,19 +4534,40 @@ input[type="radio"] {
 .g-live {
   min-width: 0;
 }
+/* On a board line the glyph column wears the withheld seal's ! and the word says the verdict: the seal stays on the goal page. */
+.g-live .seal-tampered {
+  display: none;
+}
 .g-live .live-line {
   grid-template-columns: minmax(3.5em, max-content) minmax(0, 1fr);
+}
+/* In English the badge's column holds "Thinking" and "Working" alike, so a row's detail starts at one x as a call comes
+   and goes (review 21, record only: it moved 1.7px each call). The Chinese words are two characters, inside 3.5em. */
+.g-live .live-line:lang(en) {
+  grid-template-columns: minmax(4.25em, max-content) minmax(0, 1fr);
 }
 .g-crit {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
 }
+/* A board cell is narrow: the words keep whole and the segments narrow (to 5px, never fewer, never under the words)
+   when a goal has many criteria. A pass that doesn't count needs its words, so its human count goes to the cell's
+   tooltip (as on every row below 1240px): the column stays 11em at every width, and the titles beside it keep theirs. */
+.criteria-bar.tiny {
+  max-width: 100%;
+  gap: var(--sp-1);
+}
 .criteria-bar.tiny .seg {
-  width: 9px;
+  flex: 0 1 9px;
+  min-width: 5px;
   height: 5px;
 }
+.criteria-bar.tiny.has-discounted .crit-human {
+  display: none;
+}
 .criteria-bar.tiny .meta {
+  flex: none;
   font-size: var(--fs-hint);
 }
 .g-diff,
@@ -4274,36 +4582,59 @@ input[type="radio"] {
 .g-spend {
   color: var(--text-2);
 }
-/* Identity: words grouped by space and weight — the readings, the engine and the project by name in text-3, the id in
-   mono text-2 — flush right, so every id ends on the board's edge under the one above it. Nothing in it is squeezed by
-   the browser's own proportions: the project name may shorten but stays legible (3.5em); the engine's name is whole or
-   gone — on a crowded row (a second project, rework, a mute, an overlap, a PR) it leaves first, below 1560, and lives on
-   in the title's tooltip. */
+/* Identity: words grouped by space and weight — the readings, the engine and the project by name in text-3 — flush right,
+   so the last word on every line ends on the board's edge (the id is read with the title, beside it). Nothing in it is
+   squeezed by the browser's own proportions or cut: measured (GoalRow `fitId`), the engine's name leaves first, whole,
+   before the project's name would shorten; then the PR keeps what it needs you for (a failing check, a state other than
+   open); then the word "muted"; then the project's name, which may shorten (only now) but stays legible (3.5em),
+   leaves whole; then the PR keeps one reading, an open PR its failing count and a merged or closed one its state; and
+   last the whole identity folds, as below 1241. What leaves is still read by a screen reader,
+   and the title's tooltip says the whole identity. The leading pseudo-element takes the free room, so anything left
+   over would run off the end rather than cut the first reading. */
 .g-id {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--sp-2);
   min-width: 0;
+  /* Its line's height whatever it holds: folded, its readings leave the flow, and the box keeps its size (no resize
+     loop for the measure). */
+  min-height: 20px;
   overflow: hidden;
   white-space: nowrap;
+}
+.g-id::before {
+  content: "";
+  margin-left: auto;
+  /* Not a reading: the gap after it is given back. */
+  margin-right: calc(-1 * var(--sp-2));
 }
 .g-id > * {
   flex: 0 0 auto;
 }
+/* The project's name takes its own width and may shorten (the measure keeps it at 3.5em or sets it aside). */
 .g-id .g-project {
   flex: 0 1 auto;
-  min-width: 3.5em;
+  min-width: 0;
 }
-@media (max-width: 1560px) {
-  .g-row[data-crowded="true"] .g-engine {
-    display: none;
-  }
+/* Each step of the give-way, cumulative. What a step sets aside leaves the line but not a screen reader. */
+.g-row[data-crowded] .g-engine,
+.g-row:not([data-crowded="engine"])[data-crowded] .g-id :is(.pr-passed, .pr-pending, .pr-line[data-state="open"] :is(.pr-state, .pr-state + .sep), .pr-line:not([data-failing]) :is(.pr-state + .sep, .pr-counts)),
+.g-row:is([data-crowded="quiet"], [data-crowded="project"], [data-crowded="pr-state"], [data-crowded="folded"]) .g-muted,
+.g-row:is([data-crowded="project"], [data-crowded="pr-state"], [data-crowded="folded"]) .g-project,
+.g-row:is([data-crowded="pr-state"], [data-crowded="folded"]) .g-id .pr-line:not([data-state="open"]) :is(.pr-state + .sep, .pr-counts),
+.g-row[data-crowded="folded"] .g-id > * {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 /* Wide enough for every reading at once: the identity column takes the room the engine's name needs on a crowded row. */
 @media (min-width: 1561px) {
   .g-row {
-    grid-template-columns: 14px minmax(12em, 1.25fr) minmax(13em, 1.2fr) 11em 4.5em 7em 6.5em 17em;
+    /* The title's floor and its share of the room as just below 1561, so the title keeps its width across the step. */
+    grid-template-columns: 14px minmax(16em, 1.4fr) minmax(13em, 1.05fr) 11em 4.5em 7em 6.5em 12.5em;
   }
 }
 /* Ready to accept: the row's one action. It stands where the identity is, on the row you point at or are on, and the
@@ -4330,8 +4661,10 @@ input[type="radio"] {
   .g-row {
     grid-template-columns: 14px minmax(12em, 1.6fr) minmax(8em, 1fr) 9em 5em 7em 6.5em;
   }
-  /* The identity column is gone, the engine's name with it: it lives in the title's tooltip, never somewhere else on the line. */
+  /* The identity column is gone, the engine's name and the overlap with it: they live in the title's tooltip, never somewhere
+     else on the line. */
   .g-id,
+  .g-title-cell .g-overlap,
   .g-crit .crit-human,
   .g-live .live-target,
   .g-live .live-target-sep,
@@ -4379,9 +4712,6 @@ input[type="radio"] {
   gap: var(--sp-5);
   margin-top: clamp(120px, 24vh, 280px);
   padding-top: 0;
-}
-.empty-poster .wordmark {
-  margin-bottom: 0;
 }
 .empty-rules {
   margin: 0;
@@ -4461,14 +4791,8 @@ input[type="radio"] {
   color: var(--text-2);
   white-space: nowrap;
 }
-.gauge-dead,
-.gauge-dead .gauge-dot {
+.gauge-dead {
   color: var(--text-4);
-  background-color: transparent;
-}
-.gauge-dead .gauge-dot {
-  border: 1px solid var(--text-4);
-  box-sizing: border-box;
 }
 .boot-error-wrap {
   position: relative;
@@ -4610,6 +4934,7 @@ input[type="radio"] {
   padding-top: 5px;
 }
 .activity-text {
+  -webkit-user-select: text;
   user-select: text;
   white-space: pre-wrap;
   word-break: break-word;
@@ -4728,20 +5053,30 @@ input[type="radio"] {
   height: 20px;
   font-size: var(--fs-hint);
 }
+/* The button is the whole number cell, its padding included, so its ring stands clear of the digits (review 20: drawn
+   inside a button the width of the number, it crossed the last digit). */
 .ln-btn {
-  width: 100%;
+  width: calc(100% + 12px);
   height: var(--lh-code);
-  padding: 0;
+  margin: 0 -6px;
+  padding: 0 6px;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: right;
 }
-/* Keyboard review: the table is one tab stop; inside it ↑↓ walk the lines. */
+/* Keyboard review: the table is one tab stop; inside it ↑↓ walk the lines. Focus the keyboard hands back to the table
+   itself keeps your place: the line pressed wears the ring, on its number, where ↓ and ↩ act; with no line pressed,
+   the table does (review 19, record only: it held focus with no ring). A press of the pointer shows none. */
 .diff:focus-visible {
+  outline: 1.5px solid var(--focus);
+  outline-offset: -1.5px;
+}
+.diff:focus-visible:has(.ln-held) {
   outline: none;
 }
+.diff:focus-visible .ln-held,
 .ln-btn:focus-visible {
   outline: 1.5px solid var(--focus);
   outline-offset: -1.5px;
@@ -4957,13 +5292,14 @@ input[type="radio"] {
 .suggestion-label {
   margin-top: 2px;
 }
-/* One ground inside the amber comment, not a green one laid over it; the verifier's colour is one rule on the left. Code never folds: it scrolls. */
+/* One ground inside the amber comment; a neutral rule on the left marks the proposed code. Green is the verifier's alone,
+   and a suggestion is a person's proposal, not a result. Code never folds: it scrolls. */
 .suggestion {
   margin: 0;
   padding: 6px 10px;
   border-radius: 0 var(--radius-s) var(--radius-s) 0;
   background: var(--bg-inset);
-  border-left: 2px solid var(--st-verified);
+  border-left: 2px solid var(--border-strong);
   font-size: var(--fs-code);
   line-height: var(--lh-code);
   white-space: pre;
@@ -5002,15 +5338,26 @@ input[type="radio"] {
   height: 96px;
   width: auto;
   max-width: 160px;
+  /* Until it has decoded an image has no width of its own: it holds the frame of Tower's capture (the desktop's
+     1280×800, the phone's 390×844), so the capture lands in the box it waited in; decoded, its own proportion. */
+  aspect-ratio: auto 16 / 10;
   object-fit: contain;
   object-position: top center;
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
   background: var(--bg-inset);
 }
+
+.look-phone .look-img {
+  aspect-ratio: auto 390 / 844;
+}
+
 /* Inside the verification sheet the strip is a reading among readings: shorter. */
-.verify-item .look-img,
+.verify-item .look-img {
+  height: 72px;
+}
 .verify-item .look-missing {
+  width: calc(72px * 16 / 10);
   height: 72px;
 }
 .verify-item .look-img {
@@ -5024,15 +5371,65 @@ input[type="radio"] {
   outline-offset: 1px;
   border-radius: var(--radius-s);
 }
+/* A side that is missing says why in the frame its capture would have had (the desktop's 16:10 at the strip's height,
+   the width a waiting thumbnail holds), so a strip of one picture and one gone reads as a pair (review 18, record
+   only: 175 and 140 wide beside 152). A long reason keeps the frame: three lines at most, the whole of it in the
+   tooltip, and a path or a code breaks only where Look.tsx allows it, never inside a word (review 19: a long reason
+   stood 110 tall beside a 96-tall picture, broken as "checko|ut"). On the phone's tab, below, the frame is the phone's. */
 .look-missing {
   display: flex;
   align-items: center;
+  box-sizing: border-box;
+  width: calc(96px * 16 / 10);
   height: 96px;
-  min-width: 140px;
-  max-width: 220px;
-  padding: 0 10px;
+  padding: 6px 10px;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-s);
+  overflow-wrap: break-word;
+}
+/* As many lines as the frame holds: five in the strip's 96, three in a verify item's 72 (review 20: clamped to three in
+   the strip, the reason lost its code and its address to the ellipsis). */
+.look-missing > span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+}
+.verify-item .look-missing > span {
+  -webkit-line-clamp: 3;
+}
+/* On the phone's tab the frame of a side gone is the box a phone's capture waits in (390:844 at the strip's height, as
+   the picture beside it waited), so before and after read as one pair; a frame 45 wide holds no sentence, and why the
+   side is gone is said beside it, where a line has room (review 24, record only 5: the desktop's 154×96 frame stood
+   beside a phone's picture and cut its reason after five lines; review 23's 220×96 was neither shape). Large, side by
+   side, the frame is the phone's too and holds its words (`.look-side.look-phone`). */
+.look-frame {
+  display: none;
+}
+.look-strip.look-phone .look-missing {
+  width: auto;
+  padding: 0;
+  border: 0;
+  gap: var(--sp-2);
+}
+/* `auto`: the ratio is the content box's, inside the 1px border, as the picture's is (`.look-phone .look-img`). */
+.look-strip.look-phone .look-frame {
+  display: block;
+  flex: none;
+  height: 100%;
+  aspect-ratio: auto 390 / 844;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-s);
+}
+/* Beside the frame the words have the frame's whole height, no padding or border of their own: six lines in the strip's
+   96, four in a verify item's 72; a line of at most 44ch keeps the pair within half the row, so "after" stays near
+   "before" (review 24, record only 5). Longer still, the rest is in the tooltip and side by side. */
+.look-strip.look-phone .look-missing > span {
+  max-width: 44ch;
+  -webkit-line-clamp: 6;
+}
+.verify-item .look-strip.look-phone .look-missing > span {
+  -webkit-line-clamp: 4;
 }
 .look-panel {
   width: min(1120px, 94vw);
@@ -5053,10 +5450,17 @@ input[type="radio"] {
   border: 0;
   background: transparent;
 }
+/* The two figures share their rows (a subgrid): the pictures in one, the captions level in the next, whatever the
+   pictures' heights (review 19: "After" floated halfway down a stretched frame). */
 .look-side {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--sp-4);
+  gap: 3px var(--sp-4);
+  align-items: start;
+}
+.look-side .look-shot {
+  grid-row: span 2;
+  grid-template-rows: subgrid;
 }
 /* Large: the picture at its own proportions, never stretched to the column; a tall page simply stands taller. */
 .look-side .look-img,
@@ -5068,8 +5472,25 @@ input[type="radio"] {
   object-fit: contain;
   object-position: top left;
 }
+/* Large, a missing side takes the frame the picture beside it has: the column's width at the capture's proportions
+   (the desktop's 16:10, the phone's 390:844), as tall as the screen lets a picture be (review 19: 192×227 beside a
+   532×333 picture). Here there is room for more of the reason. */
 .look-side .look-missing {
-  height: 120px;
+  width: min(100%, 60vh * 16 / 10);
+  height: auto;
+  aspect-ratio: 16 / 10;
+}
+.look-side.look-phone .look-missing {
+  width: min(100%, 60vh * 390 / 844);
+  aspect-ratio: 390 / 844;
+}
+.look-side .look-missing > span {
+  -webkit-line-clamp: 8;
+}
+/* The phone's frame stands tall and narrow: its reason runs to as many lines as the frame holds at the window's least
+   height (review 23, record only: eight lines and an ellipsis in a frame 336 tall). */
+.look-side.look-phone .look-missing > span {
+  -webkit-line-clamp: 16;
 }
 /* Laid over each other: the stage takes the "before" picture's own size (a phone page stands tall in the
    middle, a desktop page runs wide), and the "after" is fitted onto exactly that box, so the two align and
@@ -5179,7 +5600,7 @@ input[type="radio"] {
 .phone-transport .icon {
   align-self: center;
 }
-/* Switched on but not served: the attention register — ◆ and primary text — and the supervisor's own sentence,
+/* Switched on but not served: the attention register — the ! mark and primary text — and the supervisor's own sentence,
    which already names the way out. Nothing amber beyond the mark: the page is off, not on fire. */
 .phone-problem {
   display: flex;
@@ -5215,7 +5636,7 @@ input[type="radio"] {
   padding-right: 8px !important;
   text-align: center;
 }
-/* The last push's outcome beside the test button: a sent one is a quiet check, a failed one carries its ■, time and reason. */
+/* The last push's outcome beside the test button: a sent one is a quiet check, a failed one carries its ×, time and reason. */
 .push-test {
   gap: var(--sp-3);
   min-height: 28px;

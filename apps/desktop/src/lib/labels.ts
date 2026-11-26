@@ -9,9 +9,25 @@ import type { Mode } from "../gen/Mode";
 import type { OptionTone } from "../gen/OptionTone";
 import type { PauseReason } from "../gen/PauseReason";
 import type { EngineTrustTier } from "./apiTypes";
+import { caveats, notEvidence } from "./discounted";
 import { t } from "./i18n";
+import { livenessOf, state } from "./store";
 
 export const stateLabel = (s: LifecycleState): string => t(`state.${s}`);
+
+/**
+ * The one word for where a goal stands, the same on every surface that names it in text (palette, peek, Operations,
+ * the board's briefing): the lifecycle state, except that a goal waiting to be accepted is never called ready unless
+ * the verifier's pass counts — a tampered canary says so, and so does a goal no machine criterion verified.
+ */
+export function statusWord(g: Pick<GoalSummary, "id" | "state" | "progress" | "verified_pin">): string {
+  if (g.state === "in_review") {
+    if (notEvidence(g)) return t("honesty.sealTampered");
+    if (!g.verified_pin || !g.progress?.machine) return t("honesty.notMachineVerified");
+    if (caveats(g).length) return t("honesty.qualified");
+  }
+  return stateLabel(g.state);
+}
 
 export const pauseLabel = (r: PauseReason | "agent_reported_blocked"): string => t(`pause.${r}` as Parameters<typeof t>[0]);
 
@@ -98,8 +114,12 @@ export function engineLabel(engine: string): string {
   }
 }
 
-/** Default sandbox trust tier per engine when the backend descriptor list has not arrived yet. */
+/** An engine's sandbox trust tier: the backend's descriptor when it has arrived, else the same per-engine default
+ *  the supervisor uses (`acp_adapter::trust_level`). Every surface asks here, so the peek, the goal rail and
+ *  Settings can't disagree. */
 export function engineTrustTier(engine: string): EngineTrustTier {
+  const known = state.engines.find((e) => e.id === engine)?.trust_tier;
+  if (known) return known;
   if (engine === "pi" || engine === "claude-code" || !engine) return "full_s2";
   if (engine === "codex" || engine === "gemini-cli" || engine === "opencode") return "restricted_s2";
   return "experimental";
@@ -133,6 +153,24 @@ export function heartbeatState(sinceMs: number, toolRunning: boolean): "fine" | 
   if (sinceMs <= SILENT_AFTER_MS) return "quiet";
   return "silent";
 }
+
+/**
+ * A running goal whose event stream has been still for two minutes with no tool in flight: the badge says so instead
+ * of "thinking", so the board and the title bar's heartbeat never contradict each other.
+ */
+export function silent(g: GoalSummary, now: number): boolean {
+  if (g.state !== "running") return false;
+  const l = livenessOf(g);
+  return heartbeatState(Math.max(0, now - l.at), l.tool !== null) === "silent";
+}
+
+/**
+ * Work in motion: a goal being verified, or a running one that is neither waiting on you nor silent. Only then does its
+ * mark turn (and, on the goal in view, its words shimmer): a goal that waits on you, or has gone quiet, holds its mark
+ * still, so motion never says "at work" beside "Question" or "Silent".
+ */
+export const moving = (g: GoalSummary, now: number): boolean =>
+  g.state === "verifying" || (g.state === "running" && !modeNeedsYou(g.mode) && !g.needs_you && !silent(g, now));
 
 /**
  * How the supervisor wants an option presented (tower-core `Choice::tone`):
@@ -216,8 +254,8 @@ export function envGauges(env: EnvironmentStatus | null | undefined, engine: str
   out.push({ key: "sandbox", label: t("settings.gaugeSandbox"), mark: noSandbox ? "notice" : "ok", value: noSandbox ? t("settings.gaugeNone") : t("settings.gaugeOn") });
   if (env.git_version) {
     const unset = hasIssue(env, "git_identity_missing");
-    // ◇, as in the check list under it and on the welcome page: a missing identity blocks writing a branch, not a run, so it is not ◆.
-    out.push({ key: "identity", label: t("settings.gaugeIdentity"), mark: unset ? "notice" : "ok", value: unset ? t("settings.gaugeUnset") : t("settings.gaugeSet") });
+    // The i mark, as in the check list under it and on the welcome page: a missing identity blocks writing a branch, not a run, so it is not the amber !.
+    out.push({ key: "identity", label: t("overview.colIdentity"), mark: unset ? "notice" : "ok", value: unset ? t("settings.gaugeUnset") : t("settings.gaugeSet") });
   }
   return out;
 }
@@ -240,7 +278,7 @@ export function runPurposeLabel(purpose: string): string {
 export function runOutcomeLabel(outcome: string | null): string | null {
   const key = (
     {
-      submitted: "goal.outcomeSubmitted",
+      submitted: "state.claimed",
       paused: "goal.outcomePaused",
       crashed: "goal.outcomeCrashed",
       abandoned: "goal.outcomeAbandoned",

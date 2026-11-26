@@ -26,6 +26,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
+  /* An app, not a page: only text you may want to copy selects (claims, findings, code, questions). Written with the
+     prefix too: WebKit reads only `-webkit-user-select`, and the dev server, unlike the build, adds no prefix. */
+  -webkit-user-select: none;
   user-select: none;
   cursor: default;
 }
@@ -72,7 +75,26 @@ textarea {
 input,
 textarea,
 [contenteditable] {
+  -webkit-user-select: text;
   user-select: text;
+}
+
+/* The machine values you take elsewhere — a goal's title, an id, a pin for `git show`, a command to rerun, a path —
+   select too (review 15). Not where a click on them is a move or a drag: a button (a crowded PR line's set-aside words
+   among them), a board row, a palette option, the title bar. */
+.goal-title,
+.review-title,
+.code-val,
+.held-out-files,
+.file-path,
+.ev-hf {
+  -webkit-user-select: text;
+  user-select: text;
+}
+:is(button, .g-row, [role="option"], .titlebar) .code-val,
+button.code-val {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 ::selection {
@@ -198,8 +220,11 @@ kbd,
   border-top: 1px solid var(--border-grid);
 }
 
+/* Every box, its ::before and ::after too (a criteria segment's fill, a shimmer's band): nothing moves. */
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0ms !important;
     transition-duration: 0ms !important;
   }

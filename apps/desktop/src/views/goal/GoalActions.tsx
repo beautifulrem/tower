@@ -26,7 +26,7 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
   const confirmPush = async (pr: boolean) => {
     const ok = await ask(t("goal.confirmPush", { branch: props.goal.branch ?? "", pr }), {
       title: pr ? (props.goal.pr ? t("goal.pushUpdatePr") : t("goal.pushPr")) : t("goal.pushOnly"),
-      ok: pr ? (props.goal.pr ? t("goal.pushVerb") : t("goal.pushPrVerb")) : t("goal.pushVerb"),
+      ok: pr ? (props.goal.pr ? t("goal.pushVerb") : t("goal.pushPr")) : t("goal.pushVerb"),
       cancel: t("common.cancel"),
       kind: "warning",
     });
@@ -57,7 +57,7 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
         },
         enabled: !!props.goal.branch,
       },
-      { label: t("goal.archive"), run: () => void act(() => api.archive(id()), t("goal.archived")), enabled: ["accepted", "integrated", "in_review"].includes(s()) },
+      { label: t("goal.archive"), run: () => void act(() => api.archive(id()), t("state.archived")), enabled: ["accepted", "integrated", "in_review"].includes(s()) },
       {
         label: t("goal.removeWorkspace"),
         run: async () => {
@@ -67,7 +67,7 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
             cancel: t("common.cancel"),
             kind: "warning",
           });
-          if (ok) void act(() => api.removeWorkspace(id()), t("goal.workspaceRemoved"));
+          if (ok) void act(() => api.removeWorkspace(id()), t("trace.evWorkspaceRemoved"));
         },
         enabled: ["archived", "abandoned"].includes(s()),
       },
@@ -95,7 +95,7 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
       <Switch>
         <Match when={s() === "paused" && !props.hasDecision}>
           <Button size="s" variant="primary" kbd="p" onClick={props.onPause}>
-            {t("goal.resume")}
+            {t("goal.purposeResume")}
           </Button>
         </Match>
         <Match when={s() === "draft"}>
@@ -112,11 +112,6 @@ export function GoalActions(props: { goal: GoalDetail["summary"]; watching: bool
       <Show when={["running", "verifying", "ready", "claimed"].includes(s())}>
         <Button size="s" kbd="p" onClick={props.onPause}>
           {t("goal.pause")}
-        </Button>
-      </Show>
-      <Show when={s() !== "in_review" && (props.goal.diffstat !== null || s() === "running")}>
-        <Button size="s" kbd="r" onClick={() => go({ name: "review", id: id() })}>
-          {t("goal.changes")}
         </Button>
       </Show>
       <Button size="s" variant="ghost" kbd="w" aria-pressed={props.watching} onClick={props.onWatch}>

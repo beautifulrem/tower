@@ -499,13 +499,28 @@ keygen = "run --bin keygen"
         assert!(ssh.contains("ssh://git@git.example.com/index"), "a lone ssh user is not a credential: {ssh}");
 
         // Many sources are one pass, not one per pair: the agent can write this file, and it is read again at every run.
-        let many: String = (0..30_000)
-            .map(|i| format!("[source.s{i}]\nregistry = \"https://m.example.com/{i}\"\nreplace-with = \"zz\"\n"))
-            .chain(["[registries.zz]\nindex = \"https://zz.example.com/i\"\n".to_string()])
-            .collect();
-        let started = std::time::Instant::now();
-        let _ = without_credentials(&many);
-        assert!(started.elapsed() < std::time::Duration::from_secs(4), "took {:?}", started.elapsed());
+        // Timed against itself, so a busy machine slows both sides alike: four times the sources take about four times
+        // as long, where one pass per pair takes ten or more (the best of three each, taken in turn). A bound in seconds
+        // failed one pass on a machine busy with other tests, and a machine a fifth faster would let one per pair through.
+        let many = |n: usize| -> String {
+            (0..n)
+                .map(|i| format!("[source.s{i}]\nregistry = \"https://m.example.com/{i}\"\nreplace-with = \"zz\"\n"))
+                .chain(["[registries.zz]\nindex = \"https://zz.example.com/i\"\n".to_string()])
+                .collect()
+        };
+        let (few, four_times) = (many(10_000), many(40_000));
+        let timed = |config: &str| {
+            let started = std::time::Instant::now();
+            let _ = without_credentials(config);
+            started.elapsed()
+        };
+        let (mut small, mut large) = (std::time::Duration::MAX, std::time::Duration::MAX);
+        for _ in 0..3 {
+            small = small.min(timed(&few));
+            large = large.min(timed(&four_times));
+        }
+        let ratio = large.as_secs_f64() / small.as_secs_f64();
+        assert!(ratio < 8.0, "four times the sources took {ratio:.1} times as long ({small:?}, then {large:?})");
 
         // A cache seeded before the filter loses its copy's token too.
         std::fs::write(cache.join("cargo/config.toml"), "[registry]\ntoken = \"cio_oldseed0016\"\n").unwrap();

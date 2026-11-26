@@ -95,11 +95,21 @@ fn project(tx: &Connection, goal_id: &str, at: Millis, e: &EventKind) -> Result<
                 tx.execute("UPDATE goals SET live_line = NULL WHERE id = ?1", [goal_id])?;
             }
         }
-        EventKind::ToolStarted { tool, summary, .. } => {
-            let line = LiveLine { mode: Mode::for_tool(tool), action: tool.clone(), target: summary.clone(), at };
+        // The live line names work: a note (log), the hand-in (submit) and a question to you (ask_user, whose own
+        // card says it) are not, and never take the line from the call at work (review 18).
+        EventKind::ToolStarted { tool, summary, .. } if !matches!(tool.as_str(), "log" | "submit" | "ask_user") => {
+            let line = LiveLine {
+                mode: Mode::for_tool(tool),
+                action: tool.clone(),
+                target: summary.clone(),
+                at,
+                running: true,
+            };
+            // A goal at rest (idle, settled) has no live line: a call its stopped run's engine started, handled after
+            // the stop, does not put one back as running (iteration 21).
             tx.execute(
-                "UPDATE goals SET live_line = ?2 WHERE id = ?1",
-                params![goal_id, serde_json::to_string(&line)?],
+                "UPDATE goals SET live_line = ?2 WHERE id = ?1 AND mode NOT IN (?3, ?4)",
+                params![goal_id, serde_json::to_string(&line)?, enum_str(&Mode::Idle), enum_str(&Mode::Settled)],
             )?;
         }
         EventKind::Claim { claim_id, claim, text, criterion } => {
@@ -262,10 +272,30 @@ fn row_to_trace(r: &rusqlite::Row<'_>) -> rusqlite::Result<TraceEntry> {
         at: r.get("at")?,
         source: Source::parse(&source).unwrap_or(Source::System),
         event: serde_json::from_str(&payload).map_err(|e| crate::goals::bad_value("payload", &e.to_string()))?,
+        words: None,
     })
 }
 
 impl Store {
+    /// Sets what a goal's live line says without an event: the supervisor's own reading of which call is at work,
+    /// when the one it named has ended and another still runs (the trace already holds both calls).
+    pub fn set_live_line(&mut self, goal_id: &str, line: &LiveLine) -> Result<()> {
+        self.conn
+            .execute("UPDATE goals SET live_line = ?2 WHERE id = ?1", params![goal_id, serde_json::to_string(line)?])?;
+        Ok(())
+    }
+
+    /// Marks a goal's live line as naming no call in flight any more, its words kept (the last call's): the
+    /// supervisor's reading when the last call at work has ended, or the agent's turn is over (review 18).
+    pub fn stop_live_line(&mut self, goal_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE goals SET live_line = json_set(live_line, '$.running', json('false'))
+             WHERE id = ?1 AND live_line IS NOT NULL",
+            [goal_id],
+        )?;
+        Ok(())
+    }
+
     /// Appends an event and updates projections atomically.
     pub fn append(&mut self, goal_id: &str, event: EventKind) -> Result<TraceEntry> {
         let at = self.now();
@@ -275,7 +305,8 @@ impl Store {
         let seq = insert_event(&tx, goal_id, at, &event)?;
         project(&tx, goal_id, at, &event)?;
         tx.commit()?;
-        Ok(TraceEntry { seq, goal_id: goal_id.into(), at, source: event.source(), event })
+        let words = tower_core::i18n::event_words(&event, || self.lang());
+        Ok(TraceEntry { seq, goal_id: goal_id.into(), at, source: event.source(), event, words })
     }
 
     /// Applies a lifecycle transition through the single transition function
@@ -304,13 +335,32 @@ impl Store {
         let mut stmt =
             self.conn.prepare("SELECT * FROM events WHERE goal_id = ?1 AND seq < ?2 ORDER BY seq DESC LIMIT ?3")?;
         let rows = stmt.query_map(params![goal_id, before_seq.unwrap_or(i64::MAX), limit], row_to_trace)?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        self.worded(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     pub fn events_since(&self, goal_id: &str, since: Millis) -> Result<Vec<TraceEntry>> {
         let mut stmt = self.conn.prepare("SELECT * FROM events WHERE goal_id = ?1 AND at > ?2 ORDER BY seq")?;
         let rows = stmt.query_map(params![goal_id, since], row_to_trace)?;
-        Ok(rows.collect::<rusqlite::Result<_>>()?)
+        self.worded(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Fills the words of the entries the desk has no row of its own for, in the language of the moment (read once).
+    /// A closing of Tower's that an older Tower wrote in another form ("Withdrawn: The run stopped") reads in today's
+    /// sentence, naming the item, in the language it was written in, as every closing keeps its own (its reason can
+    /// hold what only that language says: a check's names, a branch). The log keeps what was written (review 24,
+    /// record 3).
+    fn worded(&self, mut entries: Vec<TraceEntry>) -> Result<Vec<TraceEntry>> {
+        let mut lang = None;
+        for e in &mut entries {
+            if let EventKind::InboxResolved { item_id, response, auto: true } = &mut e.event
+                && let Some((said_in, why)) = tower_core::i18n::older_closing(response)
+                && let Ok(what) = self.item_name(item_id, said_in)
+            {
+                *response = tower_core::i18n::tower_closed(said_in, &what, &why);
+            }
+            e.words = tower_core::i18n::event_words(&e.event, || *lang.get_or_insert_with(|| self.lang()));
+        }
+        Ok(entries)
     }
 
     /// Sentinel findings since the latest verification started. Titles of
@@ -393,6 +443,73 @@ mod tests {
         .id
     }
 
+    /// Iteration 24: an event with no row of its own reaches the desk with its words, read back or just appended, in
+    /// the language of the moment; any other event carries none.
+    #[test]
+    fn an_event_with_no_row_of_its_own_comes_worded() {
+        let (mut s, _) = store();
+        let id = goal(&mut s);
+        let canary = EventKind::CanaryChecked {
+            criterion: "C1".into(),
+            pin: "abc".into(),
+            state: tower_core::view::CanaryState::Intact,
+        };
+        let appended = s.append(&id, canary).unwrap();
+        let said = tower_core::i18n::event_words(&appended.event, || s.lang());
+        assert!(said.is_some());
+        assert_eq!(appended.words, said);
+        assert_eq!(s.append(&id, EventKind::tower_note("n")).unwrap().words, None);
+        let read: Vec<Option<String>> = s.trace(&id, None, 100).unwrap().into_iter().map(|e| e.words).collect();
+        assert!(read.contains(&said), "{read:?}");
+        assert_eq!(read.iter().filter(|w| w.is_some()).count(), 1, "{read:?}");
+        assert_eq!(s.events_since(&id, 0).unwrap().iter().filter(|e| e.words == said).count(), 1);
+    }
+
+    /// Review 18: the live line names work. A note, the hand-in and a question to you leave it on the call at work;
+    /// stopped, it keeps the last call's words and says no call is in flight. A goal at rest gets none from a call
+    /// (iteration 21: one its stopped run's engine started, handled after the stop).
+    #[test]
+    fn the_live_line_names_work_and_says_when_none_is_in_flight() {
+        let (mut s, _) = store();
+        let id = goal(&mut s);
+        // A run at work: a new goal is idle.
+        s.append(&id, EventKind::ModeChanged { mode: Mode::Thinking }).unwrap();
+        let start = |s: &mut Store, id: &str, call: &str, tool: &str| {
+            s.append(
+                id,
+                EventKind::ToolStarted { call_id: call.into(), tool: tool.into(), summary: format!("{tool} it") },
+            )
+            .unwrap();
+        };
+        let line = |s: &Store| s.summary(&id).unwrap().live_line.expect("a live line");
+        start(&mut s, &id, "1", "bash");
+        assert_eq!((line(&s).action, line(&s).target, line(&s).running), ("bash".into(), "bash it".into(), true));
+        for (call, tool) in [("2", "log"), ("3", "submit"), ("4", "ask_user")] {
+            start(&mut s, &id, call, tool);
+            assert_eq!((line(&s).action, line(&s).running), ("bash".into(), true), "{tool} is not work");
+        }
+        s.stop_live_line(&id).unwrap();
+        assert_eq!((line(&s).action, line(&s).target, line(&s).running), ("bash".into(), "bash it".into(), false));
+        // A goal with no live line has none to stop.
+        let project_id = s.goal(&id).unwrap().project_id;
+        let other = s
+            .create_goal(NewGoal {
+                project_id,
+                title: "u".into(),
+                contract: Contract::quick("y", None, tower_core::Lang::En),
+            })
+            .unwrap()
+            .id;
+        s.stop_live_line(&other).unwrap();
+        assert_eq!(s.summary(&other).unwrap().live_line, None);
+        // At rest, idle or settled, a call's start puts no live line up.
+        start(&mut s, &other, "5", "bash");
+        assert_eq!(s.summary(&other).unwrap().live_line, None, "idle");
+        s.append(&other, EventKind::ModeChanged { mode: Mode::Settled }).unwrap();
+        start(&mut s, &other, "6", "bash");
+        assert_eq!(s.summary(&other).unwrap().live_line, None, "settled");
+    }
+
     #[test]
     fn transitions_go_through_the_state_machine() {
         let (mut s, _) = store();
@@ -440,7 +557,7 @@ mod tests {
         let (mut s, _) = store();
         let id = goal(&mut s);
         for i in 0..5 {
-            s.append(&id, EventKind::Note { text: i.to_string() }).unwrap();
+            s.append(&id, EventKind::tower_note(i.to_string())).unwrap();
         }
         let page = s.trace(&id, None, 3).unwrap();
         assert_eq!(page.len(), 3);

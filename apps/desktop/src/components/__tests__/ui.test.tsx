@@ -64,7 +64,7 @@ describe("empty states", () => {
     expect(container.querySelector(".wordmark circle")).toBeNull();
     expect(screen.queryByText(/Facts stay apart from claims/)).toBeNull();
   });
-  it("use the glyph set's ring and square", () => {
+  it("use the mark family's red ×", () => {
     const { container } = render(() => <Empty title="Nothing" kind="error" />);
     expect(container.querySelector(".mark-danger")).not.toBeNull();
   });
@@ -89,7 +89,7 @@ describe("overlay focus", () => {
 });
 
 describe("heartbeat", () => {
-  it("is silent (hollow square) only without a running tool", () => {
+  it("is silent (the hollow ring) only without a running tool", () => {
     const { container } = render(() => <Heartbeat running={0} />);
     expect(container.querySelector(".gauge")).toBeNull();
   });

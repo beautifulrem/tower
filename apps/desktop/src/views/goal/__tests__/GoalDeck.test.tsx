@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../lib/store", async () => {
@@ -61,15 +61,35 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
       />
     ));
 
-    expect(screen.getByText("Base→Pin proved")).toBeTruthy();
-    expect(screen.getByText("Source-only ✓")).toBeTruthy();
-    expect(screen.getByText("Canary intact")).toBeTruthy();
-    expect(screen.getByText("Guard multi-proc gap")).toBeTruthy();
-    expect(screen.getByText("Flaky: 1× rerun passed")).toBeTruthy();
-    expect(screen.getByText("Loopback: base evidence")).toBeTruthy();
-    expect(screen.getByText("Bypass-around-bug")).toBeTruthy();
-    expect(screen.getByText(/✓ holdout\/rounding\.test\.js/)).toBeTruthy();
-    expect(screen.getByText(/✕ holdout\/tax\.test\.js/)).toBeTruthy();
+    // Folded: the verdict and one line of what qualifies it — warnings only, and a pass wears no danger red.
+    const strip = () => document.querySelector(".ev-strip")!;
+    expect(screen.getByText("assertions not checked")).toBeTruthy();
+    expect(screen.getByText("works around the bug")).toBeTruthy();
+    expect(screen.getByText("held-out tests: 1 of 2 ran, for you only")).toBeTruthy();
+    expect(screen.getByText("flaky: passed on rerun")).toBeTruthy();
+    expect(strip().querySelector(".ev-pill-danger")).toBeNull();
+    expect(screen.queryByText("passes from the code alone")).toBeNull();
+    expect(screen.queryByText("holdout/rounding.test.js")).toBeNull();
+    // Open: every reading, each once — a fact a sentence line says in full is not also a pill.
+    fireEvent.click(screen.getByText("passed"));
+    expect(screen.getByText("passes from the code alone")).toBeTruthy();
+    expect(screen.getByText("assertions not checked")).toBeTruthy();
+    expect(screen.getByText("red → green")).toBeTruthy();
+    expect(screen.getByText("must-fail tests failed, as they must")).toBeTruthy();
+    expect(screen.queryByText("must-fail tests failed")).toBeNull();
+    // The file that ran follows the line that counts it; the one that did not run is named once, on its own line in
+    // words. No file wears a character for its state (review 14: ✓ ✕ ○ were text, and an amber ✕ meant "did not run").
+    expect(screen.getAllByText("holdout/rounding.test.js")).toHaveLength(1);
+    expect(screen.getAllByText("holdout/tax.test.js")).toHaveLength(1);
+    expect(screen.getByText("holdout/tax.test.js").closest(".held-out-missing")).not.toBeNull();
+    expect(document.querySelector(".criterion")!.textContent).not.toMatch(/[✓✔✕✖✗○◇◆■□●◐◑▲△⬛]/);
+    // In that order: the count, the files that ran right under it, then the line of the ones that did not (review 15:
+    // after it, a ran file read as one more that did not run).
+    const count = screen.getByText("held-out tests: 1 of 2 ran, for you only");
+    const ranFile = screen.getByText("holdout/rounding.test.js");
+    const missing = screen.getByText("holdout/tax.test.js").closest(".held-out-missing")!;
+    const after = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect([after(count, ranFile), after(ranFile, missing)]).toEqual([true, true]);
   });
 
   it("does not attribute another criterion's sentinel to an unrelated criterion", () => {
@@ -94,9 +114,122 @@ describe("CriterionRow Six-Step Verification Bench Readout", () => {
         sentinels={[{ sentinel: "assertion_guard_incomplete", severity: 3, title: "Guard gap", detail: "C2: worker exited early" }]}
       />
     ));
-    expect(screen.getByText("Assertion guard ✓")).toBeTruthy();
-    expect(screen.queryByText("Guard multi-proc gap")).toBeNull();
+    fireEvent.click(screen.getByText("passed"));
+    expect(screen.getByText("assertions untouched")).toBeTruthy();
+    expect(screen.queryByText("assertions not checked")).toBeNull();
+    // Review 12 (record only): the high finding on C2 holds C1's pass too, and C1's row said nothing of it. It says why,
+    // in amber, and where; the finding's own words are its tooltip.
+    const held = screen.getByText("doesn't count: a high finding on C2");
+    expect(held.classList.contains("ev-pill-attn")).toBe(true);
+    expect(held.getAttribute("title")).toBe("Guard gap: C2: worker exited early");
+    cleanup();
+    // Review 15 (R15-P3-01): a C9 in a path is not a criterion the goal has. With only C1 and C2, the finding names none,
+    // so it is the goal's: C1's own pill says it, and no row points at a C9.
+    render(() => (
+      <CriterionRow
+        goalId="G-0001"
+        c={criterion}
+        state="in_review"
+        base="1111111"
+        ids={["C1", "C2"]}
+        sentinels={[{ sentinel: "assertions_removed", severity: 3, title: "Assertions removed", detail: "tests/C9/cart.test.js asserts nothing now" }]}
+      />
+    ));
+    fireEvent.click(screen.getByText("passed"));
+    expect(document.querySelector(".criterion")!.textContent).not.toMatch(/C9/);
+    expect(screen.queryByText("assertions untouched")).toBeNull();
+    cleanup();
+    // Review 16 (record only): nor is a path through a criterion the goal does have. tests/C2/… on C1's row is the goal's
+    // finding, C1's own pill; "a high finding on C2" would send you to a criterion the finding never named.
+    for (const detail of ["tests/C2/cart.test.js asserts nothing now", "C2.test.js asserts nothing now"]) {
+      render(() => (
+        <CriterionRow goalId="G-0001" c={criterion} state="in_review" base="1111111" ids={["C1", "C2"]} sentinels={[{ sentinel: "assertions_removed", severity: 3, title: "Assertions removed", detail }]} />
+      ));
+      fireEvent.click(screen.getByText("passed"));
+      expect(screen.queryByText("doesn't count: a high finding on C2"), detail).toBeNull();
+      expect(screen.queryByText("assertions untouched")).toBeNull();
+      cleanup();
+    }
+    // A finding that does name C2 in words still points there.
+    render(() => (
+      <CriterionRow goalId="G-0001" c={criterion} state="in_review" base="1111111" ids={["C1", "C2"]} sentinels={[{ sentinel: "assertions_removed", severity: 3, title: "Assertions removed", detail: "C2: tests/cart.test.js asserts nothing now" }]} />
+    ));
+    fireEvent.click(screen.getByText("passed"));
+    expect(screen.getByText("doesn't count: a high finding on C2")).toBeTruthy();
   });
+
+  // Review 9, R9-P3-04: the supervisor qualifies a pass when code reaches into the test runner (source_touches_tests,
+  // runner_patched, source_patches_tests); the row says that caveat, and never "assertions untouched" beside it.
+  // Review 10, R10-P3-04: a caveat is one pill, in the seal's words and the neutral tone, whichever finding raised it; a
+  // high finding holds the pass (named for what was done; amber on a passing row, as every danger there); another finding
+  // is amber, in its own words.
+  for (const [sentinel, severity, said, tone] of [
+    ["source_touches_tests", 2, "code reaches into the test runner", "obs"],
+    ["runner_patched", 2, "code reaches into the test runner", "obs"],
+    ["source_patches_tests", 2, "code reaches into the test runner", "obs"],
+    ["source_patches_tests", 3, "runner patched", "attn"],
+    ["assertion_identity_unchecked", 2, "assertions not checked", "obs"],
+    ["assertions_removed", 2, "assertions weakened", "attn"],
+  ] as const)
+    it(`says ${sentinel} (severity ${severity}) as the ${tone} pill it is, never "assertions untouched"`, () => {
+      const criterion = {
+        criterion: { id: "C1", title: "Checkout tests", kind: { type: "exec" as const, command: "pnpm test", timeout_secs: 60 } },
+        verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 420, output_tail: "ok", at: Date.now() - 5000, stale: false, held_out: false, held_out_proof: null, console_errors: [] },
+        passed_on_base: false,
+        base_error: null,
+        look: null,
+        passes_with_source_only: true,
+        canary: "intact" as const,
+        loopback_opened: undefined,
+        observed: null,
+        human_checked: false,
+      };
+      render(() => (
+        <CriterionRow goalId="G-0001" c={criterion} state="in_review" base="1111111" sentinels={[{ sentinel, severity, title: "Test machinery", detail: "src/cart.js: require('node:assert')" }]} />
+      ));
+      fireEvent.click(screen.getByText("passed"));
+      const pills = screen.getAllByText(said).filter((e) => e.classList.contains("ev-pill"));
+      expect(pills).toHaveLength(1);
+      expect(pills[0].dataset.mark).toBe(tone);
+      expect(screen.queryByText("assertions untouched")).toBeNull();
+    });
+
+  // Review 11, R11-P3-02: each family was said by its first finding, so a low one listed first hid the high one that held
+  // the pass; and a low finding kept the neutral caveat pill beside a pass a high finding held, which no caveat qualifies.
+  for (const [name, sentinels, said, gone] of [
+    ["a low guard finding listed before a high one", [["assertion_identity_unchecked", 2], ["assertions_removed", 3]], ["assertions weakened"], ["assertions not checked"]],
+    ["a low machinery finding beside a high bypass", [["source_touches_tests", 2], ["bypass_around_bug", 3]], ["code reaches into the test runner", "works around the bug"], []],
+  ] as const)
+    it(`says ${name} by the weightiest finding, and no neutral caveat beside the held pass`, () => {
+      const criterion = {
+        criterion: { id: "C1", title: "Checkout tests", kind: { type: "exec" as const, command: "pnpm test", timeout_secs: 60 } },
+        verified: { pin: "abcdef1234567", passed: true, exit_code: 0, duration_ms: 420, output_tail: "ok", at: Date.now() - 5000, stale: false, held_out: false, held_out_proof: null, flaky: true, console_errors: [] },
+        passed_on_base: false,
+        base_error: null,
+        look: null,
+        passes_with_source_only: true,
+        canary: "intact" as const,
+        loopback_opened: undefined,
+        observed: null,
+        human_checked: false,
+      };
+      render(() => (
+        <CriterionRow
+          goalId="G-0001"
+          c={criterion}
+          state="in_review"
+          base="1111111"
+          sentinels={sentinels.map(([sentinel, severity]) => ({ sentinel, severity, title: "Finding", detail: "src/cart.js" }))}
+        />
+      ));
+      fireEvent.click(screen.getByText("passed"));
+      const pills = [...document.querySelectorAll<HTMLElement>(".ev-pill")];
+      for (const s of said) expect(pills.filter((p) => p.textContent === s).map((p) => p.dataset.mark), s).toEqual(["attn"]);
+      for (const s of gone) expect(pills.some((p) => p.textContent === s), s).toBe(false);
+      // Not one pill in the caveat's neutral tone, the flaky rerun included: the pass is held, not counted with caveats.
+      expect(pills.filter((p) => p.dataset.mark === "obs").map((p) => p.textContent)).toEqual([]);
+      expect(screen.queryByText("assertions untouched")).toBeNull();
+    });
 });
 
 describe("SteerBox Multimodal Steering Console", () => {

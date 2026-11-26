@@ -36,6 +36,7 @@ vi.mock("../../lib/store", async () => {
       },
     },
     inbox: [],
+    engines: [],
     now: Date.now(),
   });
   return {
@@ -168,12 +169,12 @@ describe("the contract studio", () => {
   it("reads as a 5-clause contract with masthead, numbered clauses, and schedule", () => {
     const { container } = render(() => <ContractEditor projectId="p1" />);
     const mast = container.querySelector(".contract-mast")!;
-    expect([...mast.children].map((el) => el.textContent)).toEqual(["Contract", "", "shop", "", "new"]);
+    expect([...mast.children].map((el) => el.textContent)).toEqual(["New contract", "", "shop"]);
     const heads = [...container.querySelectorAll(".clause-head")].map((h) => `${h.querySelector(".clause-no")!.textContent} ${h.querySelector(".clause-title")!.textContent}`);
     expect(heads).toEqual([
       "01 Intent",
       "02 Acceptance & visual criteria",
-      "03 Scope fence & ports",
+      "03 Scope fence & limits",
       "04 Engine, escalation & sandbox",
       "05 Budget & dependencies",
     ]);
@@ -189,6 +190,15 @@ describe("the contract studio", () => {
     expect(screen.getByText("Open loopback")).toBeTruthy();
     fireEvent.click(screen.getByRole("switch", { name: /Allow network/ }));
     await waitFor(() => expect(screen.queryByText("Ports on this machine")).toBeNull());
+  });
+
+  it("starts where you write: the intent has the focus, and a criterion you add takes it for its title", async () => {
+    render(() => <ContractEditor projectId="p1" />);
+    await waitFor(() => expect(document.activeElement?.tagName).toBe("TEXTAREA"));
+    fireEvent.click(screen.getByRole("button", { name: /^Command$/ }));
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^C\d+ /));
+    const ids = Array.from(document.querySelectorAll(".criterion-edit > .num")).map((n) => n.textContent);
+    expect(document.activeElement?.getAttribute("aria-label")?.split(" ")[0]).toBe(ids[ids.length - 1]);
   });
 
   it("supports selecting cross-goal dependencies and sandbox tier defaults", async () => {
@@ -210,14 +220,14 @@ describe("the contract studio", () => {
     render(() => <ContractEditor projectId="p1" />);
     fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
     const ratifyBtns = await waitFor(() => {
-      const btns = screen.getAllByRole("button", { name: /Ratify into holdout\// });
+      const btns = screen.getAllByRole("button", { name: /Approve into holdout\// });
       expect(btns.length).toBeGreaterThan(0);
       return btns;
     });
-    expect(screen.getByText(/Draft claim · inactive until you ratify/)).toBeTruthy();
+    expect(screen.getByText(/Draft claim, inactive until you approve it/)).toBeTruthy();
     const before = invoked.filter((x) => x.cmd === "ratify_holdout_draft").length;
     fireEvent.click(ratifyBtns[0]);
-    await waitFor(() => expect(screen.getByText(/You ratified · hidden/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/You approved, hidden/)).toBeTruthy());
     expect(invoked.filter((x) => x.cmd === "ratify_holdout_draft").length).toBe(before + 1);
   });
 });
@@ -236,6 +246,8 @@ describe("attachments of a draft", () => {
         expect(b).toBeTruthy();
         return b!;
       });
+      // The cross icon, named for what it does; never the text "×" (review 14, record only).
+      expect([remove.textContent, !!remove.querySelector("svg"), remove.getAttribute("aria-label")]).toEqual(["", true, "Remove"]);
       fireEvent.click(remove);
       await waitFor(() => expect(container.querySelector(".att-chip")).toBeNull());
       unmount();
@@ -306,7 +318,7 @@ describe("synthetic holdout drafts", () => {
       render(() => <ContractEditor projectId="p1" />);
       fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
       await waitFor(() => expect(screen.getByText(/the project is gone/)).toBeTruthy());
-      expect(screen.queryByRole("button", { name: /Ratify into holdout\// })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Approve into holdout\// })).toBeNull();
     } finally {
       draft.holdout = "ok";
     }
@@ -318,12 +330,12 @@ describe("synthetic holdout drafts", () => {
     try {
       render(() => <ContractEditor projectId="p1" />);
       fireEvent.click(screen.getByRole("button", { name: /Generate synthetic holdout drafts/ }));
-      const btn = await waitFor(() => screen.getByRole("button", { name: /Ratify into holdout\// }));
+      const btn = await waitFor(() => screen.getByRole("button", { name: /Approve into holdout\// }));
       fireEvent.click(btn);
       await waitFor(() => expect(vi.mocked(toast)).toHaveBeenCalledWith("error", expect.stringContaining("read-only")));
-      expect(screen.queryByText(/You ratified · hidden/)).toBeNull();
+      expect(screen.queryByText(/You approved, hidden/)).toBeNull();
       expect(vi.mocked(toast)).not.toHaveBeenCalledWith("success", expect.anything());
-      expect(screen.getByRole("button", { name: /Ratify into holdout\// })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Approve into holdout\// })).toBeTruthy();
     } finally {
       draft.holdout = "ok";
     }
@@ -422,5 +434,16 @@ describe("saving", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(invoked.filter((x) => x.cmd === "update_draft" && (x.args as { id: string }).id === "G-0007")).toEqual([]);
     draft.goalFails = false;
+  });
+});
+
+describe("a title made from the purpose", () => {
+  it("keeps a purpose that fits whole, and cuts a long one at a word with an ellipsis, never inside a word", async () => {
+    const { titleFrom } = await import("../ContractEditor");
+    expect(titleFrom("Checkout shows the discounted total on every page")).toBe("Checkout shows the discounted total on every page");
+    const long = titleFrom("Checkout shows the discounted total on every page, including the mobile checkout");
+    expect(long).toBe("Checkout shows the discounted total on every page…");
+    expect(long.length).toBeLessThanOrEqual(61);
+    expect(titleFrom("First line\nsecond line")).toBe("First line");
   });
 });

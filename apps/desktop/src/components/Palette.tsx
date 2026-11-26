@@ -10,11 +10,11 @@ import { For, Show, createMemo, createSignal } from "solid-js";
 import { api } from "../lib/api";
 import { type Match, fuzzy, matchText, segments } from "../lib/fuzzy";
 import { t } from "../lib/i18n";
-import { isBlocking, stateLabel } from "../lib/labels";
+import { isBlocking, statusWord } from "../lib/labels";
 import { closePalette, openActivity, openShortcuts, paletteOpen } from "../lib/layers";
 import { go, route } from "../lib/nav";
 import { bumpRecent, recentIds } from "../lib/recent";
-import { startQueue } from "../lib/reviewQueue";
+import { reviewEach, toReviewIds } from "../lib/reviewQueue";
 import { act, goalList, patchSettings, quietNow, state } from "../lib/store";
 import { snoozeMenu } from "./DecisionCard";
 import { Icon, type IconName, LifecycleGlyph, NeedsYouMark } from "./Glyph";
@@ -74,8 +74,8 @@ export function CommandPalette() {
       { id: "learning", title: t("chrome.openLearning"), hint: "mod+3", icon: "learning", run: () => go({ name: "learning" }) },
       { id: "operations", title: t("chrome.openOperations"), hint: "mod+4", icon: "operations", run: () => go({ name: "operations" }) },
       { id: "settings", title: t("chrome.openSettings"), hint: "mod+,", icon: "sliders", run: () => go({ name: "settings" }) },
-      { id: "activity", title: t("chrome.openActivity"), hint: "mod+shift+l", icon: "list", run: () => openActivity() },
-      { id: "shortcuts", title: t("chrome.openShortcuts"), hint: "?", icon: "keyboard", run: () => openShortcuts() },
+      { id: "activity", title: t("keys.activity"), hint: "mod+shift+l", icon: "list", run: () => openActivity() },
+      { id: "shortcuts", title: t("keys.title"), hint: "?", icon: "keyboard", run: () => openShortcuts() },
       { id: "quiet", title: quietNow() ? t("quiet.off") : t("quiet.forHour"), icon: "bell", run: () => void (quietNow() ? patchSettings({ quiet_until: null }) : patchSettings({ quiet_until: Date.now() + HOUR })) },
       { id: "integration", title: t("chrome.checkIntegration"), icon: "harness", run: () => void act(api.checkIntegration, t("chrome.checked")) },
     ];
@@ -86,7 +86,7 @@ export function CommandPalette() {
       if (g?.state === "paused") base.unshift({ id: "resume", title: t("chrome.resume", { id: g.id }), hint: "p", run: () => void act(() => api.resume(g.id)) });
       // A ready-to-accept goal already has its review verb below, from anywhere.
       if (g && ["running", "accepted", "verifying"].includes(g.state))
-        base.unshift({ id: "review", title: t("chrome.review", { id: g.id }), hint: "r", run: () => go({ name: "review", id: g.id }) });
+        base.unshift({ id: "review", title: t("app.review", { id: g.id }), hint: "r", run: () => go({ name: "review", id: g.id }) });
       // The page's own cards can be put aside from here, as with H on the page.
       for (const it of state.inbox)
         if (it.goal_id === r.id && isBlocking(it))
@@ -94,20 +94,14 @@ export function CommandPalette() {
     }
     // Verbs first, from any page: review each ready goal, answer each waiting card, review them all in turn.
     const verbs: Command[] = [];
-    const ready = goalList().filter((g) => g.state === "in_review");
+    // In the queue's order (⇧R starts where the first of these is); a goal the queue doesn't hold comes last (-1 >>> 0 is the largest).
+    const order = toReviewIds();
+    const ready = goalList()
+      .filter((g) => g.state === "in_review")
+      .sort((a, b) => (order.indexOf(a.id) >>> 0) - (order.indexOf(b.id) >>> 0));
     for (const g of ready)
       verbs.push({ id: `review-${g.id}`, title: t("chrome.reviewGoal", { id: g.id, title: g.title }), icon: "ring-check", goalRef: g.id, run: () => go({ name: "review", id: g.id }) });
-    if (ready.length > 1)
-      verbs.push({
-        id: "review-all",
-        title: t("inbox.reviewAll"),
-        hint: "shift+r",
-        icon: "ring-check",
-        run: () => {
-          const first = startQueue(ready.map((g) => g.id));
-          if (first) go({ name: "review", id: first });
-        },
-      });
+    if (toReviewIds().length > 1) verbs.push({ id: "review-all", title: t("inbox.reviewAll"), hint: "shift+r", icon: "ring-check", run: reviewEach });
     for (const it of state.inbox)
       if (isBlocking(it))
         verbs.push({ id: `answer-${it.id}`, title: t("chrome.answerCard", { id: it.goal_id, kind: t(`inboxKind.${it.kind}`) }), icon: "inbox", goalRef: it.goal_id, run: () => go({ name: "goal", id: it.goal_id }) });
@@ -148,7 +142,7 @@ export function CommandPalette() {
       const goals = list.filter((s) => s.c.goalId);
       return [
         { title: t("chrome.groupCommands"), items: cmds, offset: 0 },
-        { title: t("chrome.groupGoals"), items: goals, offset: cmds.length },
+        { title: t("sidebar.label"), items: goals, offset: cmds.length },
       ].filter((g) => g.items.length);
     }
     const recent = list.filter((s) => s.recent > 0).sort((a, b) => b.recent - a.recent).slice(0, 4);
@@ -158,7 +152,7 @@ export function CommandPalette() {
     const out = [
       { title: t("chrome.groupRecent"), items: recent, offset: 0 },
       { title: t("chrome.groupCommands"), items: cmds, offset: recent.length },
-      { title: t("chrome.groupGoals"), items: goals, offset: recent.length + cmds.length },
+      { title: t("sidebar.label"), items: goals, offset: recent.length + cmds.length },
     ];
     return out.filter((g) => g.items.length);
   });
@@ -282,7 +276,7 @@ export function CommandPalette() {
                               <Show when={g().needs_you > 0}>
                                 <NeedsYouMark />
                               </Show>
-                              {stateLabel(g().state)}
+                              {statusWord(g())}
                             </span>
                           )}
                         </Show>

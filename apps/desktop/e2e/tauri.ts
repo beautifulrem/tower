@@ -13,6 +13,23 @@ import type { Locator, Page } from "@playwright/test";
  * A goal page's (or readout's) criterion block by its id, matched on the id cell exactly. A bare `hasText: "C2"` is a
  * case-insensitive substring: it also finds a row whose commit hash, command or title happens to contain "c2".
  */
+/** Opens every verified criterion's readings on the goal page: folded, a criterion shows its verdict and one line of
+ *  what qualifies it; the baseline, canary and held-out lines are in its open readings. */
+export async function openReadings(page: Page): Promise<void> {
+  await page.locator(".goal-page .criterion").first().waitFor();
+  const closed = page.locator('.goal-page .criterion .col-result[aria-expanded="false"]');
+  for (let n = await closed.count(); n > 0; n--) await closed.first().click();
+}
+
+/**
+ * The review opens on the riskiest unit, as the supervisor orders them. The hunk-loop tests read the source unit
+ * (`enrichReview`'s second, `src/`, two files and two hunks): open it the way a reader would, by its row.
+ */
+export async function openSourceUnit(page: Page): Promise<void> {
+  await page.locator(".review-units .unit").filter({ hasText: "src/" }).click();
+  await page.locator('.hunk-head[data-hunk-path="src/cart/money.js"]').waitFor();
+}
+
 export function criterion(scope: Page | Locator, id: string, within = ".goal-page .criterion"): Locator {
   const page = "page" in scope ? scope.page() : scope;
   return scope.locator(within).filter({ has: page.locator(".criterion-row > .num", { hasText: new RegExp(`^${id}$`) }) });
@@ -30,30 +47,73 @@ const LANDMARK: Array<[RegExp, string]> = [
   [/^new/, ".view .editor:not(.contract-skeleton) .clause-head"],
 ];
 
+/** The page's requests still in flight (code loaded on demand, pictures), counted from `openTower` on. */
+const inflight = new WeakMap<Page, Set<Request>>();
+
 /**
  * Waits until `route`'s own content is drawn, the fonts are in and every finite animation has run out — instead of a
  * fixed sleep, which is too short on a busy machine and wasted on an idle one. Infinite animations (a live pulse) are
  * left running. Use it before reading layout, running axe, or pressing a view's keys.
+ *
+ * Drawn means no code still loading on demand (the steer box's chunk), no colours still due from the highlighting
+ * worker and every picture in and decoded: twice over, two frames apart, as one load can start the next (review 18,
+ * record only: a shot caught the goal page without its steer box, a look's pictures not yet in, a diff untinted). A
+ * request a test holds back is waited on for `cap` (5 s) at most, and a picture still loading is not decoded.
+ *
+ * Returns null once the page was quiet; at the cap, what was still pending, also written to the test's output (review
+ * 19, record only: the cap was silent, and 3 of 36 probes returned with five answers still owed). A shot fails on it.
  */
-export async function settled(page: Page, route?: string) {
+export async function settled(page: Page, route?: string, cap = 5_000): Promise<string | null> {
   const landmark = route && LANDMARK.find(([re]) => re.test(route))?.[1];
   if (landmark) await page.locator(landmark).first().waitFor();
+  const frames = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  let quiet = 0;
+  for (const end = Date.now() + cap; quiet < 2 && Date.now() < end; ) {
+    const idle = !inflight.get(page)?.size && (await page.evaluate(() => !(window as any).__towerBusy?.() && [...document.images].every((i) => i.complete)));
+    quiet = idle ? quiet + 1 : 0;
+    await frames();
+  }
+  let pending: string | null = null;
+  if (quiet < 2) {
+    const open = [...(inflight.get(page) ?? [])].map((r) => r.url());
+    const [owed, pictures] = await page.evaluate(() => [(window as any).__towerBusy?.() ?? 0, [...document.images].filter((i) => !i.complete).length]);
+    const what = [open.length && `${open.length} request(s): ${open.join(", ")}`, owed && `${owed} worker answer(s)`, pictures && `${pictures} picture(s) loading`];
+    pending = what.filter(Boolean).join("; ") || null;
+    if (pending) console.warn(`settled: still drawing after ${cap} ms on ${route ?? page.url()}: ${pending}`);
+  }
   await page.evaluate(async () => {
+    await Promise.all([...document.images].filter((i) => i.complete).map((i) => i.decode().catch(() => undefined)));
     await document.fonts.ready;
     const finite = document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity);
     await Promise.all(finite.map((a) => a.finished.catch(() => undefined)));
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
+  return pending;
 }
 
 export const FIXTURES = process.env.E2E_FIXTURES ?? "/tmp/e2e-fixtures";
+/** The same demo seeded by a supervisor running in Chinese (tools/e2e.sh dumps both), for the Chinese interface. */
+export const FIXTURES_ZH = process.env.E2E_FIXTURES_ZH;
 
-export function fixtures(): Record<string, unknown> {
+/** The dumped views; in Chinese, the Chinese supervisor's when they were dumped, so its own words are Chinese too. */
+export function fixtures(lang?: "en" | "zh-CN"): Record<string, unknown> {
+  const dir = lang === "zh-CN" && FIXTURES_ZH ? FIXTURES_ZH : FIXTURES;
   const out: Record<string, unknown> = {};
-  for (const f of readdirSync(FIXTURES).filter((n) => n.endsWith(".json"))) {
-    out[f.replace(/\.json$/, "")] = JSON.parse(readFileSync(join(FIXTURES, f), "utf8"));
+  for (const f of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
+    out[f.replace(/\.json$/, "")] = JSON.parse(readFileSync(join(dir, f), "utf8"));
   }
   return out;
+}
+
+/**
+ * A demo goal's title as the views of that language dump it: the Chinese seed titles its goals in Chinese, so a test
+ * that runs in both languages names a goal through this. Given the English title or its start; any other title (one an
+ * enrichment adds) is returned as given.
+ */
+export function titleIn(lang: "en" | "zh-CN" | undefined, title: string): string {
+  if (lang !== "zh-CN" || !FIXTURES_ZH) return title;
+  const id = (fixtures().goals as Array<{ id: string; title: string }>).find((g) => g.title.startsWith(title))?.id;
+  return (fixtures("zh-CN").goals as Array<{ id: string; title: string }>).find((g) => g.id === id)?.title ?? title;
 }
 
 export async function openTower(
@@ -66,7 +126,7 @@ export async function openTower(
     theme?: "light" | "dark";
   } = {},
 ) {
-  const F = fixtures() as Record<string, any>;
+  const F = fixtures(opts.lang) as Record<string, any>;
   if (opts.lang) F.settings = { ...F.settings, language: opts.lang };
   opts.enrich?.(F);
   if (opts.theme) route = `${route}?theme=${opts.theme}`;
@@ -157,10 +217,10 @@ export async function openTower(
               return (
                 F.engines ?? [
                   { id: "pi", label: "Pi", trust_tier: "full_s2", installed: true, available: true, note: "" },
-                  { id: "claude-code", label: "Claude Code", trust_tier: "restricted_s2", installed: true, available: true, note: "" },
+                  { id: "claude-code", label: "Claude Code", trust_tier: "full_s2", installed: true, available: true, note: "" },
                   { id: "codex", label: "Codex", trust_tier: "restricted_s2", installed: false, available: false, note: "" },
                   { id: "gemini-cli", label: "Gemini CLI", trust_tier: "restricted_s2", installed: false, available: false, note: "" },
-                  { id: "opencode", label: "OpenCode", trust_tier: "experimental", installed: false, available: false, note: "" },
+                  { id: "opencode", label: "OpenCode", trust_tier: "restricted_s2", installed: false, available: false, note: "" },
                 ]
               );
             // The console's lists are fresh copies each read too: a refetch hands the view new objects, as over real IPC.
@@ -210,9 +270,39 @@ export async function openTower(
         },
       };
       (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+      // The highlighting worker answers each request once: `settled` waits until every request has its answer. A worker
+      // that failed to load or broke answers nothing more: what it owed is let go.
+      // Each `openTower` adds this script again, so a page opened twice wraps the wrapper: each wrap keeps its own count.
+      const Native = window.Worker;
+      let busy = 0;
+      const owed = new WeakMap<Worker, number>();
+      (window as any).__towerBusy = () => busy;
+      window.Worker = class extends Native {
+        constructor(url: string | URL, opts?: WorkerOptions) {
+          super(url, opts);
+          owed.set(this, 0);
+          this.addEventListener("message", () => {
+            const n = owed.get(this)!;
+            if (n > 0) (owed.set(this, n - 1), busy--);
+          });
+          this.addEventListener("error", () => void ((busy -= owed.get(this)!), owed.set(this, 0)));
+        }
+        postMessage(message: unknown, transfer?: any) {
+          owed.set(this, owed.get(this)! + 1);
+          busy++;
+          super.postMessage(message, transfer);
+        }
+      };
     },
     [F, route] as const,
   );
+  if (!inflight.has(page)) {
+    const open = new Set<object>();
+    page.on("request", (r) => void open.add(r));
+    page.on("requestfinished", (r) => void open.delete(r));
+    page.on("requestfailed", (r) => void open.delete(r));
+    inflight.set(page, open);
+  }
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => {

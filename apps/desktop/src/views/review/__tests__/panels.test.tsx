@@ -14,11 +14,11 @@ vi.mock("../../../lib/store", async () => {
     env: { issues: [] as Array<{ kind: string }> },
     now: Date.now(),
   });
-  return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn(), refreshEnvironment: async () => {}, __setEnvIssues: (issues: Array<{ kind: string }>) => setState("env", "issues", issues) };
+  return { state, toast: vi.fn(), act: async <T,>(fn: () => Promise<T>) => fn(), refreshEnvironment: async () => {}, __setEnvIssues: (issues: Array<{ kind: string }>) => setState("env", "issues", issues), __setProgress: (p: unknown) => (setState as (...path: unknown[]) => void)("goals", "G-0001", "progress", p) };
 });
 
 const { AcceptPanel, VerifyPanel } = await import("../panels");
-const { __setEnvIssues } = (await import("../../../lib/store")) as unknown as { __setEnvIssues: (issues: Array<{ kind: string }>) => void };
+const { __setEnvIssues, __setProgress } = (await import("../../../lib/store")) as unknown as { __setEnvIssues: (issues: Array<{ kind: string }>) => void; __setProgress: (p: unknown) => void };
 
 const detail = {
   criteria: [
@@ -80,18 +80,19 @@ describe("AcceptPanel", () => {
     expect(screen.getByText(/Unconfirmed assumption: quantities are always 1/)).toBeTruthy();
     expect(screen.getByText("Changed what a test expects")).toBeTruthy();
     expect(screen.getByText("Sentinels")).toBeTruthy();
-    expect(screen.getByText(/2 review units not marked viewed/)).toBeTruthy();
+    expect(screen.getByText(/2 review units not marked reviewed/)).toBeTruthy();
     // Said once: the unviewed units are in the open list, not repeated as a count.
-    expect(screen.queryByText(/viewed 1\/3/)).toBeNull();
+    expect(screen.queryByText(/reviewed 1\/3/)).toBeNull();
   });
 
-  it("blocks accepting until every human criterion is checked, saying so on the criterion's own row", () => {
+  it("blocks accepting until every human criterion is checked, saying so on the criterion's own row and beside the disabled button", () => {
     render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(screen.getByText("Waiting for your check")).toBeTruthy();
-    expect(screen.queryByText(/Human criterion H1 is not checked yet/)).toBeNull();
+    // Not only in a tooltip: the reason stands next to the button it disables, and leads to the box to tick.
+    expect(screen.getByText("Tick H1 first").closest(".panel-actions")).toBeTruthy();
     const accept = screen.getByText("Accept anyway").closest("button")!;
     expect(accept.disabled).toBe(true);
-    expect(screen.getByText(/viewed 3\/3/)).toBeTruthy();
+    expect(screen.getByText(/reviewed 3\/3/)).toBeTruthy();
   });
 
   it("does not put a focus ring on a button when it opens", () => {
@@ -100,9 +101,38 @@ describe("AcceptPanel", () => {
   });
 
   it("says the verifier's word with its pin", () => {
-    render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    const quiet = { ...detail, sentinels: [] } as unknown as GoalDetail;
+    render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={quiet} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(screen.getByText("@a4a90b2")).toBeTruthy();
     expect(screen.getByText(/All 2 machine criteria passed/)).toBeTruthy();
+  });
+
+  // As the supervisor counts (summaries.rs `progress`): a high finding of this verification holds every pass, so the
+  // stamp is withheld and the sentence says none counts, rather than "All passed" over a red sentinel.
+  it("counts no pass while a high-severity finding of this verification stands", () => {
+    const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={detail} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+    expect(container.querySelector(".stamp.stamp-tampered")).not.toBeNull();
+    expect(screen.queryByText(/All 2 machine criteria passed/)).toBeNull();
+    expect(screen.getByText(/2 machine criteria passed; none counts while a high-severity finding stands/)).toBeTruthy();
+  });
+
+  it("names a counted pass's caveats as a judgement, so accepting asks twice, under the stamp that says so", () => {
+    const base = { verified: 2, observed: 1, machine: 2, human: 1, human_done: 0 };
+    __setProgress({ ...base, qualified: { test_machinery: true, assertions_unchecked: false, flaky: true } });
+    try {
+      const calm = { ...detail, sentinels: [], claims: [], criteria: detail.criteria.map((c) => ({ ...c, human_checked: true })) } as unknown as GoalDetail;
+      const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={calm} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
+      const stamp = container.querySelector(".stamp")!;
+      expect(stamp.classList.contains("stamp-tampered")).toBe(false);
+      expect(stamp.textContent).toContain("Verified, with caveats");
+      const judgement = container.querySelector(".open-judgement")!;
+      expect(judgement.textContent).toContain("code reaches into the test runner, flaky: passed on rerun");
+      expect(judgement.querySelector(".mark-attention")).not.toBeNull();
+      expect(screen.getByText("Accept anyway")).toBeTruthy();
+    } finally {
+      // A store merges objects: the caveats are cleared by name.
+      __setProgress({ ...base, qualified: undefined });
+    }
   });
 
   it("without a git identity blocks accepting and offers the form, for this repository by default", () => {
@@ -152,6 +182,7 @@ describe("AcceptPanel", () => {
   it("does not count a pass with a tampered canary: the seal is withheld, the sentence says how many count, and the criterion heads the open list", () => {
     const tampered = {
       ...detail,
+      sentinels: [],
       criteria: [
         ...detail.criteria,
         {
@@ -167,10 +198,10 @@ describe("AcceptPanel", () => {
     const { container } = render(() => <AcceptPanel id="G-0001" viewed={3} total={3} detail={tampered} onHumanCheck={() => {}} onClose={() => {}} onDone={() => {}} />);
     expect(container.querySelector(".stamp.stamp-tampered")).not.toBeNull();
     expect(screen.queryByText(/All 2 machine criteria passed/)).toBeNull();
-    expect(screen.getByText(/1 of 2 machine criteria count as evidence; 1 passed with a tampered canary/)).toBeTruthy();
+    expect(screen.getByText(/1 of 2 machine criteria count: in one, a test that must fail passed/)).toBeTruthy();
     const open = [...container.querySelectorAll(".panel-section .row.meta")].map((el) => el.textContent ?? "");
-    expect(open[0]).toMatch(/C2: a test that must fail passed; this pass is not evidence/);
-    // The same ◆ the pass wears everywhere else; the red ■ is a sentinel's.
+    expect(open[0]).toMatch(/C2: a test that must fail passed, so this pass doesn't count/);
+    // The same ! the pass wears everywhere else; the red × is a sentinel's.
     const first = container.querySelector(".panel-section .row.meta")!;
     expect(first.querySelector(".mark-attention")).not.toBeNull();
     expect(first.querySelector(".mark-danger")).toBeNull();
@@ -243,6 +274,8 @@ describe("ChangesPanel steering dispatch & Review extras", () => {
         fromRev="base000"
         toRev="pin9999"
         onCompare={(f, to) => compares.push([f, to])}
+        picks={[null, null]}
+        onPicks={() => {}}
       />
     ));
     expect(screen.getByRole("tab", { name: "All changes" })).toBeTruthy();
@@ -251,5 +284,28 @@ describe("ChangesPanel steering dispatch & Review extras", () => {
     expect(screen.getByRole("tab", { name: "Compare runs…" })).toBeTruthy();
     screen.getByRole("tab", { name: "Last turn" }).click();
     expect(scopes).toEqual(["last_turn"]);
+  });
+
+  // Review 11, R11-P3-03: an end no point stands at any more left the face blank over a select that fell back to Base.
+  it("names a range end no point stands at any more, as the face, the select and its tooltip alike", async () => {
+    const { TimelineSwitcher, keyed } = await import("../Timeline");
+    const snapshots = [
+      { rev: "base000aaaa", kind: "base", label: "", run_no: null, at: null },
+      { rev: "run1111aaaa", kind: "run_start", label: "", run_no: 1, at: 100 },
+      { rev: "pin9999aaaa", kind: "pin", label: "", run_no: null, at: null },
+    ];
+    render(() => (
+      <TimelineSwitcher scope="compare" onScope={() => {}} previous={null} pin="pin9999aaaa" snapshots={snapshots} fromRev="base000aaaa" toRev="old7777aaaa" onCompare={() => {}} picks={[null, null]} onPicks={() => {}} />
+    ));
+    const to = screen.getByRole("combobox", { name: "Compare to" }) as HTMLSelectElement;
+    expect(to.value).toBe("gone:old7777aaaa");
+    expect(to.selectedOptions[0].textContent).toBe("No longer listed @old7777");
+    const pick = to.closest(".timeline-pick")!;
+    expect(pick.getAttribute("title")).toBe("No longer listed @old7777");
+    expect(pick.querySelector(".timeline-pick-face")!.textContent).toBe("No longer listed@old7777");
+    expect((screen.getByRole("combobox", { name: "Compare from" }) as HTMLSelectElement).value).toBe(keyed(snapshots)[0].key);
+    // Keys say what and where a point is, not when: a fresh verification of the same pin keeps the point you picked.
+    expect(keyed([{ ...snapshots[2], kind: "verified", at: 1 }])[0].key).toBe(keyed([{ ...snapshots[2], kind: "verified", at: 2 }])[0].key);
+    expect(new Set(keyed([snapshots[1], { ...snapshots[1] }]).map((p) => p.key)).size).toBe(2);
   });
 });

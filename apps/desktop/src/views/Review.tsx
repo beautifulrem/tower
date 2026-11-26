@@ -16,8 +16,9 @@ import { api, errorText } from "../lib/api";
 import { type Gap, splitLines } from "../lib/diffview";
 import { buildTree, treeOrder, unitUnder } from "../lib/filetree";
 import { count, short } from "../lib/format";
+import { caveats, notEvidence, wasAccepted } from "../lib/discounted";
 import { t } from "../lib/i18n";
-import { useKeys } from "../lib/keys";
+import { keyHint, useKeys } from "../lib/keys";
 import { ask } from "../lib/native";
 import { back, go, goProjectSetting } from "../lib/nav";
 import { advanceQueue, queuePosition } from "../lib/reviewQueue";
@@ -26,6 +27,7 @@ import { act, onTrace, state, toast } from "../lib/store";
 import { applySuggestion } from "../lib/suggest";
 import type { ExtReviewUnit, ExtReviewView } from "./goal/ext";
 import { FileDiff } from "./review/FileDiff";
+import { fitStats } from "./review/fitStats";
 import { type ReviewScope, TimelineSwitcher, buildSnapshots, lastTurnRev } from "./review/Timeline";
 import { type ReviewNote, ReviewNotes, UnitNarrative } from "./review/notes";
 import { AcceptPanel, ChangesPanel, VerifyPanel } from "./review/panels";
@@ -37,33 +39,6 @@ const RELOAD_DETAIL = new Set(["pinned", "human_edited", "rolled_back", "sentine
 const TREE_FROM = 2;
 type HunkRef = { path: string; index: number };
 
-/**
- * The pin pair goes first, and only for want of room: shown when, with it, the verification group keeps every part
- * (nothing wraps onto its hidden second line) and the line does not run over. Measured again when the line or the
- * group changes size.
- */
-function fitPins(stats: HTMLDivElement) {
-  const fit = () => {
-    stats.classList.remove("pins-off");
-    const verify = stats.querySelector<HTMLElement>(".review-verify");
-    // A part drops when the group wraps onto its hidden line, or when the criteria bar does inside itself.
-    const wraps = (el: HTMLElement | null | undefined) => !!el && el.scrollHeight > el.clientHeight + 1;
-    const over = stats.scrollWidth > stats.clientWidth + 1 || wraps(verify) || wraps(verify?.querySelector<HTMLElement>(".criteria-bar"));
-    stats.classList.toggle("pins-off", over);
-  };
-  const ro = new ResizeObserver(fit);
-  ro.observe(stats);
-  const watchVerify = new MutationObserver(() => {
-    const verify = stats.querySelector(".review-verify");
-    if (verify) ro.observe(verify);
-    fit();
-  });
-  watchVerify.observe(stats, { childList: true, subtree: true, characterData: true });
-  const verify = stats.querySelector(".review-verify");
-  if (verify) ro.observe(verify);
-  onCleanup(() => (ro.disconnect(), watchVerify.disconnect()));
-}
-
 export function Review(props: { id: string }) {
   const [persisted] = createResource<ReviewState>(() => loadReviewState(props.id));
   const [detailRes, { refetch: refetchDetail }] = createResource(() => props.id, api.goal);
@@ -72,6 +47,7 @@ export function Review(props: { id: string }) {
   const previous = () => persisted()?.reviewed ?? null;
   const [scope, setScope] = createSignal<ReviewScope>("all");
   const [cmp, setCmp] = createSignal<[string, string]>(["", ""]);
+  const [cmpPicks, setCmpPicks] = createSignal<[string | null, string | null]>([null, null]);
   let lastSnaps: ReturnType<typeof buildSnapshots> = [];
 
   const [viewRes, { refetch: refetchView }] = createResource(
@@ -158,6 +134,7 @@ export function Review(props: { id: string }) {
   const [panel, setPanel] = createSignal<Panel>(null);
   const [pathJump, setPathJump] = createSignal(false);
   const g = () => state.goals[props.id];
+  const proven = () => !!g()?.verified_pin && (g()?.progress.machine ?? 0) > 0 && discountedOf(detail()?.criteria) === 0 && !(detail()?.sentinels ?? []).some((h) => h.severity >= 3);
   // Undo, edit and apply work on the whole change (base → pin): a hunk index or a file's text from a narrower
   // scope, or from a view still loading, would point at different code.
   const editable = () => (g()?.state === "paused" || g()?.state === "in_review") && scope() === "all" && !viewRes.loading;
@@ -468,7 +445,7 @@ export function Review(props: { id: string }) {
         desc: () => t("keys.undoHunk"),
         when: editable,
       },
-      { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("keys.pathJump") },
+      { key: "mod+p", run: () => setPathJump((o) => !o), inInputs: true, desc: () => t("review.pathPalette") },
       { key: "mod+shift+enter", run: () => setPanel("accept"), inInputs: true, desc: () => t("review.accept") },
       { key: "c", run: () => setPanel("changes"), desc: () => t("review.requestChanges"), when: () => units().length > 0 },
       { key: "escape", run: () => (composer() ? setComposer(null) : editingPath() ? closeEditor() : back()) },
@@ -498,7 +475,7 @@ export function Review(props: { id: string }) {
   };
 
   const notes = createMemo<ReviewNote[]>(() => {
-    const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: h.title, sentinel: true }));
+    const out: ReviewNote[] = (detail()?.sentinels ?? []).map((h) => ({ danger: h.severity >= 3, text: h.title, sentinel: true, detail: h.severity >= 3 ? h.detail : undefined }));
     for (const r of unit()?.risk_reasons ?? []) out.push({ danger: false, text: r });
     if (detail() && !detail()!.has_held_out_tests && (g()?.progress.machine ?? 0) > 0)
       out.push({ danger: false, text: t("goal.noHeldOut"), action: { label: t("goal.setHeldOut"), run: () => g() && goProjectSetting(g()!.project_id, "holdout") } });
@@ -516,12 +493,12 @@ export function Review(props: { id: string }) {
         <IconButton icon="chevron-left" label={t("common.back")} onClick={back} />
         <div class="review-head-text" data-tauri-drag-region>
           <div class="row">
-            <h1 class="review-title ellipsis">{g()?.title}</h1>
+            <h1 class="review-title ellipsis" title={g()?.title}>{g()?.title}</h1>
             <span class="code-val t2">{props.id}</span>
             <Show when={queue()}>{(q) => <span class="meta t3 num">{t("review.queuePosition", { i: q().i, n: q().n })}</span>}</Show>
           </div>
           <Show when={view()}>
-            <div class="review-stats meta halt" ref={fitPins}>
+            <div class="review-stats meta halt" classList={{ comparing: scope() === "compare" }} ref={fitStats}>
               <span class="review-stat-group num">
                 <Show when={units().length > 0}>
                   <span>
@@ -532,15 +509,17 @@ export function Review(props: { id: string }) {
                     <span>{t("review.units", { n: units().length })}</span>
                   </Show>
                 </Show>
-                <span class="review-stat-pins code-val">
-                  @{short(view()!.from)}
-                  <Icon name="arrow-right" size={10} class="t3" />@{short(view()!.pin)}
+                {/* Two values, each selecting whole (review 16: one value around the arrow copied as "@69a9769@"). */}
+                <span class="review-stat-pins">
+                  <span class="code-val">{`@${short(view()!.from)}`}</span>
+                  <Icon name="arrow-right" size={10} class="t3" />
+                  <span class="code-val">{`@${short(view()!.pin)}`}</span>
                 </span>
               </span>
-              <TimelineSwitcher scope={scope()} onScope={(sc) => (setScope(sc), setPick(null), resetTexts())} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => (setCmp([f, to]), resetTexts())} />
+              <TimelineSwitcher scope={scope()} onScope={(sc) => (setScope(sc), setPick(null), resetTexts())} previous={previous()} pin={view()?.pin} snapshots={snapshots()} fromRev={cmp()[0]} toRev={cmp()[1]} onCompare={(f, to) => (setCmp([f, to]), resetTexts())} picks={cmpPicks()} onPicks={setCmpPicks} />
               <Show when={g()}>
                 <button class="review-stat-group review-verify link-plain" onClick={() => setPanel("verify")} title={t("review.verifyOpen")} aria-haspopup="dialog">
-                  <Seal pin={g()!.verified_pin} large tampered={discountedOf(detail()?.criteria) > 0} />
+                  <Seal pin={g()!.verified_pin} large tampered={notEvidence(g())} qualified={caveats(g())} accepted={wasAccepted(g())} />
                   <CriteriaBar progress={g()!.progress} criteria={detail()?.criteria} compact />
                 </button>
               </Show>
@@ -559,13 +538,15 @@ export function Review(props: { id: string }) {
           />
         </Show>
         <Show when={units().length > 0}>
-          <Button onClick={() => setPanel("changes")} kbd="c">
+          <Button onClick={() => setPanel("changes")} kbd="c" title={`${t("review.requestChanges")} ${keyHint("c")}`}>
             {t("review.requestChanges")}
             {comments().length ? t("review.commentCount", { n: comments().length }) : ""}
           </Button>
         </Show>
         <Show when={g()?.state === "in_review"}>
-          <Button variant="primary" onClick={() => setPanel("accept")} kbd="mod+shift+enter">
+          {/* The button's weight follows the evidence: black only when the verifier's pass counts and no high sentinel
+              stands against it; otherwise it is one choice among the others, and the sheet says why. */}
+          <Button variant={proven() ? "primary" : "default"} onClick={() => setPanel("accept")} kbd="mod+shift+enter" title={`${t("review.accept")} ${keyHint("mod+shift+enter")}`}>
             {t("review.accept")}
           </Button>
         </Show>
@@ -591,7 +572,6 @@ export function Review(props: { id: string }) {
               <div class="page-loading">
                 <Empty
                   title={t("review.noChanges")}
-                  poster
                   action={
                     <Button size="s" onClick={() => go({ name: "goal", id: props.id })}>
                       {t("review.openGoal")}
@@ -696,7 +676,7 @@ export function Review(props: { id: string }) {
             when={units().length > 0}
             fallback={
               <span>
-                <Kbd k="escape" /> {t("keys.back")}
+                <Kbd k="escape" /> {t("keys.back").toLowerCase()}
               </span>
             }
           >
@@ -707,7 +687,7 @@ export function Review(props: { id: string }) {
               <Kbd k="] [" /> {t("review.keyHunks")}
             </span>
             <span>
-              <Kbd k="v" /> {t("review.keyViewed")}
+              <Kbd k="v" /> {t("review.keyViewed").toLowerCase()}
             </span>
             <span title={t("review.acceptHunkNote")}>
               <Kbd k="a" /> {t("review.keyAccept")}
@@ -724,7 +704,7 @@ export function Review(props: { id: string }) {
         <Show when={comments().length > 0}>
           <button class="dispatch-pill" onClick={() => setPanel("changes")}>
             <Icon name="return" size={10} />
-            {comments().length} queued for steering
+            {t("review.steerQueued", { n: comments().length })}
             <Kbd k="c" />
           </button>
         </Show>
@@ -735,12 +715,12 @@ export function Review(props: { id: string }) {
               {t("review.hunksAccepted", { n: unitAccepted(), total: unitHunks() })}
             </Show>
             <Show when={unitAccepted() === unitHunks() && unitIdx() < units().length - 1}>
-              <span class="sep" aria-hidden="true">·</span>
+              <span class="sep" />
               <Kbd k="v" /> {t("review.keyNextUnit")}
             </Show>
             <Show when={unitAccepted() === unitHunks() && unitIdx() === units().length - 1 && g()?.state === "in_review"}>
-              <span class="sep" aria-hidden="true">·</span>
-              <Kbd k="mod+shift+enter" /> {t("review.accept")}
+              <span class="sep" />
+              <Kbd k="mod+shift+enter" /> {t("review.accept").toLowerCase()}
             </Show>
           </span>
         </Show>

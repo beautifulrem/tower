@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-import { openTower, settled } from "./tauri";
+import { enrichReview, enrichRich } from "./rich";
+import { openReadings, openTower, settled } from "./tauri";
 
 test("the board shows every goal and what needs you", async ({ page }) => {
   const { errors, fixtures } = await openTower(page, "overview");
@@ -9,6 +10,26 @@ test("the board shows every goal and what needs you", async ({ page }) => {
     await expect(page.getByText(g.title, { exact: false }).first()).toBeVisible();
   }
   expect(errors).toEqual([]);
+});
+
+// Review 19 (record only): at its cap `settled` said nothing, so a shot could catch a page still drawing; and its count
+// of answers owed would never come back down for a worker that failed to load. It names what is pending at the cap, and
+// a worker that failed owes nothing.
+// The app warms a waiting review's colours on its own worker while the window idles (`prewarm.ts`): a world with no review
+// waiting gives it nothing to warm, so the only answers owed are this test's (under the full suite's load the warming
+// was still owed at the cap).
+const nothingToWarm = (F: Record<string, any>) => {
+  for (const g of F.goals) if (g.state === "in_review") g.diffstat = null;
+};
+test("settled names what is still pending at its cap; a worker that failed to load owes nothing", async ({ page }) => {
+  await openTower(page, "overview", { enrich: nothingToWarm });
+  expect(await settled(page, "overview")).toBeNull();
+  await page.evaluate(() => new Worker(URL.createObjectURL(new Blob(["onmessage = () => {};"], { type: "text/javascript" }))).postMessage(1));
+  expect(await settled(page, undefined, 400)).toBe("1 worker answer(s)");
+  await openTower(page, "overview", { enrich: nothingToWarm });
+  await settled(page, "overview");
+  await page.evaluate(() => new Worker(URL.createObjectURL(new Blob(["this is not code"], { type: "text/javascript" }))).postMessage(1));
+  expect(await settled(page, undefined, 3_000)).toBeNull();
 });
 
 for (const scheme of ["light", "dark"] as const) {
@@ -23,6 +44,28 @@ for (const scheme of ["light", "dark"] as const) {
         v.nodes.map((n) => `${v.id} ${n.target.join(" ")}: ${n.failureSummary?.split("\n").slice(1).join(" ") ?? ""}`),
       );
       expect(report).toEqual([]);
+    });
+  }
+}
+
+// The states the design work changed, in the rich world: the goal page with its sentinels and every reading open, the
+// inbox queue with its neutral focus, a review opening on a risky unit, and a new contract with its focus.
+for (const scheme of ["light", "dark"] as const) {
+  const rich: Array<[string, (F: Record<string, any>) => void, ((page: import("@playwright/test").Page) => Promise<void>)?]> = [
+    ["goal/G-0001", enrichRich, openReadings],
+    ["inbox", enrichRich],
+    ["review/G-0003", enrichReview],
+    ["new", enrichRich],
+  ];
+  for (const [route, enrich, then] of rich) {
+    test(`${route} in the rich world has no serious accessibility violations (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+      await openTower(page, route, { enrich, theme: scheme });
+      await settled(page, route);
+      if (then) await then(page);
+      const results = await new AxeBuilder({ page }).analyze();
+      const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+      expect(serious.flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(" ")}`))).toEqual([]);
     });
   }
 }
@@ -97,6 +140,7 @@ test("the goal page's warnings and evidence speak Chinese too, with no English l
   });
   const flags = page.locator(".goal-head .wb-exception");
   await expect(flags).toHaveText(["实验", "无沙箱（S0）", "已升级：anthropic/claude-opus-4-5"]);
+  await openReadings(page);
   const strip = page.locator(".ev-strip").first();
   await expect(strip).toHaveAttribute("aria-label", "验证证据");
 });

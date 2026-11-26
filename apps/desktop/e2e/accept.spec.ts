@@ -116,3 +116,35 @@ test("the armed press runs out like Abandon's: after two seconds the first press
   await dialog.getByRole("button", { name: "Accept anyway" }).click();
   expect((await calls(page)).some(([cmd]) => cmd === "accept")).toBe(false);
 });
+
+test("the accept sheet's checklist never wears the verifier's green: clear checks are neutral, an overlap is a notice", async ({ page }) => {
+  await openTower(page, "review/G-0003", { enrich: enrichReview });
+  await settled(page, "review/G-0003");
+  await page.keyboard.press("Meta+Shift+Enter");
+  const checks = page.getByRole("dialog").locator(".seal-checks");
+  await expect(checks.locator(".seal-check")).toHaveCount(4);
+  await expect(checks.locator(".seal-check-ok").first()).toBeVisible();
+  const greens = await checks.evaluate((root) => {
+    const probe = document.createElement("i");
+    probe.style.color = "var(--st-verified)";
+    document.body.append(probe);
+    const green = getComputedStyle(probe).color;
+    probe.remove();
+    const out: string[] = [];
+    for (const el of [root, ...root.querySelectorAll("*")]) {
+      for (const pseudo of [null, "::before", "::after"]) {
+        const cs = getComputedStyle(el, pseudo);
+        if (pseudo && cs.content === "none") continue;
+        if ([cs.color, cs.fill, cs.stroke, cs.backgroundColor].includes(green)) out.push(`${el.className.baseVal ?? el.className}${pseudo ?? ""}`);
+      }
+    }
+    return out;
+  });
+  expect(greens).toEqual([]);
+  // The overlap reads as the goal page reads it: the i mark, not the amber ! that asks for a decision.
+  const overlap = checks.locator(".seal-check").filter({ hasText: /Overlaps/ });
+  if (await overlap.count()) {
+    await expect(overlap.locator(".mark-attention")).toHaveCount(0);
+    await expect(overlap).toHaveClass(/seal-check-notice/);
+  }
+});

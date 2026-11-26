@@ -22,6 +22,8 @@
     --st-attention: oklch(0.600 0.150 65); --attention-bg: oklch(0.962 0.034 85);
     --st-danger: oklch(0.540 0.190 25); --st-verified: oklch(0.550 0.130 155); --st-active: oklch(0.500 0.130 240);
     --verified-bg: oklch(0.960 0.025 155); --focus: oklch(0.220 0.006 70 / 0.65);
+    /* The desk's hook (tokens.css --mark-hook): a row carried over. */
+    --mark-hook: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='18' fill='none' stroke='%23000' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5v3a2.5 2.5 0 0 0 2.5 2.5H10M7.5 7.5 10 10l-2.5 2.5'/%3E%3C/svg%3E");
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -63,9 +65,10 @@
   .gauge.active, .gauge.stale, .gauge.off { color: var(--text-1); }
   .gauge.live { color: var(--text-2); font-size: 11px; padding: 1px 6px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--bg-strip); }
   .gauge.dead { color: var(--text-4); }
-  .gauge .dot { width: 6px; height: 6px; border-radius: 1px; flex: 0 0 auto; background: var(--st-danger); }
-  .gauge .dot.ok { border-radius: 50%; background: var(--st-verified); }
-  .gauge .dot.hollow { background: transparent; border: 1px solid var(--st-danger); }
+  /* Work in motion turns, steadily; it holds still where motion is reduced. */
+  .spin { animation: spin 1.1s linear infinite; }
+  @keyframes spin { to { transform: rotate(1turn); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   h2 { display: flex; align-items: center; gap: 10px; margin: 24px 0 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-2); }
@@ -73,14 +76,9 @@
   h2 .num { color: var(--text-3); order: 3; font-size: 12px; }
   .empty { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; color: var(--text-2); font-size: 14px; }
   .empty svg { flex: 0 0 auto; margin-top: 6px; color: var(--text-3); }
-  .ghost { margin-top: 4px; pointer-events: none; }
-  .ghost .row { min-height: 44px; background: transparent; border: 0; border-top: 1px solid var(--border-subtle); border-radius: 0; padding: 6px 0; }
-  .ghost svg { color: var(--text-4); }
-  .ghost .bar { display: block; height: 6px; border-radius: 3px; background: var(--bg-selected); }
-  .ghost .bar + .bar { margin-top: 8px; }
   .offline { display: grid; gap: 4px; padding: 18px 0 0; }
   .error { display: flex; align-items: baseline; gap: 10px; color: var(--text-1); font-size: 16px; line-height: 24px; font-weight: 500; }
-  .error::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--st-danger); flex: 0 0 auto; transform: translateY(-1px); }
+  .error svg { flex: 0 0 auto; align-self: center; }
   .offline .sub { padding-left: 18px; color: var(--text-2); font-size: 14px; text-wrap: pretty; }
   .offline .when { padding-left: 18px; color: var(--text-3); font-size: 12px; }
   .offline .btn { margin-top: 14px; width: 100%; }
@@ -90,7 +88,7 @@
   /* The amber rule stands clear of the card's 8px corner, so it stays a straight 2px line instead of following the curve. */
   .strip { position: relative; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; background: var(--attention-bg); font-size: 12px; color: var(--text-2); white-space: nowrap; }
   .strip::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; background: var(--st-attention); }
-  .strip .mark { width: 9px; height: 9px; flex: 0 0 auto; }
+  .strip .mark { width: 12px; height: 12px; flex: 0 0 auto; }
   .strip .kind { color: var(--text-1); font-weight: 600; }
   .strip .goal { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .strip .age { margin-left: auto; color: var(--text-3); flex: 0 0 auto; }
@@ -101,14 +99,29 @@
   .later .btn { min-height: 44px; padding: 0 10px; font-size: 14px; }
   .main { padding: 11px 12px 12px; display: grid; gap: 9px; }
   .question { font-size: 16px; line-height: 23px; font-weight: 500; letter-spacing: -0.008em; user-select: text; }
-  .question.code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-  .question.code { font-size: 14.5px; font-weight: 500; word-break: break-word; }
+  .question code, .tail { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  /* A machine value the question starts with (a failing check, a stalled call's command) is code; the words stay words. */
+  .question code { font-size: 14.5px; font-weight: 500; word-break: break-word; }
   .body { color: var(--text-2); font-size: 14px; white-space: pre-wrap; word-break: break-word; user-select: text; }
   /* Agent-reported blocker claim uses dashed left border (Claim register, never Fact green). */
   .claim-box { border-left: 2px dashed var(--border-strong); background: var(--bg-inset); padding: 8px 10px; border-radius: 0 6px 6px 0; display: grid; gap: 4px; }
   .claim-box .tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
   .tail { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-inset); border: 1px solid var(--border-subtle); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-variant-ligatures: none; }
-  .tail .tl { display: block; padding-left: 2ch; text-indent: -2ch; }
+  /* Each line of the output a box the block's width, apart by the output's own newlines: what is read and copied is the
+     output, blank lines included, and a row carried over goes on two characters in. An approval's command (.cmd) marks
+     each carried-over row with a hook and moves a word to the next row whole (review 22, R22-P3-01: "--" and "fill" on two
+     rows, and a carried-over row indented like the command's own second line); a word found longer than a row is the
+     row's own text again (.wl, below), wherever it stands, so a path or a URL goes on two in and fills each row (review
+     23, R23-P2-01: one that began a line; review 24, R24-P3-03: one after an indent or as a third word): the desk's
+     .decision-cmd. */
+  .tail .tl { display: inline-block; box-sizing: border-box; width: 100%; position: relative; padding-left: 2ch; text-indent: -2ch; vertical-align: top; }
+  .cmd .tl::after { content: ""; position: absolute; top: 18px; bottom: 0; left: 0; width: 2ch; background: var(--text-3); -webkit-mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y; mask: var(--mark-hook) 0 0 / 2ch 18px repeat-y; }
+  .cmd .tl { word-break: break-all; }
+  .cmd .w { display: inline-block; max-width: 100%; text-indent: 0; vertical-align: top; white-space: nowrap; }
+  /* A word longer than a row (found by measure: its box runs over) is the row's own text again: it starts where it stands
+     and breaks at each row's end, and the next word follows it on its last row (review 24, R24-P3-03: a URL after an
+     indent or as a third word went down a row whole and left the row above it blank or short). */
+  .cmd .wl { display: inline; white-space: inherit; }
   .caution { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; line-height: 16px; color: var(--text-1); }
   .caution svg { flex: 0 0 auto; margin-top: 3px; }
   .caution.note { color: var(--text-3); }
@@ -150,20 +163,34 @@
     min-height: 58px; padding: 9px 10px; margin-bottom: 6px;
     border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-strip);
   }
+  /* The mark stands on the title's line (15/22), however many lines the row grows to. */
   .row .glyph { display: block; }
+  .row > .glyph { align-self: start; margin-top: 5px; }
   .row .head { display: flex; gap: 7px; align-items: baseline; min-width: 0; }
   .row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .row .meta { display: flex; gap: 6px; align-items: center; margin-top: 2px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
-  .row .meta .badge { color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
+  .row .meta .badge { display: inline-flex; align-items: center; gap: 4px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
+  .row .meta .badge svg { display: block; flex: 0 0 auto; }
+  /* Silent: the badge steps back, as the desk's (`.mode-silent`): text-2, regular, no mark; the hint mark is the header's. */
+  .row .meta .badge.silent { color: var(--text-2); font-weight: 400; }
   .row .meta .detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .meta .detail.code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+  .row .meta .detail .target { margin-left: 0.3em; }
+  .row .meta .detail .code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .meta .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--text-3); flex: 0 0 auto; }
   .row .meta .pill { font-size: 10.5px; padding: 0 5px; border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-3); flex: 0 0 auto; }
   .pips { display: inline-flex; gap: 2px; align-items: center; flex: 0 0 auto; }
-  .pip { width: 10px; height: 4px; border-radius: 1px; background: var(--border); }
+  /* One rounded track a criterion, as on the desk: verified green, observed hatched grey, the rest the track. */
+  .pip { width: 10px; height: 4px; border-radius: 999px; background: color-mix(in oklch, var(--text-4) 55%, transparent); }
   .pip.v { background: var(--st-verified); }
-  .pip.o { background: transparent; border: 1px dashed var(--text-3); }
+  .pip.o { background: repeating-linear-gradient(-45deg, var(--text-3) 0 1.5px, transparent 1.5px 3px); }
   .row .seal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-1); font-weight: 500; flex: 0 0 auto; }
+  /* A goal to accept: its line wraps before its id or its words are cut (320 wide, "Passed, doesn't count" and a pin). */
+  .row .meta.ready { flex-wrap: wrap; row-gap: 2px; }
+  /* A counted pass's caveats, under its line: the amber ! and the words, as the desk's accept sheet lists them (look at
+     them before you accept). Chinese breaks between phrases, not inside one ("测试运／行器"); a phrase longer than the
+     line still breaks. */
+  .row .why { display: flex; gap: 6px; align-items: flex-start; margin: 3px 0 0; font-size: 12px; line-height: 16px; color: var(--text-1); text-wrap: pretty; word-break: keep-all; overflow-wrap: anywhere; }
+  .row .why svg { flex: 0 0 auto; margin-top: 2px; }
   .row .seal .pin { color: var(--text-2); font-weight: 400; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
   .row .btn { min-height: 44px; padding: 0 12px; font-size: 13.5px; }
   .row .head .elapsed { margin-left: auto; font-size: 11.5px; color: var(--text-3); flex: 0 0 auto; }
@@ -188,15 +215,16 @@ const T = {
         noRuns: "No goal is running.", send: "Send", pause: "Pause", confirm: "Press again", unpaired: "Open the pairing link from Tower's Settings on this phone.",
         offline: "Can't reach Tower on your Mac", offlineWhere: "Is the Mac awake, and is this phone on its Tailscale or Wi-Fi?",
         retry: "Retry", you: "you", atDesk: "At your Mac: ", listSep: ", ", offGauge: "Offline", liveStream: "Live",
-        lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, freshLive: (c) => `Live stream · updated ${c}`, stale: (a) => `updated ${a}`,
-        runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, spent: (u) => `Spent ${u}`,
+        lastRead: (c) => `Last got through at ${c}`, fresh: (c) => `Read at ${c}, again every 5 s`, freshLive: (c) => `Live stream, updated ${c}`, then: "; ", waiting: "a newer reading waits until you leave the reply box", held: "the card you are using shows what it did until you leave it", stale: (a) => `updated ${a}`,
+        runs: (n, max) => max ? `${n}/${max} running` : `${n} running`, silentFor: (d) => `silent for ${d}`, runN: (n) => `Run ${n}`, toolFor: (tool, d) => `${tool} running for ${d}`, silent: "Silent", spent: (u) => `Spent ${u}`,
         later: "Remind me later", inHour: "In 1 hour", tomorrow: "Tomorrow 9:00",
         ago: (m) => m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`,
-        runningFor: (d) => `running ${d}`,
+        runningFor: (d) => `elapsed ${d}`,
         answerPlaceholder: "Write your answer…", notePlaceholder: "A note for the agent (optional)…",
         forYou: "For you only", failing: "failing", hintPlaceholder: "A hint for the agent, in your words…", sendHint: "Send the hint and resume",
         heldOutNote: "A hint, or only the names of what failed, keeps the tests hidden; showing the failure does not.",
-        acceptOnDesk: "Review and accept on your Mac", claim: "Agent claim", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
+        acceptOnDesk: "Review and accept on your Mac", notEvidence: "Passed, doesn't count", notMachine: "Not machine-verified", qualified: "Verified, with caveats", withCaveats: (why) => `With caveats, look first: ${why}`,
+        cav: { test_machinery: "code reaches into the test runner", assertions_unchecked: "assertions not checked", flaky: "flaky: passed on rerun" }, claim: "Agent claim", security: "A security decision: once approved, the verification setup reaches the network once, inside the sandbox.",
         foot: "Tower serves this page from your own computer. Only what needs you is here; the review stays at your Mac.",
         states: { draft: "Draft", ready: "Ready", running: "Running", paused: "Paused", claimed: "Claimed done", verifying: "Verifying", in_review: "Ready to accept", accepted: "Accepted", integrated: "Merged", archived: "Archived", abandoned: "Abandoned" },
         modes: { idle: "Idle", starting: "Starting", thinking: "Thinking", reading: "Working", editing: "Working", executing: "Working", waiting_on_you: "Needs you", retrying: "Retrying", compacting: "Compacting", verifying: "Verifying", settled: "Stopped" },
@@ -205,15 +233,16 @@ const T = {
         noRuns: "没有正在运行的目标。", send: "发送", pause: "暂停", confirm: "再按一次", unpaired: "在这台手机上打开 Tower 设置里的配对链接。",
         offline: "连不上你 Mac 上的 Tower", offlineWhere: "Mac 是否醒着？这台手机是否连着同一个 Tailscale 或 Wi-Fi？",
         retry: "重试", you: "你", atDesk: "在电脑上：", listSep: "、", offGauge: "离线", liveStream: "实时",
-        lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, freshLive: (c) => `实时流 · ${c} 更新`, stale: (a) => `更新于 ${a}`,
-        runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `无响应 ${d}`, spent: (u) => `累计 ${u}`,
+        lastRead: (c) => `上次连上是 ${c}`, fresh: (c) => `${c} 读取，每 5 秒刷新`, freshLive: (c) => `实时流，${c} 更新`, then: "；", waiting: "新读到的状态等你离开回复框后再显示", held: "你正在用的卡片保持原样，离开后再更新", stale: (a) => `更新于 ${a}`,
+        runs: (n, max) => max ? `${n}/${max} 运行` : `${n} 运行`, silentFor: (d) => `已沉默 ${d}`, runN: (n) => `第 ${n} 次运行`, toolFor: (tool, d) => `${tool} 已运行 ${d}`, silent: "已沉默", spent: (u) => `累计 ${u}`,
         later: "稍后提醒", inHour: "1 小时后", tomorrow: "明天 9:00",
         ago: (m) => m < 1 ? "刚刚" : m < 60 ? `${m} 分钟前` : `${Math.round(m / 60)} 小时前`,
-        runningFor: (d) => `已运行 ${d}`,
+        runningFor: (d) => `已进行 ${d}`,
         answerPlaceholder: "写下你的回答…", notePlaceholder: "写给 Agent 的话（可选）…",
         forYou: "只给你看", failing: "失败", hintPlaceholder: "用你的话给 Agent 一句提示…", sendHint: "发送提示并继续",
         heldOutNote: "给提示，或只告诉它哪些测试失败，这些测试仍对它隐藏；把失败给它看则不再隐藏。",
-        acceptOnDesk: "回到电脑上评审并验收", claim: "Agent 声明", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
+        acceptOnDesk: "回到电脑上评审并验收", notEvidence: "通过但不作数", notMachine: "未经机器验证", qualified: "已验证（有保留）", withCaveats: (why) => `有保留，验收前先看：${why}`,
+        cav: { test_machinery: "代码触及测试运行器", assertions_unchecked: "断言未检查", flaky: "不稳定：重跑后通过" }, claim: "Agent 声明", security: "这是一个安全决定：批准后，验证的准备命令会在沙箱里联网一次。",
         foot: "这个页面由你电脑上的 Tower 提供。这里只有需要你的事；评审留在电脑上。",
         states: { draft: "草稿", ready: "就绪", running: "运行中", paused: "已暂停", claimed: "自称完成", verifying: "验证中", in_review: "待验收", accepted: "已验收", integrated: "已合入", archived: "已归档", abandoned: "已放弃" },
         modes: { idle: "空闲", starting: "准备中", thinking: "思考", reading: "执行", editing: "执行", executing: "执行", waiting_on_you: "等你", retrying: "重试", compacting: "压缩中", verifying: "验证", settled: "已停" },
@@ -239,28 +268,46 @@ const api = async (path, body) => {
 };
 const G = {
   bell: `<svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true"><path d="M2 7.5 L2 5 A3 3 0 0 1 8 5 L8 7.5 Z"/><path d="M4 8.8 A1 1 0 0 0 6 8.8"/></svg>`,
-  diamond: `<svg class="mark" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0.6 L9.4 5 L5 9.4 L0.6 5 Z" fill="var(--st-attention)"/></svg>`,
-  notice: `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>`,
+  // The desk's status marks, the app's own paths (Glyph.tsx MARK_PATH): one disc, its symbol a hole (! needs you,
+  // × wrong); the notice is the disc drawn as a line with an i.
+  attn: `<svg class="mark" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM7.125 4.6a.875 .875 0 0 1 1.75 0v4.1a.875 .875 0 0 1 -1.75 0zM8 10.35a1.05 1.05 0 1 1 0 2.1a1.05 1.05 0 1 1 0 -2.1z" fill="var(--st-attention)" fill-rule="evenodd"/></svg>`,
+  danger: `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 9.237L9.781 11.019A.875 .875 0 0 0 11.019 9.781L9.237 8L11.019 6.219A.875 .875 0 0 0 9.781 4.981L8 6.763L6.219 4.981A.875 .875 0 0 0 4.981 6.219L6.763 8L4.981 9.781A.875 .875 0 0 0 6.219 11.019z" fill="var(--st-danger)" fill-rule="evenodd"/></svg>`,
+  notice: `<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a7 7 0 1 1 0 14a7 7 0 1 1 0 -14zM8 2.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0 -11zM7.2 7.3a.8 .8 0 0 1 1.6 0v3.7a.8 .8 0 0 1 -1.6 0zM8 3.95a.95 .95 0 1 1 0 1.9a.95 .95 0 1 1 0 -1.9z" fill="currentColor" fill-rule="evenodd"/></svg>`,
   ring: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.25"/></svg>`,
-  runs(f) {
-    const a = 2 * Math.PI * Math.max(0, Math.min(1, f));
-    const wedge = f <= 0 ? "" : f >= 1 ? `<circle cx="5" cy="5" r="4" fill="var(--st-active)"/>`
-      : `<path d="M5 5 L5 1 A4 4 0 ${f > 0.5 ? 1 : 0} 0 ${(5 - 4 * Math.sin(a)).toFixed(3)} ${(5 - 4 * Math.cos(a)).toFixed(3)} Z" fill="var(--st-active)"/>`;
-    return `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="var(--st-active)" stroke-width="1.25"/>${wedge}</svg>`;
-  },
-  seal: `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4.25" fill="var(--st-verified)"/><path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg)" stroke-width="1.25"/></svg>`,
-  state(s) {
-    const c = s === "running" || s === "verifying" ? "var(--st-active)" : s === "in_review" || s === "accepted" ? "var(--st-verified)" : "var(--text-3)";
-    const ring = `<circle cx="5" cy="5" r="4" fill="none" stroke="${c}" stroke-width="1.25"${s === "claimed" || s === "verifying" ? ' stroke-dasharray="1.7 1.45"' : ""}/>`;
-    const inner = s === "running" || s === "verifying" ? `<path d="M5 1 A4 4 0 0 0 5 9 Z" fill="${c}"/>`
-      : s === "paused" ? `<line x1="3.3" y1="1.5" x2="3.3" y2="8.5" stroke="${c}" stroke-width="1.25"/><line x1="6.7" y1="1.5" x2="6.7" y2="8.5" stroke="${c}" stroke-width="1.25"/>`
+  // The running mark: a faint ring and its arc, turning while some run moves (`moves`), held still while none does. 12px,
+  // the size of the marks beside it.
+  runs: (turn) => `<svg${turn ? ' class="spin"' : ""} width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="var(--st-active)" stroke-width="1.25" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="5" r="4" stroke-opacity=".28"/><path d="M5 1a4 4 0 0 1 4 4"/></svg>`,
+  // The seal; with caveats its disc is cut at the lower right, as at the desk (Glyph.tsx `Disc`).
+  seal: (cut) => `<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">${cut ? '<path d="M9.25 5.15A4.25 4.25 0 1 0 5.15 9.25Z" fill="var(--st-verified)"/>' : '<circle cx="5" cy="5" r="4.25" fill="var(--st-verified)"/>'}<path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="var(--bg)" stroke-width="1.25"/></svg>`,
+  // `turn`: the arc of a running or verifying goal turns only while the work moves (the desk's labels `moving`).
+  // `v`: the verifier's pass, with its pin, that counts (the desk's labels `machineVerified` and not `notEvidence`); only
+  // then is a goal to accept green. Without it the check sits in a dashed, neutral ring, as at the desk. `q`: that pass
+  // has caveats; the ring keeps the desk's gap at its lower right (docs/12 §12.5.2's notch).
+  state(s, turn, v, q) {
+    const c = s === "running" || s === "verifying" ? "var(--st-active)" : (s === "in_review" || s === "accepted") && v ? "var(--st-verified)" : "var(--text-3)";
+    const moving = s === "running" || s === "verifying";
+    const ring = `<circle cx="5" cy="5" r="4" fill="none" stroke="${c}" stroke-width="1.25"${s === "claimed" || s === "verifying" || (s === "in_review" && !v) ? ' stroke-dasharray="1.7 1.45"' : s === "running" ? ' stroke-opacity=".28"' : s === "in_review" && q ? ' stroke-dasharray="21.53 3.6" stroke-dashoffset="-4.94"' : ""}/>`;
+    const inner = moving ? `<path d="M5 1a4 4 0 0 1 4 4" fill="none" stroke="${c}" stroke-width="1.25" stroke-linecap="round"/>`
+      : s === "paused" ? `<path d="M4 3.6v2.8M6 3.6v2.8" stroke="${c}" stroke-width="1.25" stroke-linecap="round"/>`
       : s === "in_review" ? `<path d="M3.1 5.2 L4.5 6.6 L7 3.7" fill="none" stroke="${c}" stroke-width="1.25"/>`
       : s === "ready" ? `<circle cx="5" cy="5" r="1.2" fill="${c}"/>` : "";
-    return `<svg class="glyph" width="10" height="10" viewBox="0 0 10 10" aria-label="${esc(t("states")[s] ?? s)}" role="img">${s === "paused" ? "" : ring}${inner}</svg>`;
+    return `<svg class="glyph${moving && turn ? " spin" : ""}" width="12" height="12" viewBox="0 0 10 10" aria-label="${esc(s === "in_review" && v && q ? t("qualified") : t("states")[s] ?? s)}" role="img">${ring}${inner}</svg>`;
   },
 };
 const machine = (s) => /^[\x20-\x7e]+$/.test(s) && !/\s{2,}/.test(s);
-const ghost = (rows) => `<div class="ghost" aria-hidden="true">${rows.map(([a, b]) => `<div class="row">${G.ring}<div><i class="bar" style="width:${a}%"></i><i class="bar" style="width:${b}%"></i></div><span></span></div>`).join("")}</div>`;
+// The caveats a counted pass can carry, in the desk's order (discounted.ts `CAVEATS`).
+const CAVEATS = ["test_machinery", "assertions_unchecked", "flaky"];
+// When the page last heard from a run; a run moves (the desk's labels `moving`) unless it waits on you, is flagged for
+// you, or is silent (the header's hint mark). Nothing turns on a run that is not moving.
+const heardAt = (g) => Math.max(g.updated_at || 0, (g.live_line && g.live_line.at) || 0);
+// A tool in flight keeps a run busy, never silent: the supervisor's live line says whether the call it names is still
+// in flight, whatever the run's mode (a command beside an open question is busy too, review 18), and a full test suite
+// can take minutes without a word (the desk's labels `heartbeatState`). Silent: two minutes with no word and no tool in
+// flight.
+const busy = (g) => !!(g.live_line && g.live_line.running);
+const silentRun = (g) => g.state === "running" && !busy(g) && heardAt(g) > 0 && Date.now() - heardAt(g) > 120_000;
+const waits = (g) => g.mode === "waiting_on_you" || !!g.needs_you;
+const moves = (g) => g.state === "running" && !waits(g) && !silentRun(g);
 const MACHINE = /^(npm |pnpm |yarn |cargo |pip |error|Error|ERR!|\s{2,}at |[\w./-]+\.(json|lock|toml|yaml|yml|js|ts|rs|py)$|[$>] |\S+@\d)/;
 function parts(i) {
   const body = (i.body || "").trim();
@@ -290,14 +337,35 @@ function heldOut(body) {
   for (const [id, list] of names) if (!failures.some((f) => f.id === id)) failures.push({ id, title: "", tail: "", names: list });
   return { prose: prose.join("\n").trim(), failures };
 }
-const tailHtml = (text) => `<pre class="tail">${text.split("\n").map((l) => `<span class="tl">${esc(l) || " "}</span>`).join("")}</pre>`;
+const tailHtml = (text, cmd) => `<pre class="tail${cmd ? " cmd" : ""}">${text.split("\n").map((l) => `<span class="tl">${cmd ? l.split(/(\s+)/).map((w, j) => (j % 2 ? esc(w) : w && `<span class="w">${esc(w)}</span>`)).join("") : esc(l)}</span>`).join("\n")}</pre>`;
+// The code lies over the question's first characters: its words are code, and its line breaks stand for the question's
+// own characters there (the list mark between failing checks, ", " or "、"), as on the desk.
+function question(i) {
+  let at = 0;
+  const own = (n) => esc(i.subject.slice(at, (at += n)));
+  return i.code.split(/(\n+)/).map((p, j) => (j % 2 ? own(p.length) : `<code>${own(p.length)}</code>`)).join("") + esc(i.subject.slice(at));
+}
 const heldHtml = (h) => `<div class="heldout"><span class="label">${t("forYou")}</span>${h.failures.map((f) => `
   <div class="head"><span class="id">${esc(f.id)}</span><span>${esc(f.title)}</span></div>
   ${f.names.length ? `<div class="names"><span>${t("failing")}</span>${f.names.map((n) => `<code>${esc(n)}</code>`).join("")}</div>` : ""}
   ${f.tail ? tailHtml(f.tail) : ""}`).join("")}</div>`;
+// A reply's words not yet sent, by item, as the desk keeps them: a repaint finds them where they were, until an answer
+// goes. A new item of the same goal, kind and words that replaces this one in the same step finds them too; an item that
+// leaves otherwise (answered elsewhere, withdrawn) takes them along, and two such items open at once each keep their own.
+// Put aside, an item is still open (`snoozed`), and so are its words (review 24, record only 4).
+const drafts = {};
+function carryDrafts(was, now) {
+  const key = (i) => i && i.goal_id + i.kind + i.subject;
+  for (const id in drafts) if (!now.some((i) => i.id === id)) {
+    const k = key(was.find((i) => i.id === id));
+    const heir = now.find((i) => key(i) === k && !was.some((w) => w.id === i.id));
+    if (heir) drafts[heir.id] = drafts[id];
+    delete drafts[id];
+  }
+}
 const replyHtml = (i, held) => {
   const ph = held ? t("hintPlaceholder") : i.kind === "question" ? t("answerPlaceholder") : t("notePlaceholder");
-  return `<div class="reply ${held ? "hint" : ""}"><textarea id="t-${esc(i.id)}" rows="${held ? 2 : 1}" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></textarea><button class="btn ${held ? "primary" : ""}" data-send="${esc(i.id)}">${held ? t("sendHint") : t("send")}</button></div>`;
+  return `<div class="reply ${held ? "hint" : ""}"><textarea id="t-${esc(i.id)}" data-k="${esc(i.id)}" rows="${held ? 2 : 1}" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></textarea><button class="btn ${held ? "primary" : ""}" data-send="${esc(i.id)}">${held ? t("sendHint") : t("send")}</button></div>`;
 };
 // Mirrors the supervisor's `answerable_away`: privilege-widening choices stay at the desk.
 const DESK_ONLY = {
@@ -317,7 +385,7 @@ const tomorrowAt9 = () => { const d = new Date(); d.setDate(d.getDate() + 1); d.
 async function answer(id, response, danger) {
   if (danger && armed !== id + response) { armed = id + response; render(last); return; }
   armed = null;
-  try { await api("/api/answer", { inbox_id: id, response }); } catch (e) { alert(e.message); }
+  try { await api("/api/answer", { inbox_id: id, response }); delete drafts[id]; } catch (e) { alert(e.message); }
   load();
 }
 async function pause(goal) {
@@ -328,12 +396,24 @@ async function pause(goal) {
 }
 let last = null;
 let pendingState = null;
+// The state on the page and when it was read: the foot and the gauges say that one, never a newer one still waiting.
+let shown = null;
+let shownAt = 0;
+// A block that holds your selection kept as it was, though its item changed (see `patch`).
+let holding = false;
 let lastOk = 0;
 let sseLive = false;
 let offline = false;
 const ago = (at) => t("ago")(Math.round((Date.now() - at) / 60000));
 const clock = (at) => { const d = new Date(at); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
-const dur = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
+// As the desk says a time it does not count to the millisecond (format.ts `duration`): in Chinese, in words.
+const dur = (ms) => {
+  const s = Math.round(ms / 1000), zh = lang === "zh";
+  if (s < 60) return zh ? `${s} 秒` : `${s}s`;
+  const m = Math.floor(s / 60), h = Math.floor(m / 60);
+  if (m < 60) return zh ? `${m} 分钟` : `${m}m`;
+  return zh ? (m % 60 ? `${h} 小时 ${m % 60} 分` : `${h} 小时`) : `${h}h ${m % 60}m`;
+};
 const usd = (v) => v === 0 ? "$0" : v < 0.01 ? "<$0.01" : `$${v.toFixed(2)}`;
 function pipsHtml(p) {
   if (!p || !p.machine) return "";
@@ -346,10 +426,16 @@ function gaugesHtml(s) {
   const running = s.goals.filter((g) => g.state === "running");
   const max = s.max_running || 0;
   let h = "";
-  if (running.length) h += `<span class="gauge active num">${G.runs(max ? running.length / max : 0.5)}${esc(t("runs")(running.length, max))}</span>`;
-  const heard = Math.max(0, ...running.map((g) => Math.max(g.updated_at || 0, (g.live_line && g.live_line.at) || 0)));
+  if (running.length) h += `<span class="gauge active num">${G.runs(running.some(moves))}${esc(t("runs")(running.length, max))}</span>`;
+  const heard = Math.max(0, ...running.map(heardAt));
   const since = Date.now() - heard;
-  if (running.length && heard > 0 && since > 30_000) h += `<span class="gauge stale num">${since > 120_000 ? `<span class="dot hollow"></span>` : ""}${esc(t("silentFor")(dur(since)))}</span>`;
+  // As the desk's heartbeat reads: past 30 s with a tool in flight, of the runs' calls at work the one running longest,
+  // and how long (busy, no mark); with none, how long the runs have been quiet, and past two minutes the hint mark.
+  const tool = running.filter(busy).sort((a, b) => a.live_line.at - b.live_line.at)[0];
+  if (running.length && heard > 0 && since > 30_000)
+    h += tool
+      ? `<span class="gauge busy num">${esc(t("toolFor")(tool.live_line.action, dur(Math.max(0, Date.now() - tool.live_line.at))))}</span>`
+      : `<span class="gauge stale num">${since > 120_000 ? G.notice : ""}${esc(t("silentFor")(dur(since)))}</span>`;
   const spent = usd(s.goals.reduce((a, g) => a + (g.cost_usd || 0), 0));
   return h + `<span class="gauge num" title="${esc(t("spent")(spent))}"><span class="sr">${esc(t("spent")(""))}</span>${spent}</span>`;
 }
@@ -361,14 +447,16 @@ function showStatus() {
     conn.textContent = t("stale")(ago(lastOk));
   } else if (sseLive) {
     conn.className = "gauge live";
-    conn.innerHTML = `<span class="dot ok"></span>${esc(t("liveStream"))}`;
+    // Said in words: green is the verifier's alone, never a connection's.
+    conn.textContent = t("liveStream");
   } else {
     conn.className = "gauge";
     conn.textContent = "";
   }
-  fresh.textContent = sseLive ? t("freshLive")(clock(lastOk)) : t("fresh")(clock(lastOk));
-  if (last) {
-    const gh = gaugesHtml(last);
+  const note = pendingState ? t("waiting") : holding ? t("held") : "";
+  fresh.textContent = (sseLive ? t("freshLive") : t("fresh"))(clock(shownAt)) + (note && t("then") + note);
+  if (shown) {
+    const gh = gaugesHtml(shown);
     if (gauges.innerHTML !== gh) gauges.innerHTML = gh;
   }
 }
@@ -379,10 +467,15 @@ function fitOpts() {
   }
 }
 addEventListener("resize", fitOpts);
+// A reply being typed holds the next state back until you leave the box, so nothing moves under the keyboard; the foot
+// says a newer reading waits. Leaving it paints that state once the press that left it has landed: a Send pressed with a
+// state waiting is never lost to a repaint between its press and its release (on a phone the tap's press and release
+// come together, after its pointer events; with a mouse, the release comes later).
+const typing = () => !!document.activeElement?.matches("textarea");
 function applyState(s) {
   last = s;
   lastOk = Date.now();
-  if (document.activeElement && document.activeElement.matches("textarea")) {
+  if (typing()) {
     pendingState = s;
     showStatus();
     return;
@@ -390,9 +483,53 @@ function applyState(s) {
   pendingState = null;
   render(s);
 }
-document.addEventListener("focusout", () => {
-  if (pendingState) { const s = pendingState; pendingState = null; render(s); }
+const release = () => setTimeout(() => {
+  if (pendingState && !typing()) { const s = pendingState; pendingState = null; render(s); }
 });
+let pressed = false;
+addEventListener("pointerdown", () => (pressed = true), true);
+addEventListener("pointerup", () => (pressed = false), true);
+document.addEventListener("focusout", () => (pressed ? addEventListener("pointerup", release, { once: true }) : release()));
+document.addEventListener("selectionchange", () => { if (holding && !typing()) render(last); });
+// Each block of the page (a heading, a card, a row) is kept by its key, with the markup it was made from: a state that
+// paints a block the same leaves its nodes where they are, so words selected on a card stay selected. A block that holds
+// your selection and has changed stays as it was until you let go (the foot says so); one whose item is gone goes.
+function patch(blocks) {
+  const old = new Map([...app.children].map((el) => [el.dataset.key, el]));
+  const sel = getSelection();
+  holding = false;
+  const next = blocks.map(([key, html]) => {
+    const el = old.get(key);
+    if (el && (el._h === html || (!sel.isCollapsed && el.contains(sel.anchorNode) && (holding = true)))) return el;
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html.trim();
+    const made = tpl.content.firstElementChild;
+    made.dataset.key = key;
+    made._h = html;
+    for (const ta of made.querySelectorAll("textarea")) ta.value = drafts[ta.dataset.k] ?? "";
+    return made;
+  });
+  const keep = new Set(next);
+  for (const el of [...app.children]) if (!keep.has(el)) el.remove();
+  let at = app.firstElementChild;
+  for (const el of next) {
+    if (el === at) at = at.nextElementSibling;
+    else app.insertBefore(el, at);
+  }
+  for (const a of app.querySelectorAll(".age")) {
+    const v = ago(+a.dataset.at);
+    if (a.textContent !== v) a.textContent = v;
+  }
+  fitWords();
+}
+// A word of a command longer than a row is the row's own text, found by measure: its box, kept to the row's width, runs
+// over (app.css's `.decision-cmd .wl` on the desk).
+function fitWords() {
+  for (const w of app.querySelectorAll(".cmd .w")) (w.className = "w"), w.scrollWidth > w.clientWidth + 1 && (w.className = "w wl");
+}
+addEventListener("resize", fitWords);
+document.fonts?.ready.then(fitWords);
+app.addEventListener("input", (e) => { if (e.target.dataset.k) drafts[e.target.dataset.k] = e.target.value; });
 function render(s) {
   if (!s) return;
   lang = s.lang.startsWith("zh") ? "zh" : "en";
@@ -402,8 +539,12 @@ function render(s) {
   const goals = new Map(s.goals.map((g) => [g.id, g]));
   const items = s.inbox.filter((i) => i.kind !== "review_ready");
   const ready = s.inbox.filter((i) => i.kind === "review_ready");
-  let h = `<h2>${t("needs")}<span class="num">${items.length}</span></h2>`;
-  if (!items.length) h += `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>${ghost([[62, 40], [44, 58]])}`;
+  const open = (x) => (x ? [...x.inbox, ...(x.snoozed || [])] : []);
+  carryDrafts(open(shown), open(s));
+  const blocks = [];
+  const add = (key, html) => blocks.push([key, html]);
+  add("h-needs", `<h2>${t("needs")}<span class="num">${items.length}</span></h2>`);
+  if (!items.length) add("e-needs", `<p class="empty">${G.ring}<span><b>${t("none")}</b><br>${t("noneBody")}</span></p>`);
   for (const [at, i] of items.entries()) {
     const g = goals.get(i.goal_id);
     const held = i.kind === "paused" && g && g.pause_reason === "held_out_failed" ? heldOut(i.body) : null;
@@ -420,13 +561,13 @@ function render(s) {
     }).join("");
     const security = i.kind === "paused" && g && g.pause_reason === "dependencies_changed";
     const laterOpen = later === i.id;
-    h += `<article class="card ${at > 0 ? "quiet" : ""}">
-      <div class="strip">${G.diamond}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num">${esc(ago(i.created_at))}</span><button class="bell" data-later="${esc(i.id)}" aria-label="${t("later")}" aria-expanded="${laterOpen}">${G.bell}</button></div>
+    add("i-" + i.id, `<article class="card ${at > 0 ? "quiet" : ""}">
+      <div class="strip">${G.attn}<span class="kind">${esc(t("kinds")[i.kind] ?? i.kind)}</span><span class="goal"><span class="mono">${esc(i.goal_id)}</span> ${esc(i.goal_title)}</span><span class="age num" data-at="${Number(i.created_at)}"></span><button class="bell" data-later="${esc(i.id)}" aria-label="${t("later")}" aria-expanded="${laterOpen}">${G.bell}</button></div>
       <div class="main">
-        ${laterOpen ? `<div class="later"><span>${t("later")}</span><button class="btn" data-snooze="${esc(i.id)}" data-until="${Date.now() + 3_600_000}">${t("inHour")}</button><button class="btn" data-snooze="${esc(i.id)}" data-until="${tomorrowAt9()}">${t("tomorrow")}</button></div>` : ""}
-        <p class="question ${i.kind === "ci_failed" ? "code" : ""}">${esc(i.subject)}</p>
+        ${laterOpen ? `<div class="later"><span>${t("later")}</span><button class="btn" data-snooze="${esc(i.id)}" data-until="hour">${t("inHour")}</button><button class="btn" data-snooze="${esc(i.id)}" data-until="tomorrow">${t("tomorrow")}</button></div>` : ""}
+        <p class="question">${i.code ? question(i) : esc(i.subject)}</p>
         ${p.prose ? (isBlockedClaim ? `<div class="claim-box"><span class="tag">${esc(t("claim"))}</span><p class="body">${esc(p.prose)}</p></div>` : `<p class="body">${esc(p.prose)}</p>`) : ""}
-        ${p.tail ? tailHtml(p.tail) : ""}
+        ${p.tail ? tailHtml(p.tail, i.kind === "approval") : ""}
         ${held && held.failures.length ? heldHtml(held) : ""}
         ${held && i.allow_text ? replyHtml(i, true) : ""}
         ${security ? `<p class="caution">${G.notice}<span>${t("security")}</span></p>` : ""}
@@ -434,42 +575,63 @@ function render(s) {
         ${desk.length ? `<p class="desk">${G.notice}<span>${t("atDesk")}${desk.map((o) => `<b>${esc(o)}</b>`).join(t("listSep"))}</span></p>` : ""}
         ${held ? `<p class="caution note">${G.notice}<span>${t("heldOutNote")}</span></p>` : ""}
         ${!held && i.allow_text && i.kind !== "assumption" ? replyHtml(i, false) : ""}
-      </div></article>`;
+      </div></article>`);
   }
   if (ready.length) {
-    h += `<h2>${t("toAccept")}<span class="num">${ready.length}</span></h2>`;
+    add("h-ready", `<h2>${t("toAccept")}<span class="num">${ready.length}</span></h2>`);
     for (const i of ready) {
-      const g = goals.get(i.goal_id);
-      const seal = g && g.verified_pin ? `<span class="seal">${G.seal}<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span></span>` : "";
-      h += `<div class="row">${G.state("in_review")}<div><div class="title">${esc(i.goal_title)}</div><div class="meta live">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div></div><span></span></div>`;
+      const known = goals.get(i.goal_id), g = known || {};
+      const p = g.progress || {};
+      // The desk's verdict, never green by default: the verifier's pass that counts is the green check and seal with its
+      // pin; a pass that does not count is the amber ! and says so; with no machine criterion the neutral check says
+      // "Not machine-verified".
+      const v = !p.not_evidence && p.machine > 0 && !!g.verified_pin;
+      // A counted pass with caveats (the supervisor's `progress.qualified`, the desk's `caveats`): still green, its seal
+      // cut, and the caveats said under it beside the amber !, as the desk's accept sheet lists them: look before you accept.
+      const why = v && p.qualified ? CAVEATS.filter((k) => p.qualified[k]).map((k) => t("cav")[k]) : [];
+      const pin = g.verified_pin ? `<span class="pin">@${esc(g.verified_pin.slice(0, 7))}</span>` : "";
+      const mark = p.not_evidence ? G.attn.replace('class="mark"', 'class="glyph"').replace('aria-hidden="true"', `role="img" aria-label="${esc(t("notEvidence"))}"`) : G.state("in_review", 0, v, why.length > 0);
+      const seal = v ? `<span class="seal">${G.seal(why.length > 0)}${pin}</span>` : !known ? "" : `<span class="seal verdict">${esc(t(p.not_evidence ? "notEvidence" : "notMachine"))}${p.not_evidence ? pin : ""}</span>`;
+      const caveats = why.length ? `<p class="why">${G.attn}<span>${esc(t("withCaveats")(why.join(t("listSep"))))}</span></p>` : "";
+      add("r-" + i.id, `<div class="row">${mark}<div><div class="title">${esc(i.goal_title)}</div><div class="meta live ready">${seal}<span class="id">${esc(i.goal_id)}</span><span class="detail">${esc(t("acceptOnDesk"))}</span></div>${caveats}</div><span></span></div>`);
     }
   }
   const running = s.goals.filter((g) => g.state === "running");
-  h += `<h2>${t("running")}<span class="num">${running.length}</span></h2>`;
-  if (!running.length) h += `<p class="empty">${G.ring}<span>${t("noRuns")}</span></p>${ghost([[54, 36]])}`;
+  add("h-running", `<h2>${t("running")}<span class="num">${running.length}</span></h2>`);
+  if (!running.length) add("e-running", `<p class="empty">${G.ring}<span>${t("noRuns")}</span></p>`);
   for (const g of running) {
     const l = g.live_line;
-    const badge = t("modes")[g.mode] ?? g.mode;
-    const detail = l ? `${l.action}${l.target ? " · " + l.target : ""}` : "";
+    // The badge says what the desk's live line says: a run that waits on you, whatever its mode, is the amber ! and
+    // "Needs you"; otherwise "Silent", stepped back and with no mark, when no word has come for two minutes and no tool is
+    // in flight (never "Working" beside a still mark); otherwise the mode's word.
+    const quiet = !waits(g) && silentRun(g);
+    const badge = waits(g) ? `${G.attn}${esc(t("modes").waiting_on_you)}` : quiet ? esc(t("silent")) : esc(t("modes")[g.mode] ?? g.mode);
+    // The action, then its target after a real space (copied and read aloud as two words), as the desk's live line says it: no dot between them.
+    // The call in flight, or the last one once the run has gone quiet; a call that has ended is not what the run is doing,
+    // so the detail says which run instead, as the desk's does (review 19).
+    const detail = l && (l.running !== false || quiet) ? `${esc(l.action)}${l.target ? ` <span class="target${machine(l.target) ? " code" : ""}">${esc(l.target)}</span>` : ""}` : l && g.run_no ? esc(t("runN")(g.run_no)) : "";
     const ran = g.run_started_at ? dur(Math.max(0, Date.now() - g.run_started_at)) : "";
     const elapsed = ran ? `<span class="elapsed num" title="${esc(t("runningFor")(ran))}"><span class="sr">${esc(t("runningFor")(""))}</span>${esc(ran)}</span>` : "";
     const eng = g.engine ? `<span class="pill">${esc(g.engine)}</span>` : "";
     const isArmed = armed === "pause" + g.id;
-    h += `<div class="row">${G.state("running")}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge">${esc(badge)}</span>${eng}<span class="detail ${l && machine(l.target || "") ? "code" : ""}">${esc(detail)}</span></div></div>
-      <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`;
+    add("g-" + g.id, `<div class="row">${G.state("running", moves(g))}<div><div class="head"><span class="title">${esc(g.title)}</span>${elapsed}</div><div class="meta live">${pipsHtml(g.progress)}<span class="badge${quiet ? " silent" : ""}">${badge}</span>${eng}<span class="detail">${detail}</span></div></div>
+      <button class="btn ghost ${isArmed ? "armed" : ""}" data-pause="${esc(g.id)}">${esc(isArmed ? t("confirm") : t("pause"))}</button></div>`);
   }
-  app.innerHTML = h;
+  patch(blocks);
   fitOpts();
   offline = false;
+  shown = s;
+  shownAt = lastOk;
   showStatus();
 }
 function showOffline(err) {
   offline = true;
   sseLive = false;
-  app.innerHTML = `<section class="offline" title="${esc(err.message)}"><p class="error">${t("offline")}</p><p class="sub">${t("offlineWhere")}</p>${lastOk ? `<p class="when num">${esc(t("lastRead")(clock(lastOk)))}</p>` : ""}<button class="btn primary" data-retry>${t("retry")}</button></section>`;
+  app.innerHTML = `<section class="offline" title="${esc(err.message)}"><p class="error">${G.danger}${t("offline")}</p><p class="sub">${t("offlineWhere")}</p>${lastOk ? `<p class="when num">${esc(t("lastRead")(clock(lastOk)))}</p>` : ""}<button class="btn primary" data-retry>${t("retry")}</button></section>`;
   gauges.innerHTML = `<span class="gauge dead num">${esc(t("runs")("—", "—"))}</span><span class="gauge dead">—</span>`;
   conn.className = "gauge off";
-  conn.innerHTML = `<span class="dot"></span>${t("offGauge")}`;
+  // The one lit reading, in ink: the error line below says it with the red mark, once.
+  conn.textContent = t("offGauge");
   fresh.textContent = "";
   document.getElementById("foot").textContent = t("foot");
 }
@@ -478,7 +640,7 @@ app.addEventListener("click", (e) => {
   if (!b) return;
   if (b.dataset.retry !== undefined) { load(); startSse(); return; }
   if (b.dataset.later) { later = later === b.dataset.later ? null : b.dataset.later; return render(last); }
-  if (b.dataset.snooze) return snooze(b.dataset.snooze, Number(b.dataset.until));
+  if (b.dataset.snooze) return snooze(b.dataset.snooze, b.dataset.until === "hour" ? Date.now() + 3_600_000 : tomorrowAt9());
   if (b.dataset.pause) return pause(b.dataset.pause);
   if (b.dataset.send) { const v = document.getElementById("t-" + b.dataset.send).value.trim(); if (v) answer(b.dataset.send, v, false); return; }
   if (b.dataset.id) answer(b.dataset.id, b.dataset.o, b.dataset.d === "true");

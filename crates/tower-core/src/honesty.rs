@@ -192,6 +192,35 @@ pub struct Progress {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub not_evidence: Option<bool>,
+    /// Verified, with caveats ("有保留的已验证", `07` §7.10.3 `anyQualified`):
+    /// a counted pass on the current snapshot that the guards could not
+    /// fully vouch for. It still counts toward `verified`; the seal and the
+    /// board say which caveats stand. Never set beside `not_evidence`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub qualified: Option<Qualified>,
+}
+
+/// What qualifies a verified pass (`07` §7.10.3): each is a reason the pass
+/// proves less than a clean one, none a reason it does not count.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Qualified {
+    /// Program code reaches into the test runner, the assertion library or
+    /// the module loader, below the severity that holds a pass (the
+    /// `runner_patched` condition, ⑥).
+    pub test_machinery: bool,
+    /// Tower could not check the tests' assertions: no must-fail canary fits
+    /// the language or test style, or the assertion guard could not run.
+    pub assertions_unchecked: bool,
+    /// A counted pass came on a rerun (①, ②).
+    pub flaky: bool,
+}
+
+impl Qualified {
+    pub fn any(&self) -> bool {
+        self.test_machinery || self.assertions_unchecked || self.flaky
+    }
 }
 
 #[cfg(test)]

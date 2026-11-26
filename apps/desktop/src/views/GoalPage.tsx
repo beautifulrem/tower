@@ -156,15 +156,12 @@ export function GoalPage(props: { id: string }) {
                   <span class="code-val t2">{g().id}</span>
                   <span>{g().project_name}</span>
                   <Show when={extDetail()?.contract}><span>{t("goal.contractV", { v: extDetail()!.contract.version })}</span></Show>
-                  {/* While it runs, the live line below names the run whenever no call is more specific: said once (review 20). */}
-                  <Show when={g().run_no > 0 && g().state !== "running"}>
+                  {/* The run, always: the live line below never repeats it (review 20, record only). */}
+                  <Show when={g().run_no > 0}>
                     <span>
                       {t("live.runN", { n: g().run_no })}
                       <Show when={g().rework_cycles > 0}>{t("goal.reworkParen", { n: g().rework_cycles, max: g().max_rework })}</Show>
                     </span>
-                  </Show>
-                  <Show when={g().state === "running" && g().rework_cycles > 0}>
-                    <span>{t("card.rework", { n: g().rework_cycles, max: g().max_rework })}</span>
                   </Show>
                   <span>{engineLabel(eng())}</span>
                   <Show when={showStateWord(g())}>

@@ -105,9 +105,11 @@ fn project(tx: &Connection, goal_id: &str, at: Millis, e: &EventKind) -> Result<
                 at,
                 running: true,
             };
+            // A goal at rest (idle, settled) has no live line: a call its stopped run's engine started, handled after
+            // the stop, does not put one back as running (iteration 21).
             tx.execute(
-                "UPDATE goals SET live_line = ?2 WHERE id = ?1",
-                params![goal_id, serde_json::to_string(&line)?],
+                "UPDATE goals SET live_line = ?2 WHERE id = ?1 AND mode NOT IN (?3, ?4)",
+                params![goal_id, serde_json::to_string(&line)?, enum_str(&Mode::Idle), enum_str(&Mode::Settled)],
             )?;
         }
         EventKind::Claim { claim_id, claim, text, criterion } => {
@@ -421,23 +423,26 @@ mod tests {
     }
 
     /// Review 18: the live line names work. A note, the hand-in and a question to you leave it on the call at work;
-    /// stopped, it keeps the last call's words and says no call is in flight.
+    /// stopped, it keeps the last call's words and says no call is in flight. A goal at rest gets none from a call
+    /// (iteration 21: one its stopped run's engine started, handled after the stop).
     #[test]
     fn the_live_line_names_work_and_says_when_none_is_in_flight() {
         let (mut s, _) = store();
         let id = goal(&mut s);
-        let start = |s: &mut Store, call: &str, tool: &str| {
+        // A run at work: a new goal is idle.
+        s.append(&id, EventKind::ModeChanged { mode: Mode::Thinking }).unwrap();
+        let start = |s: &mut Store, id: &str, call: &str, tool: &str| {
             s.append(
-                &id,
+                id,
                 EventKind::ToolStarted { call_id: call.into(), tool: tool.into(), summary: format!("{tool} it") },
             )
             .unwrap();
         };
         let line = |s: &Store| s.summary(&id).unwrap().live_line.expect("a live line");
-        start(&mut s, "1", "bash");
+        start(&mut s, &id, "1", "bash");
         assert_eq!((line(&s).action, line(&s).target, line(&s).running), ("bash".into(), "bash it".into(), true));
         for (call, tool) in [("2", "log"), ("3", "submit"), ("4", "ask_user")] {
-            start(&mut s, call, tool);
+            start(&mut s, &id, call, tool);
             assert_eq!((line(&s).action, line(&s).running), ("bash".into(), true), "{tool} is not work");
         }
         s.stop_live_line(&id).unwrap();
@@ -454,6 +459,12 @@ mod tests {
             .id;
         s.stop_live_line(&other).unwrap();
         assert_eq!(s.summary(&other).unwrap().live_line, None);
+        // At rest, idle or settled, a call's start puts no live line up.
+        start(&mut s, &other, "5", "bash");
+        assert_eq!(s.summary(&other).unwrap().live_line, None, "idle");
+        s.append(&other, EventKind::ModeChanged { mode: Mode::Settled }).unwrap();
+        start(&mut s, &other, "6", "bash");
+        assert_eq!(s.summary(&other).unwrap().live_line, None, "settled");
     }
 
     #[test]

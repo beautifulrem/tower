@@ -462,8 +462,9 @@ done"#;
         assert_eq!(reply["confirmed"], true, "{reply}");
     }
 
-    /// Once the run is stopping, the stop's mode stands: a call the abort ended, a compaction the engine reports and an
-    /// answer late to its dialog, each handled after the stop wrote it, leave the run idle, nothing running.
+    /// Once the run is stopping, the stop's mode stands: a call the abort ended, a compaction the engine reports, an
+    /// answer late to its dialog and a call started late, each handled after the stop wrote it, leave the run idle,
+    /// nothing running.
     #[tokio::test(flavor = "multi_thread")]
     async fn what_ends_after_a_stop_writes_no_mode_over_it() {
         let (_tmp, sup, run, _) = running().await;
@@ -478,6 +479,7 @@ done"#;
         on_event(inner, &run, PiEvent::CompactionStart).await.unwrap();
         on_event(inner, &run, PiEvent::CompactionEnd).await.unwrap();
         crate::control::answer_dialog(inner, &g, "u1", "Yes").unwrap();
+        on_tool_start(inner, &run, "c2".into(), "read".into(), json!({"path": "src/money.ts"})).unwrap();
         assert_eq!(mode(inner, &g), Mode::Idle, "{:?}", modes(inner, &g));
         // Idle cleared the live line, and no settle after it put the call back as running.
         assert!(!live(inner, &g).is_some_and(|l| l.running), "{:?}", live(inner, &g));

@@ -473,10 +473,10 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   T182–T191), and D234–D235 from its own reading and gates (T189, T192). A question's inbox item, its dialog and its
   mode are one step under the run's mode lock, and an answer that finds no dialog is refused and logged (D218); every
   write of the mode beside the engine's events takes the lock, the engine's own modes and the first message never cover
-  an open question (D229), and once a run is stopping nothing writes a mode over the stop's (D234). On the board a
+  an open question (D229), and once a run is stopping nothing writes a mode, or a running live line, over the stop's (D234). On the board a
   call's words linger a second and the elapsed time follows only the run's name (D219); the diff's ring stands clear of
-  the digits (D220); a missing side's code stays whole and the strip holds five lines (D221); the run is named once on
-  the goal page, "已进行" replaces the doubled 运行, the board's elapsed time is whole or set aside by measure (it was
+  the digits (D220); a missing side's code stays whole and the strip holds five lines (D221); the goal page's header
+  names the run and its live line says how long it has gone, "已进行" replaces the doubled 运行, the board's elapsed time is whole or set aside by measure (it was
   cut at 1241, and in Chinese at 1440), a quiet first run is "Run 1", and the time beside the run's name is its last
   movement (D224, D225); the sidebar's count is in ink (D226); DESIGN.md and docs/04 say when the detail names
   the run (D227); `·` leaves the supervisor's strings where DESIGN.md's rule applies (D230). Tests: a test step between
@@ -486,8 +486,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   and where two tests first fail on old sources (D236). The icons became markup strings to fit the budget (D235). Each fix's test fails on `b6baa8a`'s sources (or
   `939be97`'s for D217) or a stated mutation (`/tmp/tower-design/iter21/oldsrc/`, `mut/`). Caught before commit: the
   first board fix gave the elapsed time a column of its own, which cut the detail at 1241, so the time rides only
-  beside the run's name; the ring test's comment claimed 4 px of room where there are 3. Gates: tsc; vitest 45 / 259;
-  e2e 423/0 (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter21/allshots`); perf alone (board of 50: 911 / 380 / 269 ms against 299 / 217 / 191 ms; switch medians about 97 against 37 ms); line limit;
+  beside the run's name; the ring test's comment claimed 4 px of room where there are 3. Then, in a follow-up commit before review: the
+  first fix of D224 hid the run's number in the goal page's header while the goal ran, which left the page naming no
+  run while a call was in flight, so the header names it again and the line says how long the run has gone; a call
+  started after a stop put a running live line on the stopped goal (D234, now guarded in the store); and the first
+  twenty flow runs overlapped the cargo gates only at their start, so the suite ran twenty more with ten CPU burners
+  held for the whole run. Gates: tsc; vitest 45 / 260;
+  e2e 423/0 (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter21/allshots`); perf alone (board of 50: 888 / 486 / 274 ms against 273 / 275 / 193 ms; switch medians about 115 against 44 ms); line limit;
   doc numbers; rustfmt, `cargo clippy --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites,
-  480 tests, 2 ignored); the flow suite 20 of 20 (50 tests each, beside the cargo gates and e2e checks); bundle 163,714 / 163,840 B. Visual check at DPR 2, light and dark, en and
+  480 tests, 2 ignored); the flow suite 20 of 20 (50 tests each, with ten CPU burners held for the whole run, one-minute load 17.5–48.7); bundle 163,674 / 163,840 B. Visual check at DPR 2, light and dark, en and
   zh. Detector 16 against 16 on the touched UI files, the same findings. Not yet independently re-reviewed.

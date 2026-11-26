@@ -36,6 +36,12 @@ describe("the live line's detail", () => {
   });
   // Review 20 (R20-P3-02): on the board a call that has just ended keeps its words a beat, so a run reading file after
   // file changes its detail once a call.
+  // Review 20 (record only): the goal page said "Run 2" in its header and again on the live line under it. There, and in
+  // the peek, the header names the run: the line says how long it has gone.
+  it("says how long the run has gone where a header names it", () => {
+    expect([liveDetail(goal(false), false, true).action, liveDetail(goal(null, 300), false, true).action]).toEqual(["running 1m", "running 1m"]);
+    expect(liveDetail(goal(true), false, true).action).toBe("bash");
+  });
   it("keeps a call's words while it lingers on the board", () => {
     const lingering = liveDetail(goal(false), true);
     expect([lingering.action, lingering.target]).toEqual(["bash", "pnpm test --filter checkout"]);

@@ -163,6 +163,7 @@ vi.mock("../../lib/store", async () => {
   return {
     state,
     __setState: setState,
+    drafts: {} as Record<string, string>,
     toast: vi.fn(),
     act: async <T,>(fn: () => Promise<T>) => fn(),
     goalList: () => Object.values(state.goals),

@@ -345,9 +345,19 @@ impl Store {
     }
 
     /// Fills the words of the entries the desk has no row of its own for, in the language of the moment (read once).
+    /// A closing of Tower's that an older Tower wrote in another form ("Withdrawn: The run stopped") reads in today's
+    /// sentence, naming the item, in the language it was written in, as every closing keeps its own (its reason can
+    /// hold what only that language says: a check's names, a branch). The log keeps what was written (review 24,
+    /// record 3).
     fn worded(&self, mut entries: Vec<TraceEntry>) -> Result<Vec<TraceEntry>> {
         let mut lang = None;
         for e in &mut entries {
+            if let EventKind::InboxResolved { item_id, response, auto: true } = &mut e.event
+                && let Some((said_in, why)) = tower_core::i18n::older_closing(response)
+                && let Ok(what) = self.item_name(item_id, said_in)
+            {
+                *response = tower_core::i18n::tower_closed(said_in, &what, &why);
+            }
             e.words = tower_core::i18n::event_words(&e.event, || *lang.get_or_insert_with(|| self.lang()));
         }
         Ok(entries)
@@ -448,7 +458,7 @@ mod tests {
         let said = tower_core::i18n::event_words(&appended.event, || s.lang());
         assert!(said.is_some());
         assert_eq!(appended.words, said);
-        assert_eq!(s.append(&id, EventKind::Note { text: "n".into() }).unwrap().words, None);
+        assert_eq!(s.append(&id, EventKind::tower_note("n")).unwrap().words, None);
         let read: Vec<Option<String>> = s.trace(&id, None, 100).unwrap().into_iter().map(|e| e.words).collect();
         assert!(read.contains(&said), "{read:?}");
         assert_eq!(read.iter().filter(|w| w.is_some()).count(), 1, "{read:?}");
@@ -547,7 +557,7 @@ mod tests {
         let (mut s, _) = store();
         let id = goal(&mut s);
         for i in 0..5 {
-            s.append(&id, EventKind::Note { text: i.to_string() }).unwrap();
+            s.append(&id, EventKind::tower_note(i.to_string())).unwrap();
         }
         let page = s.trace(&id, None, 3).unwrap();
         assert_eq!(page.len(), 3);

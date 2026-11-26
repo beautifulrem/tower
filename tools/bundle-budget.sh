@@ -1,6 +1,6 @@
 #!/bin/sh
 # Fails when the interface's JavaScript grows past its budgets (gzip bytes):
-#   start-up  what index.html loads (the entry and its preloaded imports), plus
+#   start-up  what index.html loads (the entry and what it imports), plus
 #             the first half of one interface language: the dictionaries are
 #             chunks of their own and the first paint needs exactly one, so
 #             the larger one counts
@@ -31,6 +31,9 @@
 # and one key chunk per half holds the keys. The first half's key chunk is
 # needed by the first paint in either language, so it counts with the
 # start-up; the second half's counts on demand. No budget changed.
+# On 2026-11-27 on-demand chunks stopped listing their imports for Vite to preload (322 bytes, vite.config.ts), and
+# the start-up came to be found by following the entry's static imports, not by the links index.html preloads: a
+# chunk it imports counts whether it is linked ahead or not. No budget changed.
 # Run after `pnpm --dir apps/desktop build`.
 set -e
 start_budget="${1:-65536}"
@@ -41,6 +44,16 @@ goal_budget="${5:-12288}"
 dist="$(cd "$(dirname "$0")/.." && pwd)/apps/desktop/dist"
 gz() { gzip -9c "$1" | wc -c | tr -d ' '; }
 startup_files=$(grep -o '"/assets/[^"]*\.js"' "$dist/index.html" | tr -d '"' | sort -u)
+# What those import statically loads with them, linked ahead or not (`import{…}from"./x.js"`, `import"./x.js"`; an
+# `import("./x.js")` loads on demand).
+while :; do
+  next=$(for f in $startup_files; do
+    echo "$f"
+    grep -o 'from"\./[^"]*\.js"\|import"\./[^"]*\.js"' "$dist$f" | sed 's|^[a-z]*"\./|/assets/|; s|"$||'
+  done | sort -u)
+  [ "$next" = "$startup_files" ] && break
+  startup_files=$next
+done
 start=0; lazy=0; worker=0; locale_max=0; locale_sum=0; goal=""; keys_now=""
 for f in "$dist"/assets/*.js; do
   name="/assets/$(basename "$f")"

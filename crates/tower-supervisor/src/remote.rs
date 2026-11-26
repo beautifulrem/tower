@@ -78,6 +78,9 @@ impl std::fmt::Debug for Remote {
 struct State {
     goals: Vec<GoalSummary>,
     inbox: Vec<InboxItem>,
+    /// Put aside ("remind me later"): not shown, but still open, so a reply's words typed in one stay for its return
+    /// (review 24, record only 4).
+    snoozed: Vec<InboxItem>,
     lang: String,
     /// How many goals may run at once: the page's runs gauge reads `1/4`, as the desk's title bar does.
     max_running: u32,
@@ -299,6 +302,7 @@ fn state(inner: &Inner) -> crate::Result<State> {
     Ok(State {
         goals: inner.read_store(|st| st.summaries())?,
         inbox: inner.read_store(|st| st.open_inbox_items())?,
+        snoozed: inner.read_store(|st| st.snoozed_inbox_items())?,
         lang: inner.lang().code().to_string(),
         max_running: inner.settings().max_concurrent,
     })

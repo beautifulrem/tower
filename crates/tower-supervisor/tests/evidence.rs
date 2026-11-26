@@ -665,7 +665,7 @@ async fn flaky_criterion_reruns_once_and_preserves_both_outputs_without_burning_
     );
     let trace = h.sup.trace(&id, None, 100).unwrap();
     assert!(
-        trace.iter().any(|e| matches!(&e.event, tower_core::EventKind::Note { text } if text.contains("[flaky]") && text.contains("attempt1-red") && text.contains("attempt2-green"))),
+        trace.iter().any(|e| matches!(&e.event, tower_core::EventKind::Note { text, tower: true } if text.contains("[flaky]") && text.contains("attempt1-red") && text.contains("attempt2-green"))),
         "trace must preserve both flaky outputs: {trace:?}"
     );
 }

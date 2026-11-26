@@ -81,6 +81,22 @@ describe("the trace", () => {
     expect(you.querySelector(".trace-content svg")).toBeNull();
   });
 
+  // Review 24 (record only 1): "Tower cancelled …" was a plain line while Tower's closing of a card had its mark. A note in
+  // Tower's own words has it now; one the engine sent (`notify`) does not, however it is worded: the mark follows who
+  // wrote it, never the words.
+  it("marks a note as Tower's when Tower wrote it, and only then", async () => {
+    const note = (seq: number, text: string, tower: boolean): TraceEntry =>
+      ({ seq, goal_id: "G-0001", at: 1000 + seq, source: "system", event: { kind: "note", text, ...(tower ? { tower } : {}) } }) as unknown as TraceEntry;
+    const own = "Tower cancelled “Approval needed: delete recursively”: The run was stopping";
+    const sent = "Tower closed “Deploy?”: The run stopped";
+    trace.next = () => Promise.resolve([note(2, sent, false), note(1, own, true)]);
+    const { container } = render(() => <Trace id="G-0001" />);
+    await vi.waitFor(() => expect(container.querySelectorAll(".trace-row")).toHaveLength(2));
+    const row = (text: string) => [...container.querySelectorAll(".trace-row")].find((r) => r.textContent?.includes(text))!;
+    expect(row(own).querySelector(".trace-content svg"), "Tower's note").not.toBeNull();
+    expect(row(sent).querySelector(".trace-content svg"), "the engine's note, worded as Tower's").toBeNull();
+  });
+
   it("says when the trace could not be read, and reads it again on Retry", async () => {
     trace.calls = 0;
     trace.next = () => Promise.reject("the store is locked");

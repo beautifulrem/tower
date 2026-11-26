@@ -66,12 +66,13 @@ pub(crate) struct Probe {
 }
 
 impl Probe {
-    fn place(&self) -> String {
-        format!("{} line {}", self.file, self.line)
-    }
-
-    fn moved(&self) -> String {
-        self.numbers.iter().map(|n| format!("{n}→{}", shift(n, 1.0).unwrap_or_default())).collect::<Vec<_>>().join(", ")
+    /// Where it is and the numbers it moved, in the words of `lang` (review 24, record only 11: a Chinese sentence went on
+    /// in English, "line 5 (17→18, 3→4)").
+    fn said(&self, lang: Lang) -> String {
+        let (file, line) = (&self.file, self.line);
+        let moved = self.numbers.iter().map(|n| format!("{n}→{}", shift(n, 1.0).unwrap_or_default()));
+        let moved = moved.collect::<Vec<_>>().join(lang.pick("、", ", "));
+        tr!(lang, "{file} 第 {line} 行（{moved}）", "{file} line {line} ({moved})")
     }
 }
 
@@ -206,8 +207,7 @@ pub(crate) fn weigh_with_bypass(
         }
         detail.push_str(&s);
     };
-    let lines =
-        |ps: &[&Probe]| ps.iter().map(|p| format!("{} ({})", p.place(), p.moved())).collect::<Vec<_>>().join("\n");
+    let lines = |ps: &[&Probe]| ps.iter().map(|p| p.said(lang)).collect::<Vec<_>>().join("\n");
     if let Some(r) = report {
         let fails = r.with(Finding::FailsOffPoint);
         if !fails.is_empty() {

@@ -2445,9 +2445,12 @@ input[type="radio"] {
    box the width of the block, its first row at the edge; a row the block's width carried over goes on two characters in,
    under a hook in that margin (the one-pen line, text-3), so a carried-over row and a line the command indents itself never
    look alike. A word moves to the next row whole ("--fill" never parts as "--" and "fill"), and breaks only when it is
-   longer than the row, filling each row it runs over. A line's first word is the line's own text, not a box (review 23,
-   R23-P2-01: a path or a URL longer than a row went on from the edge under the hook, and the next word was painted back
-   up at the first row's end): it goes on two in like any carried-over row, and the next word follows it. The boxes are
+   longer than the row, filling each row it runs over: a word found longer than a row (`.wl`, by measure) is the row's own
+   text again, wherever it stands, starting in place and going on two in like any carried-over row, the next word
+   following it (review 23, R23-P2-01: a path or a URL that began a line went on from the edge under the hook, and the
+   next word was painted back up at the first row's end; review 24, R24-P3-03: one after an indent or as a third word
+   went down a row whole and left the row above it blank or short). A word that fits a row but not the room its line's
+   indent leaves goes down whole, its indent alone above it: a word that fits is never parted. The boxes are
    inline, apart by the command's own newlines, so what is read and copied is the command, character for character, the
    blank lines inside it included (its body is trimmed at both ends, where a shell ignores them). The phone's block is
    the same (remote.html `.cmd`). */
@@ -2477,6 +2480,15 @@ input[type="radio"] {
   max-width: 100%;
   text-indent: 0;
   vertical-align: top;
+  white-space: nowrap;
+}
+/* A word longer than a row (found by measure: its box runs over, DecisionCard `fitWords`) is the row's own text again:
+   it starts where it stands, breaks at each row's end and fills it, and the next word follows it on its last row
+   (review 24, R24-P3-03: such a word went to a row of its own, an indent before it stood alone on a row like a blank line
+   of the command, and the next word began yet another). */
+.decision-cmd .wl {
+  display: inline;
+  white-space: inherit;
 }
 /* The bell is quieter than the time beside it until the pointer finds it. */
 .decision-snooze {
@@ -2733,9 +2745,29 @@ input[type="radio"] {
 .trace-row:hover .trace-time.repeat {
   color: var(--text-4);
 }
+/* The trace scrolls down, never sideways: a hash, a token or a path with nowhere to break (a retry's error, Tower's
+   closing of a card titled with one) breaks where it meets its line's edge instead of running past it. Only there:
+   `anywhere` would let a row's short cells shrink to a letter too, and a duration read "1" over "s". */
 .trace-content {
   min-width: 0;
   line-height: 20px;
+  overflow-wrap: break-word;
+}
+/* A mark beside words that can run long (Trace.tsx: Tower's own line, a stall, a sentinel's finding): the mark stands
+   by the first line, centred on its 20px, not beside the middle of a long one (a retry's error, a flaky criterion's
+   two outputs), and the words take the column's width and no more, so a word with nowhere to break breaks at its edge
+   (a flex row's words were as wide as their longest word). */
+.mark-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--sp-2);
+  align-items: start;
+}
+.mark-line > .icon {
+  margin-top: 5px;
+}
+.mark-line > .glyph {
+  margin-top: 4px;
 }
 .trace-tool {
   font-family: var(--font-mono);
@@ -2792,6 +2824,16 @@ input[type="radio"] {
   flex-direction: column;
   gap: 4px;
   align-items: flex-start;
+}
+/* Folded, its first line ends in an ellipsis at the column's edge and the note that the text is for the agent stays
+   beside it: sized to its text, the line ran past the edge and took the note with it. */
+.injected-fold {
+  display: flex;
+  column-gap: var(--sp-1);
+  max-width: 100%;
+}
+.injected-fold > .t4 {
+  flex: none;
 }
 
 /* ======================================================================
@@ -5333,9 +5375,7 @@ input[type="radio"] {
    the width a waiting thumbnail holds), so a strip of one picture and one gone reads as a pair (review 18, record
    only: 175 and 140 wide beside 152). A long reason keeps the frame: three lines at most, the whole of it in the
    tooltip, and a path or a code breaks only where Look.tsx allows it, never inside a word (review 19: a long reason
-   stood 110 tall beside a 96-tall picture, broken as "checko|ut"). The phone's capture would stand 44 wide in the strip,
-   too narrow for a sentence: its missing side takes the desktop's frame, so the frame of a side gone is one shape on
-   either tab (review 23, record only: 220×96 on the phone's tab, 154×96 on the desktop's). */
+   stood 110 tall beside a 96-tall picture, broken as "checko|ut"). On the phone's tab, below, the frame is the phone's. */
 .look-missing {
   display: flex;
   align-items: center;
@@ -5357,6 +5397,39 @@ input[type="radio"] {
 }
 .verify-item .look-missing > span {
   -webkit-line-clamp: 3;
+}
+/* On the phone's tab the frame of a side gone is the box a phone's capture waits in (390:844 at the strip's height, as
+   the picture beside it waited), so before and after read as one pair; a frame 45 wide holds no sentence, and why the
+   side is gone is said beside it, where a line has room (review 24, record only 5: the desktop's 154×96 frame stood
+   beside a phone's picture and cut its reason after five lines; review 23's 220×96 was neither shape). Large, side by
+   side, the frame is the phone's too and holds its words (`.look-side.look-phone`). */
+.look-frame {
+  display: none;
+}
+.look-strip.look-phone .look-missing {
+  width: auto;
+  padding: 0;
+  border: 0;
+  gap: var(--sp-2);
+}
+/* `auto`: the ratio is the content box's, inside the 1px border, as the picture's is (`.look-phone .look-img`). */
+.look-strip.look-phone .look-frame {
+  display: block;
+  flex: none;
+  height: 100%;
+  aspect-ratio: auto 390 / 844;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-s);
+}
+/* Beside the frame the words have the frame's whole height, no padding or border of their own: six lines in the strip's
+   96, four in a verify item's 72; a line of at most 44ch keeps the pair within half the row, so "after" stays near
+   "before" (review 24, record only 5). Longer still, the rest is in the tooltip and side by side. */
+.look-strip.look-phone .look-missing > span {
+  max-width: 44ch;
+  -webkit-line-clamp: 6;
+}
+.verify-item .look-strip.look-phone .look-missing > span {
+  -webkit-line-clamp: 4;
 }
 .look-panel {
   width: min(1120px, 94vw);

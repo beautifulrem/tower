@@ -1367,16 +1367,17 @@ for (const lang of ["en", "zh-CN"] as const)
     await expect(missing).toHaveText(why);
     await expect(missing).toHaveAttribute("title", why);
     expect(await broken(missing), "on the row").toEqual([]);
-    // Review 23 (record only): the frame of a side gone is one shape on either tab (it was 220×96 on the phone's, 154×96
-    // on the desktop's).
-    const frame = async () => {
-      const b = (await missing.boundingBox())!;
-      return [Math.round(b.width), Math.round(b.height)];
-    };
-    const onPhone = await frame();
+    // On the phone's tab the frame of a side gone is the box a phone's capture waits in, 45×96 (the test of a thumbnail
+    // not yet decoded pins it), and its reason stands beside it, whole; on the desktop's tab the frame is the desktop's,
+    // 154×96, and holds its words (review 24, record only 5: the desktop's frame beside a phone's picture, its reason cut
+    // after five lines; review 23, record only: 220×96 on the phone's tab was neither shape).
+    const box = (l: import("@playwright/test").Locator) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+    expect(await box(missing.locator(".look-frame")), "a phone's frame").toEqual([45, 96]);
+    expect(await missing.locator("span").evaluate((el) => el.scrollHeight <= el.clientHeight + 1), "the reason whole beside it").toBe(true);
     await row.locator(".look-viewports").getByRole("tab").nth(0).click();
     await expect(row.locator(".look-strip")).not.toHaveClass(/look-phone/);
-    expect(onPhone, "the phone's tab frames a side gone as the desktop's does").toEqual(await frame());
+    expect(await box(missing), "the desktop's frame").toEqual([154, 96]);
+    await expect(missing.locator(".look-frame")).toBeHidden();
     await row.locator(".look-viewports").getByRole("tab").nth(1).click();
     await expect(row.locator(".look-strip")).toHaveClass(/look-phone/);
     await row.locator(".look-strip .look-shot .look-img-btn").first().click();
@@ -1394,6 +1395,98 @@ for (const lang of ["en", "zh-CN"] as const)
       if (h >= 640 && cut) parted.push(`${h}: the reason is cut short`);
     }
     expect(parted, "in the sheet, at every height").toEqual([]);
+  });
+
+// Review 24 (record only 5): on the phone's tab a side gone is a phone's frame with its reason beside it, wherever it
+// stands: the "after" gone, or the "before" (its words between the two frames), on the row at the narrowest window and
+// a wide one, and in the readout's shorter strip. The frame is the box of the picture beside it, the reason whole (the
+// long reasons below too: beside the frame the words have its whole height), the captions level, nothing past the row.
+// Both sides gone, no phone capture exists and there is no phone tab: the two frames are the desktop's and hold their
+// words.
+for (const lang of ["en", "zh-CN"] as const)
+  test(`on the phone's tab a side gone is the picture's frame with its reason beside it, before or after, on the row and in the readout (${lang})`, async ({ page }) => {
+    test.setTimeout(120_000);
+    const why = { en: "The page did not open: net::ERR_CONNECTION_REFUSED at http://localhost:3000/checkout", "zh-CN": "页面没有打开：net::ERR_CONNECTION_REFUSED，http://localhost:3000/checkout" }[lang];
+    const phone = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844"><rect width="390" height="844" fill="#ccc"/></svg>')}`;
+    const enrich = (gone: readonly ("base" | "pin")[], why: string) => (F: Parameters<typeof enrichLook>[0]) => {
+      enrichLook(F);
+      const look = F["goal-G-0001"].criteria.at(-1).look;
+      Object.assign(look, { mobile_base: "looks/G-0001/C4-m-base.svg", mobile_pin: "looks/G-0001/C4-m-pin.svg" });
+      F.lookImages["looks/G-0001/C4-m-base.svg"] = F.lookImages["looks/G-0001/C4-m-pin.svg"] = phone;
+      // A side's capture is one browser session for both viewports: gone, it is gone on both.
+      for (const side of gone) Object.assign(look, { [side]: null, [`mobile_${side}`]: null, [`${side}_error`]: why });
+    };
+    const box = (l: import("@playwright/test").Locator) => l.evaluate((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), Math.round(r.right)]; });
+    const check = async (wrap: import("@playwright/test").Locator, where: string, picture: number[], why: string, whole = true) => {
+      await wrap.locator(".look-viewports").getByRole("tab").nth(1).click();
+      const strip = wrap.locator(".look-strip");
+      await expect(strip).toHaveClass(/look-phone/);
+      const shots = strip.locator(".look-shot");
+      await expect(shots.locator(".look-missing")).toHaveCount(1);
+      await expect.poll(() => shots.locator(".look-img").evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+      const [pw, ph] = await box(shots.locator(".look-img"));
+      expect([pw, ph], `${where}: the phone's picture`).toEqual(picture);
+      const [fw, fh] = await box(shots.locator(".look-frame"));
+      expect([fw, fh], `${where}: the frame is the picture's box`).toEqual([pw, ph]);
+      const reason = shots.locator(".look-missing > span");
+      await expect(reason).toHaveText(why);
+      await expect(shots.locator(".look-missing")).toHaveAttribute("title", why);
+      // As many lines as the frame's height holds, never fewer: six in the row's 96, four in the readout's 72.
+      const { lines, shown, lh } = await reason.evaluate((el) => {
+        const lh = parseFloat(getComputedStyle(el).lineHeight);
+        return { lines: Math.round(el.scrollHeight / lh), shown: Math.round(el.clientHeight / lh), lh };
+      });
+      expect(shown, `${where}: as many lines as the frame's height holds`).toBe(Math.min(lines, Math.floor(fh / lh)));
+      if (whole) expect(lines, `${where}: the reason whole`).toBeLessThanOrEqual(Math.floor(fh / lh));
+      const captions = await shots.locator("figcaption").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+      expect(new Set(captions).size, `${where}: the captions level`).toBe(1);
+      const [across, , edge] = await box(wrap);
+      // A note beside the frame, a few short lines: one line across the row would part "before" from "after".
+      expect((await box(reason))[0], `${where}: the reason a note beside the frame, not a line across the row`).toBeLessThanOrEqual(across / 2);
+      const rights = await Promise.all((await shots.all()).map(box));
+      expect(Math.max(...rights.map((r) => r[2])), `${where}: nothing past the row`).toBeLessThanOrEqual(edge);
+    };
+    const readout = async (gone: readonly ("base" | "pin")[], reason: string, where: string, shot: string, whole = true) => {
+      // The readout's strip is 72 tall: the frame is the phone's at that height, as the picture is.
+      await page.setViewportSize({ width: 1040, height: 900 });
+      await openTower(page, "review/G-0001", { lang, enrich: enrich(gone, reason) });
+      await expect(page.locator("table").first()).toBeVisible();
+      await page.keyboard.press("e");
+      const item = page.getByRole("dialog").locator(".verify-item").filter({ has: page.locator(".look-strip") }).first();
+      await check(item.locator(".look-wrap"), where, [34, 72], reason, whole);
+      await item.screenshot({ path: test.info().outputPath(shot) });
+    };
+    for (const gone of [["pin"], ["base"]] as const) {
+      for (const width of [1040, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        await openTower(page, "goal/G-0001", { lang, enrich: enrich(gone, why) });
+        const row = page.locator(".criterion .look-wrap").last();
+        await check(row, `${gone[0]} gone, on the row at ${width}`, [45, 96], why);
+        await row.screenshot({ path: test.info().outputPath(`look-phone-${gone[0]}-gone-${width}.png`) });
+      }
+      await readout(gone, why, `${gone[0]} gone, in the readout`, `look-phone-${gone[0]}-gone-readout.png`);
+    }
+    // A long reason and a longer one, whole on the row and in the readout (review 24, record only 5: cut after five lines
+    // beside a phone's picture); the longer is four lines at 44ch, all a readout's 72 holds. One longer than the frame's
+    // height shows the lines it holds, the whole in the tooltip.
+    const longest = {
+      en: `${wideWhy.en}. Tower tried twice more, restarting the dev server between tries, and each time the port was taken by another program, so neither viewport has a picture of this side.`,
+      "zh-CN": `${wideWhy["zh-CN"]}。Tower 又试了两次，每次之间都重启了开发服务器，端口仍被别的程序占用，所以这一侧两个视口都没有截图。`,
+    }[lang];
+    for (const [name, reason, whole] of [["long", longWhy[lang], true], ["wide", wideWhy[lang], true], ["longest", longest, false]] as const) {
+      await page.setViewportSize({ width: 1040, height: 900 });
+      await openTower(page, "goal/G-0001", { lang, enrich: enrich(["base"], reason) });
+      await check(page.locator(".criterion .look-wrap").last(), `the ${name} reason on the row`, [45, 96], reason, whole);
+      await readout(["pin"], reason, `the ${name} reason in the readout`, `look-phone-${name}-readout.png`, whole);
+    }
+    await openTower(page, "goal/G-0001", { lang, enrich: enrich(["base", "pin"], why) });
+    const row = page.locator(".criterion .look-wrap").last();
+    await expect(row.locator(".look-missing")).toHaveCount(2);
+    await expect(row.locator(".look-viewports")).toHaveCount(0);
+    for (const frame of await row.locator(".look-missing").all()) {
+      expect((await box(frame)).slice(0, 2), "both gone: the desktop's frame").toEqual([154, 96]);
+      await expect(frame.locator(".look-frame")).toBeHidden();
+    }
   });
 
 // Review 18 (record only): a side that was gone said so in a frame of its words' width (175 in English, 140 in
@@ -2189,10 +2282,28 @@ const PATH_COMMAND = "services/checkout-api/src/test/java/com/example/checkout/p
 const URL_COMMAND = "https://raw.githubusercontent.com/example-org/checkout-service/feature/checkout-total-rounding-fix-for-multi-currency-carts/scripts/install.sh | sh";
 // Review 23 (record only): a tab parts words as a space does (the words between tabs went on as one).
 const TABS_COMMAND = "make\tbuild\tTARGET=release\tPLATFORM=darwin-arm64\tOUT=dist/checkout-service\tFEATURES=rounding,multi-currency,discounts\tVERBOSE=1\tJOBS=8\tCACHE_DIR=/tmp/checkout-cache";
-const COMMANDS = [LONG_COMMAND, LINES_COMMAND, PATH_COMMAND, URL_COMMAND, TABS_COMMAND];
+// Review 24 (R24-P3-03): a URL longer than a row after a line's indent went down a row and left the indent alone above it,
+// and one as a line's third word left the row before it short. Either starts in place.
+const INDENTED_URL_COMMAND = "curl -fsSL \\\n    https://raw.githubusercontent.com/example-org/checkout-service/feature/checkout-total-rounding-fix-for-multi-currency-carts/scripts/install.sh \\\n  | sh -s -- --yes";
+const THIRD_URL_COMMAND = "curl -fsSL https://raw.githubusercontent.com/example-org/checkout-service/feature/checkout-total-rounding-fix-for-multi-currency-carts/scripts/install.sh -o /tmp/install.sh";
+// A word that fits a row but not the room its indent leaves (95 characters after 8 spaces, in a row of 101 at both
+// widths below) goes down whole, and the indent stands alone above it: a word that fits is never parted.
+const WINDOW_WORD = "--filename=deploy/overlays/production/checkout-api/rounding-fix/multi-currency-carts-patch.yaml";
+const WINDOW_COMMAND = `kubectl apply \\\n        ${WINDOW_WORD} \\\n        --dry-run=server`;
+const COMMANDS = [LONG_COMMAND, LINES_COMMAND, PATH_COMMAND, URL_COMMAND, TABS_COMMAND, INDENTED_URL_COMMAND, THIRD_URL_COMMAND, WINDOW_COMMAND];
 for (const [theme, width] of [["light", 1440], ["dark", 1040]] as const)
   test(`an approval's command shows where a row is carried over and where the command breaks its own line (${theme}, ${width})`, async ({ page }) => {
+    // Eight commands read at 51 widths, each character's box by itself.
+    test.setTimeout(90_000);
     await page.setViewportSize({ width, height: 900 });
+    // The block measures its words again as its width moves (`refit`), which moves its own height: never a ResizeObserver
+    // loop notice for it (review 13's rule for the board's rows), from the first frame through the sweep below.
+    await page.addInitScript(() => {
+      (window as any).__roLoops = 0;
+      addEventListener("error", (e) => {
+        if (/ResizeObserver loop/.test(e.message)) (window as any).__roLoops++;
+      });
+    });
     await openTower(page, "goal/G-0001", {
       theme,
       enrich: (F) => {
@@ -2208,11 +2319,17 @@ for (const [theme, width] of [["light", 1440], ["dark", 1040]] as const)
     for (const [n, command] of COMMANDS.entries()) {
       const pre = page.locator(".decision").filter({ hasText: `step ${n}` }).first().locator(".decision-tail");
       await pre.scrollIntoViewIfNeeded();
-      const { rows, text, broken, ordered } = await paintedCommand(pre);
+      const { rows, text, broken, ordered, early, blank, over } = await paintedCommand(pre);
       expect(text, "what is copied is the command").toBe(command);
       expect(rows.some((r) => !r.first), `${command} is carried over at ${width}`).toBe(true);
       expect(broken, "a word that fits a row is never parted").toEqual([]);
+      expect([...early, ...blank, ...over], `${command}: no row ends early, no indent stands alone above a word longer than a row, nothing past the edge`).toEqual([]);
       expect(ordered, `${command}: every row below the one before, in the command's order`).toBe(true);
+      if (command === WINDOW_COMMAND) {
+        const [indent, next] = rows.filter((r) => r.line === 1);
+        expect(indent.text, `the indent stands alone at ${width}, the row holding no part of the word`).toBe("        ");
+        expect([next.at, next.text.split(" ")[0]], "the word goes down whole, under the hook").toEqual([2, WINDOW_WORD]);
+      }
       for (const r of rows) {
         const where = `${theme} ${width} line ${r.line} "${r.text}"`;
         if (r.first) expect(r.at, `${where}: a line starts at the edge`).toBe(0);
@@ -2220,6 +2337,9 @@ for (const [theme, width] of [["light", 1440], ["dark", 1040]] as const)
           expect([r.at, r.ink], `${where}: a carried-over row starts two in, under the hook`).toEqual([2, true]);
           expect(r.fill, `${where}: the hook is a stroke, not a block`).toBeLessThan(0.35);
           expect(r.tone, `${where}: the hook is text-3's ink`).toBeGreaterThan(0.4);
+          expect(r.tone, `${where}: the hook is text-3's ink, not text-1's`).toBeLessThan(1.1);
+          expect(r.span, `${where}: the hook runs across the margin, not a bar down it`).toBeGreaterThan(1);
+          expect(r.depth, `${where}: the hook runs down the row, not a rule across it`).toBeGreaterThan(0.3);
           expect(r.off, `${where}: the hook is a grey, not a hue`).toBeLessThan(25);
         }
         if (r.first && r.text.startsWith("  ")) expect(r.ink, `${where}: the command's own indent has no hook`).toBe(false);
@@ -2235,13 +2355,14 @@ for (const [theme, width] of [["light", 1440], ["dark", 1040]] as const)
     for (let w = width > 1240 ? 1240 : 1040; w <= (width > 1240 ? 1440 : 1240); w += 4) {
       await page.setViewportSize({ width: w, height: 900 });
       for (const n of COMMANDS.keys()) {
-        const { broken, rows, ordered } = await paintedCommand(page.locator(".decision").filter({ hasText: `step ${n}` }).first().locator(".decision-tail"), { ink: false });
-        parted.push(...broken.map((b) => `${w}: ${b}`));
+        const { broken, rows, ordered, early, blank, over } = await paintedCommand(page.locator(".decision").filter({ hasText: `step ${n}` }).first().locator(".decision-tail"), { ink: false });
+        parted.push(...broken.map((b) => `${w}: ${b}`), ...[...early, ...blank, ...over].map((e) => `${w}: step ${n} ${e}`));
         if (!ordered) parted.push(`${w}: step ${n} out of order`);
         for (const r of rows) if (r.at !== (r.first ? 0 : 2)) parted.push(`${w}: step ${n} "${r.text}" at ${r.at}`);
       }
     }
-    expect(parted, "no word parted, no row out of place, at any width").toEqual([]);
+    expect(parted, "no word parted, no row out of place or ended early, at any width").toEqual([]);
+    expect(await page.evaluate(() => (window as any).__roLoops), "ResizeObserver loop notices").toBe(0);
   });
 
 test("a sandbox refusal is an environment problem: the card says so before its details with the refused path in view, and the criterion's base line is never red", async ({ page }) => {

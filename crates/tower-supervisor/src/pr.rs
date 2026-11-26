@@ -187,7 +187,7 @@ async fn check_pr(inner: &Arc<Inner>, gh: &Path, goal: &str) -> Result<()> {
         let note = tr!(lang, "PR 已在 GitHub 上合并", "The PR was merged on GitHub");
         inner.transition(goal, Transition::Integrated, None, &note)?;
     } else if newly_failing {
-        let names = status.failing.join(", ");
+        let names = status.failing.join(lang.pick("、", ", "));
         inner.withdraw(goal, &[InboxKind::CiFailed], &tr!(lang, "有新的检查结果", "Newer check results"));
         inner.open_inbox(NewInboxItem {
             goal_id: goal.into(),
@@ -195,10 +195,13 @@ async fn check_pr(inner: &Arc<Inner>, gh: &Path, goal: &str) -> Result<()> {
             title: tr!(lang, "CI 未通过：{names}", "CI failed: {names}"),
             // A line each: a name may hold ", " itself (the store's `code`).
             subject: status.failing.join("\n"),
+            // What follows the button, not the button again (review 24, record only 6: "You can send the failing checks
+            // and their logs to the agent", above "Send the failures to the agent", took the card to a second line and the
+            // goal page's acceptance criteria to 598 px of their 600).
             body: tr!(
                 lang,
-                "可以把失败的检查和日志发给 Agent：它会在同一个工作区里修复，验证通过后由你再次验收，并推送到同一个 PR。",
-                "You can send the failing checks and their logs to the agent: it fixes them in the same workspace; once verified, you accept again and push to the same PR."
+                "Agent 可以在原工作区里修复，验证通过后由你再次验收，并推送到同一个 PR。",
+                "The agent can fix them in place; once verified, you accept again and push to the same PR."
             ),
             options: Choice::labels(&[Choice::SendCiFailures, Choice::Dismiss], lang),
             allow_text: true,

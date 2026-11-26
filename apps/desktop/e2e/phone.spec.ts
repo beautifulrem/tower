@@ -112,6 +112,7 @@ test("decisions that widen what the agent may do are named as desk-only, not off
 // the command's own indent never has, a word that fits a row stays whole, and what is copied is the command.
 // Review 23 (R23-P2-01): a first word longer than a row (a path of 44 characters at 390, a URL) went on from the edge under
 // the hook, and the next word was painted back up at the first row's end. The path runs three rows at 390.
+const PHONE_WINDOW = { 390: "--filename=deploy/prod/checkout.yaml", 320: "--values=charts/payment.yaml" };
 const PHONE_COMMANDS = [
   "git push --force-with-lease origin feature/checkout-total-rounding-fix-for-multi-currency-carts && gh pr create --fill",
   "cd web &&\n  rm -rf dist node_modules/.cache\n\npnpm --filter checkout test -- --run --reporter=dot",
@@ -119,6 +120,12 @@ const PHONE_COMMANDS = [
   "https://raw.githubusercontent.com/example-org/checkout-service/main/scripts/install.sh | sh",
   // Review 23 (record only): a tab parts words as a space does.
   "make\tbuild\tTARGET=release\tPLATFORM=darwin-arm64\tOUT=dist/checkout-service\tVERBOSE=1",
+  // Review 24 (R24-P3-03): a URL longer than a row, after a line's indent or as its third word, starts in place.
+  "curl -fsSL \\\n    https://raw.githubusercontent.com/example-org/checkout-service/main/scripts/install.sh \\\n  | sh -s -- --yes",
+  "curl -fsSL https://raw.githubusercontent.com/example-org/checkout-service/main/scripts/install.sh -o /tmp/install.sh",
+  // A word that fits a row but not the room its indent leaves goes down whole, the indent alone above it: 36 characters
+  // after 8 spaces in a row of 42 (390), 28 in a row of 32 (320).
+  `kubectl apply \\\n        ${PHONE_WINDOW[390]} \\\n        ${PHONE_WINDOW[320]}`,
 ];
 for (const [scheme, width] of [["light", 390], ["dark", 320]] as const)
   test(`an approval's command on the phone shows where a row is carried over (${scheme}, ${width})`, async ({ page }) => {
@@ -137,11 +144,17 @@ for (const [scheme, width] of [["light", 390], ["dark", 320]] as const)
     for (const [n, command] of PHONE_COMMANDS.entries()) {
       const pre = page.locator(".card").filter({ hasText: `step ${n}` }).locator(".tail");
       await expect(pre).toBeVisible();
-      const { rows, text, broken, ordered } = await paintedCommand(pre);
+      const { rows, text, broken, ordered, early, blank, over } = await paintedCommand(pre);
       expect(text, "what is copied is the command").toBe(command);
       expect(rows.some((r) => !r.first), `${command} is carried over at ${width}`).toBe(true);
       expect(broken, "a word that fits a row is never parted").toEqual([]);
+      expect([...early, ...blank, ...over], `${command}: no row ends early, no indent stands alone above a word longer than a row, nothing past the edge`).toEqual([]);
       expect(ordered, `${command}: every row below the one before, in the command's order`).toBe(true);
+      if (command.startsWith("kubectl")) {
+        const line = rows.filter((r) => r.line === (width === 390 ? 1 : 2));
+        expect(line[0].text, `the indent stands alone at ${width}, the row holding no part of the word`).toBe("        ");
+        expect([line[1].at, line[1].text.split(" ")[0]], "the word goes down whole, under the hook").toEqual([2, PHONE_WINDOW[width]]);
+      }
       for (const r of rows) {
         const where = `${scheme} ${width} line ${r.line} "${r.text}"`;
         if (r.first) expect(r.at, `${where}: a line starts at the edge`).toBe(0);
@@ -149,6 +162,9 @@ for (const [scheme, width] of [["light", 390], ["dark", 320]] as const)
           expect([r.at, r.ink], `${where}: a carried-over row starts two in, under the hook`).toEqual([2, true]);
           expect(r.fill, `${where}: the hook is a stroke, not a block`).toBeLessThan(0.35);
           expect(r.tone, `${where}: the hook is text-3's ink`).toBeGreaterThan(0.4);
+          expect(r.tone, `${where}: the hook is text-3's ink, not text-1's`).toBeLessThan(1.1);
+          expect(r.span, `${where}: the hook runs across the margin, not a bar down it`).toBeGreaterThan(1);
+          expect(r.depth, `${where}: the hook runs down the row, not a rule across it`).toBeGreaterThan(0.3);
           expect(r.off, `${where}: the hook is a grey, not a hue`).toBeLessThan(25);
         }
         if (r.first && r.text.startsWith("  ")) expect(r.ink, `${where}: the command's own indent has no hook`).toBe(false);
@@ -164,20 +180,23 @@ for (const [scheme, width] of [["light", 390], ["dark", 320]] as const)
     for (let w = width === 390 ? 376 : 320; w <= (width === 390 ? 430 : 376); w += 2) {
       await page.setViewportSize({ width: w, height: 844 });
       for (const n of PHONE_COMMANDS.keys()) {
-        const { broken, rows, ordered } = await paintedCommand(page.locator(".card").filter({ hasText: `step ${n}` }).locator(".tail"), { ink: false });
-        parted.push(...broken.map((b) => `${w}: ${b}`));
+        const { broken, rows, ordered, early, blank, over } = await paintedCommand(page.locator(".card").filter({ hasText: `step ${n}` }).locator(".tail"), { ink: false });
+        parted.push(...broken.map((b) => `${w}: ${b}`), ...[...early, ...blank, ...over].map((e) => `${w}: step ${n} ${e}`));
         if (!ordered) parted.push(`${w}: step ${n} out of order`);
         for (const r of rows) if (r.at !== (r.first ? 0 : 2)) parted.push(`${w}: step ${n} "${r.text}" at ${r.at}`);
       }
     }
-    expect(parted, "no word parted, no row out of place, at any width").toEqual([]);
+    expect(parted, "no word parted, no row out of place or ended early, at any width").toEqual([]);
   });
 
-// The page reads its state every 5 s while the stream is down, and the stream sends one at every change. A state that
-// paints the same leaves the cards' nodes where they are; words selected on a card (a command to copy) or a reply being
-// typed hold a new one back until done with; a reply's words not yet sent outlive a repaint, and the item that replaces
-// its card, until an answer goes (as the desk keeps them).
-test("a refresh repaints only what changed, never under a selection or a reply being typed, and keeps a reply's unsent words", async ({ page }) => {
+// The page reads its state every 5 s while the stream is down, and the stream sends one at every change. Each card and
+// row is kept by its key: a state that paints it the same leaves its nodes where they are, so words selected on a card (a
+// command to copy) stay selected while the rest of the page follows the state; a card that holds the selection and has
+// changed stays as it was until it is let go, and the foot says so; a card whose item is gone goes. A reply being typed
+// holds the next state back (nothing moves under the keyboard), the foot saying a newer reading waits, and a Send pressed
+// then is never lost to the repaint. A reply's words not yet sent outlive a repaint and the item that replaces its card in
+// the same step, until an answer goes, here or elsewhere (review 24, R24-P3-01 and record-only notes 4 and 7).
+test("a refresh repaints only what changed and keeps what you are doing: a selection, a reply being typed, its Send, its unsent words", async ({ page }) => {
   const at = new Date("2026-11-26T10:00:58").getTime();
   await page.clock.install({ time: at });
   const approval = { id: "a", goal_id: "G-0001", goal_title: "Fix the cart total", kind: "approval", title: "Approval needed: pnpm install", subject: "pnpm install", body: "pnpm install --frozen-lockfile", options: ["Allow", "Deny"], tones: ["primary", "destructive"], allow_text: false, created_at: at };
@@ -185,48 +204,100 @@ test("a refresh repaints only what changed, never under a selection or a reply b
   const other = (n: number) => ({ ...question, id: `o${n}`, goal_id: `G-000${n + 2}`, subject: `Is step ${n} done?`, created_at: at - 1 - n });
   const state = (...inbox: object[]) => ({ goals: [], inbox, lang: "en" });
   const serve = { state: null as object | null };
+  const answers: { inbox_id: string; response: string }[] = [];
   await openPhone(page, { state: state(approval, question), serve });
+  await page.route("http://phone.test/api/answer", async (r) => {
+    answers.push(r.request().postDataJSON());
+    await r.fulfill({ status: 200, contentType: "application/json", body: "{\"ok\":true}" });
+  });
   const cards = page.locator(".card");
+  const foot = page.locator("#fresh");
   const tail = cards.filter({ hasText: "pnpm install" }).locator(".tail");
   await expect(tail).toBeVisible();
-  // Each step moves the clock past a minute, so the foot's time says the page has read the state again.
+  // Each step moves the clock past a minute, so the foot's time says the page has painted the state it read.
   const reread = async (ms: number, clock: string) => {
     await page.clock.runFor(ms);
-    await expect(page.locator("#fresh")).toContainText(clock);
+    await expect(foot).toContainText(clock);
   };
+  const selectCommand = () => tail.evaluate((el) => getSelection()!.selectAllChildren(el));
+  const selected = () => page.evaluate(() => getSelection()!.toString());
   await tail.evaluate((el) => Object.assign(el, { kept: true }));
   await reread(5_000, "10:01");
   expect(await tail.evaluate((el) => "kept" in el), "the same state leaves the block the node it was").toBe(true);
 
-  await tail.evaluate((el) => getSelection()!.selectAllChildren(el));
+  // A selection holds nothing else back: the new card comes, the page says the time it read, and the words stay selected.
+  await selectCommand();
   serve.state = state(approval, question, other(1));
   await reread(60_000, "10:02");
-  await expect(cards, "a new card waits while words on a card are selected").toHaveCount(2);
-  expect(await page.evaluate(() => getSelection()!.toString())).toBe("pnpm install --frozen-lockfile");
+  await expect(cards, "a new card comes while words on another are selected").toHaveCount(3);
+  expect(await selected(), "and the words stay selected").toBe("pnpm install --frozen-lockfile");
+  await expect(foot).not.toContainText("you are using");
+
+  // The card that holds the selection, changed, stays as it was until let go, and the foot says so.
+  serve.state = state({ ...approval, body: "pnpm install --frozen-lockfile --prefer-offline" }, question, other(1));
+  await reread(60_000, "10:03");
+  expect(await selected()).toBe("pnpm install --frozen-lockfile");
+  await expect(foot, "the foot says the card in use waits").toHaveText("Read at 10:03, again every 5 s; the card you are using shows what it did until you leave it");
   await page.evaluate(() => getSelection()!.removeAllRanges());
-  await expect(cards, "and comes once they are let go").toHaveCount(3);
+  await expect(tail, "let go, it is the state's").toHaveText("pnpm install --frozen-lockfile --prefer-offline");
+  await expect(foot).toHaveText("Read at 10:03, again every 5 s");
 
+  // Answering the card the selection is in takes it away: its item is gone.
+  await cards.filter({ hasText: "Is step 1 done?" }).locator(".question").evaluate((el) => getSelection()!.selectAllChildren(el));
+  serve.state = state({ ...approval, body: "pnpm install --frozen-lockfile --prefer-offline" }, question);
+  await cards.filter({ hasText: "Is step 1 done?" }).getByRole("button", { name: "Percentage" }).click();
+  await expect(cards, "the answered card goes though words in it were selected").toHaveCount(2);
+
+  // A reply being typed holds a newer state back, and the foot says one waits; nothing moves under the keyboard. The foot
+  // and the gauges keep saying the state on the page, read at 10:03 with nothing spent, not the one waiting, read a
+  // minute later with a goal that has spent $1.25 (review 24, R24-P3-01: the time was the newer one's).
   const box = page.locator("#t-q");
+  const gauges = page.locator("#gauges");
   await box.fill("Percentage first, then the fixed amount");
-  serve.state = state(approval, question, other(1), other(2));
+  serve.state = { ...state({ ...approval, body: "pnpm install --frozen-lockfile --prefer-offline" }, { ...question, options: ["Percentage", "Fixed", "Both"] }, other(2)), goals: [{ id: "G-0009", state: "paused", cost_usd: 1.25 }] };
   await page.clock.runFor(60_000);
-  await expect(page.locator("#fresh"), "the page does not read while a reply is typed").toContainText("10:02");
-  await expect(cards).toHaveCount(3);
-  await box.blur();
-  await reread(5_000, "10:03");
-  await expect(cards, "and reads the next state once you leave the box").toHaveCount(4);
-  await expect(box, "with the words you typed and did not send still in it").toHaveValue("Percentage first, then the fixed amount");
-
-  serve.state = state(approval, { ...question, id: "q2" }, other(1), other(2));
-  await reread(60_000, "10:04");
-  await expect(page.locator("#t-q2"), "the item that replaces it finds them too").toHaveValue("Percentage first, then the fixed amount");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(foot, "a newer reading waits").toHaveText("Read at 10:03, again every 5 s; a newer reading waits until you leave the reply box");
+  await expect(gauges, "the gauges are the page's state's").toHaveText("Spent $0");
+  await expect(cards).toHaveCount(2);
+  await expect(box).toBeFocused();
+  // Send, pressed with that state waiting (and the card itself changed in it), goes: the repaint comes after the press.
   await cards.filter({ hasText: "Which discount applies first?" }).getByRole("button", { name: "Send", exact: true }).click();
-  serve.state = state(approval, other(1), other(2));
+  await expect.poll(() => answers.at(-1), { message: "the press that left the box is not lost" }).toEqual({ inbox_id: "q", response: "Percentage first, then the fixed amount" });
+  await expect(gauges, "the box left, the page has the newer state").toHaveText("Spent $1.25");
+  await expect(foot).toHaveText("Read at 10:04, again every 5 s");
+
+  // A reply's unsent words: kept through a repaint once the box is left, and by the item that replaces the card.
+  serve.state = state({ ...question, id: "q2" }, other(2));
   await reread(60_000, "10:05");
-  await expect(cards).toHaveCount(3);
-  serve.state = state(approval, { ...question, id: "q3" }, other(1), other(2));
+  await page.locator("#t-q2").fill("Fixed first");
+  await page.locator("#t-q2").blur();
+  serve.state = state({ ...question, id: "q3" }, other(2), other(3));
   await reread(60_000, "10:06");
-  await expect(page.locator("#t-q3"), "once an answer goes, they go with it").toHaveValue("");
+  await expect(page.locator("#t-q3"), "the item that replaces it finds them").toHaveValue("Fixed first");
+  // Answered elsewhere (the item gone with no other in its place), they go with it.
+  serve.state = state(other(2), other(3));
+  await reread(60_000, "10:07");
+  serve.state = state({ ...question, id: "q4" }, other(2), other(3));
+  await reread(60_000, "10:08");
+  await expect(page.locator("#t-q4"), "an item answered elsewhere takes its words").toHaveValue("");
+  // Two items of the same words open at once (two dialogs asking the same): each keeps its own, and one answered
+  // elsewhere leaves the other's alone, its card made again from what it kept (review 24, record only 4).
+  serve.state = state({ ...question, id: "q4" }, { ...question, id: "q5" }, other(2));
+  await reread(60_000, "10:09");
+  await page.locator("#t-q5").fill("Percentage first");
+  await page.locator("#t-q4").fill("Fixed first");
+  await page.locator("#t-q4").blur();
+  serve.state = state({ ...question, id: "q5", options: ["Percentage", "Fixed", "Both"] }, other(2));
+  await reread(60_000, "10:10");
+  await expect(page.locator("#t-q5"), "a twin keeps its own words when the other goes").toHaveValue("Percentage first");
+  // Put aside (from the desk), the item is still open: its words wait for its return.
+  serve.state = { ...state(other(2)), snoozed: [{ ...question, id: "q5" }] };
+  await reread(60_000, "10:11");
+  await expect(page.locator("#t-q5")).toHaveCount(0);
+  serve.state = state({ ...question, id: "q5" }, other(2));
+  await reread(60_000, "10:12");
+  await expect(page.locator("#t-q5"), "back from aside, its words are there").toHaveValue("Percentage first");
 });
 
 // Review 22 (record only): "pnpm test (bash) failed 4 times in a row" set the command in the words' face. The command is
@@ -240,6 +311,8 @@ test("a stalled call's command and a failing check are code in the question, the
         { id: "c", goal_id: "G-0003", goal_title: "Stop the double charge", kind: "ci_failed", title: "CI failed: unit-tests", subject: "unit-tests", code: "unit-tests", body: "", options: ["Retry"], tones: ["primary"], allow_text: false, created_at: Date.now() - 1 },
         // As the store sends two failing checks: each name its own code, the ", " between them the words' (review 23).
         { id: "c2", goal_id: "G-0004", goal_title: "Fix the cart total", kind: "ci_failed", title: "CI failed: lint, test (ubuntu-latest, node 22)", subject: "lint, test (ubuntu-latest, node 22)", code: "lint\n\ntest (ubuntu-latest, node 22)", body: "", options: ["Retry"], tones: ["primary"], allow_text: false, created_at: Date.now() - 2 },
+        // And as it sends them in Chinese: "、" between them, one line break in the code (review 24, record only 11).
+        { id: "c3", goal_id: "G-0005", goal_title: "Round the totals", kind: "ci_failed", title: "CI 未通过：e2e、build (macos-14)", subject: "e2e、build (macos-14)", code: "e2e\nbuild (macos-14)", body: "", options: ["Retry"], tones: ["primary"], allow_text: false, created_at: Date.now() - 3 },
       ],
       lang: "en",
     },
@@ -254,6 +327,9 @@ test("a stalled call's command and a failing check are code in the question, the
   const two = page.locator(".card").filter({ hasText: "ubuntu-latest" }).locator(".question");
   await expect(two).toHaveText("lint, test (ubuntu-latest, node 22)");
   await expect(two.locator("code")).toHaveText(["lint", "test (ubuntu-latest, node 22)"]);
+  const zh = page.locator(".card").filter({ hasText: "macos-14" }).locator(".question");
+  await expect(zh).toHaveText("e2e、build (macos-14)");
+  await expect(zh.locator("code")).toHaveText(["e2e", "build (macos-14)"]);
 });
 
 // Review 23 (not covered): every agent's word reaches the page through `esc`, but no test put markup in one.

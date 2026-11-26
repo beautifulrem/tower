@@ -365,6 +365,25 @@ desk does (D287). The budget is kept (D284). Each fix's test fails
 on `43576b0`'s sources or a stated mutation. The last acceptance stands on `43576b0` (review 23); iteration 24 is not
 yet independently re-reviewed.
 
+Review 24 (`af6d189`, iteration 24) passed at 8.66 / 10 with no P0, P1 or P2
+(`design-evidence/reports/review24.md`). It found three P3s: on the phone a selection held every card in its old state
+while the foot and the gauges told a newer one, and a card answered with words in it selected stayed (R24-P3-01, D288,
+from D287); migration 24 took answers a person had worded like Tower's closings (R24-P3-02, D289, from D285); and a word
+longer than a row that did not begin its line went down a row whole (R24-P3-03, D290, since D254). It also found that
+D272's test could not see where `stopping` was read (D291) and that the hook's test took a text-1 hook or a bar for a
+hook (D292), with eleven record-only notes. Iteration 25 fixes all of them: the phone patches block by block, holds
+only the card in use and says so, its foot and gauges the state shown (D288); migration 25 gives a person's answers
+back by the item's own row, and docs/06 states the exception (D289); a word longer than a row starts where it stands
+and fills its rows (D290); D272's read has a hook of its own (D291); the hook's test bounds its tone above and measures
+its reach (D292); the CI card's body is one line, which gives acceptance condition 1 its room back (D293); Tower's own
+notes carry its mark and the engine's never (D294), with one capital after the colon (D295); older closings read in
+today's sentence (D296); unsent words are the item's (D297); a side gone on the phone's tab is a phone's frame with
+its reason beside it, D281 reversed there (D298); a Send pressed with a state waiting is sent (D299); and each list
+Tower writes takes its language's mark (D301). From its own checks: the trace runs down, never sideways (D302), and
+the caches test is timed against itself (D303). The budget is kept (D300). Each fix's test fails on `af6d189`'s sources
+or a stated mutation. The last acceptance stands on `af6d189` (review 24); iteration 25 is not yet independently
+re-reviewed.
+
 ## 13. Function, performance, accessibility — Verified
 
 At the final commit (iteration 24; the gates run alone, on fixtures dumped from the supervisor under test):
@@ -441,7 +460,9 @@ At the final commit (iteration 24; the gates run alone, on fixtures dumped from 
   Iteration 22's 4 (the phone page among them): 17 against 17 at `9397e07`, the same findings. Iteration 23's 8 (the
   phone page, `tokens.css` and `Trace.tsx` among them): 17 against 17 at `864d6c3`, the same findings. Iteration 24's 5
   (`DecisionCard.tsx`, `Trace.tsx`, `app.css`, `tokens.css` and the phone page): 17 against 17 at `43576b0`, the same
-  findings.
+  findings. Iteration 25's 9 (`DESIGN.md`, `DecisionCard.tsx`, `Look.tsx`, `Trace.tsx`, `app.css`, `refit.ts`,
+  `store.ts`, `ext.ts` and the phone page, with `tokens.css`): 17 against 17 at `af6d189`, the same findings, none on a
+  line the iteration changed.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion
   (re-checked for the redesign: the turning marks and the shimmer hold still, `flows.spec.ts`).
@@ -474,7 +495,7 @@ iteration-20 commit `b6baa8a` (review 19's findings and notes, with review 19's 
 `b59e68a` (review 20's findings and notes, with review 20's report), its follow-up `9397e07` (the header names the
 run, no mode or live line over a stop), the iteration-22 commit `864d6c3` (review 21's findings and notes, with review
 21's report), the iteration-23 commit `4167461` (review 22's findings and notes, with review 22's report), its
-follow-up `43576b0` (D268, D269) and the iteration-24 commit (review 23's findings and notes, with review 23's report).
+follow-up `43576b0` (D268, D269), the iteration-24 commit `af6d189` (review 23's findings and notes, with review 23's report) and the iteration-25 commit (review 24's findings and notes, with review 24's report).
 All are on `design/evolution`, local only. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
@@ -509,7 +530,10 @@ sentences. Iteration 23 fixed all of them (D254–D264), each with a test that f
 mutation, and D265–D269 from its own reading; review 23 passed it and found D270 (a P2 it introduced), two tests that
 could not fail where they should (D271, D272) and ten record-only notes. Iteration 24 fixed all of them (D270–D283,
 D285), each with a test that fails on `43576b0`'s sources or a stated mutation, kept the budget (D284), and fixed D286
-from its own check and D287 from its own gate run; not yet re-reviewed.
+from its own check and D287 from its own gate run; review 24 passed it and found D288–D290 (three P3s), two tests a
+wrong build could pass (D291, D292) and eleven record-only notes. Iteration 25 fixed all of them (D288–D299, D301),
+each with a test that fails on `af6d189`'s sources or a stated mutation, kept the budget (D300), and fixed D302 and
+D303 from its own checks; not yet re-reviewed.
 What is left:
 
 - **"Busy" has no upper bound (D151).** A run is busy while a tool call is in flight, as the supervisor's live line
@@ -534,8 +558,14 @@ What is left:
   into one item whose answer goes to every dialog it stands for. That is not built: the store folds only notes said
   again (a check failing on another push, a stall), and each dialog is its own item on the desk and the phone, so none
   hides behind another. Pi runs its hooks one at a time, so tower-goal does not raise two at once today.
-- **A reply box's unsent words live while the app is open (D283).** They are kept by the item's goal, kind and words,
-  so they come back with the card or the item that replaced it, and go once an answer is sent; a restart clears them.
+- **A reply box's unsent words live while the app is open (D297).** They are the item's: they come back with its card,
+  move to the item that replaces it in the same update, stay while it is put aside, and go with it once it leaves or
+  an answer is sent; a restart clears them.
+- **On the phone a card that holds your selection shows what it did until you let go (D288).** Every other card takes
+  the new state, and the foot says one card is held; on iOS a selection can outlast a copy, which the foot then
+  keeps saying. Tried in desktop WebKit, not on an iPhone.
+- **The event log was changed once (D285, D289).** Migrations 24 and 25 set `source` and `auto` on older
+  `inbox_resolved` events, never their words; docs/06 §6.6.2 records the exception.
 
 - **The bundle has 105 B left** (163,735 / 163,840 B). The budget stays; the next change that adds interface code has
   to make its own room, as iterations 17 to 21 and 24 did.
@@ -574,7 +604,8 @@ What is left:
   backlog head and bar, the hunk author's line style): future specs, left as written, the last now said so in §12.4.4.
   (An integrated goal merged without the verifier's pass now has a hatched core, D141: no longer colour alone.)
 - **Supervisor text is written in the language of the moment.** A goal's findings and pauses keep the words they were
-  written in; switching the interface language does not rewrite stored events. The trace's words for a kind the desk
+  written in; switching the interface language does not rewrite stored events, and an older closing of Tower's is said
+  in today's sentence in the language it was written in (D296). The trace's words for a kind the desk
   has no row for (D286) are the supervisor's at the moment the trace is read or the event arrives: a trace open while
   the language changes keeps them until it is read again. Test output and the prompts Tower sends
   the agent stay as they are, by design.

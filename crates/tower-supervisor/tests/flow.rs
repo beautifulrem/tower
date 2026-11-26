@@ -1746,7 +1746,7 @@ async fn wait_preparing(h: &Harness, except: &[&str]) -> String {
 fn start_ended(h: &Harness, id: &str) -> bool {
     h.sup.trace(id, None, 500).unwrap().iter().any(|e| match &e.event {
         EventKind::RunStarted { .. } => true,
-        EventKind::Note { text } => text.contains("did not start"),
+        EventKind::Note { text, tower: true } => text.contains("did not start"),
         _ => false,
     })
 }

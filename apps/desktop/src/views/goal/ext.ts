@@ -183,7 +183,7 @@ export function qualifiers(cur: ExtCriterionView, sents: SentinelHit[] = [], ids
   const ho = ver.held_out_proof;
   if (ho?.not_ran.length) out.push(["attn", t("goal.heldOutSome", { m: ho.ran.length, n: ho.ran.length + ho.not_ran.length }), undefined, 1]);
   if (ver.flaky) out.push([cav, t("honesty.cavFlaky")]);
-  if (cur.loopback_opened) out.push(["obs", cur.loopback_opened === "base" ? t("goal.evLoopbackBase") : t("goal.evLoopbackProject"), undefined, 1]);
+  if (cur.loopback_opened) out.push(["obs", t("goal.evLoopback"), undefined, 1]);
   const bh = weightiest.find((h) => BYPASS_RE.test(h.sentinel) && forCur(h));
   if (bh) out.push([bh.severity >= 3 ? "danger" : "attn", bh.sentinel.includes("bypass") ? t("goal.evBypass") : bh.sentinel.includes("perturb") ? t("goal.evPerturb") : t("goal.evTestExpectation"), bh.detail || bh.title]);
   // A high finding holds every pass of the goal. When none of this criterion's own pills is that finding (it names

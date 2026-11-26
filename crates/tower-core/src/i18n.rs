@@ -645,6 +645,42 @@ impl Stall {
 
 // ---- trace ------------------------------------------------------------------
 
+/// What the trace says when Tower closes an item no person answered: one sentence for every way it happens (the run
+/// stopped, a newer item replaced it, its time ran out), naming the item, so it never reads as a person's answer and
+/// never leaves you to guess which item went (review 23, record only).
+pub fn tower_closed(lang: Lang, what: &str, why: &str) -> String {
+    tr!(lang, "Tower 关闭了“{what}”：{why}", "Tower closed “{what}”: {why}")
+}
+
+/// Why Tower closed an item a newer one of the same words replaced.
+pub fn replaced_why(lang: Lang) -> String {
+    tr!(lang, "被更新的一项取代", "A newer one replaced it")
+}
+
+/// Why Tower closed a question whose asker stopped waiting.
+pub fn timed_out_why(lang: Lang) -> String {
+    tr!(lang, "已超时，提问的一方不再等这个回答", "It timed out; the asker stopped waiting for an answer")
+}
+
+/// Tower's closing in the form a Tower before the sentence above wrote it ("Withdrawn: The run stopped", "(timed out:
+/// …)", "Replaced by a newer one"; review 24, record 3): the language it was written in and why, to be said in that
+/// sentence. Matched exactly as Tower wrote it, case and all; anything else is `None`.
+pub fn older_closing(response: &str) -> Option<(Lang, String)> {
+    if let Some(why) = response.strip_prefix("Withdrawn: ") {
+        return Some((Lang::En, why.into()));
+    }
+    if let Some(why) = response.strip_prefix("撤回：") {
+        return Some((Lang::Zh, why.into()));
+    }
+    match response {
+        "Replaced by a newer one" => Some((Lang::En, replaced_why(Lang::En))),
+        "被更新的一项取代" => Some((Lang::Zh, replaced_why(Lang::Zh))),
+        "(timed out: the asker stopped waiting for an answer)" => Some((Lang::En, timed_out_why(Lang::En))),
+        "（已超时：提问的一方不再等这个回答）" => Some((Lang::Zh, timed_out_why(Lang::Zh))),
+        _ => None,
+    }
+}
+
 /// The trace's words for an event the desk has no row of its own for, in the language of the moment (derived on read,
 /// as the trace is): a step the verifier, the supervisor or you took, said as a sentence, never the event's own name
 /// (iteration 24: "canary_checked" and "port_block_allocated" stood in every verified goal's trace). `lang` is asked
@@ -780,7 +816,7 @@ mod tests {
         assert_eq!(event_words(&events[3], || Lang::En).unwrap(), "Ports 41000–41019 set aside for this goal");
         assert_eq!(event_words(&events[4], || Lang::Zh).unwrap(), "C2（改动前）：控制台有 2 个错误");
         let asked = std::cell::Cell::new(false);
-        let other = E::Note { text: "n".into() };
+        let other = E::tower_note("n");
         assert_eq!(event_words(&other, || (asked.set(true), Lang::En).1), None);
         assert!(!asked.get(), "the language is read only for an event that has words");
     }

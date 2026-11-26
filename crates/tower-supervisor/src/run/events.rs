@@ -186,6 +186,7 @@ pub(super) async fn on_event(inner: &Arc<Inner>, run: &Arc<Run>, e: PiEvent) -> 
                         "模型服务出错，第 {attempt}/{max_attempts} 次重试：{error}",
                         "Model provider error, retry {attempt}/{max_attempts}: {error}"
                     ),
+                    tower: true,
                 },
             )?;
         }
@@ -289,8 +290,12 @@ fn on_sandbox_denial(inner: &Arc<Inner>, run: &Arc<Run>, target: Option<String>)
             }
         }
         let lang = inner.lang();
-        let sample =
-            if recent_targets.is_empty() { String::new() } else { format!(" ({})", recent_targets.join(", ")) };
+        let sample = if recent_targets.is_empty() {
+            String::new()
+        } else {
+            let list = recent_targets.join(lang.pick("、", ", "));
+            tr!(lang, "（{list}）", " ({list})")
+        };
         let detail = tr!(
             lang,
             "持续探测沙箱边界，无实质进展：连续触发 {denials} 次沙箱拒绝且工作区无文件改动{sample}。已提前暂停交由你决定。",
@@ -625,7 +630,7 @@ fn remove_run(inner: &Inner, run: &Run) {
             "运行结束时，Tower 停止了 Agent 留在后台的 {n} 个进程",
             "When the run ended, Tower stopped {n} process(es) the agent left running in the background"
         );
-        let _ = inner.append(&run.goal_id, EventKind::Note { text });
+        let _ = inner.append(&run.goal_id, EventKind::tower_note(text));
     }
 }
 

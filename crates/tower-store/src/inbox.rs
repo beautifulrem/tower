@@ -58,14 +58,16 @@ fn row_to_item(r: &Row<'_>, lang: Lang) -> rusqlite::Result<InboxItem> {
             (tr!(lang, "可能卡住：{subject}", "May be stuck: {subject}"), subject)
         }
         InboxKind::CiFailed => {
-            // Each failing check's name is code, whole, the names apart by ", " in the words' face (review 23, record
-            // only: "unit-tests, lint" was one code, its comma too, and a name may hold ", " itself, as a matrix job's
-            // "test (ubuntu-latest, node 22)" does). Stored a line each (an older item: one line, read as one name).
-            // In `code` the names stand apart by a blank line, as long as the ", " between them in the question, so
-            // what follows the code in the question starts where it always did.
+            // Each failing check's name is code, whole, the names apart by the language's list mark in the words' face,
+            // ", " or "、" (review 23, record only: "unit-tests, lint" was one code, its comma too, and a name may hold
+            // ", " itself, as a matrix job's "test (ubuntu-latest, node 22)" does; review 24, record only 11: Chinese
+            // had the English mark). Stored a line each (an older item: one line, read as one name). In `code` the
+            // names stand apart by as many line breaks as the mark has characters: a client reads the question's own
+            // characters there, and what follows the code in the question starts where it always did.
             let names: Vec<&str> = subject.lines().collect();
-            code = Some(names.join("\n\n")).filter(|s| !s.is_empty());
-            let subject = names.join(", ");
+            let mark = lang.pick("、", ", ");
+            code = Some(names.join(&"\n".repeat(mark.encode_utf16().count()))).filter(|s| !s.is_empty());
+            let subject = names.join(mark);
             (tr!(lang, "CI 未通过：{subject}", "CI failed: {subject}"), subject)
         }
         InboxKind::Approval if !subject.is_empty() => {
@@ -147,8 +149,7 @@ impl Store {
                 .collect::<rusqlite::Result<_>>()?;
             let lang = self.lang();
             for item_id in older {
-                let response =
-                    self.closed_by_tower(&item_id, &tr!(lang, "被更新的一项取代", "A newer one replaced it"))?;
+                let response = self.closed_by_tower(&item_id, &tower_core::i18n::replaced_why(lang))?;
                 let now = self.now();
                 self.conn.execute(
                     "UPDATE inbox SET resolved_at = ?2, response = ?3 WHERE id = ?1",
@@ -249,14 +250,22 @@ impl Store {
         Ok(Resolved { item, engine_ref })
     }
 
-    /// What the trace says when Tower closes an item no person answered: one sentence for every way it happens (the run
-    /// stopped, a newer item replaced it, its time ran out), naming the item, so it never reads as a person's answer and
-    /// never leaves you to guess which item went (review 23, record only: "Withdrawn: The run stopped", "(timed out: …)"
-    /// and "Replaced by a newer one", three ways of saying it and none of them saying what).
+    /// What the trace says when Tower closes an item no person answered (`tower_core::i18n::tower_closed`; review 23,
+    /// record only: "Withdrawn: The run stopped", "(timed out: …)" and "Replaced by a newer one", three ways of saying it
+    /// and none of them saying what).
     fn closed_by_tower(&self, id: &str, why: &str) -> Result<String> {
-        let item = self.inbox_item(id)?;
-        let what = if item.title.is_empty() { item.subject } else { item.title };
-        Ok(tr!(self.lang(), "Tower 关闭了“{what}”：{why}", "Tower closed “{what}”: {why}"))
+        let lang = self.lang();
+        Ok(tower_core::i18n::tower_closed(lang, &self.item_name(id, lang)?, why))
+    }
+
+    /// An item as a closing names it, in `lang`: its title, or what it is about when it has none.
+    pub(crate) fn item_name(&self, id: &str, lang: Lang) -> Result<String> {
+        let item = self
+            .conn
+            .query_row(&format!("{ITEM_SQL} WHERE i.id = ?1"), [id], |r| row_to_item(r, lang))
+            .optional()?
+            .ok_or_else(|| StoreError::NotFound(format!("inbox item {id}")))?;
+        Ok(if item.title.is_empty() { item.subject } else { item.title })
     }
 
     /// Withdraws open items of the given kinds for a goal, e.g. engine
@@ -364,6 +373,19 @@ mod tests {
         assert_eq!(two.code.as_deref(), Some("unit-tests\n\ntest (ubuntu-latest, node 22)"));
         assert_eq!(two.code.as_ref().unwrap().len(), two.subject.len());
         assert!(two.title.ends_with("unit-tests, test (ubuntu-latest, node 22)"), "{}", two.title);
+        // Review 24 (record only 11): in Chinese the names are apart by "、", and in the code by one line break, as long.
+        let speak = |s: &mut crate::Store, code: &str| {
+            let mut cfg = s.settings().unwrap();
+            cfg.language = code.into();
+            s.save_settings(&cfg).unwrap();
+        };
+        speak(&mut s, "zh-CN");
+        let zh = s.open_inbox_items().unwrap().into_iter().find(|i| i.id == two.id).unwrap();
+        assert_eq!(zh.subject, "unit-tests、test (ubuntu-latest, node 22)");
+        assert_eq!(zh.code.as_deref(), Some("unit-tests\ntest (ubuntu-latest, node 22)"));
+        assert_eq!(zh.code.as_ref().unwrap().encode_utf16().count(), zh.subject.encode_utf16().count());
+        assert_eq!(zh.title, "CI 未通过：unit-tests、test (ubuntu-latest, node 22)");
+        speak(&mut s, "en");
         s.resolve_inbox(&two.id, "Leave it").unwrap();
         assert_eq!(s.summary(&id).unwrap().needs_you, 2);
         assert!(s.resolve_inbox(&first.id, "late").is_err(), "the older one is closed, not left to answer");
@@ -411,7 +433,7 @@ mod tests {
         let said = |it: &InboxItem, why: &str| {
             tr!(s.lang(), "Tower 关闭了“{t}”：{why}", "Tower closed “{t}”: {why}", t = it.title)
         };
-        let replaced_why = tr!(s.lang(), "被更新的一项取代", "A newer one replaced it");
+        let replaced_why = tower_core::i18n::replaced_why(s.lang());
         for (it, why) in [
             (&replaced, replaced_why.as_str()),
             (&withdrawn, "the run stopped"),

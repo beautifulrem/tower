@@ -35,7 +35,7 @@ What has shipped and what comes next. The reasoning is in `docs/00` (vision), `d
 
 ## Written, not yet in use
 
-- **Linux and MicroVM sandboxes.** The Linux backend (`bubblewrap`, Landlock, cgroups v2) and the Apple Containerization MicroVM backend (macOS 26+, Apple Silicon) are written and unit-tested, but no run uses them yet. Today only macOS Seatbelt sandboxes a goal. A contract can already name the MicroVM tier and the interface shows it, but that goal still runs under Seatbelt. On Linux and Windows the agent's commands are fenced by path only, and the environment check says so.
+- **Linux and MicroVM sandboxes.** The Linux backend (`bubblewrap`, Landlock, cgroups v2) and the Apple Containerization MicroVM backend (macOS 26+, Apple Silicon) are written and unit-tested, but no run uses them yet. Today only macOS Seatbelt sandboxes a goal. The contract editor and Settings say so, and no longer offer the MicroVM tier. On Linux and Windows the agent's commands are fenced by path only, and the environment check says so.
 - **The real-model anti-cheat regression.** `tools/adversarial.sh` exists and does not pass yet. `docs/17-implementation.md` §17.7 lists the classes it still misses.
 
 ## Next

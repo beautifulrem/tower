@@ -6,9 +6,11 @@
  *
  *   SHOTS=/tmp/shots tools/e2e.sh e2e/shots.spec.ts
  *   SHOTS=/tmp/shots SHOTS_ONLY=review tools/e2e.sh e2e/shots.spec.ts   (names containing "review")
+ *   SHOTS=/tmp/shots SHOTS_NOW=2026-11-27T05:11:00 tools/e2e.sh e2e/shots.spec.ts   (every screen at one moment)
  *
- * `tools/screenshot.sh` (the real window) is still the source for
- * assets/screenshots when the screen is unlocked; this is the fallback.
+ * The `final-*` screens are the README's pictures (assets/screenshots).
+ * `tools/screenshot.sh` captures the real window instead, when the screen is
+ * unlocked.
  */
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -20,6 +22,8 @@ import { openTower, settled } from "./tauri";
 
 const OUT = process.env.SHOTS;
 const ONLY = process.env.SHOTS_ONLY;
+/** SHOTS_NOW=<ISO time> holds the page's clock there, so screens rendered at different times show the same ages. */
+const NOW = process.env.SHOTS_NOW;
 test.skip(!OUT, "set SHOTS=<dir> to render the preview screens");
 
 type F = Record<string, any>;
@@ -155,6 +159,7 @@ const screens: Screen[] = [
 
   // Final full-window dark & light showcase screens for all core & new console surfaces.
   ...bothThemes({ name: "overview", route: "overview", enrich: enrichConsole }),
+  ...bothThemes({ name: "inbox", route: "inbox", enrich: enrichConsole }),
   ...bothThemes({
     name: "peek-drawer",
     route: "overview",
@@ -202,12 +207,20 @@ for (const s of screens) {
     mkdirSync(OUT!, { recursive: true });
     await page.setViewportSize({ width: s.width ?? 1440, height: s.height ?? 900 });
     await page.emulateMedia({ colorScheme: s.theme ?? "dark", reducedMotion: "reduce" });
+    if (NOW) await page.clock.setFixedTime(new Date(NOW));
     await openTower(page, s.route, {
       lang: s.lang,
       theme: s.theme,
       enrich: (F) => {
-        enrichRich(F);
-        s.enrich?.(F);
+        // The enrichments date what they add from the clock; under SHOTS_NOW that is the page's clock too.
+        const real = Date.now;
+        if (NOW) Date.now = () => new Date(NOW).getTime();
+        try {
+          enrichRich(F);
+          s.enrich?.(F);
+        } finally {
+          Date.now = real;
+        }
       },
     });
     if (s.ready) await page.locator(s.ready).first().waitFor();

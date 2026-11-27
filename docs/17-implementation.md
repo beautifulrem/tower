@@ -7,12 +7,12 @@
 | 层 | 选择 | 理由 |
 |---|---|---|
 | 桌面外壳 | Tauri 2（Rust） | 安装包与内存比 Electron 小一个数量级；后端逻辑可以全部用 Rust 写 |
-| 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；启动时加载的 JS 约 55 KB（gzip，含一种界面语言的前一半；另一种只在切换时加载；两种语言的词典只带各自的文字，键表单独一份，由构建插件 `apps/desktop/plugins/localeKeys.ts` 生成，开发、单元测试与构建同样经过它），目标页和只有后续视图才用的文字在首帧之后加载，评审、设置、学习、运维、合同编辑器、快速速览与命令面板按需加载，语法高亮在 Worker 中；CI 检查各自的预算，另有目标页和全部界面 JS 合计的预算，把代码移出启动包也藏不住增长（`tools/bundle-budget.sh`：启动包 64 KB，目标页 12 KB，合计 160 KB；目前合计 159 KB、目标页 11 KB），远低于 `13` 的 250 KB 启动包预算 |
+| 界面 | SolidJS + TypeScript + Vite | 细粒度响应，没有虚拟 DOM；启动时加载的 JS 约 55 KB（gzip，含一种界面语言的前一半；另一种只在切换时加载；两种语言的词典只带各自的文字，键表单独一份，由构建插件 `apps/desktop/plugins/localeKeys.ts` 生成，开发、单元测试与构建同样经过它），目标页和只有后续视图才用的文字在首帧之后加载，评审、设置、学习、运维、合同编辑器、快速速览与命令面板按需加载，语法高亮在 Worker 中；CI 检查各自的预算，另有目标页和全部界面 JS 合计的预算，把代码移出启动包也藏不住增长（`tools/bundle-budget.sh`：启动包 64 KB，目标页 12 KB，合计 160 KB；目前合计 160 KB、目标页 11 KB），远低于 `13` 的 250 KB 启动包预算 |
 | 状态 | SQLite（rusqlite，WAL + 并发读池） | 单文件、单写者 + 只读连接池；事件与投影在同一事务中写入 |
 | AST 分析 | `crates/tower-ast`（tree-sitter） | 覆盖 Rust / JS / TS / Python / Bash：内联测试块识别、断言/特判/分支结构分析、评审语义移动块折叠 |
 | 视觉证据 | `look` 标准：验证器先确认端口空闲（被占则以环境问题暂停，写明是哪个程序），再在沙箱中启动应用，等本机地址可访问、并确认回应它的监听都在这次验证自己的沙箱里之后，用本机的 Chromium 类浏览器无头截图（桌面 + 窄屏视口并采集 CDP 控制台错误），基线与 Agent 快照各一张，评审时由你判断。浏览器在默认拒绝的配置下运行，只能访问应用自己的进程在监听的端口 | 需要 Chrome、Chromium、Edge、Brave 或 Arc；只截本机地址 |
 | 引擎 | Pi（RPC）与通用 ACP 引擎（Claude Code / Codex / Gemini CLI / OpenCode） | 每个运行中的 Goal 独立子进程，严格按 LF 分帧；显式 `EngineTrustLevel` 信任分级与默认拒绝门禁 |
-| 沙箱 | `SandboxBackend`：macOS Seatbelt（含 `(deny file-link)` 与持久化 FS 辅助进程）、Linux `bubblewrap` + Landlock + cgroups v2、可选 macOS 26+ Apple Containerization MicroVM | 默认拒绝；Agent 的 bash、文件读写与验证器命令均受每 Goal 独立策略约束 |
+| 沙箱 | `SandboxBackend`：macOS Seatbelt（含 `(deny file-link)` 与持久化 FS 辅助进程）是目前唯一真正用于运行的后端；Linux `bubblewrap` + Landlock + cgroups v2 与可选的 macOS 26+ Apple Containerization MicroVM 后端已写好并有单元测试，但还没有接入运行（见 §17.6） | 默认拒绝；Agent 的 bash、文件读写与验证器命令均受每 Goal 独立策略约束 |
 | 字体 | Inter Variable、JetBrains Mono（随应用打包） | 与 `12` §12.3 一致；中文回落到系统字体 |
 
 ## 17.2 代码结构
@@ -32,8 +32,11 @@ crates/tower-pi          Pi RPC 适配器：分帧、命令与回应的关联、
 crates/tower-git         卫星克隆、内容寻址快照、时间线对比、干净检出、封装分支、合并队列预判
 crates/tower-verify      验收命令执行器：进程组、超时、取消、输出截尾与脱敏
 crates/tower-supervisor  Supervisor：生命周期、沙箱后端、常驻 FS 辅助、端口池、学习/定时/远程 SSE
+  remote.rs / remote.html  手机页面：单文件，随 CSP 与禁止嵌入的响应头发出；刷新时只重画变了的那一块
 apps/desktop/src-tauri   Tauri 命令（一一对应 Supervisor 方法）、自动更新插件与更新事件
-apps/desktop/src         界面：反聊天控制台（views/、components/、lib/、styles/）
+apps/desktop/src         界面：反聊天控制台（views/、components/、lib/、styles/）；状态标记与图标是 components/Glyph.tsx 里的一套绘制图形
+apps/desktop/e2e         界面的端到端测试（WebKit，数据是从真实 Supervisor 导出的视图）与截图（shots.spec.ts）
+apps/desktop/*.md        界面的产品与设计记录（英文）：PRODUCT.md、DESIGN.md，以及 2026-11 设计迭代的评审、路线与交付记录（DESIGN_*.md）
 extensions/tower-goal    Pi 与 ACP 扩展：三个工具、POSIX shell 策略门禁、常驻沙箱 FS 与 bash
 tools/demo-engine        不调用模型的脚本化 Pi，用来演示与测试
 ```

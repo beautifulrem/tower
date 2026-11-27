@@ -1,7 +1,7 @@
 # Design evolution — progress and recovery state
 
 Branch `design/evolution`, cut from `main` at `bf22cad` (2026-11-25); `main` at `70a52e7` merged in and the branch
-merged into `main` as #54 on 2026-11-27, at the owner's request; review 25's follow-up is a pull request of its own.
+merged into `main` as #54 on 2026-11-27, at the owner's request; review 25's follow-up was merged as #55 the same day.
 
 ## Where things are
 

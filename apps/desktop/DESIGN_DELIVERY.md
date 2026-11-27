@@ -1,7 +1,8 @@
 # Design evolution — final delivery
 
 Branch `design/evolution`, from `main` at `bf22cad`, with `main` at `70a52e7` merged in on 2026-11-27, then pushed and
-merged as #54 at the owner's request, with a follow-up for review 25's finding (D304); nothing deployed. Working
+merged as #54 (`a0e0fa6`) at the owner's request; the follow-up for review 25's finding (D304, D305) was merged as #55
+(`7cf817e`) the same day. Nothing deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -518,7 +519,7 @@ iteration-20 commit `b6baa8a` (review 19's findings and notes, with review 19's 
 run, no mode or live line over a stop), the iteration-22 commit `864d6c3` (review 21's findings and notes, with review
 21's report), the iteration-23 commit `4167461` (review 22's findings and notes, with review 22's report), its
 follow-up `43576b0` (D268, D269), the iteration-24 commit `af6d189` (review 23's findings and notes, with review 23's report), the iteration-25 commit `ea5db26` (review 24's findings and notes, with review 24's report), the merge of `main` at `70a52e7` (`9c705a2`: #53 made the docs cite decisions and ADRs, not findings; this branch's content is kept under main's citation edits, and the review rounds it had cited in `docs/` are gone the same way) and the commit that records iteration 25's gates (`744a71f`).
-All were on `design/evolution`, merged into `main` as #54 (`a0e0fa6`) on 2026-11-27 at the owner's request; the review-25 follow-up (D304, review 25's report) is a pull request of its own. The user's untracked `.claude/` was never added.
+All were on `design/evolution`, merged into `main` as #54 (`a0e0fa6`) on 2026-11-27 at the owner's request; the review-25 follow-up (`a700f5d`, `7dead0f`: D304, D305, review 25's report) was merged as #55 (`7cf817e`) once its CI passed; on that branch the local Rust gates (29 suites, 497 tests, 2 ignored) and the 69 shots passed as well. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 

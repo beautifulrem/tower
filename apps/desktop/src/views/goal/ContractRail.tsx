@@ -25,7 +25,6 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
   const escAfter = () => c().escalation_after_reworks ?? 2;
   const escOn = () => !!props.d.escalated_model || (!!c().escalation_model && g().rework_cycles >= escAfter());
   const deps = () => c().depends_on ?? g().depends_on ?? [];
-  const tier = () => c().sandbox_tier ?? g().sandbox_tier ?? "default";
   const mqPos = () => props.d.merge_queue_position ?? null;
   const fill = () => Math.min(100, (g().cost_usd / Math.max(g().budget.hard_usd, 0.01)) * 100);
   const softPct = () => Math.min(100, (g().budget.soft_usd / Math.max(g().budget.hard_usd, 0.01)) * 100);
@@ -91,7 +90,7 @@ export function ContractRail(props: { d: ExtGoalDetail }) {
         <dl class="rail-dl">
           <dt>{t("goal.autonomyLevel")}</dt><dd>{t(`contract.${c().autonomy}`)}</dd>
           <dt>{t("goal.oneWayShort")}</dt><dd title={t("goal.oneWayDoors")}>{t("goal.askFirst")}</dd>
-          <dt>{t("settings.gaugeSandbox")}</dt><dd>{sandboxTag(tier(), hasIssue(state.env, "no_sandbox"))}<span class="sep" />{c().network ? t("goal.networkOn") : t("goal.networkOff")}</dd>
+          <dt>{t("settings.gaugeSandbox")}</dt><dd>{sandboxTag(hasIssue(state.env, "no_sandbox"))}<span class="sep" />{c().network ? t("goal.networkOn") : t("goal.networkOff")}</dd>
         </dl>
       </div>
 

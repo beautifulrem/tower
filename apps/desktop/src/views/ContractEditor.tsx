@@ -79,7 +79,6 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const [dragOver, setDragOver] = createSignal(false);
   const [holdoutOpen, setHoldoutOpen] = createSignal(false);
   const [models] = createResource(() => api.models().catch(() => []));
-  const [posture] = createResource(() => api.sandboxPosture?.().catch(() => null) ?? Promise.resolve(null));
   let fileInput!: HTMLInputElement;
 
   const engine = () => effectiveEngine(c.engine, state.settings?.engine);
@@ -88,7 +87,6 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
   const modelOptions = Object.assign(() => [defaultModel(), ...mappedModels()], { base: () => [defaultModel()] });
   const escOptions = () => [{ value: "", label: t("settings.escalationOff") }, ...mappedModels()];
   const projectGoals = createMemo(() => goalList().filter((g) => g.project_id === projectId() && g.id !== editingId && !["archived", "abandoned"].includes(g.state)));
-  const microVmReady = () => !!posture()?.microvm_available;
 
   let loaded = false;
   // A draft or contract that could not be read is not this blank form: nothing may be saved over it.
@@ -375,7 +373,7 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                     <Show when={c.model}>
                       <span class="mono">{c.model}</span>
                     </Show>
-                    <span>{c.sandbox_tier === "micro_vm" ? "MicroVM" : t("contract.sandboxDefault")}</span>
+                    <span>{t("contract.sandboxDefault")}</span>
                     <Show when={engine() !== "claude-code" && c.thinking && c.thinking !== (state.settings?.default_thinking ?? "")}>
                       <span>
                         {t("contract.thinking")} {thinkingOptions().find((o) => o.value === c.thinking)?.label ?? c.thinking}
@@ -421,24 +419,12 @@ export function ContractEditor(props: { projectId?: string; draftId?: string; am
                     <input class="num" type="number" min="1" max="10" value={c.escalation_after_reworks ?? 2} onInput={(e) => setC("escalation_after_reworks", Number(e.currentTarget.value) || 1)} />
                   </Field>
                 </Show>
+                {/* Stated, not chosen: no run reads `sandbox_tier` (the MicroVM backend is written but not connected), so a
+                    contract stored with that tier reads as what it runs under too. */}
                 <div class="field">
                   <span class="field-label">{t("settings.sandboxBackend")}</span>
-                  <div class="sandbox-choices" role="radiogroup" aria-label={t("settings.sandboxBackend")}>
-                    <For
-                      each={[
-                        ["default", t("contract.sandboxDefault"), "Seatbelt / Landlock", false],
-                        ["micro_vm", "MicroVM", microVmReady() ? "Apple Containerization" : t("contract.microvmReq"), !microVmReady()],
-                      ] as ["default" | "micro_vm", string, string, boolean][]}
-                    >
-                      {([id, name, desc, dis]) => (
-                        <label class="radio" classList={{ disabled: dis }}>
-                          <input type="radio" name="sandbox_tier" checked={(c.sandbox_tier ?? "default") === id} disabled={dis} onChange={() => setC("sandbox_tier", id)} />
-                          <b>{name}</b>
-                          <span class="radio-desc">{desc}</span>
-                        </label>
-                      )}
-                    </For>
-                  </div>
+                  <span>{t("contract.sandboxDefault")}</span>
+                  <span class="field-hint">{t("settings.sandboxBackendHint")}</span>
                 </div>
                 <Toggle checked={c.network} onChange={(v) => setC("network", v)} label={t("contract.network")} hint={t("contract.networkHint")} />
                 <Show when={!c.network}>

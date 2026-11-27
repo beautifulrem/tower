@@ -54,7 +54,7 @@ vi.mock("../../lib/store", async () => {
 });
 
 const validated: unknown[] = [];
-const draft = vi.hoisted(() => ({ fail: false, goalFails: false, holdout: "ok" as "ok" | "none" | "ratifyFails", atts: [] as Array<Record<string, unknown>>, createGate: null as Promise<void> | null, goalGate: null as Promise<void> | null }));
+const draft = vi.hoisted(() => ({ tier: "default", fail: false, goalFails: false, holdout: "ok" as "ok" | "none" | "ratifyFails", atts: [] as Array<Record<string, unknown>>, createGate: null as Promise<void> | null, goalGate: null as Promise<void> | null }));
 const look = {
   id: "C4",
   title: "The checkout page still looks right",
@@ -123,7 +123,7 @@ vi.mock("../../lib/api", async () => {
         escalation_model: "",
         escalation_after_reworks: 2,
         attachments: draft.atts,
-        sandbox_tier: "default",
+        sandbox_tier: draft.tier,
         depends_on: [],
       },
     };
@@ -213,6 +213,23 @@ describe("the contract studio", () => {
       expect(latest?.sandbox_tier).toBe("default");
       expect(latest?.escalation_after_reworks).toBe(2);
     });
+  });
+
+  it("offers no MicroVM tier, even for a contract stored with it: every run is under the OS sandbox, and the clause says so", async () => {
+    draft.tier = "micro_vm";
+    try {
+      const { container } = render(() => <ContractEditor amendId="G-0001" />);
+      await waitFor(() => expect(screen.getByLabelText("C4 step 1")).toBeTruthy());
+      await new Promise((r) => setTimeout(r, 10));
+      expect(container.querySelectorAll('input[name="sandbox_tier"]')).toHaveLength(0);
+      const summary = container.querySelector(".clause-summary-items")!.textContent!;
+      expect(summary).toContain("Default OS Sandbox");
+      expect(summary).not.toContain("MicroVM");
+      expect(container.textContent).toContain("MicroVM is not connected to runs yet");
+      expect(container.textContent).not.toContain("Apple Containerization");
+    } finally {
+      draft.tier = "default";
+    }
   });
 
   it("opens synthetic holdout drafts as dashed Claim cards and ratifies only on explicit human click", async () => {

@@ -221,7 +221,6 @@ export function Operations() {
                 <span class="meta num t2" hidden={!inv().reclaimable_bytes}>{t("ops.reclaimable", { size: bytes(inv().reclaimable_bytes) })}</span>
                 <span class="ops-posture-line meta-inline meta">
                   <span>{state.sandboxPosture?.backend_name ?? t("chrome.sandboxOn")}</span>
-                  <span hidden={!state.sandboxPosture?.microvm_available}>{t("ops.microvmReady")}</span>
                   <For each={state.sandboxPosture?.warnings ?? []}>
                     {(w) => <span class="row row-g4 t1"><NoticeMark /><span>{w}</span></span>}
                   </For>

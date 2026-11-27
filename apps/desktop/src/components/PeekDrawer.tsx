@@ -106,7 +106,6 @@ export function PeekDrawer(props: { goalId: string; onClose: () => void }) {
                   <span class="meta-inline">
                     <span class="t2">{engineLabel(engine())}</span>
                     <TrustPill tier={tier()} label={t(`trust.${tier()}`)} />
-                    <span class="t2" hidden={s().sandbox_tier !== "micro_vm"}>MicroVM</span>
                     <span class="code-val t2" hidden={!s().port_base}>:{s().port_base}</span>
                   </span>
                   <span class="grow" />

@@ -181,7 +181,7 @@ vi.mock("../../lib/store", async () => {
     pendingProposals: 2,
     activeSchedules: 1,
     mergeConflicts: 1,
-    sandboxPosture: { backend: "seatbelt", backend_name: "S2 Seatbelt", available: true, microvm_available: false, warnings: ["Ubuntu userns note"] },
+    sandboxPosture: { backend: "seatbelt", backend_name: "S2 Seatbelt", available: true, microvm_available: true, warnings: ["Ubuntu userns note"] },
     now: Date.now(),
   });
   return {
@@ -264,6 +264,8 @@ describe("Operations console (Schedules, Merge Queue, Storage & Sandbox)", () =>
     expect(container.querySelector(".posture-banner")).toBeNull();
     expect(container.querySelector(".ops-posture-line")?.textContent).toContain("S2 Seatbelt");
     expect(container.querySelector(".ops-posture-line")?.textContent).toContain("Ubuntu userns note");
+    // The container CLI is installed here, but no run uses it: the posture names only the sandbox that runs.
+    expect(container.textContent).not.toContain("MicroVM");
 
     // Storage safety: running goal is Protected, archived goal has Clean button
     expect(container.textContent).toContain("Protected");

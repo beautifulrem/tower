@@ -1,8 +1,8 @@
 # Design evolution — final delivery
 
-Branch `design/evolution`, from `main` at `bf22cad`, with `main` at `70a52e7` merged in on 2026-11-27, then pushed and
-merged as #54 (`a0e0fa6`) at the owner's request; the follow-up for review 25's finding (D304, D305) was merged as #55
-(`7cf817e`) the same day. Nothing deployed. Working
+Branch `design/evolution`, from `main` at `2fc8c54`, with `main` at `fd68bfb` merged in on 2026-11-27, then pushed and
+merged as #54 (`0159c3a`) at the owner's request; the follow-up for review 25's finding (D304, D305) was merged as #55
+(`5935e18`) the same day. Nothing deployed. Working
 evidence is under `/tmp/tower-design/` (not committed); curated evidence is in `design-evidence/`: before/after
 pairs, the review, research and critique reports (`reports/`) and the packaged-app screenshots (`packaged-app/`). Status words:
 **Implemented** (in code), **Verified** (a test, gate or measurement passed), **Accepted** (an independent review
@@ -10,7 +10,7 @@ accepted it), **Unverified**, **Deferred** (with reason), **Blocked**.
 
 ## 1. Original design problems — Verified (audited)
 
-Audited at `bf22cad` from four sides: my product and workflow audit, the Unslop signs audit, an isolated Impeccable
+Audited at `2fc8c54` from four sides: my product and workflow audit, the Unslop signs audit, an isolated Impeccable
 critique (27/40) with its detector, and an independent baseline review (FAIL, six P1). They are consolidated as D01–D27
 in `DESIGN_REVIEW.md`. The ones that mattered most:
 
@@ -68,13 +68,13 @@ concept review is at `review-concept/report.md`.
 ## 5. PRODUCT.md and DESIGN.md — Implemented
 
 - `PRODUCT.md`: Impeccable `init`, inferred from the repo, since the owner asked not to be interviewed.
-- `DESIGN.md`: written by the Impeccable documenter from the shipped code at `3faaf0c`. It records 17 places where
+- `DESIGN.md`: written by the Impeccable documenter from the shipped code at `42938a7`. It records 17 places where
   `docs/12` disagrees with the code. Which side is canonical is left to the owner (§"docs/12 drift" in
   `DESIGN_REVIEW.md`).
 
 ## 6. Design Contract — Accepted
 
-AC1–AC11 and the hard gates are in `DESIGN_REVIEW.md` §"Design contract". Review 7 found every AC met at `3145645`.
+AC1–AC11 and the hard gates are in `DESIGN_REVIEW.md` §"Design contract". Review 7 found every AC met at `c1d1698`.
 
 ## 7. Roadmap executed — Implemented, Verified
 
@@ -95,7 +95,7 @@ its issues and to the test that verifies it.
 
 Conditions: the same `shots.spec.ts`, the same dumped fixtures, the same viewport, 1440 px wide webp at q72.
 
-- **Before** is the `bf22cad` baseline shot. A fresh conversion of it is byte-identical to the committed file.
+- **Before** is the `2fc8c54` baseline shot. A fresh conversion of it is byte-identical to the committed file.
 - **After** is the final commit's shot.
 
 All 69 shots per iteration are under `/tmp/tower-design/iterN/shots`.
@@ -146,77 +146,77 @@ available in that session. The reviewers never edited code. Reports are committe
 
 | Commit | Verdict |
 |---|---|
-| `bf22cad` | Baseline: FAIL |
-| `aa1026b` | 7.4, not accepted |
-| `3faaf0c` | 7.2 |
-| `815bd99` | 7.2 |
-| `d0dc2a1` | 7.85 |
-| `16ac40c` | 8.03, one P1 |
-| `3145645` | **PASS, 8.18**, no P0/P1, AC1–AC11 met |
-| `d6f07ef` | **PASS, 8.30**, no P0/P1/P2 (re-check after review 7's P2) |
-| `7a23f45` | **PASS, 8.28**, no P0/P1; one P2 (review 9, after the owner's remaining list) |
-| `deef352` | **PASS, 8.20**, no P0/P1; one new P2 (review 10, after review 9's fixes) |
-| `2f1d0c5` | **PASS, 8.38**, no P0/P1/P2; four P3 (review 11, after review 10's fixes) |
-| `886ab38` | **PASS, 8.42**, no P0/P1/P2; two P3 (review 12, after review 11's fixes) |
-| `3ff2ebf` | **PASS, 8.47**, no P0/P1/P2; two P3 (review 13, after review 12's fixes) |
-| `1ad1439` | **PASS, 8.35**, no P0/P1; one P2 (review 14, with the status marks and motion) |
-| `2408609` | 8.285, not accepted: one P1 (review 15, an older phone defect) |
-| `2d3eeb8` | **PASS, 8.46**, no P0/P1/P2; five P3 (review 16, after review 15's fixes) |
-| `f9dd353` | **PASS, 8.45**, no P0/P1; one P2 (review 17, after review 16's fixes) |
-| `03999c0` + `54ba274` | **PASS, 8.47**, no P0/P1/P2; four P3 (review 18, after review 17's fixes) |
-| `939be97` | **PASS, 8.59**, no P0/P1/P2; three P3 (review 19, after review 18's fixes) |
-| `b6baa8a` | **PASS, 8.63**, no P0/P1/P2; three P3 (review 20, after review 19's fixes) |
+| `2fc8c54` | Baseline: FAIL |
+| `2b385e7` | 7.4, not accepted |
+| `42938a7` | 7.2 |
+| `77eb888` | 7.2 |
+| `30f9047` | 7.85 |
+| `4698955` | 8.03, one P1 |
+| `c1d1698` | **PASS, 8.18**, no P0/P1, AC1–AC11 met |
+| `bb976d3` | **PASS, 8.30**, no P0/P1/P2 (re-check after review 7's P2) |
+| `66ac2aa` | **PASS, 8.28**, no P0/P1; one P2 (review 9, after the owner's remaining list) |
+| `994b534` | **PASS, 8.20**, no P0/P1; one new P2 (review 10, after review 9's fixes) |
+| `0498799` | **PASS, 8.38**, no P0/P1/P2; four P3 (review 11, after review 10's fixes) |
+| `aecd02c` | **PASS, 8.42**, no P0/P1/P2; two P3 (review 12, after review 11's fixes) |
+| `872a863` | **PASS, 8.47**, no P0/P1/P2; two P3 (review 13, after review 12's fixes) |
+| `e21e4dd` | **PASS, 8.35**, no P0/P1; one P2 (review 14, with the status marks and motion) |
+| `80b9dce` | 8.285, not accepted: one P1 (review 15, an older phone defect) |
+| `807dc40` | **PASS, 8.46**, no P0/P1/P2; five P3 (review 16, after review 15's fixes) |
+| `48d5f3a` | **PASS, 8.45**, no P0/P1; one P2 (review 17, after review 16's fixes) |
+| `dbae04c` + `45be8f5` | **PASS, 8.47**, no P0/P1/P2; four P3 (review 18, after review 17's fixes) |
+| `3dbc4c1` | **PASS, 8.59**, no P0/P1/P2; three P3 (review 19, after review 18's fixes) |
+| `5d6ee98` | **PASS, 8.63**, no P0/P1/P2; three P3 (review 20, after review 19's fixes) |
 
 Review 8 raised four P3s. Two were introduced by iteration 8's own fixes: the peek head called a waiting run
 "Unresponsive", and the sidebar still said "Needs you" for a goal in To review. Two were older: the cron broke at
 1040 px, and a dot was left at the end of the review header.
 
 The last commit fixes the first two and the cron, and the dot half of the fourth, each with a test that fails on
-`d6f07ef`. Those fixes are **Verified, not independently re-reviewed**: the acceptance stands on `d6f07ef`.
+`bb976d3`. Those fixes are **Verified, not independently re-reviewed**: the acceptance stands on `bb976d3`.
 
-Review 9 read `7a23f45` (iteration 9) and passed it at 8.28. It found one P2 — a goal accepted with caveats lost them
+Review 9 read `66ac2aa` (iteration 9) and passed it at 8.28. It found one P2 — a goal accepted with caveats lost them
 on its stamp — six P3s mostly from iteration 9's own fixes (the comparing verdict still lost in two width bands, key
 caps hidden at ≤1240, the ledger's runs note in the claim's colour, the evidence strip saying "assertions untouched"
 beside a test-machinery caveat, the folded engine clause hiding non-default settings, a bare other goal's id in the
 identity column), one older P3 (the budget's "$" on its digits) and three docs/12 places still off. Iteration 10 fixes
-all of them (D98–D106), each with a test that fails on `7a23f45`.
+all of them (D98–D106), each with a test that fails on `66ac2aa`.
 
-Review 10 read `deef352` (iteration 10) and passed it at 8.20: the comparing verdict now holds at every width from
+Review 10 read `994b534` (iteration 10) and passed it at 8.20: the comparing verdict now holds at every width from
 1024 to 1600 (swept every 4 px, both directions, no flicker), and the key caps, the test-machinery strip, the folded
 engine settings and the field units are confirmed fixed. It found one new P2 that iteration 10 introduced: moving the
 overlap note into the title cell squeezed an overlapping row's title to "Fi…" at 1241 (D107). Five P3s: the done-state
 tooltips and the integrated glyph (D108), the compare picker's select value (D109), the light-theme ledger note
 (D110), a docs/12 "neutral pill" that is amber (D111), English run names in Chinese (D112).
 
-Iteration 11 fixes all six, and the empty settings test, each with a test that fails on `deef352` (the picker's
+Iteration 11 fixes all six, and the empty settings test, each with a test that fails on `994b534` (the picker's
 face-against-select check also as a name-free variant).
 
-Review 11 read `2f1d0c5` (iteration 11) and passed it at 8.38, with no P0, P1 or P2. The overlapping row's title is
+Review 11 read `0498799` (iteration 11) and passed it at 8.38, with no P0, P1 or P2. The overlapping row's title is
 whole at every width (swept 1241–1800 every 4 px; hover, selection and a live rename flip nothing); every seal of an
 accepted or merged goal says the caveats were taken with it, and the merged ring has its gap; the run pickers' select,
 face and tooltip agree, in the interface language; the ledger note is apart by size and wording; the empty settings
-test now checks. It confirmed the new tests fail on `deef352` for the right reasons. Four P3s: the overlap note keeps
+test now checks. It confirmed the new tests fail on `994b534` for the right reasons. Four P3s: the overlap note keeps
 the peek button's room even when the button is hidden, so the words go where the row fits them (D113, from iteration
 11); a neutral caveat pill can stand beside a pass a high finding holds (D114); a picked run name is lost on a refresh
 or a scope switch, and an end that leaves the list is blank (D115); the live and identity columns cut words without an
 ellipsis (D116, older).
 
-Iteration 12 fixes all four, each with a test that fails on `4ea4567` (review 11's commit; its code is `2f1d0c5`'s).
+Iteration 12 fixes all four, each with a test that fails on `434d17e` (review 11's commit; its code is `0498799`'s).
 
-Review 12 read `886ab38` (iteration 12) and passed it at 8.42, with no P0, P1 or P2. The overlap note says as much as
+Review 12 read `aecd02c` (iteration 12) and passed it at 8.42, with no P0, P1 or P2. The overlap note says as much as
 leaves the title its room, at rest (swept every 4 px); a held pass draws no neutral pill; picked run names survive a
 re-verification and a scope switch, and a gone end is named; the live seal gives way whole, never a green mark without
-its pin. It confirmed the new tests fail on `4ea4567` for the right reasons. Two P3s: a merged or closed PR with rework
+its pin. It confirmed the new tests fail on `434d17e` for the right reasons. Two P3s: a merged or closed PR with rework
 still ran past the identity's last step (D117, what D116 left), and the PR readings a step set aside were in neither
 the tooltip nor the button's name, a short project name held 3.5em (D118, from iteration 12). The last acceptance
-stands on `886ab38`.
+stands on `aecd02c`.
 
-Iteration 13 fixes both, and two of the review's record-only notes, each with a test that fails on `886ab38`.
+Iteration 13 fixes both, and two of the review's record-only notes, each with a test that fails on `aecd02c`.
 
-Review 13 read `3ff2ebf` (iteration 13) and passed it at 8.47, with no P0, P1 or P2: the identity's last step always
+Review 13 read `872a863` (iteration 13) and passed it at 8.47, with no P0, P1 or P2: the identity's last step always
 fits and what a step sets aside is still said. Two P3s: a project name squeezed to 1 px or less counted as set aside,
 so a sliver of it stayed and the order could reverse in 1–2 px bands (D120, from iteration 13), and a gone end's kept
-pin cut the criteria bar in a narrow review header at en 1040–1052 (D121). The last acceptance stands on `3ff2ebf`.
+pin cut the criteria bar in a narrow review header at en 1040–1052 (D121). The last acceptance stands on `872a863`.
 
 Then the owner asked for the status marks to change: the red square, the amber diamond and the blue half disc, and
 crude UI like them anywhere, with good agent front ends, open-source design systems and motion libraries as the
@@ -228,19 +228,19 @@ stands still under reduced motion. DESIGN.md, PRODUCT.md principle 2 and docs/12
 only work in motion loops.
 
 Iteration 14 fixes review 13's two (D120–D121) and two of its record-only notes, each with a test that fails on
-`1c9af8a`'s sources. Fixing D121 found an older fault: the review header's key caps step had never run since
+`8d79b1a`'s sources. Fixing D121 found an older fault: the review header's key caps step had never run since
 iteration 10.
 
-Review 14 (`1ad1439`, the redesign and iteration 14 together) passed at 8.35 / 10 with one P2 and four P3s
+Review 14 (`e21e4dd`, the redesign and iteration 14 together) passed at 8.35 / 10 with one P2 and four P3s
 (`design-evidence/reports/review14.md`). Iteration 15 fixes all five (D122–D126) and closes every note left open
-from reviews 12–14 (D127–D141): fixed with a test that fails on `1ad1439`'s sources, or kept by a stated decision
+from reviews 12–14 (D127–D141): fixed with a test that fails on `e21e4dd`'s sources, or kept by a stated decision
 (D128, D139, D140). The running mark now turns only where you watch work and only while it moves; the shimmer moves
 by transform alone (a quarter of a core down to about one point); nothing moves under reduced motion, pseudo-elements
 included. Its own pixel checks then found two older faults on the phone and in the title bar (D142: the phone's
 "Live" wore the verifier's green; D143: silence was a red ring where the spec draws the hint mark), fixed in a
-follow-up commit with tests that fail on `ae1c049`.
+follow-up commit with tests that fail on `352080f`.
 
-Review 15 (`2408609`, iteration 15 and its follow-up) failed it: 8.285 / 10, above 8.0, but with one open P1 (pre-existing), one P2 and five P3s
+Review 15 (`80b9dce`, iteration 15 and its follow-up) failed it: 8.285 / 10, above 8.0, but with one open P1 (pre-existing), one P2 and five P3s
 (`design-evidence/reports/review15.md`): the phone drew the verifier's green on every goal to accept, a pass that
 doesn't count included (D145); the held-out files that ran sat under the line naming the ones that did not (D146); a
 path's "C9" was read as a criterion (D147); a wrapped evidence strip started its second line 18px right (D148); titles,
@@ -248,10 +248,10 @@ ids, pins, commands and paths could not be copied (D149); "Unresponsive" named t
 (D144); "No sandbox" wore the amber ! (D150). Iteration 16 fixes all seven and every record-only note: the phone counts
 a run inside a long tool call as busy and its badges say Silent and Needs you as the desk's do (D151), the title bar's
 marks are one size (D152), the shimmer's light passes over a short word (D153), a diff line can be selected (D154),
-stale words go (D155), and the rest is kept by the rule each follows (D156). Each fix's test fails on `2408609`'s
+stale words go (D155), and the rest is kept by the rule each follows (D156). Each fix's test fails on `80b9dce`'s
 sources.
 
-Review 16 (`2d3eeb8`, iteration 16 and its follow-up) passed at 8.46 / 10 with no P0, P1 or P2 and five P3s
+Review 16 (`807dc40`, iteration 16 and its follow-up) passed at 8.46 / 10 with no P0, P1 or P2 and five P3s
 (`design-evidence/reports/review16.md`): the phone's silent badge a step louder than the desk's (D157); a docs/12
 reference to the wrong section (D158); grey stand-in rows on the empty phone page, overturning D156's keep (D159); the
 held-out names and the review's pin pair copying the wrong text (D160); a pass with caveats looking clean on the phone
@@ -260,23 +260,23 @@ selection gaps (D163), letters going out under the shimmer's peak (D164), the ti
 gauges' ink (D165), a look thumbnail's sliver before it decodes (D166), a steer box that vanished when its code failed
 to load, with the goal rail's dead `:has(.steer)` found on the way (D167), a path's criterion id (D168), and a second
 tool call in flight that did not keep the run busy, on the supervisor and the desk (D169); stale ◆ and ◇ words go
-(D170). Each fix's test fails on `2d3eeb8`'s sources.
+(D170). Each fix's test fails on `807dc40`'s sources.
 
-Review 17 (`f9dd353`, iteration 17) passed at 8.45 / 10 with no P0 or P1, one P2 and three P3s
+Review 17 (`48d5f3a`, iteration 17) passed at 8.45 / 10 with no P0 or P1, one P2 and three P3s
 (`design-evidence/reports/review17.md`): after a press on a diff line, ⌘⇧↩ opened that line's comment box behind the
 accept dialog, with focus in it (D171, from D163); two drags dropped lines from a copy (D172, from D163); the goal rail
 still lay under the steer box at 560 and 640 high (D173); answering a question while another call ran set the run to
-thinking (D174). It also found the phone's Pause fixed by the way in `f9dd353`, unrecorded (D175). Iteration 18 fixes
+thinking (D174). It also found the phone's Pause fixed by the way in `48d5f3a`, unrecorded (D175). Iteration 18 fixes
 all four and every record-only note: the caveat line says "look first" and docs/12 rule 8 says where the amber ! goes
 (D176), CJK caveats stay whole (D177), the phone's mark stands on its title (D178), the live line and the mode follow
 the same call, the newest in flight, on the supervisor and the desk (D174, D179), a thumbnail is the width it will be
 (D180), a load failure is said in the interface's language (D181), the Chinese held-out list has no space after its
-colon (D182), and the dark shimmer brightens what it passes (D183). Each fix's test fails on `f9dd353`'s sources (the
-Pause test on `2d3eeb8`'s). Its follow-up, from checks before review: an open question keeps the run waiting on you
+colon (D182), and the dark shimmer brightens what it passes (D183). Each fix's test fails on `48d5f3a`'s sources (the
+Pause test on `807dc40`'s). Its follow-up, from checks before review: an open question keeps the run waiting on you
 whatever starts or ends beside it (D186), the desk takes the later of two calls started in the same millisecond
 (D187), and the rail test runs either side of 1281 (D188).
 
-Review 18 (`03999c0` + `54ba274`, iteration 18 and its follow-up) passed at 8.47 / 10 with no P0, P1 or P2 and four
+Review 18 (`dbae04c` + `45be8f5`, iteration 18 and its follow-up) passed at 8.47 / 10 with no P0, P1 or P2 and four
 P3s (`design-evidence/reports/review18.md`): scrolled to the end of a short page the rail's head went under the title
 bar (D189, from D173); after ⌘⇧↩ and Esc, ↩ commented on line 0 instead of the line pressed (D190); with a question
 open beside a running command the phone said silent while the desk said running (D191); and D171's evidence test was
@@ -286,9 +286,9 @@ which found a slow first highlight left coarse for the session (D195); a dialog 
 docs/12 names the hint mark one way (D197); the dark shimmer eases out (D198); a missing side keeps its capture's frame
 (D200); the bundle fits again (D201); observed failures are drawn in ink (D202). Two notes are kept by stated decision:
 the steer box's width at the fold (D199) and the Chinese caveat label's break at its colon (D203). Each fix's test
-fails on `54ba274`'s sources or a stated mutation.
+fails on `45be8f5`'s sources or a stated mutation.
 
-Review 19 (`939be97`, iteration 19) passed at 8.59 / 10 with no P0, P1 or P2 and three P3s
+Review 19 (`3dbc4c1`, iteration 19) passed at 8.59 / 10 with no P0, P1 or P2 and three P3s
 (`design-evidence/reports/review19.md`): a dialog's expiry raced the event pump, so a running command could read as
 thinking (D204, from D196); a missing side stood upright beside its picture, a long reason ran taller than the strip
 and a URL broke letter by letter (D205: D200 not done); an ended call was still written as what the run was doing
@@ -297,10 +297,10 @@ line cut short (D207); the shots harness names what it still waited for (D208); 
 name in the sidebar (D209, D211); a question closes before Pi lets it go (D210); the shimmer's fade is a token (D212);
 focus handed back to a diff wears a ring where the keyboard acts (D213). From its own checks: two writes that the
 engine's reply could overtake now come first (D214), the gates run what CI runs (D215), the bundle fits again (D216),
-and the held tags under a criterion are quieter (D217). Each fix's test fails on `939be97`'s sources or a stated
+and the held tags under a criterion are quieter (D217). Each fix's test fails on `3dbc4c1`'s sources or a stated
 mutation.
 
-Review 20 (`b6baa8a`, iteration 20) passed at 8.63 / 10 with no P0, P1 or P2 and three P3s
+Review 20 (`5d6ee98`, iteration 20) passed at 8.63 / 10 with no P0, P1 or P2 and three P3s
 (`design-evidence/reports/review20.md`): a question answered the moment it reached the inbox found no dialog and left
 the run waiting on you (D218); on the board quick calls changed a row's detail twice each and its elapsed time jumped
 (D219, from D206); the focus ring crossed a diff line's number (D220). Iteration 21 fixes all three, every record-only
@@ -312,9 +312,9 @@ rule applies (D230); the tests hold the orders they claim (D231–D233). From it
 a stop's (D234), and the icons became markup strings to fit the budget (D235). Four notes are kept by stated decision:
 the side-by-side rule (D222), the phone strip's frame width (D223), the merged keys (D228) and where two tests first
 fail on old sources (D236). Each fix's test fails on
-`b6baa8a`'s sources (D217's on `939be97`'s) or a stated mutation.
+`5d6ee98`'s sources (D217's on `3dbc4c1`'s) or a stated mutation.
 
-Review 21 (`9397e07` with `b59e68a`, iteration 21) passed at 8.69 / 10 with no P0, P1 or P2 and two P3s
+Review 21 (`97ee440` with `8842347`, iteration 21) passed at 8.69 / 10 with no P0, P1 or P2 and two P3s
 (`design-evidence/reports/review21.md`): side by side a missing side's code still broke after `_`, D221's rule doing
 nothing in WebKit while its test read the style (D237); an approval's code block read `bash rm -rf …`, a command no
 one would run, and the stall title glued the tool to its command (D238, from D230). Iteration 22 fixes both and every
@@ -325,11 +325,11 @@ tooltip puts the run's time on its own line (D243), the time reads "elapsed" (D2
 no start time is named by its number (D245, D246), the docs say so (D247), the English badge column holds both words
 (D249), the ring clears the + (D250), the conflict count's ink is tested (D251) and the evidence line ends on its pin
 (D252). D241 (the answer's lock held to the send, untested) is kept by stated reason. D221, D227, D230, D233 and D234
-now say what review 21 found they overstated. Each fix's test fails on `9397e07`'s sources or a stated mutation; the
+now say what review 21 found they overstated. Each fix's test fails on `97ee440`'s sources or a stated mutation; the
 clients' approval tests pin that they add nothing to the body, since the clients did not change. The last acceptance
-stands on `9397e07` (review 21); iteration 22 was re-reviewed in review 22.
+stands on `97ee440` (review 21); iteration 22 was re-reviewed in review 22.
 
-Review 22 (`864d6c3`, iteration 22) passed at 8.81 / 10 with no P0, P1 or P2 and one P3
+Review 22 (`6b2c951`, iteration 22) passed at 8.81 / 10 with no P0, P1 or P2 and one P3
 (`design-evidence/reports/review22.md`), pre-existing: an approval's code block did not tell a row it carried over
 from a line of the command's own, and the phone parted `--` and `fill` (D254). Iteration 23 fixes it and every
 record-only note: each line of the command is a row the block's width, a carried-over row starts two in under a hook,
@@ -342,10 +342,10 @@ have one (D264). From its own reading: the phone says Chinese times in words (D2
 draw and its tests serve that policy (D266), and its tails copy blank lines as blank (D267); the trace no longer
 writes Tower's own closing of an item (withdrawn, timed out, replaced) as your answer (D268); and the phone page can no
 longer be framed by another site (D269). Each fix's test fails on
-`864d6c3`'s sources or a stated mutation. The last acceptance stands on `864d6c3` (review 22); iteration 23 was
+`6b2c951`'s sources or a stated mutation. The last acceptance stands on `6b2c951` (review 22); iteration 23 was
 re-reviewed in review 23.
 
-Review 23 (`43576b0`, iteration 23) passed at 8.56 / 10 with no P0 or P1 and one P2
+Review 23 (`9ac38f6`, iteration 23) passed at 8.56 / 10 with no P0 or P1 and one P2
 (`design-evidence/reports/review23.md`), introduced by D254: when a line's first word was longer than a row (a path
 approval; a command that starts with a URL), its carried rows began at the block's edge under the hook and a short word
 after it slid onto the first row (R23-P2-01, D270). It also found that the hook's test could not tell a hook from a
@@ -364,10 +364,10 @@ every verified goal's trace): the supervisor words the kinds the desk has no row
 found from the kind, which pays for this iteration's bytes (D286). From its own full gate run: the phone page
 repaints only what changed, holds a state while words on a card are selected, and keeps a reply's unsent words as the
 desk does (D287). The budget is kept (D284). Each fix's test fails
-on `43576b0`'s sources or a stated mutation. The last acceptance stands on `43576b0` (review 23); iteration 24 is not
+on `9ac38f6`'s sources or a stated mutation. The last acceptance stands on `9ac38f6` (review 23); iteration 24 is not
 yet independently re-reviewed.
 
-Review 24 (`af6d189`, iteration 24) passed at 8.66 / 10 with no P0, P1 or P2
+Review 24 (`b056c18`, iteration 24) passed at 8.66 / 10 with no P0, P1 or P2
 (`design-evidence/reports/review24.md`). It found three P3s: on the phone a selection held every card in its old state
 while the foot and the gauges told a newer one, and a card answered with words in it selected stayed (R24-P3-01, D288,
 from D287); migration 24 took answers a person had worded like Tower's closings (R24-P3-02, D289, from D285); and a word
@@ -382,17 +382,17 @@ notes carry its mark and the engine's never (D294), with one capital after the c
 today's sentence (D296); unsent words are the item's (D297); a side gone on the phone's tab is a phone's frame with
 its reason beside it, D281 reversed there (D298); a Send pressed with a state waiting is sent (D299); and each list
 Tower writes takes its language's mark (D301). From its own checks: the trace runs down, never sideways (D302), and
-the caches test is timed against itself (D303). The budget is kept (D300). Each fix's test fails on `af6d189`'s sources
+the caches test is timed against itself (D303). The budget is kept (D300). Each fix's test fails on `b056c18`'s sources
 or a stated mutation.
 
-Review 25 (`744a71f`, iteration 25 with `main` merged in) passed at 8.78 / 10 with no P0, P1 or P2
+Review 25 (`c7bad8b`, iteration 25 with `main` merged in) passed at 8.78 / 10 with no P0, P1 or P2
 (`design-evidence/reports/review25.md`), read while the pull request's CI ran; the branch was merged as #54 once both
 were done. It confirmed D288–D303 one by one and found one P3 that D288 had introduced: a card held for words
 selected in it did not show its own controls' answers, so a destructive choice never read "Press again" and the bell
 did not open (R25-P3-01, D304), with five record-only notes. The follow-up fixes it (a press on a block's own control
 lets its selection go), opens every test on the demo's G-0002 at rest whatever the dump caught (D305) and corrects
 three sentences of DESIGN_PROGRESS that said less than the code does. The last
-acceptance stands on `744a71f` (review 25); the follow-up is not independently re-reviewed.
+acceptance stands on `c7bad8b` (review 25); the follow-up is not independently re-reviewed.
 
 ## 13. Function, performance, accessibility — Verified
 
@@ -412,7 +412,7 @@ project's builds ran on the same machine: one-minute load 16–55 throughout):
   highlighting worker and pictures (D194), and a shot fails if anything is still drawing at its 15 s cap (D208); before/after crops in `design-evidence/marks-*.webp`.
 - **Line limit, doc numbers:** pass.
 - **Bundle:** all interface JS 163,665 / 163,840 B (175 B left), start-up 56,201 / 65,536 B, goal page
-  11,632 / 12,288 B, the same under this iteration's budget script and `af6d189`'s (`final/gates/budget.log`,
+  11,632 / 12,288 B, the same under this iteration's budget script and `b056c18`'s (`final/gates/budget.log`,
   `budget-oldscript.log`). The budget was never raised. Iteration 25's first build was 163,943 B, over by 103: an
   on-demand chunk no longer lists preloads beside it, an unreachable label went and two that said the same became one
   (D300). Iteration 24's additions were paid for by finding the trace's label keys from the event's kind (D286). Iteration 17's first build was 163,953 B, over by 113: its own
@@ -474,17 +474,17 @@ project's builds ran on the same machine: one-minute load 16–55 throughout):
   adds six, each triaged in `DESIGN_REVIEW.md` with no ignore: four `bounce-easing` on the two springs (both now with
   no overshoot; the rule fires on the `linear()` form), one `gradient-text` (the in-view shimmer, a functional state)
   and one `repeating-stripes-gradient` (the phone's hatched "observed" pip). Iteration 14's 5 changed UI files show the
-  same 19 findings as at `1c9af8a`. Iteration 15's 17 changed UI files: 20 findings against 21 at `1ad1439`, the
+  same 19 findings as at `8d79b1a`. Iteration 15's 17 changed UI files: 20 findings against 21 at `e21e4dd`, the
   shimmer's `gradient-text` gone with its `background-clip`, nothing new. Iteration 16's 13 changed UI files and the
-  phone page: 20 against 20 at `2408609`, the same findings. Iteration 17's 10 changed UI files and the phone page:
-  17 against 17 at `2d3eeb8`, the same findings. Iteration 18's 7 changed UI files and the phone page: 19 against 19
-  at `f9dd353`, the same findings. Iteration 19's: 19 against 19 at `54ba274`. Iteration 20's 6 changed UI files: 16
-  against 16 at `939be97`, the same findings. Iteration 21's 6: 16 against 16 at `b6baa8a`, the same findings.
-  Iteration 22's 4 (the phone page among them): 17 against 17 at `9397e07`, the same findings. Iteration 23's 8 (the
-  phone page, `tokens.css` and `Trace.tsx` among them): 17 against 17 at `864d6c3`, the same findings. Iteration 24's 5
-  (`DecisionCard.tsx`, `Trace.tsx`, `app.css`, `tokens.css` and the phone page): 17 against 17 at `43576b0`, the same
+  phone page: 20 against 20 at `80b9dce`, the same findings. Iteration 17's 10 changed UI files and the phone page:
+  17 against 17 at `807dc40`, the same findings. Iteration 18's 7 changed UI files and the phone page: 19 against 19
+  at `48d5f3a`, the same findings. Iteration 19's: 19 against 19 at `45be8f5`. Iteration 20's 6 changed UI files: 16
+  against 16 at `3dbc4c1`, the same findings. Iteration 21's 6: 16 against 16 at `5d6ee98`, the same findings.
+  Iteration 22's 4 (the phone page among them): 17 against 17 at `97ee440`, the same findings. Iteration 23's 8 (the
+  phone page, `tokens.css` and `Trace.tsx` among them): 17 against 17 at `6b2c951`, the same findings. Iteration 24's 5
+  (`DecisionCard.tsx`, `Trace.tsx`, `app.css`, `tokens.css` and the phone page): 17 against 17 at `9ac38f6`, the same
   findings. Iteration 25's 9 (`DESIGN.md`, `DecisionCard.tsx`, `Look.tsx`, `Trace.tsx`, `app.css`, `refit.ts`,
-  `store.ts`, `ext.ts` and the phone page, with `tokens.css`): 17 against 17 at `af6d189`, the same findings, none on a
+  `store.ts`, `ext.ts` and the phone page, with `tokens.css`): 17 against 17 at `b056c18`, the same findings, none on a
   line the iteration changed.
 - **Hardening probe (iteration 8):** no element past the edge at 1040 and 1440 with long en and zh titles; text
   contrast at least 5.26:1 light and 5.70:1 dark; a focus ring on every Tab stop; nothing animates under reduced motion
@@ -502,60 +502,60 @@ reach its fields — keys went to the app's shortcuts once (a stray draft, disca
 
 ## 14. Commits — Implemented
 
-`bf31644`, `aa1026b`, `8037e1e`, `3faaf0c`, `2a65eb1`, `815bd99`, `d0dc2a1`, `16ac40c`, `3145645`, `d6f07ef`, `3b11e8e`
-(review-8 fixes, refreshed evidence, this report), `4d0b9c4` (the perf run), the iteration-9 commit `7a23f45` (the owner's
-remaining list), the iteration-10 commit `deef352` (review 9's findings), the commit recording review 10 (`2cd2c0c`), the
-iteration-11 commit `2f1d0c5` (review 10's findings), the commit recording review 11 (`4ea4567`), the iteration-12
-commit `886ab38` (review 11's findings), the iteration-13 commit `3ff2ebf` (review 12's findings, with review 12's
-report), the status-marks-and-motion commit `1c9af8a` (D119, with review 13's report), the iteration-14 commit `1ad1439`
-(review 13's findings), the iteration-15 commit `ae1c049` (review 14's findings and every open note, with review 14's
-report), its follow-up `2408609` (D142–D143), the iteration-16 commit `2cd8b3d` (review 15's findings and notes, with
-review 15's report), its follow-up `2d3eeb8` (↑↓ in a diff after a press, review 15's verdict corrected, the busy
-limit in §15), the iteration-17 commit `f9dd353` (review 16's findings and notes, with review 16's report) and the
-iteration-18 commit `03999c0` (review 17's findings and notes, with review 17's report), its follow-up `54ba274`
-(D186–D188), the iteration-19 commit `939be97` (review 18's findings and notes, with review 18's report), the
-iteration-20 commit `b6baa8a` (review 19's findings and notes, with review 19's report), the iteration-21 commit
-`b59e68a` (review 20's findings and notes, with review 20's report), its follow-up `9397e07` (the header names the
-run, no mode or live line over a stop), the iteration-22 commit `864d6c3` (review 21's findings and notes, with review
-21's report), the iteration-23 commit `4167461` (review 22's findings and notes, with review 22's report), its
-follow-up `43576b0` (D268, D269), the iteration-24 commit `af6d189` (review 23's findings and notes, with review 23's report), the iteration-25 commit `ea5db26` (review 24's findings and notes, with review 24's report), the merge of `main` at `70a52e7` (`9c705a2`: #53 made the docs cite decisions and ADRs, not findings; this branch's content is kept under main's citation edits, and the review rounds it had cited in `docs/` are gone the same way) and the commit that records iteration 25's gates (`744a71f`).
-All were on `design/evolution`, merged into `main` as #54 (`a0e0fa6`) on 2026-11-27 at the owner's request; the review-25 follow-up (`a700f5d`, `7dead0f`: D304, D305, review 25's report) was merged as #55 (`7cf817e`) once its CI passed; on that branch the local Rust gates (29 suites, 497 tests, 2 ignored) and the 69 shots passed as well. The user's untracked `.claude/` was never added.
+`66351d5`, `2b385e7`, `3f07b16`, `42938a7`, `dbb6776`, `77eb888`, `30f9047`, `4698955`, `c1d1698`, `bb976d3`, `e777896`
+(review-8 fixes, refreshed evidence, this report), `d50f65e` (the perf run), the iteration-9 commit `66ac2aa` (the owner's
+remaining list), the iteration-10 commit `994b534` (review 9's findings), the commit recording review 10 (`577f68a`), the
+iteration-11 commit `0498799` (review 10's findings), the commit recording review 11 (`434d17e`), the iteration-12
+commit `aecd02c` (review 11's findings), the iteration-13 commit `872a863` (review 12's findings, with review 12's
+report), the status-marks-and-motion commit `8d79b1a` (D119, with review 13's report), the iteration-14 commit `e21e4dd`
+(review 13's findings), the iteration-15 commit `352080f` (review 14's findings and every open note, with review 14's
+report), its follow-up `80b9dce` (D142–D143), the iteration-16 commit `11a9764` (review 15's findings and notes, with
+review 15's report), its follow-up `807dc40` (↑↓ in a diff after a press, review 15's verdict corrected, the busy
+limit in §15), the iteration-17 commit `48d5f3a` (review 16's findings and notes, with review 16's report) and the
+iteration-18 commit `dbae04c` (review 17's findings and notes, with review 17's report), its follow-up `45be8f5`
+(D186–D188), the iteration-19 commit `3dbc4c1` (review 18's findings and notes, with review 18's report), the
+iteration-20 commit `5d6ee98` (review 19's findings and notes, with review 19's report), the iteration-21 commit
+`8842347` (review 20's findings and notes, with review 20's report), its follow-up `97ee440` (the header names the
+run, no mode or live line over a stop), the iteration-22 commit `6b2c951` (review 21's findings and notes, with review
+21's report), the iteration-23 commit `7544d49` (review 22's findings and notes, with review 22's report), its
+follow-up `9ac38f6` (D268, D269), the iteration-24 commit `b056c18` (review 23's findings and notes, with review 23's report), the iteration-25 commit `ae78326` (review 24's findings and notes, with review 24's report), the merge of `main` at `fd68bfb` (`7b9d71f`: #53 made the docs cite decisions and ADRs, not findings; this branch's content is kept under main's citation edits, and the review rounds it had cited in `docs/` are gone the same way) and the commit that records iteration 25's gates (`c7bad8b`).
+All were on `design/evolution`, merged into `main` as #54 (`0159c3a`) on 2026-11-27 at the owner's request; the review-25 follow-up (`f06419d`, `a794648`: D304, D305, review 25's report) was merged as #55 (`5935e18`) once its CI passed; on that branch the local Rust gates (29 suites, 497 tests, 2 ignored) and the 69 shots passed as well. The user's untracked `.claude/` was never added.
 
 ## 15. Remaining issues, risks, limits
 
 Iteration 9 fixed the owner's remaining list: D84 (bundle), D91, D92, D96, D51/D86, the docs/12 drift, D20, D22, D23,
-D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `4d0b9c4`. Iteration 10 fixed
-review 9's findings (D98–D106), each with a test that fails on `7a23f45`; review 10 passed it. Iteration 11 fixed
-review 10's (D107–D112) and its empty settings test, each with a test that fails on `deef352`; review 11 passed it.
-Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `4ea4567`; review 12 passed it.
-Iteration 13 fixed review 12's (D117–D118), each with a test that fails on `886ab38`; review 13 passed it and found
+D58 and D97 (evidence) — see `DESIGN_REVIEW.md` for each, with the test that fails on `d50f65e`. Iteration 10 fixed
+review 9's findings (D98–D106), each with a test that fails on `66ac2aa`; review 10 passed it. Iteration 11 fixed
+review 10's (D107–D112) and its empty settings test, each with a test that fails on `994b534`; review 11 passed it.
+Iteration 12 fixed review 11's (D113–D116), each with a test that fails on `434d17e`; review 12 passed it.
+Iteration 13 fixed review 12's (D117–D118), each with a test that fails on `aecd02c`; review 13 passed it and found
 D120–D121. The status marks and motion (D119) followed the owner's feedback. Iteration 14 fixed D120–D121, each with
-a test that fails on `1c9af8a`'s sources; review 14 passed both and found D122–D126. Iteration 15 fixed those and every
-note left open (D127–D141), each with a test that fails on `1ad1439`'s sources or kept by a stated decision; its
-follow-up fixed D142–D143, found by its own pixel checks, each with a test that fails on `ae1c049`; review 15 confirmed
+a test that fails on `8d79b1a`'s sources; review 14 passed both and found D122–D126. Iteration 15 fixed those and every
+note left open (D127–D141), each with a test that fails on `e21e4dd`'s sources or kept by a stated decision; its
+follow-up fixed D142–D143, found by its own pixel checks, each with a test that fails on `352080f`; review 15 confirmed
 them but failed the commit on an older P1, and found D144–D150 and six record-only notes. Iteration 16 fixed
-D144–D155, each with a test that fails on `2408609`'s sources, and kept D156 by stated rules; its follow-up made ↑↓
+D144–D155, each with a test that fails on `80b9dce`'s sources, and kept D156 by stated rules; its follow-up made ↑↓
 work after a press in a diff (D154); review 16 passed it and found D157–D161 and nine record-only notes. Iteration 17
 fixed all of them (D157–D169, reversing D156's keep of the phone's hollow rows) and stale words (D170), each with a
-test that fails on `2d3eeb8`'s sources; review 17 passed it and found D171–D175 and ten record-only notes. Iteration 18
-fixed all of them (D171–D183), each with a test that fails on `f9dd353`'s sources (D175's on `2d3eeb8`'s); its
+test that fails on `807dc40`'s sources; review 17 passed it and found D171–D175 and ten record-only notes. Iteration 18
+fixed all of them (D171–D183), each with a test that fails on `48d5f3a`'s sources (D175's on `807dc40`'s); its
 follow-up fixed D186–D188, found by its own checks; review 18 passed it and found D189–D193 and thirteen record-only
-notes. Iteration 19 fixed all of them (D189–D198, D200–D202), each with a test that fails on `54ba274`'s sources or a
+notes. Iteration 19 fixed all of them (D189–D198, D200–D202), each with a test that fails on `45be8f5`'s sources or a
 stated mutation, and kept D199 and D203 by stated decisions; review 19 passed it and found D204–D206 and seven
-record-only notes. Iteration 20 fixed all of them (D204–D213), each with a test that fails on `939be97`'s sources or
+record-only notes. Iteration 20 fixed all of them (D204–D213), each with a test that fails on `3dbc4c1`'s sources or
 a stated mutation, and D214–D217 from its own checks; review 20 passed it and found D218–D220, eleven record-only
 notes and three untested orders. Iteration 21 fixed all of them (D218–D221, D224–D227, D229–D233), each with a test
-that fails on `b6baa8a`'s sources or a stated mutation, kept D222, D223, D228 and D236 by stated decisions, and fixed D234–D235
+that fails on `5d6ee98`'s sources or a stated mutation, kept D222, D223, D228 and D236 by stated decisions, and fixed D234–D235
 from its own reading and gates; review 21 passed it and found D237–D238 and fourteen record-only notes. Iteration 22
-fixed all of them (D237–D240, D242–D252), each with a test that fails on `9397e07`'s sources or a stated mutation,
+fixed all of them (D237–D240, D242–D252), each with a test that fails on `97ee440`'s sources or a stated mutation,
 and kept D241 by stated reason; review 22 passed it and found D254, eight record-only notes and three untested
-sentences. Iteration 23 fixed all of them (D254–D264), each with a test that fails on `864d6c3`'s sources or a stated
+sentences. Iteration 23 fixed all of them (D254–D264), each with a test that fails on `6b2c951`'s sources or a stated
 mutation, and D265–D269 from its own reading; review 23 passed it and found D270 (a P2 it introduced), two tests that
 could not fail where they should (D271, D272) and ten record-only notes. Iteration 24 fixed all of them (D270–D283,
-D285), each with a test that fails on `43576b0`'s sources or a stated mutation, kept the budget (D284), and fixed D286
+D285), each with a test that fails on `9ac38f6`'s sources or a stated mutation, kept the budget (D284), and fixed D286
 from its own check and D287 from its own gate run; review 24 passed it and found D288–D290 (three P3s), two tests a
 wrong build could pass (D291, D292) and eleven record-only notes. Iteration 25 fixed all of them (D288–D299, D301),
-each with a test that fails on `af6d189`'s sources or a stated mutation, kept the budget (D300), and fixed D302 and
+each with a test that fails on `b056c18`'s sources or a stated mutation, kept the budget (D300), and fixed D302 and
 D303 from its own checks; review 25 passed it and found D304 (a P3 from D288) and five record-only notes. The
 follow-up fixed D304 and D305; three notes and two tests outside this work are kept, with reasons, below.
 What is left:

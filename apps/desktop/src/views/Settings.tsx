@@ -20,7 +20,7 @@ import type { PushStatus } from "../gen/PushStatus";
 import type { QuietHours } from "../gen/QuietHours";
 import type { Settings as SettingsT } from "../gen/Settings";
 import { api, errorText } from "../lib/api";
-import type { SandboxTier, SettingsExt, UpdateCheckResult } from "../lib/apiTypes";
+import type { SettingsExt, UpdateCheckResult } from "../lib/apiTypes";
 import { clock } from "../lib/format";
 import { locale, t } from "../lib/i18n";
 import { engineLabel, engineTrustTier, envGauges, envIssueLabel, modelsFor } from "../lib/labels";
@@ -109,10 +109,6 @@ export function Settings() {
     ...modelsFor(models() ?? [], engine()).map((m) => ({ value: `${m.provider}/${m.id}`, label: engine() === "claude-code" ? m.name : `${m.provider}/${m.id}` })),
   ];
   const escalationOptions = () => [{ value: "", label: t("settings.escalationOff") }, ...modelOptions().slice(1)];
-  const sandboxOptions = (): { value: SandboxTier; label: string }[] => [
-    { value: "default", label: state.sandboxPosture?.backend_name ?? t("settings.sandboxAuto") },
-    { value: "micro_vm", label: state.sandboxPosture?.microvm_available ? t("settings.sandboxMicrovm") : t("settings.sandboxMicrovmUnavailable") },
-  ];
   const checkUpdates = async () => {
     setCheckingUpdate(true);
     setUpdateInfo(
@@ -331,13 +327,12 @@ export function Settings() {
                 onChange={(v) => void patchNow({ default_escalation_model: v })}
               />
             </Field>
-            <Field label={t("settings.sandboxBackend")} hint={t("settings.sandboxBackendHint")}>
-              <Select
-                value={s()!.default_sandbox_tier ?? "default"}
-                options={sandboxOptions()}
-                onChange={(v) => void patchNow({ default_sandbox_tier: v })}
-              />
-            </Field>
+            {/* Stated, not chosen: no run reads the tier, so there is no default to pick (see the contract editor). */}
+            <div class="field">
+              <span class="field-label">{t("settings.sandboxBackend")}</span>
+              <span>{state.sandboxPosture?.backend_name ?? t("settings.sandboxAuto")}</span>
+              <span class="field-hint">{t("settings.sandboxBackendHint")}</span>
+            </div>
             <Show when={engine() !== "claude-code"}>
               <Field label={t("settings.defaultThinking")}>
                 <Select value={s()!.default_thinking} options={thinkingOptions()} onChange={(v) => void patchNow({ default_thinking: v })} />

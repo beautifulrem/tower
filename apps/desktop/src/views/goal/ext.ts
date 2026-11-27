@@ -120,8 +120,8 @@ export type ExtReviewView = ReviewView & {
 
 export const trustTierOf = engineTrustTier;
 export const trustLabel = (tier: EngineTrustTier) => t(`trust.${tier}`);
-export const sandboxTag = (tier: SandboxTier, noSb: boolean) =>
-  tier === "micro_vm" ? "MicroVM" : t(noSb ? "chrome.sandboxOff" : "chrome.sandboxOn");
+/** The sandbox a goal runs under. The contract's `sandbox_tier` is not read by any run, so it is not what this says. */
+export const sandboxTag = (noSb: boolean) => t(noSb ? "chrome.sandboxOff" : "chrome.sandboxOn");
 
 const GUARD_RE = /assertion|guard/;
 /** The findings on the test machinery that qualify a pass, the supervisor's own list (summaries.rs `progress()`). */

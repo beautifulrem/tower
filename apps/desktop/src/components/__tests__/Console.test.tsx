@@ -330,7 +330,9 @@ describe("PeekDrawer quick telemetry", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(container.querySelector(".peek-title")?.textContent).toBe("Fix retry idempotency");
     expect(container.querySelector(".peek-level")).toBeNull();
-    expect(container.textContent).toContain("MicroVM");
+    // The goal was stored with the MicroVM tier, but every run is under Seatbelt: the head never names a sandbox it did not use.
+    expect(container.querySelector(".peek-meta")!.textContent).toContain("Pi");
+    expect(container.textContent).not.toContain("MicroVM");
     expect(container.textContent).toContain(":20010");
     expect(container.textContent).toContain("claude-opus-4");
     expect(container.textContent).toContain("Flaky");

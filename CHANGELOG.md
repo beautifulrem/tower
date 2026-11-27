@@ -17,6 +17,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - A light-theme window opens light (no dark first frame).
 - A verification cut short (an error, or Tower quitting) left its assertion-guard transcripts append-only, so nothing could delete them and a later verification of the same snapshot could not set up its guard — that verification ran without the assertion-identity check, and restarting re-verifies exactly such goals. They are now removed with their flag cleared, also when Tower starts.
 - An answer on a pause card given while the last verification was still cleaning up was dropped; a verification you ask for now always runs once the last one is done.
+- The MicroVM sandbox tier is no longer offered or shown: no run ever used it, so a goal set to it ran under the macOS Seatbelt sandbox while the contract editor, Settings, the goal page and the peek drawer said MicroVM. The contract and Settings now state the OS sandbox every run uses and that MicroVM is not connected to runs yet; a tier stored earlier is kept and ignored.
 
 ### Security
 - The phone page is sent with a Content-Security-Policy and `X-Frame-Options: DENY`: it loads nothing from elsewhere, allows no plug-ins, no base and no form posts, and never opens inside another site's frame.

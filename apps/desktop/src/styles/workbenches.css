@@ -447,12 +447,6 @@
 .editor .att-list { margin: calc(-1 * var(--sp-2)) 0 var(--sp-4); }
 
 .editor-side .radio b { color: var(--text-1); font-weight: 500; }
-/* A tier this Mac cannot run: the control greys out, but the line saying why stays readable (muted, not faded). */
-.editor-side .radio.disabled input { opacity: 0.5; }
-.editor-side .radio.disabled b { color: var(--text-3); font-weight: 400; }
-@media (max-width: 1280px) {
-  .sandbox-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
-}
 
 .holdout-panel { margin-top: var(--sp-3); padding: var(--sp-3) 0 var(--sp-1); border-top: 1px solid var(--border-subtle); display: grid; gap: var(--sp-3); }
 .holdout-draft { display: grid; gap: 6px; padding-top: var(--sp-2); border-top: 1px dashed var(--border-subtle); }

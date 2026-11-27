@@ -24,7 +24,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="assets/screenshots/overview-light.png">
-  <img src="assets/screenshots/overview.png" alt="Tower 概览：等你处理的 Goal 钉在最上面，下面是正在运行的 Goal 及其实时状态、验收标准、花费和引擎">
+  <img src="assets/screenshots/overview.png" alt="Tower 概览：需要你的 Goal 排在最上面，各带原因；下面是正在运行的 Goal 及其实时状态、验收标准、花费和引擎">
 </picture>
 
 <br>
@@ -39,10 +39,10 @@ Tower 换了四个问题来组织一切：**让 Agent 做什么、它现在在�
 |---|---|---|
 | 工作单位 | 一个会话 | **一个 Goal**，带合同和验收标准 |
 | “做完了”指的是 | Agent 这么说 | **Tower 重跑你的验收标准**，在一份新的、不带凭据的检出里 |
-| Agent 自己的话 | 和其他内容一个样 | **标成“声称”**，永远不显示绿色 |
-| 同时跑很多个 | 开很多个标签页 | **一块看板**，等你处理的钉在最上面 |
+| Agent 自己的话 | 和其他内容一个样 | **标明“Agent 称”**，永远不显示绿色 |
+| 同时跑很多个 | 开很多个标签页 | **一块看板**，需要你的排在最上面 |
 | Agent 能碰到什么 | 往往是你的整个账户 | **每个 Goal 一个默认拒绝的内核沙箱** |
-| 改动落在哪里 | 直接写进你的工作副本 | **在单独的克隆里**；由你盖章写入本地分支，再自己推送 |
+| 改动落在哪里 | 直接写进你的工作副本 | **在单独的克隆里**；由你盖章写入本地分支，你按下“推送”之前什么都不会推出去 |
 
 ## ✨ 功能
 
@@ -61,14 +61,30 @@ Agent 声称完成时，Tower 把成果固定成快照，在一份新的、不�
 
 <table>
 <tr>
-<td width="50%"><img src="assets/screenshots/goal.png" alt="Goal 页：验收标准、哨兵和合同"></td>
-<td width="50%"><img src="assets/screenshots/peek.png" alt="快速查看：不离开看板就能看实时状态、标准和预算"></td>
+<td width="50%"><img src="assets/screenshots/goal.png" alt="Goal 页：结论和它所依据的快照、哨兵、验收标准、合同"></td>
+<td width="50%"><img src="assets/screenshots/peek.png" alt="快速查看：不离开看板就能看一个 Goal 正在做什么、有哪些证据、花了多少预算"></td>
 </tr>
 <tr>
-<td align="center"><b>Goal 页</b>：事实、声称、哨兵分开显示</td>
+<td align="center"><b>Goal 页</b>：一个结论，带着它所依据的快照</td>
 <td align="center"><b>快速查看</b>（<code>Space</code>）：不离开看板就能看任意 Goal</td>
 </tr>
 </table>
+
+被上面这些检查抓住的通过，显示为琥珀色的 **通过但不作数**，旁边是说明原因的哨兵。绿色只属于验证器在当前快照上的通过。
+
+### 🔔 需要你的事，都在一个地方
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="assets/screenshots/inbox-light.png">
+  <img src="assets/screenshots/inbox.png" alt="需要你：只给你看的保留测试失败、一条等你批准或拒绝的假设、一次失败的 CI，各是一张卡片">
+</picture>
+
+Agent 不会用聊天消息打断你。凡是需要你决定的事，都变成 **需要你**（`⌘2`）里的一张卡片；琥珀色不用在别的任何地方。
+
+- **批准时看到的是命令本身**，以代码显示，每一行都完整，你批准的就是将要执行的。
+- **保留测试的失败只给你看**。你可以用自己的话给一个提示，可以只告诉 Agent 哪些测试没过，也可以把输出给它看（这些测试就不再保密）。
+- **用键盘回答**：按 `1`–`9` 选择，或者点铃铛稍后再提醒。写了没发出去的字留在它那张卡片上。
+- **每张卡片都说清发生了什么、可以怎么办**：一次停滞的运行、一次失败的 CI、在沙箱里跑不了的验收标准。
 
 ### 🧱 每个 Goal 一个内核沙箱
 
@@ -93,19 +109,20 @@ Agent 声称完成时，Tower 把成果固定成快照，在一份新的、不�
 
 ### 🔍 为证据而设计的审阅
 
-<img src="assets/screenshots/review.png" alt="审阅：按风险排序的单元、快照时间线、折叠的噪音">
+<img src="assets/screenshots/review.png" alt="审阅：顶部是结论和它的快照，文件按风险分组，每一块改动有自己的操作">
 
 - **风险优先**：改动切成每份最多 300 行，风险高的在前；只挪了位置的代码和只改格式的部分折叠起来。
 - **快照时间线**：看全部改动、上次审阅以来的改动、最后一轮，或任意两次运行的对比。
-- **就地引导**：行评论合成一条消息发回给 Agent（`⌘↩`），也可以单独接受或撤回某一块。
-- **接受盖章**（`⌘⇧↩`）：检查快照是新鲜的、没有高严重度哨兵、你自己的检查都做完了、合并预测没有冲突，然后以你为作者写一个提交，放到本地分支 `tower/<goal>-<slug>`。推送永远由你决定。
+- **就地引导**：行评论合成一条消息发回给 Agent（`⌘↩`），也可以把某一块标为已读（`A`）或撤回。
+- **接受盖章**（`⌘⇧↩`）：检查快照是新鲜的、没有高严重度哨兵、你自己的检查都做完了、合并预测没有冲突，然后以你为作者写一个提交，放到本地分支 `tower/<goal>-<slug>`。
+- **推送由你决定**：按下“推送”才会把这个分支推到 `origin`，并可以顺手开一个 PR。之后 Tower 跟踪它的检查；CI 失败会变成一张卡片，你可以把它交回给 Agent。
 
 ### 🗂️ 甲板上的其他东西
 
 <table>
 <tr>
-<td width="50%"><img src="assets/screenshots/learning.png" alt="学习"></td>
-<td width="50%"><img src="assets/screenshots/operations.png" alt="运维"></td>
+<td width="50%"><img src="assets/screenshots/learning.png" alt="学习：等你批准的规则提议，以及按模型统计的结果"></td>
+<td width="50%"><img src="assets/screenshots/operations.png" alt="运维：定时 Goal、合并队列和每个 Goal 的磁盘占用"></td>
 </tr>
 <tr>
 <td><b>学习</b>（<code>⌘3</code>）：从你的审阅评论和失败的检查里提炼规则，每条经你批准才生效；还有按模型统计的首次通过率、返工轮数、每个被接受 Goal 的花费。</td>
@@ -113,8 +130,11 @@ Agent 声称完成时，Tower 把成果固定成快照，在一份新的、不�
 </tr>
 </table>
 
-- 📱 **离开桌面时**（默认都关闭）：通过 Tailscale 访问、用 token 配对的手机页面；[ntfy](https://ntfy.sh) 推送只带 Goal 编号、标题和事项类型。
-- 🎞️ **完整记录**（`W`）：按时间排列的每一步，包括 Tower 发给 Agent 的每一条消息。
+- ⌨️ **键盘优先**：`⌘K` 打开命令面板，`⌘1`–`⌘4` 切换四个主界面，`J`/`K` 移动，`Space` 快速查看，`R` 审阅，`?` 列出全部按键。
+- 📱 **离开桌面时**（默认都关闭）：
+  - 通过 Tailscale 访问、用 token 配对的手机页面，可以回答“需要你”的卡片、暂停 Goal。会放宽 Agent 权限的决定只能在桌面上做。
+  - [ntfy](https://ntfy.sh) 推送只带 Goal 编号、标题和事项类型。
+- 🎞️ **完整记录**（`W`）：按时间排列的每一步，包括 Tower 发给 Agent 的每一条消息。Tower 自己做的事写明是 Tower 做的并带它的标记，你的回答始终算你的。
 - 🌐 **English 和简体中文**：界面、菜单、通知，连 Agent 本身都跟着切换。
 
 ## 🔄 工作方式
@@ -127,16 +147,20 @@ flowchart LR
     C -->|已验证| D["🔍 你来审阅<br/>按风险排序"]
     D -->|引导| B
     D -->|盖章| E["✅ 已接受<br/>本地分支，你的提交"]
+    E -->|你按下推送| F["⬆️ Pull request<br/>Tower 跟踪检查"]
+    F -->|CI 失败，由你交回| B
 ```
 
-屏幕上每条陈述都属于四种形状之一，没有颜色也分得清：
+屏幕上每条陈述都在左侧一栏写明出处，四类说法不会混在一起：
 
-| 类别 | 来源 | 能显示绿色吗？ |
-|---|---|---|
-| **事实** | Tower 自己测到的 | ✅ 只有新鲜、未被篡改的验证通过才能 |
-| **观察** | 在 Agent 沙箱里看到的 | — |
-| **声称** | Agent 写的 | — |
-| **人** | 你的合同、批准和盖章 | — |
+| 类别 | 界面上写作 | 来源 | 能显示绿色吗？ |
+|---|---|---|---|
+| **事实** | Tower 测得 | Tower 自己运行并读到的结果 | ✅ 只有新鲜、未被篡改的验证通过才能 |
+| **观测** | 观测 | 在 Agent 沙箱里看到的 | — |
+| **声称** | Agent 称 | Agent 写的 | — |
+| **人** | 你 | 你的合同、批准和盖章 | — |
+
+状态先看形状，再看颜色。圆环代表一个 Goal，它的工作在推进时圆环缓慢转动；`!` 圆盘表示需要你，`×` 圆盘表示危险，线描的 `i` 表示值得看一眼但不要求你做什么。每种颜色只有一个意思：琥珀色是等你决定，绿色是验证器的证明，红色是危险，蓝色是运行中。其余一律是灰色；系统开了“减弱动态效果”时，什么都不动。
 
 ## 🚀 快速开始
 
@@ -170,7 +194,7 @@ pi            # 然后 /login
 **它在哪里止步，我们直说：**
 
 - 这些验证提高了作弊的成本，但不能杜绝。真实模型的防作弊回归还没有通过，[`docs/17-implementation.md`](docs/17-implementation.md) §17.7 列出了目前还漏过的类型。
-- Linux 后端（`bubblewrap`、Landlock、cgroups v2）和可选的 Apple Containerization MicroVM 档位（macOS 26+、Apple Silicon）已经有了，但 CI 只在 macOS 上跑，两者都没有在真实环境下测过。
+- 目前只有 macOS 的 Seatbelt 真正在给 Goal 做沙箱。Linux 后端（`bubblewrap`、Landlock、cgroups v2）和 Apple Containerization MicroVM 后端（macOS 26+、Apple Silicon）已经写好并有单元测试，但还没有任何一次运行用到它们。在 Linux 和 Windows 上，Agent 的命令只按路径限制，Tower 的环境检查会如实说明。
 
 ## 🏗️ 架构
 
@@ -183,12 +207,12 @@ crates/
   tower-pi/              Pi JSONL RPC 适配器
   tower-git/             卫星克隆、快照、盖章、合并队列
   tower-verify/          标准运行器：进程组、超时、脱敏输出
-  tower-supervisor/      唯一的写者：生命周期、验证、沙箱、定时
+  tower-supervisor/      唯一的写者：生命周期、验证、沙箱、定时、手机页面
 extensions/tower-goal/   Pi 与 ACP 桥：工具策略、shell 解析器、沙箱内的文件访问
 tools/                   演示引擎、CI 门禁、端到端与对抗测试的运行脚本
 ```
 
-所有状态由监督进程持有，界面拿的是只读副本。它很轻：启动时的 JavaScript 约 55 KB（gzip 后），大部分视图在第一次打开时才加载。CI 用 [`tools/bundle-budget.sh`](tools/bundle-budget.sh) 卡住三项预算：启动 64 KB、Goal 页 12 KB、全部界面 JavaScript 160 KB（目前合计 159 KB）。
+所有状态由监督进程持有，界面拿的是只读副本。它很轻：启动时的 JavaScript 约 55 KB（gzip 后），大部分视图在第一次打开时才加载。CI 用 [`tools/bundle-budget.sh`](tools/bundle-budget.sh) 卡住三项预算：启动 64 KB、Goal 页 12 KB、全部界面 JavaScript 160 KB（目前合计 160 KB，新代码得先给自己腾出位置）。
 
 <details>
 <summary><b>开发命令与环境变量</b></summary>
@@ -196,6 +220,7 @@ tools/                   演示引擎、CI 门禁、端到端与对抗测试的�
 ```sh
 pnpm check                      # 类型检查、单元测试、clippy、cargo test、扩展测试
 tools/pre-push.sh </dev/null    # 完整的本地门禁（CONTRIBUTING.md 写了怎么设成 hook）
+tools/e2e.sh                    # 在 WebKit 里跑界面，数据是从真实监督进程导出的视图
 tools/adversarial.sh            # 可选：用真实模型跑防作弊回归
 
 # 一个演示工作区，与 ~/.tower 分开
@@ -223,14 +248,15 @@ TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
 
 ## 📚 文档
 
-完整的设计规格在 [`docs/`](docs/) 里（中文），有 240 条决策记录和 112 轮设计评审。
-
 | 从这里读起 | 内容 |
 |---|---|
 | [`docs/17-implementation.md`](docs/17-implementation.md) | 代码如何对应规格，以及哪里不同 |
 | [`docs/07-verification-and-honesty.md`](docs/07-verification-and-honesty.md) | 验证的完整细节 |
-| [`docs/19-anti-chat-console-design.md`](docs/19-anti-chat-console-design.md) | 界面设计 |
-| [`ROADMAP.md`](ROADMAP.md) · [`docs/18-evolution-roadmap.md`](docs/18-evolution-roadmap.md) | 已经做了什么、接下来做什么 |
+| [`apps/desktop/PRODUCT.md`](apps/desktop/PRODUCT.md) · [`apps/desktop/DESIGN.md`](apps/desktop/DESIGN.md) | 界面为谁而做，以及它的规则：颜色、字体、标记、动效（英文） |
+| [`docs/19-anti-chat-console-design.md`](docs/19-anti-chat-console-design.md) · [`docs/12-visual-design-system.md`](docs/12-visual-design-system.md) | 界面设计的完整说明 |
+| [`ROADMAP.md`](ROADMAP.md) · [`CHANGELOG.md`](CHANGELOG.md) | 已经做了什么、接下来做什么 |
+
+完整的设计规格在 [`docs/`](docs/) 里（中文），其中 [`docs/15-decision-log.md`](docs/15-decision-log.md) 有 240 条决策记录。上手不需要先读它。
 
 ## 🤝 参与贡献
 

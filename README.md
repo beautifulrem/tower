@@ -24,7 +24,7 @@ Tower checks their work itself, in a clean checkout, before you ever see a green
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="assets/screenshots/overview-light.png">
-  <img src="assets/screenshots/overview.png" alt="Tower overview: goals that need you pinned on top, running goals below with live status, criteria, spend and engine">
+  <img src="assets/screenshots/overview.png" alt="Tower overview: the goals that need you on top, each with its reason; running goals below with their live line, criteria, spend and engine">
 </picture>
 
 <br>
@@ -39,10 +39,10 @@ Tower is built around four questions instead: **what was the agent asked to do, 
 |---|---|---|
 | Unit of work | A session | **A goal**, with a contract and acceptance criteria |
 | "Done" means | The agent says so | **Tower re-runs your criteria** in a fresh, credential-free checkout |
-| Agent's own words | Shown like everything else | **Marked as claims**, and never shown in green |
-| Many agents at once | Many tabs | **One board**, with what needs you pinned on top |
+| Agent's own words | Shown like everything else | **Labelled "Agent says"**, and never shown in green |
+| Many agents at once | Many tabs | **One board**, with what needs you on top |
 | Agent's reach | Often your whole account | **A per-goal, deny-by-default kernel sandbox** |
-| Where changes land | Straight in your working copy | **In a separate clone**; you seal them into a local branch and push it yourself |
+| Where changes land | Straight in your working copy | **In a separate clone**. You seal them into a local branch, and nothing is pushed until you press Push |
 
 ## ✨ Features
 
@@ -61,14 +61,30 @@ For UI work, `look` criteria take before/after screenshots at desktop and phone 
 
 <table>
 <tr>
-<td width="50%"><img src="assets/screenshots/goal.png" alt="Goal page: criteria, sentinels and the contract"></td>
-<td width="50%"><img src="assets/screenshots/peek.png" alt="Quick peek: live status, criteria and budget without leaving the board"></td>
+<td width="50%"><img src="assets/screenshots/goal.png" alt="Goal page: the verdict with the snapshot it was measured at, sentinels, the criteria and the contract"></td>
+<td width="50%"><img src="assets/screenshots/peek.png" alt="Quick peek: what a goal is doing now, its evidence and its budget, without leaving the board"></td>
 </tr>
 <tr>
-<td align="center"><b>Goal page</b>: facts, claims and sentinels, kept apart</td>
+<td align="center"><b>Goal page</b>: one verdict, with the snapshot it was measured at</td>
 <td align="center"><b>Quick peek</b> (<code>Space</code>): check any goal without leaving the board</td>
 </tr>
 </table>
+
+A pass that the checks above caught reads **Passed, doesn't count**, in amber, with the sentinel that explains why. Green appears only for a verifier pass on the current snapshot.
+
+### 🔔 One place for what needs you
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="assets/screenshots/inbox-light.png">
+  <img src="assets/screenshots/inbox.png" alt="Needs you: a held-out failure shown only to you, an assumption to approve or reject, and a failed CI run, each as one card">
+</picture>
+
+Agents don't interrupt you with chat. Whatever needs a decision becomes one card in **Needs you** (`⌘2`), and amber is used for nothing else.
+
+- **Approvals show the command as code,** every row in full, so you approve what will actually run.
+- **Held-out failures are for you only.** You can send a hint in your own words, name the failing tests, or show the agent the output and give the tests up.
+- **Answer from the keyboard** with `1`–`9`, or put a card off with the bell. Words you typed and did not send stay with their card.
+- **Every card says what happened and offers a way out:** a run that has stalled, a failed CI check, criteria that can't run in the sandbox.
 
 ### 🧱 A kernel sandbox for every goal
 
@@ -93,19 +109,20 @@ Every `bash` command goes through a real POSIX shell parser first. Commands that
 
 ### 🔍 Review built for evidence
 
-<img src="assets/screenshots/review.png" alt="Review: risk-ordered units, snapshot timeline and folded noise">
+<img src="assets/screenshots/review.png" alt="Review: the verdict and its snapshot in the header, files grouped by risk, and one hunk with its own actions">
 
 - **Risk first.** Changes come in units of up to 300 lines, riskiest first. Moved code and formatting-only changes are folded away.
 - **A snapshot timeline.** Compare everything, the changes since your last review, the last turn, or any two runs.
-- **Steer in place.** Line comments go back to the agent as one message (`⌘↩`). You can also accept or revert single hunks.
-- **The acceptance seal** (`⌘⇧↩`). It checks that the snapshot is fresh, there are no high-severity sentinels, your own checks are done, and the merge is predicted clean. Then it writes one commit, authored by you, to a local `tower/<goal>-<slug>` branch. Pushing is always up to you.
+- **Steer in place.** Line comments go back to the agent as one message (`⌘↩`). You can also mark a hunk read (`A`) or revert it.
+- **The acceptance seal** (`⌘⇧↩`). It checks that the snapshot is fresh, there are no high-severity sentinels, your own checks are done, and the merge is predicted clean. Then it writes one commit, authored by you, to a local `tower/<goal>-<slug>` branch.
+- **Push when you decide.** Push sends that branch to `origin` and can open a pull request. Tower then follows the checks, and a failed CI run comes back as a card you can hand to the agent.
 
 ### 🗂️ And the rest of the deck
 
 <table>
 <tr>
-<td width="50%"><img src="assets/screenshots/learning.png" alt="Learning"></td>
-<td width="50%"><img src="assets/screenshots/operations.png" alt="Operations"></td>
+<td width="50%"><img src="assets/screenshots/learning.png" alt="Learning: proposed rules waiting for your approval, and per-model results"></td>
+<td width="50%"><img src="assets/screenshots/operations.png" alt="Operations: scheduled goals, the merge queue and disk use per goal"></td>
 </tr>
 <tr>
 <td><b>Learning</b> (<code>⌘3</code>)
@@ -122,10 +139,11 @@ Every `bash` command goes through a real POSIX shell parser first. Commands that
 </tr>
 </table>
 
+- ⌨️ **Keyboard first.** `⌘K` opens the palette, `⌘1`–`⌘4` the four surfaces, `J`/`K` move, `Space` peeks, `R` reviews, and `?` lists every key.
 - 📱 **Away from the desk** (both off by default):
-  - A phone page over Tailscale, paired by token.
+  - A phone page over Tailscale, paired by token. It answers Needs-you cards and pauses goals. Decisions that widen what an agent may do stay at the desk.
   - [ntfy](https://ntfy.sh) pushes that carry only a goal's ID, title and kind of item.
-- 🎞️ **The full record** (`W`): a time-indexed log of every step, including every message Tower sent the agent.
+- 🎞️ **The full record** (`W`): a time-indexed trace of every step, including every message Tower sent the agent. What Tower did on its own is named and marked as Tower's, and your answers stay yours.
 - 🌐 **English and 简体中文** for the interface, menus, notifications, and the agent itself.
 
 ## 🔄 How it works
@@ -138,16 +156,20 @@ flowchart LR
     C -->|verified| D["🔍 You review<br/>risk-ordered units"]
     D -->|steer| B
     D -->|seal| E["✅ Accepted<br/>local branch, your commit"]
+    E -->|you press Push| F["⬆️ Pull request<br/>Tower follows the checks"]
+    F -->|CI fails, you send it back| B
 ```
 
-On screen, every statement has one of four shapes, so they stay distinguishable even without color:
+On screen, every statement names its source in a column to its left, so the four kinds never blur:
 
-| Kind | Source | Green allowed? |
-|---|---|---|
-| **Fact** | Measured by Tower | ✅ Only for a fresh, untampered verifier pass |
-| **Observation** | Seen inside the agent's sandbox | — |
-| **Claim** | Written by the agent | — |
-| **Human** | Your contracts, approvals and seals | — |
+| Kind | Shown as | Source | Green allowed? |
+|---|---|---|---|
+| **Fact** | Measured by Tower | Tower ran it and read the result | ✅ Only for a fresh, untampered verifier pass |
+| **Observation** | Observation | Seen inside the agent's sandbox | — |
+| **Claim** | Agent says | Written by the agent | — |
+| **Human** | You | Your contracts, approvals and seals | — |
+
+Status reads by shape before colour. A ring is a goal, and it turns slowly while the goal's work is moving. The `!` disc means it needs you, the `×` disc means danger, and an outlined `i` marks something worth a look that asks nothing. Each colour has one meaning: amber for a decision that is yours, green for verifier proof, red for danger, blue for running. Everything else is grey, and nothing moves under reduced motion.
 
 ## 🚀 Quick start
 
@@ -181,7 +203,7 @@ pi            # then /login
 **Being honest about where it stops:**
 
 - The verification steps raise the cost of cheating. They don't rule it out. The real-model anti-cheat regression doesn't pass yet, and [`docs/17-implementation.md`](docs/17-implementation.md) §17.7 lists what it still misses.
-- The Linux backend (`bubblewrap`, Landlock, cgroups v2) and the optional Apple Containerization MicroVM tier (macOS 26+, Apple Silicon) exist. CI runs on macOS only, so neither is tested there for real.
+- Only macOS Seatbelt sandboxes a goal today. A Linux backend (`bubblewrap`, Landlock, cgroups v2) and an Apple Containerization MicroVM backend (macOS 26+, Apple Silicon) are written and unit-tested, but no run uses them yet. On Linux and Windows the agent's commands are fenced by path only, and Tower's environment check says so.
 
 ## 🏗️ Architecture
 
@@ -194,12 +216,12 @@ crates/
   tower-pi/              Pi JSONL RPC adapter
   tower-git/             Satellite clones, snapshots, sealing, merge queue
   tower-verify/          Criterion runner: process groups, timeouts, redacted output
-  tower-supervisor/      The single writer: lifecycle, verification, sandboxes, schedules
+  tower-supervisor/      The single writer: lifecycle, verification, sandboxes, schedules, the phone page
 extensions/tower-goal/   Pi and ACP bridge: tool policy, shell parser, sandboxed file access
 tools/                   Demo engine, CI gates, end-to-end and adversarial runners
 ```
 
-The supervisor owns all state, and the interface holds a read-only copy. It is light: start-up JavaScript is about 55 KB gzipped, and most views load the first time you open them. CI holds three budgets with [`tools/bundle-budget.sh`](tools/bundle-budget.sh): start-up 64 KB, the goal page 12 KB, and all interface JavaScript 160 KB (about 159 KB today).
+The supervisor owns all state, and the interface holds a read-only copy. It is light: start-up JavaScript is about 55 KB gzipped, and most views load the first time you open them. CI holds three budgets with [`tools/bundle-budget.sh`](tools/bundle-budget.sh): start-up 64 KB, the goal page 12 KB, and all interface JavaScript 160 KB (about 160 KB today, so new code has to make room for itself).
 
 <details>
 <summary><b>Development commands and environment variables</b></summary>
@@ -207,6 +229,7 @@ The supervisor owns all state, and the interface holds a read-only copy. It is l
 ```sh
 pnpm check                      # type check, unit tests, clippy, cargo test, extension tests
 tools/pre-push.sh </dev/null    # the full local gate (CONTRIBUTING.md shows how to make it a hook)
+tools/e2e.sh                    # the interface in WebKit, against views dumped from a real supervisor
 tools/adversarial.sh            # optional: anti-cheat regression with a real model
 
 # A demo workspace, kept apart from ~/.tower
@@ -234,14 +257,15 @@ Tower sets every other `TOWER_*` name itself. If your models come from a Pi exte
 
 ## 📚 Documentation
 
-The full design specification lives in [`docs/`](docs/), written in Chinese. It has 240 decision records and 112 rounds of design review.
-
 | Start here | What it covers |
 |---|---|
 | [`docs/17-implementation.md`](docs/17-implementation.md) | How the code maps to the spec, and where it differs |
 | [`docs/07-verification-and-honesty.md`](docs/07-verification-and-honesty.md) | Verification in depth |
-| [`docs/19-anti-chat-console-design.md`](docs/19-anti-chat-console-design.md) | The interface design |
-| [`ROADMAP.md`](ROADMAP.md) · [`docs/18-evolution-roadmap.md`](docs/18-evolution-roadmap.md) | What shipped and what's next |
+| [`apps/desktop/PRODUCT.md`](apps/desktop/PRODUCT.md) · [`apps/desktop/DESIGN.md`](apps/desktop/DESIGN.md) | Who the interface is for, and its rules: colour, type, marks, motion (English) |
+| [`docs/19-anti-chat-console-design.md`](docs/19-anti-chat-console-design.md) · [`docs/12-visual-design-system.md`](docs/12-visual-design-system.md) | The interface design in long form |
+| [`ROADMAP.md`](ROADMAP.md) · [`CHANGELOG.md`](CHANGELOG.md) | What shipped and what's next |
+
+The full design specification lives in [`docs/`](docs/), written in Chinese, with 240 decision records in [`docs/15-decision-log.md`](docs/15-decision-log.md). You don't need it to start.
 
 ## 🤝 Contributing
 

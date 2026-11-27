@@ -51,7 +51,8 @@ untampered verifier pass. No neighbouring product can copy that rule without als
   Welcome (first run), command palette, shortcut sheet, peek drawer, accept/seal sheet, phone page.
 - Terminology that is product truth: goal, contract, criteria (visible / held-out, `look` criteria), verifier, fact,
   observation, claim, sentinel, review unit, seal, needs you.
-- Tower never pushes, opens PRs or merges remote branches; it writes one local commit authored by the user.
+- Accepting writes one local commit authored by the user. Tower pushes that branch and opens a pull request only when
+  the user presses Push, then follows its checks; it never merges a remote branch.
 - Performance budgets: start-up JS ≤ 64 KB, total interface JS ≤ 160 KB, GoalPage ≤ 12 KB gzipped
   (`tools/bundle-budget.sh`); source files have a line limit (`tools/line-limit.sh`).
 - Two locales ship (en, zh-CN), both must fit at 1100px.

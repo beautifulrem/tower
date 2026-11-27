@@ -627,7 +627,7 @@ test("a held-out failure on the phone is the desk's card: the output for you onl
   expect((await sent).postDataJSON()).toEqual({ inbox_id: "h", response: "Half-cents round up" });
 });
 
-// Review 17 (found by the reviewer): a running goal's Pause on the phone took no press from ba94b1b to 2d3eeb8 — the
+// Review 17 (found by the reviewer): a running goal's Pause on the phone took no press from ba94b1b to 807dc40 — the
 // stand-in rows' `.ghost { pointer-events: none }` also caught the `btn ghost` button — and no test pressed it. It is
 // pressed here as a finger would: once to arm it, once more to send the pause.
 test("a running goal pauses from the phone: Pause, then Press again, sends it", async ({ page }) => {

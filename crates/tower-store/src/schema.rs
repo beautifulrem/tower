@@ -486,7 +486,7 @@ mod tests {
             ("被更新的一项取代", "（被更新的一项取代）", false, z("Q3?", "被更新的一项取代")),
             (timed_en, timed_en, false, t("Q4?", "It timed out; the asker stopped waiting for an answer")),
             (timed_zh, timed_zh, false, z("Q5?", "已超时，提问的一方不再等这个回答")),
-            // 43576b0's, written with `auto`: 25 leaves them be.
+            // 9ac38f6's, written with `auto`: 25 leaves them be.
             ("Withdrawn: Accepted", "(withdrawn: Accepted)", true, t("Q6?", "Accepted")),
             (timed_en, timed_en, true, t("Q7?", "It timed out; the asker stopped waiting for an answer")),
             // A person's answers: the same on the item, whatever the words, Tower's own included.

@@ -331,7 +331,7 @@ for (const lang of ["en", "zh-CN"] as const)
   }
 
 // What the board cell of one goal needs must not cost every other row its title: at the reference widths a running
-// row shows at least as much of its title and live line as before the criteria column was widened (d0dc2a1).
+// row shows at least as much of its title and live line as before the criteria column was widened (30f9047).
 for (const w of [1440, 1800])
   test(`a running row keeps its title and live line beside a pass that doesn't count (${w})`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: 800 });
@@ -361,7 +361,7 @@ for (const w of [1440, 1800])
         }
         return n;
       });
-    // "Align discount rules with the product" and "Getting started run" were whole at d0dc2a1 (1440, en).
+    // "Align discount rules with the product" and "Getting started run" were whole at 30f9047 (1440, en).
     expect(await shown(".g-title")).toBeGreaterThanOrEqual(37);
     expect(await shown(".g-live")).toBeGreaterThanOrEqual(19);
   });

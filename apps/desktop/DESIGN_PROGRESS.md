@@ -1,6 +1,6 @@
 # Design evolution — progress and recovery state
 
-Branch `design/evolution`, cut from `main` at `bf22cad` (2026-11-25); `main` at `70a52e7` merged in and the branch
+Branch `design/evolution`, cut from `main` at `2fc8c54` (2026-11-25); `main` at `fd68bfb` merged in and the branch
 merged into `main` as #54 on 2026-11-27, at the owner's request; review 25's follow-up was merged as #55 the same day.
 
 ## Where things are
@@ -26,7 +26,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   ./node_modules/.bin/playwright test e2e/shots.spec.ts --project=webkit
 ```
 
-## Baseline engineering state (bf22cad)
+## Baseline engineering state (2fc8c54)
 
 - `tsc --noEmit`: clean. Vitest: 41 files, 216 tests, all pass. Shots: 69/69 pass.
 - `tools/line-limit.sh`: pass.
@@ -41,18 +41,18 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   independent reviewer, Impeccable critique A and detector B running against the frozen baseline.
 - 2026-11-25 Phase 4–8: consolidated D01–D27 (`DESIGN_REVIEW.md`); three directions sketched, critic chose C1
   (evidence-first goal page) with conditions; Design Contract AC1–AC11 and roadmap T01–T19 written.
-- 2026-11-25 Iteration 1 — commit `bf31644` (T01–T08): opaque reading sheets, plain verdict copy and plurals,
+- 2026-11-25 Iteration 1 — commit `66351d5` (T01–T08): opaque reading sheets, plain verdict copy and plurals,
   reading text ≥ 12px, contract order and masthead, neutral statistics, accept-sheet reasons, one status word,
   stable board selection. Gates green.
-- 2026-11-25 Iteration 2 — commit `aa1026b` (T09–T17): evidence-first goal page, one-strip criterion rows, agent
+- 2026-11-25 Iteration 2 — commit `2b385e7` (T09–T17): evidence-first goal page, one-strip criterion rows, agent
   claims labelled, review fold guard and visible risk reason, neutral queue focus and one ◆, "To review" starts the
   queue, empty board without ghosts, contract focus, approve wording, docs/12 and docs/19 updated. Gates: tsc,
   vitest 218/218, e2e 220/220, line limit, bundle (163,402 / 163,840 B). Shots in `/tmp/tower-design/iter2/shots`.
-  Independent milestone review started against a read-only worktree at `aa1026b`.
+  Independent milestone review started against a read-only worktree at `2b385e7`.
 - 2026-11-25 While the review runs (uncommitted): D14 hunk mark renamed "Mark read" in English; D21 empty review on
   the title's line without the wordmark; D16 fractional mono sizes kept by decision (recorded); axe on the rich goal
   page, inbox, risky review and new contract in both themes (8 tests, pass). T18, T19, D22 stay deferred.
-- 2026-11-25 Milestone review of `aa1026b` (independent, own worktree and port): **not accepted, 7.4 / 10**; P1-01 board
+- 2026-11-25 Milestone review of `2b385e7` (independent, own worktree and port): **not accepted, 7.4 / 10**; P1-01 board
   Space, P1-02 clamped high-sentinel prose, P2-01–P2-04, P3-01–P3-08. Recorded as D08 (reopened), D09, D12, D28–D37.
 - 2026-11-25 Iteration 3 (T20–T26): Space peeks a decision line; high sentinels and their review notes readable whole;
   one tone per pill meaning; decision lines carry glyph and verdict; fold path beside its own title; R and "Open
@@ -62,7 +62,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   replaced by gaps, the e2e check now reads pseudo-elements on nine routes (verified failing on the old CSS).
   Operations: zone on Next/Last, storage bars as share of the total. Detector on changed files: the same three
   triaged `side-tab` warnings (`/tmp/tower-design/detect-iter3.json`). Shots in `/tmp/tower-design/iter3/shots`.
-- 2026-11-25 Review of `3faaf0c` (independent, own worktree and port 1441): **not accepted, 7.2 / 10**; P1-01 a
+- 2026-11-25 Review of `42938a7` (independent, own worktree and port 1441): **not accepted, 7.2 / 10**; P1-01 a
   not-evidence pass read as ready with a green seal on the inbox card and in the peek, P1-02 green CI count and legend
   steps; P2-01–P2-05, P3-01–P3-08. Recorded as D41–D58 (D58 is a product question for the owner).
 - 2026-11-25 Iteration 4 (T27–T33): one `notEvidence()` verdict behind every seal, status word and glyph; neutral CI
@@ -75,7 +75,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   helpers — no budget raised. Gates: tsc; vitest 41 files / 220 tests; Playwright WebKit 245 passed, 0 failed (76 shot tests skip without SHOTS);
   shots 69/69 (`/tmp/tower-design/iter4/shots`); line limit; bundle all JS 163,810 / 163,840 B (30 B left), goal page
   12,106 / 12,288 B; detector: no new findings.
-- 2026-11-25 Review of `815bd99` (independent, own worktree and port 1441): **not accepted, 7.2 / 10**; P1-01 the
+- 2026-11-25 Review of `77eb888` (independent, own worktree and port 1441): **not accepted, 7.2 / 10**; P1-01 the
   peek's exits threw a stale-value error on every goal (my D48 fix had hidden R, not fixed the cause), P1-02 a no-CI
   goal whose pass doesn't count filed under "To accept" with a board bar that didn't say so; P2-01–P2-05, P3-01–P3-08.
   Recorded as D59–D70.
@@ -93,7 +93,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   (`/tmp/tower-design/iter5/shots`); line limit; bundle all JS 163,818 / 163,840 B, goal page 11,381 / 12,288 B (the
   DecisionCard read and the virtual badge removed, qualifiers moved out of the goal chunk); detector: the same 15
   findings as at HEAD (13 app.css, 2 unchanged workbenches.css lines), nothing new.
-- 2026-11-25 Review of `d0dc2a1` (independent, own worktree and port 1441): **not accepted, 7.85 / 10**, no P0 or
+- 2026-11-25 Review of `30f9047` (independent, own worktree and port 1441): **not accepted, 7.85 / 10**, no P0 or
   P1; P2-01 the no-CI board criteria cell overlapped and clipped in English at 1440/1800 (my D71 zero segment minimum,
   and a 1241–1560 grid in console.css the app.css widening never reached), P2-02 the English peek's provenance label
   fell below its statement (my D65 wrap); P3-01–P3-07. Recorded as D72–D80.
@@ -103,7 +103,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   count) and the title bar's count in words, "n need you"; no second ◆ or verdict on the sidebar row, peek head or the
   card's seal row; ⇧R from the peek; "Ports" in the rail; zh git line and `text-wrap: pretty` on checks; zh held-out
   hint in one line; the assumption note names no button; three tampered-canary explanations made one (seal title,
-  canary line, bar). Each new test was run against `d0dc2a1` and fails there (board cell 10 of 10, peek gutter, ⇧R,
+  canary line, bar). Each new test was run against `30f9047` and fails there (board cell 10 of 10, peek gutter, ⇧R,
   title-bar words, said-once, ports, zh note, the welcome orphan at 1440). An iteration-5 test treated the new words
   wrapper as a word; it now checks each run and the mark whole and lets the wrapper break between runs. The seal-title
   unit test follows the consolidated wording. Gates: tsc; vitest 41 files / 220 tests; Playwright WebKit 307 passed,
@@ -112,7 +112,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   163,641 / 163,840 B (199 B left, up from 22 B; the 1 KB the review asked for is not reached, D78), goal page
   11,399 / 12,288 B; detector on the changed UI files: 13 findings, all app.css and the same as at HEAD
   (`/tmp/tower-design/iter6/detect.json`).
-- 2026-11-25 Review of `16ac40c` (independent, own worktree and port 1441): **not accepted, 8.03 / 10**, over the bar
+- 2026-11-25 Review of `4698955` (independent, own worktree and port 1441): **not accepted, 8.03 / 10**, over the bar
   but with one P1: the peek did not keep focus, so Tab then r or ↩ typed into the quick-start field behind it and asked
   for a quick goal out of sight. No P2. P3: the 16em criteria column cost running rows their titles; G-0003's peek said
   "Verified @pin" twice; bundle headroom; 11px labels (kept); zh supervisor data (deferred). Recorded as D81–D86.
@@ -122,13 +122,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   at 1040 and 1440 run past no edge; text contrast on 8 routes is at least 5.26:1 light and 5.70:1 dark (the first
   probe read nothing, as WebKit's canvas did not parse oklch — it now paints the colour and reads the pixel, checking
   63–154 texts a page); every Tab stop on 4 routes has a ring; nothing animates under reduced motion. It found money
-  without grouping and a goal title cut with no tooltip (D87), both fixed. New e2e checked against `16ac40c`: the
+  without grouping and a goal title cut with no tooltip (D87), both fixed. New e2e checked against `4698955`: the
   focus tests, the running-row title test (32 < 37) and the one-seal test fail there. Gates: tsc; vitest 41 files /
   220 tests; Playwright WebKit 314 passed, 0 failed (76 shot tests skip without SHOTS; 4 Vite client "Importing a
   module script failed" logs under parallel load, no test fails on them); shots 69/69 (`/tmp/tower-design/iter7/shots`);
   line limit; bundle all JS 163,743 / 163,840 B (97 B left, D84 deferred), goal page 11,437 / 12,288 B; detector: the
   same 13 app.css findings (`/tmp/tower-design/iter7/detect.json`).
-- 2026-11-25 Review of `3145645` (independent, own worktree and port 1441, final acceptance): **PASS, 8.18 / 10**, no P0
+- 2026-11-25 Review of `c1d1698` (independent, own worktree and port 1441, final acceptance): **PASS, 8.18 / 10**, no P0
   or P1, AC1–AC11 met; review 6's P1 and P3s confirmed fixed. New: P2-01 a long goal title crushed the short labels
   beside it (Needs you card heads, the review header's id, Operations' storage table, which also ran past its frame at
   1100 with a title at the quick start's cap), which my iteration-7 probe missed because it measured edges, not line
@@ -142,14 +142,14 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   longer says it needs you, in words or by a trailing ◆: what needs you is a decision line in the queue above, and the
   title bar counts those. A silent run is "Unresponsive / 无响应" in the peek head. The contract's side column goes
   unnumbered beside the form and numbers on when folded under it (CSS). P3-03 and folding the contract's advanced
-  section are deferred (JS, and 60 B left). New e2e checked against `3145645`: the long-title tests fail in all six
+  section are deferred (JS, and 60 B left). New e2e checked against `c1d1698`: the long-title tests fail in all six
   variants (inbox, both reviews, Operations), the no-CI row tests, both peek-head tests and the contract numbering at
   1440 fail there; the two CI-card row variants pass on both commits and stay as guards. Gates: tsc; vitest 41 files /
   220 tests; Playwright WebKit 327 passed, 0 failed (76 shot tests skip without SHOTS; 3 Vite client "Importing a module
   script failed" logs under parallel load, no test fails on them); shots 69/69 (`/tmp/tower-design/iter8/shots`); line
   limit; bundle all JS 163,780 / 163,840 B (60 B left, D84), goal page 11,424 / 12,288 B; detector: the same 13 app.css
   findings, none in console.css (`/tmp/tower-design/iter8/detect.json`).
-- 2026-11-25 Review of `d6f07ef` (independent re-check, own worktree and port 1441): **PASS, 8.30 / 10**, no P0, P1 or
+- 2026-11-25 Review of `bb976d3` (independent re-check, own worktree and port 1441): **PASS, 8.30 / 10**, no P0, P1 or
   P2; review 7's P2-01 fixed (600 page states: no short label wrapped, no table past its frame), its P3-02 and the
   contract numbering fixed, P3-03 deferred. Four new P3s: two from iteration 8's own fixes (the peek head called a
   silent run that was waiting for your answer "Unresponsive" over "Needs you"; the sidebar still said Needs you, and
@@ -158,7 +158,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   message (the agent could not write it itself).
 - 2026-11-25 Review-8 fixes (T54–T56): a running goal's state is said once, by "Now", and the peek head keeps its glyph
   and id; the sidebar row reads its own group; reading cells in a data table are one token (CSS); the human count's
-  dot travels inside its span. New and extended tests checked against `d6f07ef`: the sidebar/board test fails there on
+  dot travels inside its span. New and extended tests checked against `bb976d3`: the sidebar/board test fails there on
   the dumped views and without CI (en, zh), all four peek-head variants fail, the long-title test from 1040 fails on
   the cron, the stats test fails on the dangling dot (G-0001 zh); CI-card variants pass on both and stay as guards.
   Gates: tsc; vitest 41 files / 220 tests; Playwright WebKit 331 passed, 0 failed (76 shot tests skip without SHOTS;
@@ -166,13 +166,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   (`/tmp/tower-design/iter8b/shots`); line limit; bundle all JS 163,720 / 163,840 B (120 B left), goal page
   11,437 / 12,288 B; detector: the same 13 app.css findings (`/tmp/tower-design/iter8b/detect.json`). Curated
   `design-evidence/*.after.webp` re-rendered from these shots. These fixes are verified by tests, not independently
-  re-reviewed; the acceptance stands on `d6f07ef`. `DESIGN_DELIVERY.md` is the final report.
-- 2026-11-25 Perf project on `3b11e8e` (not part of the default gate command): passes. Board of 50 goals 549 / 265 / 185 ms
+  re-reviewed; the acceptance stands on `bb976d3`. `DESIGN_DELIVERY.md` is the final report.
+- 2026-11-25 Perf project on `e777896` (not part of the default gate command): passes. Board of 50 goals 549 / 265 / 185 ms
   against the seeded board's 179 / 167 / 116 ms; view switches with 50 goals 31–67 ms (`/tmp/tower-design/iter8b/checks/perf.log`).
 - 2026-11-25 Iteration 9 — the owner's remaining list, all of it (T57–T67, D20, D22, D23, D51, D58, D84, D86, D91,
   D92, D96, D97, docs/12). Bundle headroom first: the dictionaries ship their keys once (`plugins/localeKeys.ts`),
   165,126 → 160,049 B of 163,840, no budget raised. Then the deferred P3s, each with an e2e test run against
-  `4d0b9c4` in a separate worktree: 14 new UI tests fail there and pass here (the D22, D91, D92, D96, D20, D58 tests,
+  `d50f65e` in a separate worktree: 14 new UI tests fail there and pass here (the D22, D91, D92, D96, D20, D58 tests,
   the D23 identity test and the held-pass test); the language tests pass on both, as they should: D51/D86 was the test
   data (Chinese tests read English supervisor views), fixed in `tools/e2e.sh`. The new D92 test caught its own first
   version breaking a setting under the chevron in the 280 px side column; fixed before the gates. D58: the supervisor's
@@ -186,7 +186,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   160,049 / 163,840 B, start-up 54,859 / 65,536 B, goal page 11,573 / 12,288 B; doc numbers; rustfmt, clippy
   `-D warnings`; cargo test (see the delivery report for one test that failed once under parallel load); detector:
   no new finding (the 3 `side-tab` hunk-pen findings are the baseline's, kept by decision).
-- 2026-11-25 Independent review of `7a23f45` (general-purpose agent as reviewer, read-only worktree, own ports): **PASS
+- 2026-11-25 Independent review of `66ac2aa` (general-purpose agent as reviewer, read-only worktree, own ports): **PASS
   8.28 / 10**, no P0 or P1; R9-P2-01, R9-P3-01–07 and three docs/12 places, recorded as D98–D106
   (`design-evidence/reports/review9.md`). Reviewer worktree removed.
 - 2026-11-25 Iteration 10 — every review 9 finding (T68–T75). An accepted goal keeps its caveats on the stamp and the
@@ -196,13 +196,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   The evidence strip reads the supervisor's own test-machinery list. The folded engine clause names non-default
   settings. The board says an overlap in words after the row's own id. The "$" bug was a class collision (`.unit`);
   the field's unit is now `.field-unit` and its padding measured. docs/12's last three places said as built.
-  `fitStats` moved out of `Review.tsx` (line limit). Checked against `7a23f45` by restoring its sources under the new
+  `fitStats` moved out of `Review.tsx` (line limit). Checked against `66ac2aa` by restoring its sources under the new
   tests: 13 e2e and 2 unit tests fail there, pass here. Gates: tsc; vitest 43 files / 233 tests; Playwright WebKit
   366 passed, 0 failed (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter10/shots`); perf
   passes (board of 50: 564 / 230 / 176 ms against 170 / 161 / 107 ms; switches 35–64 ms against 19–39 ms); line
   limit; bundle all JS 160,896 / 163,840 B, start-up 55,129 / 65,536 B, goal page 11,588 / 12,288 B; doc numbers;
   detector: nothing new. No Rust changed. Not yet independently re-reviewed.
-- 2026-11-25 Independent review of `deef352` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
+- 2026-11-25 Independent review of `994b534` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
   **PASS 8.20 / 10**, no P0 or P1. Iteration 10's fixes confirmed, R9-P2-01 mostly and R9-P3-03 partly; one new P2 from
   iteration 10 (the overlap note squeezes the title, D107) and five P3s, recorded as D107–D112, open
   (`design-evidence/reports/review10.md`). Its e2e run was 362/4 by the plain command (fonts 403 through the symlinked
@@ -216,16 +216,16 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   ledger's runs note is 11px and worded as a note ("said in runs 1 and 2"). A caveat on the evidence strip is a
   neutral pill in the seal's words; a high finding is named for what was done; the weakened-assertion sentinels, which
   the strip called "runner patched", say "assertions weakened". The unit test checks Chinese settings and must find a
-  unit. Checked against `deef352` by restoring its sources under the new tests: 12 e2e and 5 unit tests fail there,
+  unit. Checked against `994b534` by restoring its sources under the new tests: 12 e2e and 5 unit tests fail there,
   pass here (the picker also by a name-free variant); the three unit-clearance cases pass there too, as guards.
   Gates: tsc; vitest 43 files / 236 tests; Playwright WebKit 374 passed, 0 failed (76 shot tests skip without
   SHOTS); shots 69/69 (`/tmp/tower-design/iter11/shots`); perf passes (board of 50: 664 / 282 / 198 ms against
   247 / 167 / 109 ms; switches 30–82 ms against 15–46 ms); line limit; bundle all JS 161,693 / 163,840 B, start-up
   55,478 / 65,536 B, goal page 11,596 / 12,288 B; doc numbers; detector: 0 anti-patterns, 2 advisories on older
   lines. No Rust changed. Not yet independently re-reviewed.
-- 2026-11-25 Independent review of `2f1d0c5` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
+- 2026-11-25 Independent review of `0498799` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
   **PASS 8.38 / 10**, no P0, P1 or P2. Iteration 11's fixes confirmed (R10-P3-04 for one finding); the new tests fail
-  on `deef352` for the right reasons. Four P3s, recorded as D113–D116, open: the overlap note's hover room hides its
+  on `994b534` for the right reasons. Four P3s, recorded as D113–D116, open: the overlap note's hover room hides its
   words where the row fits them (from iteration 11), a neutral caveat pill beside a held pass, picker names lost on a
   refresh or scope switch, and older hard cuts in the live and identity columns
   (`design-evidence/reports/review11.md`). Its e2e run was 369/5 by the plain command (fonts 403 through the
@@ -237,7 +237,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   run pickers key a point by kind, run and rev, the review keeps the points you picked, and an end that left the list
   is named ("No longer listed @15085f2"). The live seal and the identity column give way by measure (`lib/refit.ts`):
   the seal's word, then the seal, never a green mark without its pin; the engine's name, the PR's quieter readings,
-  the project's name, the word "muted", each into the title's tooltip. Checked against `4ea4567` by restoring its
+  the project's name, the word "muted", each into the title's tooltip. Checked against `434d17e` by restoring its
   sources under the new tests: 8 e2e and 3 unit tests fail there, pass here; each for the review's reason except the
   older crowded-row test, which fails only on the renamed `data-crowded` value.
   Gates: tsc; vitest 43 files / 239 tests; Playwright WebKit 377 passed, 0 failed (76 shot tests skip without
@@ -245,9 +245,9 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   239 / 184 / 123 ms; switches 30–110 ms against 16–61 ms); line limit; bundle all JS 162,269 / 163,840 B, start-up
   55,749 / 65,536 B, goal page 11,597 / 12,288 B; doc numbers; detector: the three triaged `side-tab` findings and
   10 advisories, none on a changed line. No Rust changed. Not yet independently re-reviewed.
-- 2026-11-25 Independent review of `886ab38` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
+- 2026-11-25 Independent review of `aecd02c` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
   **PASS 8.42 / 10**, no P0, P1 or P2. Iteration 12's fixes confirmed, the identity column's in part; the new tests
-  fail on `4ea4567` for the right reasons. Two P3s, recorded as D117–D118: a merged or closed PR with rework still ran
+  fail on `434d17e` for the right reasons. Two P3s, recorded as D117–D118: a merged or closed PR with rework still ran
   past the identity's last step ("⟳3/" at 1440), and the PR readings a step set aside were in neither the tooltip nor
   the button's name, a short project name held 3.5em, a separator's gap stayed (`design-evidence/reports/review12.md`).
   Its e2e run was 373/4 by the plain command (fonts 403 through the symlinked node_modules) and 377/0 with fonts
@@ -260,7 +260,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   PR button's name is its own text with its counts said in words (the first full run had a label laid over it, and
   axe's `label-content-name-mismatch` failed the inbox in both themes; fixed before the commit). A project name takes
   its own width; the separator goes with the counts. A run picker's gone end keeps its pin in a narrow header.
-  Checked against `886ab38` by restoring its sources under the new tests: 5 e2e fail there (the four sweeps: `lib` 42 px
+  Checked against `aecd02c` by restoring its sources under the new tests: 5 e2e fail there (the four sweeps: `lib` 42 px
   for 13 px of text, the name "PR merged" with the identity past its column; the picker: the gone end's pin hidden at
   1100), pass here. Gates: tsc; vitest 43 files / 239 tests; Playwright WebKit 379 passed, 0 failed (76 shot tests
   skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter13/allshots`); perf passes (board of 50: 1082 / 466 / 252 ms
@@ -268,9 +268,9 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   start-up 56,037 / 65,536 B, goal page 11,597 / 12,288 B; doc numbers, once the two READMEs and docs/17 quote the
   build's 55 KB start-up and 159 KB total (they said 54 and 157; the check allows 1 KB); detector: the three triaged
   `side-tab` findings and 12 advisories, none on a changed line. No Rust changed. Not yet independently re-reviewed.
-- 2026-11-26 Independent review of `3ff2ebf` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
+- 2026-11-26 Independent review of `872a863` (general-purpose agent as reviewer, read-only worktree, ports 1441–1442):
   **PASS 8.47 / 10**, no P0, P1 or P2. Iteration 13's fixes confirmed: the identity's last step always fits, the PR is
-  said in the tooltip and the button's name, short names take their own width. 5 of its 6 new e2e fail on `886ab38` for
+  said in the tooltip and the button's name, short names take their own width. 5 of its 6 new e2e fail on `aecd02c` for
   the right reasons. Two P3s, recorded as D120–D121: a project name squeezed to ≤ 1 px counted as set aside (a sliver,
   a reversed order, steps going back, in 1–2 px bands), and a gone end's kept pin cut the criteria bar at en 1040–1052
   (`design-evidence/reports/review13.md`). Reviewer worktree removed.
@@ -288,7 +288,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   DESIGN.md, its sidecar, PRODUCT.md principle 2 and docs/12 §12.6–§12.7 rewritten to say so. Gates: tsc; vitest 42
   files, 241 tests; e2e 380/0; shots 69/69; perf (50-goal board medians 596 against 323 ms, switches within 150 ms);
   line limit; bundle 162,671 / 163,840 B, start-up 56,058 B, goal page 11,600 B; doc numbers; detector triaged in
-  `DESIGN_REVIEW.md`. On `3ff2ebf`'s sources (a separate worktree, the new tests copied in) 5 unit and 2 e2e tests
+  `DESIGN_REVIEW.md`. On `872a863`'s sources (a separate worktree, the new tests copied in) 5 unit and 2 e2e tests
   fail for the right reasons; the switch test, only taught to ignore endless animations, passes there. Before/after:
   `design-evidence/marks-*.webp`.
 - 2026-11-26 Iteration 14 — review 13's two P3s (T89–T90) and two of its record-only notes. The board identity's
@@ -300,15 +300,15 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   the header is found on each fit and observed (the caps' going re-fits in the same frame), the verdict is the seal and
   the segments, each against every box that clips it, and after the caps a gone end's pin goes. `.g-id` keeps its
   line's height when folded (no ResizeObserver loop), and a folded PR button leaves the Tab order. A third sweep,
-  review 13's stress row, reaches the fold. Checked on `1c9af8a`'s sources, one file set at a time: the sweep fails
+  review 13's stress row, reaches the fold. Checked on `8d79b1a`'s sources, one file set at a time: the sweep fails
   (G-0002's name 0.297 px at en 1246), the picker fails (both segments cut, the seal gone, at en 1040), the stress
   sweep fails on 2 loop notices with the old stylesheet and on a Tab stop with the old row and PR line; all pass here.
   Gates: tsc; vitest 42 files / 241 tests; e2e 382/0; shots 69/69 (`/tmp/tower-design/iter14/allshots`); perf (board
   of 50: 1541 / 772 / 435 ms against 442 / 451 / 329 ms; switch medians 149.5 against 79 ms); line limit; bundle
-  162,773 / 163,840 B, start-up 56,115 B, goal page 11,598 B; doc numbers; detector the same 19 findings as `1c9af8a`.
+  162,773 / 163,840 B, start-up 56,115 B, goal page 11,598 B; doc numbers; detector the same 19 findings as `8d79b1a`.
   The sweeps now take the 120 s budget the layout sweeps had (one timed out at 30 s under five workers). No Rust
   changed. Not yet independently re-reviewed.
-- 2026-11-26 Review 14 (independent, `1ad1439`): PASS 8.35 / 10; R14-P2-01 (the running mark turned on runs waiting
+- 2026-11-26 Review 14 (independent, `e21e4dd`): PASS 8.35 / 10; R14-P2-01 (the running mark turned on runs waiting
   on you or silent, in the sidebar and the gauge), R14-P3-01 (a segment's `::after` filled under reduced motion),
   -02 (the shimmer cost a quarter of a core), -03 (✓ ✕ ○ in the held-out file list), -04 (the phone strip's 9 px !),
   and seven record-only notes. Saved as `design-evidence/reports/review14.md`.
@@ -324,7 +324,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   13's no-PR row added to the sweeps, whose step-back check now holds that rule); a decision line with no project to
   name gives its question the identity column; a held pass names the high finding on another criterion that holds
   it; a merged human-only goal has a hatched core. Kept by decision: the × at DPR 1 (D128), caveats on a seal that
-  does not count (D139), a held pass's amber caveat (D140). Each fix's test fails on `1ad1439`'s sources (checked by
+  does not count (D139), a held pass's amber caveat (D140). Each fix's test fails on `e21e4dd`'s sources (checked by
   swapping the sources back, one set at a time). Gates: tsc; vitest 42 files / 245 tests; e2e 395/0; shots 69/69
   (`/tmp/tower-design/iter15/allshots`); perf (board of 50: 1664 / 512 / 399 ms against 340 / 313 / 216 ms; switch
   medians 117 against 45 ms); line limit; bundle 163,064 / 163,840 B, start-up 56,292 B, goal page 11,523 B; doc
@@ -335,12 +335,12 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   hatched merged core reads at 12 px, the chip and panel buttons sit at their sizes, and found two older faults: the
   phone's "Live" wore the verifier's green (D142, T111) and silence was a red ring in the title bar and on the phone
   where docs/12 §12.4.3 and docs/08 §8.6.3 draw the uncoloured hint mark (D143, T112). Both fixed, each with a test that
-  fails on `ae1c049`. Also: the phone's action and target are two words (a real space); the D rows' evidence paths and
+  fails on `352080f`. Also: the phone's action and target are two words (a real space); the D rows' evidence paths and
   D137, D139, D140's wording corrected; docs/12's two "differ only by colour" leftovers gone. Gates: tsc; vitest 42 /
   245; e2e 394 + the phone test made deterministic (10/10 under five workers, phone suite 17/17); shots 69/69; perf
   alone (board of 50: 672 / 394 / 215 ms against 280 / 183 / 148 ms; switch medians 72 against 29 ms); line limit; doc
   numbers; cargo remote 4/4; bundle 163,047 / 163,840 B; detector unchanged on the touched files (17 against 17).
-- 2026-11-26 Review 15 — independent (`2408609`): FAIL — 8.285 / 10, above 8.0, but one open P1 (the phone drew the verifier's green on
+- 2026-11-26 Review 15 — independent (`80b9dce`): FAIL — 8.285 / 10, above 8.0, but one open P1 (the phone drew the verifier's green on
   every goal to accept), one P2 (held-out files under the wrong line), five P3s (a path's "C9" read as a criterion; a
   wrapped evidence strip 18px off; titles, ids, pins, commands and paths not copyable; "Unresponsive" for the desk's
   own reading of silence; "No sandbox" in amber) and record-only notes. Saved as `design-evidence/reports/review15.md`.
@@ -355,7 +355,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   line); "No sandbox" is ink with the hint mark; the title bar's running mark is 12px on the desk and the phone; the
   shimmer's band is a quarter of a short word. docs/12: the PR step without ■, Tower's own failures on the red list, the
   title bar's sandbox and phone-off gauges; references to §12.2 corrected to §12.4.3. Kept: D136, D137, the phone's
-  hollow rows, D128, `┆` (D156). Each fix's test fails on `2408609`'s sources (one file set at a time; the phone badges
+  hollow rows, D128, `┆` (D156). Each fix's test fails on `80b9dce`'s sources (one file set at a time; the phone badges
   also with only the old badge code). Gates (run alone): tsc; vitest 42 / 246; e2e 403/0 on the first full run, then
   the phone suite 19/19 after matching its badge order to the desk; shots 69/69 (`/tmp/tower-design/iter16/allshots`);
   perf (board of 50: 608 / 242 / 196 ms against 190 / 146 / 114 ms; switch medians about 60 against 25 ms); line limit;
@@ -363,12 +363,12 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   findings. Visual check at DPR 2, light and dark, en and zh: `/tmp/tower-design/iter16/visual/`. Not yet independently
   re-reviewed.
 - Iteration 16 follow-up: after a press kept focus on the diff table, ↑↓ did nothing; they now move from the line
-  pressed (or land on the first line), and the review-keys test checks it (fails on `2cd8b3d`'s `FileDiff.tsx`).
+  pressed (or land on the first line), and the review-keys test checks it (fails on `11a9764`'s `FileDiff.tsx`).
   Review 15's verdict corrected to FAIL in these documents (8.285 with R15-P1-01 open). DELIVERY §15 records that busy
   has no upper bound. Gates rerun alone, all pass: vitest 42 / 246; e2e 403/0; shots 69/69; perf (board of 50:
   604 / 243 / 186 against 177 / 152 / 107 ms; switch medians about 60 against 25 ms); line limit; doc numbers; cargo
   remote 4/4; bundle 163,258 / 163,840 B.
-- 2026-11-26 Review 16 — independent (`2d3eeb8`): PASS — 8.46 / 10, no P0, P1 or P2; five P3s (the phone's silent badge
+- 2026-11-26 Review 16 — independent (`807dc40`): PASS — 8.46 / 10, no P0, P1 or P2; five P3s (the phone's silent badge
   a step louder than the desk's; a docs/12 reference to §12.2; grey stand-in rows on the empty phone page, overturning
   D156's keep; the held-out names and the review's pin pair copying the wrong text; a pass with caveats looking clean
   on the phone) and nine record-only notes. Saved as `design-evidence/reports/review16.md`.
@@ -382,7 +382,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   ink; the title bar's engine gauge has no dot and a down gauge is text-1; a look thumbnail holds a 3:4 frame until it
   decodes; a steer box whose code fails to load says so with Retry, and the goal rail's rule now finds it
   (`:has(.steer)` had never matched); an id inside a path names no criterion; and a second tool call in flight keeps
-  the run busy on the supervisor and the desk (the oldest call's mode). Each fix's test fails on `2d3eeb8`'s sources
+  the run busy on the supervisor and the desk (the oldest call's mode). Each fix's test fails on `807dc40`'s sources
   (one file set at a time; the Rust test on the old ToolEnd logic). The first gate run went over: all interface JS
   163,953 B against 163,840 and `FileDiff.tsx` at 836 lines against 800; the selection code moved to its own module
   and this iteration's own additions were written tighter (no budget changed). Gates (run alone): tsc; vitest
@@ -390,7 +390,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   medians about 65 against 24 ms); line limit; doc numbers; `cargo test -p tower-supervisor` 212 passed, 2 ignored, rustfmt;
   bundle 163,810 / 163,840 B; detector 17 against 17 on the touched files, the same findings. Visual check at DPR
   2, light and dark, en and zh, 390 and 320: `/tmp/tower-design/iter17/visual/`. Not yet independently re-reviewed.
-- 2026-11-26 Review 17 — independent (`f9dd353`): PASS — 8.45 / 10, no P0 or P1; one P2 (after a press on a diff line,
+- 2026-11-26 Review 17 — independent (`48d5f3a`): PASS — 8.45 / 10, no P0 or P1; one P2 (after a press on a diff line,
   ⌘⇧↩ opened the line's comment box behind the accept dialog, focus in it, from D163), three P3s (two drags dropped
   lines from a copy, from D163; the goal rail still under the steer box at 560 and 640 high; answering a question set
   the run to thinking while another call ran), the phone's Pause found fixed by the way and unrecorded, and ten
@@ -406,8 +406,8 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   ! goes. A look thumbnail waits in the frame of Tower's capture (the desktop's 16:10, the phone's 390×844 on the Mobile
   tab); a load failure is said in the interface's language; the Chinese held-out list has no space after "："; in the
   dark theme the shimmer is a gap in a veil of the ground, so the words brighten as the light passes (142 to 209 grey
-  on the action words, about 5.7:1 at rest). Each fix's test fails on `f9dd353`'s sources, one file set at a time
-  (`/tmp/tower-design/iter18/oldsrc/`; the Pause test on `2d3eeb8`; the phone's keep-all and mark rules by taking each
+  on the action words, about 5.7:1 at rest). Each fix's test fails on `48d5f3a`'s sources, one file set at a time
+  (`/tmp/tower-design/iter18/oldsrc/`; the Pause test on `807dc40`; the phone's keep-all and mark rules by taking each
   out). The first gate run went over budget (164,051 B): Vite's modulepreload polyfill is off and the unused
   `LookStepsRead` is gone, no budget changed. The first full e2e run failed two look tests: the shared fixture image had
   been made 16:10, which their tall page needs; the fixture is back and the phone's frame was added instead. Gates
@@ -423,7 +423,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   of 50: 660 / 296 / 188 ms against 188 / 161 / 107 ms; switch medians about 66 against 24 ms); line limit; doc numbers;
   `cargo test -p tower-supervisor -p tower-store -p tower-core` 385 passed, 2 ignored, rustfmt; bundle 163,830 /
   163,840 B; detector 19 against 19 on the touched files. Not yet independently re-reviewed.
-- Review 18 — independent reviewer (general-purpose agent, read-only worktree at `54ba274`, ports 1441–1443):
+- Review 18 — independent reviewer (general-purpose agent, read-only worktree at `45be8f5`, ports 1441–1443):
   **PASS, 8.47 / 10**, no P0, P1 or P2 (`design-evidence/reports/review18.md`). Review 17's P2 and three P3s confirmed
   fixed. New P3s: the rail's head under the title bar at the end of a short page (from D173), ↩ after ⌘⇧↩ and Esc on
   line 0, the phone silent beside a command running with a question open, D171's evidence test flaky under load; and
@@ -438,12 +438,12 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   missing side keeps its capture's frame (D200); sixteen duplicate keys merged keep the bundle inside its budget
   (D201); observed failures (GitHub checks, merge conflicts, the sidebar notice) are drawn in ink (D202). Kept by
   decision: the steer box's width at the fold (D199), the Chinese caveat label's break at its colon (D203). Each fix's
-  test fails on `54ba274`'s sources or a stated mutation (`/tmp/tower-design/iter19/oldsrc/`). Caught at the gates and
+  test fails on `45be8f5`'s sources or a stated mutation (`/tmp/tower-design/iter19/oldsrc/`). Caught at the gates and
   fixed before commit: the first fold layout (a flex column; a section past the edge, the criteria head at 624 px),
   the first focus rule (the first Tab on a page no longer reached the first line), the phone's copied rule in
   `Glyph.test.tsx`. Gates (run alone): tsc; vitest 44 / 252; e2e 415/0 (76 shot tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter19/allshots`); perf alone (board of 50: 607 / 250 / 187 ms against 178 / 148 / 107 ms; switch medians about 63 against 24 ms); line limit; doc numbers; `cargo test -p tower-supervisor -p tower-store -p tower-core` 388 passed, 2 ignored, rustfmt; bundle 163,802 / 163,840 B. The new dialog test first ran a timed command and missed it once under the full suite's load; its command now runs until the test lets it end (three full flow runs pass, and it still fails with the expiry off). Visual check at DPR 2, light and dark: `/tmp/tower-design/iter19/visual/`. Detector 19 against 19 on the touched UI files, the same findings.
   Not yet independently re-reviewed.
-- Review 19 — independent reviewer (general-purpose agent, read-only worktree at `939be97`, ports 1441–1443):
+- Review 19 — independent reviewer (general-purpose agent, read-only worktree at `3dbc4c1`, ports 1441–1443):
   **PASS, 8.59 / 10**, no P0, P1 or P2 (`design-evidence/reports/review19.md`). Review 18's four P3s confirmed fixed.
   New P3s: a dialog's expiry raced the event pump (from D196; the flow suite failed 3 of 12 runs), a missing side
   upright beside its picture with a long reason taller than the strip and a URL broken letter by letter (D200 not
@@ -460,11 +460,11 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   handed back to a diff rings the line pressed (D213). Its own checks: the flow suite run 20 times passed 18, from two
   writes the engine's reply could overtake, now written before the send (D214; then 20 runs of 20); the gates now run
   what CI runs, workspace clippy and tests (D215); twenty-nine duplicate keys merged keep the bundle inside its budget
-  (D216); the held tags under a criterion lost their amber rings (D217). Each fix's test fails on `939be97`'s sources
+  (D216); the held tags under a criterion lost their amber rings (D217). Each fix's test fails on `3dbc4c1`'s sources
   or a stated mutation (`/tmp/tower-design/iter20/oldsrc/`, `mut/`, `race2/`). Caught at the gates and fixed before commit: workspace clippy found a test of D204's holding a lock across an await (now on a thread of its own, its mutation still failing), and the new `settled()` test failed once under the full suite's load, the overview's idle warming of a waiting review owing its own 2 worker answers at the test's cap (a probe saw them from 628 ms after load); it now opens a world with no review waiting (30 of 30 with ten workers). Gates (run alone): tsc; vitest 45 / 257; e2e 420/0 (76 shot tests skip without SHOTS); shots 69/69, which now fail on anything still drawing (`/tmp/tower-design/iter20/allshots`); perf alone (board of 50: 609 / 286 / 202 ms against 200 / 163 / 136 ms; switch medians about 67 against 27 ms); line limit; doc numbers; rustfmt, `cargo clippy --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites, 472 tests, 2 ignored); the flow suite 20 of 20; bundle 163,733 / 163,840 B. Visual check at DPR 2, light
   and dark, en and zh: `/tmp/tower-design/iter20/visual/`. Detector 16 against 16 on the touched UI files, the same
   findings. Not yet independently re-reviewed.
-- Review 20 — independent reviewer (general-purpose agent, read-only worktree at `b6baa8a`, ports 1441–1443):
+- Review 20 — independent reviewer (general-purpose agent, read-only worktree at `5d6ee98`, ports 1441–1443):
   **PASS, 8.63 / 10** (8.625), no P0, P1 or P2 (`design-evidence/reports/review20.md`). Review 19's three P3s
   confirmed fixed. New P3s: a question answered the moment it reached the inbox found no dialog and left the run waiting
   on you (a 300 ms probe reproduced it on both commits), the board's detail changed twice a call with its elapsed time
@@ -484,8 +484,8 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   two writes (`between`, a no-op outside tests) gives the three untested orders a test each (D232), the flow test counts
   only its own sleep and the highlight test reaches Shiki's highlighter as made (D231), and D217 has its test (D233).
   Kept by stated decision: the side-by-side rule (D222), the phone strip's frame width (D223), the merged keys (D228)
-  and where two tests first fail on old sources (D236). The icons became markup strings to fit the budget (D235). Each fix's test fails on `b6baa8a`'s sources (or
-  `939be97`'s for D217) or a stated mutation (`/tmp/tower-design/iter21/oldsrc/`, `mut/`). Caught before commit: the
+  and where two tests first fail on old sources (D236). The icons became markup strings to fit the budget (D235). Each fix's test fails on `5d6ee98`'s sources (or
+  `3dbc4c1`'s for D217) or a stated mutation (`/tmp/tower-design/iter21/oldsrc/`, `mut/`). Caught before commit: the
   first board fix gave the elapsed time a column of its own, which cut the detail at 1241, so the time rides only
   beside the run's name; the ring test's comment claimed 4 px of room where there are 3. Then, in a follow-up commit before review: the
   first fix of D224 hid the run's number in the goal page's header while the goal ran, which left the page naming no
@@ -497,7 +497,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   doc numbers; rustfmt, `cargo clippy --workspace --all-targets -D warnings` and `cargo test --workspace` (29 suites,
   480 tests, 2 ignored); the flow suite 20 of 20 (50 tests each, with ten CPU burners held for the whole run, one-minute load 17.5–48.7); bundle 163,674 / 163,840 B. Visual check at DPR 2, light and dark, en and
   zh. Detector 16 against 16 on the touched UI files, the same findings. Not yet independently re-reviewed.
-- Review 21 — independent reviewer (general-purpose agent, read-only worktree at `9397e07`, with `b59e68a`, ports
+- Review 21 — independent reviewer (general-purpose agent, read-only worktree at `97ee440`, with `8842347`, ports
   1441–1443): **PASS, 8.69 / 10** (8.685), no P0, P1 or P2 (`design-evidence/reports/review21.md`). Review 20's three
   P3s confirmed fixed. New P3s: side by side a missing side's code still broke after `_`, D221's rule having done
   nothing in WebKit while its test read the computed style; and an approval's code block read `bash rm -rf …`, a
@@ -515,7 +515,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   (D247); the English badge column holds "Thinking" and "Working" (D249); the + clears the ring by 4 px (D250); the
   conflict count's ink is tested (D251); an evidence line ends on its pin (D252). Kept by stated reason: the answer's
   lock held to the send, untested (D241). D221, D227, D230, D233 and D234 now say what review 21 found they
-  overstated. Each fix's test fails on `9397e07`'s sources or a stated mutation (`/tmp/tower-design/iter22/oldsrc/`,
+  overstated. Each fix's test fails on `97ee440`'s sources or a stated mutation (`/tmp/tower-design/iter22/oldsrc/`,
   `mut/`); the clients' approval tests pin that they add nothing to the body (the clients did not change). The gates
   now run on fixtures dumped from the supervisor under test, as `tools/e2e.sh` makes them; the first run failed one
   test that named the old dump's revision (D253). Gates: tsc; vitest 45 / 262; e2e 425/0 (76 shot tests skip without
@@ -526,9 +526,9 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   each, ten CPU burners held for the whole run, one-minute load 20.3–41.4); bundle 163,722 / 163,840 B. Visual check
   of the shots at DPR 2, light and dark, en and zh. Detector 17 against 17 on the four touched UI files, the same
   findings. Not yet independently re-reviewed.
-- Review 22 — independent reviewer (general-purpose agent, read-only worktree at `864d6c3`, ports 1441–1443):
+- Review 22 — independent reviewer (general-purpose agent, read-only worktree at `6b2c951`, ports 1441–1443):
   **PASS, 8.81 / 10** (8.810), no P0, P1 or P2 (`design-evidence/reports/review22.md`). Review 21's two P3s confirmed
-  fixed, each reproduced on `9397e07`; D239, D240, D242–D253 confirmed and D241 kept with reason. New P3, pre-existing:
+  fixed, each reproduced on `97ee440`; D239, D240, D242–D253 confirmed and D241 kept with reason. New P3, pre-existing:
   an approval's code block did not tell a row it carried over from a line of the command's own, and the phone parted
   `--` and `fill`. Eight record-only notes, among them an approval Pi raises as a run is stopped and the desk's fold of
   two approvals alike; D237's and D250's wording corrected; three sentences without a test. Recorded as D254–D264.
@@ -543,7 +543,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   (D260, D263); the denial's sentences live once in `policy.ts` with a test, and the phone's Chinese time and multi-line
   body are tested (D264). The phone says Chinese times in words (D265), its page's policy lets data-URL marks draw and
   its tests serve that policy (D266), and its tails copy a blank line as blank (D267). Each fix's test fails on
-  `864d6c3`'s sources or a stated mutation (`/tmp/tower-design/iter23/oldsrc/`, `mut/`); a desk mutation the first
+  `6b2c951`'s sources or a stated mutation (`/tmp/tower-design/iter23/oldsrc/`, `mut/`); a desk mutation the first
   version of the hook's test let through (the word box inline) is caught by a sweep of widths, and the CSP mutation
   fails on the missing ink, the screenshot read on a page of its own. Gates: tsc; vitest 44 / 263; e2e 434/0 (76 shot
   tests skip without SHOTS); shots 69/69 (`/tmp/tower-design/iter23/allshots`); perf alone (board of 50: 871 / 465 /
@@ -559,7 +559,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   `auto` in the trace's event and is the system's, never "Your answer" (D268); the phone page's policy forbids framing,
   plugins, a base and forms, with `X-Frame-Options: DENY`, and docs/11 says what it is (D269); the sheet's phone frame
   breaks its words as the strip does, at every window height (D262); D254's mutation wording corrected. Each new test
-  fails on `864d6c3`'s sources or a stated mutation (`trace-old`, `remote-rs-old`, `auto-source-human`,
+  fails on `6b2c951`'s sources or a stated mutation (`trace-old`, `remote-rs-old`, `auto-source-human`,
   `withdraw-not-auto`, `phone-sheet-wide` in `/tmp/tower-design/iter23/oldsrc/` and `mut/`). Gates, again in full:
   tsc; vitest 44 / 264; e2e 434/0 (76 shot tests skip without SHOTS); shots 69/69; perf alone (board of 50: 814 / 452 /
   273 ms against 247 / 257 / 196 ms; switch medians about 107 against 38 ms); line limit; doc numbers; rustfmt,
@@ -585,7 +585,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   read a command block after the phone page had repainted it: the page set its cards' markup whole at every read,
   changed or not, so a selection on a card went too; it now repaints only what changed, holds a state while words on a
   card are selected, and keeps a reply's unsent words until an answer goes, as the desk does, and the helper reads a
-  block taken out of the document again (D287). Each fix's test fails on `43576b0`'s sources or a stated mutation, all
+  block taken out of the document again (D287). Each fix's test fails on `9ac38f6`'s sources or a stated mutation, all
   re-run on the final tree with fixtures dumped from it (`/tmp/tower-design/iter24/oldsrc/`, `mut/`, 40 checks).
   Gates, run alone on the final tree: rustfmt, workspace clippy, `cargo test --workspace` (29 suites, 494 tests, 2
   ignored), the extension's 34 tests, security 118, the flow suite 20 of 20 under ten CPU burners (load 18.7–36.4, run
@@ -595,7 +595,7 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   Visual check at DPR 2 of the approval blocks (desk light 1440 and dark 1040, phone light 390 and dark 320: a 220-
   and 95-character path, a URL piped to `sh`, a tab-separated command), the failing-checks question and the trace's
   end (Tower's closing under its mark, the cancel note, the named opening rows, the must-fail check in words)
-  (`/tmp/tower-design/iter24/vis`). Detector: 17 against 17 at `43576b0` on the 5 changed UI files, the same findings.
+  (`/tmp/tower-design/iter24/vis`). Detector: 17 against 17 at `9ac38f6` on the 5 changed UI files, the same findings.
   Not yet independently re-reviewed.
 - Iteration 25 — review 24's three P3 findings (D288–D290), its two notes on the tests and its record-only notes
   (D291–D301), D302 from this iteration's own visual check and D303 from its own gate run (T218–T228). The phone page
@@ -612,13 +612,13 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   strip's phone tab a side gone is the phone picture's own frame with its reason whole beside it (D298, reversing
   D281 there); a Send pressed while a state waits behind the reply box lands (D299); the budget is kept (D300); a list
   Tower writes in a sentence is joined by the language's own mark (D301); the trace runs down, never sideways (D302);
-  the caches test compares two sizes instead of a bound in seconds (D303). Each fix's test fails on `af6d189`'s
+  the caches test compares two sizes instead of a bound in seconds (D303). Each fix's test fails on `b056c18`'s
   sources or a stated mutation, all 74 re-run in one batch on the final tree (`/tmp/tower-design/iter25/fm/logs/`,
   `summary.txt`; the e2e ones on the fixtures' previous dump, made before the last Rust change to the list marks).
   Gates on the final tree, another project's builds running on the machine beside them (one-minute load 16–55):
   rustfmt, workspace clippy, `cargo test --workspace` (29 suites, 497 tests, 2 ignored), the extension's 34 tests,
   security 118, the flow suite 5 of 5 under ten CPU burners (load 35.6–48.1; stopped there, where earlier iterations
-  ran 20), tsc, vitest 45 files and 269 tests, build, budget (163,665 / 163,840 B, the same under `af6d189`'s script),
+  ran 20), tsc, vitest 45 files and 269 tests, build, budget (163,665 / 163,840 B, the same under `b056c18`'s script),
   line limit, e2e 441 passed and 1 failed (76 shot tests skip without SHOTS), shots 69/69, perf (board of 50: 2445 /
   786 / 634 ms against 600 / 473 / 391 ms; switch medians about 190 against 70 ms), doc numbers. The one e2e failure
   was a fixture's premise: the Chinese dump, made under that load, had caught G-0002 with a call in flight, which is
@@ -626,12 +626,12 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   and the full suite was not run again locally. Visual checks at DPR 2 during the work: Look's phone frame on the row
   and in the readout with short, long and wide reasons, en and zh (`/tmp/tower-design/iter25/r5/`); the trace's
   folded message, mark lines and Tower's line at 1024–1280 (`injected-*.png`, `marklines-1040.png`,
-  `towerline-*.png`); acceptance condition 1 (`ac1-*.png`). Detector: 17 against 17 at `af6d189` on the 9 changed UI
-  files, the same findings, none on a changed line. `main` at `70a52e7` (#53) is merged in: its citation edits are
+  `towerline-*.png`); acceptance condition 1 (`ac1-*.png`). Detector: 17 against 17 at `b056c18` on the 9 changed UI
+  files, the same findings, none on a changed line. `main` at `fd68bfb` (#53) is merged in: its citation edits are
   applied to this branch's docs and the review rounds this branch had cited in `docs/` are gone. Not independently
   re-reviewed: the owner asked for the branch to be pushed and merged once its gates passed.
-- Review 25 and its follow-up (D304, D305, T229, T230). Review 25 read `744a71f` while #54's CI ran and passed it at 8.78 / 10 with
-  no P0, P1 or P2; #54 was merged (`a0e0fa6`). Its one P3, from D288: on the phone a card held for words selected in
+- Review 25 and its follow-up (D304, D305, T229, T230). Review 25 read `c7bad8b` while #54's CI ran and passed it at 8.78 / 10 with
+  no P0, P1 or P2; #54 was merged (`0159c3a`). Its one P3, from D288: on the phone a card held for words selected in
   it did not show what its own controls answered, so a destructive choice never read "Press again" and the bell did
   not open (R25-P3-01). A press on a block's own control now lets its selection go (D304); `phone.spec.ts` presses
   Deny and the bell on a card with its command selected, and fails on #54's page ("a press on a card with words
@@ -640,3 +640,9 @@ cd apps/desktop && SHOTS=/tmp/tower-design/<name>/shots E2E_FIXTURES=/tmp/tower-
   the dump caught, and the per-test premise is gone (D305). The other notes are kept, each with its reason
   (DESIGN_DELIVERY §15). Checked: the phone spec 27 of 27, tsc, the remote tests, and the full e2e suite on the dump
   that had failed it (442 passed, 0 failed, 76 shot tests skipped without SHOTS). Not independently re-reviewed.
+- Commit ids after the identity rewrite (2026-11-27). 67 commits on `main` carried a machine-local author address
+  that GitHub cannot link to an account; they were re-attributed and `main` rewritten, which changed 272 commit ids
+  (every tree and date is the same; messages differ only in the ids they cite). The ids in `DESIGN_*.md`,
+  `design-evidence/README.md` and three code comments are now the new ones, each at the length it was cited. The
+  reports in `design-evidence/reports/` are the reviewers' own and keep the ids they were written with;
+  `design-evidence/README.md` tables old against new.

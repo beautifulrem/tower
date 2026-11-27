@@ -102,6 +102,12 @@ export function fixtures(lang?: "en" | "zh-CN"): Record<string, unknown> {
   for (const f of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
     out[f.replace(/\.json$/, "")] = JSON.parse(readFileSync(join(dir, f), "utf8"));
   }
+  // The demo's G-0002 is still at work while its views are dumped, so a dump may or may not catch one of its calls in
+  // flight, in the list, in the goal's own view, in one language and not the other (review 25). A call in flight is
+  // busy, never silent (D151), so what a test or a screenshot shows would follow the dump's timing. Every test opens on
+  // the run at rest; one about a call in flight says so in its own enrichment.
+  const F = out as Record<string, any>;
+  for (const g of [F.goals?.find((x: any) => x.id === "G-0002"), F["goal-G-0002"]?.summary]) if (g?.live_line) g.live_line.running = false;
   return out;
 }
 

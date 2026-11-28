@@ -10,7 +10,7 @@ Run several agents at once, each in its own sandbox.<br>
 Tower checks their work itself, in a clean checkout, before you ever see a green light.
 
 [![CI](https://github.com/beautifulrem/tower/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/beautifulrem/tower/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg?logo=apple)](#-quick-start)
 [![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB.svg?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-supervisor-B7410E.svg?logo=rust&logoColor=white)](crates/)
@@ -275,4 +275,4 @@ If Tower is useful to you, a ⭐ helps others find it.
 
 ## 📄 License
 
-[MIT](LICENSE)
+[GNU Affero General Public License v3.0](LICENSE)

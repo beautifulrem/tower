@@ -10,7 +10,7 @@
 在你看到任何一盏绿灯之前，Tower 已经在干净检出里亲自把它们的成果验了一遍。
 
 [![CI](https://github.com/beautifulrem/tower/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/beautifulrem/tower/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-lightgrey.svg?logo=apple)](#-快速开始)
 [![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB.svg?logo=tauri&logoColor=white)](https://tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-supervisor-B7410E.svg?logo=rust&logoColor=white)](crates/)
@@ -266,4 +266,4 @@ TOWER_HOME=/tmp/tower-live cargo run -p tower-supervisor --example run_goal -- \
 
 ## 📄 许可
 
-[MIT](LICENSE)
+[GNU Affero General Public License v3.0](LICENSE)
